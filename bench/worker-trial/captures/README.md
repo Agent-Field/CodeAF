@@ -57,3 +57,34 @@ one it changed), **#538** (the contract names a `read` tool the leaf does not ha
 wall), **#541** (budget overrun: billing before the check, plus unbounded landing turns),
 **#542** (`--json` drops `exit_code`; the field is unexported), **#543** (the settle line
 hides hedge waste).
+
+## Two lines from this run that the polish wave is arguing from
+
+`510-run1-stream.log` carries the house-rule argument for refusal wording inside one
+stream, four minutes apart.
+
+At 41m17s (line 105), ninety words opening on a claim about a file that is not true:
+
+> gate: refused — CLAUDE.md — The only file this run changed is CLAUDE.md; …
+
+At 45m0s (line 116), sixteen words opening on the verdict:
+
+> partial — no relevant progress in 2 rounds; last change: nothing this job is about has changed
+
+And at 26m1s (line 73), a third label for a body that the gate renders as a refusal
+elsewhere:
+
+> nothing is changing — carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands
+
+That body appears in another (since-reaped) capture as `gate: refused — carrying on has
+stopped changing anything — …`. Same words, two labels. The product already owns an
+outcome-first label for this sentence and does not use it at the gate — which is the row
+in `docs/design/polish/NEXT.md` on `ui/polish-v0`, and the reason line 73 needed a
+permanent home.
+
+## Evidence in a run store has a half-life
+
+Three refusal specimens read off this box on 2026-09-03 could not be found thirty minutes
+later — a run store reaped underneath them. A path into a run store is a citation with an
+expiry date, and a description of a line is not the line. Everything in this directory is
+copied out and pushed for that reason.
