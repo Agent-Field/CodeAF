@@ -62,6 +62,17 @@ type Compiled struct {
 	// for ourselves, which is precisely what the gate may not hold anybody to.
 	// See plan.Acceptance and docs/design/gate/ACCEPTANCE.md.
 	Accept []plan.Point
+	// Constraints are the rules the person's REQUEST states about what the run
+	// may or may not DO, in their own words, kept only where the compiler could
+	// quote them out of the instruction (head.keepStatedConstraints).
+	//
+	// It rides beside Accept because the two are read off the same verbatim ask
+	// and neither can be recovered downstream — everything past the compile
+	// holds the compiled goal, which is this program's reading. They differ in
+	// where they land: the checklist goes on the node that DELIVERS, and a
+	// constraint goes on every node of the job, because the person said it about
+	// the run. See plan.Graph.SetConstraints.
+	Constraints []plan.Constraint
 	// TrialOf is the retrieved unsettled fact this goal deliberately tests.
 	// Zero means the compiled job is ordinary work.
 	TrialOf int64

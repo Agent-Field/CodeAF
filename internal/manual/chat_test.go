@@ -411,6 +411,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
 		{"the run said empty goal and did nothing", "adaptive-runs"},
+		// A rule the person stated about what the run may DO, asked the four ways
+		// somebody meets it: before they run, and after the run broke it.
+		{"I said change no files and it changed files", "adaptive-runs"},
+		{"can I tell it not to touch anything", "adaptive-runs"},
+		{"how do I stop a run writing outside one folder", "adaptive-runs"},
+		{"it broke a rule I set", "adaptive-runs"},
 		{"what is a harness", "saved-shapes-of-work"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},

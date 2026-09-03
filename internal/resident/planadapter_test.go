@@ -180,3 +180,47 @@ func TestNeedsOnExpandedContainersRewireToTheirLeaves(t *testing.T) {
 		}
 	}
 }
+
+// A RULE THE PERSON SET HAS TO SURVIVE THE JOURNAL OR IT IS PROSE AGAIN BY THE
+// SECOND NODE. The spec is encoded whole here and decoded by every reader
+// downstream — the leaf's own method, the gate's evidence, a remainder planned
+// against an exhausted node — so a field that does not make this round trip is a
+// field the gate would silently stop holding anyone to. Asked for by name rather
+// than taken on trust, because #427's whole failure was a rule that reached the
+// run and then stopped travelling.
+func TestAConstraintOnAPlanNodeSurvivesTheSubtree(t *testing.T) {
+	rules := []plan.Constraint{
+		{Text: "Change no files.", Kind: plan.ConstraintNoWrites},
+		{Text: "Only touch docs/", Kind: plan.ConstraintPathsOnly, Paths: []string{"docs"}},
+	}
+	graph := &plan.Graph{Nodes: []plan.Node{
+		{ID: 1, Stage: 1, Kind: plan.KindWork, Title: "Run it", Brief: "run the named command"},
+		{ID: 2, Stage: 2, Kind: plan.KindSynthesis, Title: "Report", Brief: "report the line", Needs: []int{1}},
+	}}
+	graph.SetConstraints(rules)
+
+	subtree, err := SubtreeFromPlan(graph, "trul")
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	for _, spec := range subtree.Nodes {
+		decoded := DecodeSpec(spec.Spec)
+		if len(decoded.Constraints) != 2 {
+			t.Fatalf("%s carries %d rules after the round trip: %+v",
+				spec.ID, len(decoded.Constraints), decoded.Constraints)
+		}
+		if decoded.Constraints[0].Text != "Change no files." ||
+			decoded.Constraints[0].Kind != plan.ConstraintNoWrites {
+			t.Fatalf("%s lost the person's own words: %+v", spec.ID, decoded.Constraints[0])
+		}
+		// The paths are what the mechanical reading compares against, so losing
+		// them turns a held rule into an unheld one without saying so.
+		if len(decoded.Constraints[1].Paths) != 1 || decoded.Constraints[1].Paths[0] != "docs" {
+			t.Fatalf("%s lost the places the rule allows: %+v", spec.ID, decoded.Constraints[1])
+		}
+		// And the leaf reads the rules first, wherever the spec is rendered.
+		if !strings.HasPrefix(decoded.Render(0), plan.ConstraintsHeading+":") {
+			t.Fatalf("%s does not read its rules first:\n%s", spec.ID, decoded.Render(0))
+		}
+	}
+}
