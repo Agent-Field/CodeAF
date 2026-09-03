@@ -667,11 +667,15 @@ func TestEveryEndingWritesOneRowAtTheSeamThatTookIt(t *testing.T) {
 	if ending.Carry == "" {
 		t.Error("a row that says the work moved names no rung of the ladder")
 	}
-	// AND THE THREE SEAMS ARE THREE WORDS, because a door spelled the same as
+	// AND THE FOUR SEAMS ARE FOUR WORDS, because a door spelled the same as
 	// another door is a door nothing can tell apart afterwards.
-	if checkpointSeamMark == checkpointSeamWrite || checkpointSeamWrite == checkpointSeamCeiling ||
-		checkpointSeamMark == checkpointSeamCeiling {
-		t.Error("two of the three seams are spelled alike")
+	seams := []string{checkpointSeamMark, checkpointSeamWrite, checkpointSeamCeiling, checkpointSeamWall}
+	for i, one := range seams {
+		for _, other := range seams[i+1:] {
+			if one == other {
+				t.Errorf("two of the four seams are spelled alike: %q", one)
+			}
+		}
 	}
 }
 

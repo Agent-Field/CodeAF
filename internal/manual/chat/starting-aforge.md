@@ -137,8 +137,9 @@ With a budget, four things change, and only with a budget:
 
 With a budget, **every** way a turn ends is read, not just the ones where the model stops
 talking. A long turn can also end by having its work moved onto a task — when a second
-reader says the work has parts, when the turn has changed enough files, or when it has run
-past its own price. Each of those seals the turn, and until this they sealed it without
+reader says the work has parts, when the turn has changed enough files, when it has run
+past its own price, or — only with a budget — when it has had its share of the hours you
+gave the run. Each of those seals the turn, and until this they sealed it without
 asking anything: the run then had no way back at all, because the only thing that could end
 it was a landing waking a turn that moved its work onto another task, and so on until the
 hours ran out. Three measured runs finished their work, went green, and still ran to the
@@ -174,9 +175,35 @@ than on your bare sentence. A run measured before this said "not yet confirmed" 
 write seam and again at its ceiling, had both handovers thrown away by the two readers, and
 ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
 
+**And with a budget one reply may spend at most a third of the wall.** *Why did it move my
+work to a task after five minutes; it kept running tests for ten minutes and then handed it
+over; why did it not hand over sooner.* The other three ways above all COUNT something —
+parts in a sketch, files changed, rounds spent — and a reply that spends its time reading
+and running tests crosses none of them. A measured run did exactly that: a fifteen-minute
+wall, the fix working in the checkout at five minutes, twelve and a half minutes of reading
+and tests inline, the work finally moved with 147 seconds left, sixty of which went on
+opening the task's working copy — and the wall came down on a task that had committed
+nothing, checked nothing and landed nothing. So a reply that has been running for a third of
+the hours you gave the run hands over, and you read:
+
+```
+this has taken a third of the time · moving it to a task that can be checked before the wall
+```
+
+**A third, because the other two thirds are what the work needs after it moves** — a working
+copy opened, the job run, and somebody who is not the model that did it reading the result,
+which is the whole difference between work that happened and work that landed. **And it hands over only what can still be checked before the wall**: once less of the
+wall remains than a task needs to open its working copy and be checked — the two waits a
+task is already held to, added — a reply is not moved at all, and nothing is spent asking,
+because a task started then could not be set up, let alone checked; a measured run started
+one with six seconds to go. It happens
+**once** in a reply; rounds spent only watching work you already handed out do not count
+towards it; and it needs a wall, so `--max-cost` on its own never triggers it.
+
 None of this applies to a session you are sitting in front of: your turn's work moves onto a
 task exactly as it always has, nothing is decided for you, and the two readers agreeing
-still leaves your answer where it is.
+still leaves your answer where it is. There is no wall on your session, so there is no share
+of one either, however long your reply runs.
 
 ## What counts as still left · a task that died on the wire · it kept working after everything was finished · it says nothing has been finished yet when it did the work itself
 
