@@ -1,0 +1,30 @@
+ Count the tabs the bar draws                      esc back
+
+────────────────────────────────────────────────────────────
+ done · landed 2h ago · ran 11m 0s
+
+ One reading of the world, shared by the bar and the list,
+ so the two counts cannot disagree.
+
+ out of The Tab Bar's Counts
+ anthropic/claude-opus-4.1 · $0.42 · 61.2k tok
+ 3 files changed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ ↑↓ scroll · m puts it in your message · esc back

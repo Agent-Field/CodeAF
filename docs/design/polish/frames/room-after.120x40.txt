@@ -1,0 +1,40 @@
+─ ? main ▸ Cut every list on the task surface over to the shared row fitter so a name is never cut to nine cells ───────
+  part of: Measure the frame budget in every package that draws a row
+  handed out: Fold the settled work on the task page — parked
+› Four lists on the task surface do their own width arithmetic. Put all four on rowfit's  │ tasks
+  plan so the identity is whole before any fact is spelled.                               │ ✓ Measure the frame budg… #1
+                                                                                          │ ├─ ✓ Move the tab bar on… #2
+  rowfit.go states the law; I will read it first so the four rewrites all mean the same   │ ├─ ? Cut every list on t… #3
+  thing.                                                                                  │ │  │    finished — look it
+  ▸ worked · 1 tool call · ctrl+e                                                         │ │  │    over
+                                                                                          │ │  └─ ◌ Fold the settl… ▸ +1
+And the worst of the four, which cuts the name to eight cells and gives every fact its    │ └─ ✗ Rebuild the frame b… #5
+full spelling.                                                                            │ + /task
+  ▸ worked · 1 tool call · ctrl+e                                                         │
+                                                                                          │ standing
+That is the law inverted exactly. Rewriting it as a rowPlan.                              │ ◦ the morning sweep
+  ▸ worked · 1 tool call · ctrl+e                                                         │ ? CI on master
+                                                                                          │ ◦ the public API
+Same shape for the jobs column, the made-for-you note and the task card.                  │ + /standing
+  ▸ worked · 3 tool calls · ctrl+e                                                        │
+                                                                                          │ ▸ jobs · 3 ran
+Running the surface's own suite over the four.                                            │
+  ▸ worked · 1 tool call · ctrl+e                                                         │
+                                                                                          │
+The four lists are on the fitter and the frames read right at 160 and 120. Nothing here   │
+could prove the sixty-cell case — the only terminal that narrow is yours — so it wants    │
+your eye before it lands.                                                                 │
+  finished, but nobody has checked it — your call                                         │
+  [a] accept · [l] look again · [n] not right · [d] decide these for me                   │
+                                                                                          │ Σ $1.07 · 52.9k tok
+                                                                                          │ 1 needs you · 2 parked
+                                                                                          │ 3 done
+                                                                                          │ ctrl+. earlier
+                                                                                          │ alt+w widen · click seam
+                                                                                          │ ❯ ctrl+g hide
+
+─ room · esc/←← main ─────────────────────────────────────────────────────────── a accept · l look again · n not right ─
+
+  ? Cut every list on… › finished — say it to main, or open its parent, Measure the frame budget in every package that …
+  ? Cut every list on… ›
+? Cut every list on… · task claude-opus-4.1             crew balanced · ◦ keeping an eye on 3 · $1.07 · 5.5k/1.3M · idle

@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 04:55Z_
+_2026-09-03 05:30Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -60,27 +60,27 @@ _2026-09-03 04:55Z_
 ## commands — [audit-commands.md](audit-commands.md)
 
 - `M1`    high open   `--help` opens by calling the product "build and revise task graphs"
-- `M2`    high open   `aforge run --help` says "leaf" or "leaves" six times
-- `M3`    high open   `aforge why <node-id>` help says "show what one leaf actually did"
-- `M4`    high open   `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
-- `M5`    high open   Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
-- `M6`    high open   Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
-- `M7`    high open   `--budget` means tokens while "budget" means dollars everywhere else in the product
-- `M8`    high open   `--timeout` is a duration on `do` and an integer of seconds on `exec`
-- `M9`    high open   `run` names two unrelated commands and help needs a special case to tell them apart
-- `M10`   high open   The word `seat` reaches a person on stderr on four headless doors
-- `M11`   med  open   `-w`, `-o` and `-j` have no long spelling at all (extends cli-23: the fix is new names, not a print change)
-- `M12`   med  open   `exec --plan-model` is accepted and documented as doing nothing
+- `M2`    high CLOSED `aforge run --help` says "leaf" or "leaves" six times
+- `M3`    high CLOSED `aforge why <node-id>` help says "show what one leaf actually did"
+- `M4`    high CLOSED `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
+- `M5`    high CLOSED Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
+- `M6`    high CLOSED Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
+- `M7`    high CLOSED `--budget` means tokens while "budget" means dollars everywhere else in the product
+- `M8`    high CLOSED `--timeout` is a duration on `do` and an integer of seconds on `exec`
+- `M9`    high CLOSED `run` names two unrelated commands and help needs a special case to tell them apart
+- `M10`   high CLOSED The word `seat` reaches a person on stderr on four headless doors
+- `M11`   med  CLOSED `-w`, `-o` and `-j` have no long spelling at all (extends cli-23: the fix is new names, not a print change)
+- `M12`   med  CLOSED `exec --plan-model` is accepted and documented as doing nothing
 - `M13`   med  open   Nothing-to-show is answered three different ways, and there is no rule (extends cli-21 and cli-22)
 - `M14`   med  open   `graph plan` and `graph run` print their preamble to stdout; `do` prints the same thing to stderr
 - `M15`   med  open   `run` reimplements the models line instead of calling the one helper
-- `M16`   med  open   `--yes-spend` is documented as two different things on two commands
-- `M17`   med  open   `--ensemble` is a tri-state integer with two magic values
-- `M18`   med  open   `--contracts` and `--brief` are one concept under two machinery names
-- `M19`   med  open   `--context-fill` and `--completion-reserve` document themselves by the environment variable they set
+- `M16`   med  CLOSED `--yes-spend` is documented as two different things on two commands
+- `M17`   med  CLOSED `--ensemble` is a tri-state integer with two magic values
+- `M18`   med  CLOSED `--contracts` and `--brief` are one concept under two machinery names
+- `M19`   med  CLOSED `--context-fill` and `--completion-reserve` document themselves by the environment variable they set
 - `M20`   med  open   `devices revoke --all` is hand-parsed, position-sensitive, and missing from the usage sentence
 - `M21`   med  open   The two surfaces use different words to confirm the same deletion
-- `M22`   med  open   `brain` is the word `doctor` uses for the store, in output and in `--help`
+- `M22`   med  CLOSED `brain` is the word `doctor` uses for the store, in output and in `--help`
 - `M23`   med  open   `--help` has no examples
 - `M24`   med  open   `--help` is 127 lines and more than half is the environment table (cli-7 covers its wrapping, not its size)
 - `M25`   med  open   The commands in `--help` are one flat list in no stated order, and `run`'s two forms are separated by `exec`
@@ -107,7 +107,7 @@ _2026-09-03 04:55Z_
 - `P14`   med  open   The map promises `→ verbs on this row` on places that have none
 - `P15`   med  CLOSED The first-run block and the greeting that replaces it are centred by two different rules, so the wordmark jumps when setup ends
 - `P16`   med  open   The first-run screen's refusal line is whatever Go error the writer produced, printed raw
-- `P17`   low  open   The wordmark's last glyph has no right stroke and reads as a clipped letter
+- `P17`   low  CLOSED The wordmark's last glyph has no right stroke and reads as a clipped letter
 - `P18`   low  open   A search that finds nothing reports the emptiness and nothing else
 - `P19`   low  CLOSED Three more places' hint lines promise row verbs over a body that has no rows
 - `P20`   low  open   The entry note dumps the absolute transcript path over four wrapped lines
@@ -141,8 +141,8 @@ _2026-09-03 04:55Z_
 - `J1`    high CLOSED A conversation reopened draws none of the background jobs it ran, because the surface has no case for them on the lane the engine replays them on
 - `J2`    high CLOSED A task restored from a checkpoint is dated by when the WINDOW opened plus how long the work ran, which is a landing time in the future
 - `J3`    high CLOSED Work parked on a person's decision is filed under `running` and dated `now`
-- `J4`    high open   A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
-- `J5`    med  open   The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
+- `J4`    high CLOSED A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
+- `J5`    med  CLOSED The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
 - `J6`    med  CLOSED The word on a landed card for when the work began is `spawned`
 - `J7`    med  open   A task's price is drawn twice on the same home card, four cells apart, in two different inks
 - `J8`    med  open   A conversation whose name carries a combining accent is drawn with the accent silently removed
@@ -158,20 +158,20 @@ _2026-09-03 04:55Z_
 - `N3`    med  CLOSED A conversation with no title draws a title-cased hex id as its name
 - `N4`    med  open   The job page's key row is still painted through a plain `fit` and is cut mid-word
 - `N5`    med  open   The task record's key row is cut the same way
-- `N6`    med  open   The pulse line is all-or-nothing, so navigation is outranked by a clock
-- `N7`    low  open   Five more person-facing foot lines are cut by character rather than by clause
+- `N6`    med  CLOSED The pulse line is all-or-nothing, so navigation is outranked by a clock
+- `N7`    low  CLOSED Five more person-facing foot lines are cut by character rather than by clause
 - `N8`    low  open   The resting foot promises `tab next place` on a frame that used to draw one place
 
 ## settings — [audit-settings.md](audit-settings.md)
 
-- `S10`   med  open   The spend place draws no hint line of its own, so its foot advertises the conversation's keys
-- `S11`   med  open   The daily rail is spelled two ways on one frame
+- `S10`   med  CLOSED The spend place draws no hint line of its own, so its foot advertises the conversation's keys
+- `S11`   med  CLOSED The daily rail is spelled two ways on one frame
 - `S12`   med  open   `dollars` renders a positive cost under a hundredth of a cent as `$0.0000`
-- `S13`   med  open   At the widths where the memory type legend fits but the line is tight, the section's IDENTITY is truncated to keep a secondary legend whole: at 80 cells the heading reads `shelves · …` beside `fact 7 · preference 2 · decision 2 · correction 1 · project state 1`
+- `S13`   med  CLOSED At the widths where the memory type legend fits but the line is tight, the section's IDENTITY is truncated to keep a secondary legend whole: at 80 cells the heading reads `shelves · …` beside `fact 7 · preference 2 · decision 2 · correction 1 · project state 1`
 - `S14`   med  CLOSED The four ssh rows sit under `Session`, while a tab literally named `Connections` sits four tabs to the right holding Amplitude, PostHog and Braintree
 - `S15`   low  CLOSED A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
 - `S16`   low  CLOSED On a wide frame a settings row puts 150 blank cells between a label and a three-character value
-- `S17`   low  open   The `loudest day` line right-aligns a bare noun with no verb and nothing joining it to the sentence: `aug 23 was the loudest day
+- `S17`   low  CLOSED The `loudest day` line right-aligns a bare noun with no verb and nothing joining it to the sentence: `aug 23 was the loudest day
 
 ## tasks — [audit-tasks.md](audit-tasks.md)
 
