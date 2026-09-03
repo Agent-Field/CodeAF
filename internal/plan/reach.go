@@ -152,7 +152,7 @@ type namedScope struct {
 // corpus.txt, and a reader that treated "in three lanes" as a scope would
 // measure nothing anywhere. A plain dash must be followed by a space so that it
 // is a separator and not the middle of a name.
-var scopingMark = regexp.MustCompile(`^[ \t]*(?::|[—–]|-[ \t]|\()[ \t]*`)
+var scopingMark = regexp.MustCompile(`^[ \t]*(?::|[—–]|-[ \t]|[(\[])[ \t]*`)
 
 // namedScopes is THE reading of how a piece of text divides into file names and
 // the scopes around them, and it is one function because a second copy of this
@@ -298,11 +298,13 @@ func insideWorkspace(name string) bool {
 //
 //   - A LINE RANGE — "lines 40-320", "lines 40 to 320". The bytes of exactly
 //     those lines, which is exact.
-//   - A COUNT OF LINE-SHAPED THINGS — "1,160 North records", "30 heading
-//     lines", "40 rows". The count is exact and the file says what a line of it
-//     weighs, so the share is that many of the file's own mean line. The source
-//     said HOW MANY lines and not WHICH, and this is the file answering the
-//     half it can answer.
+//   - A COUNT OF LINE-SHAPED THINGS — "1,160 North records", "40 rows". The
+//     count is exact and the file says what a line of it weighs, so the share is
+//     that many of the file's own mean line. The source said HOW MANY lines and
+//     not WHICH, and this is the file answering the half it can answer.
+//   - A COUNT OF HEADINGS — "all 30 `## chapter N: …` heading lines". Read
+//     exactly rather than averaged, because it can be: the file says which of
+//     its lines are headings, so these are the bytes of the lines themselves.
 //   - A NAMED BLOCK OR HEADING — "the North block heading", "the `## chapter 3`
 //     section". A heading line of the file whose label the scope spells, and
 //     the extent from it to the next heading at or above its rank.
@@ -382,6 +384,17 @@ func lineRangeShare(lines []string, scope string) int {
 // line-shaped ones on purpose: a record, a row, an entry, an item and a line
 // are all one line of a file, while a "section" or a "chapter" is a count of
 // regions and says nothing about their size.
+//
+// A count of HEADINGS is read exactly, because it can be: the file says which
+// of its lines are headings, so the share is the bytes of that many of them and
+// not an estimate at all. That distinction is worth the branch — a handbook's
+// thirty heading lines are a thousand bytes of an eighty-five-kilobyte file,
+// and the file's mean line is five times too generous about them.
+//
+// Every other count is the file's own mean line, that many times over. The
+// source said HOW MANY lines and not WHICH, and this is the file answering the
+// half of the question it can answer; the count is clamped to the file so the
+// answer can never be a statement about lines the file does not have.
 func lineCountShare(lines []string, size int, scope string) int {
 	match := lineCount.FindStringSubmatch(scope)
 	if match == nil {
@@ -391,10 +404,32 @@ func lineCountShare(lines []string, size int, scope string) int {
 	if count <= 0 {
 		return 0
 	}
+	if headingCount.MatchString(scope) {
+		if bytes := headingLinesShare(lines, count); bytes > 0 {
+			return bytes
+		}
+	}
 	if count > len(lines) {
 		count = len(lines)
 	}
 	return count * (size / len(lines))
+}
+
+// headingLinesShare is the bytes of the file's first count heading lines, or of
+// all of them when it has fewer than that. Nothing is estimated here: these are
+// the lines themselves.
+func headingLinesShare(lines []string, count int) int {
+	bytes, found := 0, 0
+	for _, line := range lines {
+		if _, _, ok := headingLine(line); !ok {
+			continue
+		}
+		bytes += len(line)
+		if found++; found == count {
+			break
+		}
+	}
+	return bytes
 }
 
 // namedBlockShare finds the heading the scope spells and returns the extent of
@@ -483,10 +518,11 @@ var (
 	// The unit noun may sit a few words after the count — "1,160 North records",
 	// "all 30 `## chapter N: …` heading lines" — so a bounded, ungreedy run of
 	// words is allowed between them and the nearest unit wins.
-	lineCount   = regexp.MustCompile(`(?i)\b(\d[\d,]*)(?:\s+\S+){0,6}?\s+(?:records?|rows?|entries|entry|lines?|items?)\b`)
-	backticked  = regexp.MustCompile("`([^`]{1,80})`")
-	capitalised = regexp.MustCompile(`\b[A-Z][A-Za-z0-9'-]{2,}\b`)
-	bareLabel   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _'-]{0,60}$`)
+	lineCount    = regexp.MustCompile(`(?i)\b(\d[\d,]*)(?:\s+\S+){0,6}?\s+(?:records?|rows?|entries|entry|lines?|items?)\b`)
+	headingCount = regexp.MustCompile(`(?i)\bheadings?\b`)
+	backticked   = regexp.MustCompile("`([^`]{1,80})`")
+	capitalised  = regexp.MustCompile(`\b[A-Z][A-Za-z0-9'-]{2,}\b`)
+	bareLabel    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _'-]{0,60}$`)
 )
 
 // correctBeyondReach is the measurement overruling the judgment, on the one
@@ -543,7 +579,7 @@ func correctBeyondReach(graph *Graph) {
 		if !reach.weigh(named[index]).Exceeds() {
 			continue
 		}
-		if node.Size == SizeAtomic && sharesAScopedFile(named[index], scoped) {
+		if node.Size == SizeAtomic && isALaneOfADivision(named[index], scoped) {
 			continue
 		}
 		node.Size = SizeOversized
@@ -551,14 +587,26 @@ func correctBeyondReach(graph *Graph) {
 	}
 }
 
-// sharesAScopedFile reports whether these readings scope a region of a file
-// some other node scopes a region of too — the signature of a lane in a
-// division rather than of a leaf over a whole subject.
-func sharesAScopedFile(readings []reading, scoped map[string]int) bool {
+// isALaneOfADivision reports whether these readings are one lane of a division:
+// every one of them scopes a REGION of a file, and at least one of those files
+// is a file another node scopes a region of too.
+//
+// Both halves are load-bearing. Without the second, a lone node scoping a
+// region larger than one worker holds would go uncorrected, and it is genuinely
+// over-large. Without the first, ONE BARE NAME RIDES IN FREE: a node sourcing
+// the whole of a 144 KB register beside a scoped line or two of a file its
+// sibling also scopes would be a lane by this test, and the whole register is
+// exactly what the correction exists to catch. A node that names any whole file
+// is judged on its material like any other.
+func isALaneOfADivision(readings []reading, scoped map[string]int) bool {
+	shared := false
 	for _, one := range readings {
-		if one.Scoped && scoped[one.Name] > 1 {
-			return true
+		if !one.Scoped {
+			return false
+		}
+		if scoped[one.Name] > 1 {
+			shared = true
 		}
 	}
-	return false
+	return shared
 }

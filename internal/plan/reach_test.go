@@ -216,6 +216,39 @@ func TestALaneIsMeasuredByTheBlockItScopesAndNotByTheWholeFile(t *testing.T) {
 	}
 }
 
+// The one reading of where a file name stops and its scope starts. A name
+// followed by a colon, a dash or a bracket is scoped by the words after it; a
+// name in a sentence is a name in a sentence, and the sentence is not a scope —
+// "rewrite corpus.txt in three lanes" names all of corpus.txt, and a reader
+// that took "in three lanes" for a scope would measure nothing anywhere.
+func TestAScopeIsMarkedAndASentenceIsNot(t *testing.T) {
+	dir, register := registerWorkspace(t)
+	reach := ReachFor(dir, 0)
+	for _, source := range []string{
+		"register.txt: lines 2-1161",
+		"register.txt — lines 2-1161",
+		"register.txt - lines 2-1161",
+		"register.txt (lines 2-1161)",
+		"register.txt [lines 2-1161]",
+	} {
+		measurement := reach.Measure(source)
+		if !measurement.Taken() {
+			t.Fatalf("%q scoped nothing", source)
+		}
+		if measurement.Bytes >= register/2 || measurement.Bytes <= register/4 {
+			t.Fatalf("%q measured %d bytes of a %d-byte file", source, measurement.Bytes, register)
+		}
+	}
+	for _, source := range []string{
+		"rewrite register.txt in three lanes",
+		"register.txt",
+	} {
+		if got := reach.Measure(source).Bytes; got != register {
+			t.Fatalf("%q measured %d bytes, want the whole %d-byte file", source, got, register)
+		}
+	}
+}
+
 // A heading set is material too, and it is the heading lines and not the file
 // they head. The reading that stamped this node was `1 file, 84.8 KB in all …
 // 2.7 times what one worker can hold` for perhaps two kilobytes of headings.
@@ -229,11 +262,34 @@ func TestAHeadingSetIsMeasuredAsItsHeadingLinesAndNotAsTheFile(t *testing.T) {
 		t.Fatalf("thirty heading lines of a %d-byte file measured %d bytes, past a %d-byte reach",
 			handbook, measurement.Bytes, measurement.Reach)
 	}
-	// Thirty lines of a four-hundred-line file, and the file's own bytes say
-	// what a line of it weighs.
-	if measurement.Bytes > handbook/8 {
-		t.Fatalf("thirty of %d lines measured %d bytes of %d", 30, measurement.Bytes, handbook)
+	// And it is the heading lines themselves and not the file's mean line
+	// thirty times over: the mean is five times too generous about a chapter
+	// heading, and a number reported for material the pass did not locate is
+	// the guessing this replaced.
+	headings := 0
+	for _, line := range strings.SplitAfter(readFile(t, dir, "HANDBOOK.md"), "\n") {
+		if strings.HasPrefix(line, "## chapter ") {
+			headings += len(line)
+		}
 	}
+	if headings == 0 {
+		t.Fatal("the fixture wrote no chapter headings")
+	}
+	if measurement.Bytes > 2*headings {
+		t.Fatalf("thirty heading lines weighing %d bytes measured %d, of a %d-byte file",
+			headings, measurement.Bytes, handbook)
+	}
+}
+
+// readFile is the fixture read back, for a test that checks the measurement
+// against the material rather than against the measurement's own arithmetic.
+func readFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 // The other half of the law, and the guarantee from issue #384 kept whole: a
@@ -264,6 +320,35 @@ func TestAWholeFileNamedBareIsStillCorrectedAndStillJournalsTheRefusal(t *testin
 	}
 	if got := graph.Node(2).Size; got != SizeAtomic {
 		t.Fatalf("a node naming nothing measurable was corrected to %q", got)
+	}
+}
+
+// One bare name rides in free if the exemption above is written loosely: a node
+// sourcing the whole register beside a scoped line or two of a file its sibling
+// also scopes is not a lane of a division, and the whole register is exactly
+// what the correction exists to catch.
+func TestABareNameBesideASharedScopeIsStillCorrected(t *testing.T) {
+	dir, _ := registerWorkspace(t)
+	graph := laneGraph(dir)
+	// Two nodes scope the conventions between them, so the file is shared — and
+	// the first of them also names the whole register, with nothing scoping it.
+	graph.Node(1).Sources = []string{"register.txt", "CONVENTIONS.md: lines 2-4"}
+	graph.Node(2).Sources = []string{"CONVENTIONS.md: lines 5-9"}
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"}, {Node: 3, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := graph.Node(1).Size; got != SizeOversized {
+		t.Fatalf("a node naming the whole register beside a shared scope was sized %q", got)
+	}
+	if got := graph.Node(1).Undivided; got != RefusalBeyondReach {
+		t.Fatalf("the correction journaled %q, want %q", got, RefusalBeyondReach)
+	}
+	// Its sibling scopes a handful of lines and is nowhere near one worker's
+	// window, so nothing about it changed.
+	if got := graph.Node(2).Size; got != SizeAtomic || graph.Node(2).Undivided != "" {
+		t.Fatalf("the sibling was corrected to %q/%q", got, graph.Node(2).Undivided)
 	}
 }
 
