@@ -98,8 +98,6 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("usage: aforge wake [--db path] [--timeout 2m]")
 	}
-	maxSeconds := new(int)
-	*maxSeconds = int(wall.wall / time.Second)
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
 		return err
@@ -157,7 +155,12 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*maxSeconds)*time.Second)
+	// THE WALL IS THE WALL, TO THE NANOSECOND. `--timeout` is a duration on
+	// every door that has one, and this one used to fold it down to a whole
+	// number of seconds and multiply it back up — so `--timeout 500ms`
+	// truncated to zero, and a zero wall is no wall at all, which handed the
+	// pass the full default instead of the half second that was asked for.
+	ctx, cancel := context.WithTimeout(context.Background(), wall.wall)
 	defer cancel()
 	var pass resident.WatchPass
 	for tick := 0; tick < maxWakeTicks; tick++ {

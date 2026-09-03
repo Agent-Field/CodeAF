@@ -111,7 +111,7 @@ func runExec(args []string) error {
 
 	ctx, stopSignals := signal.NotifyContext(traced, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
-	deadline := execDeadline(*maxTokens, int(wall.wall/time.Second))
+	deadline := execDeadline(*maxTokens, wall.wall)
 	if wall.wall > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, deadline)
@@ -241,9 +241,21 @@ func applyExecEnv(flags *flag.FlagSet, getenv func(string) string, maxTurns, max
 	return nil
 }
 
-func execDeadline(maxTokens, timeoutSeconds int) time.Duration {
-	if timeoutSeconds > 0 {
-		return time.Duration(timeoutSeconds) * time.Second
+// execDeadline is the room this run gets: the wall the caller typed if they
+// typed one, and otherwise the generalist's shape asked for by name.
+//
+// IT TAKES THE WALL AS THE DURATION IT ALREADY IS. It took an integer of
+// seconds while `--timeout` was an integer of seconds, and when the flag grew
+// units (wall.go) the call site kept the old door by dividing the duration back
+// down — `execDeadline(*maxTokens, int(wall.wall/time.Second))` — which is a
+// leaf's room being worked out at the dispatch site, the one thing
+// `TestOnlyTheSubharnessTableSizesALeafsRoom` exists to refuse. It also lost
+// everything under a second on the way through, so a wall below one second
+// truncated to zero and fell through to the table's fifteen minutes: the
+// opposite of what was typed.
+func execDeadline(maxTokens int, wall time.Duration) time.Duration {
+	if wall > 0 {
+		return wall
 	}
 	// The shape is the generalist's, asked for and never worked out again:
 	// exec.SubharnessInfo.Deadline is the one place in the process that knows

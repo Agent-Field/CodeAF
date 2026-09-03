@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"io"
 	"os"
 	"strings"
@@ -48,8 +51,14 @@ func TestExecDeadline(t *testing.T) {
 	if got := execDeadline(2_000_000, 0); got != 40*time.Minute {
 		t.Fatalf("scaled deadline = %s, want 40m", got)
 	}
-	if got := execDeadline(2_000_000, 75); got != 75*time.Second {
+	if got := execDeadline(2_000_000, 75*time.Second); got != 75*time.Second {
 		t.Fatalf("explicit deadline = %s, want 75s", got)
+	}
+	// A WALL UNDER A SECOND IS THE WALL, not a rounding down into the table's
+	// fifteen minutes. It was the latter while this door took an integer of
+	// seconds and the call site divided the duration down to reach it.
+	if got := execDeadline(2_000_000, 500*time.Millisecond); got != 500*time.Millisecond {
+		t.Fatalf("sub-second deadline = %s, want 500ms", got)
 	}
 }
 
@@ -195,7 +204,7 @@ func TestApplyExecEnvFillsWallsNobodyPassed(t *testing.T) {
 		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 3/20000/2m30s", *turns, *budget, wall.wall)
 	}
 	// And the wall the environment named is the wall the run actually gets.
-	if got := execDeadline(*budget, int(wall.wall/time.Second)); got != 150*time.Second {
+	if got := execDeadline(*budget, wall.wall); got != 150*time.Second {
 		t.Fatalf("deadline = %s, want 150s", got)
 	}
 	// THE VARIABLE READS A DURATION TOO, because the flag it stands in for does.
@@ -401,5 +410,40 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"error":""`) {
 		t.Fatalf("a clean run's envelope dropped the error key instead of leaving it empty:\n%s", encoded)
+	}
+}
+
+// A WALL UNDER A SECOND IS STILL A WALL. `--timeout` is a duration on every
+// door that has one, and two of them used to fold it down to a whole number of
+// seconds and multiply it back up. `--timeout 500ms` truncated to zero, and a
+// zero wall is no wall at all — so the run was handed the FULL DEFAULT, the
+// opposite of what was typed, and `1500ms` quietly became one second.
+//
+// THE SOURCE IS READ WITH ITS SPACES TAKEN OUT, because the first draft of this
+// test matched `"/ time.Second"` and passed against `wall.wall/time.Second` —
+// the defect written without a space. A guard that the defect can walk past is
+// not a guard, so the comparison is made on a form the author's formatting
+// cannot vary.
+func TestAWallUnderASecondIsNotRoundedAwayOnAnyDoor(t *testing.T) {
+	for _, source := range []string{"exec.go", "wake.go"} {
+		parsed, err := parser.ParseFile(token.NewFileSet(), source, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// THE COMMENTS ARE NOT THE CODE. The second draft of this test read the
+		// file as text and failed on a comment in exec.go that QUOTES the old
+		// shape in order to explain why it is gone — so the tree is parsed and
+		// only what runs is judged.
+		var printed strings.Builder
+		if err := printer.Fprint(&printed, token.NewFileSet(), parsed); err != nil {
+			t.Fatal(err)
+		}
+		tight := strings.Join(strings.Fields(printed.String()), "")
+		for _, shape := range []string{"wall.wall/time.Second", "time.Duration(*maxSeconds)", "time.Duration(int("} {
+			if strings.Contains(tight, shape) {
+				t.Errorf("%s folds a wall through whole seconds (%s); a duration flag is a duration all the way down",
+					source, shape)
+			}
+		}
 	}
 }
