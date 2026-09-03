@@ -1058,8 +1058,9 @@ The three reasons a queued task gives for waiting are `slot`, `machine busy` and
 `rate limited`. A named prerequisite outranks any of them, because a name is something you
 can act on and a queue clears itself.
 
-How a branch came home is spelled `merged`, `in your own folder` (there was no branch to
-bring home — the work edited your own files), or `conflicted · <branch>`.
+How a branch came home is spelled `merged`, `branch kept · <branch>`, `in your own folder`
+(there was no branch to bring home — the work edited your own files), or
+`conflicted · <branch>`.
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
@@ -1087,7 +1088,7 @@ work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
-## How work lands — what the card means by merged, in your own folder, or conflicted
+## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
 Every landing writes a card into the conversation, with a blank row on each side, and moves
 the task's row on the roster.
@@ -1126,6 +1127,11 @@ instant — the stamp is **absent** rather than invented.
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
 or `branch kept · <branch>`.
+
+`branch kept · <branch>` on a **done** task means the work finished but your checkout was
+on a protected branch, had moved since the work was cut, or was detached. The branch named
+there holds the finished work; the how-tasks-run page explains the exact reason and how to
+merge it where you want it.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
 branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
@@ -3591,8 +3597,9 @@ question: answer in either and both show the receipt.
 
 ## What accept, look again and not right each do
 
-- **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
-  exactly as checked work does, and everything queued behind it unblocks. The report leads
+- **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
+  landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
+  protected, moved or detached checkout. Everything queued behind it unblocks. The report leads
   `you looked at this yourself and took it as done`. If that merge conflicts nothing is
   forced: your checkout is left exactly as it was, the branch is kept, and the task stays
   waiting on you with the clashing files named.
@@ -3730,7 +3737,8 @@ front of you:
 | **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same four keys — or click a chip on its answers row |
 | **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
 
-Accepting merges the task's branch into yours and unblocks everything queued behind it.
+Accepting lands the task by the same merge-or-keep rule as checked work and unblocks
+everything queued behind it.
 Whichever door is used first wins; the other two find the question already gone and show
 `already answered` rather than raising an error.
 

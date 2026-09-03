@@ -67,8 +67,8 @@ the same one-keypress question rung 2 asks, in the two names you already know.
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
-repository** and merged back into it, and what that copy holds is your folder **as it
-stands** —
+repository**. It merges back into an ordinary branch, or stays on its task branch when
+your checkout is on a protected branch, and what that copy holds is your folder **as it stands** —
 uncommitted edits and untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
@@ -91,8 +91,9 @@ row carry the ground and how the task stood on it.
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on
 its own branch, so you can keep working in yours while it runs. If your request explicitly
-names another folder, the task works in that exact folder instead; its card and its
-`/history` record show the resolved `where`.
+names another plain folder, the task works in that exact folder instead. A path inside a
+repository still gets a branch from that repository; its card and its `/history` record
+show the resolved place.
 
 aforge makes that copy from your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.
@@ -131,11 +132,14 @@ that task's own journal too, on the line beginning `its world is`.
 
 Two limits:
 
-- An explicitly named folder, or a task shaped as non-code work with `where: in place`,
-  runs **in place** in that directory and says so:
+- An explicitly named **plain folder**, or `where: in place` in a plain folder, runs **in
+  place** there and says so:
   `it worked directly in the workspace: there was no repository to branch`.
-  While that task runs, **the chat cannot write in that directory** — see *A task working
-  in place holds the directory* below.
+  Inside a repository the task goes on a branch even when `in place` was asked for, and
+  you are told: `in place was asked for, and <root> is a repository — the work goes on a
+  branch cut from it instead`. The one exception is a referred place you explicitly told
+  aforge to edit directly. While an in-place task runs, **the chat cannot write in that
+  directory** — see *A task working in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
 
@@ -359,7 +363,8 @@ nothing else merges.
 **A task that handed parts out lands what the whole family wrote.** Each part works in a
 copy of its own, cut from the task's working copy, and as each one finishes its files join
 the task's own list. That
-one list is what lands — onto your branch where the ground is a repository, laid back over
+one list is what lands — onto an ordinary checked-out branch where the ground is a
+repository, or kept on the task branch when the checkout is protected; laid back over
 your folder by name where it is a plain folder. You never have to name a part's file again
 to keep it, and a part that wrote nothing adds nothing. A part that did not finish is not on
 the list, because its work never came home into the task's copy; its own branch is kept
@@ -370,7 +375,7 @@ look is settled later — you press accept, or a fresh check comes back holding 
 goes home then is the list it settled with. On a plain folder that means the accept lays the
 whole family's files back over your folder, exactly as a task that finished cleanly would
 have — unless you changed one of those files yourself in the meantime, which has its own
-section below; on a repository it merges the branch the ordinary way.
+section below; on a repository it follows the same merge-or-keep landing as checked work.
 
 That is why a task's branch is a change you can read. Its checkout is its own to make a
 mess in: it installs what your tests need, it builds, it caches. A `.venv`, a
@@ -394,6 +399,25 @@ formatter produces real files it never typed. It brings them home by naming them
 line of its report — `files: site/index.html, site/app.css` — and only names that really
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
+
+## Why my task's branch was kept — it did not merge, my checkout is on main or dev, aforge never writes to a protected branch, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
+
+A finished task never writes a protected branch. The protected names are `main`, `master`,
+`dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
+`release`; any branch a remote names as its default counts too. The task is still **done**.
+Its branch is kept, its working copy is given back, and the card says `branch kept · task/x`.
+
+You will see one exact reason:
+
+- `its branch task/x was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+- `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
+- `its branch task/x was kept: your checkout is not on a branch — check one out and merge it`
+
+Take it with `git merge task/x` on the branch where you want the work. `git branch --list
+'task/*'` lists finished work waiting this way. Or check out a feature branch before
+starting tasks; when it is still checked out at landing, finished work comes home by
+itself. A checkout moved after the task started, or detached before it landed, is kept by
+the same rule so aforge never guesses where you meant the work to go.
 
 ## My task's branch would not merge — what happens then
 
@@ -819,6 +843,9 @@ Then the report. Then, when there were changes, `changed: a.go, b.go`, and one l
 where the branch went:
 
 - `its branch task/… merged into yours`
+- `its branch task/… was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+- `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
+- `its branch task/… was kept: your checkout is not on a branch — check one out and merge it`
 - `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`
 - `it was stopped; what it made is committed on its branch task/…, which was kept — merge that branch to take the work`
 - `it was stopped; its branch task/… was kept` (when it made nothing)
@@ -835,8 +862,9 @@ carries the whole of that final message — read back off the task's own journal
 When a task's work does come home, the paths it wrote are staged by name — never
 `git add -A`, and never `.aforge-v3` — then committed on its own branch as
 `task: <first line of title, at most 72 chars>` with the identity
-`aforge <aforge@localhost>`, then merged into your branch with `git merge --no-edit`. The
-merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
+`aforge <aforge@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
+A protected, moved or detached checkout is left alone and the task branch is kept instead.
+Otherwise the merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
 the branch is kept, the working copy is given back, and the task needs your look. A commit
 that could not be made at all stops the landing before the merge — nothing is merged,
@@ -1136,7 +1164,8 @@ So a stopped task is still judged on its work. After the landing turn writes up 
 the same check a task that finished on its own gets is run — the same acceptance, the same
 working copy, the same read-only checker.
 
-**If the work holds:** the task lands **finished**, its branch **merges** into yours, and
+**If the work holds:** the task lands **finished**. Its branch merges into an ordinary
+checked-out branch, or is kept when the checkout is protected, moved or detached, and
 `stopped: 6 steps without progress` is nowhere in what you read. The report is the task's own
 account of the work with what it was checked on under it, exactly as any finished task's is.
 A limit that fired is not news about a deliverable that is sitting there.
@@ -1541,9 +1570,10 @@ whole of it. It does not go blank partway through and it does not restart at zer
 Every task ends in exactly one of three states, and the words are the same everywhere you
 read them.
 
-**Finished.** `task 7 finished: <title>`. The second look held. The branch merges into
-yours, and the report leads with the task's own account of the work, with what it was
-checked on under it — no lead word at all.
+**Finished.** `task 7 finished: <title>`. The second look held. The branch merges into an
+ordinary checked-out branch, or stays on its task branch when the checkout is protected,
+moved or detached. The report leads with the task's own account of the work, with what it
+was checked on under it — no lead word at all.
 
 **Halted.** `task 7 lost the connection: <title>`,
 `task 7 the model provider refused it: <title>`, `task 7 went in circles: <title>`,
@@ -1789,6 +1819,8 @@ without exception:
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
+- a finished task on a protected branch, or whose checkout moved or became detached,
+  stays **done** and keeps its branch for you to merge where you choose;
 - a task on a plain folder that would have written over an edit of your own lays **nothing**,
   keeps its whole copy of the folder, lands as **needs your look** and names the files that
   changed there while it ran;
@@ -1816,6 +1848,11 @@ of a 6000-byte bound after it, equally; unused share goes to whoever still needs
 report that does not fit is cut and marked with `…`, so the worker can see it is a
 fragment and go read the earlier task's whole report. A report that fits is handed
 over unchanged, with no mark. So: no, not every byte — yes, every earlier task.
+
+**A task that depends on finished work kept on a branch starts from that branch.** Its
+files are already in the new task's working copy before the worker runs. With several kept
+dependencies, their branches are combined first. If they do not merge cleanly, the task
+does not start and names every branch you need to combine yourself.
 
 | The task it waits on | What happens |
 | --- | --- |

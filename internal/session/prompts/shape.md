@@ -51,10 +51,10 @@ obvious route is blocked. Decide it and say so.
 
 **Where did the person ask it to happen?** Preserve a repository or folder path they
 named as `where`; do not replace it with the current directory and do not guess a path
-from a project name. Use `in place` for work that is deliberately not code work and
-belongs in this conversation's workspace. Otherwise leave `where` empty: the task runner
-will give the work a copy of its own, cut from the conversation's project into the task
-folder.
+from a project name. Use `in place` only for work that belongs directly in a plain-folder
+workspace. A repository always gets a branch even if `in place` is asked for, and the
+person is told about the correction. Otherwise leave `where` empty: the task runner will
+give the work a copy of its own, cut from the conversation's project into the task folder.
 
 **What does done look like, and how would somebody else confirm it?** Not "the page is
 written" but the thing a second party could check without taking the worker's word for it.
