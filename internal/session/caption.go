@@ -1,12 +1,12 @@
 package session
 
-// The line over work that has gone quiet.
+// The line over a batch of work.
 //
 // Most captions cost no second call: the surface lifts the line the working
-// model already said, or composes an honest floor from the batch. This file owns
-// the last rung only — a cheap narrator asked after a batch has been silent long
-// enough that a spinner no longer tells the person whether work is slow or
-// wedged.
+// model already said (or the first line of its thinking), or composes an honest
+// floor from the batch's targets. This file owns the last rung — a cheap
+// narrator armed shortly after the batch begins, cancelled when the batch ends
+// so a late answer cannot rewrite a settled caption.
 
 import (
 	"context"
@@ -30,9 +30,11 @@ const captionPrompt = "In one line under 60 characters, present tense, lowercase
 	"no first person: what is this work trying to find out? Answer with the line only."
 
 const (
-	// captionDwell is beyond the point where a spinner stops reassuring and
-	// starts worrying. A fast batch therefore pays nothing and says nothing.
-	captionDwell = 4 * time.Second
+	// captionDwell is short on purpose: long enough that an instant batch pays
+	// for no narrator, short enough that a multi-second command still gets a
+	// semantic line while it runs. The old four-second wait left every ordinary
+	// tool round looking like "running N calls" for its whole life.
+	captionDwell = 500 * time.Millisecond
 	// captionCalls bounds the narrator per turn. A turn that goes quiet six
 	// times does not make its sixth auxiliary sentence worth its bill.
 	captionCalls = 3

@@ -77,6 +77,15 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 			c.source = captionSaid
 			c.text = captionWords(es[head].text)
 		}
+		// Models often reason without writing the one-line head the prompt asks
+		// for. The first line of that thinking is still what the step is about —
+		// use it before falling through to a tool-verb floor.
+		if c.text == "" {
+			if think := precedingThought(es, from); think >= 0 {
+				c.source = captionSaid
+				c.text = captionWords(es[think].text)
+			}
+		}
 		if c.text == "" {
 			c.source = captionMade
 			c.text = composeCaption(es, from, to)
@@ -117,10 +126,30 @@ func captionWords(text string) string {
 	return strings.TrimSpace(strings.TrimRight(line, ".!?,;:"))
 }
 
+// precedingThought is the nearest thinking block before this batch in the same
+// turn. It is not stamped as a lifted head — the thinking fold keeps its own
+// shape — it only lends its first line to the caption.
+func precedingThought(es []entry, from int) int {
+	if from <= 0 || from > len(es) {
+		return -1
+	}
+	turn := es[from].turn
+	for i := from - 1; i >= 0 && es[i].turn == turn; i-- {
+		if es[i].kind == entryTool || groupBreaks(&es[i]) {
+			break
+		}
+		if es[i].kind == entryThinking && strings.TrimSpace(es[i].text) != "" {
+			return i
+		}
+	}
+	return -1
+}
+
 // composeCaption is the deterministic floor beneath a model-supplied heading.
 //
-// IT IS NEVER INTERESTING AND IT IS NEVER WRONG. The calls remain the truth one
-// expansion below it, and this sentence only makes their common shape readable.
+// IT MUST STILL NAME THE WORK, not the machinery. "running 2 calls" tells the
+// reader nothing they cannot already see in the count on the right; a gloss of
+// what the tools are pointed at is the floor that earns its place.
 func composeCaption(es []entry, from, to int) string {
 	if from < 0 {
 		from = 0
@@ -134,6 +163,7 @@ func composeCaption(es []entry, from, to int) string {
 	counts := map[string]int{}
 	kinds := map[string]bool{}
 	var paths []string
+	var glosses []string
 	allFiles := true
 	hasSearch, hasRead, hasEdit, hasTests := false, false, false, false
 	for i := from; i < to; i++ {
@@ -168,6 +198,9 @@ func composeCaption(es []entry, from, to int) string {
 		} else {
 			allFiles = false
 		}
+		if g := toolCaptionGloss(es[i]); g != "" {
+			glosses = append(glosses, g)
+		}
 	}
 	n := to - from
 	if hasSearch && hasRead && len(kinds) <= 2 {
@@ -182,18 +215,152 @@ func composeCaption(es []entry, from, to int) string {
 		if dir != "" && dir != "." {
 			return dominant + " " + strconv.Itoa(n) + " " + captionPlural(n, "file") + " in " + dir
 		}
+		if n == 1 {
+			return dominant + " " + path.Base(paths[0])
+		}
+	}
+	if len(kinds) == 1 && dominant == "running" {
+		if n == 1 && len(glosses) == 1 {
+			return glosses[0]
+		}
+		if theme := sharedBashTheme(es, from, to); theme != "" {
+			return theme
+		}
+	}
+	if len(glosses) == 1 {
+		return glosses[0]
 	}
 	if len(kinds) == 1 {
-		noun := "calls"
+		noun := captionPlural(n, "call")
 		if dominant == "reading" || dominant == "editing" {
 			noun = captionPlural(n, "file")
 		}
+		if dominant == "running" {
+			// Never "running N calls" — that is the count twice.
+			return "running " + strconv.Itoa(n) + " " + captionPlural(n, "command")
+		}
 		return dominant + " " + strconv.Itoa(n) + " " + noun
 	}
-	if len(kinds) >= 4 {
-		return dominant + " and " + strconv.Itoa(n-counts[dominant]) + " more calls"
+	if len(glosses) > 0 {
+		return glosses[0]
 	}
-	return dominant + " " + strconv.Itoa(n) + " calls"
+	if len(kinds) >= 4 {
+		return dominant + " and " + strconv.Itoa(n-counts[dominant]) + " more"
+	}
+	return dominant + " " + strconv.Itoa(n) + " " + captionPlural(n, "thing")
+}
+
+// toolCaptionGloss turns one call into a short present-tense line about its
+// target. The row underneath still carries the exact command.
+func toolCaptionGloss(e entry) string {
+	switch e.tool {
+	case "bash":
+		return bashCaption(argString(argsOf(e.detail.Args), "command"))
+	case "web_search":
+		if q := argString(argsOf(e.detail.Args), "query"); q != "" {
+			return "searching for " + clipRunes(q, 40)
+		}
+	case "web_fetch":
+		if u := argString(argsOf(e.detail.Args), "url"); u != "" {
+			return "fetching " + clipRunes(u, 40)
+		}
+	case "gh", "github":
+		return "asking github"
+	}
+	// Fall back to the session's own hint with the tool name stripped, so
+	// "bash gh issue list…" becomes something about the work, not the verb.
+	_, gloss := toolWords(e.tool, e.text)
+	gloss = strings.TrimSpace(gloss)
+	if gloss == "" || gloss == e.tool {
+		return ""
+	}
+	if e.tool == "bash" {
+		return bashCaption(gloss)
+	}
+	return captionWords(gloss)
+}
+
+func bashCaption(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	lower := strings.ToLower(command)
+	switch {
+	case strings.Contains(lower, "gh issue"):
+		return "listing github issues"
+	case strings.Contains(lower, "gh pr"):
+		return "looking at pull requests"
+	case strings.Contains(lower, "gh api"):
+		return "asking the github api"
+	case strings.Contains(lower, "go test"), strings.Contains(lower, "make test"),
+		strings.Contains(lower, "pytest"), strings.Contains(lower, "npm test"):
+		return "running the suite"
+	case strings.Contains(lower, "go build"), strings.Contains(lower, "make build"):
+		return "building"
+	case strings.Contains(lower, "git status"):
+		return "checking git status"
+	case strings.Contains(lower, "git diff"):
+		return "reading the diff"
+	case strings.Contains(lower, "git log"):
+		return "reading the log"
+	case strings.HasPrefix(lower, "git "):
+		return "working in git"
+	}
+	// Strip noise prefixes and keep a short readable slice of the command.
+	fields := strings.Fields(command)
+	for len(fields) > 0 {
+		f := strings.ToLower(fields[0])
+		if f == "sudo" || f == "env" || strings.Contains(f, "=") {
+			fields = fields[1:]
+			continue
+		}
+		break
+	}
+	if len(fields) == 0 {
+		return ""
+	}
+	line := strings.Join(fields, " ")
+	if len(fields) > 4 {
+		line = strings.Join(fields[:4], " ")
+	}
+	return captionWords(line)
+}
+
+func sharedBashTheme(es []entry, from, to int) string {
+	var theme string
+	for i := from; i < to; i++ {
+		if es[i].tool != "bash" {
+			return ""
+		}
+		g := bashCaption(argString(argsOf(es[i].detail.Args), "command"))
+		if g == "" {
+			return ""
+		}
+		if theme == "" {
+			theme = g
+			continue
+		}
+		if theme != g {
+			return ""
+		}
+	}
+	return theme
+}
+
+func clipRunes(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if n <= 0 || s == "" {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	if n <= 1 {
+		return string(runes[:n])
+	}
+	return string(runes[:n-1]) + "…"
 }
 
 func captionVerb(tool string) string {

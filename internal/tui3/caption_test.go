@@ -63,6 +63,29 @@ func TestTheCompositeStandsWhenTheModelSaidNothing(t *testing.T) {
 	}
 }
 
+func TestABashFloorNamesTheWorkNotTheVerb(t *testing.T) {
+	es := []entry{{
+		kind: entryTool, tool: "bash", status: toolOK,
+		detail: toolDetail{Args: `{"command":"gh issue list --repo Agent-Field/aforge-v2 --state open --limit 60"}`},
+	}}
+	if got := composeCaption(es, 0, 1); got != "listing github issues" {
+		t.Fatalf("bash floor = %q", got)
+	}
+}
+
+func TestThinkingSuppliesACaptionWhenTheModelSaidNothing(t *testing.T) {
+	es := []entry{
+		{kind: entryUser, text: "why?", turn: 1},
+		{kind: entryThinking, text: "I should look at the open issues first.\nThen rank them.", turn: 1, settled: true},
+		{kind: entryTool, tool: "bash", turn: 1, status: toolOK,
+			detail: toolDetail{Args: `{"command":"gh issue list"}`}},
+	}
+	got := captionsOf(es, 0)
+	if len(got) != 1 || got[0].text != "I should look at the open issues first" {
+		t.Fatalf("thinking caption = %#v", got)
+	}
+}
+
 func TestFourReadsUnderOneDirectoryNameThatDirectory(t *testing.T) {
 	var es []entry
 	for _, name := range []string{"a.go", "b.go", "c.go", "d.go"} {

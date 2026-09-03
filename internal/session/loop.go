@@ -1818,11 +1818,10 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		})
 	}
 
-	// A FAST BATCH SAYS NOTHING. The narrator is armed only after every begin is
-	// on screen, waits beside the work rather than in front of it, and rides a
-	// child context cancelled by this function's return. That last edge matters:
-	// a cheap model answering after the batch ended would replace an honest
-	// settled caption with a sentence about work that is no longer happening.
+	// THE NARRATOR ARMS BESIDE THE WORK, not after a long silence. A half-second
+	// dwell skips instant batches; anything that runs longer gets a cheap line
+	// while it is still live. The child context is cancelled on return so a late
+	// answer cannot rewrite a settled caption.
 	if len(calls) > 0 {
 		captionCtx, disarmCaption := context.WithCancel(ctx)
 		defer disarmCaption()
