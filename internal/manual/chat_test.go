@@ -439,6 +439,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does it say carry on", "tasks"},
 		{"it said a file does not pass", "starting-aforge"},
 		{"a task waiting on one that did not finish", "starting-aforge"},
+		// AND THE THREE ENDINGS OF THE SAME RUN (#513), asked the ways somebody
+		// meets them: the turn that ended instead of starting more work, the
+		// landing nobody could check under the posture that decided it, and the
+		// work that never came home.
+		{"why did it stop at a task that was finished", "starting-aforge"},
+		{"it ended without starting more work", "starting-aforge"},
+		{"it says needs your look but I ran it with yolo", "tasks"},
+		{"what does taken as it stands mean", "tasks"},
+		{"it says it could not be brought home", "tasks"},
+		{"why am I asked twice about a task that could not be brought home", "tasks"},
+		{"checked on the second try", "how-tasks-run"},
+		{"one call ran without answering and was abandoned", "how-tasks-run"},
 		// The isolation people meet as a bug: the task read the committed file
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},

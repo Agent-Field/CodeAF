@@ -2934,6 +2934,35 @@ func (a *Agent) settlePolicy() TaskSettle {
 	return settleOrAsk(a.config.TaskSettle)
 }
 
+// unattendedRun reports that the CONVERSATION this node's family belongs to was
+// left running with a ceiling and nobody is coming back to it — the `--yolo`
+// posture with a budget, which is the one thing in this build that means a run
+// carries its own work on ([Steward], principal.go).
+//
+// ── IT IS ASKED OF THE CONVERSATION AND NEVER OF THE RUNNER ─────────────────
+//
+// A node's own agent is not the one to ask. A sub-task is run by its PARENT
+// NODE'S agent ([TaskNode.owner]), and a worker holds a [Person] by law — it has
+// no budget, no acceptance and no ceiling of its own (principal_wire.go refuses
+// a worker a steward outright). So the question "is anybody coming back to this"
+// belongs to the conversation the whole family hangs off, which is the graph's
+// home and is written once before any node can run.
+//
+// AND IT IS NARROWER THAN [Agent.settlePolicy] ON PURPOSE. Auto also covers a
+// headless `--once` — which ends with its one turn either way — and a nested task
+// under a session somebody IS watching, whose decision belongs to the worker that
+// commissioned it and which can read the diff and answer. Neither of those is the
+// run that was measured stalling, and taking their decisions away would be the
+// widening this seam exists to avoid.
+func (n *TaskNode) unattendedRun() bool {
+	// home is written once, before any node can run, and read without the
+	// graph's lock — the same reading [TaskNode.enterPhase] takes of it.
+	if n == nil || n.graph == nil || n.graph.home == nil {
+		return false
+	}
+	return n.graph.home.steward() != nil
+}
+
 // The two sentences a landing nobody could check ends with, and which one is
 // written is the whole of what `task.settle` changes.
 //
@@ -3980,14 +4009,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			changed, tree.branch, merge)
 		return TaskUnverified
 	case !verdict.answered:
-		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
-		// and not failed either, because no finding was made about this work.
-		// The node's own claim is kept UNDER the non-answer: whoever is asked to
-		// resolve this needs both halves, what the work says it did and what the
-		// checker said instead of an answer (task_contract.go's TaskUnverified).
-		merge, changed := keepHome(node, tree, changed)
-		node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
-		return TaskUnverified
+		// NOBODY COULD SAY, and who is asked about that is the posture's to
+		// answer ([Agent.landUnchecked]).
+		return a.landUnchecked(node, tree, changed, report, verdict, log)
 	case !verdict.verified:
 		// INCOMPLETE, WITH EVERY ROUND'S GAPS. The node's own claim is dropped
 		// exactly as it was before: somebody looked at the work and said what is
@@ -4003,6 +4027,48 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// every remaining question, the ground and the merge, is the one every road
 	// home asks ([Agent.landFinished]).
 	return a.landFinished(node, tree, changed, report, verdict.doneOutcome(), "", log)
+}
+
+// landUnchecked settles a node NOBODY COULD SAY ANYTHING ABOUT, and which of its
+// two endings it takes is decided by whether anybody is coming back to the run.
+//
+// It is a function of its own rather than an arm of the gate because the gate is
+// already at its ledgered length (complexity_test.go) and because the two endings
+// are one question asked once: a check that could not run is a person's to decide
+// where there is a person, and the harness's where there is not.
+//
+// ── A CHECK THAT COULD NOT RUN IS NEVER A PERSON QUESTION WHEN NOBODY IS COMING
+// BACK ([TaskNode.unattendedRun]) ──
+//
+// On a run somebody left going with a ceiling, the road this used to take was:
+// land needing a look, wake whoever holds the decision with the auto note, have
+// them read the work and call `tasks … resolve accept`, and merge. Every step of
+// that is spend, and it ends where this ends. The measured run never got through
+// it: the accept was refused by the tree, the node was offered again, and the
+// loop ate the parent's remaining minutes (#513).
+//
+// SO THE WORK IS TAKEN AS IT STANDS AND THE LANDING SAYS SO. The checking has
+// already been run twice ([Agent.auditNode] asks a fresh checker after a
+// non-answer), the tail names what became of it and that there was nobody to ask
+// (task_audit.go's [takenAsItStands]), and the state is the same TaskDone the
+// accept would have reached one round-trip later.
+//
+// AND EVERY OTHER SESSION IS UNTOUCHED. A person sitting in front of the card
+// keeps their four answers; a nested task under one of those still goes to the
+// worker that commissioned it, which can read the diff and decide. A harness
+// that took either decision away would be the opposite defect.
+func (a *Agent) landUnchecked(node *TaskNode, tree taskTree, changed []string, report string, verdict auditVerdict, log io.Writer) TaskState {
+	if node.unattendedRun() {
+		return a.landFinished(node, tree, changed, report, takenAsItStands(verdict), " (unchecked)", log)
+	}
+	// Not done — nothing merges on an answer nobody gave — and not failed
+	// either, because no finding was made about this work. The node's own claim
+	// is kept UNDER the non-answer: whoever is asked to resolve this needs both
+	// halves, what the work says it did and what the checker said instead of an
+	// answer (task_contract.go's TaskUnverified).
+	merge, changed := keepHome(node, tree, changed)
+	node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
+	return TaskUnverified
 }
 
 // landStopped settles a node whose threshold fired — and it is where a landing

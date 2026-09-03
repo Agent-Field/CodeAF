@@ -439,7 +439,7 @@ Pressing **accept** on the card does not change this. Accepting says the work is
 it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
 leaves the task needing your look with the same sentence.
 
-## My task could not save what it wrote — nothing merged, the file is still there
+## My task could not save what it wrote — nothing merged, the file is still there, it says it could not be brought home
 
 A landing that cannot put the work away **does not merge, does not tidy anything up, and
 does not say done**. The work stays on disk in the task's own folder, which is then the only
@@ -463,9 +463,24 @@ says so:
 `finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
 
 The task's copy is kept, so everything the family made is still in the folder that sentence
-names. Pressing **accept** later does not change any of this: an accept over a folder that
-still cannot take the work leaves the task needing your look with the same sentence, exactly
-as a conflicting merge does.
+names.
+
+**Pressing accept settles it where it stands, and you are not asked twice.** The tree
+refusing the work is not a question anybody can answer differently the second time: the
+folder has no repository in it, or the disk is full, or a file of your own is where a
+directory has to go, and accepting again runs the same command into the same refusal. So one
+accept ends it. The task settles as done with the lead
+`taken as it stands, and it could not be brought home, so the work stays where it is — `
+over the sentence naming the folder, nothing is merged and nothing is deleted, and a second
+answer on the same task is told
+`task 7 is done, and only a task that needs a look is waiting on somebody to decide`.
+
+**A merge conflict is the other thing and still comes back to you.** Two versions of one
+file is a decision only you can make, so an accept whose merge conflicts leaves the task
+needing your look with the same sentence, and you can accept it again once you have sorted
+the file out. The difference is which failure it was: the tree would not take the work at
+all, or the work and your own copy disagree. Before this, both went back to the card, and a
+measured run accepted the same task three times and got the same refusal three times.
 
 ## What a task can do while it runs
 
@@ -1508,6 +1523,7 @@ been made. Nothing is accepted or refused by a window running out; the work wait
 for as long as that takes. When two tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
 
+
 The last line of that landing is the only thing the `task.settle` setting changes. With it
 on `ask` — the default — the note says the task waits until somebody decides and offers
 `tasks id 7 resolve accept|reaudit|refute`, and tells aforge to say what it thinks and leave
@@ -1524,6 +1540,48 @@ session takes the same road your own `[d] decide these for me` takes: aforge rea
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
 row you set, and a blank row still means aforge asks you.
+
+**And a run you left going with a budget goes one step further, for the case where nobody
+could check the work at all.** On `--yolo` with `--max-hours` or `--max-cost`, a landing
+nobody could say anything about is not put to anybody: the check has already been run twice,
+there is nobody to ask, and the work is taken as it stands. The landing says so and says
+why, under the task's own account of what it did:
+
+```
+taken as it stands: nobody could check it in 5m0s, and the run is unattended
+```
+
+The task then reads `finished` and its branch merges like any other. This happens only on a
+run with a budget — a `--yolo` run without one, a headless `--once`, and a task inside
+another task in a session you are watching all keep the old road, where the landing goes to
+whoever holds the decision and they settle it.
+
+## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
+
+**No single call may spend the whole checking window.** The check is asked at most twice —
+one checker, then a fresh one with the same evidence — so one call may hold at most half the
+window, and a stream that answers nothing is abandoned at that point and the check asked
+again inside what is left. You may see this on the card:
+
+```
+one call ran 2m30s without answering and was abandoned
+```
+
+When the second call does answer, the landing is an ordinary finished landing with one line
+at the end of its evidence saying which try it was:
+
+```
+checked on the second try
+```
+
+That is a fact about the evening and not about the work: the verdict is the same verdict,
+reached on the same tree, and nothing about the task is different for having taken two goes.
+
+**Why the bound exists.** Without it, one hung stream could eat the whole five minutes on
+its own — measured at 183 seconds on one call, with no refusal and no error — and the check
+was then never asked a second time at all, while the task landed saying nobody could check
+it in five minutes. With the bound, a window that closes means the checking really was
+tried twice.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
@@ -2037,7 +2095,7 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
-## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, not accepted, blocked by another task, would not write its notes down
+## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, why does it say not accepted under my task, blocked by another task, would not write its notes down
 
 A task that did not finish keeps its branch, and the row under its name on the rail says
 **why** it stopped. The same words lead the task's card. They are three kinds of news:

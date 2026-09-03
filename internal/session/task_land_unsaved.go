@@ -32,6 +32,30 @@ func cameHome(merge string) bool {
 	return merge != mergeConflicted && merge != mergeAborted
 }
 
+// treeRefused tells the two ways a landing fails apart: THE TREE WOULD NOT TAKE
+// THE WORK, or the work and the person's own copy disagree.
+//
+// [mergeAborted] is the first. It is the mark [taskTree.comeHome] answers when
+// the work could not be saved AT ALL — a directory that is not a repository, a
+// read-only mount, a full disk, a folder ground that would not take the lay — and
+// not one of those is a fact about the deliverable. [mergeConflicted] is the
+// second: the branch is committed and whole, and the same file changed on both
+// sides.
+//
+// THE DIFFERENCE IS WHETHER OFFERING IT AGAIN CAN CHANGE ANYTHING. A conflict is
+// two versions of a file and a person deciding between them, so the node goes
+// back to needing a look and the next answer may land. A tree that has no
+// repository in it will have no repository in it the second time either: accepting
+// again re-runs the same `git add` for the same refusal and raises the same card,
+// which is exactly the loop a measured run spent its parent's time on — accept,
+// refuse, offer, accept, refuse, offer (#513).
+//
+// IT IS READ OFF THE MARK AND NEVER OFF THE MESSAGE. The mark is this package's
+// own typed answer, written where the failure happens; matching git's prose for
+// "not a git repository" would be a rule about one program's wording in one
+// language, wrong the day either moves.
+func treeRefused(merge string) bool { return merge == mergeAborted }
+
 // unsavedTail is the phrase BOTH unsaved sentences carry, and it is one constant
 // because [taskNote] reads it back: a branch that was kept with the work
 // committed on it and a landing that saved nothing anywhere wear the same

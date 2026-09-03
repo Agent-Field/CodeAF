@@ -3586,6 +3586,55 @@ those sessions aforge takes the decision itself, by the same road `[d]` takes, w
 escape to say it cannot tell. This never applies to a session you are sitting in front of:
 there your row stands, and a blank row still means aforge asks you.
 
+## Needs your look on a run I left going with --yolo — a check that could not run, and what taken as it stands means
+
+On a run you left going with a budget — `--yolo` **and** `--max-hours` or `--max-cost` —
+there is nobody to put a card in front of, so a task nobody could check is not put to
+anybody. The check is asked twice first: one checker, then a **fresh** one with the same
+evidence and not a word about what the last one said. Only when the second try says nothing
+either does the work land as it stands, and the landing says so, under the task's own
+account of what it did:
+
+```
+taken as it stands: nobody could check it in 5m0s, and the run is unattended
+```
+
+The task then reads `finished`, its branch merges like any other, and that sentence is the
+whole of what was different about it. You can still say "actually that one isn't finished"
+when you come back.
+
+**`--yolo` on its own is not this.** Without a budget nothing carries on by itself and
+nothing is decided for you: a task that needs a look waits, exactly as in any other session.
+Nor is it a task inside another task in a session you are watching — that one still goes to
+the worker that commissioned it, which reads the diff and settles it.
+
+**And a check that hung is not a check that ran.** No single call may spend the whole
+checking window: a stream that answers nothing is abandoned about half way and the check is
+asked again inside what is left. When the second call answers, the landing carries
+`checked on the second try`. Before that, one hung stream could eat all five minutes and the
+check was never asked twice at all.
+
+## A task whose work could not be brought home — it stayed where it is, and why I am not asked twice
+
+When a finished task's work cannot be put back where you can see it, nothing merges and
+nothing is thrown away: the report names the folder that then holds the only copy, and the
+task waits for you. Which failure it was decides what happens when you answer.
+
+- **The tree would not take the work at all** — the folder it ran in is not a repository,
+  the disk is full, a file of your own is where a directory has to go. Accepting settles it
+  where it stands, once. The report leads
+  `taken as it stands, and it could not be brought home, so the work stays where it is — `
+  over the sentence naming the folder, and a second answer on the same task is told
+  `task 7 is done, and only a task that needs a look is waiting on somebody to decide`.
+  Asking again cannot change a disk, and a measured run accepted the same task three times
+  and got the same refusal three times.
+- **The same file changed on both sides** — a real merge conflict — is yours to decide, so
+  the task goes back to `needs your look` with the clashing files named. Sort the file out
+  and accept it again.
+
+The how-tasks-run page has the sentences each of those lands with, under *My task could not
+save what it wrote*.
+
 ## How do I approve a task — accept a finished task from the room, the card, or by saying so
 
 A task that landed `needs your look` (`finished — look it over` on the roster) is approved

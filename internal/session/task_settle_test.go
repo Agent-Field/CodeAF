@@ -269,9 +269,17 @@ func TestACheckerThatRanOutSaysSoAndNeverSaysAccepted(t *testing.T) {
 			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
 			finalText("Wrote greet.go with the greeting."),
 		},
-		// THE CHECKER NEVER ANSWERS. It waits on its own window and the window
-		// closes under it, which is exactly the shape the sentence is about.
+		// THE CHECKER NEVER ANSWERS, ON EITHER ATTEMPT. Each call waits until it
+		// is cut and the window closes across the two of them, which is exactly
+		// the shape the sentence is about — and it is TWO steps rather than one
+		// because no single call may hold the whole window any more
+		// ([auditCallShare]): a first call that hung used to spend all five
+		// minutes on its own and the check was never asked a second time (#513).
 		audit: []step{
+			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
 			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
 				<-ctx.Done()
 				return nil, ctx.Err()

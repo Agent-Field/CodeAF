@@ -133,6 +133,30 @@ With a budget, four things change, and only with a budget:
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
 
+## Why did it stop at a task that was finished · it ended without starting more work · why did it not hand the work over
+
+With a budget, **every** way a turn ends is read, not just the ones where the model stops
+talking. A long turn can also end by having its work moved onto a task — when a second
+reader says the work has parts, when the turn has changed enough files, or when it has run
+past its own price. Each of those seals the turn, and until this they sealed it without
+asking anything: the run then had no way back at all, because the only thing that could end
+it was a landing waking a turn that moved its work onto another task, and so on until the
+hours ran out. Three measured runs finished their work, went green, and still ran to the
+wall that way.
+
+So before the work moves, the same reading a stopped turn gets is taken:
+
+- **Something of yours is still running** — the work moves onto a task exactly as it always
+  did, and you read the same line about it.
+- **Nothing is running and nothing is left** — it stops there rather than starting more
+  work, and says so in one dim line:
+  `nothing is left and nothing is still running · finishing here rather than starting more work`
+- **The same thing is left as last time** — it stops for good with the reason, on the same
+  `stopping here · ` line every other stop uses.
+
+None of this applies to a session you are sitting in front of: your turn's work moves onto a
+task exactly as it always has, and nothing is decided for you.
+
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
 An unattended run with a budget looks at the work at the end of every reply: which
