@@ -4,7 +4,7 @@
 
 | Where | Workflow | What runs | Roughly |
 | --- | --- | --- | --- |
-| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `check`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full suite of every package the change touched — pushes to `dev` (and manual dispatch) only, not pull requests | `check` a few minutes; `touched packages` as long as the slowest touched package |
+| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `light gate`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full suite of every package the change touched. `check`: green only when both are | `light gate` a few minutes; `touched packages` as long as the slowest touched package; `check` when both are in |
 | pull request into `staging`, every push to `staging`, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
 | a `v*` tag | `.github/workflows/release-binaries.yml` | the release surface, then publish | — |
 
@@ -25,13 +25,14 @@ endings ratchet in `internal/session` went red on `dev` through two merged pull
 requests with every check green (#372). A structural test — one that reads the
 tree and refuses a shape — decides in under a second and the same on every
 machine, which is the light gate's own definition of what belongs on it. So the
-gate now runs every one of them, found by what they do rather than by a list.
-The packages a change touched run in full on the push to `dev`, not on the
-pull request.
+gate now runs every one of them, found by what they do rather than by a list,
+and runs the packages a change touched in full beside them — on the pull
+request, where a red can still be read before it is on the trunk. `check`, the
+one required name, is green only when both halves are.
 
 ## What the light gate actually checks
 
-Seven things in `ci.yml`, job name `check`, and then one more job:
+Seven things in `ci.yml`, job name `light gate`, then the touched packages, then `check`:
 
 - **`go build ./...`** — several sessions work this tree at once and a
   half-finished file breaks the build for everybody. Cheapest possible answer to
@@ -64,17 +65,22 @@ Seven things in `ci.yml`, job name `check`, and then one more job:
   the script.
 
 **`touched packages`** is the second job: the full suite of every package the
-change touched, through `make test`, so it reads the same ledger and the same
-timeout as a laptop. It runs on pushes to `dev` and on manual dispatch, not on
-pull requests — it never blocked a merge, and its per-PR red signal was not
-being acted on, so the pull request keeps only the light answer, which still
-arrives in its few minutes. It is neutral today: its test step may
-fail without the job failing, and a failure is a warning on the run and a line in
-its summary, never silence. A red job on a merged pull request reads as a red
-`dev` to everyone after it, and the day this landed `internal/tui3` carried three
-runner-only reds (#417) no change caused. Once it has been green twice in a row,
-delete `continue-on-error` and the warning step in `ci.yml`, and it blocks like
-`check`.
+change touched, through `make test` with `-count=1`, so it reads the same ledger
+and the same timeout as a laptop and never a cached pass. It runs on every pull
+request and every push to `dev`, beside the light gate rather than after it. A
+change with no Go file and no module file runs nothing here and is green in a
+minute; a change to `go.mod` or `go.sum` runs the whole tree. **It blocks.** It
+was neutral for a day, then off pull requests for a day (#499), and in that day
+#523 merged red on `cmd/aforge` with `check` green, as #437, #439 and #483 had
+before the job existed. The owner's ruling is that it runs on the pull request
+and `check` needs it.
+
+**`check`** is the third job and the only required name: it needs the other two
+and is green only when both are, the same one-spellable-name shape `full tests`
+and `cross build` use in `ci-full.yml`. There is no branch protection on this
+repository, so this is as blocking as a check can be here: a red `check` is what
+every landing script and every person reads, and nothing merges over it by
+convention.
 
 Run the same thing before you push:
 
@@ -146,10 +152,10 @@ entries are Linux-only, is written in the file's own comments and nowhere else �
 Required today: **`check`** on `dev`, **`cross build`** on `staging`. Those are
 the two whose green is trustworthy right now.
 
-`full tests`, `remote` and the light gate's `touched packages` run and report,
-and are deliberately not required yet — none has been seen green in this
-repository's CI twice in a row, and a required check that has never passed
-blocks all work on its first day. **Promote them by
+`full tests` and `remote` run and report, and are deliberately not required yet —
+neither has been seen green in this repository's CI twice in a row, and a
+required check that has never passed blocks all work on its first day.
+`touched packages` is required through `check` since 2026-09-03. **Promote them by
 adding their job names to `required_status_checks` in
 `.github/rulesets/promotion-pointers.json` as soon as each has been green twice
 in a row.** That is the next piece of work here, not a someday.
