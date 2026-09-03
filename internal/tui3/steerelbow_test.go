@@ -89,22 +89,10 @@ func steerRowAt(a *app, words string) int {
 	return -1
 }
 
-// toolRowAt is which drawn row one tool call — or its caption — is on.
+// toolRowAt is which drawn row one tool call is on.
 func steerToolRowAt(a *app, hint string) int {
 	for i, line := range plainRows(a) {
 		if strings.Contains(line, hint) && strings.Contains(line, "▶") {
-			return i
-		}
-	}
-	// Past steps collapse to a caption; match the basename the floor would use.
-	fields := strings.Fields(hint)
-	base := ""
-	if len(fields) > 0 {
-		base = strings.TrimSuffix(fields[len(fields)-1], ".go")
-	}
-	for i, line := range plainRows(a) {
-		if base != "" && strings.Contains(line, base) &&
-			(strings.Contains(line, "▸") || strings.Contains(line, "▾")) {
 			return i
 		}
 	}

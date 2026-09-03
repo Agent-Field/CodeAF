@@ -82,7 +82,6 @@ var salienceTable = []salienceCase{
 		TaskReplyTags: []session.TaskReplyTag{{ID: 4, Title: "port the parser"}}}},
 	{name: "EventError", ev: session.Event{Kind: session.EventError, Err: errSalience}},
 	{name: "EventTitleChanged", ev: session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}},
-	{name: "EventCaption", ev: session.Event{Kind: session.EventCaption, Text: "working out where the fold is minted"}},
 
 	// ── THE PARTICIPANT'S OWN ACTS ──────────────────────────────────────────
 	//

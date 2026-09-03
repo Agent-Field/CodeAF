@@ -1076,8 +1076,7 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 // with the line they already had and have no door that worked.
 func (a *app) orchTranscriptDeck() deck {
 	run := a.orchOf()
-	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{},
-		capOpen: map[int]bool{}, lens: transcriptLens}
+	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, lens: transcriptLens}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.

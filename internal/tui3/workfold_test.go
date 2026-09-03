@@ -14,9 +14,8 @@ func foldFixture() []entry {
 		{kind: entryUser, text: "do it", turn: 1, began: base},
 		{kind: entryThinking, text: "checking", turn: 1, began: base, ended: base.Add(6 * time.Second), settled: true},
 		{kind: entryAssistant, text: "I will inspect it.", turn: 1, settled: true},
-		// Overlapping clocks — one parallel step under one caption.
 		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(8 * time.Second)},
-		{kind: entryTool, tool: "bash", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(10 * time.Second)},
+		{kind: entryTool, tool: "bash", turn: 1, status: toolOK, began: base.Add(8 * time.Second), ended: base.Add(10 * time.Second)},
 		{kind: entryAssistant, text: "Done.", turn: 1, settled: true},
 	}
 }
@@ -42,12 +41,12 @@ func TestWorkIndentReclassifiesAndDropsAtPhoneFloor(t *testing.T) {
 	a.workMode = config.WorkOpen
 	a.touch()
 	wide := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(wide, "  ▾ I will inspect it") || !strings.Contains(wide, "\nDone.") {
+	if !strings.Contains(wide, "  I will inspect it.") || !strings.Contains(wide, "\nDone.") {
 		t.Fatalf("intermediate/trailing classification is wrong:\n%s", wide)
 	}
 	a.width = 59
 	a.touch()
-	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "  ▾ I will inspect it") {
+	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "  I will inspect it.") {
 		t.Fatalf("phone tier kept the work gutter:\n%s", got)
 	}
 }

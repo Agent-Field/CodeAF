@@ -1117,11 +1117,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// An empty draft with a call selected is a reader, not a typist: enter
 	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
 	// sentence wins.
-	if line == "" && !held && a.sel != -1 {
-		if key, ok := selectedCaption(a.sel); ok {
-			a.toggleCap(key)
-			return nil
-		}
+	if line == "" && !held && a.sel >= 0 {
 		a.openTool(a.sel)
 		return nil
 	}
