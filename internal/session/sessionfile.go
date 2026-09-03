@@ -647,6 +647,15 @@ type journalDivision struct {
 	// it is the one place an autopsy can tell a part that was CALLED careful from
 	// one that EARNED it.
 	Lifted []string `json:"lifted,omitempty"`
+	// Shared names the check commands that stood in the done-condition of more
+	// than one part, on the one decision where that is why the division was
+	// turned down ([divisionRefusedShared]). It is empty on every other line.
+	//
+	// IT IS HERE SO THAT AN AUTOPSY CAN PROVE WHICH RUN WAS THE FAMILY'S rather
+	// than infer it: the alternative is counting shell calls across four
+	// worktrees that no longer exist, and the fact worth keeping is the one
+	// command that would have been bought once per part.
+	Shared []string `json:"shared,omitempty"`
 	// Frozen is the commit the family tree stood at when this division was
 	// admitted — the one world every part of it starts from — and Checkpoint is
 	// the commit this division WROTE to get there, when the parent had work on

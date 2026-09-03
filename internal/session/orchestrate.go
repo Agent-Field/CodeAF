@@ -1109,7 +1109,11 @@ func (e *orchestrateExec) root() string {
 // cmd/harness-design. Everything else about the layout is decided in
 // [composeBrief] and not here.
 func orchestrateRootBrief(request, goal string) string {
-	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "", taskOrigin{})
+	// NO COPY: an adaptive run's node is built on the conversation's own
+	// workspace rather than on a tree cut from a ground, so there is no second
+	// spelling of any directory for a brief to be bound to (task_brief.go's
+	// [taskCopy]).
+	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "", taskOrigin{}, taskCopy{})
 }
 
 // orchestrateBrief is a node's whole world: what the run as a whole was asked

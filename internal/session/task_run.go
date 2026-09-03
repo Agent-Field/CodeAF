@@ -326,6 +326,31 @@ type TaskNode struct {
 	// stands NOW would be the same divergence arriving through the one road that
 	// does not prepare its tree at the door.
 	Frozen string
+	// Family is THE CHECKS THIS NODE OWNS FOR THE WHOLE FAMILY IT HANDED OUT: a
+	// check that every part of a division was told to run, taken off all of them
+	// and given to the one node that can honestly make it — this one, once, after
+	// every part's work is home (task_divide_scope.go).
+	//
+	// IT IS A FIELD RATHER THAN A WRITE TO THE SPEC, and that is a law and not a
+	// convenience. NOTHING IN THIS PACKAGE WRITES A SPEC AFTER ADMISSION — the
+	// contract a node was admitted with is the contract it is judged against, and
+	// [TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal] pins
+	// it. So the repair does not edit `spec.acceptance`; it puts what it lifted
+	// HERE, where the two readers that need it can find it: the worker is told
+	// ([TaskNode.instructionOn]) and its own checking door opens on it
+	// ([auditDoorFor]).
+	//
+	// IT IS ON THE CHECKPOINT (task_store.go), UNLIKE [TaskNode.sharedTold], and
+	// the two go opposite ways for one reason: the telling is about a
+	// conversation that is over, and this is about a run that has not happened
+	// yet. The parent's own check is made after every part is home, which can be
+	// hours later and a different process from the one that divided — a resumed
+	// node that had forgotten it would be a check nobody ever makes.
+	//
+	// It is exported among unexported neighbours for [TaskNode.Ground]'s reason:
+	// it is read by name from more than one place. Like them it is guarded by the
+	// graph's lock.
+	Family []string
 	// Base is the machine commit the parent's world was sealed into and Universe
 	// is furrow's name for the fork, when a rung made either. They are here for
 	// the SAME REASON Rung and Seal are — the landing needs them and the landing
@@ -358,7 +383,21 @@ type TaskNode struct {
 	// too (task_store.go re-arms from the text alone), so a node that comes back
 	// cannot reach this path at all.
 	adjudicated bool
-	state       TaskState
+	// sharedTold says this node has already been told once that its parts were
+	// each ordered to run one check (task_divide_scope.go). The FIRST telling is
+	// the refusal, which is the answer a worker that can redraw its
+	// done-conditions acts on; a SECOND firing of the same rule on the same node
+	// is a worker that cannot, so the harness lifts the check onto this node
+	// instead of refusing again.
+	//
+	// IT IS GUARDED BY THE GRAPH'S LOCK like every other field a worker's
+	// goroutine touches, and it is deliberately NOT ON THE CHECKPOINT for exactly
+	// [TaskNode.adjudicated]'s reason: a restart loses the telling too, so a node
+	// that comes back cannot reach the repair road without being told again. The
+	// repair spends a worker's own second ask; a node that never had a first one
+	// must not inherit the answer to it.
+	sharedTold bool
+	state      TaskState
 	// report, changed, branch, worktree and merge are the node's leavings,
 	// written by the goroutine that ran it and read by everybody else. worktree
 	// is where it worked, and it is kept for one reader only: a recovery that has
@@ -1850,10 +1889,68 @@ func (n *TaskNode) title() string {
 // account of the job written by a model that heard another one, and a worker
 // holding both can tell when they have come apart.
 func (n *TaskNode) instruction() string {
+	// THE ZERO COPY IS THE DOCUMENT AS IT HAS ALWAYS BEEN, byte for byte, and
+	// that is what every reader here is for. [TaskNode.instruction] has seven
+	// readers that are NOT the worker — the proposal card, the checkpoint, the
+	// ground ladder, the auditor's packet, [declaredChecks] (which resolves
+	// against the clean restore, a third directory that is neither the source
+	// nor the worker's copy), the naming and sizing readers, and the progress
+	// reader — and binding this one body would silently move all of them.
+	return n.instructionOn(taskTree{})
+}
+
+// instructionOn is [TaskNode.instruction] with the worker's own copy said
+// outright, in the idiom this package already uses for exactly this shape
+// ([Agent.newTaskAgentOn] beside [Agent.newTaskAgent], [prepareTaskTreeOn]
+// beside [prepareTaskTree]): the same thing, with the world it happens in
+// spelled rather than assumed.
+//
+// IT HAS TWO CALLERS AND THEY ARE THE TWO MOMENTS A WORKER IS SPOKEN TO — the
+// opening request in [Agent.workTaskNode] and every repair round
+// ([repairInstruction]). Both already hold the tree, so neither has to guess.
+// Anything that is not a worker keeps [TaskNode.instruction] and keeps the
+// addresses the parent wrote.
+//
+// WHICH MODES BIND IS DECIDED BY [taskCopyFor], not here.
+func (n *TaskNode) instructionOn(tree taskTree) string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance,
-		expectsSection(n.spec.expects), n.spec.origin)
+	// AND THE FAMILY'S OWN CHECKS RIDE THE DONE-CONDITION, because that is the
+	// sentence a worker reads to find out what finishing means. They are composed
+	// into the section rather than written into the spec ([TaskNode.Family] says
+	// why that distinction is a law), and a node that owns none draws nothing —
+	// the emptiness law, applied here as it is to every other section of this
+	// document.
+	return composeBrief(n.spec.request, n.brief, n.spec.deliverable,
+		withFamilyChecks(n.spec.acceptance, n.Family),
+		expectsSection(n.spec.expects), n.spec.origin, taskCopyFor(tree))
+}
+
+// taskCopyFor is the tree read as a MAP: the folder the work is about onto the
+// folder the work happens in.
+//
+// ONLY A DIRECTORY THAT IS GENUINELY A COPY OF ITS GROUND BINDS. A worktree is
+// a checkout of the ground at its HEAD and a mirror is the ground's bytes copied
+// in, so in both of them every path under the ground has an exact counterpart
+// and the map is total. IN PLACE and FOLDER have ground == dir, so the map is
+// the identity and [taskCopy.real] says so.
+//
+// A REFERENCE MUST NOT BIND, AND THAT IS A LAW RATHER THAN AN OMISSION. It is
+// the one mode whose folder is deliberately NOT a copy of its ground
+// ([TaskModeReference]): the node was given an empty directory of its own
+// precisely so the ground stays material it may only READ, and rewriting the
+// ground's addresses into that folder would point a worker at files that were
+// never put there.
+func taskCopyFor(tree taskTree) taskCopy {
+	switch tree.mode {
+	case TaskModeWorktree, TaskModeMirror:
+		// AND THE TWO FOLDERS ARE SPELLED ONE WAY, by the constructor rather
+		// than here: a tree's fields are whatever resolved them, and
+		// [newTaskCopy] is where a folder becomes the one spelling everything
+		// downstream reads.
+		return newTaskCopy(tree.ground, tree.dir)
+	}
+	return taskCopy{}
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -3912,7 +4009,10 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		}
 
 		var wrote []string
-		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instruction(), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
+		// AND THE CONTRACT IS BOUND TO THE COPY IT IS ABOUT TO BE ASKED IN. This
+		// is one of the two moments a worker is spoken to, and the tree is right
+		// here ([TaskNode.instructionOn]).
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instructionOn(tree), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
 		// The files SURVIVE the worker that wrote them. A second run starts in
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.

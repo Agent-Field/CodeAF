@@ -646,6 +646,18 @@ still has to look at it: `read`, `grep`, `ls`, `cat`, and `git log`, `git show`,
 `git status`, `git branch -a`, `git remote -v` against **any** repository on the machine all
 run normally. Looking has never been what goes wrong.
 
+**A path written into the task's contract is already its copy's path.** The brief, what to
+produce and what done means are handed over with every address at or below the project
+rewritten as the same address inside the task's own copy — so
+`/Users/you/code/yours/internal/widget.go` reaches the task as
+`…/trees/1/internal/widget.go`, and a task that follows its own contract is writing where it
+is allowed to. A path that is **not** under the project is left exactly as written, so a
+contract that really does point somewhere else still earns the refusal below. **Your own
+words are never rewritten**: they are quoted to the task exactly as you typed them, with the
+two folders named beside them so it knows which one a path in your sentence means here. And
+what it reads at that address is **its own copy, as the project stood when it started** —
+not the original, which you may still be changing while it works.
+
 **Writing anywhere else is refused before it runs**, and the task reads the refusal and
 carries on. It covers every hand that names its target:
 
