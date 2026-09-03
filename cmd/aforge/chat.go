@@ -1894,7 +1894,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						notes = append(notes, revision.GapHandover(unmet.Gaps, revised, extension.Refused))
 					}
 				}
-				_ = graph.RecordDeliveryGate(node.ID, evidence)
+				// The verdict reaches the journal or the log says it did not.
+				// This write used to be discarded, and a gate the store refused
+				// vanished with nothing anywhere recording that a delivery had
+				// been judged — the one row a repair round, its allowance and
+				// the run's exit code are all read off. Best-effort by
+				// construction, in the shape every other non-fatal journal write
+				// on this surface takes.
+				if err := graph.RecordDeliveryGate(node.ID, evidence); err != nil {
+					log.Printf("note: could not journal the delivery gate for %s: %v", node.ID, err)
+				}
 			}
 			// The gate judges the request. Taste is the other half and is never
 			// allowed to be a gate: an unproven rule rides one quiet question
