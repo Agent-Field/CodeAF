@@ -61,6 +61,11 @@ type Workspace struct {
 
 	mutex     sync.Mutex
 	artifacts map[string]map[string]bool
+	// mutations is a monotonic per-leaf revision, not a count of distinct
+	// paths. Rewriting the same file twice is two successful actions even though
+	// the artifact set still has one member; turn-context consumption needs the
+	// former fact.
+	mutations map[string]int
 	// baseline is the tree as it stood the moment each leaf started, and
 	// observed is what diffing it afterwards proved that leaf did to the world.
 	// They are the answer to "what did this run leave behind" that no tool has
@@ -88,6 +93,7 @@ func NewWorkspace(root string) (*Workspace, error) {
 	return &Workspace{
 		root: absolute, real: real, scratch: absolute,
 		artifacts: map[string]map[string]bool{},
+		mutations: map[string]int{},
 		baseline:  map[string]*TreeSnapshot{},
 		observed:  map[string]map[string]ArtifactChange{},
 	}, nil
@@ -325,7 +331,11 @@ func (w *Workspace) Size(path string) (int64, bool) {
 // is its whole splice's, so five siblings recorded under it shared one bucket
 // and each of them was told the other four's files were its own. See Task.NodeKey
 // for who supplies what.
-func (w *Workspace) Record(leaf string, path string) { w.record(leaf, path, true) }
+func (w *Workspace) Record(leaf string, path string) {
+	if w.record(leaf, path, true) {
+		w.noteMutation(leaf)
+	}
+}
 
 // RecordInternal notes a file the harness wrote for its own purposes — a
 // background job's log, an extracted-document cache. They are real files in the
@@ -336,10 +346,10 @@ func (w *Workspace) Record(leaf string, path string) { w.record(leaf, path, true
 // these two cases need the record and only want it out of the answer.
 func (w *Workspace) RecordInternal(leaf string, path string) { w.record(leaf, path, false) }
 
-func (w *Workspace) record(leaf string, path string, deliverable bool) {
+func (w *Workspace) record(leaf string, path string, deliverable bool) bool {
 	relative, err := filepath.Rel(w.root, path)
 	if err != nil || strings.HasPrefix(relative, "..") {
-		return
+		return false
 	}
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -349,6 +359,31 @@ func (w *Workspace) record(leaf string, path string, deliverable bool) {
 	// A path recorded both ways is a deliverable: the harness happening to
 	// touch a file the agent wrote does not demote it.
 	w.artifacts[leaf][relative] = w.artifacts[leaf][relative] || deliverable
+	return true
+}
+
+func (w *Workspace) noteMutation(leaf string) {
+	if w == nil || strings.TrimSpace(leaf) == "" {
+		return
+	}
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	if w.mutations == nil {
+		w.mutations = map[string]int{}
+	}
+	w.mutations[leaf]++
+}
+
+// MutationCount is the revision of one leaf's successful filesystem actions.
+// Unlike len(Artifacts), it advances when an existing deliverable is edited a
+// second time and when a shell call changes or deletes a path already known.
+func (w *Workspace) MutationCount(leaf string) int {
+	if w == nil {
+		return 0
+	}
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.mutations[leaf]
 }
 
 // nextJobID gives every background process started through THIS workspace

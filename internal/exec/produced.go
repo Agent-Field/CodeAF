@@ -171,12 +171,13 @@ func (w *Workspace) RecordProducedSince(leaf string, before *TreeSnapshot) {
 	if len(changes) == 0 {
 		return
 	}
+	w.noteMutation(leaf)
 	paths := producedBound(changes, before, after)
 	w.noteObserved(leaf, changes, paths)
 	for _, path := range paths {
 		if changes[path] == ArtifactDeleted {
 			continue
 		}
-		w.Record(leaf, filepath.Join(w.root, path))
+		w.record(leaf, filepath.Join(w.root, path), true)
 	}
 }

@@ -764,6 +764,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// landing reserve and the wrap-up warning are measured against — and stops
 	// sizing memory.
 	obsBudget := observationWindow(l.contextTokens)
+	obsSafetyBudget := observationSafetyWindow(l.contextTokens)
 
 	// The turn ceiling this run is actually bound by. It is l.maxTurns for every
 	// leaf that has anything to go and find, and FoldTurns for the one whose
@@ -817,13 +818,13 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// the window crosses the budget, and then clears to a low-water mark so
 		// the turns that follow can resend a byte-identical prefix and be billed
 		// at the cached rate.
-		retired := fade.decay(messages, obsBudget)
+		retired := fade.decayWithin(messages, obsBudget, obsSafetyBudget)
 		outcome.Decayed += retired
 		// And, only when retiring spent raw material was not enough to bring the
 		// whole live body back inside the working set, the leaf's own aged
 		// reasoning folds the same way. It does nothing on the ordinary leaf; see
 		// decayer.fold for the order and what protects the live edge.
-		folded := fade.fold(messages, obsBudget)
+		folded := fade.foldWithin(messages, obsBudget, obsSafetyBudget)
 		outcome.Folded += folded
 		// A rewrite anywhere in the transcript invalidates the prefix from that
 		// point on, so THIS is the turn whose hit= will read near zero however
@@ -1063,11 +1064,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// A turn may carry several calls. They are independent by definition —
 		// the model asked for them together — so running them concurrently is a
 		// free wall-clock win, and the results go back in the order requested.
-		// The no-progress guard needs to know whether the turn wrote
-		// anything to disk. The artifact registry is the one place every
-		// write tool and every sh-produced file converges, so a count
-		// before and after is the cheapest honest mutation signal.
-		artifactsBefore := len(l.workspace.Artifacts(task.leafKey()))
+		// The no-progress guard and context decayer need to know whether the
+		// turn wrote anything to disk. This is a revision rather than the
+		// number of distinct paths: a second edit to the same file is still a
+		// new action and spends the observations it used.
+		mutationsBefore := l.workspace.MutationCount(task.leafKey())
 		// And the same signal answers the decay pass's question. Everything the
 		// transcript holds at this point was in front of the model when it
 		// asked for this turn's calls, so if the turn changes the workspace,
@@ -1134,8 +1135,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// past, and the no-progress guard below weighs the same pair. Nothing
 		// between here and there can add an artifact, because only a tool call
 		// can, and this turn's have all finished.
-		artifactsAfter := len(l.workspace.Artifacts(task.leafKey()))
-		if artifactsAfter > artifactsBefore {
+		mutationsAfter := l.workspace.MutationCount(task.leafKey())
+		if mutationsAfter > mutationsBefore {
 			fade.actedPast(historyBefore)
 		}
 
@@ -1239,7 +1240,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// legitimate bound has spoken: the leaf had money and turns left and was
 		// not advancing.
 		if landing == 0 {
-			switch progress.observe(calls, results, artifactsBefore, artifactsAfter) {
+			switch progress.observe(calls, results, mutationsBefore, mutationsAfter) {
 			case progressConclude:
 				progress.markConcluded()
 				trace.note(progress.noProgressReason() + " — conclude directive injected")

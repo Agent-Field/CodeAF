@@ -96,6 +96,23 @@ headroom above is for. The `cache` row of `/status` shows how much of the last r
 served from cache; a figure that stays near zero across steps while `compacted · …` lines
 keep appearing is the sign of the defect this page describes.
 
+## What happens to tool results while one long answer is still working
+
+A running answer keeps its assistant notes, tool calls, their exact arguments and every
+mutating result in the model's context. General conversation compaction does not fold that
+current-turn work. This is deliberate: it is the working record of what the model tried
+and what it changed, and removing it can make the model inspect the same files or repeat
+an edit.
+
+Read results have a separate **64,000-token working-set line** (or half the model's trusted
+window when smaller). That line counts the actual tool observations, not the system prompt,
+tool definitions or assistant prose. Crossing it is not enough by itself. A read result can
+become a pointer only after the model successfully changes a file from the context that
+contained it, and only when one pass can reclaim a full stretch of headroom. Research that
+has not produced work stays verbatim, even when keeping it costs more tokens. The full bytes
+of a result that does become a pointer remain in the session journal and the path named by
+the pointer.
+
 ## A pass that cannot reach its target
 
 The fold walks the oldest assistant work first and stops at the target, but it never folds

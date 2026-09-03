@@ -25,13 +25,27 @@ func turnFoldOutput() string {
 }
 
 func turnFoldScript(rounds int) []step {
-	steps := make([]step, 0, rounds+1)
+	steps := make([]step, 0, rounds+3)
 	for round := 0; round < rounds; round++ {
 		round := round
+		// A successful edit is the consumption boundary: everything the model
+		// had read before deciding to write has now produced work and may become
+		// a recoverable pointer. Repeating the boundary keeps a genuinely long
+		// edit/read turn bounded without declaring untouched research disposable.
+		if round == 24 || round == 44 {
+			steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolResponseWithText(
+					fmt.Sprintf("save-%d", round),
+					"write",
+					fmt.Sprintf(`{"path":"checkpoint-%d.txt","content":"saved"}`, round),
+					fmt.Sprintf("saving checkpoint %d", round),
+				), nil
+			})
+		}
 		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponseWithText(
 				fmt.Sprintf("call-%d", round),
-				"fat",
+				"read",
 				fmt.Sprintf(`{"round":%d}`, round),
 				fmt.Sprintf("working round %d", round),
 			), nil
@@ -40,6 +54,32 @@ func turnFoldScript(rounds int) []step {
 	return append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse("done"), nil
 	})
+}
+
+func installTurnFoldReader(t *testing.T, agent *Agent, output string) {
+	t.Helper()
+	for index := range agent.tools {
+		if agent.tools[index].Name == "read" {
+			agent.tools[index] = staticTool("read", output)
+			return
+		}
+	}
+	t.Fatal("test agent has no read tool to replace")
+}
+
+func consumedTurnReads(messages []ai.Message, start, end int) map[string]bool {
+	consumed := make(map[string]bool)
+	if end > len(messages) {
+		end = len(messages)
+	}
+	for _, message := range messages[start:end] {
+		for _, call := range message.ToolCalls {
+			if earlyTools[call.Function.Name] {
+				consumed[call.ID] = true
+			}
+		}
+	}
+	return consumed
 }
 
 // SIXTY SMALL RESULTS STAY BOUNDED INSIDE ONE TURN. Each result is well below
@@ -56,7 +96,7 @@ func TestALongTurnsToolWorkingSetStaysBounded(t *testing.T) {
 		config.CompactEnabled = false
 		config.SessionFile = journal
 	})
-	agent.tools = append(agent.tools, staticTool("fat", output))
+	installTurnFoldReader(t, agent, output)
 
 	events, err := agent.Submit(context.Background(), "run sixty rounds")
 	if err != nil {
@@ -162,7 +202,7 @@ func TestTurnFoldDoesNothingBelowTheWorkingSetLine(t *testing.T) {
 		config.ContextWindow = bigTestWindow
 		config.CompactEnabled = false
 	})
-	agent.tools = append(agent.tools, staticTool("fat", output))
+	installTurnFoldReader(t, agent, output)
 
 	events, err := agent.Submit(context.Background(), "three rounds")
 	if err != nil {
@@ -199,21 +239,92 @@ func TestTurnFoldNeverRewritesAnUnseenResult(t *testing.T) {
 		call := fmt.Sprintf("call-%d", round)
 		agent.messages = append(agent.messages,
 			ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: fmt.Sprintf("assistant %d", round)}}, ToolCalls: []ai.ToolCall{{
-				ID: call, Function: ai.ToolCallFunction{Name: "fat", Arguments: "{}"},
+				ID: call, Function: ai.ToolCallFunction{Name: "read", Arguments: "{}"},
 			}}},
 			ai.Message{Role: "tool", ToolCallID: call, Content: []ai.ContentPart{{Type: "text", Text: output}}},
 		)
 	}
 	seenThrough := len(agent.messages) - 2
 	newest := len(agent.messages) - 1
+	consumed := consumedTurnReads(agent.messages, agent.turnFloor, len(agent.messages))
 	agent.mu.Unlock()
 
-	agent.foldTurnOutputs(seenThrough, nil)
+	agent.foldTurnOutputs(seenThrough, consumed, nil)
 
 	agent.mu.Lock()
 	got := messageContentText(agent.messages[newest])
 	agent.mu.Unlock()
 	if got != output {
 		t.Fatalf("unseen result was rewritten: %.80q", got)
+	}
+}
+
+// Provider context is not the tool working set. A large system prompt or tool
+// schema must not trigger a rewrite of a few small observations merely because
+// the provider reports more than 64k input tokens.
+func TestTurnFoldIgnoresNonObservationContextPressure(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.ContextWindow = bigTestWindow
+	})
+
+	agent.mu.Lock()
+	agent.running = true
+	agent.turnFloor = len(agent.messages)
+	for round := 0; round < 3; round++ {
+		call := fmt.Sprintf("call-%d", round)
+		agent.messages = append(agent.messages,
+			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+				ID: call, Function: ai.ToolCallFunction{Name: "read", Arguments: "{}"},
+			}}},
+			ai.Message{Role: "tool", ToolCallID: call, Content: []ai.ContentPart{{Type: "text", Text: turnFoldOutput()}}},
+		)
+	}
+	horizon := len(agent.messages)
+	consumed := consumedTurnReads(agent.messages, agent.turnFloor, horizon)
+	agent.contextTokens = turnWorkingSet(agent.window()) + 10_000
+	before := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+
+	agent.foldTurnOutputs(horizon, consumed, nil)
+
+	agent.mu.Lock()
+	after := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("small tool working set was rewritten because unrelated provider context crossed the line")
+	}
+}
+
+// Reading is not consumption. Until a successful file change proves the model
+// used those observations, even an oversized research pass remains verbatim.
+func TestTurnFoldKeepsUnactedResearchVerbatim(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.ContextWindow = bigTestWindow
+	})
+	output := turnFoldOutput()
+
+	agent.mu.Lock()
+	agent.running = true
+	agent.turnFloor = len(agent.messages)
+	for round := 0; round < 24; round++ {
+		call := fmt.Sprintf("call-%d", round)
+		agent.messages = append(agent.messages,
+			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+				ID: call, Function: ai.ToolCallFunction{Name: "read", Arguments: "{}"},
+			}}},
+			ai.Message{Role: "tool", ToolCallID: call, Content: []ai.ContentPart{{Type: "text", Text: output}}},
+		)
+	}
+	horizon := len(agent.messages)
+	before := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+
+	agent.foldTurnOutputs(horizon, nil, nil)
+
+	agent.mu.Lock()
+	after := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("research that had not produced work was folded")
 	}
 }

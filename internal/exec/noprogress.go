@@ -242,9 +242,9 @@ func resultKey(result Result) string {
 //
 // It is called once per turn, after all the turn's tool calls have completed
 // and their results are known. calls and results are the turn's calls and
-// their results, in order; artifactsBefore is the count of the workspace's
-// recorded deliverable artifacts at the start of the turn, and artifactsAfter
-// at the end — a change means something was written to disk.
+// their results, in order; mutationsBefore and mutationsAfter are the
+// workspace's monotonic per-leaf revisions — a change means something was
+// written to disk, including a rewrite of an already-known path.
 //
 // The verdict is one of: progressContinue (the leaf is advancing),
 // progressConclude (inject the conclude directive — the first trigger), or
@@ -260,7 +260,7 @@ const (
 
 func (g *progressGuard) observe(
 	calls []ai.ToolCall, results []Result,
-	artifactsBefore, artifactsAfter int,
+	mutationsBefore, mutationsAfter int,
 ) progressVerdict {
 	g.turns++
 
@@ -279,10 +279,9 @@ func (g *progressGuard) observe(
 
 	mutated, newInfo, anyError := g.readTurn(calls, results)
 
-	// An artifact count change means a file landed on disk — a mutation by
-	// any tool, including sh, which produces files the mutation-tools set
-	// does not name.
-	if artifactsAfter > artifactsBefore {
+	// A revision change means a file landed on disk — a mutation by any tool,
+	// including sh, which produces files the mutation-tools set does not name.
+	if mutationsAfter > mutationsBefore {
 		mutated = true
 	}
 

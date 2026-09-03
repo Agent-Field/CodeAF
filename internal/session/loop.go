@@ -934,7 +934,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// The ordinary stub citizen remains an end-of-turn pass: running it here
 		// would rewrite old turns in the middle of this one and change its cache
 		// economics. Only the current-turn fold belongs at every step boundary.
-		a.foldTurnOutputs(episode.seenThrough, hub)
+		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
 		a.maybeCompact(ctx, hub)
 	}
 }
@@ -3302,13 +3302,16 @@ func compactionHint(pass compactionPass, before, after int) string {
 // foldLocked replaces the oldest assistant work with one marker line, and
 // reports how many messages went and what the marker says.
 //
-// THREE THINGS ARE NEVER FOLDED, and each for its own reason:
+// FOUR THINGS ARE NEVER FOLDED, and each for its own reason:
 //
 //   - message[0], the system prompt, which carries the memory block and the
 //     state card and is rebuilt per turn anyway;
 //   - USER MESSAGES, anywhere, because a person's words are the one part of a
 //     transcript that cannot be reconstructed from anything else — a question
 //     they asked and never got answered has to still be in front of the model;
+//   - the RUNNING TURN, because its assistant notes, exact calls and results are
+//     working memory rather than conversation history; turnfold.go alone may
+//     replace consumed read results while leaving that structure intact;
 //   - the verbatim tail below [Agent.cutPointLocked], which is the work in hand.
 //
 // An assistant message and the tool results answering it go TOGETHER, always. A
@@ -3325,6 +3328,7 @@ func compactionHint(pass compactionPass, before, after int) string {
 func (a *Agent) foldLocked() (int, string) {
 	a.alignReasoningLocked()
 	limit := a.cutPointLocked()
+	protectTurn := a.turnContinuesLocked()
 	target := a.compactTargetTokens() * bytesPerToken
 	total := 0
 	for _, message := range a.messages {
@@ -3346,6 +3350,14 @@ func (a *Agent) foldLocked() (int, string) {
 		batch := index + 1
 		for batch < limit && a.messages[batch].Role == "tool" {
 			batch++
+		}
+		// THE RUNNING TURN IS NOT CONVERSATION HISTORY. It is the model's working
+		// memory: its own notes, what it tried, the exact arguments and what came
+		// back. Current-turn result pressure has a narrower use-aware pass in
+		// turnfold.go; the general fold must not turn active work into a pointer.
+		if protectTurn && index >= a.turnFloor {
+			index = batch
+			continue
 		}
 		// A stub is useful only while its tool call remains in the window. Keep
 		// tool batches intact: folding the assistant call would either orphan the
@@ -3423,6 +3435,23 @@ func (a *Agent) foldLocked() (int, string) {
 	a.messages = rebuilt
 	a.messageReasoning = rebuiltReasoning
 	return len(folded), marker
+}
+
+// turnContinuesLocked distinguishes a tool step waiting for its next decision
+// from the final prose response, which is still inside runTurn until its
+// end-of-turn compaction and completion checks finish. The latest assistant
+// message is the protocol's answer: tool calls mean another request follows;
+// plain text means this answer has ended and may enter conversation history.
+func (a *Agent) turnContinuesLocked() bool {
+	if !a.running {
+		return false
+	}
+	for index := len(a.messages) - 1; index >= a.turnFloor; index-- {
+		if a.messages[index].Role == "assistant" {
+			return len(a.messages[index].ToolCalls) > 0
+		}
+	}
+	return false
 }
 
 // foldMarkerPrefix opens every fold marker. It is how [isCompactionNote]

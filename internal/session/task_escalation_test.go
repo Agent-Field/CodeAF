@@ -93,6 +93,8 @@ func TestTheBriefArgumentAsksForWhatTheTurnAlreadyLearned(t *testing.T) {
 		"WHERE YOU ARE ALREADY MID-WORK",
 		"WHAT YOU HAVE LEARNED IS PART OF THE BRIEF",
 		"cannot see the calls you already made",
+		"IF THIS REPLACES A FAILED TASK",
+		"inherits neither its transcript nor its report",
 	} {
 		if !strings.Contains(string(task.Schema), want) {
 			t.Errorf("propose_task's schema never says %q, so a mid-answer proposal has no reason to write its findings down", want)
