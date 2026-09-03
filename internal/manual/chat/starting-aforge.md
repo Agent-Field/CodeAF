@@ -299,12 +299,13 @@ carrying on for the rest of its hours over work nothing was ever going to start.
 
 ## It keeps saying a file does not pass · a check nobody asked for
 
-**A check is a command, never a file.** When your request or its `done when`
-sentence names something in backticks, aforge runs it in a fresh shell to see
-whether the work stands up. A file is opened the way the file itself says it opens:
-if it is executable, or its first line names the program that runs it, that is what
-gets run. **A file that says neither is not a check at all** and is left out — a
-source file quoted in a sentence is something to look at, not something to run.
+**A check is a command, never a file.** When the session's `done when` sentence
+names something in backticks, or a piece of work names it in its own account,
+aforge runs it in a fresh shell to see whether the work stands up. A file is
+opened the way the file itself says it opens: if it is executable, or its first
+line names the program that runs it, that is what gets run. **A file that says
+neither is not a check at all** and is left out — a source file quoted in a
+sentence is something to look at, not something to run.
 
 Before this, a bare path was handed to a shell, which refused to start it, and the
 run recorded "does not pass" about it for the rest of the evening — a wall no work
