@@ -5,6 +5,14 @@ plain prompt) instead of an Opus subagent or codex? Three queued issues, handed 
 verbatim, judged as a reviewer would judge them. Nothing merges: the WIP freeze is on
 and every PR opens as a draft.
 
+**The caveat the owner should read before the numbers.** The steering prompts that
+produced every good result here were written by a Claude Opus session doing the
+localization by hand — reading the seam, verifying line numbers, running the suites,
+diagnosing the regressions, and in one case stashing the change to prove a test had been
+green before it. **None of that work is in the $13.7851 below, and it is the majority of
+what an Opus lane costs.** Any fleet-wide adoption decision has to price it. The trial
+measures what aforge does with a spec; it does not measure the cost of producing one.
+
 Binary: `~/af-trial/bin/aforge`, built from `origin/dev` at `b95f8c29f`.
 Crew and profile: the owner's own `~/.aforge/config.json` — work `deepseek/deepseek-v4-pro`,
 plan `moonshotai/kimi-k3:high`. One scratch worktree per item, cut from `origin/dev`.
@@ -528,9 +536,16 @@ LAWS IN FORCE FOR THIS CHANGE
 
 ### Run 2 — steering 1. $1.9946, 2326.6s, 98 calls, exit 2. Wired, and it broke two tests.
 
-It wired `readTasks` to `world.Work()` correctly and **reported all five of my acceptance
-items green, itemised**. Running the full `tui3` package — which it had not run — showed two
-pre-existing tests failing:
+It wired `readTasks` to `world.Work()` correctly and reported all five of my acceptance
+items green, itemised — **and all five were true.** Item 2 of my own list asked for
+`go test ./internal/tui3/ -run TestTasksOrderedByWorkFactsNotConversationRecency`, a single
+test, not the package. It ran what I asked and answered honestly. It also handed over a
+reservation of its own, unprompted: *"I'm handing this over with a reservation — a review
+found this still missing: 16 behaviours the request states have no check that exercises
+them."*
+
+**The gap was in my prompt.** Running the full `tui3` package — which nothing had asked it
+to run — showed two pre-existing tests failing:
 
 ```
 --- FAIL: TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse
@@ -692,27 +707,38 @@ own.
 failure is not capability, it is search: it burns the room reading and starts writing too
 late.
 
-**2. Anything gated by a slow test suite.** #520 run 2 reported all five of my acceptance
-items green, itemised, having never run the 458-second `tui3` package — which contained two
-regressions it had just caused. A worker that will not wait for a slow suite cannot be
-trusted with any package that has one.
+**2. Anything gated by a slow test suite — but the evidence here is thinner than I first
+wrote it.** #520 run 2 edited `internal/tui3/tasksplace.go` and never ran that package's
+suite, leaving two regressions. It ran exactly the commands my acceptance list named, and
+every claim it made was true; the package suite was not among them because I did not ask
+for it. So what this measures is that **the worker checks what it is told to check and does
+not infer the repository's touched-packages law** (`CLAUDE.md`: the full suite of every
+package a change touches blocks every pull request). That is a real limit for delegation —
+the caller must name the suite — but it is not dishonesty, and I first recorded it as
+though it were.
 
 **3. Any work where a reviewer would rely on the prose.** Four instances, all fluent,
 all in house style, all false: the gate's "the only file this run changed is CLAUDE.md"
 when nothing changed; `THE RULE IT NAMES IS THE CONSTANT` over code passing a journal kind;
-a comment citing `quoteDestination`, which exists nowhere; and the itemised five-green
-claim above. **None is caught by a build, a test, or the laws, because none of them is
-code.**
+and a comment citing `quoteDestination`, which exists nowhere. (I originally listed the
+itemised five-green claim as a fourth. It was not false — see #520 run 2 above — and
+removing it is the correction that cost this report its neatest example.) **None of the
+three is caught by a build, a test, or the laws, because none of them is code.**
 
 **4. A requirement stated in prose that no command checks.** #520's fourth-authority rule
 survived three hand-offs and a verbatim repetition in the prompt, and the worker wrote a
 test that appears to cover it and cannot.
 
-**5. Review.** Not measured directly, but nine hand-offs produced **zero** statements of
-the form "I could not do X", "this needs a wider change", or "I am not sure". #515's
-worker found a real constraint — there is no typed rule identity at that seam — and papered
-over it silently rather than saying so. A worker that never reports what it did not do
-cannot be given work whose product is a judgement.
+**5. Review — and here too I overstated it first.** I wrote that nine hand-offs produced
+zero statements of the form "I could not do X". That is false, and #520 run 2 is the
+counter-example: it volunteered *"I'm handing this over with a reservation — a review found
+this still missing: 16 behaviours the request states have no check that exercises them"*,
+which is exactly such a statement and which nothing in my prompt asked for. What survives
+is narrower: those reservations are **counts, not names.** "16 behaviours have no check"
+does not tell a reader which sixteen, so it cannot be acted on without redoing the
+analysis — and #515's worker, which found a genuinely load-bearing constraint (there is no
+typed rule identity at that seam), said nothing about it at all. The limit is that the
+worker reports the shape of what it did not verify and not its content.
 
 **6. Rebase.** Not attempted; no evidence either way.
 
