@@ -93,6 +93,18 @@ const (
 	stopDeadline   stopReason = "deadline"   // the wall arrived
 	stopPrice      stopReason = "price"      // the price crossed what you asked to approve
 	stopQuestion   stopReason = "question"   // it asked something and nobody was there
+	// stopUnchecked: the work was delivered and NOTHING JUDGED IT. The gate was
+	// asked and could not be reached, so the deliverable on stdout stands
+	// unread rather than approved.
+	//
+	// It is its own word on the exit-2 rung rather than a code of its own
+	// because scripts are told to branch on `stop` and to read the number only
+	// for how much is wrong — and how much is wrong here is exactly what
+	// `incomplete` already says: it ran, and part of what it promised (the
+	// check) does not stand. A rig that wants the distinction reads this word,
+	// or `unjudged` on `do --json`, and gets the reason in the same breath. See
+	// store.DeliveryGate.Unjudged and #514.
+	stopUnchecked stopReason = "unchecked"
 )
 
 // exitRung is one row of the table. The meaning is a full sentence because it
@@ -134,7 +146,7 @@ var exitLadder = []exitRung{
 		Code:    exitIncomplete,
 		Short:   "ran and did not finish",
 		Meaning: "it ran and did not finish: part of the work does not stand",
-		Stops:   []stopReason{stopIncomplete},
+		Stops:   []stopReason{stopIncomplete, stopUnchecked},
 	},
 	{
 		Code:    exitLimit,
@@ -484,6 +496,12 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	}
 	if len(outcome.Learned) > 0 {
 		fields["learned"] = outcome.Learned
+	}
+	// And omitempty for the same reason: the key appears on exactly the runs
+	// nothing judged, so its presence is itself the answer to "was this
+	// checked?" — a caller testing for it never has to read the sentence.
+	if strings.TrimSpace(outcome.Unjudged) != "" {
+		fields["unjudged"] = outcome.Unjudged
 	}
 	return fields
 }

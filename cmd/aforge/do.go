@@ -155,6 +155,17 @@ type headlessOutcome struct {
 	// binary — and a graph written by one of those may still name a worker this
 	// build does not have.
 	Subharness string `json:"subharness"`
+	// Unjudged is why NOTHING CHECKED THIS DELIVERY, in the gate's own words off
+	// the journal, on the runs where nothing did. Empty on every run whose gate
+	// answered, which is almost all of them.
+	//
+	// It is a field rather than a sentence folded into the deliverable because
+	// the caller it is for is a machine. A rig comparing runs has to put an
+	// unchecked delivery in its own column, and reef-145 shipped two of them
+	// into a column of judged passes because the only trace was a line in the
+	// log (#514). `stop` says "unchecked"; this says why, and the two travel
+	// together.
+	Unjudged string `json:"unjudged,omitempty"`
 	// Error is the sentence a run that never reached an outcome left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
@@ -1623,6 +1634,16 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		if json.Unmarshal(event.Payload, &gate) != nil {
 			return false
 		}
+		// A GATE NOBODY REACHED REFUSED NOTHING, so the stream does not say
+		// "gate: refused" of it — that word is the RUN declining to buy a
+		// judgement, and this is the judgement declining to arrive. It says the
+		// same sentence the door will end on, because it is the same fact: the
+		// delivery went out and nothing read it. gateWords speaks for a gate
+		// that ANSWERED, and this row is the one where none did.
+		if gate.Unjudged {
+			w.note(unjudgedWords(gate), "")
+			return true
+		}
 		verdict, detail := gateWords(gate)
 		w.note("gate: "+verdict, detail)
 		// AND A DELIVERY THAT ENDED BECAUSE WHAT WAS ASKED FOR IS IN HAND SAYS
@@ -2170,6 +2191,17 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			// pipeline reads — recorded them as work that stands.
 			if !w.deliveredWhole(*final) {
 				outcome.stop = stopIncomplete
+				// AND A DELIVERY NOTHING JUDGED IS NEITHER A PASS NOR A FAIL,
+				// SO IT IS NOT SAID AS EITHER. The work ships — the gate is
+				// fail-open and stays so — and what changes is that nobody can
+				// read the ending as a check that held. The number is the same
+				// 2 a run that fell short leaves with, because how much is
+				// wrong is the same; the WORD is its own, because a script
+				// branching on `stop` is entitled to tell "it was checked and
+				// came up short" from "nobody checked it".
+				if reason := w.unjudgedReason(*final); reason != "" {
+					outcome.stop, outcome.Unjudged = stopUnchecked, reason
+				}
 				w.sayStanding(*final)
 			}
 		}
@@ -2268,6 +2300,41 @@ func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 	return true
 }
 
+// unjudgedReason is why nothing checked this delivery, read off the gate's own
+// row, and empty where something did.
+//
+// It asks the row rather than the judgement because the judgement is gone by the
+// time the settlement runs — the gate was made in another process's turn loop,
+// and the journal is the only thing that crosses that seam. An unreadable store
+// answers empty, on the same terms deliveredWhole reads one: this decides how a
+// run is described, and a failed read is not evidence about the run.
+func (w *settlementWatch) unjudgedReason(node store.Node) string {
+	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
+	if err != nil || !ok || !gate.Unjudged {
+		return ""
+	}
+	return firstLine(strings.TrimSpace(gate.Refused))
+}
+
+// unjudgedWords is the last line a person reads when the delivery went out and
+// nothing read it.
+//
+// IT IS NOT partialWords, AND THAT IS THE POINT OF IT. "partial — gate: …" says
+// a gate found something and nothing closed it, which is a sentence about the
+// work; this run's gate found nothing, because it was never reached. The finding
+// is that there is no finding, and a person who reads "delivered without a
+// check" knows both that the answer above is theirs to keep and that nothing has
+// vouched for it. The reason follows the colon in the gate's own words
+// (revision.GateUnreached), and a row that somehow carries none says the four
+// words alone rather than a dangling colon.
+func unjudgedWords(gate store.DeliveryGate) string {
+	said := "delivered without a check"
+	if reason := firstLine(strings.TrimSpace(gate.Refused)); reason != "" {
+		said += ": " + reason
+	}
+	return said
+}
+
 // sayStanding writes the one line that tells a person watching WHY the run is
 // short, at the end, where the answer is.
 //
@@ -2299,6 +2366,16 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 	}
 	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
 	if err != nil || !ok {
+		return
+	}
+	// A DELIVERY NOTHING JUDGED HAS ITS OWN SENTENCE, AHEAD OF EVERY VERDICT
+	// WORD, because there is no verdict to word. Reading this row through
+	// gateStanding would print "partial — the gate could not be reached", which
+	// tells a person the gate said something; it said nothing, and what they
+	// need to know is that the answer above them is unchecked.
+	if gate.Unjudged {
+		w.saidStanding = true
+		w.note(unjudgedWords(gate), "")
 		return
 	}
 	finding, reason, standing := gateStanding(gate)

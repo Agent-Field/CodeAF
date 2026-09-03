@@ -72,6 +72,28 @@ type DeliveryGate struct {
 	// the two were one field (2026-08-28, meta/muse-spark-1.1).
 	Unclosed bool `json:"unclosed,omitempty"`
 
+	// Unjudged says NOBODY EVER READ THIS DELIVERY. The gate was asked and could
+	// not be reached — a dead route, a refused account, a service that was down —
+	// so the work shipped with no verdict behind it at all.
+	//
+	// It is a field of its own beside Refused because the two refusals it
+	// separates are what a battery comparing runs has to tell apart. `{Refused,
+	// Unclosed}` on its own is the gate that was NEVER ASKED: the harness stopped
+	// spending once nothing was changing, and declined to buy a judgement. This
+	// one was asked, twice where the wall allowed it, and the answer never came
+	// back. A run that declined to check and a run whose checker was unreachable
+	// are different facts about the same missing verdict, and a rig that reads
+	// one row for both learns nothing from either.
+	//
+	// It was measured costing two graded runs their whole meaning. reef-145's
+	// repair leaf finished its work, both of the gate's calls were refused 404,
+	// the door ended `ok` at exit 0, and the store held no gate row for the
+	// delivered leaf at all — so the rig compared an unchecked delivery against
+	// runs that had been judged and read it as a clean pass (2026-09-02,
+	// aforge-v2-14 anchor 1; #514). Whole below spends it, so the exit code
+	// cannot report a delivery nobody read as one that stands.
+	Unjudged bool `json:"unjudged,omitempty"`
+
 	// Overturned says the refusal was CHECKED AGAINST THE WORLD and the finding
 	// lost: the file the review says is missing is on disk under the name the
 	// request used, or the things it says are absent are in the delivered text.
@@ -341,6 +363,14 @@ type ExercisedPoint struct {
 // person reads and a verdict an exit code carries are one fact, and one fact is
 // one reading.
 func (g DeliveryGate) Whole() bool {
+	// AND NOBODY READ IT AT ALL IS THE SHORTEST ANSWER THIS METHOD HAS. Every
+	// other field below weighs what a gate FOUND; this one says there was no
+	// gate. A delivery whose check never happened has not been shown to stand,
+	// whatever the rest of the row says, so it is answered first and answered
+	// without reading anything else. See Unjudged.
+	if g.Unjudged {
+		return false
+	}
 	// A PASS OVER A SUITE NOBODY COULD READ IS NOT A PASS OVER A CHECKED
 	// DELIVERY. The judge answered on the deliverable's own words, and the one
 	// thing that could have contradicted them — the project's own verification —
@@ -459,6 +489,16 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	if !gate.Pass && gate.Gap == "" && !(gate.Refused != "" && gate.Unclosed) {
 		return fmt.Errorf("record delivery gate: %w: a gate that did not pass must name the gap "+
 			"it found, or the refusal that stood in for the judgement", ErrInvalid)
+	}
+	// AND A DELIVERY NOBODY READ IS NOT A PASS. The judgement that reaches this
+	// row is fail-open — the work ships when the gate cannot be reached — and
+	// the whole of what Unjudged exists for is that the shipping is no longer
+	// indistinguishable from a verdict. A row carrying both would be exactly
+	// that indistinguishability written down, so it is refused here rather than
+	// quietly corrected: a caller that built one has a bug, and a silent fix
+	// leaves it running.
+	if gate.Unjudged && gate.Pass {
+		return fmt.Errorf("record delivery gate: %w: a delivery nothing judged is not a pass", ErrInvalid)
 	}
 	gate.Gap = bounded(gate.Gap, MaxDigestBytes)
 	gate.Quote = bounded(strings.TrimSpace(gate.Quote), MaxDigestBytes)

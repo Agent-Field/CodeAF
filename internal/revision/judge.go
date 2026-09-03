@@ -1598,6 +1598,26 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
 	}
 	_, err := askVerdict(judgeCtx, client, messages, schema, &verdict)
+	// ONE MORE ASK, INSIDE THE WALL, BEFORE A DELIVERY GOES OUT WITH NOTHING
+	// HAVING READ IT.
+	//
+	// A call that never landed says nothing about the work, and the cheapest
+	// thing that can be done about it is to make it again. reef-145 delivered
+	// unjudged twice on a route that answered 404 in 58 ms — a failure fast
+	// enough that the run had four minutes of wall left and spent none of it
+	// asking a second time. The answer to which happened rides the note below,
+	// because "asked twice and still nothing" and "there was no time to ask" are
+	// different facts about a run and only one of them is anybody's to fix.
+	//
+	// It is one more ask and never a loop: the wall is the run's, the gate is
+	// spending it, and a judge that cannot be reached twice inside a floor of
+	// time is not going to be reached on the third.
+	asked := ""
+	if err != nil && !shaped.Unreadable(err) {
+		if asked = worthAskingAgain(judgeCtx, err); asked == gateAskedTwice {
+			_, err = askVerdict(judgeCtx, client, messages, schema, &verdict)
+		}
+	}
 	// A CONTRACT MAY NOT BE THE REASON A RUN ENDS WITH NOTHING STARTED.
 	//
 	// The tree contract is narrow on purpose, and igel s15 shows both halves of
@@ -1649,8 +1669,12 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// A transport failure is a different thing and stays fail-open: the
 		// model was never reached, so nothing about this deliverable was
 		// examined and holding it hostage to the weather buys nobody anything.
+		// What it is NOT any more is silent — the note says the gate was never
+		// reached and what was done about it, the delivery path turns that into
+		// a gate row of its own kind, and the run leaves unchecked rather than
+		// ok. See GateUnreached and cmd/aforge/chat.go's seam.
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return unjudged(node, "the gate could not be reached", err)
+		return unjudged(node, gateNote(GateUnreached, asked), err)
 	}
 	if verdict.Pass {
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
@@ -1773,10 +1797,77 @@ func GateFaultHandover(fault string) string {
 func unjudged(node store.Node, why string, err error) Judgment {
 	note := why
 	if err != nil {
-		note += ": " + firstLine(err.Error())
+		note = gateNote(why, firstLine(err.Error()))
 	}
 	log.Printf("note: the delivery gate did not judge %s — %s; delivering unjudged", node.ID, note)
 	return Judgment{Pass: true, Unjudged: note}
+}
+
+// GateUnreached is why a delivery went out with nothing having read it, in the
+// words the door prints, the journal keeps and a rig reads back.
+//
+// IT IS THE FIRST CLAUSE OF THE NOTE AND NEVER THE WHOLE OF IT. What follows it
+// — how the gate was asked, and the provider's own sentence — is detail a person
+// may or may not need; this is the fact they are owed, and cmd/aforge/do.go
+// prints it verbatim after "delivered without a check: ". Spelled once here
+// because a sentence in two places is two sentences.
+const GateUnreached = "the gate could not be reached"
+
+// The three answers to "and what was done about it", which is the question a
+// person reading an unchecked delivery asks second. One of them is always on the
+// note: the gate was asked again, or there was no wall left to ask inside, or
+// asking again would have bought the same refusal.
+const (
+	gateAskedTwice  = "asked twice"
+	gateNoTimeToAsk = "the wall left no time for a second call"
+	gateAskRefused  = "the request itself was refused, so asking again would say the same"
+)
+
+// gateSecondAskFloor is the least wall one more gate call is worth starting in.
+//
+// It is the smallest honest figure rather than a share of anything: a structured
+// verdict over a whole deliverable is not a call that finishes in seconds, and
+// starting one with less than this left buys a certain timeout in place of the
+// run's remaining time. STATED ONCE — worthAskingAgain is its only reader.
+const gateSecondAskFloor = 30 * time.Second
+
+// worthAskingAgain answers whether a gate call that never landed is worth making
+// once more, and NAMES ITS ANSWER in the words the note carries — so the reading
+// and the sentence a person gets cannot drift apart.
+//
+// Two things say no. A refusal that is about the REQUEST will be refused the
+// same way by every endpoint, and provider.APIError.OurRequest is the shape that
+// says so — already the reading two other retry seams take (internal/exec and
+// internal/session), so this is that question asked again rather than a second
+// answer to it. And a wall with no room left for a call is a wall this gate may
+// not spend on one: the run's remaining time belongs to the work.
+//
+// A context with no deadline at all has all the time there is, and is asked.
+func worthAskingAgain(ctx context.Context, err error) string {
+	if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
+		return gateAskRefused
+	}
+	if deadline, timed := ctx.Deadline(); timed && time.Until(deadline) < gateSecondAskFloor {
+		return gateNoTimeToAsk
+	}
+	return gateAskedTwice
+}
+
+// gateNote joins an unjudged delivery's clauses into the one line the record
+// keeps and the door prints.
+//
+// The separator is " · " rather than ": " because every clause after the first
+// is an aside — how it was asked, what the provider said — and a colon would
+// promise that what follows explains what precedes it. Empty clauses are dropped
+// on the emptiness law: a run that has nothing to add says nothing.
+func gateNote(clauses ...string) string {
+	kept := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		if clause = strings.TrimSpace(clause); clause != "" {
+			kept = append(kept, clause)
+		}
+	}
+	return strings.Join(kept, " · ")
 }
 
 // The citation invariant: a gate's gap may commission new work only if it
