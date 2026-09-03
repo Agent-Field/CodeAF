@@ -790,12 +790,15 @@ func TestAFileWrittenBackToWhatItWasIsNotMade(t *testing.T) {
 	}
 }
 
-// A STASH HOLDS WORK THAT IS NOT IN THE TREE, AND THE READING SAYS SO.
+// A STASH HOLDS WORK THAT IS NOT IN THE TREE, AND THE READING SAYS SO — BUT
+// ONLY THE ENTRIES THIS RUN PUT THERE.
 //
 // The stash is the one account of the session's own work that nothing else in
 // the building can take: the checks, the reconciliation and the session's ledger
 // all read the tree as it stands, and a tree with the fix stashed out of it
-// looks exactly like a tree the fix was never written into.
+// looks exactly like a tree the fix was never written into. What it may not do
+// is name somebody's older stash, which would tell every run over that
+// repository that work was left undone at every ending, for ever.
 func TestAStashedFixIsNotDone(t *testing.T) {
 	tree := t.TempDir()
 	revertRepo(t, tree)
@@ -812,6 +815,24 @@ func TestAStashedFixIsNotDone(t *testing.T) {
 	})
 	agent.steward().setAcceptance("the reproduction runs and the suite passes")
 
+	// THE PERSON'S OWN STASH, TAKEN BEFORE THE RUN BEGAN. Nothing this session
+	// does may ever name it.
+	if err := os.WriteFile(project, []byte("half a thought, from last week\n"), 0o644); err != nil {
+		t.Fatalf("writing the person's own work: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("the person's git stash: %v (%s)", err, out)
+	}
+	// AND WITH NO BEFORE-READING NOTHING IS COUNTED, because nobody yet knows
+	// which entries appeared since.
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a session that has taken no before-reading counted %d stash entries", got)
+	}
+	agent.openBaseline(context.Background())
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a stash the person took before the run counted as %d entries of this run's work", got)
+	}
+
 	// The session leaves a file of its own behind, so that what it MADE is not
 	// what is in question here — and then edits the project's file and stashes
 	// the edit to compare against the baseline, exactly as the attrs cell did.
@@ -827,8 +848,8 @@ func TestAStashedFixIsNotDone(t *testing.T) {
 		t.Fatalf("git stash: %v (%s)", err, out)
 	}
 
-	if got := stashedWork(tree); got != 1 {
-		t.Fatalf("the reading found %d stash entries, want 1", got)
+	if got := agent.stashedWork(); got != 1 {
+		t.Fatalf("the reading found %d stash entries of this run's own, want 1", got)
 	}
 	reader := readerLine{answered: true, nothingLeft: true}
 	remains := agent.remainsFor("fixed", reader)
@@ -851,20 +872,69 @@ func TestAStashedFixIsNotDone(t *testing.T) {
 		t.Fatalf("the brief the next turn opens on never mentions the stash:\n%s", decision.Brief)
 	}
 
-	// AND THE PLURAL IS THE PLURAL. A second stash is a second entry, said as
-	// entries rather than as one of them.
+	// AND THE PLURAL IS THE PLURAL. A second stash of this run's own is a second
+	// entry, said as entries rather than as one of them — and the person's is
+	// still not among them.
 	if err := os.WriteFile(project, []byte("def make(): return 2\n"), 0o644); err != nil {
 		t.Fatalf("editing the project's file again: %v", err)
 	}
 	if out, err := git(tree, "stash"); err != nil {
 		t.Fatalf("git stash: %v (%s)", err, out)
 	}
-	if got := stashedWork(tree); got != 2 {
-		t.Fatalf("the reading found %d stash entries, want 2", got)
+	if got := agent.stashedWork(); got != 2 {
+		t.Fatalf("the reading found %d stash entries of this run's own, want 2", got)
 	}
 	remains.Stashed = 2
 	if !containsWord(remains.unmet(), "2 stash entries hold work that is not in the tree") {
 		t.Fatalf("two stashes were not said as two: %v", remains.unmet())
+	}
+}
+
+// AND THE GROUND LADDER'S OWN STASH IS NOT WORK LEFT LYING ABOUT.
+//
+// A landing that has to merge into a ground holding uncommitted work sets that
+// work aside with `git stash push` and puts it back on every road out
+// ([taskTree.carryGroundWork]). The window is short and every road pops, but a
+// terminal reading taken inside it would see the harness's own entry and tell a
+// finished run to carry on. The message the push was given is what tells them
+// apart.
+func TestTheGroundLaddersOwnStashIsNotWorkLeftLyingAbout(t *testing.T) {
+	tree := t.TempDir()
+	revertRepo(t, tree)
+	project := filepath.Join(tree, "_make.py")
+	if err := os.WriteFile(project, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the suite passes")
+	agent.openBaseline(context.Background())
+
+	if err := os.WriteFile(project, []byte("the person's own uncommitted work\n"), 0o644); err != nil {
+		t.Fatalf("writing the ground's uncommitted work: %v", err)
+	}
+	if out, err := git(tree, "stash", "push", "-m", groundStashMessage("task/fix-a-1")); err != nil {
+		t.Fatalf("the ground ladder's git stash push: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a landing's own set-aside work counted as %d entries of unfinished work", got)
+	}
+
+	// AND AN ENTRY THE SESSION PUSHED ITSELF IS STILL COUNTED, so the exception
+	// is the harness's own message and not the stash as a whole.
+	if err := os.WriteFile(project, []byte("def make(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("git stash: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 1 {
+		t.Fatalf("the reading found %d stash entries of this run's own, want 1", got)
 	}
 }
 
@@ -881,12 +951,13 @@ func TestANonRepositoryWorkspaceSaysNothingAboutStashes(t *testing.T) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
 	})
-	if got := stashedWork(tree); got != 0 {
-		t.Fatalf("a directory that is no repository reported %d stash entries", got)
+	if got := stashList(tree); len(got) != 0 {
+		t.Fatalf("a directory that is no repository listed %d stash entries", len(got))
 	}
-	if got := stashedWork(""); got != 0 {
-		t.Fatalf("a session with no deliverable tree reported %d stash entries", got)
+	if got := stashList(""); len(got) != 0 {
+		t.Fatalf("a session with no deliverable tree listed %d stash entries", len(got))
 	}
+	agent.openBaseline(context.Background())
 
 	_, _, stashed := agent.terminalAudit(context.Background())
 	if stashed != 0 {

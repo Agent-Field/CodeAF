@@ -1786,6 +1786,18 @@ type Agent struct {
 	// baselineDone is closed when the reading lands, so the one moment that has
 	// to have it can wait ([Agent.awaitBaseline]).
 	baselineDone chan struct{}
+	// stashBefore is every stash entry the deliverable tree ALREADY HELD when
+	// the run began, by sha, and stashBeforeRead says that reading happened —
+	// which is not the same as the set being empty, because a repository with no
+	// stash at all reads as none ([Agent.readStashBefore]).
+	//
+	// IT IS THE SAME SUBTRACTION THE CHECKS GET, FOR THE SAME REASON. A stash a
+	// person took last week is not this session's work sitting outside the tree,
+	// and a reading that named it would tell every run over that repository that
+	// something was left undone at every ending, for ever
+	// ([Agent.stashedWork]).
+	stashBefore     map[string]bool
+	stashBeforeRead bool
 
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than

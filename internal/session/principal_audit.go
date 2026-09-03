@@ -394,34 +394,119 @@ func (a *Agent) changedInDeliverable() bool {
 	return false
 }
 
-// stashedWork counts the entries `git stash list` names in the deliverable
-// tree: work this session's own tooling took OUT of the tree and did not put
-// back.
+// stashEntry is one line of `git stash list` as this reading needs to read it:
+// the entry's own commit, which is what tells one entry from another across two
+// readings, and the message it was pushed with, which is what tells the
+// harness's own entries from a person's.
+type stashEntry struct {
+	sha     string
+	subject string
+}
+
+// stashList is the deliverable tree's stash, whole.
+//
+// NOT A REPOSITORY, OR NO GIT AT ALL, IS AN EMPTY LIST AND SAYS NOTHING. `git
+// stash list` outside a working tree is an error and so is a git that is not
+// installed, and neither is evidence about anybody's work: the honest answer is
+// silence, not a sentence about a stash nobody has.
+//
+// THE FORMAT IS ASKED FOR RATHER THAN PARSED OUT OF THE DEFAULT LINE, which
+// spells the message after a colon inside a subject that already holds one
+// (`stash@{0}: On main: fixing it`). A tab cannot appear in a sha and does not
+// survive into a stash subject, so it is the one separator that cannot be
+// mistaken for content.
+func stashList(tree string) []stashEntry {
+	if strings.TrimSpace(tree) == "" {
+		return nil
+	}
+	out, err := git(tree, "stash", "list", "--format=%H%x09%s")
+	if err != nil {
+		return nil
+	}
+	var entries []stashEntry
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		sha, subject, _ := strings.Cut(line, "\t")
+		entries = append(entries, stashEntry{sha: strings.TrimSpace(sha), subject: subject})
+	}
+	return entries
+}
+
+// readStashBefore photographs the stash the tree ALREADY HELD, at the same
+// moment the checks are photographed ([Agent.openBaseline]).
+//
+// IT IS TAKEN IN FRONT OF THE TURN AND THE CHECKS ARE NOT, and what separates
+// them is what each costs. A declared check is an arbitrary shell command and
+// can take as long as a suite takes, so it runs on its own and the turn starts.
+// This is one ref read, and the whole of what it is worth is being certainly
+// BEFORE the work: a reading taken on a goroutine could land after the session's
+// own first `git stash`, which is the one entry it exists to be able to
+// subtract.
+func (a *Agent) readStashBefore() {
+	held := make(map[string]bool, 2)
+	for _, entry := range stashList(a.deliverableTree()) {
+		held[entry.sha] = true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stashBefore, a.stashBeforeRead = held, true
+}
+
+// stashedWork counts the stash entries THIS RUN PUT THERE: work the session
+// took out of the deliverable tree and did not put back.
 //
 // IT IS ASKED ONCE, AT THE TERMINAL READING, and never on the turn loop
 // ([Agent.terminalAudit]). It is a process, and the only moment its answer can
 // change anything is the one where a principal is about to say the ask is
 // finished.
 //
-// NOT A REPOSITORY, OR NO GIT AT ALL, IS ZERO AND SAYS NOTHING. `git stash list`
-// outside a working tree is an error and so is a git that is not installed, and
-// neither is evidence about anybody's work: the honest answer is silence, not a
-// sentence about a stash nobody has.
-func stashedWork(tree string) int {
-	if strings.TrimSpace(tree) == "" {
-		return 0
-	}
-	out, err := git(tree, "stash", "list")
-	if err != nil {
+// ── WHAT IS SUBTRACTED, AND WHY EACH ────────────────────────────────────────
+//
+// A STASH THAT WAS ALREADY THERE IS THE PERSON'S AND NOT OURS. It is the law the
+// checks already live under ([Remains.WasFailing]) — a run may only be held to
+// what it did itself — and without it a repository whose owner stashed something
+// last week would be told at every single ending that work was left outside the
+// tree, and could never say done. That is a false positive that bites somebody
+// who did nothing wrong, so the before-reading is subtracted by sha.
+//
+// AND THE GROUND LADDER'S OWN ENTRIES ARE NOT WORK LEFT LYING ABOUT. A landing
+// that has to merge into a ground holding uncommitted work sets that work aside
+// with `git stash push` and puts it back on every road out of there
+// ([taskTree.carryGroundWork]). The window is short and every road pops, but a
+// terminal reading taken inside it would see the harness's own entry and answer
+// carry on over a finished run. They are told apart by the message the push
+// itself was given — [groundStashMessage], reused rather than copied, so a
+// respelling cannot make this quietly stop matching.
+//
+// AND WITH NO BEFORE-READING, NOTHING IS COUNTED. Nobody then knows which
+// entries appeared since, so the honest answer about the stash is silence rather
+// than a guess — which is [Remains.BaselineRead]'s own law, applied to the other
+// reading this session takes of the tree it started with.
+func (a *Agent) stashedWork() int {
+	a.mu.Lock()
+	before, read := a.stashBefore, a.stashBeforeRead
+	a.mu.Unlock()
+	if !read {
 		return 0
 	}
 	entries := 0
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) != "" {
-			entries++
+	for _, entry := range stashList(a.deliverableTree()) {
+		if before[entry.sha] || isGroundStash(entry.subject) {
+			continue
 		}
+		entries++
 	}
 	return entries
+}
+
+// isGroundStash says an entry is one the ground ladder pushed for a landing, by
+// the message it was pushed with. The branch name is the TAIL of that message
+// and is not known here, so what is matched is the head of it — the one part
+// [groundStashMessage] spells the same way every time.
+func isGroundStash(subject string) bool {
+	return strings.Contains(subject, groundStashMessage(""))
 }
 
 // reconciliation is what the sweep found: what belongs to the answer, and what
@@ -583,6 +668,11 @@ func (a *Agent) openBaseline(ctx context.Context) {
 	if taken {
 		return
 	}
+	// AND THE STASH THE TREE ALREADY HELD IS PHOTOGRAPHED HERE, in front of the
+	// turn, because it is one ref read and because the whole of what it is worth
+	// is being certainly before the work ([Agent.readStashBefore]). The checks
+	// below cannot be taken in front of the turn, and are not.
+	a.readStashBefore()
 	checks := a.sessionChecks()
 	if len(checks) == 0 {
 		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
@@ -814,7 +904,7 @@ func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, 
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
 	tree := a.deliverableTree()
 	found := reconcile(a.createdList(), tree)
-	stashed := stashedWork(tree)
+	stashed := a.stashedWork()
 	a.journalChecks(ran, stashed)
 	return ran, found, stashed
 }
