@@ -137,11 +137,7 @@ func openChatV3Local(launch localLaunch) error {
 	if dir, err := v3Dir(); err == nil {
 		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
 	}
-	// The byte meter, off unless a developer named a log file (wire.go).
-	meter, closeMeter := v3Wire()
-	defer closeMeter()
-	options.Output = meter
-	return tui3.Run(context.Background(), options)
+	return runSurface(context.Background(), options)
 }
 
 // ── THE WHEN-TO-TAKE RULE ───────────────────────────────────────────────────

@@ -42,9 +42,13 @@ func Note(scope string, recovered any) error {
 
 func note(scope string, recovered any, stack []byte) error {
 	fault := &Fault{Scope: scope, Recovered: recovered, Stack: stack}
-	// One structured line, then the stack. The TUI redirects the standard
-	// logger to ~/.aforge/chat.log for its lifetime, so this never tears
-	// through the alt screen.
+	// One structured line, then the stack. Every door that opens the v3 surface
+	// runs it through cmd/aforge's runSurface, which parks the standard logger
+	// in the profile's chat.log — `~/.aforge/chat.log` unless AFORGE_PROFILE_DIR
+	// or AFORGE_HOME moves it — for as long as the surface owns the terminal, so
+	// this lands in a file a person can read afterwards rather than tearing
+	// through the alt screen. It was true of the in-process door alone until
+	// #404; the ssh, relay and unix-socket doors left it on stderr.
 	log.Printf("fault scope=%q panic=%v\n%s", fault.Scope, recovered, stack)
 	return fault
 }
