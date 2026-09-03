@@ -340,6 +340,14 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 		}
 		node.Size = SizeAtomic
 	}
+	// And last, the one verdict on this pass that is not the model's to give.
+	// The prompt above asks whether a node can be brought to an end inside what
+	// one worker holds; where the node names its own material and that material
+	// has been weighed, the answer is already known and a judgment against it is
+	// simply wrong. See correctBeyondReach in reach.go — which is also where the
+	// other half of that law lives, the half that leaves a correctly divided
+	// lane alone.
+	correctBeyondReach(graph)
 	return usage, joinErrors(failures)
 }
 

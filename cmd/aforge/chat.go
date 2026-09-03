@@ -5236,6 +5236,10 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			// with workers already writing into it — would move the prefix under
 			// passes still in flight.
 			Terrain: plan.RenderTerrain(terrainRoot, compiled.Goal),
+			// The same directory the terrain was drawn from, so that the
+			// material the ask and each node name can be weighed against what
+			// one worker can hold. See plan/reach.go.
+			Workspace: terrainRoot,
 			// Where the finished thing has to appear. The two facts this surface
 			// actually holds are whether the person gave the run their own
 			// directory and whether the ask names a file in it; together they are
@@ -5558,7 +5562,10 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// A remainder is planned against a workspace a worker has already been
 			// writing in, which is the case where this is worth the most: the
 			// replan can see what the exhausted leaf actually left behind.
-			Terrain:    plan.RenderTerrain(terrainRoot, goal),
+			Terrain: plan.RenderTerrain(terrainRoot, goal),
+			// The measurement matters most on this road: a remainder is planned
+			// after a leaf ran out of context reading its own material.
+			Workspace:  terrainRoot,
 			FileShaped: fileShapedAsk(terrainRoot, goal),
 			// What the finished work left behind that this remainder can READ.
 			// It travels on the context rather than in the goal because the pass

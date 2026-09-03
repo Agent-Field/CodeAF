@@ -98,6 +98,20 @@ The graph was still written, but the command exits with code **2**. The reason m
 planner could not divide a node that is too large for one worker. Rephrase the request and
 name the parts you want, or run it anyway with `aforge do`, which plans again.
 
+One of the reasons is measured rather than judged: **its named material exceeds what one
+worker holds**. When the run has a folder (`-w`), the planner weighs the material a node
+names against how much one worker can hold at once, and a node that names more than that
+may not be called small enough to just do.
+
+**What is weighed is the material the node will read, not the file its words mention.** A
+node whose source names a file bare — `register.txt` — is weighed the whole file. A node
+whose source scopes it — `register.txt: North block heading, 1,160 North records`, or
+`HANDBOOK.md — all 30 heading lines` — is weighed only that share, read out of the file
+itself: a line range, a count of records or lines, or a heading or block the file really
+has. A scope written in words no arithmetic reaches is not weighed at all, and the node
+is left to the planner's own judgment. So lanes that each own one block of one big file
+are not refused for the size of the file.
+
 ## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
 
 ```
