@@ -82,8 +82,10 @@ const (
 // person's account of what they saw; a pasted reproduction is evidence about
 // the bug, not a promise that repeating it proves the work. In one measured tox
 // session the baseline check harvested and ran `chmod 000 tox.ini` from the
-// pasted issue. Only the acceptance is read with [declaredChecks]; the nodes'
-// own doors are gathered below.
+// pasted issue. When nobody could write an acceptance, [routeAcceptance] frames
+// the person's words as one; that fallback is still read as the ask rather than
+// allowed through in the acceptance's coat. The nodes' own doors are gathered
+// below.
 //
 // AND EVERY UNIT OF WORK THAT LANDED CONTRIBUTES ITS OWN DOOR, which is BOTH of
 // task_checks.go's sources at once ([auditDoorFor]): the checks that node's
@@ -107,7 +109,12 @@ func (a *Agent) sessionChecks() []string {
 	// of these, so it is the directory a declared check has to be runnable in —
 	// the same tree, asked the same question, as the one the checks are run in.
 	tree := a.deliverableTree()
-	checks := invocableChecks(tree, declaredChecks(principal.Acceptance(), tree))
+	acceptance := principal.Acceptance()
+	from := checksFromWork
+	if acceptanceIsAsk(acceptance) {
+		from = checksFromAsk
+	}
+	checks := invocableChecks(tree, declaredChecks(acceptance, tree, from))
 	graph := a.tasker()
 	if graph == nil {
 		return trimChecks(checks)
@@ -130,6 +137,14 @@ func (a *Agent) sessionChecks() []string {
 			invocableChecks(tree, auditDoorFor(node, auditPlace{ground: tree, ran: tree}).checks))
 	}
 	return trimChecks(checks)
+}
+
+// acceptanceIsAsk recognizes the one frame [routeAcceptance] writes when no
+// one could compose a done-condition and the person's own words have to stand.
+// The frame is the source of truth, so this reading cannot drift from its only
+// writer into treating a pasted reproduction as the work's promise.
+func acceptanceIsAsk(acceptance string) bool {
+	return strings.HasPrefix(acceptance, routeAskAcceptance)
 }
 
 // invocableChecks turns one source's declared spans into the commands that

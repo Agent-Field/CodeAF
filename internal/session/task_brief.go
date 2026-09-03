@@ -87,11 +87,8 @@ const briefAskLimit = 6000
 // the same document — the person's quoted path and the copy's — the mapping is
 // said outright in a section of its own rather than smuggled into the quotation.
 func composeBrief(request, work, deliverable, acceptance, expects string, origin taskOrigin, own taskCopy) string {
-	request = clip(strings.TrimSpace(request), briefAskLimit)
-	work = strings.TrimSpace(work)
-	if work == request {
-		work = ""
-	}
+	request = briefAskText(request)
+	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
 	// here, BEFORE the binding below erases the evidence. A brief that never
 	// spelled the folder out has nothing to disambiguate and gets the document
@@ -318,6 +315,25 @@ func pathByte(b byte) bool {
 		return true
 	}
 	return strings.IndexByte("/.-_~+", b) >= 0
+}
+
+// briefAskText is the person's request exactly as [composeBrief] prints it.
+// The bound belongs to that printed account, so every reader of the seam sees
+// the same words rather than clipping a second way.
+func briefAskText(request string) string {
+	return clip(strings.TrimSpace(request), briefAskLimit)
+}
+
+// briefWorkText is the work's own account exactly as [composeBrief] prints it.
+// THE SAME ACCOUNT IS PRINTED ONCE: a person-authored task has no paraphrase,
+// so work equal to the bounded ask is absent rather than repeated under a
+// second heading.
+func briefWorkText(ask, work string) string {
+	work = strings.TrimSpace(work)
+	if work == ask {
+		return ""
+	}
+	return work
 }
 
 // originPointer is the fold-marker idiom applied to one line: the tools that
