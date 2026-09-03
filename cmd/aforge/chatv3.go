@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"strconv"
@@ -66,7 +65,7 @@ func v3OpenRouterConnection(settings config.Config, interactive bool) func(conte
 }
 
 func openChatV3(name string, args []string, pickSession bool) error {
-	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags := commandFlags(name)
 	model := flags.String("model", "", "model slug for this session; beats the configured default")
 	once := flags.String("once", "", "run one message non-interactively, print the reply, and exit")
 	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
@@ -96,7 +95,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	debug := flags.Bool("debug", false,
 		"keep the full record of this run — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG; /debug turns it on mid-session)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the

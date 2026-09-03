@@ -23,6 +23,11 @@ import (
 // observations behind it and one with three hundred are different claims, and
 // the table is the only place that difference can be seen.
 func runModels(args []string) error {
+	// `aforge models --help` used to run the command with the flag silently
+	// ignored, because this door parses no flags at all (usage.go).
+	if askedForHelp(args) {
+		return commandHelp("models")
+	}
 	settings, err := config.Load()
 	if err != nil {
 		return err

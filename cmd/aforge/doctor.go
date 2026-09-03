@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -63,10 +62,9 @@ func runDoctor(args []string) error {
 // runDoctorWith is doctor with its one outside reading injectable: the standing
 // watch.
 func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
-	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("doctor")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

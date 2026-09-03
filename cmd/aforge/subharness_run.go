@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -52,14 +51,14 @@ import (
 // above the seam needs a provider key, a workspace and a network; everything
 // below it needs a registry, some bytes, and two writers.
 func runSubharnessCommand(args []string) error {
-	flags := flag.NewFlagSet("run subharness", flag.ContinueOnError)
+	flags := commandFlags("run subharness")
 	input := flags.String("input", "",
 		`the typed input, as a JSON file — "-" reads it from what is piped in`)
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
 	model := flags.String("model", "", modelFlagHelp)
 	journalPath := flags.String("journal", "",
 		"keep an account of every call this run makes in this file, one JSON object per line")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()
