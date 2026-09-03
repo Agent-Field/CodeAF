@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -27,11 +26,10 @@ func runRebuild(args []string) error {
 }
 
 func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
-	flags := flag.NewFlagSet("rebuild", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("rebuild")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	yes := flags.Bool("yes", false, "skip the confirmation prompt")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

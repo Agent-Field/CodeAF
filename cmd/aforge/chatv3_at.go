@@ -38,7 +38,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -205,10 +204,10 @@ func askPairingCode(name string) (string, error) {
 // rule, and nothing for a person to configure on their router — the machine
 // walks out to the relay and stays there.
 func runServe(args []string) error {
-	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
+	flags := commandFlags("serve")
 	workspace := flags.String("workspace", "", "directory a connection works in when it does not name one; empty is the directory this command was run in")
 	relayAddress := flags.String("relay", "", "the relay to be reachable through; empty reads "+pair.RelayEnv)
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

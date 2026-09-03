@@ -1684,6 +1684,37 @@ such limit. If a page is longer than your screen, pipe it: `aforge manual keys |
 
 `aforge --help` lists it beside the other commands.
 
+## aforge <command> --help — asking one command what it takes, which is not a failure
+
+Every command in the terminal answers `--help` (and `-h`) with its own usage: the line
+that names its shape and its flags, then its flags one to a row, then
+
+```
+run `aforge --help` for every command and the environment table.
+```
+
+It goes to **standard output** and the command leaves with **0**. Asking a program what
+it takes is not a failure, so a Makefile or a CI step that runs `aforge do --help` to
+check the binary is healthy reads a command that worked. This includes the commands that take
+no flags at all — `aforge show --help`, `aforge models --help` and `aforge cache --help`
+answer the same way rather than reading `--help` as a filename or ignoring it.
+
+**A flag that does not exist is still a refusal**, and it is said once, on the **error
+stream**, and leaves with **1**:
+
+```
+error: flag provided but not defined: -nosuchflag
+  aforge do   "<task>" [-w dir] [--json] [-o file] ...
+```
+
+— the sentence, then that command's same usage, so the fix is on the screen beside the
+complaint. Nothing goes to standard output, so a script reading the answer never sees a
+refusal mixed into it.
+
+The usage one command prints is **read out of the table** `aforge --help` prints, not
+typed out a second time beside the flags, so the two can never disagree about what a
+command takes or what its codes mean.
+
 ## What /manual refuses — a page name that does not exist, and a question with no answer
 
 A **name** you type is an exact request, so it gets an exact answer or an exact refusal —

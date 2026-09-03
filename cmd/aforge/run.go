@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -35,7 +34,7 @@ func runExecute(args []string) error {
 	if len(args) > 0 && args[0] == "subharness" {
 		return runSubharnessCommand(args[1:])
 	}
-	flags := flag.NewFlagSet("run", flag.ContinueOnError)
+	flags := commandFlags("run")
 	workspace := flags.String("w", "", "workspace directory (default ./aforge-run-<goal hash>)")
 	output := flags.String("o", "", "write the completed graph as JSON to this file")
 	concurrency := flags.Int("j", 32, "how many leaves may run at once")
@@ -46,7 +45,7 @@ func runExecute(args []string) error {
 	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model ("+planLadderHelp+")")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()

@@ -359,7 +359,7 @@ func usage() error {
 }
 
 func runPlan(args []string) error {
-	flags := flag.NewFlagSet("plan", flag.ContinueOnError)
+	flags := commandFlags("plan")
 	output := flags.String("o", "", "write the graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	briefs := flags.Bool("brief", false, "write a self-contained instruction for every leaf")
@@ -371,7 +371,7 @@ func runPlan(args []string) error {
 	// the person naming the goal also names the material it is about — which is
 	// exactly when the material is worth looking at.
 	workspace := flags.String("w", "", "directory holding the material this goal is about, read once to ground the plan")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	goal, err := readText(flags.Args())
@@ -513,13 +513,13 @@ func unsettledSizing(graph *plan.Graph) []plan.Node {
 // actually missing is not the picture but the difference between that picture
 // and the workspace now, and a delta is a different thing from a snapshot.
 func runRevise(args []string) error {
-	flags := flag.NewFlagSet("revise", flag.ContinueOnError)
+	flags := commandFlags("revise")
 	output := flags.String("o", "", "write the revised graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	done := flags.String("done", "", "mark these node ids finished before revising")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model ("+planLadderHelp+")")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -582,6 +582,12 @@ func runRevise(args []string) error {
 }
 
 func runShow(args []string) error {
+	// `aforge show --help` used to answer `open --help: no such file or
+	// directory` — a filesystem error about a flag — because this door parses
+	// no flags at all and read the argument as a path (usage.go).
+	if askedForHelp(args) {
+		return commandHelp("show")
+	}
 	if len(args) < 1 {
 		return fmt.Errorf("usage: aforge show <graph.json>")
 	}

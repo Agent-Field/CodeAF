@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -18,10 +17,9 @@ func runWhy(args []string) error {
 }
 
 func runWhyTo(args []string, output io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("why", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("why")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 {

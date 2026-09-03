@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"strings"
 	"time"
@@ -11,9 +10,9 @@ import (
 )
 
 func runServices(args []string) error {
-	flags := flag.NewFlagSet("services", flag.ContinueOnError)
+	flags := commandFlags("services")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
