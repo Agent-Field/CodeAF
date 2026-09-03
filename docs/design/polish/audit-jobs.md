@@ -310,3 +310,101 @@ After: `docs/design/polish/frames/jobpage-hint-after.60x30.txt`
   `render.go` / `phase.go` — files other lanes hold.
 - **Row eleven** is left for the reason the section above already gives: what it asks
   for is a verb that UNPARKS, and there is no seam behind one.
+
+---
+
+## fixed — the second pass
+
+Frames prefixed `chat2-` were captured from `bin/aforge` in a real terminal on
+socket `polish-chat2`, against a demo home freshly seeded by
+`cmd/aforge-demo-home` (the room fixture, the wide name and all). Both fixes
+below were REVERTED and their tests watched to fail before the fix went back.
+
+**Row 7 — a task's price is drawn twice on one home card.** The NAME ROW keeps
+it: it is right-aligned in the money ink at the card's own margin, which puts
+every task's price in one column a reader can run an eye down, where the
+under-block's copy sat mid-sentence between a state word and a file count, in
+the dim, lined up with nothing. The under-block is now TOLD the row above said
+it rather than left to guess, so the band that draws the price nowhere else
+(`drawWorkBand`, whose name row carries the age) is untouched.
+files: `internal/tui3/homeband_work.go` (`homeWorkUnderSaid`),
+`internal/tui3/place_home.go` (`app.homeCardWork`)
+test: `TestACardDrawsATasksPriceOnceAndNotTwice`
+(`internal/tui3/homecard_test.go`) — scoped to the work band, because the card's
+own totals band (`touched 4 files · spent $0.52`) is a different fact about a
+different subject and a conversation that ran one task is where the two agree.
+reverted: the failure prints the audit's card —
+`? Cut every list … $0.52` / `? needs your look · The four list…` /
+`4 files · $0.52`.
+before: `frames/seed-home.160x50.txt` ·
+after: `frames/chat2-home-after.160x50.txt` — `? Cut every list on the task …
+$0.52` / `? needs your look · The four list…` / `4 files`, with the file count
+back out of the ellipsis. (No card is drawn under 160 columns, so the 120/80/60
+frames beside it are the list alone.)
+
+**Row 12 — the status line under a room wraps onto two lines.** NOT FIXED, and
+half of it was already true. The fix shape's second half — "rank `crew balanced`
+below the money and the tokens" — is `dropOrder` (`render.go`), where `segCrew`
+is the SECOND thing given up and both `segCost` and `segCtx` are last. What the
+frames show is the other half: under `hudWrap` (100) the ladder stops dropping
+the moment the telemetry alone fits the width and then always takes a second
+row, so at 80 nothing is dropped at all. Making the line one row at every width
+is a real design decision against a law that is written down twice — the
+`statusRows` header ("the only place this surface spends a row on chrome, and it
+spends it exactly where the alternative is truncating the numbers a person
+opened the terminal to read") and a table in `bundle_test.go` that pins two rows
+at 70 and 60 WITH every segment surviving. `statusHeight` already keeps the
+frame's geometry in step with it, so the composer does not drift out of the
+layout's accounting. Overturning that wants the mandate row 7 of the chat audit
+was given; this lane did not have it for this row and did not take it.
+
+**S12 (LEDGER) — `dollars` renders a positive cost as `$0.0000`.** Fixed here
+because the caller list is this file's as much as the chat's. `dollars` and
+`railFigure` were ALREADY the same under a cent (`%.4f` both) — the audit's
+premise that one had solved it is half true: four places is right down to a
+hundredth of a cent and silently wrong under one. Both now read one rule with a
+floor: `<$0.0001`, which never rounds to a lie and holds ONE width for every
+amount beneath it, which is what a line whose stillness is the point needs. More
+decimals were the other answer and are worse — `$0.000006` is a figure nobody
+acts on and its width depends on how small it is.
+files: `internal/tui3/settingspend.go` (`subCent`, `moneyFloor`),
+`internal/tui3/app.go` (`dollars`, three lines inside the one function),
+`internal/manual/chat/screen.md`
+tests: `TestAPositiveCostIsNeverDrawnAsZeros`,
+`TestTheMoneyFloorMovesNoFigureAboveIt` (`internal/tui3/settingspend_test.go`)
+reverted: `a cost of 6e-06 is drawn "$0.0000"`.
+Every caller was checked: the only readings that move are amounts in
+(0, $0.00005), so `$0.00`, `$0.0001`, `$0.0052`, `$1.63` and the limits' whole
+dollars are byte-identical. It is visible live in
+`frames/chat2-phase-after.120x40.txt`, where a turn's first sub-cent cost reads
+`<$0.0001` on the status line.
+
+**Row 8 — a name's combining accent is dropped. NOT AFORGE'S LINE, and this
+lane found where it is.** Every layer named in the row preserves the mark —
+`listName`, `homeName`, `humanName`, `titleCase`, `raiseFirst`, `unpackName`,
+`fit`, `bandSides` and `switcherSides` all return
+`国際化とレイアウト幅 🌏 the Café Pricing Page` with U+0301 in the bytes, at every
+width that does not cut before the `é`. The loss is in the RENDERER, and the
+bisect is two tmux panes on one socket:
+
+- a shell `printf` of the same decomposed string, captured with
+  `capture-pane -p`, comes back `c a f e 314 201` — tmux keeps the mark;
+- a fifteen-line `charm.land/bubbletea/v2 v2.0.8` program whose `View` returns
+  that same string, captured the same way, comes back `c a f e` — the mark is
+  gone before tmux sees it.
+
+The mechanism: bubbletea asks the terminal for mode 2027 (Unicode core) at
+startup and switches its cell buffer to `ansi.GraphemeWidth` only if the
+terminal says yes (`tea.go:794`). tmux says no, so the buffer stays on
+`ansi.WcWidth`, and `cellbuf`'s `printString` resets the cell it just wrote
+BEFORE the zero-width rune arrives — so the mark lands on a fresh cell of its
+own instead of on the glyph it belongs to and is dropped. Nothing in this
+repository walks those runes.
+
+What could be done about it here is one line at the frame seam — normalize the
+frame to NFC before handing it to bubbletea — and that seam is
+`internal/tui3/view.go`'s `frame()`, which this lane does not hold. It is a
+canonical-equivalence normalization and not a rewrite: it preserves the accent,
+where today's behaviour deletes it. The other answer is upstream. Either way the
+row is not `home.go:4769` and no amount of work in `internal/tui3`'s words layer
+will move it.

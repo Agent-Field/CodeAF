@@ -172,9 +172,39 @@ func railFigure(usd float64) string {
 		// AND A SUB-CENT LIMIT IS STILL A LIMIT. Two decimals turn a tenth of a
 		// cent into `$0.00`, which is the one reading this tab exists to never
 		// give: the figure a person typed rendered as its own opposite.
-		return fmt.Sprintf("$%.4f", usd)
+		return subCent(usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
+}
+
+// moneyFloor is the smallest amount this surface writes as a figure: a
+// hundredth of a cent, which is four places after the point. It is here rather
+// than spelled into a format string twice because it is the number [subCent]
+// compares against AND the number it prints.
+const moneyFloor = 0.0001
+
+// subCent is how an amount SMALLER THAN A CENT is written, and it is the one
+// rule both [railFigure] and [dollars] read.
+//
+// THE DEFECT IT FIXES. Four places is right down to a hundredth of a cent and
+// silently wrong under one: a real, positive, non-zero cost of six millionths
+// of a dollar came out as `$0.0000`, which is four zeros where the emptiness
+// law has taught every reader of this surface to see nothing at all. That is
+// the law's own failure mode inverted — it forbids drawing a zero for something
+// unknown, and this drew a zero for something known and spent. A person
+// checking what a turn cost read "nothing", and nothing is the one thing it was
+// not.
+//
+// SO THE FLOOR SAYS IT IS A FLOOR. `<$0.0001` is eight cells, it never rounds
+// to a lie, and it holds one width for every amount beneath it — which is what
+// the status line needs from a segment whose stillness is the point. More
+// decimals were the other answer and they are worse: `$0.000006` is a figure
+// nobody acts on, and the number of cells it costs depends on how small it is.
+func subCent(usd float64) string {
+	if usd < moneyFloor/2 {
+		return "<" + fmt.Sprintf("$%.4f", moneyFloor)
+	}
+	return fmt.Sprintf("$%.4f", usd)
 }
 
 // taskReading is the rail a task actually runs under, said plainly.

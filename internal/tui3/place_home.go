@@ -755,7 +755,10 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 		// tick with a price on it would be the screen calling every outcome the
 		// same outcome.
 		if homeTaskWord(entry, row) != doneWord {
-			body = append(body, homeWorkUnder(entry, row, ctx.width, pal)...)
+			// AND THE MONEY IS SAID ONCE. The name row above right-aligned it a
+			// line ago; the under-block is told so rather than asked to guess
+			// (homeband_work.go's [homeWorkUnderSaid]).
+			body = append(body, homeWorkUnderSaid(entry, row, ctx.width, pal, cost != "")...)
 		}
 		drawn = append(drawn, body)
 		named = append(named, entry)

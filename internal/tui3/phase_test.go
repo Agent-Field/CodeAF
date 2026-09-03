@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE PHASE CLOCK ─────────────────────────────────────────────────────────
@@ -32,6 +33,17 @@ func phaseApp(t *testing.T, now time.Time) *app {
 	a.state = stateWorking
 	a.clock = func() time.Time { return now }
 	return a
+}
+
+// answerArriving puts a streaming answer on the transcript, which is what takes
+// the working line off the frame — and therefore what hands the phase words to
+// the STATUS LINE's rider (render.go's [app.pulseHoldsThePhase]). Every test
+// below that is about the rider's own content stages itself here, because the
+// phase has exactly one home per frame and this is the state in which that home
+// is the rider.
+func answerArriving(a *app) {
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "the parser is"})
+	a.live = len(a.entries) - 1
 }
 
 // EVERY STATE, IN THE WORDS A PERSON READS. This is the table the surface is
@@ -201,6 +213,7 @@ func TestAStalledStreamCountsTowardsTheRescueAndThenNamesIt(t *testing.T) {
 func TestAHiddenRolesPhaseNeverTouchesTheClock(t *testing.T) {
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	a := phaseApp(t, now)
+	answerArriving(a)
 
 	PostPhaseNews(PhaseNews{
 		Phase: provider.PhaseThinking, Since: now.Add(-12 * time.Second), Lane: "Friendli", Rate: 38,
@@ -521,6 +534,7 @@ func TestTheIdentityClusterShortensItsRiderRatherThanBeingClipped(t *testing.T) 
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	a := phaseApp(t, now)
 	a.title = "porting the parser"
+	answerArriving(a)
 	PostPhaseNews(richPhase(now))
 
 	// Unbounded, the cluster is everything it has always been plus the ladder's
@@ -568,6 +582,7 @@ func TestAnotherWindowsWorkNeverTakesThisRow(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	a.state = stateWorking
+	answerArriving(a)
 
 	before := a.servedRider()
 	PostPhaseNews(PhaseNews{
@@ -593,5 +608,130 @@ func TestAnotherWindowsWorkNeverTakesThisRow(t *testing.T) {
 	})
 	if got := a.servedRider(); got == before {
 		t.Fatalf("the conversation's own phase did not reach its own row: %q", got)
+	}
+}
+
+// ── ONE INSTANT FOR THE WHOLE WAIT ──────────────────────────────────────────
+
+// A CLOCK THAT COUNTS THE WRONG WAY IS A SURFACE NOBODY TRUSTS AGAIN. Every
+// posting layer is honest about the stage it is announcing — a retry builds a
+// whole new clock for its attempt, and the surface's own two sentences about a
+// stall carry their own instants — but a person reads one number and it is "how
+// long have I been waiting", so a phase change used to halve it while they
+// watched. [phaseWaiting] is the family that shares one start, and
+// [PostPhaseNews] is the one door that hands it out.
+func TestThePhaseClockNeverCountsBackwardsAcrossOneWait(t *testing.T) {
+	start := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
+	now := start
+	a := phaseApp(t, now)
+	a.clock = func() time.Time { return now }
+
+	read := func() string {
+		news, ok := a.livePhase()
+		if !ok {
+			t.Fatalf("no phase is live at %s", now.Sub(start))
+			return ""
+		}
+		return phaseWords(news, a.now())
+	}
+
+	// The request leaves, and the handshake is the first thing anybody is told.
+	PostPhaseNews(PhaseNews{Phase: provider.PhaseConnecting, Since: start,
+		Model: phaseModel, Role: lane.RoleTalk, At: start})
+	PostPhaseNews(PhaseNews{Phase: provider.PhaseFirstWord, Since: start,
+		Model: phaseModel, Role: lane.RoleTalk, At: start})
+
+	// Nineteen seconds in, the controller reports every lane slow — and posts
+	// its own, later, instant for the sentence it is adding.
+	now = start.Add(19 * time.Second)
+	PostPhaseNews(PhaseNews{Phase: session.PhaseAllSlow, Since: start.Add(9 * time.Second),
+		Model: phaseModel, Role: lane.RoleTalk, At: now})
+	if got := read(); !strings.Contains(got, "19s") {
+		t.Fatalf("nineteen seconds into one wait the clock reads %q, want the wait's own 19s — a later phase may not restart it", got)
+	}
+
+	// Ten seconds after that the retry loop opens a brand new attempt, with a
+	// brand new clock of its own. The wait a person is in is twenty-nine
+	// seconds old and the line may not say otherwise.
+	now = start.Add(29 * time.Second)
+	PostPhaseNews(PhaseNews{Phase: provider.PhaseFirstWord, Since: now, Lane: "OpenInference",
+		Model: phaseModel, Role: lane.RoleTalk, At: now})
+	if got := read(); !strings.Contains(got, "29s") {
+		t.Fatalf("ten seconds later the clock reads %q, want 29s — it counted backwards, which is what a person reads as the program losing track of itself", got)
+	}
+}
+
+// AND A STAGE OF WORK KEEPS ITS OWN CLOCK, because that number answers a
+// different question: "running go test · 41s" is about the test, not about the
+// turn, and a tool that started ten seconds ago has been running ten seconds
+// however long the wait before it was.
+func TestWorkInProgressKeepsItsOwnClockAndDoesNotInheritTheWait(t *testing.T) {
+	start := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
+	now := start
+	a := phaseApp(t, now)
+	a.clock = func() time.Time { return now }
+
+	PostPhaseNews(PhaseNews{Phase: provider.PhaseFirstWord, Since: start,
+		Model: phaseModel, Role: lane.RoleTalk, At: start})
+	now = start.Add(40 * time.Second)
+	PostPhaseNews(PhaseNews{Phase: provider.PhaseRunning, Detail: "go test", Since: now.Add(-4 * time.Second),
+		Model: phaseModel, Role: lane.RoleTalk, At: now})
+
+	news, ok := a.livePhase()
+	if !ok {
+		t.Fatal("no phase is live")
+	}
+	if got := phaseWords(news, a.now()); got != "running go test · 4s" {
+		t.Fatalf("a tool four seconds old reads %q, want %q — a stage's clock is its own", got, "running go test · 4s")
+	}
+
+	// And the wait that follows the work is a NEW wait, measured from itself.
+	now = start.Add(50 * time.Second)
+	PostPhaseNews(PhaseNews{Phase: provider.PhaseFirstWord, Since: now,
+		Model: phaseModel, Role: lane.RoleTalk, At: now})
+	now = start.Add(53 * time.Second)
+	news, _ = a.livePhase()
+	if got := phaseWords(news, a.now()); got != "first word · 3.0s" {
+		t.Fatalf("the wait after a tool ran reads %q, want %q — it must not inherit the wait before the tool", got, "first word · 3.0s")
+	}
+}
+
+// ── ONE HOME FOR THE PHASE WORDS ────────────────────────────────────────────
+
+// THE SAME SENTENCE WAS DRAWN TWICE ON ONE FRAME, VERBATIM, TWO ROWS APART:
+// `·· paced · retry in 2s` on the pulse and `… · paced · retry in 2s` on the
+// status line. Two live things moving in lockstep saying one fact, and the
+// second copy was spending the cells the bill and the watch count needed.
+//
+// The rule is [app.pulseHoldsThePhase]: the pulse owns the words while it is on
+// the frame, and the rider takes them up the moment it is not — so the phase is
+// on exactly one row in every state of a turn, and never on two.
+func TestThePhaseWordsAreDrawnOnOneRowAndNeverTwice(t *testing.T) {
+	now := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
+	a := phaseApp(t, now)
+	a.title = "porting the parser"
+	PostPhaseNews(PhaseNews{Phase: provider.PhasePaced, Since: now.Add(-2 * time.Second),
+		Deadline: now.Add(2 * time.Second), Model: phaseModel, Role: lane.RoleTalk, At: now})
+
+	const words = "paced · retry in 2s"
+
+	// NOTHING HAS COME BACK YET: the pulse is on the frame and it has the words.
+	pulse := plain(mustLine(t, a))
+	if !strings.Contains(pulse, words) {
+		t.Fatalf("the pulse does not carry the phase: %q", pulse)
+	}
+	if line := plain(a.status(160)); strings.Contains(line, "paced") {
+		t.Fatalf("the phase is on the status line as well as the pulse — one fact on two rows:\npulse  %q\nstatus %q", pulse, line)
+	}
+
+	// THE ANSWER STARTS ARRIVING: the pulse goes, and the rider takes the words
+	// up rather than leaving the frame with no phase on it at all.
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "the parser is"})
+	a.live = len(a.entries) - 1
+	if _, on := a.ellipsis(); on {
+		t.Fatal("the pulse is still drawn under a streaming answer, so this case tests nothing")
+	}
+	if line := plain(a.status(160)); !strings.Contains(line, words) {
+		t.Fatalf("with the pulse gone the phase is on no row at all: %q", line)
 	}
 }

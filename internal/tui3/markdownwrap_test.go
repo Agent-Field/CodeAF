@@ -278,3 +278,115 @@ func indexRow(rows []string, needle string) int {
 	}
 	return -1
 }
+
+// ── A LINE OF CODE IS NEVER CUT, AT ANY WIDTH ───────────────────────────────
+
+// THE DEFECT: a fenced line longer than the frame was truncated and there was no
+// way to see the rest — no door, no key, no horizontal scroll, and at 80 columns
+// not even an ellipsis to say bytes were missing. The same answer was whole at
+// 160 and cut at 120, which is the kind of difference that sends somebody
+// hunting a bug in their own code that is not there.
+//
+// The wrap the phone tier has always had now runs at every width
+// (markdown.go's [segmentedMarkdown]), so the test is the same sentence asked of
+// four frames: every byte of the source is on the screen, and the rows that
+// carry the remainder say so with [mdContMark].
+func TestALineOfCodeIsWrappedRatherThanCutAtEveryWidth(t *testing.T) {
+	const long = "func (a *app) servedRiderAt(width int) string { room := width; if room >= 0 { room -= ansi.StringWidth(riderLead) } }"
+	doc := "Here is the change.\n\n```go\n" + long + "\nshort()\n```\n\nAnd after."
+
+	for _, width := range []int{160, 120, 80, 60, 44} {
+		rows := renderMarkdown(doc, width)
+		var code []string
+		for _, row := range rows {
+			plainRow := plain(row)
+			if !copyCodeRow(plainRow) {
+				continue
+			}
+			trimmed := strings.TrimLeft(plainRow, " ")
+			trimmed = strings.TrimPrefix(trimmed, mdContMark)
+			code = append(code, strings.TrimSpace(strings.TrimPrefix(trimmed, tokens.GlyphCodeGutter)))
+		}
+		joined := strings.Join(code, " ")
+		if strings.Contains(joined, glyphMore) {
+			t.Fatalf("at %d columns the fence is still truncated:\n%s", width, strings.Join(code, "\n"))
+		}
+		// EVERY WORD OF THE SOURCE IS ON THE SCREEN. Joined back on the wrap
+		// points, the drawn rows say what was written.
+		for _, word := range strings.Fields(long) {
+			if !strings.Contains(joined, word) {
+				t.Fatalf("at %d columns the fence lost %q:\n%s", width, word, strings.Join(code, "\n"))
+			}
+		}
+		// AND NO ROW OVERSHOOTS THE FRAME it was drawn for.
+		for _, row := range rows {
+			if got := ansi.StringWidth(plain(row)); got > width {
+				t.Fatalf("at %d columns a row is %d cells wide: %q", width, got, plain(row))
+			}
+		}
+	}
+}
+
+// AND A ROW THAT CARRIES THE REST OF A LINE SAYS SO, so a reader can tell one
+// long line from two short ones — which is the whole of what a wrap owes the
+// person reading source.
+func TestAWrappedCodeRowIsMarkedAndAnUnwrappedOneIsNot(t *testing.T) {
+	doc := "```go\nx := 1\n```"
+	for _, row := range renderMarkdown(doc, 120) {
+		if strings.Contains(plain(row), mdContMark) {
+			t.Fatalf("a line that fitted was marked as a continuation: %q", plain(row))
+		}
+	}
+
+	long := "x := " + strings.Repeat("aVeryLongIdentifier + ", 12) + "1"
+	marked := 0
+	for _, row := range renderMarkdown("```go\n"+long+"\n```", 120) {
+		if strings.Contains(plain(row), mdContMark) {
+			marked++
+		}
+	}
+	if marked == 0 {
+		t.Fatalf("a line too long for 120 columns was drawn with no continuation marker at all:\n%s",
+			strings.Join(renderMarkdown("```go\n"+long+"\n```", 120), "\n"))
+	}
+}
+
+// AND COPY MODE STILL SEES ONE BLOCK. `a` selects the run of code rows around
+// the cursor, and it read that run off the gutter alone — so a wrapped line
+// ENDED the run and the yank took the top half of the block. The paste carries
+// the source and neither the hairline nor the marker.
+func TestCopyModeTakesAWrappedFenceWholeAndPastesNoMarkers(t *testing.T) {
+	long := "x := " + strings.Repeat("aVeryLongIdentifier + ", 12) + "1"
+	rows := renderMarkdown("```go\n"+long+"\ny := 2\n```", 120)
+	text := make([]string, len(rows))
+	for i, row := range rows {
+		text[i] = plain(row)
+	}
+	c := &copyMode{text: text}
+
+	at := -1
+	for i, row := range text {
+		if strings.Contains(row, mdContMark) {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("nothing wrapped, so this case tests nothing:\n%s", strings.Join(text, "\n"))
+	}
+	from, to, ok := c.fenceAt(at)
+	if !ok {
+		t.Fatalf("a wrapped code row is not read as part of a fence: %q", text[at])
+	}
+	if !strings.Contains(text[to], "y := 2") {
+		t.Fatalf("the block was cut at the wrapped row: rows %d-%d end on %q", from, to, text[to])
+	}
+	var pasted []string
+	for _, row := range text[from : to+1] {
+		pasted = append(pasted, copyClean(row))
+	}
+	joined := strings.Join(pasted, "")
+	if strings.Contains(joined, mdContMark) || strings.Contains(joined, tokens.GlyphCodeGutter) {
+		t.Fatalf("the paste carries the frame's own marks:\n%q", joined)
+	}
+}

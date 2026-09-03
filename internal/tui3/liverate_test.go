@@ -111,6 +111,14 @@ func TestTheRidersSpellingGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 	a.title = "porting the parser"
 	a.cost = 1.12
 	PostPhaseNews(richPhase(now))
+	// AND THE ANSWER IS ARRIVING, WHICH IS WHEN THE RIDER OWNS THE PHASE.
+	// The phase words have exactly one home per frame (render.go's
+	// [app.pulseHoldsThePhase]): the pulse holds them while it is on the frame,
+	// and the moment text starts landing the pulse goes and the status line
+	// takes them up. This test is about the LADDER those words are fitted on,
+	// so it is staged where they are on the status line.
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "the parser is"})
+	a.live = len(a.entries) - 1
 
 	// Wide enough for everything: both clusters whole.
 	wide := plain(a.status(160))

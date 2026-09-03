@@ -1371,10 +1371,7 @@ func (a *app) pulse() string {
 // while any call is spinning: the text and the spinner each already answer "is
 // this alive?", and two answers to one question is one too many.
 func (a *app) ellipsis() (string, bool) {
-	if a.state != stateWorking || a.running() {
-		return "", false
-	}
-	if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].text != "" && !a.quiet() {
+	if !a.ellipsisShowing() {
 		return "", false
 	}
 	line := a.pal.accent("  " + a.pulse())
@@ -1405,6 +1402,44 @@ func (a *app) ellipsis() (string, bool) {
 		line += a.pal.dim(stillWorkingWord)
 	}
 	return line, true
+}
+
+// ellipsisShowing reports whether the pulse row is on the frame at all — which
+// is [app.ellipsis]'s own three refusals asked as a question, so that a second
+// row can find out whether the pulse is already speaking without building it.
+//
+// IT EXISTS FOR THE PHASE, and phase.go's words are the only thing that reads
+// it. See [app.pulseHoldsThePhase].
+func (a *app) ellipsisShowing() bool {
+	if a.state != stateWorking || a.running() {
+		return false
+	}
+	if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].text != "" && !a.quiet() {
+		return false
+	}
+	return true
+}
+
+// pulseHoldsThePhase reports whether the pulse is already saying this phase, and
+// it is the answer to WHICH ROW OWNS THE PHASE WORDS.
+//
+// THE DEFECT THIS FIXES, measured: the same sentence was drawn twice on one
+// frame, verbatim, two rows apart — `·· paced · retry in 2s` on the pulse and
+// `… · paced · retry in 2s` on the status line — two live things moving in
+// lockstep saying one fact. A reader given the same words twice does not read
+// them twice; they check whether they are the same words, which is a cost paid
+// on every frame of every wait.
+//
+// THE PULSE WINS WHILE IT IS ON THE FRAME, for two reasons that point the same
+// way. It is where the answer is about to appear, so it is where the eye
+// already is; and the status line has a whole cluster of telemetry behind the
+// phase on its own drop ladder — the bill, the context meter, the watch count —
+// which the phase words were spending. The moment the pulse stops drawing (an
+// answer is streaming, a call is spinning, the turn is over) the rider takes the
+// phase up, so no state of a turn is without it. That is the whole rule: ONE
+// HOME AT A TIME, and never the same words on two rows.
+func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
+	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
 }
 
 // harnessStepRow is the live row under a running sub-harness's announcement:
@@ -2050,7 +2085,7 @@ func (a *app) servedRiderAt(width int) string {
 			room = 0
 		}
 	}
-	if news, ok := a.livePhase(); ok {
+	if news, ok := a.livePhase(); ok && !a.pulseHoldsThePhase(news) {
 		// THE RATE RIDES ONLY WHILE A TURN IS RUNNING, which is the rule both
 		// readings below already keep: what a phase IS remains attribution, and
 		// how fast it was writing is a claim about now. Zeroing it here rather
