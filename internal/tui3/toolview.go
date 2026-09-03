@@ -1154,7 +1154,7 @@ func (a *app) mark(e *entry) string {
 	default:
 		// A RESOLVED ROW IS OVER WHATEVER THE SESSION IS DOING. A room's lane
 		// closing settles the calls that were still in the air by stamping the end
-		// and nothing else (room.go's [app.roomResolveUnfinished]), and the page it
+		// and nothing else (room.go's [feed.resolveUnfinished]), and the page it
 		// settles them on sits under a conversation that may well still be working
 		// — so the state test below cannot be the only one, or a node that landed
 		// ten minutes ago spins for as long as the chat above it is busy.

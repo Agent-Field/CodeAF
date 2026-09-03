@@ -42,7 +42,7 @@ func scrolledApp(t *testing.T, height int) *app {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.height = height
 	// The lines are NUMBERED because the note lane refuses to write the same
-	// sentence twice running (app.go's [app.note]): sixty copies of one string
+	// sentence twice running (app.go's [feed.note]): sixty copies of one string
 	// is one row, and this fixture exists to be taller than the window.
 	for i := range 60 {
 		a.note("a line of transcript " + itoa(i))

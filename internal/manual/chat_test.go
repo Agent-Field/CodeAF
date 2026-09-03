@@ -455,6 +455,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// they have never seen before. The header has a stage the page did not
 		// list until the sizing reading was drawn on it.
 		{"the task page header says sizing the work", "reading-a-task-page"},
+		// WHAT A TASK'S PAGE SAYS ABOUT ITS OWN WORK, now that it says it: the
+		// figure at the end of a call's row, the line a cut attempt leaves
+		// behind, and the one dim line on the page that names a gate nobody
+		// pressed a key for. All three were facts the conversation had and a
+		// task's page did not (#252).
+		{"how long did that call take in the task", "reading-a-task-page"},
+		{"why does the task page say the model went quiet mid-reply", "reading-a-task-page"},
+		{"guardian allowed on my task page", "reading-a-task-page"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the

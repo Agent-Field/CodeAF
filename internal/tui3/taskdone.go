@@ -235,7 +235,7 @@ func (a *app) landedCard(node *taskNode) {
 	}
 	// A card lands in the middle of whatever the model was saying, exactly as a
 	// note did: the streaming block is closed first so the card is a block of its
-	// own rather than a paragraph inside the reply (app.go's [app.note]).
+	// own rather than a paragraph inside the reply (app.go's [feed.note]).
 	a.closeLive()
 	a.entries = append(a.entries, entry{kind: entryDone, turn: a.turn, done: card})
 	a.follow()

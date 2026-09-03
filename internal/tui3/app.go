@@ -746,23 +746,6 @@ type app struct {
 	// opening read may cross ssh; every page walked afterwards is cut from this
 	// slice on the local side.
 	transcript []session.DisplayEntry
-	// pendingReplyTags arrived before the first words of the answer they label.
-	pendingReplyTags []session.TaskReplyTag
-	// settledTurn is the last turn whose BOUNDARY HAS PASSED — the turn
-	// [app.settleTurn] has walked — and it is what makes a delta arriving after
-	// that boundary land settled rather than opening a block nothing owns.
-	//
-	// THE DEFECT IT CLOSES (#225). A turn ends twice on this surface and, in
-	// between, a stream can still speak: the tail of a reply the provider had
-	// already buffered, a straggler behind a stop. That delta found no live
-	// block, opened a second one under the answer, and the two costs landed
-	// together — the new block was live with no boundary left to settle it, and
-	// its mere presence demoted the answer above it into narration, which is
-	// drawn PLAIN (hierarchy.go). What the person read was their markdown reply
-	// come back as the characters it was typed as, until they asked something
-	// else. It is zero until the first turn ends, and turn numbers count from
-	// one, so nothing is settled by accident.
-	settledTurn int
 	// echoAt is the person's own line drawn before the engine agreed to it, or
 	// -1 when there is none — which is always, on a surface that is not hosted.
 	// echoTok is the token that names it, counting from one so that zero means
@@ -1081,10 +1064,9 @@ type app struct {
 	// again" (keeper.go's [behindStirMsg]).
 	stirs chan string
 
-	// lastDelta is when text last arrived, and mdAt when the live reply's
-	// prefix was last promoted to markdown.
+	// lastDelta is when text last arrived. The live reply's own markdown clock
+	// sits beside the block it belongs to ([feed.mdAt]).
 	lastDelta time.Time
-	mdAt      time.Time
 
 	// awaited is when a model request was last believed to go out with NOTHING
 	// back from it yet, or the zero time when the stream has spoken since.
@@ -2168,7 +2150,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		farRecord:           opts.TaskRecord,
 		farRoomRecord:       opts.TaskRoom,
 		farTasks:            opts.TaskIndex,
-		feed:                feed{live: -1, think: -1},
 		echoAt:              -1,
 		sel:                 -1,
 		unfolded:            map[int]bool{},
@@ -2193,10 +2174,11 @@ func newApp(ctx context.Context, opts Options) *app {
 		focused: true,
 	}
 	a.copy.mark = -1
-	// AND THE REDUCER IS TOLD WHAT THIS PAGE IS, which is the whole of the
+	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
 	// difference between a chat's transcript and any other (feed.go states the
-	// law the hooks exist to keep).
-	a.feed.hooks = a.feedHooks()
+	// law the hooks exist to keep). It is built here and not in the literal above
+	// because the hooks dispatch through this app's own methods.
+	a.feed = newFeed(a.feedHooks())
 	a.gitProbe = gitHead
 	if a.hosted() {
 		// THE BRANCH PROBE IS OFF OVER A CONNECTION, and off rather than wrong:
@@ -3386,7 +3368,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A call that was still being spelled out when the lane ended never
 		// became one, and one the journal left running will never come back: both
 		// rows say so and stop pulsing (room.go).
-		a.roomResolveUnfinished()
+		a.room.resolveUnfinished()
 		a.roomTouched()
 		return a, a.wake()
 
@@ -4009,6 +3991,11 @@ func (a *app) feedHooks() feedHooks {
 				a.refuseFormingCard()
 			}
 		},
+		// AND A CUT ATTEMPT TAKES ITS HALF-ARRIVED PROPOSAL WITH IT: the session
+		// throws away a partial call before it asks again, so keeping the card
+		// would join fragments from two different requests into one proposal
+		// ([feedHooks.retrying], task.go).
+		retrying: a.dropRetryingFormingCard,
 		closed: func(e *entry, ev session.Event) {
 			a.learnBackground(e, ev.Output)
 			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
@@ -4056,7 +4043,7 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 	// — the stream is still waited on below, and the short list that closes
 	// something already on the screen or carries the turn's accounting still
 	// lands ([keptAfterStop]) — and everything else is spent without a mark. This
-	// is not [app.dropLive]'s removal and does not disturb its asymmetry: nothing
+	// is not [feed.dropLive]'s removal and does not disturb its asymmetry: nothing
 	// that arrived before the key is taken away, and the partial reply the engine
 	// keeps is the partial reply on screen.
 	if a.windingDown() && !keptAfterStop(ev.Kind) {
@@ -4116,24 +4103,15 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		a.awaited = time.Now()
 	}
 
+	// WHAT THIS EVENT DOES TO THE TRANSCRIPT HAPPENS HERE, UNCONDITIONALLY, AND
+	// IT IS THE REDUCER'S LIST AND NOT THIS ONE (feed.go's [feed.ingest]). An
+	// event the reducer has nothing to say about writes nothing, so there is no
+	// gate to keep in step — and a gate is exactly what this was: a second
+	// spelling of the kinds feed.go handles, which a new event wired in the
+	// reducer would pass tests and the task room and never reach the chat.
+	a.ingest(ev)
 	switch ev.Kind {
-	case session.EventTaskReplyTags:
-		a.pendingReplyTags = append(a.pendingReplyTags, ev.TaskReplyTags...)
-		if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].kind == entryAssistant {
-			a.entries[a.live].replyTags = append(a.entries[a.live].replyTags, a.pendingReplyTags...)
-			a.pendingReplyTags = nil
-			a.entries[a.live].stale = true
-		}
-
-	case session.EventTextDelta:
-		a.appendText(ev.Text)
-		a.lastDelta = time.Now()
-
-	case session.EventThinking:
-		a.lastDelta = time.Now()
-
-	case session.EventReasoning:
-		a.appendThought(ev.Text)
+	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
 
 	case session.EventConsentRequest:
@@ -4299,16 +4277,8 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
 
-	case session.EventToolForming, session.EventToolAnnounced, session.EventToolBegin,
-		session.EventToolFinished, session.EventToolFailed, session.EventCompacting:
-		// THE REDUCER OWNS THESE WHOLE. What each of them does to the transcript
-		// is in feed.go and is the same wherever a transcript is kept; nothing on
-		// this page has anything to add to them.
-		a.ingest(ev)
-
 	case session.EventToolEnd:
-		a.ingest(ev)
-		// AND A FILE THE MODEL JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
+		// A FILE THE MODEL JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
 		// speculatively, silently, before anybody has clicked anything. It is the
 		// wave's whole answer to movement: no push was added to the wire, the
 		// engine does not know this is happening, and the only difference is that
@@ -4317,8 +4287,7 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		after = tea.Batch(after, a.prefetchWritten(ev))
 
 	case session.EventCompacted:
-		a.ingest(ev)
-		// AND THE SCROLLBACK'S BOOKKEEPING MOVES WITH THE PASS. Everything above
+		// THE SCROLLBACK'S BOOKKEEPING MOVES WITH THE PASS. Everything above
 		// this moment is now history the session keeps outside the transcript, and
 		// the mark this surface holds into the transcript was taken against a list
 		// that no longer exists — left alone it would hand up somebody else's
@@ -4336,40 +4305,12 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		a.follow()
 		a.touch()
 
-	case session.EventNudge:
-		// The loop caught itself repeating a call: a dim one-liner, never an
-		// interruption — the model is already being told, the person only
-		// needs to see that it was.
-		a.note(firstNonEmpty(ev.Hint, "stuck? nudged · "+ev.Tool))
-
-	case session.EventNotice:
-		// The adapter had to reshape the request to get it accepted — which
-		// attempt it is on, and what it took off (internal/provider's
-		// endpoints.go). Same dim one-liner as the nudge, and for the same
-		// reason: it is already being handled, the person only needs to see it.
-		a.note(ev.Text)
-
 	case session.EventRetrying:
-		// The request was cut and is being asked again (internal/provider's
-		// streamguard.go). EVERYTHING THE DEAD ATTEMPT DREW GOES, because the
-		// engine has already thrown away everything the dead attempt SAID: the
-		// text belongs to a response that will never exist, and half a dead
-		// answer sitting above the live one is the surface telling a story the
-		// transcript does not contain.
-		a.dropLive()
-		a.dropRetryingFormingTools()
-		a.resolveUnfinished()
-		// A PARTIAL PROPOSAL BELONGS TO THE DEAD ATTEMPT TOO. The session throws
-		// away a half-arrived call before it asks again, so keeping its card would
-		// join fragments from two different requests into one proposal.
-		a.dropRetryingFormingCard()
+		// The rows the dead attempt drew are gone already ([feed.retry], which
+		// the card hook is installed on). What is left is this page's own word
+		// for itself: the status line says "trying again" until the new stream
+		// speaks (the wait clock above clears it).
 		a.retrying = true
-		a.note(ev.Text)
-
-	case session.EventGuardianAllowed:
-		// The guardian answered for the person: quiet proof on the row's
-		// decision slot, the same place a person's answer would sit.
-		a.note("guardian allowed · " + ev.Tool)
 
 	case session.EventTurnDone:
 		// Both notes go in BEFORE the turn settles, so they land under the reply
@@ -4601,31 +4542,6 @@ func (a *app) dropForming() {
 	a.dropFormingCard()
 }
 
-// dropRetryingFormingTools removes calls that were still being spelled when a
-// provider request was cut. The session discards those partial calls rather
-// than recording them, so settling their rows as cancelled would leave a call
-// on screen that never existed in the transcript.
-//
-// Forming rows are normally the newest entries. The empty assistant fallback is
-// the same one [app.dropLive] uses when a later row holds an index in place.
-func (a *app) dropRetryingFormingTools() {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		e := &a.entries[i]
-		if e.turn != a.turn {
-			break
-		}
-		if e.kind != entryTool || e.status != toolForming {
-			continue
-		}
-		if i == len(a.entries)-1 {
-			a.entries = a.entries[:i]
-			continue
-		}
-		a.entries[i] = entry{kind: entryAssistant, turn: a.turn, stale: true}
-	}
-	a.touch()
-}
-
 // fadeTicks are the two catch-up wakeups a settled turn schedules: one where
 // the fresh tier ends and one where the warm tier does. They are tea.Ticks and
 // not a ticker on purpose — see [hudFadeMsg].
@@ -4683,7 +4599,7 @@ func (a *app) sampleContext() {
 func (a *app) settleTurn() {
 	a.closeLive()
 	// AND THE BOUNDARY IS REMEMBERED, so that a delta arriving after it knows it
-	// is late ([app.settledTurn], [app.appendText]). Stating the boundary is
+	// is late ([feed.settledTurn], [feed.say]). Stating the boundary is
 	// what makes "nothing streamed outlives the settle" a property of this
 	// function rather than a hope about the order events happen to arrive in.
 	a.settledTurn = a.turn
@@ -4700,65 +4616,6 @@ func (a *app) settleTurn() {
 		// [app.entryRows] until something says they are wrong.
 		e.settled, e.stale = true, true
 	}
-}
-
-// dropLive throws away the assistant block the CURRENT attempt was streaming
-// into, because that attempt has been cut and its text is void.
-//
-// It is the one place on this surface where something a person watched arrive is
-// REMOVED rather than settled, and the asymmetry is the point: an interrupt
-// leaves the partial reply on screen because the engine keeps it in the
-// transcript, while a cut stream leaves nothing anywhere. A row the transcript
-// does not contain must not stay on the page — the next question would be
-// answered underneath somebody else's abandoned sentence, and the person would
-// have no way of telling which of the two the model actually read.
-//
-// The block is truncated when it is the last thing on screen, which is what a
-// cut mid-text always leaves, and emptied otherwise: removing an entry from the
-// middle would move every index after it, and the forming rows, the selection
-// and the thought marker are all held by index.
-func (a *app) dropLive() {
-	if a.live < 0 || a.live >= len(a.entries) || a.entries[a.live].kind != entryAssistant {
-		a.live = -1
-		return
-	}
-	if a.live == len(a.entries)-1 {
-		a.entries = a.entries[:a.live]
-	} else {
-		a.entries[a.live].text = ""
-		a.entries[a.live].stale = true
-	}
-	a.live = -1
-	a.touch()
-}
-
-// said puts one of the PERSON'S OWN lines into the transcript without cutting
-// the answer that is still streaming in two.
-//
-// THE DEFECT IT FIXES. A message sent while a reply was streaming went in the
-// obvious way — close the live block, append the line — and the very next delta
-// found no live block and opened a second one under it. What the reader saw was
-// one flowing answer with somebody else's sentence wedged between two of its
-// paragraphs, as though the model had quoted them mid-thought. The words were in
-// the right place in TIME and in the wrong place on the PAGE, and the page is
-// the only record anybody reads back.
-//
-// SO THE STREAMED BLOCK STAYS WHOLE. The line is appended after it and the live
-// index is left where it was, which is still valid — appending never moves an
-// earlier entry — so the next delta grows the block it was already growing and
-// the person's line stays below it. A tool row is deliberately NOT treated this
-// way: a call lands in place, between two paragraphs, because that is where it
-// happened and the reply is written around it.
-//
-// The room's own transcript takes the same rule from [app.roomSaid] (room.go).
-func (a *app) said(e entry) {
-	live := a.live
-	a.entries = append(a.entries, e)
-	if live < 0 || live >= len(a.entries)-1 || a.entries[live].kind != entryAssistant {
-		a.live = -1
-		return
-	}
-	a.live = live
 }
 
 // refreshUsage asks the session what it has spent and folds the answer in. It is
@@ -4827,91 +4684,6 @@ func (a *app) take(u session.Usage) {
 	}
 }
 
-// appendText grows the live assistant block, opening one if the last thing on
-// screen was a tool line or a user message.
-//
-// A DELTA THAT ARRIVES AFTER ITS TURN HAS SETTLED GOES ON THE ANSWER IT BELONGS
-// TO, AND LANDS SETTLED (#225, [app.settledTurn]). Between a turn's two endings
-// a stream can still speak — the tail of a reply the provider had already
-// buffered, a straggler behind a stop — and the obvious thing to do with those
-// words opened a SECOND block under the answer. That was two defects in one
-// line: the new block was live with no boundary left to settle it, so it drew
-// its markdown raw until the next question closed it; and its presence demoted
-// the answer above it into narration, which is drawn plain (hierarchy.go). The
-// words belonged to the paragraph above them the whole time, which is [app.said]'s
-// law read from the other end — a page is the only record anybody reads back.
-func (a *app) appendText(text string) {
-	if text == "" {
-		return
-	}
-	// Turn numbers count from one, so the zero this field holds before the
-	// first turn ends cannot match the turn a delta belongs to.
-	if late := a.settledTurn > 0 && a.turn == a.settledTurn; late {
-		a.growSettledAnswer(text)
-		return
-	}
-	if a.live < 0 || a.live >= len(a.entries) || a.entries[a.live].kind != entryAssistant {
-		a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn,
-			replyTags: append([]session.TaskReplyTag(nil), a.pendingReplyTags...)})
-		a.pendingReplyTags = nil
-		a.live = len(a.entries) - 1
-		a.mdAt = time.Now()
-	}
-	e := &a.entries[a.live]
-	e.text += text
-	e.stale = true
-	a.follow()
-}
-
-// growSettledAnswer is where a late delta goes: onto the LAST assistant block of
-// the turn that has already ended, still settled.
-//
-// NOTHING IS LEFT LIVE, which is the whole point — [app.live] stays -1, so the
-// next boundary has nothing to find and the next question settles nothing that
-// was not already settled. The block is marked stale because its text changed
-// and [app.entryRows] hands back what it drew last time until something says
-// otherwise ([feed.closeLive] states that law).
-//
-// WHICH BLOCK IT IS, IS THE CLASSIFIER'S OWN QUESTION ASKED BACKWARDS. The walk
-// steps over exactly what [workEntry] steps over — a note, a divider, a
-// withdrawn correction — because those are the lines the SURFACE wrote at the
-// boundary and not work the model did: the two lines a turn ends with (what it
-// changed, what it cost) sit under the reply on purpose, and a walk that stopped
-// on them would append a second block under the answer and demote it, which is
-// the defect this exists to close. Anything else — a tool row, a card — stops
-// the walk: words after a call belong after the call, and gluing them onto the
-// narration in front of it would put them in the wrong place on the page.
-//
-// A turn whose tail is not an answer — a call that failed, a stopped turn that
-// never spoke — gets a block of its own, settled on arrival: the words did
-// happen, and the alternative is a surface quietly dropping something a person
-// watched arrive.
-func (a *app) growSettledAnswer(text string) {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		e := &a.entries[i]
-		if e.turn != a.turn {
-			break
-		}
-		if e.kind == entryNote || e.kind == entryDivider || entryWithdrawn(e) {
-			continue
-		}
-		if e.kind != entryAssistant {
-			break
-		}
-		e.text += text
-		e.settled, e.stale = true, true
-		a.follow()
-		a.touch()
-		return
-	}
-	a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn, text: text,
-		settled: true, stale: true,
-		replyTags: append([]session.TaskReplyTag(nil), a.pendingReplyTags...)})
-	a.pendingReplyTags = nil
-	a.follow()
-	a.touch()
-}
-
 // shapingPreviewField names the argument the BRIEF BEING SHAPED is previewed
 // by, and it is the sibling of [formingPreviewField] (feed.go) rather than a
 // second idea. It stayed on this side of the extraction because the shaper is a
@@ -4938,29 +4710,7 @@ func shapingPreview(text string) string {
 	return preview
 }
 
-// note appends a surface-side line — a slash command's answer, an error, the
-// opening hint. It is never sent anywhere.
-//
-// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE. Half the lines in this lane
-// are the surface answering an act a person repeats while they work out what to
-// do next: /files on a machine that has made nothing answers [filesNothingWord]
-// every single time, /subharness on a build with none answers [subNothingWord],
-// and a refusal answers whatever it refused.
-// Four presses used to leave four identical lines stacked in the transcript,
-// which is the emptiness law's own complaint said about repetition — the screen
-// counting how many times it had nothing to report. So a note whose words are
-// already the last thing in the transcript is not written again; it is brought
-// back into view, which is the whole of what the person was going to read.
-//
-// IT ASKS ABOUT THE LAST ENTRY AND NEVER ABOUT THE WHOLE TRANSCRIPT. Anything at
-// all landing in between — an answer, a tool call, another note — puts the
-// repeat in a new place, where it is news again: "nothing stands here yet" under
-// the reply that just talked about standing orders is a different sentence from
-// the one four lines up, and a transcript that swallowed it would be answering a
-// deliberate command with silence.
-func (a *app) note(text string) { a.noteFacts(text) }
-
-// noteFacts is [app.note] with THE PAYLOAD RULE's data named: the words inside
+// noteFacts is [feed.note] with THE PAYLOAD RULE's data named: the words inside
 // this line that are the answer rather than the sentence around it, in the order
 // they appear in the text (payload.go states the rule and does the painting).
 //
@@ -4981,32 +4731,6 @@ func (a *app) noteFacts(text string, facts ...string) { a.noteWritten(text, fals
 // after it still sits in its own lane; the same detail wrapped is two rows, the
 // second of which claims to be a row of the card.
 func (a *app) noteBlock(text string) { a.noteWritten(text, true, nil) }
-
-// noteWritten is the one body behind both, so the repeat rule, the fact list and
-// the block flag cannot disagree about what a note is.
-// A NOTE DOES NOT CUT THE REPLY IN TWO (#225). It used to close the live block,
-// so a line the surface wrote in the middle of a streaming answer — a notice
-// about a reshaped request, a nudge — sent the very next delta into a SECOND
-// assistant block. The reader then got a reply in two halves with the first one
-// demoted into narration and drawn plain, because something followed it in its
-// own turn (hierarchy.go, workfold.go's [workEntry]). It is exactly the shape
-// [app.said] already closes for the person's own line, and it takes the same
-// door: the note lands after the block and the block goes on growing.
-func (a *app) noteWritten(text string, block bool, facts []string) {
-	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote && a.entries[n-1].text == text {
-		// The repeat is brought back into view rather than written again (above),
-		// and its data are refreshed with it: the same sentence built a second time
-		// may have been built from a different reading, and a stale fact list would
-		// lift the words of the frame before this one.
-		a.entries[n-1].facts, a.entries[n-1].block = facts, block
-		a.follow()
-		a.touch()
-		return
-	}
-	a.said(entry{kind: entryNote, text: text, turn: a.turn, facts: facts, block: block})
-	a.follow()
-	a.touch()
-}
 
 // setTitle takes the name the session gave itself (session.EventTitleChanged).
 // It is a status-line fact and nothing more: no note, no line in the

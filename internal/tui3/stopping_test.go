@@ -280,7 +280,7 @@ func TestAStoppedNodesRoomSaysStoppingRatherThanWorking(t *testing.T) {
 		t.Fatalf("the header calls a stopping node %q, want %q", got, stoppingWord)
 	}
 	// And through the line a person actually reads.
-	a.room = &taskRoom{id: 7, title: "Fix the nil-map crash", unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(7, "Fix the nil-map crash")
 	head := plain(a.roomHeadWord(120))
 	if !strings.Contains(head, stoppingWord) || strings.Contains(head, stateWorking.String()) {
 		t.Fatalf("the room header is %q", head)
