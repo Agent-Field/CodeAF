@@ -193,6 +193,31 @@ type job struct {
 	// Such a job does not report its own death: the caller already knows, and
 	// a note saying so would be the agent telling itself what it just did.
 	killRequested bool
+	// personStopped says the requested death this job is about to have is A
+	// PERSON'S STOP ([Agent.cancelJob]) rather than the model's `jobs kill` or a
+	// shutdown.
+	//
+	// IT IS SET BEFORE THE KILL IS ASKED FOR, which is what makes it readable by
+	// everybody who matters: [job.requestKill] is what makes the death REQUESTED,
+	// so any settle that sees a requested death also sees this mark. It exists
+	// because a person's stop is the one requested death that OWES the model a
+	// note, so it is the one whose parked worker must be released after that note
+	// and not the instant the process dies ([jobRegistry.settleExit]).
+	personStopped bool
+	// owed says this command was TAKEN OVER from a call that was still waiting
+	// for it, and that the work has not yet been told how it ended.
+	//
+	// IT IS PROVENANCE AND NOT A STATE, and the distinction is the whole of what
+	// it is for. `background: true` is a command the work asked to be FREE of, so
+	// a job that started that way owes nobody anything and this stays false
+	// ([jobRegistry.start]). A foreground call the background-after clock or the
+	// command's own timeout took over is a command the work is still WAITING for,
+	// so that road sets it (promote.go). A person's steer sets it false again,
+	// because a steer is the person redirecting the work and the model must act on
+	// their words rather than wait (steer.go). What is left true is exactly the
+	// commands somebody is still standing over, which is what a task worker parks
+	// on (task_job_park.go).
+	owed bool
 }
 
 // jobInfo is a job's status copied out from under its lock, so rendering never
@@ -296,6 +321,58 @@ func (j *job) requestKill() bool {
 	return true
 }
 
+// payOwed settles this job's debt, reporting whether there was one to settle.
+//
+// It is idempotent on purpose. The places that pay a debt — the two roads out of
+// [jobRegistry.settleExit] and a person's stop ([Agent.cancelJob]) — each pay it
+// unconditionally at the moment the ending is in front of the work, and a job can
+// reach two of them: a person stops it, and the reaper settles the death they
+// asked for a moment later. Whichever gets here first is the one that released
+// anybody, and the second has nothing left to hand over.
+func (j *job) payOwed() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.owed {
+		return false
+	}
+	j.owed = false
+	return true
+}
+
+// stillOwed reports whether the work that started this command has yet to be
+// told how it ended.
+func (j *job) stillOwed() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.owed
+}
+
+// markPersonStopped records that the kill about to be asked for is a person's.
+// It is called BEFORE [job.requestKill]; see the field.
+func (j *job) markPersonStopped() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.personStopped = true
+}
+
+// stoppedByPerson reports whether this job's requested death is a person's stop.
+func (j *job) stoppedByPerson() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.personStopped
+}
+
+// settledKilled reports whether this job is final and died a death somebody
+// ASKED for, which is the state that reports nothing of its own
+// ([jobRegistry.settleExit]). It is the job's own account of itself rather than
+// a caller inferring the same thing from a failed kill, which can fail for two
+// different reasons.
+func (j *job) settledKilled() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.state == jobKilled
+}
+
 // settle makes a job final: the log is closed, the status fields stop moving,
 // and done is released. It reports whether the death was REQUESTED, which is
 // the one thing the caller needs to decide whether to say anything about it.
@@ -365,7 +442,13 @@ type jobRegistry struct {
 	// none does. It is a function rather than the Agent itself so the registry
 	// has no idea what a turn is — it reports, and the lane decides whether
 	// anybody has to answer.
-	notify func(string)
+	//
+	// THE BOOL IS WHETHER THE ENDING TRAVELS WHOLE, and it is true for exactly the
+	// jobs somebody is still waiting on ([job.owed]): the wait was taken so that
+	// this ending could be the next thing the work read, so it arrives with the
+	// lines and the log path it was composed with rather than as a headline
+	// ([jobNote] states the law).
+	notify func(string, bool)
 	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
 	// IS: false for a periodic tick, true for the tick that ENDED the watch —
 	// `until` matched, the output went quiet, the command failed its way out
@@ -389,6 +472,20 @@ type jobRegistry struct {
 	// goroutine, so a new starter inherits the name by announcing and the job
 	// never waits to be named (jobname.go).
 	announce func(jobInfo)
+	// paid releases whoever is WAITING on a command this registry took over from
+	// a call that had not finished asking for it ([job.owed]).
+	//
+	// IT IS FOR THE ENDINGS THAT CARRY NO NOTE, and those only. An ending with a
+	// note releases in the same locked step as its own append, which is the only
+	// shape with no instant between the queue and the wake
+	// ([userMessage.ending]); what is left for this hook is the deaths that
+	// deliberately report nothing — a `jobs kill`, a shutdown — and the registry
+	// with no lane to report into at all.
+	//
+	// It is a function for [jobRegistry.notify]'s reason exactly: the registry
+	// reports what a job is doing and has no idea what a park is, and a caller
+	// with nobody parked leaves it nil and pays nothing.
+	paid func()
 
 	mu   sync.Mutex
 	seq  int
@@ -424,7 +521,7 @@ type jobRegistry struct {
 	hands int
 }
 
-func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
+func newJobRegistry(workspace string, place Place, notify func(string, bool), watch ...func(string, string, bool)) *jobRegistry {
 	registry := &jobRegistry{workspace: workspace, place: place, notify: notify}
 	if len(watch) > 0 {
 		registry.notifyWatch = watch[0]
@@ -774,6 +871,50 @@ func (r *jobRegistry) handsOutstanding() bool {
 	return r.hands > 0
 }
 
+// owedRunning reports whether any command this registry took over from a call
+// that was waiting for it has yet to have its ending handed over. It is what
+// holds a task worker's next question back until the answer is in front of it
+// ([Agent.parkOnOwedJob]).
+//
+// THE TWO LOCKS ARE NEVER HELD AT ONCE. The slice is snapshotted under the
+// registry's ([jobRegistry.all]) and each job is then asked under its own, which
+// is the discipline every other walk of this list keeps.
+func (r *jobRegistry) owedRunning() bool {
+	if r == nil {
+		return false
+	}
+	for _, candidate := range r.all() {
+		if candidate.stillOwed() {
+			return true
+		}
+	}
+	return false
+}
+
+// payDebt hands one job's debt over and releases whoever was parked on it. It is
+// called where the ending becomes READABLE and never where it becomes true; see
+// [jobRegistry.settleExit] for the difference and why it is the whole point.
+//
+// NO LOCK OF THIS REGISTRY'S OR OF THE JOB'S IS HELD ACROSS THE CALLBACK. That is
+// the law jobrow.go states for `announce`, and it holds here for its reason: the
+// hook takes the agent's lock, and a registry lock held across it would put the
+// two lock orders together.
+func (r *jobRegistry) payDebt(one *job) {
+	if !one.payOwed() {
+		return
+	}
+	r.releaseParked()
+}
+
+// releaseParked is the hook itself, for the roads that have already cleared the
+// debt and only owe the release.
+func (r *jobRegistry) releaseParked() {
+	if r.paid == nil {
+		return
+	}
+	r.paid()
+}
+
 // stopHands ends every hand still out, the way the person's interrupt means it.
 //
 // A BACKGROUND JOB SURVIVES AN INTERRUPT AND A HAND DOES NOT, and the difference
@@ -809,7 +950,24 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	if note == "" || r.notify == nil {
 		return
 	}
-	r.notify(note)
+	// A goroutine's ending is one sentence its caller wrote and nobody is parked
+	// on it, so it travels the way every headline always has.
+	r.notify(note, false)
+}
+
+// adoption is what the road taking a running command over knows about it. Both
+// facts belong to the caller because only the caller knows WHICH road this is:
+// a clock, a timeout, a person's key or a person's steer all take the same
+// process into the same registry and mean different things by it.
+type adoption struct {
+	// quiet leaves the person-visible row to the caller, to be published after
+	// the claim: the process and the job id become one fact under bare's adoption
+	// lock, and the row goes out once that lock is released.
+	quiet bool
+	// owed says the call that started this command is still WAITING for it, so
+	// the work it belongs to may not be asked for its next step until the ending
+	// has been handed over ([job.owed]).
+	owed bool
 }
 
 // adopt takes over a foreground bash process that is ALREADY RUNNING and makes
@@ -830,7 +988,10 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 // and [jobRegistry.settleExit] does everything it would have done after a Wait
 // of its own. THIS IS STILL THE ONLY REAPER: nothing in bare decides a job is
 // over, notes an exit, or writes a status word.
-func (r *jobRegistry) adopt(taken *bare.BashCall, quiet ...bool) (*job, error) {
+//
+// WHAT THE CALLER KNOWS AND THIS DOES NOT is [adoption], the two facts about the
+// road the takeover came down.
+func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	started, err := r.newJob(taken.Command(), jobKindBash)
 	if err != nil {
 		return nil, err
@@ -839,12 +1000,15 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, quiet ...bool) (*job, error) {
 	// started it with Setpgid, so a kill still reaches the whole tree exactly as
 	// it does for a job this registry forked itself.
 	started.cmd = taken.Process()
+	// The provenance is written before the job joins the registry, which is the
+	// last instant this goroutine is the only one that can see it.
+	started.owed = how.owed
 	// THE JOIN COMES BEFORE THE ATTACH, so that a refused adoption never points
 	// bash's streams at a sink this registry has just closed and a log it has
 	// just removed. A quiet adoption takes the same door — it only declines the
 	// ROW, never the check.
 	join := r.add
-	if len(quiet) > 0 && quiet[0] {
+	if how.quiet {
 		join = r.join
 	}
 	if err := join(started); err != nil {
@@ -870,24 +1034,61 @@ func (r *jobRegistry) reap(watched *job) {
 func (r *jobRegistry) settleExit(watched *job, code int) {
 	requested := r.settled(watched, code)
 
-	if requested || r.notify == nil {
+	if requested {
+		// A DEATH THIS SESSION ASKED FOR RELEASES THE WORK AT ONCE. The registry's
+		// own rule is that such a job reports nothing — the caller already knows,
+		// and at shutdown the journal it would be written to is closing — so there
+		// is no news to wait for and nothing to be gained by holding a parked
+		// worker until its bound runs out.
+		//
+		// A PERSON'S STOP OWNS THE ENDING IT ASKED FOR, and it is the one
+		// exception. It is the only requested death with a note coming
+		// ([Agent.cancelJob]), and releasing here would release from INSIDE that
+		// person's kill, while their line was still unwritten — one of the two
+		// interleavings that let a worker wake to an empty queue. So this road
+		// steps over it and the stop speaks for itself.
+		if !watched.stoppedByPerson() {
+			r.payDebt(watched)
+		}
 		return
 	}
-	note := fmt.Sprintf("job %d exited %d", watched.id, code)
-	if last := watched.sink.lastNonEmptyLine(); last != "" {
-		note += ": " + clip(last, jobExitNoteLimit)
-	}
-	// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and needs
-	// none of this; a bash job's ending is the moment its output finally means
-	// something, and a note that withheld it would be an invitation to make one
-	// more call for what the note was already about.
-	if watched.kind == jobKindBash {
-		if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
-			note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
-				strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
+	// AND THE DEBT IS CLEARED BEFORE THE NOTE, WHICH IS THE OPPOSITE OF WHERE IT
+	// LOOKS LIKE IT BELONGS. The release no longer happens here at all: an ending
+	// is marked as one and released in the same locked step as its append
+	// ([userMessage.ending]), which is the only shape with no instant between the
+	// two. What is left for this road is the debt itself, and it has to be gone
+	// BEFORE the note is queued — a note that released first would wake the park,
+	// which would read itself still owed, and park again on a generation nothing
+	// will ever close.
+	//
+	// The answer is kept because the note's SHAPE depends on it: an owed ending
+	// travels whole ([jobNote]).
+	owed := watched.payOwed()
+	if r.notify != nil {
+		note := fmt.Sprintf("job %d exited %d", watched.id, code)
+		if last := watched.sink.lastNonEmptyLine(); last != "" {
+			note += ": " + clip(last, jobExitNoteLimit)
 		}
+		// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and
+		// needs none of this; a bash job's ending is the moment its output finally
+		// means something, and a note that withheld it would be an invitation to
+		// make one more call for what the note was already about.
+		if watched.kind == jobKindBash {
+			if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
+				note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
+					strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
+			}
+		}
+		r.notify(note, owed)
+		return
 	}
-	r.notify(note)
+	// A REGISTRY WITH NO LANE TO REPORT INTO HAS NO NOTE FOR THE RELEASE TO RIDE
+	// WITH, so it is made here. Nothing is coming, and a worker held until its
+	// bound over an ending nobody will ever speak is the wait costing what it was
+	// written to save.
+	if owed {
+		r.releaseParked()
+	}
 }
 
 func (r *jobRegistry) all() []*job {

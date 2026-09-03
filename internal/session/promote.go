@@ -171,9 +171,14 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 			// THE CLAIM IS QUIET. The process and job id become one fact under
 			// bare's adoption lock; the person-visible row is announced only
 			// after that lock is released, exactly as the steer door does.
+			//
+			// AND IT IS OWED. The clock moved a command the work was WAITING for;
+			// nobody asked for it to be let go of, so the work is not asked for
+			// its next step until this command's ending is in front of it
+			// (task_job_park.go).
 			started, adopted := p.agent.adoptRunningBashAs(call, func(started *job) string {
 				return promotedSentence(started.id, started.logPath, started.sink.text())
-			}, true)
+			}, adoption{quiet: true, owed: true})
 			if adopted {
 				p.agent.jobs.announceRow(started)
 			}
@@ -195,7 +200,9 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 	}
 }
 
-// TimedOut is the timeout arriving with somebody there to take the process.
+// TimedOut is the timeout arriving with somebody there to take the process. It
+// is owed for [bashPromotion.Started]'s reason, and it goes through
+// [Agent.adoptRunningBash], which is where that is said.
 func (p bashPromotion) TimedOut(call *bare.BashCall) bool {
 	_, promoted := p.agent.adoptRunningBash(call)
 	return promoted
@@ -270,12 +277,16 @@ func (a *Agent) releasePromotable(id string) { a.inFlightBash.release(id) }
 // a log file simply declines — the claim is given back and the call ends the way
 // it would have ended with no promoter at all, which is the honest failure for a
 // capability whose whole promise is "and the work is not lost".
+// BOTH ROADS THROUGH HERE ARE OWED. A timeout and the surface's key are the two
+// ways a command the work is still WAITING for becomes a job without the work
+// ever having asked to be free of it, so neither is a step the model may be
+// asked to follow until the ending arrives (task_job_park.go).
 func (a *Agent) adoptRunningBash(call *bare.BashCall) (string, bool) {
 	var answer string
 	_, adopted := a.adoptRunningBashAs(call, func(started *job) string {
 		answer = promotedSentence(started.id, started.logPath, started.sink.text())
 		return answer
-	})
+	}, adoption{owed: true})
 	if !adopted {
 		return "", false
 	}
@@ -285,12 +296,13 @@ func (a *Agent) adoptRunningBash(call *bare.BashCall) (string, bool) {
 // adoptRunningBashAs is the one adoption claim with the tool-result sentence
 // left to the caller. Timeout promotion, a person's steer and a person's stop
 // all take the same process into the same registry; only the immediate account
-// returned to the interrupted tool call differs.
-func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) string, quiet ...bool) (*job, bool) {
+// returned to the interrupted tool call differs — and [adoption], which is what
+// the caller knows about the road it came down and this claim does not.
+func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) string, how adoption) (*job, bool) {
 	var started *job
 	adopted := call.Adopt(func() (string, bool, bool) {
 		var err error
-		started, err = a.jobs.adopt(call, quiet...)
+		started, err = a.jobs.adopt(call, how)
 		if err != nil {
 			return "", false, false
 		}

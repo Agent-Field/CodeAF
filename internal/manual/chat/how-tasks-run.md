@@ -913,6 +913,14 @@ its landing turn ends — a render started there would be stopped before the fil
 Reading, searching and running commands are gone for that turn too: it is a turn for
 finishing, not for one more look.
 
+**Time a task spends waiting for its own command still spends the hour.** When a foreground
+command runs past `background after` and keeps running as a job, the task waits for it
+rather than polling it — but those are minutes the task's own build or test run is taking,
+so the hour runs through them. (Waiting on *sub-tasks* is the opposite case and costs
+nothing: that work is somebody else's, and the clock stops for it.) No single wait outlasts
+one whole hour: if the command is still going then, the task is asked again and the ordinary
+checkpoint below decides whether it gets another.
+
 **Five minutes for a check.** Each second look at finished work is bounded at 5 minutes.
 It hangs off the task's own clock, so `jobs kill` ends it too. A check that burned its
 whole five minutes is not retried.
@@ -1064,6 +1072,18 @@ caught exactly as any other is. A failed part is a report too: its failure reaso
 that same turn beside the successful reports, so the parent integrates what landed and says
 what is missing or retries it. The failed part does not stop the parent, and delayed steps
 from before the report landed cannot spend the fresh allowance before the parent reads it.
+
+**A task waiting for a command it started is not being stuck either.** A foreground `bash`
+call that runs past `background after` keeps running as a job (`still running as job 3`) —
+and inside a task the work then *waits* for that command instead of asking what to do next.
+Nothing is asked over the wait, no step is counted, and no `[stuck]` note can be earned,
+because a task that is waiting makes no calls at all. What wakes it is the command's own
+ending, and that ending arrives whole: the exit line, the command's last lines, and the path
+to the full log, all in the one turn. This is why a task does not `sleep` and `tail` its own
+build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
+are what the counter catches when something is polled that nobody is waiting on. A command
+started with `background: true` is the other case: a server or a sweep the task deliberately
+left running holds nothing up, and the task is asked its next step straight away.
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
