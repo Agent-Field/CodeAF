@@ -366,7 +366,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// the same reason: a home that is about to be deleted has no location worth
 	// printing, and one that survives is only worth naming once there is a
 	// reason it did.
-	debugging := debugRecordOn(os.Getenv)
+	debugging := trace.Enabled()
 	if ephemeral {
 		defer func() {
 			if !keepPrivateStore(request.keep, debugging, errandSucceeded(outcome, err)) {
@@ -704,20 +704,6 @@ func keepPrivateStore(asked, debugging, succeeded bool) bool {
 // it did not is exactly what a person comes back for.
 func errandSucceeded(outcome headlessOutcome, err error) bool {
 	return err == nil && outcome.status == 0
-}
-
-// debugRecordOn reports whether the debug switch is on for this run.
-//
-// It reads the variable directly rather than through the package that will own
-// the switch, because that package is landing beside this change and a run that
-// cannot keep its own record until the two meet is the exact hole this closes.
-// The spelling is the one the model-call log's own pins already use — set, and
-// not one of the three words that mean off — so a person who knows one of them
-// knows this one.
-func debugRecordOn(getenv func(string) string) bool {
-	value := strings.TrimSpace(getenv("AFORGE_DEBUG"))
-	return value != "" && value != "0" &&
-		!strings.EqualFold(value, "false") && !strings.EqualFold(value, "off")
 }
 
 // headlessStore decides where this errand lives. The default is a private home

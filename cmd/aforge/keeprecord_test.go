@@ -44,28 +44,6 @@ func TestAFailedHeadlessRunKeepsItsRecord(t *testing.T) {
 	}
 }
 
-// The debug switch is read straight from the environment, so the spelling of
-// "off" is worth pinning: a person who set it to 0 to turn it off did not mean
-// to turn it on.
-func TestTheDebugSwitchIsOffWhenItSaysSo(t *testing.T) {
-	for value, on := range map[string]bool{
-		"":      false,
-		"0":     false,
-		"false": false,
-		"FALSE": false,
-		"off":   false,
-		"Off":   false,
-		"1":     true,
-		"true":  true,
-		"yes":   true,
-	} {
-		env := func(string) string { return value }
-		if got := debugRecordOn(env); got != on {
-			t.Fatalf("AFORGE_DEBUG=%q read as %v, want %v", value, got, on)
-		}
-	}
-}
-
 // `aforge exec` runs one leaf, and every model call it makes belongs to that
 // leaf. The key is what puts the node on the call-log row: without it the whole
 // run's rows name no work at all, and a person reading the record afterwards
