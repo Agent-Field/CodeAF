@@ -41,12 +41,25 @@ CLOSED = [
 ]
 
 
+# A ROW CAN BE CLOSED BY AN AUDIT THAT DID NOT FIND IT. A lane sent at one
+# surface routinely closes a row another surface's audit wrote down — the narrow
+# tier's lane closed four of home's — and it records that by the row's LEDGER ID
+# (`H4`, `N8`), which is the only name the two audits share. So closures are
+# gathered from every audit's fixed section, not only from the one the row lives
+# in, and a bare number still means a row of the file it was written in.
+BY_ID = re.compile(r"\b([HTCPKSMJN])(\d+)\b")
+
+
 def closed_rows(text: str) -> set[str]:
     found: set[str] = set()
     for pattern in CLOSED:
         for hit in pattern.findall(text):
             found.update(re.findall(r"\d+", hit))
     return found
+
+
+def closed_ids(text: str) -> set[str]:
+    return {p + n for p, n in BY_ID.findall(text)}
 
 
 def main() -> int:
@@ -64,6 +77,12 @@ def main() -> int:
         "",
     ]
     tally = {"open": 0, "CLOSED": 0}
+    # Every audit's fixed section, read once, so a cross-surface closure counts.
+    elsewhere: set[str] = set()
+    for path in D.glob("audit-*.md"):
+        _, _, fixed = path.read_text().partition("\n## fixed")
+        if fixed:
+            elsewhere |= closed_ids(fixed)
     for path in sorted(D.glob("audit-*.md")):
         surface = path.stem[len("audit-"):]
         p = PREFIX.get(surface, surface[:1].upper())
@@ -79,7 +98,7 @@ def main() -> int:
             n, rest = m.group(1), m.group(2)
             what = rest.split(" — ", 1)[0]
             sev = SEV.search(line)
-            state = "CLOSED" if n in done else "open"
+            state = "CLOSED" if n in done or f"{p}{n}" in elsewhere else "open"
             tally[state] += 1
             out.append(f"- `{p}{n}`".ljust(9) + f" {sev.group(1) if sev else '?':<5}{state:<7}{what}")
         out.append("")
