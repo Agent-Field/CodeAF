@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 06:54Z_
+_2026-09-03 06:55Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -88,6 +88,14 @@ _2026-09-03 06:54Z_
 - `M27`   low  CLOSED `logs` prints its path header on stdout
 - `M28`   low  open   `cache clean` writes its confirmation prompt to stdout
 - `M29`   low  CLOSED `aforge version` prints only `aforge dev`
+
+## eyes — [audit-eyes.md](audit-eyes.md)
+
+- `E1`    high open   `aforge run <name>` runs a FILE of that name instead of the saved program
+- `E2`    high open   A limited run publishes an answer AND an error, against the envelope's own contract
+- `E3`    high open   The rename test cannot fail for the reason it is named
+- `E4`    low  open   Tab geometry counts bytes where the terminal needs display cells
+- `E5`    low  open   Per-command help wraps by bytes, not cells
 
 ## help — [audit-help.md](audit-help.md)
 

@@ -28,6 +28,9 @@ D = ROOT / "docs/design/polish"
 PREFIX = {
     "home": "H", "tasks": "T", "cli": "C", "help": "P",
     "chat": "K", "settings": "S", "commands": "M", "jobs": "J",
+    # The second eye is not a surface; it is one read of the whole wave by a
+    # reader who wrote none of it. Its rows are numbered here like any other.
+    "eyes": "E",
 }
 
 ROW = re.compile(r"^(\d+)\. (.*)$")
