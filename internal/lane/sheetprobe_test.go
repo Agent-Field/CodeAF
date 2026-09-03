@@ -75,7 +75,9 @@ func servesAPage() (string, error) { return onePage, nil }
 func noPageHere() (string, error) {
 	return "", fmt.Errorf("the router answered 404 Not Found: %w", ErrNoSheetHere)
 }
-func aBadAfternoon() (string, error) { return "", errors.New("the router answered 500 Internal Server Error") }
+func aBadAfternoon() (string, error) {
+	return "", errors.New("the router answered 500 Internal Server Error")
+}
 
 // probed is a sheet wired at a base nobody has vouched for, with a clock the
 // test turns by hand and a cache directory of its own.
