@@ -42,10 +42,13 @@ import (
 // a person watching "Retry 2/4: removed reasoning" knows exactly what they got
 // and exactly what to change to keep it.
 //
-// WHAT DOES NOT ENTER. Only this error class does. A timeout, a 5xx, a 429 and
-// a plain 404 from a wrong base URL all keep the behaviour they had (retry.go),
-// because none of them is a claim about the request's shape and stripping
-// fields off them would spend a person's turn discovering that.
+// WHAT ENTERS THE LADDER. Only this error class does, and only after a watched
+// request has no serving, untried lane the purse will fund. A recognised
+// refusal still teaches the ceiling memo before a funded walk takes it, so the
+// next arm never repeats a ceiling the router has already refused. A timeout,
+// a 5xx, a 429 and a plain 404 from a wrong base URL all keep the behaviour they
+// had (retry.go), because none of them is a claim about the request's shape and
+// stripping fields off them would spend a person's turn discovering that.
 //
 // ── HOW THE CLASS IS RECOGNISED: BY STRUCTURE, NEVER BY VOCABULARY ──────────
 //
@@ -430,6 +433,20 @@ func dropAttachments(messages []ai.Message) []ai.Message {
 // and let them pick, rather than to walk a list on their behalf.
 const maxFallbackModels = 2
 
+// carriedCeiling reports whether this request's composed provider object put a
+// price ceiling on the wire.
+//
+// IT READS THE COMPOSED OBJECT AND NOT THE LEDGER'S HALF. A rescue or a strict
+// pin removes the ceiling after the ordinary preferences are built, and a
+// request already on the ladder removes the whole endpoint filter afterwards;
+// only [Client.wirePreferences] sees both decisions. [Client.sendRecovered]
+// reads this once before writing the memo and carries the answer into the
+// ladder, so the person-facing label still describes the refused request.
+func (c *Client) carriedCeiling(model string, knobs callKnobs, request *ai.Request) bool {
+	prefs := c.wirePreferences(model, knobs, request)
+	return prefs != nil && prefs.MaxPrice != nil
+}
+
 // recoverFromRefusal climbs the ladder and then the fallback chain, narrating
 // each attempt, and ends in an error a person can act on.
 //
@@ -442,14 +459,10 @@ func (c *Client) recoverFromRefusal(
 	knobs callKnobs,
 	stream bool,
 	first []byte,
+	carriedCeiling bool,
 ) (*http.Response, error) {
 	model := c.modelFor(request)
 	plan := c.relaxationPlan(request, knobs, model)
-	// A ceiling is on the wire when the latency ask put one there, and it is
-	// read BEFORE the memo below writes, so the plan and the memo are looking at
-	// the same request rather than at each other.
-	prefs := c.providerPreferences(model, knobs, request)
-	carriedCeiling := prefs != nil && prefs.MaxPrice != nil
 	// THE PHRASE LIST'S SECOND JOB. When the router's own sentence said it was
 	// the price or the account's policy that emptied the set, the first rung
 	// SAYS SO — "relaxed the endpoint filter" does not tell somebody watching
@@ -459,24 +472,6 @@ func (c *Client) recoverFromRefusal(
 	// require_parameters and ignore, and rung one drops the object.
 	if carriedCeiling && ceilingRefusal(first) && len(plan) > 0 && plan[0].bit == relaxEndpointFilter {
 		plan[0].label = "dropped the price ceiling and relaxed the endpoint filter"
-	}
-	// THE LEDGER LEARNS BEFORE THE LADDER CLIMBS. Reaching this function means
-	// the router refused this request's whole SHAPE; if a price ceiling was one
-	// of the fields on the wire, the model is marked so the NEXT call carries
-	// none. The ladder below still recovers THIS call.
-	//
-	// IT DOES NOT WAIT TO BE TOLD THE PRICE WAS THE REASON. That was the defect,
-	// one layer in: the router names the LAST filter that emptied the set, which
-	// on 2026-08-28 was the data policy and not the price, so a memo gated on
-	// [ceilingRefusal]'s two sentences is a memo one sentence behind. The cost of
-	// memoing a ceiling that was not the cause is bounded and purely monetary —
-	// that model routes at whatever the endpoint charges instead of at list ×
-	// 1.25 for the life of the process, and the ladder's first rung was going to
-	// drop the ceiling on every one of those calls anyway, so the memo only
-	// moves the same outcome earlier. The cost of NOT memoing was a 404 round
-	// trip on every call and a dead task.
-	if c.velocity != nil && carriedCeiling {
-		c.velocity.refuseCeiling(model)
 	}
 	fallbacks := c.fallbackChain(model)
 	total := len(plan) + len(fallbacks)

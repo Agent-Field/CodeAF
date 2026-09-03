@@ -464,6 +464,15 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// where it is known.
 	refusal := c.refusalObject(request, knobs, apiError(status, peek))
 	c.strikeRefusal(model, refusal)
+	carriedCeiling := c.carriedCeiling(model, knobs, request)
+	// THE MEMO IS WRITTEN AT THE REFUSAL, BEFORE ITS RECOVERIES PART.
+	// A funded walk may keep this arm out of the ladder, but its very next arm is
+	// still a request to the same model and must not repeat the ceiling the router
+	// has already refused. The router's STRUCTURED refusal is the evidence; its
+	// sentence is never a gate on this behaviour.
+	if c.velocity != nil && carriedCeiling {
+		c.velocity.refuseCeiling(model)
+	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
 	// once, and the person is told in a sentence that stays.
@@ -500,7 +509,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
-	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
+	return c.recoverFromRefusal(ctx, request, knobs, stream, peek, carriedCeiling)
 }
 
 // sendRepaired encodes the request and sends it, recovering once from the 400s
