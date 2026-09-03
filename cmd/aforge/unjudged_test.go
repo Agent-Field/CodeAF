@@ -135,12 +135,45 @@ func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing
 		t.Fatalf("the deliverable was held hostage to the weather: %q", outcome.Deliverable)
 	}
 
-	// THE DOOR SAYS IT, IN WORDS, LAST.
-	if !strings.Contains(said.String(), "delivered without a check: "+revision.GateUnreached) {
-		t.Fatalf("the door never said the delivery went out unchecked:\n%s", said)
+	// THE DOOR SAYS IT, IN WORDS, ONCE, AND LAST.
+	//
+	// Once, because the event's own narration and the closing reservation are
+	// two places one sentence could be said from, and a person reading the
+	// identical line twice learns nothing the second time. Last, because the
+	// exit code is the one thing a person at a terminal cannot see: five
+	// headless runs ended on a ✓ with what the run believed it had not done
+	// sitting in the journal (FAILSAFE clause 3, and sayStanding's own comment).
+	sentence := "delivered without a check: " + revision.GateUnreached
+	if got := strings.Count(said.String(), sentence); got != 1 {
+		t.Fatalf("the door said the delivery went out unchecked %d times, want once:\n%s", got, said)
+	}
+	if last := lastDoorLine(said.String()); !strings.HasPrefix(last, sentence) {
+		t.Fatalf("the last thing the door said is %q, want the unchecked sentence:\n%s", last, said)
 	}
 	if strings.Contains(said.String(), "gate: refused") {
 		t.Fatalf("a gate nobody reached was called a refusal:\n%s", said)
+	}
+
+	// AND THE TWO PLACES IT COULD BE SAID FROM SAY IT BETWEEN THEM ONCE.
+	//
+	// The poll above reached the sentence through the closing reservation,
+	// which is the fallback; a watched run reaches the event first and says it
+	// there. Both arms are driven here, in that order, because the duplication
+	// they can produce is invisible to any test that only ever exercises one of
+	// them — the run above prints the line exactly once whichever arm is broken.
+	watched, watcher, door := narrationFixture(t)
+	if err := watched.RecordDeliveryGate("task-1",
+		deliveryGateOf(revision.Judgment{Pass: true, Unjudged: unreachedNote})); err != nil {
+		t.Fatal(err)
+	}
+	watchedNodes, err := watcher.sessionNodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	watcher.narrate(watchedNodes)
+	watcher.sayStanding(watchedNodes[0])
+	if got := strings.Count(door.String(), sentence); got != 1 {
+		t.Fatalf("the event and the closing line said it %d times between them, want once:\n%s", got, door)
 	}
 
 	// AND `--json` CARRIES IT, because the caller this is for is a machine.
@@ -170,4 +203,18 @@ func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing
 	if strings.Contains(string(judged), "unjudged") {
 		t.Fatalf("a judged run carried the key anyway: %s", judged)
 	}
+}
+
+// lastDoorLine is the final thing a person watching actually read, with the
+// stream's own two-space indent and its elapsed clock taken off the ends. The
+// door writes one line per fact and pads none of them, so the last non-empty
+// line is the last fact.
+func lastDoorLine(door string) string {
+	lines := strings.Split(strings.TrimRight(door, "\n"), "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if line := strings.TrimSpace(lines[index]); line != "" {
+			return line
+		}
+	}
+	return ""
 }

@@ -1636,11 +1636,20 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		}
 		// A GATE NOBODY REACHED REFUSED NOTHING, so the stream does not say
 		// "gate: refused" of it — that word is the RUN declining to buy a
-		// judgement, and this is the judgement declining to arrive. It says the
-		// same sentence the door will end on, because it is the same fact: the
-		// delivery went out and nothing read it. gateWords speaks for a gate
-		// that ANSWERED, and this row is the one where none did.
+		// judgement, and this is the judgement declining to arrive. gateWords
+		// speaks for a gate that ANSWERED, and this row is the one where none
+		// did.
+		//
+		// AND THIS IS THE PLACE THE SENTENCE IS SAID, WHICH IS WHY IT TAKES THE
+		// FLAG. The event arrives here first — a run somebody is watching sees
+		// it the moment the gate gives up, beside the work it is about — and
+		// sayStanding at the end is the FALLBACK for a run whose stream nobody
+		// read: a wall, a `--json` caller, a poll that settled before this event
+		// was ever narrated. One reservation, said once, wherever it is first
+		// reachable; saying it in both places printed the identical line twice
+		// on every ordinary watched run.
 		if gate.Unjudged {
+			w.saidStanding = true
 			w.note(unjudgedWords(gate), "")
 			return true
 		}
