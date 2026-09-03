@@ -1334,7 +1334,12 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 // it is.)
 func repairInstruction(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) string {
 	var out strings.Builder
-	out.WriteString(node.instruction())
+	// BOUND TO THE COPY, like the opening request was. A repair round is the
+	// second and last moment a worker is spoken to, and a worker handed the
+	// parent's addresses on round two would be sent back out at the person's
+	// own checkout after round one had it right (task_run.go's
+	// [TaskNode.instructionOn]).
+	out.WriteString(node.instructionOn(tree))
 	if ground := repairGround(tree, changed); ground != "" {
 		out.WriteString("\n\n" + repairSawHeading + "\n" + ground)
 	}

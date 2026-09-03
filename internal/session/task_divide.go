@@ -596,6 +596,27 @@ const (
 	// work as one job from a road that would have handed it out happily if the
 	// briefs had drawn the line anywhere.
 	divisionRefusedScope = "refused:scope"
+	// divisionRefusedShared is one check standing in the done-condition of two
+	// or more parts (task_divide_scope.go). It is its own word beside `scope`
+	// because it is a different finding about a division that is otherwise
+	// right: the boundaries may be perfect and the parts may own nothing in
+	// common, and what is wrong is that they were all told to make the same
+	// family-wide run. A bench counting it beside `scope` could not tell a
+	// division that would have lost work from one that would merely have bought
+	// one suite four times.
+	divisionRefusedShared = "refused:shared-check"
+	// divisionRepairedShared is the SECOND firing of that rule on one node: the
+	// worker was told, came back with the same shape, and the harness lifted the
+	// shared command onto the parent rather than refusing again
+	// (task_divide_scope.go). The parts were admitted, so `Admitted` counts them
+	// and `Shared` names what moved.
+	//
+	// IT IS A THIRD WORD AND NOT A FLAG ON THE SECOND, because an autopsy has to
+	// tell "the worker was told and fixed it" from "the worker was told twice and
+	// the harness moved it". Those are two different facts about a model, and a
+	// record that counted them together would be adding this road's successes to
+	// its rescues.
+	divisionRepairedShared = "repaired:shared-check"
 	// divisionRefusedFreeze is a family whose own tree would not take the commit
 	// its parts have to start from (task_divide_wip.go). It is its own word
 	// because it is the only refusal here that is about THE MACHINE rather than
@@ -653,6 +674,12 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source string) (string, string, bool) {
 	parent := a.config.taskID
 	line := journalDivision{TaskID: parent, Source: source}
+	// repaired is what the harness lifted off the parts on the way through, and
+	// it is declared up here because the rule that fills it is asked at two
+	// separate moments and the word it writes on the record goes on at the end
+	// (task_divide_scope.go). It is empty on every division that needed no
+	// repair, which is every division a worker got right either time.
+	var repaired []string
 	defer func() { a.file.appendDivision(line) }()
 
 	parsed, problem := parseDivideArguments(args)
@@ -758,6 +785,30 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		return said, "", false
 	}
 
+	// AND THE SAME MOMENT ASKS THE SECOND ADMISSION RULE: NO CHECK MAY BE
+	// ORDERED BY TWO PARTS (task_divide_scope.go states the law, why it
+	// classifies by repetition rather than by any program's name, and why the
+	// SECOND telling repairs instead of refusing). It stands here for gate
+	// three's reason exactly — it is free, and a division that was never going
+	// to be allowed to stand should not buy a reading to find that out — and it
+	// is asked again below on the parts the reviewer settled, because the
+	// reviewer may sharpen a family-wide run into a brief the worker never put
+	// it in.
+	//
+	// WHAT COMES BACK ON THE REPAIR ROAD IS THE PARTS WITH THE CHECK TAKEN OUT,
+	// and they are what everything below this line works on. The decision is
+	// NOT written here on that road: the parts are about to be admitted, and
+	// [Agent.startTheParts] writes `admitted` over anything standing on the line
+	// — so the word is put back at the end, on the one path that got there.
+	said, lifted, shared := a.sharedCheckAnswer(node, parsed.Parts, scopeSpentNothing)
+	if said != "" {
+		line.Decision = divisionRefusedShared
+		line.Shared = shared
+		return said, "", false
+	}
+	parsed.Parts = lifted
+	repaired = append(repaired, shared...)
+
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
 	// both gates because it is the only step here that costs money: a division
 	// nobody is free to pick up, or one the evidence does not support on work no
@@ -832,6 +883,14 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		line.Decision = divisionRefusedScope
 		return said, "", false
 	}
+	said, lifted, shared = a.sharedCheckAnswer(node, parsed.Parts, scopeSpentTheRead)
+	if said != "" {
+		line.Decision = divisionRefusedShared
+		line.Shared = shared
+		return said, "", false
+	}
+	parsed.Parts = lifted
+	repaired = append(repaired, shared...)
 
 	// AND THE PARTS COME INTO EXISTENCE, which is ONE operation and not a
 	// sequence this function holds the bookkeeping for (task_divide_wip.go's
@@ -850,6 +909,15 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	ids, titles, refused := a.startTheParts(node, parsed.Parts, &line)
 	if refused != "" {
 		return refused, "", false
+	}
+	// AND THE RECORD SAYS THE HARNESS REPAIRED THIS ONE. It is written HERE and
+	// not where the lifting happened because [Agent.startTheParts] settles
+	// `admitted` on its own way through, and a word written above it would be
+	// silently replaced. The parts really were admitted — `Admitted` counts them
+	// — and what this says is HOW they came to stand up.
+	if len(repaired) > 0 {
+		line.Decision = divisionRepairedShared
+		line.Shared = repaired
 	}
 	return divisionDone(ids, titles, graph.machineBusy()), "", false
 }
@@ -1010,7 +1078,7 @@ const (
 // from here.
 var divideReviewBrief = `A worker part-way through a piece of work has decided it is wider than one pair of hands, and has written the parts it wants to hand out. You read the whole division ONCE and answer for it.
 
-Each part becomes a worker of its own, in a copy of its own. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part works on, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice. WHAT A PART OWNS IS WHAT ITS ` + "`acceptance`" + ` NAMES: the done-condition says what must be true once the part is finished, so it names what that part produces. Material several parts read is shared and belongs in the brief, not in a done-condition.
+Each part becomes a worker of its own, in a copy of its own. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part works on, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice. WHAT A PART OWNS IS WHAT ITS ` + "`acceptance`" + ` NAMES: the done-condition says what must be true once the part is finished, so it names what that part produces. Material several parts read is shared and belongs in the brief, not in a done-condition. A check that proves the whole proves nothing about a part: each part names the check that proves its own slice, and the whole is yours to make once, after their work is home.
 
 READ THE PARTS TOGETHER, WHICH IS THE ONE THING THEIR AUTHOR COULD NOT DO:
 

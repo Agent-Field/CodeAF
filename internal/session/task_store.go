@@ -206,6 +206,12 @@ type taskRecord struct {
 	// siblings ever saw. Additive: a checkpoint written before it existed decodes
 	// without it and seals exactly as it always did.
 	Frozen string `json:"groundFrozen,omitempty"`
+	// Family is the checks this node owns for the family it handed out
+	// ([TaskNode.Family]). It is here because the parent's own check is made
+	// after every part is home, which can be a different process from the one
+	// that divided — a resumed node that had forgotten it would be a check
+	// nobody ever makes.
+	Family []string `json:"familyChecks,omitempty"`
 
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
@@ -687,6 +693,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Base:          n.Base,
 		Universe:      n.Universe,
 		Frozen:        n.Frozen,
+		Family:        n.Family,
 		Acceptance:    n.spec.acceptance,
 		DependsOn:     dependsOn,
 		Parent:        n.parent,
@@ -1174,6 +1181,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Base:        record.Base,
 		Universe:    record.Universe,
 		Frozen:      record.Frozen,
+		Family:      record.Family,
 		state:       record.State,
 		report:      record.Report,
 		ending:      record.Ending,

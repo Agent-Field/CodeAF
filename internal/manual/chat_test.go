@@ -282,6 +282,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody reading either phrase for the first time asks this.
 		{"where does my task work", "how-tasks-run"},
 		{"what does its own copy of the folder mean on the task card", "how-tasks-run"},
+		// AND WHETHER THE ADDRESSES IN THE BRIEF ARE ITS OWN. The contract a task
+		// is handed is written in the worker's own copy (#566), so somebody who
+		// watched their own checkout's path go into a brief asks whether that is
+		// where it will write — in the words of the path, the brief, or the
+		// contract.
+		{"the brief names my project path can the task write there", "how-tasks-run"},
+		{"does the task follow the paths in its brief", "how-tasks-run"},
+		{"my task was given a path in my checkout will it write there", "how-tasks-run"},
+		{"the contract names my repo path", "how-tasks-run"},
 		// AND WHAT HAPPENS WHEN THE TWO OF YOU WRITE THE SAME FILE. Somebody who
 		// edited a note while a folder task was running asks this in the words of
 		// the thing they are afraid of, not in the harness's (#258).
@@ -1109,6 +1118,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what makes a part own a file, its brief or its done-condition", "tasks"},
 		{"two parts both mention the same file in their briefs, is that an overlap", "tasks"},
 		{"can two parts read the same shared file", "tasks"},
+		// And the other half of the same refusal, which a person meets as parts
+		// that were told to run the SAME check: a done-condition every part
+		// shares is a file every part owns, so nothing can be divided (#569).
+		// These are the words they type after reading that.
+		{"two parts told to run the same check", "tasks"},
+		{"the parts all had the same done-condition and it would not split", "tasks"},
+		{"each part should only check its own files", "tasks"},
+		{"it refused the split because the parts share a check", "tasks"},
 		// Hands: the third weight, and the one a person meets as a line they did
 		// not ask for in the middle of their own answer. They ask in the words on
 		// the screen — "three hands on it" — or in the words for what they saw,
