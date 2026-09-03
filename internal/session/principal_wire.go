@@ -15,6 +15,8 @@ package session
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // principalEar is the half of a principal that is TOLD things rather than
@@ -219,9 +221,10 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			// tell a gap in the ask from a sibling that died on the wire, and
 			// from one whose work somebody else has since brought home
 			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
-			Ending: node.endingNow(),
-			Files:  changed,
-			Merged: merge == mergeMerged,
+			Ending:  node.endingNow(),
+			Files:   changed,
+			Merged:  merge == mergeMerged,
+			Checked: node.checkAnswer() == provider.VerdictVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -387,7 +390,7 @@ func landingSignature(state TaskState, report string) string {
 // what the session already holds.
 func (a *Agent) remainsFor(said, reader string) Remains {
 	landings, landed, flight := a.landings()
-	return Remains{
+	remains := Remains{
 		Said:       said,
 		Reader:     reader,
 		Acceptance: a.who().Acceptance(),
@@ -395,13 +398,15 @@ func (a *Agent) remainsFor(said, reader string) Remains {
 		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
-		// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before
-		// any decision — rather than beside the checks themselves: the checks are
-		// run once, after a principal has said the ask is met, and a baseline
-		// attached at that moment would be a baseline of a tree this session has
-		// already changed ([Agent.openBaseline]).
-		WasFailing: a.baselineRedChecks(),
 	}
+	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
+	// decision — rather than beside the checks themselves: the checks are run
+	// once, after a principal has said the ask is met, and a baseline attached at
+	// that moment would be a baseline of a tree this session has already changed
+	// ([Agent.openBaseline]). The reading runs in the background, so it may not
+	// have landed; a reading with no baseline counts nothing as this run's own.
+	remains.WasFailing, remains.BaselineRead = a.baselineRedChecks()
+	return remains
 }
 
 // ── ADDRESSING A LANDING ────────────────────────────────────────────────────
@@ -477,5 +482,6 @@ func landingFromNotice(notice TaskNotice) Landing {
 		Ending:    notice.Ending,
 		Files:     notice.Changed,
 		Merged:    notice.Merge == mergeMerged,
+		Checked:   notice.Checked == provider.VerdictVerifiedSuccess,
 	}
 }

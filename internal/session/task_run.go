@@ -2696,6 +2696,11 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Waiting:   waiting,
 		Stopped:   n.stopped,
 		Ending:    n.endingLocked(),
+		// AND WHAT ITS OWN CHECK SAID, which is not the same fact as its state: a
+		// node taken as it stands, one landed with the check switched off and one
+		// a person accepted are all done and none of them was checked
+		// (taskgrade.go's [TaskNode.checkSaid]).
+		Checked: n.checked,
 		// WHAT IT IS RUNNING ON, WHICH IS THE SPEC'S UNLESS SOMETHING SWAPPED IT.
 		// See [TaskNode.ran] for why the swap is a second field rather than an
 		// edit to the frozen spec.
@@ -3743,15 +3748,15 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 			node.finish(withReport("lost the connection to the model: "+runErr.Error(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
-		// AND A PROVIDER THAT REFUSED THE REQUEST IS THE SAME NEWS AS THE WIRE,
-		// however different the sentence reads. Nothing was learned about the
-		// work — an API error, a refusal, a model that is not there — so the
+		// AND A PROVIDER THAT COULD NOT SERVE THE REQUEST IS THE SAME NEWS AS THE
+		// WIRE. Nothing was learned about the work — the service was down, the
+		// route had no provider left, the account could not be served — so the
 		// ending is classed for what it was ([TaskEndingUpstream]) and a reader
-		// of what is left knows not to count it as a gap in the ask. The
-		// question is put to the error's own TYPE and never to its words
-		// ([terminalProviderFailure]), and the person's sentence is unchanged:
-		// what they need is the provider's own account of the refusal.
-		if terminalProviderFailure(runErr) {
+		// of what is left knows not to count it as a gap in the ask. The question
+		// is put to the error's own TYPE and STATUS ([providerCouldNotServe]),
+		// and the person's sentence is unchanged: what they need is the
+		// provider's own account of it.
+		if providerCouldNotServe(runErr) {
 			node.end(TaskEndingUpstream)
 			node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 			return TaskFailed, true

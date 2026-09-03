@@ -45,12 +45,17 @@ package session
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 const (
@@ -190,11 +195,49 @@ func runOneCheck(ctx context.Context, tree, check string) CheckRun {
 	command := exec.CommandContext(ctx, "bash", "-c", check)
 	command.Dir = tree
 	output, err := command.CombinedOutput()
+	// A COMMAND THAT RAN AND A COMMAND THAT COULD NOT BE RUN ARE DIFFERENT NEWS.
+	// An exit status — whatever it was — is the shell having executed the thing
+	// and answered; anything else is the command not being there, the window
+	// closing over it, or the process never starting, and none of those is a
+	// reading of the tree ([CheckRun.Ran]).
 	return CheckRun{
 		Command: check,
 		Passed:  err == nil,
+		Ran:     checkActuallyRan(ctx, err),
 		Tail:    checkTail(string(output)),
 	}
+}
+
+// checkActuallyRan answers [CheckRun.Ran]: did this command START AND FINISH,
+// or did something stop it from ever answering?
+//
+// THE CLOCK IS ASKED FIRST, because a command the window killed comes back
+// wearing an exit status like any other — the signal that stopped it IS an exit
+// — and a deadline read as a failing check is exactly the silence this exists to
+// prevent.
+//
+// AND THE SHELL'S TWO "I COULD NOT RUN IT" CODES ARE READ AS WHAT THEY ARE. 127
+// is a command that is not there and 126 is one that would not execute; both are
+// bash answering about ITSELF rather than the check answering about the tree, and
+// a baseline that wrote either down as already-red would silence a real failure
+// on that command the day somebody installed it. They are exit codes, read off
+// the typed error — not words out of anybody's output.
+func checkActuallyRan(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	if err == nil {
+		return true
+	}
+	var exited *exec.ExitError
+	if !errors.As(err, &exited) {
+		return false
+	}
+	switch exited.ExitCode() {
+	case 126, 127:
+		return false
+	}
+	return true
 }
 
 // checkTail keeps the END of what a check printed, bounded. It is
@@ -361,8 +404,8 @@ func sweepScratch(found reconciliation) reconciliation {
 // sweep on every stopped turn would be this feature deleting the run's own
 // working material halfway through, which is a worse failure than the one it
 // was built to fix.
-// openBaseline reads WHAT WAS ALREADY RED before this session did any work, once,
-// at the start of an unattended run.
+// openBaseline reads WHAT WAS ALREADY RED before this session did any work,
+// once, in the background, at the start of an unattended run.
 //
 // ── THE MEASURED FAILURE ────────────────────────────────────────────────────
 //
@@ -376,19 +419,31 @@ func sweepScratch(found reconciliation) reconciliation {
 //
 // The first write is the other candidate and it is the wrong one: the write seam
 // learns that a call wrote at POST-FEEDBACK, which is after the file changed, and
-// a reading taken then already holds this session's own work. What a baseline
-// has to be is the tree BEFORE, and the only moment that is certainly before is
-// the one this shares with [Agent.openAcceptance] — the start of the first turn,
-// where the session's declared checks are already knowable from the ask.
+// a reading taken then already holds this session's own work. What a baseline has
+// to be is the tree BEFORE, and the only moment that is certainly before is the
+// one this shares with [Agent.openAcceptance] — the start of the first turn.
 //
-// ── AND IT IS PAID FOR ONLY WHERE IT IS READ ────────────────────────────────
+// ── AND IT DOES NOT HOLD THE TURN, WHICH IS THE HALF THAT HAD TO CHANGE ─────
 //
-// A [Person] never reads a check this way — they look at their own tree — so a
-// watched session runs nothing here and costs nothing. An unattended run pays for
-// it once, and it is bounded exactly as the terminal reading is: one window per
-// check ([sessionCheckWindow]), and a check that could not be run inside it is
-// simply not baseline-red, which is the safe side — an unread check keeps its
-// old meaning and is named if it fails later.
+// A declared check is an ARBITRARY SHELL COMMAND. Run in front of the person's
+// first turn it can take as long as a suite takes, and several of them in a row
+// can take several suites — so it runs on its own and the turn starts. Until it
+// lands there is no baseline, and what a reading with no baseline does is count
+// NOTHING as this run's own red ([Remains.BaselineRead]): naming a check before
+// anybody knows whether it was already failing is the exact mistake this exists
+// to stop, in a hurry.
+//
+// AND THE WHOLE READING SHARES ONE WINDOW ([sessionCheckWindow]), not one each. A
+// baseline is a photograph and a photograph has an exposure; four checks with
+// five minutes apiece would be twenty minutes of somebody else's suite running
+// beside a run that is already going. What does not fit is simply not read.
+//
+// AND A CHECK THAT CHANGED THE TREE IS NOT A BASELINE. A declared "check" can
+// build, format, migrate or install; run before the work it would be this
+// session's own first edit, made by the harness, and its answer would be a
+// reading of a tree nobody asked for. The tree is photographed either side of
+// each one ([verify.TreeState]) and a check that moved it has its result thrown
+// away and the fact written down.
 func (a *Agent) openBaseline(ctx context.Context) {
 	if a.steward() == nil {
 		return
@@ -402,38 +457,124 @@ func (a *Agent) openBaseline(ctx context.Context) {
 	}
 	checks := a.sessionChecks()
 	if len(checks) == 0 {
+		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
+		// runnable check has no baseline to wait for, and leaving the reading
+		// permanently open would mean no check ever counted as this run's own.
+		a.closeBaseline(nil)
 		return
 	}
-	var red []string
-	for _, run := range a.runSessionChecks(ctx, checks) {
-		if !run.Passed {
-			red = append(red, run.Command)
+	go func() {
+		defer guard.Recover("session baseline checks")
+		a.readBaseline(ctx, checks)
+	}()
+}
+
+// readBaseline is the reading itself, on its own goroutine.
+func (a *Agent) readBaseline(ctx context.Context, checks []string) {
+	// ONE WINDOW FOR THE WHOLE PHOTOGRAPH. [Agent.runSessionChecks] bounds each
+	// call it makes as well, so a single check still cannot outlive the window
+	// on its own; what this adds is that the SET cannot either.
+	ctx, done := context.WithTimeout(ctx, sessionCheckWindow)
+	defer done()
+
+	tree := a.deliverableTree()
+	var red, moved []string
+	for _, check := range checks {
+		if ctx.Err() != nil {
+			// The window closed. Everything unread keeps the meaning it has
+			// always had, which is the safe side: it is not baseline-red, so red
+			// on it later is still named.
+			break
+		}
+		before := treeStateNow(tree)
+		run := runOneCheck(ctx, tree, check)
+		if after := treeStateNow(tree); after != before {
+			// THE CHECK WROTE. Whatever it answered is an answer about a tree it
+			// changed itself, so it is not a photograph of anything and it is
+			// discarded rather than trusted.
+			moved = append(moved, check)
+			continue
+		}
+		// AND A CHECK THAT COULD NOT BE RUN IS NOT A CHECK THAT FAILED. A command
+		// that would not start, or that the window cut off, taught nobody
+		// anything about the tree — and recording it as already-red would SILENCE
+		// a real failure on it later, which is the opposite of this law. Only a
+		// check that ran to an answer and answered red is baseline-red.
+		if run.Ran && !run.Passed {
+			red = append(red, check)
 		}
 	}
+	a.closeBaseline(red)
+	a.journalBaseline(red, moved)
+}
+
+// treeStateNow photographs the deliverable tree, bounded, for the one question
+// [Agent.readBaseline] asks of it: did that command change anything here?
+func treeStateNow(tree string) string {
+	if strings.TrimSpace(tree) == "" {
+		return ""
+	}
+	return verify.TreeState(tree, treeRecord(tree))
+}
+
+// treeRecord lists the tree's own files for [treeStateNow], bounded by the same
+// ceiling a claim hunt uses ([claimScanFiles]) and skipping the corners nobody
+// keeps a deliverable in.
+//
+// IT IS A LIST OF NAMES AND THE STATE IS BUILT FROM THE DISK, which is
+// [verify.TreeState]'s own law: a name is not a state, so each path is settled
+// against its size and its modification time there.
+func treeRecord(tree string) []string {
+	var record []string
+	_ = filepath.WalkDir(tree, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			if skipDuringHunt(entry.Name()) && path != tree {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if len(record) >= claimScanFiles {
+			return fs.SkipAll
+		}
+		record = append(record, path)
+		return nil
+	})
+	return record
+}
+
+// closeBaseline publishes the reading and says it has happened, which are one
+// step: a reader that saw the list before the flag would count nothing, and one
+// that saw the flag before the list would count everything.
+func (a *Agent) closeBaseline(red []string) {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.baselineRed = red
-	a.mu.Unlock()
-	a.journalBaseline(red)
+	a.baselineRead = true
 }
 
 // baselineRedChecks is what this session found already failing before it worked,
-// for the reading that decides what is left ([Remains.WasFailing]).
-func (a *Agent) baselineRedChecks() []string {
+// and whether the reading has landed at all ([Remains.WasFailing]).
+func (a *Agent) baselineRedChecks() ([]string, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return append([]string(nil), a.baselineRed...)
+	return append([]string(nil), a.baselineRed...), a.baselineRead
 }
 
 // journalBaseline writes the baseline down, INCLUDING WHEN IT WAS ALL GREEN.
 //
 // A run that carried on into somebody else's red and a run whose tree was clean
-// read identically in the file before this, so the one fact that explains a
-// whole evening was the one fact nowhere on disk. The row is written whichever
-// way it came out — an empty `failed` on a green tree is the reading having
-// happened, not the reading being missing.
-func (a *Agent) journalBaseline(red []string) {
+// read identically in the file before this, so the one fact that explains a whole
+// evening was the one fact nowhere on disk. The row is written whichever way it
+// came out — an empty `failed` on a green tree is the reading having happened,
+// not the reading being missing — and a check that moved the tree is named
+// beside it, because a declared check that writes is worth somebody knowing
+// about whatever else it answered.
+func (a *Agent) journalBaseline(red, moved []string) {
 	a.journalFile().appendPrincipal(journalPrincipal{
-		Who: principalWord(a.who()), Event: "baseline", Failed: red,
+		Who: principalWord(a.who()), Event: "baseline", Failed: red, Removed: moved,
 	})
 }
 

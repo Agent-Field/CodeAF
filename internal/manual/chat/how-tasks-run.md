@@ -2134,10 +2134,13 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.
-  - `the model provider refused it — branch kept`: the model provider would not serve the
-    request at all — an API error, a model that is not there, a route with no provider left.
-    Nothing was found out about the work, and on a run with a budget this does **not** count
-    as part of what is still left to do.
+  - `the model provider refused it — branch kept`: the provider could not **serve** the
+    request at all — the service was down, the route had no provider left, a rate limit was
+    still refusing after the retries, or the account could not be served. Nothing was found
+    out about the work, and on a run with a budget this does **not** count as part of what
+    is still left to do. A model that read the request and **refused** it, and a rejection
+    of what the request itself contained, are the provider *answering* — those read
+    `ended with an error` and do still count.
   - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
     ended the turn (its last words are `this turn is going in circles · stopping here
     with anything remaining left undone`). Repetition is the whole of it: the same call

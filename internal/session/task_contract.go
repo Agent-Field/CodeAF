@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // ── The task contract ───────────────────────────────────────────────────────
@@ -520,6 +522,12 @@ type TaskNotice struct {
 	// gave up going in circles, a check that did not accept the work, and not one
 	// person pressing stop.
 	Ending TaskEnding
+	// Checked is WHAT THE CHECK SAID about this node's work, and "" on a node no
+	// check ever read. It is narrower than State on purpose: a node taken as it
+	// stands, one landed with the check switched off and one a person accepted
+	// are all done and none of them was judged (taskgrade.go's
+	// [TaskNode.checkSaid]).
+	Checked provider.Verdict
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that

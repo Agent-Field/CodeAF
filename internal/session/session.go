@@ -1765,6 +1765,10 @@ type Agent struct {
 	// reads as no red at all ([Agent.openBaseline]).
 	baselineRed   []string
 	baselineTaken bool
+	// baselineRead says the reading has LANDED, which is not the same as it
+	// having been started ([Agent.openBaseline] runs it in the background) and
+	// not the same as the list being non-empty (a clean tree reads as no red).
+	baselineRead bool
 
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than

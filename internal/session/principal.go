@@ -203,6 +203,13 @@ type Landing struct {
 	// absorb a failed one, because a landing that finished and could not come
 	// home is not the tree holding anything.
 	Merged bool
+
+	// Checked says this unit's OWN check read the work and accepted it. It is
+	// narrower than done on purpose — a unit taken as it stands, one landed with
+	// the check switched off and one a person accepted are all done and none of
+	// them was judged — and [Remains.absorbedBy] will not let a landing nobody
+	// judged speak for somebody else's work.
+	Checked bool
 }
 
 // aboutTheWork reports whether this landing's failure says anything about the
@@ -242,6 +249,14 @@ type CheckRun struct {
 	Command string
 	Passed  bool
 	Tail    string
+
+	// Ran says the command STARTED AND FINISHED — it was found, it executed, and
+	// the shell gave an exit status. A command that would not start and one the
+	// window cut off both answer false, and both are DIFFERENT NEWS from a check
+	// that ran and failed: a check nobody could run taught nobody anything about
+	// the tree, so a baseline may not record it as already-red (recording it
+	// there would silence a real failure on it later).
+	Ran bool
 }
 
 // Remains is the end of a turn as a principal is shown it.
@@ -286,8 +301,16 @@ type Remains struct {
 	// failed one is — and it is never a reason to keep carrying on.
 	Blocked []string
 
+	// BaselineRead says the before-reading has LANDED. It runs in the background
+	// at the start of an unattended run, so a reading assembled in the first
+	// minutes has no baseline yet — and with none, NO CHECK IS COUNTED AS THIS
+	// RUN'S OWN RED. Naming a check before anybody knows whether it was already
+	// failing is the mistake this whole field exists to stop, made in a hurry.
+	BaselineRead bool
+
 	// WasFailing is the checks that were ALREADY RED before this session did any
-	// work, by the same command names Checks carries.
+	// work, by the same command names Checks carries. It is meaningless unless
+	// BaselineRead.
 	//
 	// A CHECK IS OURS ONLY IF WE TURNED IT RED. An acceptance that says "the
 	// existing test suite passes" is written over whatever the project's suite
@@ -297,9 +320,10 @@ type Remains struct {
 	// else's bug. Measured (#513): the attrs cell's acceptance was `tox -e py`
 	// passes over a suite with one pre-existing failure, and it never stopped.
 	//
-	// EMPTY MEANS NOTHING WAS READ, not that everything was green. A baseline is
-	// taken once, at the start of an unattended run, and a session that never had
-	// one behaves exactly as it did before this field existed.
+	// EMPTY WITH BaselineRead IS A CLEAN TREE; empty without it is a reading that
+	// has not landed. A session that never takes one — every watched session —
+	// counts no check as its own, which is the one safe answer when nobody knows
+	// what was red to begin with.
 	WasFailing []string
 }
 
@@ -342,8 +366,15 @@ func (r Remains) unmet() []string {
 	// makes over its own before-and-after ([verify.NewFailures]), on the check
 	// commands rather than on test names, because a session's declared check is
 	// a whole command and its answer is whether that command passed.
-	for _, command := range verify.NewFailures(r.WasFailing, r.redChecks()) {
-		out = append(out, command+" does not pass")
+	//
+	// AND WITH NO BASELINE YET, NOTHING IS COUNTED. The reading runs in the
+	// background at the start of the run, and until it lands nobody knows which
+	// red is the project's — so the honest answer about the checks is silence
+	// rather than a guess, and [stewardBrief] says the reading is still going.
+	if r.BaselineRead {
+		for _, command := range verify.NewFailures(r.WasFailing, r.redChecks()) {
+			out = append(out, command+" does not pass")
+		}
 	}
 	return out
 }
@@ -363,6 +394,9 @@ func (r Remains) redChecks() []string {
 // began — the checks [Remains.unmet] deliberately did not name.
 func (r Remains) alreadyRed() []string {
 	red := r.redChecks()
+	if !r.BaselineRead {
+		return nil
+	}
 	return verify.Subtract(red, verify.NewFailures(r.WasFailing, red))
 }
 
@@ -377,11 +411,20 @@ func (r Remains) alreadyRed() []string {
 // green on its own check and merged — and the child, dead on the wire, was still
 // read as work outstanding.
 //
-// IT IS DELIBERATELY STRICT IN THREE WAYS. A failed unit that changed NOTHING is
+// IT IS DELIBERATELY STRICT IN FOUR WAYS. A failed unit that changed NOTHING is
 // never absorbed, because nothing of it can be shown to be done. Only a landing
-// that is both done and MERGED may absorb, because work that finished and could
-// not come home is not the tree holding anything. And every file must be
-// covered: a unit half of whose work somebody else did is a unit with work left.
+// that is done, MERGED and CHECKED may absorb: work that finished and could not
+// come home is not the tree holding anything, and work nobody judged is not
+// evidence about anybody's job — least of all somebody else's. And every file
+// must be covered: a unit half of whose work somebody else did is a unit with
+// work left.
+//
+// THE RESIDUAL IS A GREEN MERGED REVERT, and it is accepted deliberately. A
+// landing that reverted the failed unit's edits, was judged against the ask and
+// came home green is the tree AS JUDGED — the check read what would ship and
+// said it holds — so the ask is met over the files in question whatever any
+// individual edit did to them. Reading the diff here instead would be this
+// function second-guessing the one reader in the building that actually looked.
 //
 // THE WHOLE SET IS READ RATHER THAN WHAT CAME AFTER, because a landing carries
 // no clock and the question is not who was first — it is whether the file is
@@ -392,7 +435,10 @@ func (r Remains) absorbedBy(failed Landing) string {
 		return ""
 	}
 	for _, landing := range r.Landings {
-		if landing.ID == failed.ID || landing.State != TaskDone || !landing.Merged {
+		if landing.ID == failed.ID || landing.State != TaskDone {
+			continue
+		}
+		if !landing.Merged || !landing.Checked {
 			continue
 		}
 		if !covers(landing.Files, failed.Files) {
@@ -903,12 +949,24 @@ func stewardBrief(r Remains, unmet []string) string {
 	// will go and fix it, which is the whole failure in its other form; told
 	// that it was red before the work and is not being counted, it can leave it
 	// alone or say so.
-	if already := r.alreadyRed(); len(already) > 0 {
+	if !r.BaselineRead && len(r.Checks) > 0 {
+		// AND A BRIEF WRITTEN BEFORE THE BASELINE LANDED SAYS SO. A worker told
+		// nothing about the checks would read the silence as "they pass"; told
+		// that nobody has finished reading them yet, it knows the one thing that
+		// is actually true.
+		out.WriteString("\n\n")
+		out.WriteString(baselineStillReading)
+	} else if already := r.alreadyRed(); len(already) > 0 {
 		out.WriteString("\n\n")
 		out.WriteString(alreadyRedSentence(already))
 	}
 	return out.String()
 }
+
+// baselineStillReading is what a brief says while the before-reading of the
+// checks is still running, so silence about them is never read as "they pass".
+const baselineStillReading = "what the checks said before this work is still being read, " +
+	"so nothing is being counted against them yet"
 
 // alreadyRedSentence says what the tree was already failing before this work, in
 // a person's words and with the commands named so nobody has to guess which.

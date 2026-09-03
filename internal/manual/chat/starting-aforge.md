@@ -202,6 +202,15 @@ the checks your ask names once at the start — before it has touched anything �
 down which were already failing. At the end it runs them again, and only a check that was
 **green before and red after** counts as work still to do.
 
+That first reading runs **in the background**, so nothing waits for it: your first turn
+starts straight away. It gets one window for the whole set rather than one per check, and
+two things are deliberately not counted in it — a check that **changed the tree** (a build,
+a formatter, a migration: that would be aforge making the first edit, not looking) and a
+check the shell **could not run at all**. Neither is a photograph of anything, so both are
+thrown away, and a command nobody could run keeps its ordinary meaning: if it fails later,
+that counts. Until the reading lands, no check is counted against your ask either way, and
+the run says so in as many words.
+
 That matters because of the sentence people naturally write: *"the existing test suite
 passes"*. Over a project whose suite already has one failing test, that can never become
 true, and a run that reads its own failure in the project's will spend its whole ceiling on
@@ -215,8 +224,7 @@ says so plainly, so nothing goes off to fix it by accident:
 ```
 
 A session you are sitting in front of runs none of this: your tree is in front of you, and
-nothing is checked or decided on your behalf. And if the first reading could not be taken —
-no runnable check in your ask — every check is read the way it always was.
+nothing is checked or decided on your behalf.
 
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
