@@ -2690,6 +2690,9 @@ func TestTheSessionStampsItsCacheKeyOnTheWire(t *testing.T) {
 	var keys []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body struct {
 			PromptCacheKey string `json:"prompt_cache_key"`
