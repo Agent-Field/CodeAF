@@ -303,8 +303,13 @@ type journalPrincipal struct {
 	Failed     []string `json:"failed,omitempty"`
 	Removed    []string `json:"removed,omitempty"`
 	Kept       []string `json:"kept,omitempty"`
-	WallMS     int64    `json:"wallMs,omitempty"`
-	CostUSD    float64  `json:"costUsd,omitempty"`
+	// Stashed is how many entries `git stash list` named at the terminal
+	// reading, and it rides the `checked` row: work the session took out of the
+	// tree and never put back is part of what that reading found, and a run
+	// that finished over a stashed fix used to be unreadable afterwards.
+	Stashed int     `json:"stashed,omitempty"`
+	WallMS  int64   `json:"wallMs,omitempty"`
+	CostUSD float64 `json:"costUsd,omitempty"`
 }
 
 // journalRule is ONE MOMENT OF ONE PROCESS RULE the turn loop can hold a model

@@ -280,7 +280,16 @@ type Remains struct {
 	Landed bool
 
 	// Made says this session put work on the deliverable WITH ITS OWN HANDS —
-	// files it created or changed under the tree, no task involved.
+	// files it created, or files under the tree WHOSE CONTENT STILL DIFFERS from
+	// what it was before the session wrote them, no task involved.
+	//
+	// MADE IS ABOUT CONTENT AND NOT ABOUT PATHS. A path the session wrote is not
+	// a change the session made: a `git stash`, a revert, an edit that puts a
+	// file back the way it was all leave the path in the ledger and nothing in
+	// the tree. Measured (#534's follow-up): the attrs cell edited the file that
+	// held the fix, stashed it to compare against the baseline, never popped it,
+	// and finished — the door said `finishing here · what was asked is done` over
+	// a tree with zero changed files ([Agent.changedInDeliverable]).
 	//
 	// A SESSION THAT CHANGED THE DELIVERABLE HAS FINISHED SOMETHING. Landed is a
 	// reading of the task graph, so a run that did the whole job inline had it
@@ -360,6 +369,20 @@ type Remains struct {
 	// pytest writes `.pytest_cache/`). So what could not be read is carried
 	// separately and is never counted either way.
 	Unread []string
+
+	// Stashed is how many entries `git stash list` names in the deliverable tree
+	// at the terminal reading ([Agent.terminalAudit]). Zero for a tree that is
+	// not a repository, and zero where there is no git to ask.
+	//
+	// A STASH IS WORK THAT IS NOT IN THE TREE, AND IT IS SAID OUT LOUD. Every
+	// other reading here — the checks, the reconciliation, the session's own
+	// ledger — reads the tree as it stands, and a tree with the fix stashed out
+	// of it looks exactly like a tree the fix was never written into. The one
+	// party that knows better is git, so it is asked, and what it says becomes a
+	// line in [Remains.unmet] rather than a fact nobody carried: a done cannot be
+	// decided over it, and the carry-on brief tells the model exactly what is
+	// wrong instead of sending it to write the fix a second time.
+	Stashed int
 }
 
 // finishedSomething answers the first question [Remains.unmet] asks: has this
@@ -420,6 +443,16 @@ func (r Remains) unmet() []string {
 			continue
 		}
 		out = append(out, fmt.Sprintf("unit %d did not finish", landing.ID))
+	}
+	// AND WORK THAT IS SITTING IN A STASH IS WORK THAT IS NOT IN THE TREE. It is
+	// named before the checks because it is the reason a check may be answering
+	// about the wrong tree: a session that stashed its own fix to compare against
+	// the baseline and never popped it has a green suite, a tidy reconciliation
+	// and nothing to ship ([Remains.Stashed]).
+	if r.Stashed == 1 {
+		out = append(out, "1 stash entry holds work that is not in the tree")
+	} else if r.Stashed > 1 {
+		out = append(out, fmt.Sprintf("%d stash entries hold work that is not in the tree", r.Stashed))
 	}
 	// AND ONLY THE RED THIS WORK TURNED RED IS LEFT. What was already failing
 	// before anybody touched the tree is the project's and not this session's,

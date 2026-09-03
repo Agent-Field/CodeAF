@@ -82,9 +82,14 @@ func revertRead(t *testing.T, path string) string {
 // this file was here before the turn, that one was not.
 func TestTheLedgerTellsCreatedFromModified(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
-	if err := os.WriteFile(filepath.Join(workspace, "old.md"), []byte("original\n"), 0o644); err != nil {
+	old := filepath.Join(workspace, "old.md")
+	if err := os.WriteFile(old, []byte("original\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// What the file held BEFORE the turn, digested here while it is still there
+	// to digest — which is the whole reason the ledger takes its own copy at
+	// pre-action ([changeLedger.PreAction]).
+	original := fileDigest(old)
 	episode := agent.newEpisode()
 
 	touchThrough(t, episode, workspace, revertWriteCall("c1", "old.md"), "edited\n")
@@ -99,6 +104,20 @@ func TestTheLedgerTellsCreatedFromModified(t *testing.T) {
 	}
 	if changes[1].shown != "new.md" || !changes[1].created {
 		t.Errorf("new.md recorded as %+v, want a creation", changes[1])
+	}
+	// AND THE DIGEST IS THE ONE FROM BEFORE THE WRITE. Taken a moment later it
+	// would be a digest of the session's own work, and every file the session
+	// touched would read as unchanged forever after.
+	if changes[0].before != original {
+		t.Errorf("old.md's before-digest is %q, want the content from before the write (%q)", changes[0].before, original)
+	}
+	if changes[0].before == fileDigest(old) {
+		t.Errorf("old.md's before-digest is the content the write left behind: %q", changes[0].before)
+	}
+	// A FILE THAT WAS NOT THERE DIGESTS AS NOTHING, which is what makes a created
+	// file differ from whatever it holds now.
+	if changes[1].before != "" {
+		t.Errorf("new.md was digested before it existed: %q", changes[1].before)
 	}
 }
 
@@ -228,7 +247,7 @@ func TestRevertNeverTouchesAnythingOutsideTheWorkspace(t *testing.T) {
 	}
 
 	episode := agent.newEpisode()
-	episode.changes.note(outside, false) // as if this turn created it
+	episode.changes.note(outside, false, "") // as if this turn created it
 	episode.changes.touched(outside, outside)
 
 	outcome := agent.revert(episode.offerFor())

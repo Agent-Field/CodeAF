@@ -312,8 +312,15 @@ func (a *Agent) rememberChange(change fileChange) {
 	a.rememberChanged(change)
 }
 
-// rememberChanged keeps one modified file so the session knows it put work on
-// the deliverable with its own hands.
+// rememberChanged keeps one modified file — AND WHAT WAS IN IT BEFORE
+// ([fileChange.before]) — so the session knows it put work on the deliverable
+// with its own hands, and can still tell later whether that work is there.
+//
+// THE FIRST SIGHTING OF A PATH IS THE ONE THAT STANDS, which is why the loop
+// below returns rather than overwriting. A turn's ledger is minted fresh at
+// episode-init, so the second turn to edit a file digests the FIRST turn's
+// result as its before; keeping the earliest entry keeps the digest that was
+// taken before this session had written anything there at all.
 //
 // IT IS NEVER WRITTEN TO THE JOURNAL'S CREATED LINE, whose whole value is the
 // word created ([journalCreated]), and it is not journaled at all: the only
@@ -339,9 +346,27 @@ func (a *Agent) rememberChanged(change fileChange) {
 }
 
 // changedInDeliverable says whether a file this session modified is under the
-// deliverable tree and still a file there. A path outside the tree is a note or
-// a scratch file, not the work; a path that has since gone is not work anybody
-// can point at.
+// deliverable tree, still a file there, AND STILL HOLDING DIFFERENT CONTENT
+// FROM WHAT IT HELD BEFORE THE WRITE. A path outside the tree is a note or a
+// scratch file, not the work; a path that has since gone is not work anybody
+// can point at; and a path whose content is back where it started is not work
+// either, whatever the ledger remembers about it having been written.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// This used to ask about the PATH alone, and a path is not a change. The attrs
+// cell (canary 2026-09-03) edited `src/attr/_make.py`, ran the suite, then ran
+// `git stash` to compare its work against the baseline and never popped it. The
+// tree at the end held none of the fix; the ledger still held the path; Made was
+// true; the door said `finishing here · what was asked is done` over zero changed
+// files. A revert and an edit that writes a file back to what it was fail the
+// same way, silently, and always did.
+//
+// A FILE WITH NO BEFORE-DIGEST IS STILL COUNTED, which is the conservative side
+// and the deliberate one. "" is what an absent file, an unreadable one and a
+// path no pre-action ever saw all digest as ([fileDigest]), and a file that has
+// content now differs from all three. The reading this must never give is a
+// session that really did the work being told it made nothing.
 func (a *Agent) changedInDeliverable() bool {
 	tree := a.deliverableTree()
 	if tree == "" {
@@ -357,11 +382,46 @@ func (a *Agent) changedInDeliverable() bool {
 		if !underTree(tree, change.path) {
 			continue
 		}
-		if info, err := os.Lstat(change.path); err == nil && info.Mode().IsRegular() {
-			return true
+		info, err := os.Lstat(change.path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
 		}
+		if fileDigest(change.path) == change.before {
+			continue
+		}
+		return true
 	}
 	return false
+}
+
+// stashedWork counts the entries `git stash list` names in the deliverable
+// tree: work this session's own tooling took OUT of the tree and did not put
+// back.
+//
+// IT IS ASKED ONCE, AT THE TERMINAL READING, and never on the turn loop
+// ([Agent.terminalAudit]). It is a process, and the only moment its answer can
+// change anything is the one where a principal is about to say the ask is
+// finished.
+//
+// NOT A REPOSITORY, OR NO GIT AT ALL, IS ZERO AND SAYS NOTHING. `git stash list`
+// outside a working tree is an error and so is a git that is not installed, and
+// neither is evidence about anybody's work: the honest answer is silence, not a
+// sentence about a stash nobody has.
+func stashedWork(tree string) int {
+	if strings.TrimSpace(tree) == "" {
+		return 0
+	}
+	out, err := git(tree, "stash", "list")
+	if err != nil {
+		return 0
+	}
+	entries := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) != "" {
+			entries++
+		}
+	}
+	return entries
 }
 
 // reconciliation is what the sweep found: what belongs to the answer, and what
@@ -741,16 +801,22 @@ func (a *Agent) journalBaseline(red, unread, moved []string) {
 	})
 }
 
-func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation) {
+// AND IT READS THE STASH, which is the third thing a person would have looked
+// at. Work the session pushed onto `git stash` is work that is not in the tree,
+// and every other reading here — the checks, the reconciliation, the ledger —
+// reads a tree it is missing from without noticing ([stashedWork]).
+func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, int) {
 	// THE BEFORE-READING IS WAITED FOR HERE AND NOWHERE ELSE. What these checks
 	// answer is about to be subtracted from it, and a terminal answer of done
 	// taken over a red check nobody could attribute would ship red work as
 	// finished ([Agent.awaitBaseline]).
 	a.awaitBaseline(ctx)
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
-	found := reconcile(a.createdList(), a.deliverableTree())
-	a.journalChecks(ran)
-	return ran, found
+	tree := a.deliverableTree()
+	found := reconcile(a.createdList(), tree)
+	stashed := stashedWork(tree)
+	a.journalChecks(ran, stashed)
+	return ran, found, stashed
 }
 
 // sweepSession carries out what [reconcile] sorted, and it is called at the END
@@ -771,11 +837,17 @@ func (a *Agent) sweepSession(found reconciliation) reconciliation {
 // journalChecks writes down what the tree said about itself, because a session
 // that was checked and a session that was taken at its word read identically in
 // the journal before this line existed.
-func (a *Agent) journalChecks(ran []CheckRun) {
-	if len(ran) == 0 {
+//
+// THE STASH RIDES ON THIS ROW RATHER THAN ON ONE OF ITS OWN. It is a fact from
+// the same reading, taken at the same moment, and a second row kind for one
+// integer would make a reader join two lines to learn what one terminal audit
+// found. A session with no checks and a stash still writes the row: the stash is
+// the news, and the empty check list beside it is true.
+func (a *Agent) journalChecks(ran []CheckRun, stashed int) {
+	if len(ran) == 0 && stashed == 0 {
 		return
 	}
-	moment := journalPrincipal{Who: principalWord(a.who()), Event: "checked"}
+	moment := journalPrincipal{Who: principalWord(a.who()), Event: "checked", Stashed: stashed}
 	for _, check := range ran {
 		moment.Checks = append(moment.Checks, check.Command)
 		if !check.Passed {

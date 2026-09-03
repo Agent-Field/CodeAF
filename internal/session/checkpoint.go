@@ -2716,8 +2716,14 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 // carrying the old "not yet" would count nothing against the tree it has just
 // measured.
 func (a *Agent) decideOverTheChecks(ctx context.Context, remains Remains) (Decision, reconciliation) {
-	checks, found := a.terminalAudit(ctx)
+	checks, found, stashed := a.terminalAudit(ctx)
 	remains.Checks = checks
+	// AND WHAT GIT IS HOLDING OUT OF THE TREE COMES BACK WITH THEM. The reading
+	// handed in was assembled from the session's own ledgers, which know a path
+	// was written and not whether the writing is still there; the stash is the
+	// one account of that nobody in this session can take for themselves
+	// ([Remains.Stashed]).
+	remains.Stashed = stashed
 	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
 	return a.who().Decide(remains), found
 }
