@@ -456,3 +456,76 @@ func envInt(key string) (int, bool) {
 	}
 	return v, true
 }
+
+// The observation window: how many bytes of material one worker holds in front
+// of it at a time. It lives here rather than beside the leaf loop that spends
+// it because it is no longer only that loop's question — the planner asks it
+// too, before any worker exists, to measure what a goal names against what the
+// worker it is about to hand the goal to will be able to hold. A number two
+// packages both need is a number that drifts unless exactly one of them owns
+// it, and this is the package that owns the law it is derived from.
+const (
+	// ObservationFloorBytes is the minimum the unknown-context default may fall
+	// to, and nothing else. It is deliberately not a floor under the computed
+	// window: when a model's context really is small, the honest answer is a
+	// small window, and clamping it upwards would size a prompt past what the
+	// model accepts in order to look generous.
+	ObservationFloorBytes = 24 << 10
+
+	// MinObservationBytes is arithmetic protection rather than policy. Below it
+	// the fixed floor and the completion reserve have already eaten the model's
+	// whole context and a worker cannot run there at all; the window stops at a
+	// value the decay pass can still reason about instead of going to zero or
+	// negative.
+	MinObservationBytes = 4 << 10
+
+	// DefaultObservationBytes is the window a worker carries when nothing can
+	// say how much context its model actually has.
+	//
+	// The number is conservative on purpose, and that is the correction to the
+	// obvious first instinct. Not knowing a model's context length is not
+	// evidence that it is large: an offline catalog, an unrecognised slug and a
+	// row cached before the field was kept all look identical here, and a
+	// small-context model is exactly the kind that goes unrecognised. A generous
+	// default would be a silent regression for it — prompts sized past what it
+	// accepts, failing as provider rejections rather than as degradation.
+	DefaultObservationBytes = 32 << 10
+
+	// ObservationFixedFloorTokens is the measured per-turn cost of everything
+	// that is not observations — the standing contract, the tool schemas, the
+	// brief. Measured at ~3,778 tokens across 332 leaf turns; rounded up,
+	// because the window must not be sized from an optimistic floor.
+	ObservationFixedFloorTokens = 4_000
+)
+
+// ObservationBytes sizes one worker's observation window from the one quantity
+// that governs it: how much the model can hold in a single request.
+//
+// The share of the context it may take is the process-wide fill law above —
+// how full a window may get before compaction fires, and the completion reserve
+// every call keeps for its answer and its reasoning. What is left after the
+// fixed floor and that reserve is what observations may carry. The pot the law
+// is taken of is min(window, working set) rather than the window itself, which
+// is the difference between a statement about what a provider accepts and a
+// statement about how much material carrying is useful.
+//
+// A known context under the ceiling gets the law's own answer, including when
+// that answer is small. Only the unknown case takes a default, and only the
+// default gets a floor under it.
+func ObservationBytes(contextTokens int) int {
+	budget := For(contextTokens).WithinWorkingSet().WithFloor(ObservationFixedFloorTokens)
+	if !budget.Known() {
+		if DefaultObservationBytes < ObservationFloorBytes {
+			return ObservationFloorBytes
+		}
+		return DefaultObservationBytes
+	}
+	// Deliberately not BytesOr: an unaffordable window on a genuinely small
+	// model must come back small, not fall through to the unknown-case default.
+	// Sizing a prompt past what the model accepts in order to look generous is
+	// a provider rejection rather than a shorter memory.
+	if window := budget.Bytes(); window > MinObservationBytes {
+		return window
+	}
+	return MinObservationBytes
+}

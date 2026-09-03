@@ -107,6 +107,31 @@ type Node struct {
 	// does not repeat. Empty means no split was ever considered for this node.
 	Undivided string `json:"undivided,omitempty"`
 
+	// BeyondReach is the measurement's finished verdict on this node: the
+	// material it will read is larger than one worker's window AND it is not a
+	// lane of a division. It is a stored answer rather than a question each
+	// reader asks for itself, and THAT IS THE POINT — see correctBeyondReach,
+	// which is the one place that computes it.
+	//
+	// It is here because two seams act on the same fact and only one of them
+	// can see the graph. The sizing correction weighs a node's material against
+	// its siblings'; the split judgment reads one node and the options and
+	// cannot see a sibling at all. While the split judgment measured for itself
+	// it reached the opposite verdict on exactly the nodes the exemption exists
+	// for: three lanes over one register were spared by the correction, sized
+	// atomic, and then journaled "its named material exceeds what one worker
+	// holds" by the expansion pass a moment later. THE TWO SEAMS MAY NEVER
+	// DISAGREE, so there is one verdict and both read it.
+	//
+	// False is every graph that was never measured — no workspace, nothing
+	// named, nothing weighed — which is every prompt byte and every branch
+	// exactly as they were before any of this existed. A graph written to disk
+	// before this field existed reads back false and behaves that way too, and
+	// a node the sizing pass never reached (frozen: already running, already
+	// done) keeps whatever it carried, because it is not a candidate for
+	// division any more.
+	BeyondReach bool `json:"beyond_reach,omitempty"`
+
 	Needs []int  `json:"needs"`
 	Size  Size   `json:"size,omitempty"`
 	State State  `json:"state"`
@@ -340,6 +365,16 @@ type Graph struct {
 	// carrying yesterday's prices would be quoting a measurement as a fact when
 	// the measurement has since changed.
 	Invoice string `json:"-"`
+
+	// Workspace is the directory the terrain above was drawn from, and it is
+	// here so that the material a node names can be weighed. See reach.go: the
+	// sizing pass runs against the document rather than against the options, so
+	// a graph that lost the directory would have no way to check a verdict
+	// against the material the node it sized actually names.
+	//
+	// Empty is a run with no workspace, which measures nothing and changes no
+	// verdict anywhere.
+	Workspace string `json:"workspace,omitempty"`
 
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
@@ -1022,6 +1057,15 @@ func (g *Graph) addSynthesis() {
 		Needs:   sinks,
 		Kind:    KindSynthesis,
 	})
+}
+
+// reach is what one worker holds beside the workspace this graph's names are
+// weighed in. A graph with neither measures nothing. See reach.go.
+func (g *Graph) reach() Reach {
+	if g == nil {
+		return Reach{}
+	}
+	return ReachFor(g.Workspace, g.ContextTokens)
 }
 
 // catalog renders every node the same way for every call that needs the whole
