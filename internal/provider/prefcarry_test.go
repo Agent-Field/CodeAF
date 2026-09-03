@@ -123,7 +123,23 @@ func TestAPinnedLaneReachesTheWireOnAPlainLoopbackBase(t *testing.T) {
 // probe of any kind bought to discover a fact the hint already stated.
 func TestTheShippedRouterPaysNoExtraRequestToLearnThatItCarriesAPreference(t *testing.T) {
 	server := prefRig(t)
-	client := plainBase(t, server.RouterURL(), server)
+	client := plainBase(t, server.URL(), server)
+	// THE HINT IS STAGED AT THE SEAM IT REALLY REACHES, not by dressing the
+	// stub's address up as the shipped router (that costume left with #426).
+	// [WireLaneSheet] hands the sheet `known` when [LaneSheetCertain] reads the
+	// shipped hostname; the first line pins that reading, and the second files
+	// the same `known` for the plain address, which is exactly the state a
+	// client on the shipped router starts its first turn in.
+	if !LaneSheetCertain("https://openrouter.ai/api/v1") {
+		t.Fatal("the shipped router's own address is not read as certain to serve a sheet")
+	}
+	// AND THE FORWARDING IS PINNED TOO: wiring makes no request, so the shipped
+	// address can be wired for real and the sheet asked what it was handed.
+	WireLaneSheet("https://openrouter.ai/api/v1", "test-key")
+	if !lanes.SheetServes("https://openrouter.ai/api/v1") || !lanes.PrefsProven("https://openrouter.ai/api/v1") {
+		t.Fatal("WireLaneSheet does not hand the sheet `known` for the shipped router")
+	}
+	lanes.WireSheet(server.URL(), "test-key", sheetFetcher{}, true)
 	pinned(t, LanePin{Lane: "Harbor"})
 
 	if _, err := client.CompleteWithMessages(talking(), userMessages("hello")); err != nil {
@@ -351,7 +367,9 @@ func TestTheShippedRouterHintIsNotThePreferenceDecision(t *testing.T) {
 		t.Fatal("a base nobody has asked refuses a preference, so it can never be asked")
 	}
 
-	shipped := plainBase(t, server.RouterURL(), server)
+	// The shipped router is named by hand, because the hint is a reading of
+	// the address and nothing else: no request is made and none may be.
+	shipped := &Client{config: Config{APIKey: "test-key", BaseURL: "https://openrouter.ai/api/v1", Model: plainModel}}
 	if !shipped.shippedRouterHint() {
 		t.Fatal("the shipped router's own address does not read as it")
 	}
