@@ -115,6 +115,30 @@ func stampHierarchy(es []entry, folds map[int]workfold) {
 	}
 }
 
+// stampCaptions lifts one proven narration line into each step heading.
+//
+// THE ANSWER IS NEVER A CAPTION. [stampHierarchy] has already proved which
+// blocks precede more work, and this pass only marks heads from that set.
+func stampCaptions(es []entry, captions []caption) {
+	heads := make(map[int]int, len(captions))
+	for _, c := range captions {
+		if c.source != captionSaid || c.head < 0 || c.head >= len(es) {
+			continue
+		}
+		cut := len(es[c.head].text)
+		if at := strings.IndexByte(es[c.head].text, '\n'); at >= 0 {
+			cut = at + 1
+		}
+		heads[c.head] = cut
+	}
+	for i := range es {
+		wantCut, wantHead := heads[i]
+		if es[i].capHead != wantHead || es[i].capCut != wantCut {
+			es[i].capHead, es[i].capCut, es[i].stale = wantHead, wantCut, true
+		}
+	}
+}
+
 // workingProse is a demoted block's rows: the model's own words, wrapped plain,
 // at the tier one rung back from the body.
 //

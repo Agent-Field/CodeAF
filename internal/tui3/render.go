@@ -35,6 +35,7 @@ const (
 	hitNone     hitKind = iota
 	hitTool             // a tool call: click expands that call inline
 	hitFold             // the "N earlier tool calls" line: click expands the turn
+	hitCaption          // one step heading: click opens that step's calls
 	hitWorkFold         // one completed turn's folded machinery
 	hitMore             // the "… N more lines" foot of a capped expansion: click lifts the cap
 	// hitBrief is the door under a node's folded instruction (brieffold.go):
@@ -152,6 +153,8 @@ type deck struct {
 	entries  []entry
 	unfolded map[int]bool
 	workOpen map[int]bool
+	captions []caption
+	capOpen  map[int]bool
 	// lens is the page's posture: what folds, where the receipts land, whether
 	// the session's clock runs over this list (lens.go).
 	lens        lens
@@ -180,7 +183,7 @@ func (a *app) conversation() deck {
 	if a.state == stateWorking {
 		running = a.turn
 	}
-	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen,
+	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, capOpen: a.capOpen,
 		lens: participantLens, runningTurn: running}
 }
 
@@ -316,6 +319,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// that [app.renderEntry] can paint one block at a time without ever asking
 	// what surrounds it.
 	stampHierarchy(es, folds)
+	// Captions read the hierarchy rather than restating it, so their derivation
+	// follows the stamp and their lifted heads are stamped before any block draws.
+	d.captions = deriveCaptions(es, d.runningTurn)
+	stampCaptions(es, d.captions)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -370,6 +377,32 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
 				continue
 			}
+			// OPEN IS THE OUTLINE: every finished step as a caption line. A click
+			// (or enter) on a caption opens only that step's calls — so the page
+			// stays a stack of what happened, not a dump of every tool again.
+			drewCaption := false
+			for _, c := range d.captions {
+				toolsFrom, toolsTo := captionTools(c, es)
+				if toolsFrom < f.start || toolsFrom >= f.answer {
+					continue
+				}
+				drewCaption = true
+				capOpen := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, false, capOpen, width)...)
+				if capOpen {
+					out = append(out, a.captionBody(d, c, width)...)
+					for at := toolsFrom; at < toolsTo; at++ {
+						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
+					}
+				}
+			}
+			if drewCaption {
+				i = f.answer - 1
+				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				continue
+			}
+			// A fold with no captions keeps the old expansion so history is never
+			// behind an empty outline.
 			wasUser = false
 		}
 		if e.turn != walk.turn {
@@ -391,7 +424,28 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			if wasBlock || wasUser || (!wasCluster && !opensTurn(es, i)) {
 				gap()
 			}
-			out = a.clusterRows(d, out, i, end, width)
+			if c, ok := captionAt(d.captions, i); ok {
+				open := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width)...)
+				toolsFrom, toolsTo := captionTools(c, es)
+				if open {
+					out = append(out, a.captionBody(d, c, width)...)
+					start := toolsFrom
+					if window := a.foldWindow(d); toolsTo-start > window && !d.unfolded[e.turn] {
+						start = toolsTo - window
+					}
+					for at := start; at < toolsTo; at++ {
+						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
+					}
+				}
+				// Advance only past THIS step. Using the whole consecutive tool
+				// run would let a shut past caption swallow the live frontier.
+				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				i = toolsTo - 1
+				continue
+			} else {
+				out = a.clusterRows(d, out, i, end, width)
+			}
 			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			i = end - 1
 			continue
@@ -424,6 +478,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				out = append(out, row{text: text, entry: i, hit: hit})
 			}
 			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			continue
+		}
+
+		// A CAPTION HEAD IS DRAWN BY THE CAPTION, not here. Its first line is the
+		// heading; the remainder rides under an open caption via [captionBody].
+		// Drawing it again would put the body above the heading.
+		if e.kind == entryAssistant && e.capHead {
 			continue
 		}
 
@@ -608,6 +669,10 @@ func (a *app) hoverPass(out []row, width int) {
 // reader, so the two questions stay two questions even though today's answer
 // takes them to the same rung.
 func (a *app) onCursorRow(r row) bool {
+	if r.hit == hitCaption {
+		key, ok := selectedCaption(a.sel)
+		return ok && key == r.turn
+	}
 	return r.entry >= 0 && a.selected(r.entry)
 }
 
@@ -622,6 +687,8 @@ func (a *app) isHot(r row) bool {
 		return r.entry >= 0 && r.entry == a.hot.entry
 	case hoverFold:
 		return r.hit == hitFold && r.turn == a.hot.turn
+	case hoverCaption:
+		return r.hit == hitCaption && r.turn == a.hot.turn
 	case hoverWorkFold:
 		return r.hit == hitWorkFold && r.turn == a.hot.turn
 	case hoverBrief:
@@ -630,6 +697,28 @@ func (a *app) isHot(r row) bool {
 		return r.hit == hitBrief && r.entry == a.hot.entry
 	}
 	return false
+}
+
+// captionBody is the narration under an open step heading: the remainder of a
+// demoted prose head after its first line was lifted into the caption. THE
+// OUTLINE HIDES IT; expanding the caption puts those words back above the calls.
+func (a *app) captionBody(d deck, c caption, width int) []row {
+	if c.source != captionSaid || c.head < 0 || c.head >= len(d.entries) {
+		return nil
+	}
+	e := &d.entries[c.head]
+	text := e.text
+	if e.capCut > 0 && e.capCut <= len(text) {
+		text = text[e.capCut:]
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	var out []row
+	for _, line := range a.workingProse(text, width) {
+		out = append(out, row{text: line, entry: c.head, hit: hitNone, turn: e.turn})
+	}
+	return out
 }
 
 // opensTurn reports whether the entry at i is the first thing its turn drew.
@@ -1148,7 +1237,11 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	// line (mdtable.go).
 	if e.demoted {
 		e.feet = nil
-		return append(tags, a.workingProse(e.text, width)...)
+		text := e.text
+		if e.capHead && e.capCut > 0 && e.capCut <= len(text) {
+			text = text[e.capCut:]
+		}
+		return append(tags, a.workingProse(text, width)...)
 	}
 	if e.settled {
 		return append(tags, a.settledMarkdown(at, e, width)...)
