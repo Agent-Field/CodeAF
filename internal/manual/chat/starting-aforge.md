@@ -152,12 +152,27 @@ reply cannot start the loop over. There is no number to raise and no setting for
 it. Before this, a run in that state repeated one identical line until its hours
 ran out.
 
+## A task waiting on one that did not finish · work that will never start · it says something is still running
+
 **Work that is still going is never a standstill, and never finished either.** A
-piece of work that has not come home yet is named on the list in its own right —
-`write the tests is still running` — so the ask cannot be called finished over the
-top of it, and a list that has not changed because it is waiting on that work is a
-run waiting rather than a run repeating itself. The count starts again once
-everything has landed.
+piece of work that is actually moving — started, or queued behind something that
+is — is named on the list in its own right, `write the tests is still running`, so
+the ask cannot be called finished over the top of it. And a list that has not
+changed because it is waiting on that work is a run waiting rather than a run
+repeating itself, so the count above starts again once everything has landed.
+
+**Work that cannot start is not waiting, it is left.** A piece of work queued
+behind one that did not finish, or behind one that came home and needs your look,
+has nothing coming to start it — nobody is going to look at it while the run is
+unattended. So it is said whole, with what it waits on and what became of that:
+
+```
+wire the handlers is waiting on port the parser, which needs your look
+```
+
+That counts as part of what is left rather than as a reason to keep going, which
+is what lets a run in that state reach the standstill above and stop — instead of
+carrying on for the rest of its hours over work nothing was ever going to start.
 
 ## It keeps saying a file does not pass · a check nobody asked for
 

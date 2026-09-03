@@ -435,6 +435,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it kept repeating the same thing", "starting-aforge"},
 		{"why does it say carry on", "tasks"},
 		{"it said a file does not pass", "starting-aforge"},
+		{"a task waiting on one that did not finish", "starting-aforge"},
 		// The isolation people meet as a bug: the task read the committed file
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},

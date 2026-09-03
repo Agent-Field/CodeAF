@@ -693,6 +693,30 @@ func TestACheckPathWithASpaceRunsWhole(t *testing.T) {
 	}
 }
 
+// AND THE PATH IN A TWO-WORD CHECK IS QUOTED TOO.
+//
+// The work says WHICH program runs its check, and it is not the authority on how
+// a shell splits a word: `sh run'tests.sh` handed back as the work wrote it is an
+// unterminated quote, and what a shell does with that is not run the check.
+func TestATwoWordCheckQuotesTheFileItNames(t *testing.T) {
+	dir := t.TempDir()
+	name := "run'tests.sh"
+	path := writeCheckFile(t, dir, name, "exit 0\n", 0o644)
+
+	command := checkCommand(dir, "sh "+name)
+	if want := "sh " + shellQuoted(path); command != want {
+		t.Fatalf("the file behind the program was not quoted:\n got %q\nwant %q", command, want)
+	}
+	if ran := runOneCheck(context.Background(), dir, command); !ran.Passed {
+		t.Fatalf("the check broke on the quote in its own path: %q said %q", command, ran.Tail)
+	}
+	// AND A SECOND WORD THE TREE DOES NOT HOLD IS LEFT ALONE, because there is no
+	// path to resolve and the work's own spelling is the whole of what is known.
+	if got := checkCommand(dir, "sh missing.sh"); got != "sh missing.sh" {
+		t.Fatalf("a command naming no file of ours was rewritten: %q", got)
+	}
+}
+
 // THE FIRST WORD OF A SHEBANG IS THE PROGRAM, AND `env` IS THE ONE EXCEPTION.
 //
 // Everything after the first word is an argument handed to that program. Reading

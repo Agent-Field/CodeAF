@@ -225,8 +225,8 @@ type Remains struct {
 	// transcript makes of it, and [Steward.Decide] refuses to call that done.
 	Landed bool
 
-	// Running names the units of work that have NOT come home — still queued,
-	// still going — in the words a person reads them by.
+	// Running names the units of work that are IN FLIGHT — started, or queued
+	// behind something that is — in the words a person reads them by.
 	//
 	// WORK THAT IS STILL RUNNING IS NEITHER DONE NOR A STANDSTILL, and this is
 	// the field that makes both halves of that sayable. An ask with something
@@ -234,7 +234,19 @@ type Remains struct {
 	// looks; and a run whose unmet set has not changed BECAUSE it is waiting on
 	// something is not going round in a circle, it is waiting, so the floor under
 	// carrying on ([Steward.standstill]) must not fire on it.
+	//
+	// RUNNING MEANS IN FLIGHT AND NOTHING ELSE. Work that is merely UNSETTLED is
+	// not the same thing: a unit queued behind a prerequisite that settled short
+	// will never start, and putting it here would hold that floor open for the
+	// rest of a run that had already stopped getting anywhere — which is the
+	// whole reason the field below exists beside this one.
 	Running []string
+
+	// Blocked is the work that will not start, said whole: what each unit is
+	// waiting on and what became of that. It is PART OF WHAT IS LEFT — a unit
+	// waiting on something that is not coming is a gap in the ask exactly as a
+	// failed one is — and it is never a reason to keep carrying on.
+	Blocked []string
 }
 
 // unmet lists, in a person's words, what stands between this and finished. An
@@ -247,6 +259,9 @@ func (r Remains) unmet() []string {
 	for _, title := range r.Running {
 		out = append(out, title+" is still running")
 	}
+	// The blocked lines arrive as whole sentences, because what a stuck unit of
+	// work is waiting on is the only useful thing anybody can say about it.
+	out = append(out, r.Blocked...)
 	for _, landing := range r.Landings {
 		if !landing.unsatisfied() {
 			continue

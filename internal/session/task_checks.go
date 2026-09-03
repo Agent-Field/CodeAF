@@ -542,8 +542,11 @@ func declaredChecks(text, ground string) []string {
 // THREE ANSWERS, AND EVERY ONE OF THEM IS A FACT RATHER THAN A LIST:
 //
 //   - THE SPAN NAMES A FILE AND THE WORK NAMED THE PROGRAM TOO — two words, a
-//     launcher and its file — so it stands as the work wrote it: the work is the
-//     one citizen entitled to say how its own check is run.
+//     launcher and its file — so the program stands exactly as the work wrote it
+//     and the file behind it is resolved and quoted like any other. The work is
+//     the one citizen entitled to say WHICH program runs its check; it is not the
+//     authority on how a shell splits a word, and `sh run'"'"'tests.sh` handed back
+//     as written is an unterminated quote rather than a check.
 //   - THE SPAN IS THE FILE ALONE: it is opened the way the file itself says it
 //     opens, by its executable bit or by the interpreter its first line names, and
 //     the RESOLVED path is what goes into the command, because a bare word with no
@@ -566,7 +569,10 @@ func checkCommand(ground, check string) string {
 	}
 	if files := fileChecksIn(ground, check); len(files) > 0 {
 		if len(fields) > 1 {
-			return check
+			// The second word is the one [fileChecksIn] resolved, so the file it
+			// found is the file this command is about — and a wildcard the work
+			// wrote takes its first match, for the reason stated just below.
+			return fields[0] + " " + shellQuoted(files[0].path)
 		}
 		// A WILDCARD THE WORK WROTE RESOLVES TO WHATEVER IT MATCHES, and the
 		// first match that can be started is the check. The alternative —
