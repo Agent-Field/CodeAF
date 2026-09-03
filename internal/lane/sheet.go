@@ -55,6 +55,34 @@ import (
 // is a beat nobody will ever notice is dead.
 var ErrNoSheet = errors.New("lane: no sheet client")
 
+// ErrNoSheetHere is what a [Fetcher] returns when the base ANSWERED, and its
+// answer was that no endpoints ROUTE lives at that address at all.
+//
+// IT IS THE ONE ANSWER THAT MAKES A BASE SHEETLESS. A timeout, a severed
+// connection, a 500 and a 429 are all a router having an afternoon, and a build
+// that read any of those as "this is not a router" would throw away every lane
+// behaviour it has for five minutes over one bad packet.
+//
+// AND A 404 IS NOT THIS ANSWER BY ITS STATUS; IT IS BY ITS BODY. The live router
+// answers 404 twice over, and the two mean opposite things about the base
+// (measured 2026-09-02):
+//
+//	GET /api/v1/models/nonexistent/model-xyz/endpoints
+//	→ 404, {"error":{"message":"Not Found","code":404}}
+//
+//	GET /api/v1/nonexistent-route/x/endpoints
+//	→ 404, <!DOCTYPE html>…<title>Not Found | OpenRouter</title>…
+//
+// The first is the router's own error envelope — the route is there and it
+// answered about ONE MODEL, which simply has no page this round; it is a quiet
+// per-model error and says nothing about the base. Only the second, a 404 whose
+// body is not that envelope, is "no such route", and only that one wraps this
+// error. Which bodies mean which is the transport's decision because only the
+// transport can see a status and a body (internal/provider's sheetFetcher, and
+// its sheetNotFound); everything here only asks whether the error it was handed
+// wraps this one.
+var ErrNoSheetHere = errors.New("lane: the base publishes no endpoints page")
+
 // Fetcher is the connection this package may not open for itself.
 //
 // It is spelled in terms of a URL and a bearer key rather than in terms of a
@@ -78,6 +106,43 @@ const maxSheetBytes = 1 << 20
 // after the last one closed starts from that session's reading rather than
 // paying for the same aggregate twice.
 const sheetTTL = 5 * time.Minute
+
+// ── HOW THIS BUILD LEARNS THAT A BASE HAS LANES ─────────────────────────────
+//
+// A ROUTER IS RECOGNISABLE BY WHAT IT ANSWERS AND NEVER BY A SUBSTRING OF WHERE
+// IT LIVES. This build used to decide whether to fetch an endpoints page at all
+// by testing the base URL for `openrouter.ai`, so a binary driven through
+// AFORGE_BASE_URL at a proxy, a mirror, a self-hosted router or a router
+// reached by its IP silently got no sheet, an empty frontier and no lane
+// behaviour whatever — nothing errored, nothing logged a refusal, the feature
+// was simply absent (issue #373).
+//
+// So the question is put to the base instead, ONCE, and the answer is
+// remembered here beside the rows it is about.
+//
+// THE PROBE IS NOT A SECOND REQUEST. It is the reading of the endpoints fetch
+// [Refresh] already makes, which is why a base that does serve a sheet pays
+// nothing at all for the law: the first refresh both fetches and answers the
+// question. A base that says there is no such page is not asked again until its
+// answer goes stale, and staleness is [sheetTTL] — the same five minutes the
+// beat runs on and the same five minutes a cached sheet is good for, because a
+// second number here is a number that would drift.
+type sheetAnswer int
+
+const (
+	// answerUnasked is a base nobody has put the question to yet, which is the
+	// state every wiring starts in except the one that carries a hint.
+	answerUnasked sheetAnswer = iota
+	// answerServes is a base that has handed back an endpoints page. It is
+	// STICKY for the life of the wiring: a router asked about a model it does
+	// not happen to serve answers 404 about THAT MODEL, and reading that as
+	// "this is not a router" would cost every other model its lanes.
+	answerServes
+	// answerSheetless is a base that answered, and said there is no endpoints
+	// page here. It suppresses fetching until [sheetTTL] has passed, and then
+	// the question is asked again exactly once more.
+	answerSheetless
+)
 
 // Wanter is the optional half of a [Sheet]: one that can be ASKED about a model
 // without being made to fetch on the spot.
@@ -127,6 +192,18 @@ type sheet struct {
 	base  string
 	key   string
 	fetch Fetcher
+	// answered is what the base above said the last time it was asked for an
+	// endpoints page, and askedAt is when it said it. Together they are the
+	// whole of the probe, cached per base: they are cleared when [wire] points
+	// this sheet somewhere else, because what one router answered is not
+	// evidence about another.
+	answered sheetAnswer
+	askedAt  time.Time
+	// now is the clock the probe ages its answer on. Nil is the wall clock,
+	// which is what every wiring outside a test gets; a test that has to watch
+	// [sheetTTL] pass sets it, because five minutes of real waiting is not a
+	// test anybody runs. It is the prober's own arrangement (probe.go's now).
+	now func() time.Time
 	// rows, tags and at are what is known, by model. tags carries the router's
 	// own slug for a lane, which [Row] has nowhere to put and which the cache
 	// keeps anyway so that a later reader of the file loses nothing.
@@ -170,20 +247,95 @@ func newSheet() *sheet {
 // can open a connection. It is called once, at session open, before the beat
 // starts, and it reports whether the live sheet was one this package built —
 // a bench that installed a sheet of its own is left alone.
-func WireSheet(base, key string, fetch Fetcher) bool {
+//
+// `known` is A HINT AND NEVER A REFUSAL. A caller that already knows this base
+// publishes an endpoints page — the shipped router, recognised by its hostname
+// in internal/provider's LaneSheetCertain — passes true, and the sheet skips
+// straight to [answerServes] so the existing path is unchanged in behaviour and
+// costs not one extra round trip. FALSE MEANS "ASK IT", never "it has none":
+// every other base is wired exactly the same way and learns what it is from
+// what it answers.
+func WireSheet(base, key string, fetch Fetcher, known bool) bool {
 	own, ok := Default().Sheet().(*sheet)
 	if !ok {
 		return false
 	}
-	own.wire(base, key, fetch)
+	own.wire(base, key, fetch, known)
 	return true
 }
 
 // wire points a sheet at a router.
-func (s *sheet) wire(base, key string, fetch Fetcher) {
+func (s *sheet) wire(base, key string, fetch Fetcher, known bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.base, s.key, s.fetch = strings.TrimSuffix(strings.TrimSpace(base), "/"), strings.TrimSpace(key), fetch
+	base = strings.TrimSuffix(strings.TrimSpace(base), "/")
+	// A BASE THAT MOVED FORGETS WHAT THE OLD ONE ANSWERED. The probe is cached
+	// per base, and carrying one router's answer over to the next address would
+	// be exactly the mistake this whole file is here to stop.
+	if base != s.base {
+		s.answered, s.askedAt = answerUnasked, time.Time{}
+	}
+	s.base, s.key, s.fetch = base, strings.TrimSpace(key), fetch
+	if known {
+		s.answered, s.askedAt = answerServes, time.Time{}
+	}
+}
+
+// clock is the moment the probe reads. It is the one clock this file keeps
+// besides the fetched-at stamps, and it is read only to age an answer: nothing
+// about a choice depends on it, which is what lets it be a wall clock by
+// default and a test's own when one is handed in.
+func (s *sheet) clock() time.Time {
+	s.mu.RLock()
+	now := s.now
+	s.mu.RUnlock()
+	if now != nil {
+		return now()
+	}
+	return time.Now()
+}
+
+// askable reports whether this base may be asked for an endpoints page now.
+//
+// Only a base that has SAID there is no page is ever held back, and only until
+// its answer is [sheetTTL] old. Everything else — never asked, asked and served
+// — goes to the network exactly as it always did.
+func (s *sheet) askable(now time.Time) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.answered != answerSheetless {
+		return true
+	}
+	return now.Sub(s.askedAt) >= sheetTTL
+}
+
+// heard files what the base just answered about endpoints pages.
+//
+// A SHEET THAT ARRIVED IS THE END OF THE QUESTION: the base is a router, it is
+// remembered as one, and no later 404 about some model it does not serve can
+// take that back. Anything that is not [ErrNoSheetHere] leaves the answer where
+// it was, so a bad afternoon is a bad afternoon and not a verdict about the
+// address.
+func (s *sheet) heard(base string, err error, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.heardLocked(base, err, now)
+}
+
+// heardLocked files an answer only while the sheet still names the base that
+// was asked. AN ANSWER IS FILED UNDER THE BASE IT WAS ASKED OF, AND UNDER NO
+// OTHER.
+func (s *sheet) heardLocked(base string, err error, now time.Time) bool {
+	if s.base != base {
+		return false
+	}
+	switch {
+	case err == nil:
+		s.answered, s.askedAt = answerServes, now
+	case errors.Is(err, ErrNoSheetHere) && s.answered != answerServes:
+		s.answered, s.askedAt = answerSheetless, now
+	}
+	return true
 }
 
 // cacheIn moves this sheet's cache directory. It exists for tests, which must
@@ -480,8 +632,24 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 	if fetch == nil || base == "" {
 		return ErrNoSheet
 	}
+	// THE PROBE IS THIS FETCH AND NOT A SECOND ONE. A base that has already
+	// told us there is no endpoints route here is not asked again until that
+	// answer is stale, so a session pointed at something that is not a router
+	// spends one request every [sheetTTL] rather than one per beat per model —
+	// and a base that has never answered is asked, which is the whole law.
+	// What counts as "told us" is [ErrNoSheetHere] and nothing looser: the
+	// router's own envelope 404 about a model it does not publish is that
+	// model's business and holds nothing back, so a base whose first model in
+	// the round is unknown to it still gets the second model's sheet at once.
+	// Two beats could in principle pass this gate at once; there is one beat
+	// per session by construction, and the cost of the race is one duplicate
+	// request rather than a wrong answer.
+	if !s.askable(s.clock()) {
+		return ErrNoSheetHere
+	}
 	body, err := fetch.Fetch(ctx, base+"/models/"+model+"/endpoints", key)
 	if err != nil {
+		s.heard(base, err, s.clock())
 		return err
 	}
 	defer body.Close()
@@ -502,6 +670,12 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 		rows[i].At = at
 	}
 	s.mu.Lock()
+	// The answer and its rows are one reading of one router. AN ANSWER IS FILED
+	// UNDER THE BASE IT WAS ASKED OF, AND UNDER NO OTHER.
+	if !s.heardLocked(base, nil, at) {
+		s.mu.Unlock()
+		return errSheetMoved
+	}
 	s.rows[model], s.at[model], s.looked[model] = rows, at, true
 	for id, tag := range tags {
 		s.tags[id] = tag
@@ -512,6 +686,9 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 
 // errSheetEmpty is a sheet that decoded to no lanes at all.
 var errSheetEmpty = errors.New("lane: the sheet named no lanes")
+
+// errSheetMoved is a reading whose base changed while it was in flight.
+var errSheetMoved = errors.New("lane: the sheet moved while it was being read")
 
 // ── THE BEAT ────────────────────────────────────────────────────────────────
 

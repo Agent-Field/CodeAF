@@ -2690,6 +2690,9 @@ func TestTheSessionStampsItsCacheKeyOnTheWire(t *testing.T) {
 	var keys []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body struct {
 			PromptCacheKey string `json:"prompt_cache_key"`
@@ -3079,28 +3082,30 @@ func TestRoutingOffRunsNoLaneBeat(t *testing.T) {
 	}
 }
 
-func TestABaseThatIsNotARouterRunsNoLaneBeat(t *testing.T) {
+// TestABaseNobodyVouchedForStillRunsTheLaneBeat is the session's half of issue
+// #373. This seam used to read the hostname and run no beat unless it said
+// `openrouter.ai`, so a session on a proxy, a mirror or a router reached by its
+// IP never fetched a sheet. Whether a base publishes an endpoints page is the
+// base's own to answer, on the first refresh, so the beat runs and asks.
+func TestABaseNobodyVouchedForStillRunsTheLaneBeat(t *testing.T) {
 	sheet := installBeatSheet(t)
 
 	agent, err := newAgent(Config{
 		Workspace: t.TempDir(),
 		Model:     "talk/model",
-		// There is no sheet behind a gateway of somebody's own, however the
-		// model is spelled, so there is nothing for a beat to fetch.
-		BaseURL: "http://localhost:8080/v1",
+		BaseURL:   "http://localhost:8080/v1",
 	}, &scriptedCompleter{})
 	if err != nil {
 		t.Fatalf("open the session: %v", err)
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 
-	if agent.laneBeating {
-		t.Error("a base that publishes no sheet still armed a beat")
+	if !agent.laneBeating {
+		t.Error("a base nobody vouched for ran no beat, so it was never asked whether it has a sheet")
 	}
-	select {
-	case <-sheet.called:
-		t.Fatalf("a non-router base still fetched a sheet for %v", sheet.models())
-	case <-time.After(150 * time.Millisecond):
+	sheet.waitForRefreshes(t, 1)
+	if asked := sheet.models(); len(asked) != 1 || asked[0] != "talk/model" {
+		t.Fatalf("the beat asked about %v, want the session's own model", asked)
 	}
 }
 

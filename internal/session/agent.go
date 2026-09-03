@@ -379,18 +379,24 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 // who is fetching, and when, is a question with an answer in the session's own
 // code rather than in a package nobody thought was running.
 //
-// THREE SESSIONS RUN NO BEAT, and each refusal is a different fact.
+// TWO SESSIONS RUN NO BEAT, and each refusal is a different fact.
 //
 //   - ROUTING OFF is a person saying they do not want their endpoints chosen
 //     for them (internal/provider's velocity.go). With the row off, every lane
 //     the belief holds is inert — nothing reads it, nothing is sent from it —
 //     and a background fetch would be work nobody asked for on somebody who
 //     asked for the opposite.
-//   - A BASE THAT IS NOT A ROUTER has no sheet to publish, whatever the model
-//     is spelled. The gate is the provider's own, so that the wire point and
-//     this one cannot drift apart (provider.LaneSheetAvailable).
 //   - AND A SESSION WITH NO MODEL SLOT FILLED has nothing to fetch a sheet
 //     about, which is the constructor's own guard reaching this far.
+//
+// THE BASE URL IS NOT A REFUSAL. This seam used to read the hostname and run
+// no beat unless it said `openrouter.ai`, which left every session pointed at
+// a proxy, a mirror or a router reached by its IP with no sheet at all (issue
+// #373). Whether a base publishes an endpoints page is the base's own to say:
+// the sheet asks it once, on the first refresh, and a base that says there is
+// none is left alone until that answer is stale ([lanes.ErrNoSheetHere]). So
+// the beat runs whenever routing is on, and on a base with no page it is one
+// quiet request every five minutes rather than a feature that is absent.
 //
 // It is called once, from the constructor, before the agent is reachable —
 // which is what lets the field it writes be read afterwards without a lock,
@@ -402,9 +408,6 @@ func (a *Agent) startLaneBeat() {
 	// buy a measurement. It is cancelled once, by Close.
 	a.laneCtx, a.laneStop = context.WithCancel(context.Background())
 	if a.config.Routing == provider.RoutingOff {
-		return
-	}
-	if !provider.LaneSheetAvailable(a.config.BaseURL) {
 		return
 	}
 	models := laneBeatModels(a.config)

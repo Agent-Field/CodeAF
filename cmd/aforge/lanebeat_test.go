@@ -43,19 +43,6 @@ func routedLanes() []lanestub.Lane {
 	}
 }
 
-// routerBase spells the stub's address so that the build's own "is this base a
-// router" gate answers yes.
-//
-// THE GATE IS A SUBSTRING TEST ON THE BASE URL ([provider.LaneSheetAvailable]),
-// and it is right to be: a base that is not the router publishes no endpoints
-// page whatever the model is spelled. A loopback stub therefore cannot be
-// reached through it — so the name goes in the one place a URL can carry a name
-// without changing which host is dialled, the userinfo. Go dials the host and
-// nothing downstream of the gate reads the credential.
-func routerBase(stub *lanestub.Server) string {
-	return strings.Replace(stub.URL(), "http://", "http://openrouter.ai@", 1)
-}
-
 // beatingFor points the process beat at a lifetime this test can end, the way
 // [execute] points it at the one exit every command shares.
 func beatingFor(t *testing.T) {
@@ -84,7 +71,11 @@ func TestAHeadlessRunFetchesTheSheetForItsOwnModel(t *testing.T) {
 	// are this test's and never the developer's.
 	state := t.TempDir()
 	t.Setenv(homepkg.EnvVar, state)
-	t.Setenv("AFORGE_BASE_URL", routerBase(stub))
+	// THE STUB'S PLAIN LOOPBACK ADDRESS, AND NO HOSTNAME TRICK. This test used
+	// to smuggle `openrouter.ai` into the URL's userinfo so that a substring
+	// gate would let the beat run; the gate is gone (issue #373) and the base
+	// is recognised by the endpoints page it answers with.
+	t.Setenv("AFORGE_BASE_URL", stub.URL())
 	t.Setenv(config.ModelEnv, routed)
 	lanes.Default().Reset()
 	t.Cleanup(lanes.Default().Reset)

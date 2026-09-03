@@ -145,7 +145,7 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 	)
 	t.Cleanup(server.Close)
 	server.Alias(alias, servable)
-	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}) {
+	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}, false) {
 		t.Fatal("the sheet would not take a base to fetch from")
 	}
 
@@ -348,7 +348,7 @@ func TestAPickerSpellingReachesTheBeatAsTheModelTheRouterServes(t *testing.T) {
 	)
 	t.Cleanup(server.Close)
 	server.Alias(alias, servable)
-	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}) {
+	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}, false) {
 		t.Fatal("the sheet would not take a base to fetch from")
 	}
 
