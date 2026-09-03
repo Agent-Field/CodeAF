@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -370,42 +369,53 @@ func TestTheShippedRouterHintIsNotThePreferenceDecision(t *testing.T) {
 	}
 }
 
-// AND THE REFUSAL READING NEVER TOUCHES A ROUTER REFUSING ONE LANE.
+// AND THE QUESTION IS NEVER EVEN ASKED OF A ROUTER REFUSING ONE LANE, OF A
+// RELAYED FAULT, OR OF A 404.
 //
-// `…but your request's provider.only preference permits only: coreweave` names
-// the field too, and reading it as "this base refuses preferences" would retire
-// the feature on the machine it works on — and would swallow the retirement
-// (issue #456) that sentence is really for. Three things keep them apart, and
-// all three are asserted here: the status, the relayed refusal, and the words.
-func TestARouterRefusingOneLaneIsNotABaseRefusingPreferences(t *testing.T) {
+// Three structural facts keep the field's question apart from every other 400,
+// and none of them is a word: the status, whose refusal it is, and whether the
+// message names the machine the person pinned. `…provider.only preference
+// permits only: harbor` and a gateway's `invalid provider name: harbor` are both
+// the LANE being refused — #533's retirement is the answer to those, and
+// widening on them would swallow the sentence the person is owed about their pin.
+func TestTheFieldQuestionIsNotAskedOfARefusalAboutALane(t *testing.T) {
+	server := prefRig(t)
+	server.Sheetless()
+	client := plainBase(t, server.URL(), server)
+	pinned(t, LanePin{Lane: "Harbor"})
+	client.prefWentOut(true)
+
 	permits := []byte(`{"error":{"message":"No endpoints found. Your request's provider.only preference permits only: harbor","code":404}}`)
-	if prefRefused(404, permits) {
-		t.Fatal("a router's 404 about its endpoints was read as the base refusing the field")
+	if client.prefsMayBeRefused(plainModel, 404, permits) {
+		t.Fatal("a router's 404 about its endpoints was read as a question about the field")
+	}
+	badName := []byte(`{"error":{"message":"invalid provider name: Harbor","code":400}}`)
+	if client.prefsMayBeRefused(plainModel, 400, badName) {
+		t.Fatal("a 400 naming the pinned machine was read as the field being unknown; the pin's own refusal would be swallowed")
 	}
 	relayed := []byte(`{"error":{"message":"Provider returned error","code":400,"metadata":{"provider_name":"Harbor"}}}`)
-	if prefRefused(400, relayed) {
-		t.Fatal("a refusal the router RELAYED was read as the router's own")
-	}
-	shaped := []byte(`{"error":{"message":"This model does not support the provider field in that shape","code":400}}`)
-	if prefRefused(400, shaped) {
-		t.Fatal("a 400 that merely mentions the field was read as not knowing it")
+	if client.prefsMayBeRefused(plainModel, 400, relayed) {
+		t.Fatal("a refusal the router RELAYED was read as the base's own")
 	}
 
-	// AND THE ONE THAT IS THE CLASS. OpenAI's own sentence, and a gateway's
-	// bare text saying the same thing in its own words.
-	unknown := []byte(`{"error":{"message":"Unrecognized request argument supplied: provider","code":400}}`)
-	if !prefRefused(400, unknown) {
-		t.Fatal("the sentence this class exists for was not read as it")
-	}
-	if !prefRefused(400, []byte(`unknown field "provider"`)) {
-		t.Fatal("a gateway's bare text saying the same thing was not read as it")
+	// AND THE ONE THAT IS WORTH A ROUND TRIP: a 400 of the base's own that does
+	// not name the machine. The WORDS are not what makes it so — an unfamiliar
+	// sentence is asked exactly the same question.
+	for _, body := range [][]byte{
+		[]byte(`{"error":{"message":"Unrecognized request argument supplied: provider","code":400}}`),
+		[]byte(`unknown field "provider"`),
+		[]byte(`{"detail":[{"loc":["body","provider"],"msg":"Extra inputs are not permitted"}]}`),
+		[]byte(`{"error":{"message":"something nobody has written a list entry for","code":400}}`),
+	} {
+		if !client.prefsMayBeRefused(plainModel, 400, body) {
+			t.Fatalf("a base-own 400 was not worth asking about: %s", body)
+		}
 	}
 }
 
-// AND A BASE THAT HAS ALREADY SHOWN IT CARRIES KEEPS THAT ANSWER, whatever a
-// later refusal says: the first definite answer stands (internal/lane's
-// prefAnswer), so the shipped router's own refusals are the retirement's
-// business and never this file's.
+// AND A BASE THAT HAS ALREADY SHOWN IT CARRIES IS NEVER ASKED, whatever a later
+// refusal says: the first definite answer stands (internal/lane's prefAnswer),
+// so the shipped router's own refusals are the retirement's business.
 func TestABaseThatHasNamedItsLaneIsNotTalkedOutOfIt(t *testing.T) {
 	server := prefRig(t)
 	client := plainBase(t, server.URL(), server)
@@ -414,10 +424,116 @@ func TestABaseThatHasNamedItsLaneIsNotTalkedOutOfIt(t *testing.T) {
 		t.Fatalf("the turn failed: %v", err)
 	}
 	unknown := []byte(`{"error":{"message":"Unrecognized request argument supplied: provider","code":400}}`)
-	if client.prefsJustRefused(context.Background(), 400, unknown) {
-		t.Fatal("a base that had named its lane was talked out of carrying a preference")
+	if client.prefsMayBeRefused(plainModel, 400, unknown) {
+		t.Fatal("a base that had named its lane was asked whether it understands the field")
 	}
 	if !lanes.PrefsCarried(server.URL()) {
 		t.Fatal("a base that named its lane stopped being believed")
+	}
+}
+
+// AND A SECOND FAILURE TEACHES NOTHING.
+//
+// The retry is the test, so a base whose 400 was NOT about the field — a bad
+// request this build would have made either way — must leave the question
+// exactly where it was: the answer stays unasked, the next request carries the
+// preference again, and nothing is said to anybody. A build that filed the
+// refusal on the first 400 alone would retire a person's pin over an unrelated
+// fault and never ask again.
+func TestASecondFailureTeachesNothingAboutTheBase(t *testing.T) {
+	server := prefRig(t)
+	server.Sheetless()
+	server.RefusesEverything()
+	client := plainBase(t, server.URL(), server)
+	pinned(t, LanePin{Lane: "Harbor"})
+	notes := &noticeLog{}
+	turn := WithStreamObserver(talking(), notes.observe)
+
+	if _, err := client.CompleteWithMessages(turn, userMessages("hello")); err == nil {
+		t.Fatal("a request the base refused twice answered successfully")
+	}
+	asks := server.Asks()
+	if len(asks) != 2 {
+		t.Fatalf("%d requests reached the base, want the refused one and the widened one: %+v", len(asks), asks)
+	}
+	if !demandedOnly(asks[0], "Harbor") || len(asks[1].Only) != 0 {
+		t.Fatalf("the pair was not ask-then-widen: %+v", asks)
+	}
+	if !lanes.PrefsCarried(server.URL()) {
+		t.Fatal("a base whose second refusal proved nothing was filed as refusing the field")
+	}
+	if said := notes.uncarried(); len(said) != 0 {
+		t.Fatalf("the person was told %q about a base that established nothing", said)
+	}
+	// AND THE NEXT REQUEST ASKS AGAIN, because nothing was learnt.
+	if _, err := client.CompleteWithMessages(turn, userMessages("again")); err == nil {
+		t.Fatal("the second turn answered successfully")
+	}
+	if later := server.Asks()[2]; !demandedOnly(later, "Harbor") {
+		t.Fatalf("the next turn went out bare on a question nobody answered: %+v", later)
+	}
+}
+
+// AND NOBODY WHO PINNED NOTHING GETS A FIELD THEY NEVER HAD.
+//
+// THE LAW IS ABOUT A PREFERENCE THE PERSON HAS. `sort`, `allow_fallbacks` and
+// `require_parameters` are this adapter's own knobs for breaking a tie among
+// machines a ROUTER already knows about, and a base that has not shown it has
+// any such machines has no tie to break. So on an unasked base with no pin the
+// request is byte-for-byte the request it was before this law existed — and
+// nothing is asked, because there is nothing to ask with.
+func TestAnUnaskedBaseWithNoPinCarriesNoProviderObjectAtAll(t *testing.T) {
+	server := prefRig(t)
+	server.Sheetless()
+	client := plainBase(t, server.URL(), server)
+	pinned(t, LanePin{})
+	notes := &noticeLog{}
+	turn := WithStreamObserver(talking(), notes.observe)
+
+	for _, said := range []string{"hello", "again", "and again"} {
+		if _, err := client.CompleteWithMessages(turn, userMessages(said)); err != nil {
+			t.Fatalf("the turn %q failed: %v", said, err)
+		}
+	}
+	asks := server.Asks()
+	if len(asks) != 3 {
+		t.Fatalf("%d requests reached the base, want three turns' worth: %+v", len(asks), asks)
+	}
+	for index, ask := range asks {
+		if ask.Sort != "" || len(ask.Order) != 0 || len(ask.Only) != 0 || len(ask.Ignore) != 0 {
+			t.Fatalf("request %d carried a preference nobody asked for: %+v", index, ask)
+		}
+	}
+	if said := notes.uncarried(); len(said) != 0 {
+		t.Fatalf("a base nobody asked anything of said %q", said)
+	}
+}
+
+// AND THE MOMENT SOMEBODY PINS, THAT PIN IS THE ASKING. The two halves are one
+// rule and are asserted together: no pin, no object; a pin, and the object goes
+// out on the very next request.
+func TestAPinOnAnUnaskedBaseIsTheAsking(t *testing.T) {
+	server := prefRig(t)
+	server.Sheetless()
+	client := plainBase(t, server.URL(), server)
+
+	pinned(t, LanePin{})
+	if _, err := client.CompleteWithMessages(talking(), userMessages("hello")); err != nil {
+		t.Fatalf("the unpinned turn failed: %v", err)
+	}
+	RepinLane(LanePin{Lane: "Haven"})
+	t.Cleanup(func() { RepinLane(LanePin{}) })
+	if _, err := client.CompleteWithMessages(talking(), userMessages("again")); err != nil {
+		t.Fatalf("the pinned turn failed: %v", err)
+	}
+	asks := server.Asks()
+	if len(asks) != 2 {
+		t.Fatalf("%d requests reached the base: %+v", len(asks), asks)
+	}
+	if asks[0].Sort != "" || len(asks[0].Only) != 0 {
+		t.Fatalf("the unpinned request carried %+v", asks[0])
+	}
+	if !demandedOnly(asks[1], "Haven") {
+		t.Fatalf("the pinned request demanded %v, want the machine the person named", asks[1].Only)
 	}
 }

@@ -351,6 +351,18 @@ type callKnobs struct {
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
 	reasoning []MessageReasoning
+	// noProvider takes the `provider` object OFF this one encode entirely, and
+	// it is set by exactly one caller: the single widened retry that asks
+	// whether a base's 400 was about the field at all (endpoints.go's
+	// [Client.widenPastTheUncarriedPreference], issue #433).
+	//
+	// IT IS NOT A LADDER RUNG. [relaxEndpointFilter] takes off everything that
+	// can EXCLUDE an endpoint and leaves the sort word, which is the right rung
+	// when the question is which machine can serve a shape. Here the question is
+	// whether the base understands the field, so the field has to be gone —
+	// otherwise the retry asks the same question again and its answer means
+	// nothing.
+	noProvider bool
 	// hedgeLane is the one lane this request must go to, set only on the second
 	// request of a hedged pair (hedge.go). Empty on every ordinary call, which
 	// is what keeps a healthy request byte-for-byte what it always was.
@@ -450,16 +462,14 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	// THE BASE REFUSING THE FIELD ITSELF IS ANSWERED BEFORE ANYTHING ELSE
-	// (#433). A refusal that names `provider` on a base with no lane evidence is
-	// that base saying it will not carry a preference: the answer is filed, the
-	// person is told once, and THE REQUEST GOES OUT WITHOUT THE PREFERENCE
-	// RATHER THAN NOT AT ALL — the same single widened retry a retired pin
-	// earns, at the rung that drops the whole provider object, which is now
-	// exactly what this client will encode.
-	if readErr == nil && c.prefsJustRefused(ctx, response.StatusCode, peek) {
+	// WHETHER THE BASE UNDERSTANDS THE `provider` FIELD AT ALL IS ASKED BEFORE
+	// ANYTHING ELSE (#433), because until it is answered nothing below this line
+	// is reading the right refusal. It is a QUESTION here and an answer only
+	// after the retry: the same request goes out once without the object, and
+	// whether THAT lands is the whole of the evidence.
+	if readErr == nil && c.prefsMayBeRefused(model, response.StatusCode, peek) {
 		response.Body.Close()
-		return c.widenPastTheRetiredPin(ctx, request, knobs, stream, began, response.StatusCode, peek)
+		return c.widenPastTheUncarriedPreference(ctx, request, knobs, stream, began, response.StatusCode, peek)
 	}
 	if readErr != nil || !c.routingRefusal(model, response.StatusCode, peek) {
 		// Not this class. The body is handed back whole — a peek must never

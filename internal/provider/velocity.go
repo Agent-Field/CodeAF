@@ -314,10 +314,30 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // and an endpoint that is not a router either ignores it or 400s on it — but
 // which of the two a base does is a thing only the base can say, so it is asked
 // once and remembered, and only a base that has answered "no" is left off
-// (prefcarry.go's [Client.carriesPreferences]). Until it has answered, the
-// preference goes on: the asking IS the sending.
+// (prefcarry.go's [Client.carriesPreferences]).
+//
+// ── AND AN UNASKED BASE SENDS ONLY WHAT A PERSON ASKED FOR ──────────────────
+//
+// THE LAW IS ABOUT A PREFERENCE THE PERSON HAS, NOT ABOUT THIS ADAPTER'S OWN
+// DEFAULT KNOBS. `sort`, `allow_fallbacks` and `require_parameters` are nobody's
+// instruction: they are how this build asks a ROUTER to break a tie among
+// machines it already knows about, and putting them on a plain endpoint's every
+// request would be a field that every plain-base user suddenly carries, for a
+// tie there is nothing to break. So on a base that has not yet SHOWN it carries
+// a preference, the object goes out only when there is something to ask WITH,
+// and there is exactly one such thing: a lane the person pinned. A ranking
+// cannot be the reason, because a ranking only exists once a sheet arrived —
+// and a sheet arriving is the base proving it carries.
+//
+// The consequence, stated so nobody has to derive it: a plain base with nobody
+// pinning anything is never asked, never answers, and its requests are
+// byte-for-byte the requests it got before this law existed. The moment somebody
+// pins a lane, that pin IS the asking.
 func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
 	if !c.carriesPreferences() {
+		return nil
+	}
+	if !c.prefsProven() && c.pinnedLaneFor(model) == "" {
 		return nil
 	}
 	strategy := c.routingFor(knobs.intent)
@@ -389,6 +409,12 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 // request was offered no first rung and climbed every other one still pinned to
 // the machine that had refused it (issue #266).
 func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+	if knobs.noProvider {
+		// THE ONE ENCODE THAT ASKS THE OPPOSITE QUESTION. See [callKnobs] —
+		// this is the widened retry that finds out whether a base's 400 was
+		// about the field, and it can only find out by sending none.
+		return nil
+	}
 	prefs := hedgePreference(c.providerPreferences(model, knobs, request), knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)

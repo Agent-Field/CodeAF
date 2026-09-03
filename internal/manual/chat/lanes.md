@@ -222,9 +222,10 @@ is the one thing it will not do.
 **And one refusal is about the base rather than about a machine.** Some bases
 take no lane choice at all — a plain OpenAI-compatible endpoint behind
 `AFORGE_BASE_URL`, a proxy that strips the field, a gateway that never heard of
-it. aforge finds out by asking: your choice goes out on a real request, once. If
-the base refuses the field, or answers without saying which machine served, your
-pin cannot be sent there — and you are told once, in the conversation:
+it. aforge finds out by asking: your pin goes out on a real request, once, and
+if that is refused the same request is sent again without it — whether *that*
+lands is the answer, so an unrelated bad request never costs you your pin. If
+the base will not take the choice, you are told once, in the conversation:
 
 ```
 api.example.com does not take a lane choice; coreweave is not being asked for, and your requests still go out
@@ -238,35 +239,38 @@ too, so `pinned:` never stands as a claim about a request that did not carry it:
 
 Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
 `AFORGE_BASE_URL` — a proxy in front of the router, a mirror, a router of your
-own, or the router reached by its IP address — and it **asks that base whether
-it publishes an endpoints page**: the first fetch of a model's sheet, made in the
-background, is the question. A base that answers with a page has lanes exactly
-as the built-in endpoint does, with the same auto ranking, pins, hedges and
-status line. Nothing about the address is inspected; a router is recognised by
-what it answers, not by where it lives.
+own, the router by its IP — and it **asks that base whether it publishes an
+endpoints page**: the first background fetch of a model's sheet is the question.
+A base that answers with a page has lanes exactly as the built-in endpoint does,
+with the same auto ranking, pins, hedges and status line. Nothing about the
+address is inspected; a router is recognised by what it answers.
 
-A base that **has no endpoints page at all** — it answers with a not-found page
-rather than the router's own error message, the way a plain proxy or a mirror of
-the completions route does — is remembered as having none for five minutes, and
-asked again after that, in the background and never in front of a request. A
-router that has the page but simply **does not publish that one model** answers
-not found in its own words, about the model, and nothing is remembered about the
-base. An error that is not a not-found — a 500, a timeout, a rate limit — is a
-bad afternoon and not an answer, so the base is asked again on the next beat.
+A base with **no endpoints page at all** — it answers with a not-found page
+rather than the router's own error message, the way a plain proxy does — is
+remembered as having none for five minutes, then asked again in the background.
+A router that has the page but **does not publish that one model** says so in
+its own words, about the model, and nothing is remembered about the base. A 500,
+a timeout or a rate limit is a bad afternoon rather than an answer.
 
 **Whether a base honours a lane choice is learned the same way**, never from
-its address. A base that served an endpoints page takes one, by the router's own
-contract. Any other base is asked once — your choice goes out on a real request
-and the answer decides — and a base that refuses the field, or that answers
+its address. A base that served an endpoints page takes one. Any other base is
+asked once, and only once you have **pinned** something — a pin is the only
+thing there is to ask with, so a base nobody pinned anything on is sent no lane
+opinion at all, exactly as before. Your pin goes out on a real request; if the
+base refuses it, aforge sends that request again once without it, and whether
+*that* lands is the answer. A base that refuses the choice, or that answers
 without ever naming the machine that served, is remembered as not taking one and
-**says so** (the refusal section above has the sentence). aforge cannot tell a
-choice honoured silently from one dropped on the floor: nothing in such an
-answer says which machine served, so it takes the reading that tells you.
+**says so** (the refusal section above has the sentence).
 
-The check costs nothing extra either way — it is the sheet fetch and the request
-aforge was going to make anyway — so the built-in endpoint pays no additional
-call. Pointing `AFORGE_BASE_URL` somewhere else asks the new address afresh,
-about both questions.
+**A proxy that forwards to the router but strips the lane name out of its
+answers is read as not taking your choice**, deliberately. aforge cannot tell
+that proxy from one honouring your pin silently — nothing in the answer says
+which machine served — so it tells you, sends later requests bare, and the proxy
+then routes your model however it likes. Your work still goes out; your pin is
+not honoured there, and you know rather than guess.
+
+Neither question costs an extra call of its own, and pointing `AFORGE_BASE_URL`
+somewhere else asks the new address afresh about both.
 
 ## Turning lane routing off
 

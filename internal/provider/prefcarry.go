@@ -93,6 +93,14 @@ func (c *Client) baseServesLanes() bool {
 	return lanes.SheetServes(c.config.BaseURL)
 }
 
+// prefsProven reports whether this client's base has SHOWN it carries a
+// preference — an endpoints page, or an answer that named its lane. It is what
+// separates "may this go out" from "has this base earned the default knobs"
+// (velocity.go's providerPreferences).
+func (c *Client) prefsProven() bool {
+	return lanes.PrefsProven(c.config.BaseURL)
+}
+
 // prefWentOut records whether the encode that just happened really put a
 // `provider` object on the bytes, which is what makes the answer to it evidence
 // about this base at all.
@@ -140,65 +148,51 @@ func (c *Client) sayThePinIsNotSent(ctx context.Context) {
 	tellUncarriedPins(ctx)
 }
 
-// prefRefused reads whether a refusal is the base saying it does not know the
-// field we put on it, and it is deliberately narrow on three axes at once.
+// prefRefused reads whether a refusal COULD be the base saying it does not know
+// the field we put on it — and it is a question rather than an answer, because
+// no reading of the words can settle it.
+//
+// ── WHY THE WORDS ARE NOT THE GATE ──────────────────────────────────────────
+//
+// A phrase list here was the first design and it was wrong in the way rule 1 of
+// docs/design/failsafe/FAILSAFE.md warns about: a fail-safe detects by STRUCTURE
+// or it is decoration. `Unrecognized request argument supplied: provider` and
+// `invalid provider name` both name the field and both are 400s, and they mean
+// opposite things — the first is a base that has never heard of it, the second
+// is a base that reads it perfectly and did not like the VALUE. A list that
+// matched "invalid" would mark such a base as refusing preferences FOR GOOD, on
+// one bad lane name, and the person would never be asked again.
+//
+// SO THE RETRY IS THE TEST. What this function establishes is only that the
+// question is worth asking: a 400, the base's own, on a request that really
+// carried a preference, from a base that has not already shown it carries one.
+// The answer comes from sending the same request again WITHOUT the object
+// ([Client.widenPastTheUncarriedPreference]) — if that goes through, the field
+// was the difference; if it fails too, the field was not, and nothing is learnt.
 //
 // THE STATUS IS 400 AND NEVER 404. A 404 from a router is `No endpoints found…`
 // and `…your request's provider.only preference permits only: coreweave` — a
 // base that READ the preference and had nothing to serve it with, which is the
 // opposite of this class and is the retirement's business next door (lanepin.go,
-// issue #456). An unknown request argument is a 400 everywhere it is refused at
-// all: OpenAI, Azure, vLLM and llama.cpp all answer one, and the servers that
-// do not refuse it simply IGNORE it — which is the silent reading and is caught
-// on the answer instead.
+// issue #456).
 //
-// THE REFUSAL IS THE BASE'S OWN. A 400 the router RELAYS carries the upstream's
-// name in its metadata ([APIError.FromUpstream] reads the same field), and
-// `Provider returned error` is a real relayed sentence that names the word and
-// means nothing like this.
+// AND THE REFUSAL IS THE BASE'S OWN. A 400 the router RELAYS carries the
+// upstream's name in its metadata ([APIError.FromUpstream] reads the same
+// field), and `Provider returned error` is a real relayed sentence that names
+// the word and means nothing like this.
 //
-// AND THE MESSAGE HAS TO SAY IT DOES NOT KNOW THE ARGUMENT, not merely mention
-// it. The list below is a closed set — the ways an OpenAI-compatible server
-// spells "I have never heard of this field" — and it is a HINT with no
-// authority, exactly as [endpointRefusalPhrases] is: a base whose refusal this
-// does not recognise falls through to the ordinary path and is read on its
-// ANSWERS instead, where a field that was ignored rather than refused is caught
-// anyway.
+// The sentences seen in the wild are kept as a note and not as a gate:
+// `Unrecognized request argument supplied: provider` (OpenAI), `unknown field
+// "provider"` (several gateways), `Extra inputs are not permitted` (a pydantic
+// server naming the field in its detail). None of them is required to match.
 func prefRefused(status int, payload []byte) bool {
-	if status != http.StatusBadRequest || len(payload) == 0 {
+	if status != http.StatusBadRequest {
 		return false
 	}
-	// THE SENTENCE IS READ THROUGH [apiError], the same raw-body decoder every
-	// refusal on the send path is recovered from, so this file adds no second
-	// unmarshal of a shape another one already owns. A body that is not that
-	// envelope — a gateway's bare `unknown field "provider"`, a framework's
-	// plain text — is read whole, because it is the same answer said
-	// differently and there is nothing else to read it out of.
-	message := strings.ToLower(string(payload))
-	if refused, ok := RefusalFrom(apiError(status, payload)); ok && refused.Message != "" {
-		if refused.FromUpstream() {
-			return false
-		}
-		message = strings.ToLower(refused.Message)
-	}
-	if !strings.Contains(message, "provider") {
+	if refused, ok := RefusalFrom(apiError(status, payload)); ok && refused.FromUpstream() {
 		return false
 	}
-	for _, unknown := range unknownArgumentWords {
-		if strings.Contains(message, unknown) {
-			return true
-		}
-	}
-	return false
-}
-
-// unknownArgumentWords is how an OpenAI-compatible server says it has never
-// heard of a field. It is a hint and never a gate ([prefRefused] says why), and
-// it is spelled in one place because a second copy is a copy that gets a word
-// added to it alone.
-var unknownArgumentWords = []string{
-	"unrecognized", "unrecognised", "unknown", "unsupported", "unexpected",
-	"invalid", "extra ", "additional", "not allowed", "not permitted",
+	return true
 }
 
 // ── THE SENTENCE ────────────────────────────────────────────────────────────
@@ -302,35 +296,59 @@ func forgetUncarriedPins() {
 // URL of its own to name.
 func BaseTakesLaneChoice() bool { return lanes.PrefsCarriedHere() }
 
-// prefsJustRefused reads whether THIS refusal is the base rejecting the
-// `provider` field, files the answer, and tells the person — answering whether
-// the caller should widen and send again.
+// prefsMayBeRefused reports whether this refusal is worth ONE widened retry to
+// find out whether the base understands the `provider` field at all.
 //
-// IT ANSWERS FALSE ON A BASE THAT HAS EVER NAMED A LANE, which is what keeps
-// the shipped router's own `provider.only permits only: …` out of this reading
-// entirely: that base is already `carries`, and carries outranks drops for the
-// life of the wiring. What it also answers false on is a request that carried
-// no preference — there is nothing to have been refused — and any status the
-// ladder does not treat as a refusal at all.
-func (c *Client) prefsJustRefused(ctx context.Context, status int, payload []byte) bool {
-	if !c.prefSent.Load() || !c.carriesPreferences() {
+// IT DECIDES NOTHING AND FILES NOTHING. The answer is the retry's
+// ([Client.widenPastTheUncarriedPreference]); this is only the four facts that
+// make the question worth a round trip.
+//
+// A BASE THAT HAS ALREADY SHOWN IT CARRIES IS NEVER ASKED. The first definite
+// answer stands (internal/lane's prefAnswer), so the shipped router's own
+// refusals are the retirement's business and never this file's.
+//
+// AND A REFUSAL THAT NAMES THE PINNED MACHINE IS ABOUT THE MACHINE. `…your
+// request's provider.only preference permits only: coreweave`, and a gateway's
+// own `invalid provider name: coreweave`, are the LANE being refused rather than
+// the field being unknown — the person's own row is what is wrong, and #533's
+// retirement is the answer to it. Widening on that would swallow the sentence
+// they are owed about their pin and replace it with one about the base.
+func (c *Client) prefsMayBeRefused(model string, status int, payload []byte) bool {
+	if !c.prefSent.Load() || !c.carriesPreferences() || c.prefsProven() {
 		return false
 	}
 	if !prefRefused(status, payload) {
 		return false
 	}
-	if !lanes.HeardPrefsRefused(c.config.BaseURL) {
+	if lane := c.pinnedLaneFor(model); lane != "" &&
+		strings.Contains(strings.ToLower(string(payload)), strings.ToLower(lane)) {
 		return false
 	}
-	// AND THE ANSWER IS ONLY ACTED ON IF IT WAS THE ONE THAT LANDED. A base that
-	// had already SHOWN it carries a preference keeps that answer — the first
-	// definite answer stands (internal/lane's prefAnswer) — so the shipped
-	// router's own `permits only:` refusal is filed against nothing, says
-	// nothing, and earns no widened retry here: it is the retirement next door's
-	// business (lanepin.go, issue #456).
-	if c.carriesPreferences() {
-		return false
+	return true
+}
+
+// prefsWereRefused files the answer the widened retry proved and hands the
+// person the one sentence they are owed for it.
+func (c *Client) prefsWereRefused(ctx context.Context) {
+	if !lanes.HeardPrefsRefused(c.config.BaseURL) {
+		return
 	}
 	c.sayThePinIsNotSent(ctx)
-	return true
+}
+
+// pinnedLaneFor is the machine a PERSON named for this model, "" when they
+// named none, chose the `openrouter` row, or the wire has already refused the
+// one they named.
+//
+// IT IS THE WHOLE OF "IS THERE SOMETHING TO ASK WITH" on a base that has not yet
+// shown it carries a preference (velocity.go's providerPreferences says why
+// nothing else qualifies). It reads the row and the retirement together, in one
+// lock, for [lanePinFor]'s reason: asked as two questions, a pin that moved
+// between them lets one request go out about a row nobody holds any more.
+func (c *Client) pinnedLaneFor(model string) string {
+	pin, retired := lanePinFor(model)
+	if pin.OpenRouter || retired {
+		return ""
+	}
+	return pin.pinned()
 }

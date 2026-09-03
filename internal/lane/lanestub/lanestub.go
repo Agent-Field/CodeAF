@@ -311,6 +311,12 @@ type Server struct {
 	// than ignoring it, whose refusal must cost the request in hand nothing
 	// more than one widened retry.
 	refusesPrefs bool
+	// refusesAll makes this base answer 400 to EVERY request, whether or not it
+	// carries a `provider` object. It stages the case that proves #433's retry
+	// really is the test: a base whose refusal was never about the field must
+	// teach nothing at all, so the widened retry fails too and the question
+	// stays open.
+	refusesAll bool
 }
 
 // New starts a router serving one model over the given lanes, in the order they
@@ -416,6 +422,16 @@ func (s *Server) RefusesPreference() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refusesPrefs = true
+}
+
+// RefusesEverything makes this base answer 400 to every request, in a sentence
+// that is about nothing in particular. It is what a base whose 400 was never
+// about the routing preference looks like from outside, and it is set before
+// any request is made.
+func (s *Server) RefusesEverything() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refusesAll = true
 }
 
 // SetClock replaces the clock. It is set before any request is made.
@@ -701,6 +717,11 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.asks = append(s.asks, record)
+	if s.refusesAll {
+		s.mu.Unlock()
+		writeError(w, http.StatusBadRequest, "this base is having an afternoon", "")
+		return
+	}
 	if s.refusesPrefs && ask.Provider != nil {
 		s.mu.Unlock()
 		// THE ASK IS ON THE RECORD AND NO LANE IS CHARGED FOR IT. Nothing

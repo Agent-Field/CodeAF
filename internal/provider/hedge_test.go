@@ -125,6 +125,16 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	// THE CONTROLLER IS INSTALLED THROUGH THE ONE SEAM, exactly as a shipped
 	// build installs it, so that what these tests exercise is the wiring and
 	// not a second arrangement built for them.
+	// AND THE RIG STATES WHAT THIS STUB IS. A shipped build learns that a base
+	// carries a routing preference from the base itself — the endpoints page the
+	// beat fetches, or the lane an answer names (issue #433) — and neither has
+	// happened here: no beat runs in a test, and the belief below is SCRIPTED
+	// rather than measured. This stub publishes an endpoints page and names its
+	// lane on every answer, so it does carry one; saying so is stating a fact
+	// about the fixture, not turning a law off. A rig that left it unsaid would
+	// send no `provider` object at all until something was pinned, which is
+	// exactly right for a plain endpoint and wrong for a router.
+	lanes.HeardPrefsCarried(server.URL())
 	rig := &laneRig{server: server, client: client, ledger: ledger, model: model}
 	shipped := lanes.SetController(func(plan control.Plan) control.Controller {
 		return ridePolicy(rig.scaled(plan))

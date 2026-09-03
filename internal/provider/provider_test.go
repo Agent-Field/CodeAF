@@ -329,36 +329,18 @@ func TestAdapterKeepsAContentlessAssistantMessageStable(t *testing.T) {
 	}
 }
 
-// IDENTICAL CALLS PRODUCE IDENTICAL BYTES — ONCE THIS ADAPTER HAS STOPPED
-// LEARNING ABOUT THE ENDPOINT.
-//
-// Determinism here has always been a law about the ENCODER and never a promise
-// that the first call and the tenth are the same: a knob a model refuses is
-// discovered by sending it once and is then never sent again (sendRepaired), and
-// since issue #433 whether a base carries a routing preference is discovered the
-// same way — by putting one on a request and reading what comes back, because
-// there is no other way to learn it. Both are answers this adapter did not have
-// and now does.
-//
-// So the guard is the calls AFTER the answer, and it is exactly as strong: two
-// identical calls made with the same knowledge must serialize to the same bytes.
 func TestAdapterRequestsAreDeterministicForTheSameInput(t *testing.T) {
 	client, recorded := newTestClient(t, Config{
 		SupportsParameter: func(string, string) (bool, bool) { return true, true },
 	})
 	ctx := WithReasoningEffort(WithCacheKey(context.Background(), "run-1"), EffortLow)
-	for range 3 {
+	for range 2 {
 		if _, err := client.CompleteWithMessages(ctx, userMessages("identical")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if string(recorded.raw[1]) != string(recorded.raw[2]) {
-		t.Fatalf("identical calls produced different bytes:\n%s\n%s", recorded.raw[1], recorded.raw[2])
-	}
-	// AND THE FIRST CALL IS THE ASKING, which is worth pinning: a build where
-	// it were not would be a build that never learns and never says anything.
-	if !strings.Contains(string(recorded.raw[0]), `"provider"`) {
-		t.Fatalf("the first call asked this base nothing:\n%s", recorded.raw[0])
+	if string(recorded.raw[0]) != string(recorded.raw[1]) {
+		t.Fatalf("identical calls produced different bytes:\n%s\n%s", recorded.raw[0], recorded.raw[1])
 	}
 }
 

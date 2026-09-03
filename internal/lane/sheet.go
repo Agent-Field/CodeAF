@@ -443,6 +443,30 @@ func PrefsCarried(base string) bool {
 	return own.prefsCarried(trimBase(base))
 }
 
+// PrefsProven reports whether base has SHOWN it carries a routing preference —
+// it served an endpoints page, or it named the lane that answered one.
+//
+// IT IS THE OTHER HALF OF [PrefsCarried] AND THE TWO ARE BOTH NEEDED. Carried
+// is "may this go out", and an unasked base answers yes because the asking is
+// the sending. Proven is "has this base earned the default knobs" — the sort
+// word, the fallback flag, the parameter filter — which nobody asked for and
+// which no answer is owed about, and an unasked base answers NO. What goes out
+// on an unasked base is only ever something a PERSON asked for
+// (internal/provider's providerPreferences says it in full).
+func PrefsProven(base string) bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return false
+	}
+	base = trimBase(base)
+	if base == "" {
+		return false
+	}
+	own.mu.RLock()
+	defer own.mu.RUnlock()
+	return own.base == base && own.carries == prefCarries
+}
+
 // SheetServes reports whether base has HANDED BACK an endpoints page, which is
 // a different and narrower question from [PrefsCarried].
 //

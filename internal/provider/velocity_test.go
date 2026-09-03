@@ -482,16 +482,15 @@ func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
 	}
 }
 
-// A PLAIN ENDPOINT IS ASKED ONCE AND THEN CARRIES NO PREFERENCE.
+// A PLAIN ENDPOINT NOBODY PINNED ANYTHING ON CARRIES NO PREFERENCES.
 //
-// WHAT WAS TRUE: the field went out only where the base URL held `openrouter.ai`
-// or the model was spelled `openrouter/…`, so a proxy, a mirror or a
-// self-hosted router never got one and a person's pin was silently left off
-// (issue #433). WHAT IS TRUE NOW: the base is asked, once, by a real request —
-// there is no other way to learn — and its own answer is remembered. This
-// endpoint serves the completion and names no lane, which is read as "does not
-// carry" under the safe reading, so the second request goes out bare.
-func TestAPlainEndpointIsAskedOnceAndThenCarriesNoPreferences(t *testing.T) {
+// The `sort` word, the fallback flag and the parameter filter are this adapter's
+// own knobs for breaking a tie among machines a ROUTER already knows about, and
+// a base that has never shown it has such machines has no tie to break. Issue
+// #433 changed which fact decides this — the base's own answer rather than its
+// hostname — and did not change this: an unasked base with no pin sends nothing,
+// so a plain endpoint's request is byte-for-byte what it always was.
+func TestNonRouterEndpointCarriesNoPreferences(t *testing.T) {
 	client, recorded := newTestClient(t, Config{Routing: StaticRouting(RoutingLatency)})
 	client.velocity = newVelocityLedger()
 	for _, turn := range []string{"hello", "again"} {
@@ -499,18 +498,18 @@ func TestAPlainEndpointIsAskedOnceAndThenCarriesNoPreferences(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if raw := recorded.body(0); raw == nil {
-		t.Fatal("nothing reached the endpoint")
-	} else if _, asked := raw["provider"]; !asked {
-		t.Fatal("the first request carried no preference, so the base was never asked and can never answer")
-	}
-	if raw := recorded.body(1); raw != nil {
-		if _, ok := raw["provider"]; ok {
-			t.Fatalf("provider = %v after the base said nothing about lanes, want the field absent", raw["provider"])
+	for index := range 2 {
+		if raw := recorded.body(index); raw != nil {
+			if _, ok := raw["provider"]; ok {
+				t.Fatalf("provider = %v on a plain endpoint nobody pinned, want the field absent", raw["provider"])
+			}
 		}
 	}
-	if lanes.PrefsCarried(client.config.BaseURL) {
-		t.Fatal("an endpoint that named no lane is still believed to carry a preference")
+	// AND NOTHING WAS LEARNT, because nothing was asked. The base is still
+	// unasked rather than filed as refusing, so somebody who pins tomorrow is
+	// asked then (prefcarry.go).
+	if !lanes.PrefsCarried(client.config.BaseURL) {
+		t.Fatal("a base nobody asked anything of was filed as refusing a preference")
 	}
 }
 
