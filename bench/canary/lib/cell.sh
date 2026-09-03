@@ -58,7 +58,7 @@ finish() {
   [ "${CANARY_REGRADE:-}" = "1" ] && load=""
   CANARY_ENTRY="$ENTRY" CANARY_OUT_DIR="$OUT" CANARY_SETUP="$ended" \
   CANARY_CAP="$CANARY_CAP" CANARY_WALL="$CANARY_WALL" CANARY_LOAD="$load" "$PY" - <<'PYX'
-import glob, json, os
+import glob, json, os, re
 out = os.environ["CANARY_OUT_DIR"]
 def load(name):
     try:
@@ -72,27 +72,45 @@ setup = os.environ["CANARY_SETUP"]
 def chat_transcript_counts():
     """Count loop outcomes when this chat cell has a v3 transcript.
 
-    The event payloads are Python repr strings rather than JSON, so their
-    decision is identified in the string after the containing row is decoded.
+    Older event payloads are Python repr strings; newer ones are JSON objects.
     """
     if entry.get("door") != "chat":
-        return None, None
+        return None, None, None
     paths = glob.glob(os.path.join(out, "home", "v3", "projects", "*", "*", "transcript.jsonl"))
     if not paths:
-        return None, None
+        return None, None, None
     mark_fails = carry_ons = 0
+    steward_last = None
     with open(paths[0]) as transcript:
         for line in transcript:
             if not line.strip():
                 continue
             event = json.loads(line)
-            if event.get("type") == "mark" and "'decision': 'failed'" in str(event.get("mark")):
-                mark_fails += 1
-            if event.get("type") == "principal" and "'decision': 'carry on'" in str(event.get("principal")):
-                carry_ons += 1
-    return mark_fails, carry_ons
+            if event.get("type") == "mark":
+                payload = event.get("mark")
+                decision = payload.get("decision") if isinstance(payload, dict) else None
+                if isinstance(payload, str):
+                    match = re.search(r"decision': '([\w ]+)'", payload)
+                    decision = match.group(1) if match else None
+                if decision in {"failed", "no reader"}:
+                    mark_fails += 1
+            if event.get("type") == "principal":
+                payload = event.get("principal")
+                if isinstance(payload, dict):
+                    who, principal_event, decision = payload.get("who"), payload.get("event"), payload.get("decision")
+                else:
+                    text = payload if isinstance(payload, str) else ""
+                    who = "steward" if re.search(r"who': 'steward'", text) else None
+                    principal_event = "decided" if re.search(r"event': 'decided'", text) else None
+                    match = re.search(r"decision': '([\w ]+)'", text)
+                    decision = match.group(1) if match else None
+                if who == "steward" and principal_event == "decided" and decision in {"carry on", "done", "stop"}:
+                    steward_last = decision
+                    if decision == "carry on":
+                        carry_ons += 1
+    return mark_fails, carry_ons, steward_last
 
-mark_fails, carry_ons = chat_transcript_counts()
+mark_fails, carry_ons, steward_last = chat_transcript_counts()
 f2p = judge.get("f2p") or {}
 tests = "tests green" if f2p.get("pass") else ("tests: %d failed, %d errors, %d passed" % (
     f2p.get("failed", 0), f2p.get("errors", 0), f2p.get("passed", 0)) if f2p else "no grade")
@@ -163,7 +181,7 @@ cell = {
     "source": entry.get("source") or "fresh", "tier": entry.get("tier") or "small",
     "wall_s": door.get("wall_s"), "cost_usd": door.get("cost_usd"), "ttft_ms": door.get("ttft_ms"),
     "task_done_s": door.get("task_done_s"), "done_to_wall_s": door.get("done_to_wall_s"),
-    "mark_fails": mark_fails, "carry_ons": carry_ons,
+    "mark_fails": mark_fails, "carry_ons": carry_ons, "steward_last": steward_last,
     "calls": door.get("calls"), "changed_files": judge.get("changed_files"),
     "f2p": judge.get("f2p"), "suite": judge.get("suite"), "regressed": judge.get("regressed"),
     "subharness": door.get("subharness"), "nodes": door.get("nodes"),
