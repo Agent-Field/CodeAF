@@ -243,3 +243,71 @@ func TestAOneStageProjectStillFansOut(t *testing.T) {
 		t.Fatalf("an ordinary one-stage build stopped at the spine: %v", client.passes)
 	}
 }
+
+// A REMAINDER THAT LISTS EIGHT FAILING TESTS IS ONE WORKER'S LIST, NOT EIGHT
+// JOBS. The shortcut used to read the stage's own words before it spent its
+// probe and fall through wherever they named several pieces — the right reading
+// for a fresh plan, and the wrong one for the only build that reaches the
+// shortcut. Measured on the canary: a repair round drew its remainder as six
+// leaves and then as eight, ran fourteen parallel repairs to the wall, and the
+// do door's spend doubled with quality flat.
+func TestARemainderThatListsWhatIsLeftIsStillOneWorker(t *testing.T) {
+	const listed = `{"stages":[{"title":"Fix the failing tests","summary":` +
+		`"T1: fix test_dates.; T2: fix test_quantities.; T3: fix test_prefixes.; T4: fix test_totals."}]}`
+
+	client := &countingPlanner{stages: listed}
+	graph, err := Build(context.Background(), client, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Briefs: true, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(graph.Nodes) != 1 {
+		t.Fatalf("a remainder listing four repairs planned %d nodes, want 1: %v", len(graph.Nodes), client.passes)
+	}
+	for _, unbought := range []string{"fanout", "bind", "audit", "stages"} {
+		if client.reached(unbought) {
+			t.Fatalf("a listed remainder still bought the %s pass: %v", unbought, client.passes)
+		}
+	}
+	// The ruler is asked, which is the whole of the change: the words no longer
+	// answer in its place, so the one call the shortcut pays is paid.
+	if made := client.made("size"); made != 1 {
+		t.Fatalf("the shortcut made %d sizing calls, want exactly one: %v", made, client.passes)
+	}
+
+	// And the same list past one worker's reach still divides, because size is
+	// the judgment a remainder is divided on.
+	oversized := &countingPlanner{
+		stages:    listed,
+		sizeReply: `{"sizes":[{"node":1,"size":"oversized","split_into":["one","two"]},{"node":2,"size":"atomic","split_into":[]},{"node":3,"size":"atomic","split_into":[]}]}`,
+		chain: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+			`{"title":"Change","summary":"Make the change.","needs":[1]},` +
+			`{"title":"Prove","summary":"Show that it holds.","needs":[2]}]}`,
+	}
+	divided, err := Build(context.Background(), oversized, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(divided.Nodes) < 2 || !oversized.reached("stages") {
+		t.Fatalf("a remainder past one worker's reach kept %d nodes: %v", len(divided.Nodes), oversized.passes)
+	}
+}
+
+// The admission itself is not gone, and a fresh plan is where it lives: a
+// one-stage project whose own words name several pieces still fans out, and the
+// pieces are found by the passes that exist to find them.
+func TestAFreshPlanThatNamesSeveralPiecesStillDivides(t *testing.T) {
+	client := &countingPlanner{stages: `{"stages":[{"title":"North, South, East","summary":` +
+		`"North: Rewrite North dates.; South: Sort South by quantity.; East: Prefix low items."}]}`}
+	if _, err := Build(context.Background(), client, "rework the three blocks", Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Ensemble: EnsembleNever,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !client.reached("fanout") {
+		t.Fatalf("a fresh plan naming three lanes stopped at the spine: %v", client.passes)
+	}
+}

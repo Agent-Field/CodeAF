@@ -559,34 +559,30 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 			Summary: strings.TrimSpace(stage.Summary),
 			Brief:   goal,
 		}
-		// AND THE PROBE IS NOT ASKED WHERE THE STAGE'S OWN WORDS HAVE ALREADY
-		// ANSWERED. The one call this shortcut spends is asked of a node whose
-		// title reads "North, South, East" and whose summary spells the three
-		// lanes out one by one; the ruler answered atomic, named no parts, and
-		// the whole goal went to one fresh worker on the strength of it. The
-		// words are read first instead (enumerated.go, free), and a one-stage
-		// spine that enumerates its pieces falls through to the pipeline, where
-		// the fan-out and then the stage question get to answer. Nothing else
-		// about the shortcut moves: a stage naming one subject is probed and
-		// taken exactly as it was.
-		enumerated := namesSeveralPieces(single.Title, single.Summary)
-		var withinReach bool
-		if !enumerated {
-			var reachUsage Usage
-			withinReach, reachUsage, reachErr = withinOneWorker(ctx, client, graph, single)
-			graph.Usage.merge(reachUsage)
-		}
+		// AND THE REACH QUESTION IS THE ONLY ONE ASKED HERE. The shortcut used
+		// to read the stage's own words first as well (enumerated.go, free) and
+		// fall through wherever they named several pieces, which is the right
+		// reading for a fresh plan and the wrong one for the only build that
+		// ever reaches this line. THIS SHORTCUT IS ONLY EVER TAKEN FOR A
+		// REMAINDER — Options.Undivided has one caller, the replan a leaf that
+		// ran out of room asks for — and a remainder's words are a list of what
+		// is left, which is one worker's assignment written out rather than a
+		// division of it. A remainder that listed its failing tests was read as
+		// six pieces and then eight, and ran as fourteen parallel repairs; the
+		// door's spend doubled on the canary with quality flat. So the words are
+		// not asked here, the ruler's reach is, and a remainder past one worker
+		// still falls through to the pipeline where the fan-out and the stage
+		// question divide it on its size. See admitsEnumeratedPieces.
+		withinReach, reachUsage, err := withinOneWorker(ctx, client, graph, single)
+		graph.Usage.merge(reachUsage)
+		reachErr = err
 		if withinReach {
 			graph.Add(single)
 			emitProgress(progress, "steps", "1", "")
 			report("undivided", time.Since(start), "one worker — the spine found nothing gated")
 			return graph, errors.Join(groundErr, reachErr)
 		}
-		detail := "past one worker's reach — planned in full"
-		if enumerated {
-			detail = "its own words name several pieces — planned in full"
-		}
-		report("undivided", time.Since(start), detail)
+		report("undivided", time.Since(start), "past one worker's reach — planned in full")
 	}
 
 	// --- ensemble hook (ensemble.go) ---------------------------------------

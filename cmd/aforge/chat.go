@@ -5599,7 +5599,11 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// cost of the jobs they were repairing. The full pipeline is still
 			// there for the remainder the spine judges genuinely multi-stage,
 			// and for the one the ruler judges past a single worker's reach —
-			// the shortcut asks both questions now, not just the first.
+			// the shortcut asks the spine and then the ruler. It asks nothing
+			// about the remainder's own words: a remainder that lists eight
+			// failing tests is one worker's list, not eight jobs, and this
+			// option is what tells the planner that (see
+			// plan.admitsEnumeratedPieces).
 			Undivided: true,
 			Progress:  progress,
 		})

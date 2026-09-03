@@ -362,7 +362,12 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	// three. Reading the enumeration is free (enumerated.go, no call), and it
 	// decides nothing: it only stops the refusal, and the division is then
 	// asked for and either drawn or refused as it always was.
-	enumerated := namesSeveralPieces(node.Title, node.Summary)
+	//
+	// It is asked of a fresh plan and never of a remainder, which is the whole
+	// of what admitsEnumeratedPieces adds to the reading: a remainder's list is
+	// one worker's assignment, so a remainder is admitted on the ruler's size
+	// and on nothing else.
+	enumerated := admitsEnumeratedPieces(node, options)
 	if len(node.Parts) < 2 && node.Size != SizeOversized && !enumerated {
 		return SplitVerdict{Reason: RefusalUnnamed}
 	}
@@ -575,7 +580,7 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	// an end in one sitting, so it is divided in time instead. Sizing the single
 	// restated part would buy a verdict nobody can act on — the node's own size
 	// is already on the node — so that call is spent on the stages instead.
-	if len(nodes) == 1 && dividesInTime(node) {
+	if len(nodes) == 1 && dividesInTime(node, options) {
 		return expandAsStages(ctx, client, sub, node, goal, usage)
 	}
 	for _, child := range nodes {
