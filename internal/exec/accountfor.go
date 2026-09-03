@@ -97,6 +97,8 @@ func AccountFor(
 		account = &Account{}
 		outcome.Account = account
 	}
+	account.Commands = append([]string(nil), outcome.Commands...)
+	account.CommandsRun = outcome.CommandsRun
 	if len(checks) > 0 {
 		account.Checks = checks
 	}
