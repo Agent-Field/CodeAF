@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 09:14Z_
+_2026-09-03 09:19Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -49,7 +49,7 @@ _2026-09-03 09:14Z_
 - `C16`   med  CLOSED `record kept at <path>` is printed for runs that never started
 - `C17`   med  CLOSED A bad subharness name is reported as an empty input
 - `C18`   med  CLOSED `--debug` is absent from `aforge --help`
-- `C19`   med  open   `aforge rebuild` uses machinery vocabulary and runs its prompt into its error
+- `C19`   med  CLOSED `aforge rebuild` uses machinery vocabulary and runs its prompt into its error
 - `C20`   med  CLOSED `logs --tail notanumber` answers `parse error`
 - `C21`   low  CLOSED Two commands print a column header over no rows
 - `C22`   low  CLOSED `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields

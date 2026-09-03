@@ -35,7 +35,11 @@ func TestRebuildReplaysTheJournalBehindAConfirmation(t *testing.T) {
 	if err := runRebuildWith([]string{"--db", path}, strings.NewReader("n\n"), &declined); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(commentary.String(), "cancelled") {
+	// `cancelled` was the word here, and it read like something went wrong.
+	// Saying no to a destructive question is the command working, so it says
+	// what is true of the store instead — see
+	// [TestDecliningARebuildIsNotAnErrorAndNoKeyboardIsItsOwnRung].
+	if !strings.Contains(commentary.String(), "nothing was changed") {
 		t.Fatalf("a bare newline rebuilt the store: %q", commentary.String())
 	}
 	if declined.Len() != 0 {

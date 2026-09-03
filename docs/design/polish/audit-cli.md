@@ -483,3 +483,30 @@ skip note said it needed somebody to decide what `aforge rebuild` discards in pl
 that decision is made and shipped here — *everything aforge worked out from the journal* —
 and the prompt no longer runs into the answer stream. The number is spelled as a word so
 `scripts/ledger.py` does not close a row this lane was not given.
+
+## fixed — row 19, the half nobody had looked at
+
+**Row 19 — `aforge rebuild` uses machinery vocabulary and runs its prompt into
+its error.** The vocabulary half was closed earlier in this wave: `materialized
+view` and `derived table` are `everything aforge worked out from the journal`,
+and the comment in `rebuild.go` records why.
+
+Running the binary to check that half showed the other one, which no row had
+described. `aforge rebuild` from a pipe printed `[y/N] error: rebuild
+cancelled` and left on **exit 1** — telling a script that a DESTRUCTIVE command
+had FAILED TO START when what actually happened is that it asked a question and
+refused to guess at the answer. The ladder already had the right word for that:
+`4 needed an answer and nobody was there`. And typing `n` said `cancelled`,
+which reads like something went wrong; saying no to a destructive question is
+the command working, so it now says what is true of the store — `nothing was
+changed.` — and leaves on the rung that means it is done. The unanswered case
+names `--yes`, because somebody who hit it from a pipe wanted the rebuild.
+
+Files: `cmd/aforge/rebuild.go`. Test:
+`TestDecliningARebuildIsNotAnErrorAndNoKeyboardIsItsOwnRung`, which drives all
+three answers and asserts the rung, the sentence, and that neither reaches
+stdout. **Both halves verified by separate reverts**: putting the wording back
+fails on the wording, and putting ONLY the rung back fails with `rebuild came
+back with a plain error rather than a rung of the ladder`. One sibling
+assertion in `rebuild_test.go` pinned the word `cancelled` and was rewritten
+with the reason beside it.

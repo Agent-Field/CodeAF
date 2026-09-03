@@ -76,12 +76,23 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 		reader := bufio.NewReader(input)
 		answer, readErr := reader.ReadString('\n')
 		if readErr != nil && strings.TrimSpace(answer) == "" {
-			return fmt.Errorf("rebuild cancelled")
+			// NOBODY WAS THERE TO ANSWER, which is a rung of the ladder rather
+			// than a plain error: the command asked, and there was no keyboard
+			// on the other end. It used to come back as `error: rebuild
+			// cancelled` on exit 1 — telling a script that a DESTRUCTIVE
+			// command had failed to start, when in truth it had refused to
+			// guess. The remedy is named, because a person who hit this from a
+			// pipe wanted the rebuild and needs to know how to ask for it.
+			fmt.Fprintln(aside, "nothing was changed — there was nobody to answer the question.")
+			fmt.Fprintln(aside, "pass --yes to rebuild without being asked.")
+			return exitUnanswered
 		}
 		if reply := strings.ToLower(strings.TrimSpace(answer)); reply != "y" && reply != "yes" {
-			// Nothing was rebuilt, so there is no answer to write: this is the
-			// aside saying what happened to the question it just asked.
-			_, err = fmt.Fprintln(aside, "cancelled")
+			// SAYING NO IS NOT AN ERROR. Nothing was rebuilt, so there is no
+			// answer to write and nothing went wrong: this is the aside saying
+			// what happened to the question it just asked, and the command
+			// leaves on the rung that means it is done.
+			_, err = fmt.Fprintln(aside, "nothing was changed.")
 			return err
 		}
 	}
