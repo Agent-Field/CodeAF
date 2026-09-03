@@ -29,6 +29,17 @@ steward's own clock so the share and the wall cannot disagree. The handover road
 is the existing one, so the principal's reading of the ending is unchanged: done
 seals, stop seals with its reason, carry-on hands over, moving work holds.
 
+**And the stretch is bounded by what is left as well as by the share.** The
+run that sized the share (below) found the share alone was read off the whole
+wall from the turn's own start, so a turn that began with 310 s of a 900 s wall
+left was given its full 300 s and handed over with six seconds to go — the
+measured failure again, done by the seam written to prevent it. The bound is
+now the smaller of the share and what remained when the turn began less
+`taskAllowance` (`gitRootPatience + auditDeadline`: a working copy opened and
+one verdict, the two limits a task is already held to, not a third number), so
+a turn that begins with less than that in front of it is moved at its first
+boundary while there is still something to move into.
+
 The number itself is settled by measurement rather than by the one reading:
 `docs/design/turn-wall-share-doe/` is the record of the run, and a change to the
 constant is a change to that table in the same commit.

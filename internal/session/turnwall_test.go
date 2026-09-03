@@ -138,6 +138,66 @@ func TestATurnUnderTheShareOfTheWallIsLeftAlone(t *testing.T) {
 	}
 }
 
+// A TURN THAT BEGINS LATE IN THE RUN IS BOUNDED BY WHAT IS LEFT, NOT BY THE
+// SHARE.
+//
+// THE BEFORE, from the record in docs/design/turn-wall-share-doe: on a 900 s wall
+// the reef cell's turn began with 310 s left, was allowed the full 300 s share
+// because the share was read off the whole wall from the turn's own start, and
+// handed over at 894 s — six seconds before the wall, the exact shape #546
+// opened with. The same session, the same script, the same wall, with the run's
+// own clock wound forward so this turn begins a minute short of [taskAllowance]
+// from the wall while its own stretch is seconds: the seam fires at the first
+// boundary, and the journal carries its reading and its seam.
+func TestATurnThatBeginsLateIsBoundedByWhatIsLeft(t *testing.T) {
+	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps(), nil)
+	beginTheTurnLate(t, agent, taskAllowance-time.Minute)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	started := make(chan uint64, 4)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		started <- node.id
+		<-release
+	})
+	held := graph.reserve()
+	graph.admit(held, taskSpec{title: "write the tests", brief: "b", acceptance: "a"})
+	waitStarted(t, started)
+
+	collected := collect(t, mustSubmit(t, agent, "work through the four things I listed and report back"))
+
+	if count := admitted(graph); count != 2 {
+		t.Fatalf("%d nodes are in the graph, want the one still running and the one the wall moved", count)
+	}
+	said := noticeTexts(collected)
+	if timesSaid(said, turnWallShareNote) != 1 {
+		t.Fatalf("a turn that began with less than a task needs was not moved once by the wall; notices were %q", said)
+	}
+	if saidSomething(said, checkpointSplitNote) {
+		t.Fatalf("the turn was moved by the mark ladder rather than by the wall; notices were %q", said)
+	}
+	lines := closedJournal(t, agent, transcript)
+	if !strings.Contains(lines, `"decision":"`+checkpointDecisionRanLong+`"`) {
+		t.Fatalf("the seam's own reading reached no line of the journal:\n%s", lines)
+	}
+	if !strings.Contains(lines, `"seam":"`+checkpointSeamWall+`"`) {
+		t.Fatalf("the ending row does not say it was taken at the wall's share:\n%s", lines)
+	}
+
+	// AND THE ALLOWANCE'S BOUNDARY IS INLINE, asserted on the reading itself as
+	// the share's is: a turn beginning with exactly the allowance in front of it
+	// still has enough, one nanosecond less does not.
+	fresh, _ := stewardCheckpointAgent(t, splitSketchSteps(), nil)
+	at := holdTheStewardsClock(t, fresh)
+	beginTheTurnLate(t, fresh, taskAllowance)
+	if fresh.pastTurnWallShare(&checkpointMeter{}, at) {
+		t.Fatal("a turn beginning with exactly a task's allowance left was moved; the boundary stays inline")
+	}
+	beginTheTurnLate(t, fresh, taskAllowance-time.Nanosecond)
+	if !fresh.pastTurnWallShare(&checkpointMeter{}, at) {
+		t.Fatal("a turn beginning one nanosecond short of a task's allowance was left inline")
+	}
+}
+
 // A SESSION SOMEBODY IS SITTING IN FRONT OF IS NEVER BOUNDED BY A SHARE OF
 // ANYTHING.
 //
@@ -269,6 +329,19 @@ func moveTheStewardsClock(t *testing.T, agent *Agent, past time.Duration) {
 	steward.mu.Lock()
 	defer steward.mu.Unlock()
 	steward.now = func() time.Time { return time.Now().Add(on) }
+}
+
+// beginTheTurnLate winds the RUN's clock forward so that a turn beginning now
+// has `left` of the wall in front of it, while the turn's own stretch stays
+// whatever it really is. It moves the steward's start and not its now, which is
+// the one way to move the wall's remainder without moving the turn's stretch:
+// the two are read off the same clock ([Steward.Budget], [Steward.since]).
+func beginTheTurnLate(t *testing.T, agent *Agent, left time.Duration) {
+	t.Helper()
+	steward := agentWithGoalOwner(t, agent)
+	steward.mu.Lock()
+	defer steward.mu.Unlock()
+	steward.started = steward.now().Add(left - steward.wall)
 }
 
 // holdTheStewardsClock STOPS the session's goal owner at one instant and hands

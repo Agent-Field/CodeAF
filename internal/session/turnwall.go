@@ -67,6 +67,26 @@ import (
 // number is a change to that record in the same commit.
 const turnWallShare = 3
 
+// taskAllowance is WHAT A TASK NEEDS OF THE WALL AFTER A TURN LETS GO OF THE
+// WORK: the longest its working copy may wait to open ([gitRootPatience], the
+// opening was measured at 60 s) and one full verdict on what it did
+// ([auditDeadline], a real repository's own check plus the reading around it).
+// It is those two bounds added and not a third number, because the two are
+// already what the code holds a task to, and a figure written here beside them
+// would be a figure that drifts.
+//
+// ── THE RUN THIS WAS ADDED FROM (the record in docs/design/turn-wall-share-doe) ──
+//
+// The share alone is taken off the WHOLE wall from the turn's own start, so a turn
+// that began late was given a third the wall no longer had: on a 900 s wall the
+// reef cell's turn began with 310 s left, ran its full 300 s, and handed over at
+// 894 s — six seconds before the wall, which is #546's own shape with the seam
+// that was written to prevent it doing the handing over. So the stretch is
+// bounded by the SMALLER of the share and what is left less this allowance, and
+// a turn that begins with less than the allowance in front of it is moved at its
+// first boundary, while there is still something for the task to be moved into.
+const taskAllowance = gitRootPatience + auditDeadline
+
 // turnWallShareNote is the ONE LINE a person reads when a turn that has spent the
 // share is moved.
 //
@@ -117,6 +137,15 @@ const checkpointDecisionRanLong = "ran long"
 // exactly on the share has not passed it, and the comparison says so rather than
 // leaving the one moment the two readings are equal to whichever way an operator
 // happened to be typed.
+//
+// AND THE STRETCH IS BOUNDED BY WHAT IS LEFT AS WELL AS BY THE SHARE. The bound
+// on one turn is the smaller of the share and what remained of the wall when the
+// turn began less [taskAllowance]; and because the turn's stretch and the wall's
+// remainder move together on the one clock, "the stretch exceeds what remained
+// at the start less the allowance" is the same reading as "what is left now is
+// under the allowance", which is the form that needs no second clock and no
+// record of where the turn began. The allowance's own boundary is inline for
+// the share's reason: exactly the allowance left is still enough.
 func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) bool {
 	if meter == nil || meter.shareSpent {
 		return false
@@ -125,8 +154,12 @@ func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) boo
 	if steward == nil {
 		return false
 	}
-	share := steward.Budget().Wall / turnWallShare
-	if share <= 0 || steward.since(started) <= share {
+	budget := steward.Budget()
+	share := budget.Wall / turnWallShare
+	if share <= 0 {
+		return false
+	}
+	if steward.since(started) <= share && budget.Wall-budget.SpentWall >= taskAllowance {
 		return false
 	}
 	meter.shareSpent = true

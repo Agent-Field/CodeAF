@@ -96,18 +96,21 @@ running model's variance on a cell, not the constant. **`turnWallShare` stays at
 3.** The run is a null result on the number and a measured result on three other
 things:
 
-1. **The split seam gets there first.** Every cell that ran long moved its work at
-   199–287 s through writeseam.go's door, before a third of a 900 s wall. On a
-   short wall the share is close to unreachable; the wall it was written for is
-   the long one, where a turn can read and run tests for an hour without crossing
-   the write seam's file count, and this rig cannot measure that.
+1. **The split seam gets there first, and that is the rig's limit.** Every cell
+   that ran long moved its work at 199–287 s through writeseam.go's door, before a
+   third of a 900 s wall. On a short wall the share is close to unreachable; the
+   wall it was written for is the long one, where a turn can read and run tests
+   for an hour without crossing the write seam's file count. The canary's cells
+   run on a fifteen-minute wall, so the share's own case is outside what this rig
+   can measure, and the null result on the number is a null result at that wall.
 2. **The share is taken off the whole wall from the turn's own start, so a turn
    that begins late gets a third the wall no longer has.** The one firing in six
    cells was reef: a turn that began with 310 s left ran its full 300 s and handed
    over at 894 s, six seconds before the wall — the exact shape #546 opened with.
-   The bound wants to be the smaller of the share and what is left less the setup
-   and check a task needs. That is a change to the law, not to the number, and it
-   is not in this pull request.
+   The bound is now the smaller of the share and what is left less the setup and
+   check a task needs (`taskAllowance` in turnwall.go, the two limits a task is
+   already held to), landed in the same pull request with reef's 894 s as the
+   before in `TestATurnThatBeginsLateIsBoundedByWhatIsLeft`.
 3. **What actually ran to the wall was the task's check.** In three of the six
    wall cells the task had finished and the check that reads it — the full suite,
    run once by the task and again by each check, 150 s a time on these projects —

@@ -192,7 +192,12 @@ this has taken a third of the time · moving it to a task that can be checked be
 
 **A third, because the other two thirds are what the work needs after it moves** — a working
 copy opened, the job run, and somebody who is not the model that did it reading the result,
-which is the whole difference between work that happened and work that landed. It happens
+which is the whole difference between work that happened and work that landed. **And a
+reply that begins late in the run is bounded by what is left, not by the share**: once less
+of the wall remains than a task needs to open its working copy and be checked — the two
+waits a task is already held to, added — the reply hands over at its next step
+whatever its own clock says, so that a task started with six seconds to go — a measured run
+did exactly that — never happens. It happens
 **once** in a reply; rounds spent only watching work you already handed out do not count
 towards it; and it needs a wall, so `--max-cost` on its own never triggers it.
 
