@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 06:55Z_
+_2026-09-03 07:24Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -91,11 +91,11 @@ _2026-09-03 06:55Z_
 
 ## eyes — [audit-eyes.md](audit-eyes.md)
 
-- `E1`    high open   `aforge run <name>` runs a FILE of that name instead of the saved program
-- `E2`    high open   A limited run publishes an answer AND an error, against the envelope's own contract
-- `E3`    high open   The rename test cannot fail for the reason it is named
-- `E4`    low  open   Tab geometry counts bytes where the terminal needs display cells
-- `E5`    low  open   Per-command help wraps by bytes, not cells
+- `E1`    high CLOSED `aforge run <name>` runs a FILE of that name instead of the saved program
+- `E2`    high CLOSED A limited run publishes an answer AND an error, against the envelope's own contract
+- `E3`    high CLOSED The rename test cannot fail for the reason it is named
+- `E4`    low  CLOSED Tab geometry counts bytes where the terminal needs display cells
+- `E5`    low  CLOSED Per-command help wraps by bytes, not cells
 
 ## help — [audit-help.md](audit-help.md)
 
@@ -156,7 +156,7 @@ _2026-09-03 06:55Z_
 - `J8`    med  open   A conversation whose name carries a combining accent is drawn with the accent silently removed
 - `J9`    med  CLOSED The room's kin line names a child's state with a word that is neither true nor in the vocabulary
 - `J10`   low  open   At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
-- `J11`   med  open   The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
+- `J11`   med  CLOSED The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
 - `J12`   low  open   The status line under a room wraps onto two lines and leaves a hole under the left half
 
 ## narrow — [audit-narrow.md](audit-narrow.md)
@@ -187,17 +187,28 @@ _2026-09-03 06:55Z_
 - `T2`    high CLOSED Sections named by time hold rows in no time order
 - `T3`    high CLOSED A filter that matches nothing makes the page state a falsehood about the machine
 - `T4`    high CLOSED Every fact on a task row is joined to the next by a bare space, so the tail reads as one run-on phrase
-- `T5`    high open   24 blank rows under the list and 30 under the task page, with the rule pinned to the frame bottom
+- `T5`    high CLOSED 24 blank rows under the list and 30 under the task page, with the rule pinned to the frame bottom
 - `T6`    med  CLOSED The header says `work aforge ran on its own. 10, $2.21 of it.`
 - `T7`    med  CLOSED A task the record still calls running, with nobody behind it, is dated `now` forever
 - `T8`    med  CLOSED One task wears two different state words on two surfaces one keypress apart
 - `T9`    med  CLOSED Work that failed is reported as having `landed`
 - `T10`   med  CLOSED A task's own page never says which conversation or project it came out of
-- `T11`   med  open   The job page prints the engine's raw state enum, and spells the exit code differently from the column that opened it
+- `T11`   med  CLOSED The job page prints the engine's raw state enum, and spells the exit code differently from the column that opened it
 - `T12`   med  CLOSED Every child of an opened family repeats its parent's conversation title, on the rows where names are already being cut
 - `T13`   med  open   The foot counts seven pieces of work under "done today" and the section shows four rows
 - `T14`   low  CLOSED Row order changes between launches for reasons that have nothing to do with the work
-- `T15`   low  open   `esc back` is named twice on every frame of the task page
-- `T16`   low  open   The jobs section's overflow line wears a fold mark on something that does not fold
-- `T17`   low  open   The clock changes grain between the row and the page it opens
+- `T15`   low  CLOSED `esc back` is named twice on every frame of the task page
+- `T16`   low  CLOSED The jobs section's overflow line wears a fold mark on something that does not fold
+- `T17`   low  CLOSED The clock changes grain between the row and the page it opens
+
+## words — [audit-words.md](audit-words.md)
+
+- `W1`    med  open   The help sheet gives the same escape four names
+- `W2`    high open   A run that started, spent money and failed tells a script it never ran
+- `W3`    low  open   Two of the first actions on the help sheet are labels, not instructions
+- `W4`    med  open   The terminal reader hands a person `node` and `harness`
+- `W5`    med  open   The `wake` receipt asserts every empty count
+- `W6`    med  open   A fold on the narrow place bar loses the fold mark every other fold carries
+- `W7`    low  open   The place map names a category where its neighbours name an action
+- `W8`    low  open   The manual says a saved program `reports 0` for facts it does not measure
 

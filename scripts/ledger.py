@@ -31,6 +31,9 @@ PREFIX = {
     # The second eye is not a surface; it is one read of the whole wave by a
     # reader who wrote none of it. Its rows are numbered here like any other.
     "eyes": "E",
+    # And the words pass, which is not a surface either: one read of every
+    # person-facing string the wave adds, against every other one.
+    "words": "W",
 }
 
 ROW = re.compile(r"^(\d+)\. (.*)$")
