@@ -29,3 +29,12 @@ nearly-cleared card armed the door and stood the person on home mid-edit.
 `placeMemory.owns` now holds the keyboard while the card editor is open, the
 same claim the settings panel makes for its value editor, and a test drives
 the editor from a real memory line and holds the two spaces against the door.
+
+The task room was the same hole in the same shape, and it is closed the same
+way: `space` pages a record the way `pgdown` does, the card's arm sat below the
+door in the place's own key handler, and a roster filter holding one space —
+the state the door's own first press leaves — turned the next scroll into a
+walk to home. `placeTasks.owns` claims the keyboard while the card is up, over
+the router's chords rather than instead of them, so `tab` and the place chords
+answer over an open record exactly as they did. The task room keeps `space` for
+paging, and the manual names it among the places the gesture does not answer.

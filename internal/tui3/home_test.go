@@ -3978,3 +3978,62 @@ func TestTheDoorStaysShutOverTheMemoryCardEditor(t *testing.T) {
 		t.Fatalf("the card editor holds %q, want the two spaces typed plainly", got)
 	}
 }
+
+// AND THE DOOR YIELDS TO THE TASK ROOM, WHERE SPACE IS THE CARD'S OWN VERB.
+// `space` pages a record the way `pgdown` and `ctrl+f` do ([app.taskCardKey]),
+// and the card's arm used to sit BELOW the door in this place's key handler — so
+// a filter left holding one space, which is the state the door's own first press
+// creates and which draws nothing a person can see, armed the door on a box the
+// card never types into, and the space meant to scroll took them to home
+// instead. [placeTasks.owns] now claims the keyboard while the card is up, and
+// this holds it: the space still pages, the filter is untouched, and the person
+// is still standing in the room they were reading.
+func TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome(t *testing.T) {
+	lab := newHomeLab(t)
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "1", Name: "port-the-thing", Label: "Port the thing", Title: "Port the thing",
+		Status: string(session.TaskDone), SessionID: "aaaa000000000001",
+	})
+	a, box := driveToPlace(t, lab, pageTasks)
+	if box == nil {
+		t.Fatal("the tasks place has no box to type into")
+	}
+	// THE DOOR HAS TO EXIST FOR THIS TEST TO MEAN ANYTHING, the same insistence
+	// [TestTheDoorStaysShutOverTheMemoryCardEditor] makes and for its reason: a
+	// fixture whose door went dark would pass this however wrong the fix was.
+	if !a.homeDoorOpen() {
+		t.Fatal("the door is shut, so this test would hold nothing: give the fixture a seam")
+	}
+	// One space typed on the ROSTER lands in the filter and arms the door — this
+	// is the ordinary first half of the gesture, and it is what makes the room's
+	// next space dangerous.
+	a.key(key(" "))
+	if got := box.String(); got != " " {
+		t.Fatalf("the first space did not land in the filter: %q", got)
+	}
+	drive(t, a, key("enter")) // into the room, over the roster
+	if !a.taskSheet.detailOn {
+		t.Fatalf("the record did not open; frame:\n%s", plain(frame(a)))
+	}
+	a.key(key(" "))
+	if a.at(pageHome) {
+		t.Fatal("the door opened home over the task room, where space pages the card")
+	}
+	if !a.at(pageTasks) || !a.taskSheet.detailOn {
+		t.Fatalf("the space left the room: tasks=%v card=%v", a.at(pageTasks), a.taskSheet.detailOn)
+	}
+	if got := box.String(); got != " " {
+		t.Fatalf("the gesture emptied the filter behind the card: %q", got)
+	}
+	// AND IT PAGED, which is the positive half: `space` and `pgdown` are one key
+	// on this card, so the two must leave the record in the same place.
+	paged := a.taskSheet.detailTop
+	if paged == 0 {
+		t.Fatal("the record did not page at all, so the second half of this test holds nothing")
+	}
+	a.taskSheet.detailTop = 0
+	a.key(key("pgdown"))
+	if a.taskSheet.detailTop != paged {
+		t.Fatalf("space left the record at %d and pgdown at %d; they are the same key here", paged, a.taskSheet.detailTop)
+	}
+}

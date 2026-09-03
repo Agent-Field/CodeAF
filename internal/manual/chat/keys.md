@@ -1562,9 +1562,12 @@ memory filter, the search and spend composers — and open home just as they do 
 draft. On home itself the door is a no-op: the page is already open, and two spaces type
 into home's own filter. It also does not answer from under a layer that owns the
 keyboard: on the settings panel space is the drawn verb on a row (`activate`),
-and memory's card editor keeps every key while it is open. Standing cannot arm
-the door — its own keys never type into its box — but the box is the shared
-composer, so a space left in it on another place still opens home from standing.
+memory's card editor keeps every key while it is open, and inside a task's
+record — the room the roster opens on `enter` — `space` pages the card the way
+`pgdown` and `ctrl+f` do, so the door yields there and the key scrolls. Standing
+cannot arm the door — its own keys never type into its box — but the box is the
+shared composer, so a space left in it on another place still opens home from
+standing.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
 `alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,

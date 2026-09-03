@@ -1304,6 +1304,36 @@ func (placeTasks) wheel(a *app, delta int) bool {
 	return true
 }
 
+// owns is the task room — the card drawn over the roster — and the door home is
+// the reason it is written here rather than left where it was. SPACE PAGES A
+// CARD IN THE TASK ROOM, SO THE HOME DOOR YIELDS THERE. The card's own map
+// spells the key `pgdown`, `ctrl+f`, `space` ([app.taskCardKey]), and that arm
+// lived inside [app.taskSheetKeyPress] — which the router reaches through
+// [placeTasks.key], BELOW the door. So a filter left holding one space, which
+// is the exact state the door's own first press creates and which draws nothing
+// a person could see, armed the door on a box the card types nothing into: the
+// space meant to page the record took the person to home instead. Memory's card
+// editor was the same hole in the same shape ([placeMemory.owns]), and this is
+// the same claim the settings panel makes for its nested boxes
+// ([placeSettings.owns]).
+//
+// THE ROUTER KEEPS ITS CHORDS WHILE THE CARD IS UP, which is why this reads
+// [app.placeKey] before the card rather than swallowing the keyboard whole. That
+// is the order [app.taskSheetKeyPress] has always used, restated here because
+// the whole point of moving the card above the door is that nothing else about
+// it moves: `tab`, the place chords and the map answer over an open card exactly
+// as they did.
+func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.taskSheet.detailOn {
+		return nil, false
+	}
+	defer a.touch()
+	if cmd, took := a.placeKey(msg); took {
+		return cmd, true
+	}
+	return a.taskCardKey(msg.String()), true
+}
+
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeTasks) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
