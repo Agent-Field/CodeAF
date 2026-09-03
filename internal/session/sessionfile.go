@@ -522,7 +522,13 @@ type journalFailure struct {
 // it fired, which together say whether the ladder is landing where the policy
 // says it does. Sketch is THE SHAPE LINE ALONE — the legend is a sentence for a
 // worker and not evidence for a reader of the file — and Decision is what the
-// harness took off it: `split` when the turn was handed over on account of the
+// harness took off it. Kept is the part of that drawing THAT DID NOT TRAVEL — the
+// parts about work the conversation was still holding, which stay with it
+// (checkpoint.go's [checkpointRead] and checkpoint_custody.go). It is absent on
+// every mark that withheld nothing, which is nearly all of them, and it is what
+// tells a reader of the file that a worker opened on less than was drawn and
+// exactly how much less. Decision is what the harness took off the drawing:
+// `split` when the turn was handed over on account of the
 // parts, `continue` when nothing happened, `failed` when no reading came back at
 // all. The ceiling's own read is a `continue` too: it decides nothing, and the
 // ceiling line that follows it says what actually happened.
@@ -532,6 +538,7 @@ type journalMark struct {
 	Model      string  `json:"model,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
 	Sketch     string  `json:"sketch,omitempty"`
+	Kept       string  `json:"kept,omitempty"`
 	Decision   string  `json:"decision,omitempty"`
 	DurationMS int64   `json:"durationMs,omitempty"`
 }
@@ -545,15 +552,17 @@ type journalMark struct {
 // all (a sidecar nobody could reach still meets the ceiling).
 //
 // Decision is `moved`, `dropped:nothing-left` — the running model declared the
-// work finished AND the mark's own reader agreed nothing remained — or
-// `dropped:no-brief`, which is the one other way a ceiling ends with no task:
-// nothing could be written down for anybody. On a run with a goal owner two more
-// are possible, and both mean the turn was sealed at the handover with no task
-// started: `dropped:stopped`, the owner read the ending and stopped the run with
-// a reason, and `dropped:done`, the owner read it and said the ask was met
-// (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID names the node when one
-// was admitted, and is absent otherwise by the emptiness law the rest of the
-// line keeps.
+// work finished AND the mark's own reader agreed nothing remained — or one of the
+// two ways a handover ends with no task of its own: `dropped:no-brief`, when
+// nothing could be written down for anybody, and `dropped:work-already-out`, when
+// everything there was to write down was about pieces this conversation is still
+// holding and therefore nobody else's to take (checkpoint.go's custody road). On a
+// run with a goal owner two more are possible, and both mean the turn was sealed
+// at the handover with no task started: `dropped:stopped`, the owner read the
+// ending and stopped the run with a reason, and `dropped:done`, the owner read it
+// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID
+// names the node when one was admitted, and is absent otherwise by the emptiness
+// law the rest of the line keeps.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.

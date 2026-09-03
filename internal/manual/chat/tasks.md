@@ -617,6 +617,29 @@ handed out — waiting for it, reading what comes back, accepting it — that li
 time, and a drawing whose every part is a wait or a bare `accept`/`review` is read the same
 way even when it is not written as that word.
 
+**And when only half of what is left is a wait, the other half still moves.** If a reply
+crosses one of the lines above while pieces you handed out are still running, what is left is
+divided first. The self-contained work becomes the task; everything about the pieces already
+out — waiting for them, integrating their branches, reviewing them, opening the pull request
+over them — stays with this conversation, and the line announcing the move ends
+` · the rest stays here for when the pieces already out land`.
+
+What stayed is written into the conversation under `WHAT STAYS HERE, FOR WHEN THE PIECES
+ALREADY OUT LAND:`, so the turn that wakes when those pieces land opens on the integration,
+the review and the pull request it still owes you. Nothing is dropped; it is done a little
+later, here.
+
+**And when all of what is left is about them, nothing moves at all** — even where the
+sentence you typed was itself the coordination, and equally where the brief could not be
+written and only your sentence was left, because a sentence typed before any of this was
+divided cannot stand in for the half that could have gone. No task is started, your words
+are not rewritten, and the line reads `this is all about the pieces already out · keeping it
+here until they land`.
+
+**Why none of it can go with the work.** A task sees only the pieces it created itself, so a
+worker told to wait for your task 4 and task 8 would ask for them and be told `No tasks have
+run in this project yet.` — a duty it can never see the object of.
+
 ## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
 
 **Reading is free. Writing is not.** The three points above count tool ROUNDS, which is the
@@ -2723,6 +2746,11 @@ If its brief turns out to hold two or
 three parts that do not need each other — different files, different subsystems, nothing
 half-finished passing between them — it proposes each part as a task of its own and keeps
 the coordination for itself. The parts run at the same time instead of one after another.
+
+**A task coordinates its own children and nothing else.** `tasks` inside a task lists the
+pieces that task started — never the other tasks running beside it under your conversation.
+That is why coordination over pieces YOU handed out is not moved into a task (*Watching the
+pieces you handed out does not move your answer*).
 
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
 how a person redirects work, and there is nobody inside a task's own copy to show one to, so a

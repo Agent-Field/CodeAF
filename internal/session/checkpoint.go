@@ -1463,6 +1463,25 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 		read.costUSD = costOf(response.Usage)
 	}
 	read.sketch = parseCheckpointSketch(response.Text())
+	read.asDrawn = read.sketch.shape
+	// AND WHAT THIS CONVERSATION IS STILL HOLDING COMES OUT OF THE DRAWING HERE,
+	// once, in front of every decision anybody takes off it.
+	//
+	// THREE ROADS READ THIS ONE SKETCH — the mark that would split a turn, the
+	// ceiling, and the write seam — and a reduction made further down would have
+	// been a harness that refused to convert a turn on a drawing and then handed
+	// the same drawing to a worker, which is two answers to one question. The
+	// reader's own line is kept above for the journal, which records what was
+	// drawn and never what was done with it (checkpoint_custody.go).
+	//
+	// AND THE LEDGER IS READ ONCE AND RIDES BACK, which is the one-source-of-truth
+	// law in the one place it is easy to break twice: a road that asked the graph
+	// again further down would be deciding the brief against a ledger the drawing
+	// was never reduced against, and a piece that settled in the seconds between
+	// the two reads would leave a drawing missing a part for work that is now
+	// back. One question, one answer, carried.
+	read.held = a.piecesStillOut()
+	read.sketch, read.ownRemainder = read.sketch.withoutHeldWork(read.held)
 	// AND WHAT THE READER WAS SHOWN RIDES BACK WITH WHAT IT DREW. The drawing is
 	// one line of letters; the account under those letters is the only thing
 	// anybody downstream could weigh as EVIDENCE, and it is honest evidence
@@ -1490,7 +1509,21 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 // digest is the account the reader was shown ([checkpointDigest]). It is kept
 // because a drawing is not evidence and this is: see [drawnDivision].
 type checkpointRead struct {
-	sketch  checkpointSketch
+	sketch checkpointSketch
+	// asDrawn is the shape the reader ANSWERED WITH, before anything this
+	// conversation is still holding was taken out of it. The journal writes this
+	// one: a file that recorded the reduced drawing could not tell a sidecar that
+	// drew one job from a sidecar that drew four and had three of them withheld.
+	asDrawn string
+	// ownRemainder is the part of the drawing that STAYS WITH THIS CONVERSATION:
+	// the parts about work it is still holding, written back out in the order they
+	// were drawn (checkpoint_custody.go's [checkpointSketch.withoutHeldWork]). It
+	// is empty on every read that withheld nothing, which is nearly all of them.
+	ownRemainder string
+	// held is the ledger the reduction above was taken against
+	// ([Agent.piecesStillOut]), carried so that every later reading on this road
+	// answers to the same one. See [Agent.readMark].
+	held    []heldPiece
 	digest  string
 	asked   bool
 	failed  bool
@@ -1526,7 +1559,8 @@ func (a *Agent) journalMarkRead(read checkpointRead, mark, rounds int, decision 
 		Rounds:     rounds,
 		Model:      read.model,
 		CostUSD:    read.costUSD,
-		Sketch:     read.sketch.shape,
+		Sketch:     read.asDrawn,
+		Kept:       read.ownRemainder,
 		Decision:   decision,
 		DurationMS: read.took.Milliseconds(),
 	})
@@ -1564,14 +1598,19 @@ const (
 	// ([Agent.endTurnUnderSteward]). It is spelled apart from the three above
 	// because it is a different fact: the road did not fail to hand anything
 	// over, it was told not to — and the steward's own `decided` row beside it
-	// says why. There is no word here for a goal owner that said the ask was
-	// finished, because a handover may not end a turn on that: the model has not
-	// read the results its last step returned, and the work moves.
+	// says why.
 	checkpointCeilingStopped = "dropped:stopped"
 	// checkpointCeilingDone is the ending a handover takes when the session's
 	// principal read the ending and said the ask is finished: the turn is sealed
 	// there and no task is started ([Agent.endTurnUnderSteward]).
 	checkpointCeilingDone = "dropped:done"
+	// checkpointCeilingHeldWork is the road that HAD a page and found it was
+	// somebody else's already: every rung of the brief ladder, the person's own
+	// sentence included, was about work this conversation is still holding
+	// (checkpoint_custody.go). It is spelled apart from `dropped:no-brief` because
+	// the two send whoever reads the file to different places — one to a writer
+	// that produced nothing, this one to a turn that was only ever coordinating.
+	checkpointCeilingHeldWork = "dropped:work-already-out"
 )
 
 // ── the carry ladder ────────────────────────────────────────────────────────
@@ -1632,6 +1671,7 @@ const (
 	carryStillLoops  = "the writer was asked twice and looped both times"
 	carryNoSentence  = "the person's own words were empty"
 	carryDraftLooped = "the draft had stopped saying new things"
+	carryHeldWork    = "it assigned work this conversation is still holding"
 )
 
 // And what the PERSON is told, which is the same fact in the register every dim
@@ -1639,10 +1679,11 @@ const (
 // provider's sentence goes in the journal and never here: a person owed one
 // short reason is not owed an upstream's error body.
 const (
-	carrySaidTooSlow     = "the second model did not answer in time"
-	carrySaidUnreachable = "the second model could not be reached"
-	carrySaidNothingNew  = "the second model had nothing new to say"
-	carrySaidNoMaterial  = "there was nothing to write it from"
+	carrySaidTooSlow        = "the second model did not answer in time"
+	carrySaidUnreachable    = "the second model could not be reached"
+	carrySaidNothingNew     = "the second model had nothing new to say"
+	carrySaidNoMaterial     = "there was nothing to write it from"
+	carrySaidWorkAlreadyOut = "it was written about work that is already out"
 	// AND A ROLE WITH NO MODEL IS NOT A WIRE EVENT. A tier nobody filled in and a
 	// session with no client are configuration, not silence on a socket, and
 	// telling somebody the model could not be reached sends them to look at their
@@ -3110,6 +3151,31 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
 	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	// AND A RUNG THAT ASSIGNS WORK THIS CONVERSATION IS STILL HOLDING IS NOT A
+	// RUNG, which is the same law the drawing was reduced by one step earlier
+	// (checkpoint_custody.go) applied to the two rungs a MODEL wrote.
+	//
+	// THE DRAWING IS NOT THE ONLY ROAD INTO THE BRIEF. The writer below is shown
+	// the account of the turn, and a turn that spent its rounds beside four
+	// running pieces has those pieces all over its account; the draft is written
+	// by the model that was standing in the middle of them. So a document that
+	// comes back telling a worker to wait for, read or land a piece THIS
+	// conversation is holding is degenerate for the same reason a looping one is
+	// — nobody could work from it — and it descends the ladder exactly as one.
+	//
+	// AND THE PERSON'S OWN SENTENCE IS NEVER TOUCHED. It is the floor of the
+	// ladder and the one thing on this road nobody writes; a harness that edited
+	// what they typed would be answering a different ask from the one they made.
+	if held := read.held; len(held) > 0 {
+		if namesHeldWork(written, held) {
+			written, wrote = "", carryStep{rung: carryRungHandoff, outcome: carryDegenerate,
+				reason: carryHeldWork, said: carrySaidWorkAlreadyOut}
+		}
+		if namesHeldWork(draft, held) {
+			draft, drafted = "", carryStep{rung: carryRungDraft, outcome: carryDegenerate,
+				reason: carryHeldWork, said: carrySaidWorkAlreadyOut}
+		}
+	}
 	// AND THE CLOCK COMES OFF WITH THE WRITING, which is where the stage the
 	// person was watching actually ends: everything below is bookkeeping over
 	// text already in hand.
@@ -3142,6 +3208,78 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// anything — the emptiness law, and the decision beside it already says
 		// what happened.
 		return checkpointHandover{decision: checkpointCeilingNoBrief}
+	}
+	// AND A HANDOVER STARTS NOTHING WHEN EVERYTHING IT COULD CARRY IS ABOUT WORK
+	// ALREADY OUT.
+	//
+	// THE FLOOR IS THE ONE RUNG THE REDUCTION CANNOT REACH. The two above it were
+	// written by models and are blanked when they assign work this conversation is
+	// holding; the floor is the PERSON'S OWN SENTENCE, and nobody on this road may
+	// edit that. But the sentence that opened the measured incident was itself
+	// coordination — "land everything once the other two report" — so a ladder that
+	// had blanked both upper rungs came to rest on it and started a worker on the
+	// very duty the reduction had just taken away. That is the bug reproducing
+	// through the last door.
+	//
+	// SO THE ANSWER IS NOT TO EDIT IT, IT IS TO DECLINE. There is nothing here
+	// anybody else could be given, which is a different fact from having nothing
+	// written down at all ([checkpointCeilingNoBrief]) and is spelled apart from it:
+	// one is a road that could not write a page, this is a road that wrote one and
+	// found it was somebody else's already.
+	//
+	// AND THE WORK IS NOT LOST, BECAUSE NOTHING TOOK IT. The turn carries on, the
+	// model that was doing the work still holds it, and what stayed is in the file
+	// beside the drawing it came out of (sessionfile.go's [journalMark]'s `kept`).
+	//
+	// SO NOTHING IS WRITTEN INTO THE TRANSCRIPT HERE, and that is the difference
+	// between this ending and the moved one at the bottom of this function. That
+	// record exists because a MOVED turn is SEALED with the person's request
+	// unanswered and the next turn would open on it; a turn that carries on is not
+	// sealed, and an assistant message the model did not write appearing in the
+	// middle of its own context is a thing this file has never done. The two other
+	// non-moving endings ([checkpointCeilingNothing], [checkpointCeilingNoBrief])
+	// record nothing for the same reason.
+	//
+	// AND THE TURN IS NOT ENDED EITHER, which is the same answer `dropped:no-brief`
+	// gives and is not a gap to be closed here: what bounds a turn that has passed
+	// its ceiling is the carried-on counter, and ENDING one is its own road (#513).
+	//
+	// IT FIRES ONLY ON WHAT SURVIVED THE LADDER, so a goal that is real work is
+	// handed over exactly as it was before any of this existed.
+	//
+	// ── AND THE READING OF THE GOAL IS NOT WHAT CLOSES THE FLOOR ──
+	//
+	// A DRAWING THIS HARNESS HAD TO TAKE APART IS NOT A DRAWING A BARE SENTENCE CAN
+	// STAND IN FOR. `namesHeldWork` reads a number beside the noun or a name quoted
+	// whole, and the sentence that opened the measured incident was neither — "land
+	// everything once the other two report" refers to two pieces without naming
+	// either. A gate resting on that reading alone would be a gate the incident
+	// itself walks through, so the second half of this rests on a FACT the harness
+	// already holds: the drawing had to be divided at all.
+	//
+	// THE ASK IS THE LEAST SPECIFIC DOCUMENT ON THE TABLE. It is the person's whole
+	// sentence, typed before any of this happened and never written for a worker;
+	// when the drawing made out of that same turn had to be split into what can go
+	// and what cannot, the sentence is BY CONSTRUCTION about the mixture — it is the
+	// one document on the road that could not have distinguished the halves, because
+	// it predates the reading that found them.
+	//
+	// SO THIS NARROWLY OVERRIDES "A BLIND WORKER BEATS A STALLED CHAT". That law
+	// stands everywhere else on this road and is why the ask is a rung at all; here,
+	// and only here, a worker opening on the bare ask would be opening on the very
+	// mixture the reduction exists to prevent, and a blind worker does not beat a
+	// duty nobody can discharge.
+	//
+	// AND THE PRICE IS SAID PLAINLY: where BOTH model rungs failed on provider
+	// faults and the person's sentence happened to be self-contained after all, a
+	// handover that would have been fine is dropped and the turn carries on. That is
+	// the direction this errs in, deliberately, and it costs a conversation some
+	// parallelism where the other direction cost a worker its whole deadline.
+	saysHeldWork := len(read.held) > 0 && namesHeldWork(goal, read.held)
+	bareAskOnADividedDrawing := carried == carryRungAsk && strings.TrimSpace(read.ownRemainder) != ""
+	if saysHeldWork || bareAskOnADividedDrawing {
+		hub.send(Event{Kind: EventNotice, Text: checkpointHeldWholeNote})
+		return checkpointHandover{decision: checkpointCeilingHeldWork}
 	}
 	verdict.Work = true
 	verdict.Goal = sketch.head(goal)
@@ -3193,6 +3331,14 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// turn move is owed the difference, because it is the difference between a task
 	// that starts where the turn got to and a task that starts over ([carryLine]).
 	line = carryLine(line, carried, wrote)
+	// AND IT SAYS SO WHEN PART OF THE DRAWING DID NOT GO. A person watching their
+	// turn move is owed the difference between "this is now somebody else's" and
+	// "the handable half is now somebody else's and the rest is still yours" —
+	// otherwise the coordination they asked for looks dropped, and the next thing
+	// they do is ask for it again.
+	if strings.TrimSpace(read.ownRemainder) != "" {
+		line += checkpointHeldRestNote
+	}
 	hub.send(Event{Kind: EventNotice, Text: line})
 	// AND THE TASK IS NAMED FROM THE PERSON'S OWN WORDS AND NEVER FROM THE DOWRY.
 	// The other door into [Agent.launchRouteTask] cuts its title off the front of a
@@ -3219,7 +3365,16 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// the top of its context answers it — which is this whole mechanism undone one
 	// turn later. Nothing is streamed a second time; the person has already read
 	// both lines as dim notes.
-	a.record(textMessage("assistant", line+"\n"+said))
+	//
+	// AND A PART THAT COULD NOT BE HANDED TO ANYBODY IS STILL WORK, AND IT STAYS
+	// WITH THE ONLY READER THAT CAN SEE ITS OBJECT. This is the load-bearing half
+	// of the reduction (checkpoint_custody.go): withholding the coordination part
+	// from the worker's brief protects the worker, and writing it down HERE is
+	// what keeps the person's own ask alive — the turn woken by tasks 4 and 8
+	// landing opens on this line and finds the integration, the review and the
+	// pull request still owed, in the order they were drawn. Without it the
+	// reduction would be a harness quietly dropping half of what was asked for.
+	a.record(textMessage("assistant", line+"\n"+said+heldRestRecord(read.ownRemainder)))
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
