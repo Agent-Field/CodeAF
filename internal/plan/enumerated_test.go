@@ -104,7 +104,7 @@ func TestAnAtomicNodeThatNamesItsPiecesIsStagedAndNotRefused(t *testing.T) {
 	if !verdict.Divide {
 		t.Fatalf("a node naming three pieces was refused: %q", verdict.Reason)
 	}
-	if !dividesInTime(staged) {
+	if !dividesInTime(staged, Options{}) {
 		t.Fatal("a node naming three pieces was kept from the stage question")
 	}
 
@@ -120,7 +120,49 @@ func TestAnAtomicNodeThatNamesItsPiecesIsStagedAndNotRefused(t *testing.T) {
 	} else if verdict.Reason != RefusalUnnamed {
 		t.Fatalf("single-subject refusal = %q, want %q", verdict.Reason, RefusalUnnamed)
 	}
-	if dividesInTime(kept) {
+	if dividesInTime(kept, Options{}) {
 		t.Fatal("a single-subject atomic node was sent to the stage question")
+	}
+}
+
+// The boundary the law draws through both predicates: the words are read for a
+// fresh plan and never for a remainder, and a remainder's size still carries it
+// through both.
+func TestARemaindersListOfPiecesIsOneWorkersAssignment(t *testing.T) {
+	listed := &Node{
+		Kind:  KindWork,
+		Title: "Fix the failing tests",
+		Summary: "T1: fix test_dates.; T2: fix test_quantities.; " +
+			"T3: fix test_prefixes.; T4: fix test_totals.",
+		Size: SizeAtomic,
+	}
+	fresh := Options{MaxDepth: 3}
+	remainder := Options{MaxDepth: 3, Undivided: true}
+
+	if verdict := JudgeSplit(listed, fresh); !verdict.Divide {
+		t.Fatalf("a fresh plan naming four pieces was refused: %q", verdict.Reason)
+	}
+	if !dividesInTime(listed, fresh) {
+		t.Fatal("a fresh plan naming four pieces was kept from the stage question")
+	}
+
+	if verdict := JudgeSplit(listed, remainder); verdict.Divide {
+		t.Fatal("a remainder was divided on its own list of what is left")
+	} else if verdict.Reason != RefusalUnnamed {
+		t.Fatalf("the remainder's refusal = %q, want %q", verdict.Reason, RefusalUnnamed)
+	}
+	if dividesInTime(listed, remainder) {
+		t.Fatal("a remainder's list was offered the stage question")
+	}
+
+	// And the ruler's reach is untouched: the one judgment a remainder IS
+	// divided on still carries the same node through both predicates.
+	measured := *listed
+	measured.Size = SizeOversized
+	if verdict := JudgeSplit(&measured, remainder); !verdict.Divide {
+		t.Fatalf("a remainder past one worker's reach was refused: %q", verdict.Reason)
+	}
+	if !dividesInTime(&measured, remainder) {
+		t.Fatal("a remainder past one worker's reach was kept from the stage question")
 	}
 }

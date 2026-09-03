@@ -196,3 +196,29 @@ func isLetter(char byte) bool {
 }
 
 func isDigit(char byte) bool { return char >= '0' && char <= '9' }
+
+// admitsEnumeratedPieces is the enumerated reading as the two burden questions
+// are allowed to ask it, and it is the ONE PLACE that says which builds may
+// divide a node because of the words written on it.
+//
+// A REMAINDER DIVIDES ON ITS SIZE AND NEVER ON ITS WORDS. Options.Undivided
+// marks the one build that is a remainder — the replan a leaf that ran out of
+// room asks for, and the only caller in the tree that sets it — and a
+// remainder's words are a LIST OF WHAT IS LEFT. A fresh plan that names three
+// lanes is a goal with three lanes in it, which is what this reading was built
+// for; a remainder that names eight failing tests is one worker's assignment
+// written out, and reading that list as eight jobs is how a repair round drew
+// six leaves and then eight and ran fourteen repairs in parallel to the wall.
+// Measured on the canary: the do door's spend doubled, $0.46 to $0.95 over nine
+// cells, with quality flat.
+//
+// What stays is the ruler's reach. A remainder the ruler puts past one worker
+// is still divided — into simultaneous parts where it has them and into ordered
+// stages where it does not — because that is a judgment about size, which is
+// the only judgment a remainder is divided on.
+func admitsEnumeratedPieces(node *Node, options Options) bool {
+	if node == nil || options.Undivided {
+		return false
+	}
+	return namesSeveralPieces(node.Title, node.Summary)
+}

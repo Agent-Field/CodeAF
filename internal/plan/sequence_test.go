@@ -272,12 +272,12 @@ func TestTheStageQuestionIsOnlyAskedWhenTheFanOutGaveBackOnePiece(t *testing.T) 
 // stopped part-way is the whole reason to cut a sequence, and it has not been.
 func TestANodeWithinReachIsNeverCutIntoStages(t *testing.T) {
 	for _, size := range []Size{SizeAtomic, SizeUnknown} {
-		if dividesInTime(&Node{Size: size}) {
+		if dividesInTime(&Node{Size: size}, Options{}) {
 			t.Errorf("a %q node was offered the stage question", size)
 		}
 	}
 	for _, size := range []Size{SizeOversized, SizeBorderline} {
-		if !dividesInTime(&Node{Size: size}) {
+		if !dividesInTime(&Node{Size: size}, Options{}) {
 			t.Errorf("a %q node was refused the stage question", size)
 		}
 	}

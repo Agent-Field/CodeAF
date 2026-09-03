@@ -254,8 +254,11 @@ func chainInto(sub *Graph, stages []Stage) {
 // ever being divided, given on the strength of a size the node's own summary
 // contradicts. THE TWO PREDICATES MUST STAY THE SAME BOUNDARY: a node
 // JudgeSplit admits on its words and this one turns away would be expanded and
-// then refused for the one reason its expansion was never asked about.
-func dividesInTime(node *Node) bool {
+// then refused for the one reason its expansion was never asked about. So both
+// read the words through admitsEnumeratedPieces, which is why this predicate is
+// given the options: a remainder is turned away from the words at both, and its
+// size still carries it through both.
+func dividesInTime(node *Node, options Options) bool {
 	return node.Size == SizeOversized || node.Size == SizeBorderline ||
-		namesSeveralPieces(node.Title, node.Summary)
+		admitsEnumeratedPieces(node, options)
 }

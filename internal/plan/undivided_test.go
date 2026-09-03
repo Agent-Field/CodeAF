@@ -181,19 +181,21 @@ func TestAnOversizedRemainderIsNotHandedToOneWorker(t *testing.T) {
 	}
 }
 
-// The shortcut is a shortcut, not a ceiling. A remainder the model judges
-// genuinely staged still gets the whole pipeline, because that judgement is
-// the only thing the shortcut is keyed on. Whether the stages then survive is
-// the pipeline's own evidence question: sized atomic end to end, a stage
-// chain is one sitting and collapses; anything heavier and the stages stand.
-func TestAGatedRemainderStillGetsTheWholePipeline(t *testing.T) {
-	// The ruler finds real weight in the second stage: the graph keeps the
-	// shape the spine drew.
+// A REMAINDER THE RULER PUTS PAST ONE WORKER STILL GETS THE WHOLE PIPELINE.
+// That is the whole of what "gated" now means here, and it is the ruler's
+// reading of the folded whole rather than the spine's count of its stages: this
+// test used to pin the opposite — that two spine stages went to the pipeline
+// without the ruler being asked at all — which is exactly the behaviour the
+// stage-count law removes.
+func TestARemainderPastOneWorkersReachStillGetsTheWholePipeline(t *testing.T) {
 	client := &countingPlanner{
 		stages: `{"stages":[
 		{"title":"Gather","summary":"Collect the numbers."},
 		{"title":"Write","summary":"Write them up."}]}`,
-		sizeReply: `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"borderline","split_into":[]}]}`,
+		// The folded whole is past one worker; the parts it fans out into are
+		// not. The reach probe reads node 1 and so does the pipeline's own
+		// sizing, which is what keeps the two stages standing.
+		sizeReply: `{"sizes":[{"node":1,"size":"oversized","split_into":["gather","write"]},{"node":2,"size":"borderline","split_into":[]}]}`,
 	}
 	graph, err := Build(context.Background(), client, ungatedRemainder, Options{
 		SpineSamples: 1, NodeBudget: 12, Briefs: false, Ensemble: EnsembleNever, Undivided: true,
@@ -202,30 +204,83 @@ func TestAGatedRemainderStillGetsTheWholePipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(graph.Nodes) < 2 {
-		t.Fatalf("a two-stage remainder with weight in it collapsed to %d nodes", len(graph.Nodes))
+		t.Fatalf("a remainder past one worker's reach collapsed to %d nodes: %v", len(graph.Nodes), client.passes)
 	}
 	for _, required := range []string{"fanout", "bind", "size"} {
 		if !client.reached(required) {
-			t.Fatalf("a staged remainder skipped the %s pass: %v", required, client.passes)
+			t.Fatalf("a remainder past one worker's reach skipped the %s pass: %v", required, client.passes)
 		}
 	}
+	// And the ruler was asked BEFORE any of it, which is the seam the stage
+	// count used to jump: the first sizing call of the build is the probe.
+	if made := client.made("size"); made < 2 {
+		t.Fatalf("the pipeline ran without a reach probe in front of it: %v", client.passes)
+	}
+}
 
-	// Every link measured atomic: the same remainder is one sitting, and the
-	// pipeline says so from its own readings.
-	atomic := &countingPlanner{stages: `{"stages":[
-		{"title":"Gather","summary":"Collect the numbers."},
-		{"title":"Write","summary":"Write them up."}]}`}
-	folded, err := Build(context.Background(), atomic, ungatedRemainder, Options{
-		SpineSamples: 1, NodeBudget: 12, Briefs: false, Ensemble: EnsembleNever, Undivided: true,
+// THE SPINE'S STAGE COUNT IS NOT A DIVIDER FOR A REMAINDER. Measured on the
+// canary acceptance cell: a second remainder carrying "2 unexercised
+// behaviours" came back from the spine as three stages — "Check unit tests",
+// "Check integration test", "Verify no traceback" — which is one worker's list
+// of steps and not three jobs. Requiring exactly one stage meant the ruler was
+// never asked, and the round bought fan-out, bind, sizing, audit and seven
+// contracts.
+func TestTheSpinesStageCountDoesNotDivideARemainder(t *testing.T) {
+	const three = `{"stages":[
+		{"title":"Check unit tests","summary":"Run the unit suite."},
+		{"title":"Check integration test","summary":"Run the integration suite."},
+		{"title":"Verify no traceback","summary":"Confirm nothing raised."}]}`
+
+	client := &countingPlanner{stages: three}
+	graph, err := Build(context.Background(), client, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Briefs: true, Ensemble: EnsembleNever, Undivided: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(folded.Nodes) != 1 {
-		t.Fatalf("an all-atomic chain kept %d nodes, want 1", len(folded.Nodes))
+	if len(graph.Nodes) != 1 {
+		t.Fatalf("a three-stage remainder within reach planned %d nodes, want 1: %v", len(graph.Nodes), client.passes)
 	}
-	if !atomic.reached("size") {
-		t.Fatal("the collapse happened without the sizing pass's evidence")
+	for _, unbought := range []string{"fanout", "bind", "audit", "stages"} {
+		if client.reached(unbought) {
+			t.Fatalf("a three-stage remainder within reach still bought the %s pass: %v", unbought, client.passes)
+		}
+	}
+	// One call, and it is the ruler's: the stages are folded and the reach
+	// question is asked once about the whole.
+	if made := client.made("size"); made != 1 {
+		t.Fatalf("the shortcut made %d sizing calls, want exactly one: %v", made, client.passes)
+	}
+	// The one worker is handed the stages as its own list, in the same shape a
+	// one-stage answer has.
+	only := graph.Nodes[0]
+	for _, step := range []string{"Check unit tests", "Check integration test", "Verify no traceback"} {
+		if !strings.Contains(only.Title+" "+only.Summary, step) {
+			t.Fatalf("the folded node lost the stage %q: %q / %q", step, only.Title, only.Summary)
+		}
+	}
+
+	// And the same three stages past one worker's reach still divide, because
+	// size is the judgment a remainder is divided on.
+	oversized := &countingPlanner{
+		stages:    three,
+		sizeReply: `{"sizes":[{"node":1,"size":"oversized","split_into":["one","two"]},{"node":2,"size":"atomic","split_into":[]},{"node":3,"size":"atomic","split_into":[]}]}`,
+		chain: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+			`{"title":"Change","summary":"Make the change.","needs":[1]},` +
+			`{"title":"Prove","summary":"Show that it holds.","needs":[2]}]}`,
+	}
+	divided, err := Build(context.Background(), oversized, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(divided.Nodes) < 2 {
+		t.Fatalf("a three-stage remainder past one worker's reach kept %d nodes: %v",
+			len(divided.Nodes), oversized.passes)
+	}
+	if !oversized.reached("fanout") {
+		t.Fatalf("the fall-through skipped the fan-out: %v", oversized.passes)
 	}
 }
 
@@ -241,5 +296,101 @@ func TestAOneStageProjectStillFansOut(t *testing.T) {
 	}
 	if !client.reached("fanout") {
 		t.Fatalf("an ordinary one-stage build stopped at the spine: %v", client.passes)
+	}
+}
+
+// And a fresh build with three stages is untouched by the fold: the shortcut is
+// keyed on Undivided and nothing else, so the stages stay three stages and the
+// pipeline reads them exactly as it always did.
+func TestAFreshThreeStageProjectIsUnchanged(t *testing.T) {
+	client := &countingPlanner{stages: `{"stages":[
+		{"title":"Check unit tests","summary":"Run the unit suite."},
+		{"title":"Check integration test","summary":"Run the integration suite."},
+		{"title":"Verify no traceback","summary":"Confirm nothing raised."}]}`}
+	graph, err := Build(context.Background(), client, "run every suite and report", Options{
+		SpineSamples: 1, NodeBudget: 12, Ensemble: EnsembleNever,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The shortcut is not offered: a fresh build goes through the passes that
+	// find the parts inside a stage, whatever the spine's count was. (What the
+	// graph then collapses to is the pipeline's own evidence question — see
+	// collapseAtomicChain — and is unchanged by anything here.)
+	if graph == nil {
+		t.Fatal("a fresh three-stage build produced no graph")
+	}
+	for _, required := range []string{"fanout", "bind", "size"} {
+		if !client.reached(required) {
+			t.Fatalf("a fresh three-stage build skipped the %s pass: %v", required, client.passes)
+		}
+	}
+}
+
+// A REMAINDER THAT LISTS EIGHT FAILING TESTS IS ONE WORKER'S LIST, NOT EIGHT
+// JOBS. The shortcut used to read the stage's own words before it spent its
+// probe and fall through wherever they named several pieces — the right reading
+// for a fresh plan, and the wrong one for the only build that reaches the
+// shortcut. Measured on the canary: a repair round drew its remainder as six
+// leaves and then as eight, ran fourteen parallel repairs to the wall, and the
+// do door's spend doubled with quality flat.
+func TestARemainderThatListsWhatIsLeftIsStillOneWorker(t *testing.T) {
+	const listed = `{"stages":[{"title":"Fix the failing tests","summary":` +
+		`"T1: fix test_dates.; T2: fix test_quantities.; T3: fix test_prefixes.; T4: fix test_totals."}]}`
+
+	client := &countingPlanner{stages: listed}
+	graph, err := Build(context.Background(), client, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Briefs: true, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(graph.Nodes) != 1 {
+		t.Fatalf("a remainder listing four repairs planned %d nodes, want 1: %v", len(graph.Nodes), client.passes)
+	}
+	for _, unbought := range []string{"fanout", "bind", "audit", "stages"} {
+		if client.reached(unbought) {
+			t.Fatalf("a listed remainder still bought the %s pass: %v", unbought, client.passes)
+		}
+	}
+	// The ruler is asked, which is the whole of the change: the words no longer
+	// answer in its place, so the one call the shortcut pays is paid.
+	if made := client.made("size"); made != 1 {
+		t.Fatalf("the shortcut made %d sizing calls, want exactly one: %v", made, client.passes)
+	}
+
+	// And the same list past one worker's reach still divides, because size is
+	// the judgment a remainder is divided on.
+	oversized := &countingPlanner{
+		stages:    listed,
+		sizeReply: `{"sizes":[{"node":1,"size":"oversized","split_into":["one","two"]},{"node":2,"size":"atomic","split_into":[]},{"node":3,"size":"atomic","split_into":[]}]}`,
+		chain: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+			`{"title":"Change","summary":"Make the change.","needs":[1]},` +
+			`{"title":"Prove","summary":"Show that it holds.","needs":[2]}]}`,
+	}
+	divided, err := Build(context.Background(), oversized, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(divided.Nodes) < 2 || !oversized.reached("stages") {
+		t.Fatalf("a remainder past one worker's reach kept %d nodes: %v", len(divided.Nodes), oversized.passes)
+	}
+}
+
+// The admission itself is not gone, and a fresh plan is where it lives: a
+// one-stage project whose own words name several pieces still fans out, and the
+// pieces are found by the passes that exist to find them.
+func TestAFreshPlanThatNamesSeveralPiecesStillDivides(t *testing.T) {
+	client := &countingPlanner{stages: `{"stages":[{"title":"North, South, East","summary":` +
+		`"North: Rewrite North dates.; South: Sort South by quantity.; East: Prefix low items."}]}`}
+	if _, err := Build(context.Background(), client, "rework the three blocks", Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Ensemble: EnsembleNever,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !client.reached("fanout") {
+		t.Fatalf("a fresh plan naming three lanes stopped at the spine: %v", client.passes)
 	}
 }

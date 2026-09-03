@@ -81,14 +81,24 @@ func SplitCooperatively(ctx context.Context, graph *store.Store, node store.Node
 // the acceptance check keeps, so a division that only restates is refused here
 // exactly as it is refused at claim time. Handing the parts over verbatim would
 // make the leaf the planner, and the leaf is the thing being planned.
+// CooperativePreamble is exactly what CooperativeGoal writes before the
+// assignment — the twin of OverrunPreamble, and matched exactly by the same
+// unwrap, so a division asked for on a node a remainder already planned is
+// wrapped once rather than twice. See originalAssignment.
+const CooperativePreamble = "Divide this assignment into the separate jobs it turned out to hold.\n\n" +
+	"An agent was given it, started work, and reported that what it was holding is several " +
+	"independent jobs rather than one. It stopped rather than spend the assignment's whole " +
+	"budget on the first of them. Nothing has run out and nothing is a remainder: plan the " +
+	"division, not a continuation.\n\n" + OriginalAssignmentHeader
+
 func CooperativeGoal(node store.Node, request *executor.SplitRequest, partial string) string {
 	var goal strings.Builder
-	goal.WriteString("Divide this assignment into the separate jobs it turned out to hold.\n\n" +
-		"An agent was given it, started work, and reported that what it was holding is several " +
-		"independent jobs rather than one. It stopped rather than spend the assignment's whole " +
-		"budget on the first of them. Nothing has run out and nothing is a remainder: plan the " +
-		"division, not a continuation.\n\nThe original assignment:\n")
-	goal.WriteString(node.Brief)
+	goal.WriteString(CooperativePreamble)
+	// The ORIGINAL assignment, for the same reason the remainder path takes it:
+	// a node whose brief is itself a composed goal would be wrapped twice, and
+	// the division would be planned against a previous round's prose rather than
+	// against what the person asked for. See originalAssignment.
+	goal.WriteString(originalAssignment(node.Brief))
 	// The criterion travels unaltered for the same reason it does on the
 	// remainder path: a division whose parts do not together cover what the node
 	// is judged on is a division that loses the node's own answer, and a

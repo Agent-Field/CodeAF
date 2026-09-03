@@ -419,3 +419,144 @@ func TestSpecEncodesAndDecodesThroughTheStore(t *testing.T) {
 		t.Fatalf("unreadable bytes decoded to %+v, want the empty spec", restored)
 	}
 }
+
+// THE NESTING WRAPPER. A remainder's goal is composed from the original
+// assignment plus the current finding, and the node a remainder plans carries
+// the whole composed goal as its brief (plan.Build's undivided shortcut writes
+// Brief: goal). So a second round wrapped a first round's text: measured on the
+// canary, round two's goal read "Finish work… The original assignment: Finish
+// work… The original assignment: Implement issue #4031 …" at 28,468 characters
+// with the issue text twice over and the current finding buried at the end —
+// and the spine planned the issue again instead of the finding.
+func TestARemainderOfARemainderCarriesOneWrapperAndTheOriginalAssignment(t *testing.T) {
+	const original = "Implement issue #4031: parse the unit prefixes and add the tests for them."
+
+	first := OverrunGoal(store.Node{ID: "job-1", Brief: original}, "half of it exists", nil,
+		"the prefixes are parsed but nothing exercises them", "")
+	// The node the first round planned is handed the goal it was planned from,
+	// which is exactly how the nesting happened.
+	second := OverrunGoal(store.Node{ID: "job-1-x1", Brief: first}, "the tests are written", nil,
+		"2 unexercised behaviours", "")
+
+	if got := strings.Count(second, OverrunPreamble); got != 1 {
+		t.Fatalf("a remainder of a remainder carries %d wrappers, want 1:\n%s", got, second)
+	}
+	if got := strings.Count(second, original); got != 1 {
+		t.Fatalf("the original assignment appears %d times, want 1:\n%s", got, second)
+	}
+	if !strings.HasPrefix(second, OverrunPreamble+original) {
+		t.Fatalf("the second round did not open on the original assignment:\n%.400s", second)
+	}
+	// And the finding for THIS round is the one that travels; the previous
+	// round's is gone with the wrapper that carried it.
+	if !strings.Contains(second, "2 unexercised behaviours") {
+		t.Fatal("the current round's finding was lost with the unwrap")
+	}
+	if strings.Contains(second, "the prefixes are parsed but nothing exercises them") {
+		t.Fatalf("the previous round's finding was carried into the next round:\n%s", second)
+	}
+
+	// The cooperative twin unwraps the same way and through the same function:
+	// a division asked for on a node a remainder already planned is wrapped
+	// once, not twice.
+	divided := CooperativeGoal(store.Node{ID: "job-1-x1", Brief: first}, twoParts(), "nothing yet")
+	if strings.Contains(divided, OverrunPreamble) {
+		t.Fatalf("a cooperative division carried the remainder's wrapper:\n%s", divided)
+	}
+	if got := strings.Count(divided, CooperativePreamble); got != 1 {
+		t.Fatalf("a cooperative division carries %d wrappers, want 1", got)
+	}
+	if !strings.HasPrefix(divided, CooperativePreamble+original) {
+		t.Fatalf("the division did not open on the original assignment:\n%.400s", divided)
+	}
+}
+
+// AND THE SIZE OF A REMAINDER GOAL IS THE SIZE OF ITS FINDING, NOT OF ITS
+// ROUNDS. Every prompt of a round grows with the goal; the round-two gate call
+// on the canary cost 116,674 prompt tokens because the goal it was composed
+// from had swallowed the round before it. Three rounds of the same shape are
+// the same length.
+func TestARemainderGoalDoesNotGrowWithItsRounds(t *testing.T) {
+	const original = "Implement issue #4031: parse the unit prefixes and add the tests for them."
+	// Three findings of the SAME length, so any growth measured below is the
+	// composition's and not the finding's.
+	findings := []string{
+		"1 unexercised behaviour: prefix parsing",
+		"2 unexercised behaviours: totals, dates",
+		"1 failing check: tests/test_units.py::milli",
+	}
+
+	first := OverrunGoal(store.Node{ID: "job-1", Brief: original}, "half of it", nil, findings[0], "")
+	second := OverrunGoal(store.Node{ID: "job-1-x1", Brief: first}, "half of it", nil, findings[1], "")
+	third := OverrunGoal(store.Node{ID: "job-1-x2", Brief: second}, "half of it", nil, findings[2], "")
+
+	// The whole of the allowance is the finding this round carries. A round that
+	// nested would be longer than its predecessor by the entire assignment.
+	for round, goal := range []string{first, second, third} {
+		// Flat is not the same as intact: a round that truncated the assignment
+		// would also stop growing. Both are asserted, or only one is pinned.
+		if !strings.HasPrefix(goal, OverrunPreamble+original) {
+			t.Fatalf("round %d lost the original assignment:\n%.400s", round+1, goal)
+		}
+		grown := len(goal) - len(first)
+		if allowed := len(findings[round]) - len(findings[0]); grown > allowed {
+			t.Fatalf("round %d grew by %d characters over round one, allowed %d — the goal is nesting:\n%.600s",
+				round+1, grown, allowed, goal)
+		}
+	}
+}
+
+// The section table is the one place that says where an assignment stops, and
+// a block added to either wrapper without a header here would stay inside the
+// next round's "original assignment" — the same defect, one section at a time.
+// So the fully loaded goal is composed and unwrapped, and what comes back is
+// the brief exactly.
+func TestEverySectionOfARemainderGoalEndsTheAssignment(t *testing.T) {
+	const original = "Implement issue #4031: parse the unit prefixes.\n\nIt has blank lines of its own."
+	node := store.Node{
+		ID:    "job-1",
+		Brief: original,
+		Spec: EncodeSpec(plan.Spec{Done: plan.Done{
+			Produces:   []string{"the parser"},
+			Conditions: []plan.Check{{Kind: plan.CheckRun, Check: "pytest", Expect: "it passes"}},
+		}}),
+	}
+	loaded := overrunGoal(node, "a partial result", []string{"/jobs/x/a.md"},
+		"what the reviewer found", "what the leaf did", "the attempt's own turns",
+		OpenFindings{Unexercised: []string{"prefix parsing"}, Gap: "still short"},
+		"/jobs/x/record.md")
+
+	if got := originalAssignment(loaded); got != original {
+		t.Fatalf("unwrapping a fully loaded remainder goal gave:\n%q\nwant:\n%q", got, original)
+	}
+	// Every header in the table is a header the wrappers can actually write, and
+	// the loaded goal above is where that is checked: a stale entry is dead
+	// weight in the one place that must not go stale.
+	for _, section := range remainderSections {
+		if section == CooperativeFindingHeader {
+			continue
+		}
+		if !strings.Contains(loaded, "\n\n"+section) {
+			t.Fatalf("remainderSections names a block the remainder wrapper never writes: %.60s…", section)
+		}
+	}
+
+	// A brief that never went through either wrapper comes back untouched, which
+	// is every fresh job.
+	if got := originalAssignment(original); got != original {
+		t.Fatalf("a fresh brief was rewritten by the unwrap: %q", got)
+	}
+
+	// And a wrapper with nothing inside it is still only one wrapper. This is
+	// the last path by which the composition could double: a brief that is
+	// exactly a preamble carries no assignment, and saying so is cheaper than
+	// wrapping the wrapper.
+	for _, empty := range []string{OverrunPreamble, CooperativePreamble, OverrunPreamble + "\n  \n"} {
+		if got := originalAssignment(empty); got != "" {
+			t.Fatalf("a wrapper around nothing was kept whole: %q", got)
+		}
+	}
+	if got := strings.Count(OverrunGoal(store.Node{Brief: OverrunPreamble}, "", nil, "", ""), OverrunPreamble); got != 1 {
+		t.Fatalf("a brief that is exactly a wrapper composed %d wrappers, want 1", got)
+	}
+}
