@@ -83,6 +83,13 @@ var taskPrompt string
 //go:embed prompts/shape.md
 var shapePrompt string
 
+// placePrompt is what the MODE JUDGE is told (task_mode_judge.go): did this
+// person ask to work in their own folder, or does the task still get a copy
+// of its own. It is a one-bit errand and every failure is a no.
+//
+//go:embed prompts/place.md
+var placePrompt string
+
 // dividePrompt is the extra page a worker gets when THIS piece of work was
 // armed to discover that it is wide (task_divide.go). It is separate from
 // task.md rather than a paragraph inside it for the reason the whole belt is

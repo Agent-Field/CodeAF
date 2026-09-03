@@ -197,6 +197,13 @@ const (
 	// wanted. Registered from internal/session/task_shape.go, which owns the
 	// call.
 	RoleShaper Role = "shaper"
+	// RolePlace answers whether a task works in the person's own folder or
+	// still gets a copy of its own. Low, for the sizing judge's reason: it
+	// is one bit of JSON, and a wrong yes is refused by failing closed to
+	// isolation — the default — so a cheap miss costs a copy they did not
+	// need, not a write in their checkout. Registered from
+	// internal/session/task_mode_judge.go, which owns the call.
+	RolePlace Role = "place"
 
 	// RoleIntake fills a subharness's input form from what the conversation has
 	// already said (docs/SUBHARNESS-PRD.md §4: infer, then confirm — never
@@ -394,6 +401,7 @@ var roleDescriptions = map[Role]string{
 	RoleReflex:        "reads every turn for memory — routing and keeping",
 	RoleVision:        "reads images for a model that cannot see them",
 	RoleShaper:        "the brief a task you started yourself is given",
+	RolePlace:         "whether a task works in your folder or a copy of its own",
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
 }

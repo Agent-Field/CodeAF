@@ -49,12 +49,10 @@ the ones this job is genuinely exposed to.
 which file, which format, how long, which of two plausible readings, what to do when the
 obvious route is blocked. Decide it and say so.
 
-**Where did the person ask it to happen?** Preserve a repository or folder path they
-named as `where`, or the words `in place` if they said them. Do not invent `in place`
-for "non-code work" and do not put the current directory there — that used to skip
-the worktree and write in this conversation's workspace. Never guess a path from a
-project name. Otherwise leave `where` empty: the task runner will give the work a
-copy of its own, cut from the conversation's project into the task folder.
+**Do not decide where the work stands.** Isolation is not this call's job. Leave
+`where` empty always. A path they named belongs in the brief as the project the
+work is about — that is ground, and the task still gets a copy of its own. Inventing
+`in place` for "non-code work" used to skip the worktree and write in their checkout.
 
 **What does done look like, and how would somebody else confirm it?** Not "the page is
 written" but the thing a second party could check without taking the worker's word for it.
@@ -100,4 +98,4 @@ what the worker does.
 
 Exactly one JSON object. No markdown, no code fence, no commentary before or after it:
 
-{"title":"...","brief":"...","acceptance":"...","where":"..."}
+{"title":"...","brief":"...","acceptance":"..."}

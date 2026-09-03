@@ -68,6 +68,13 @@ type scriptedCompleter struct {
 	asides [][]ai.Message
 }
 
+// isPlaceCall reports whether this request is the mode judge's, by the one
+// page only it sends.
+func isPlaceCall(messages []ai.Message) bool {
+	return len(messages) > 0 && messages[0].Role == "system" &&
+		messageContentText(messages[0]) == placePrompt
+}
+
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	// The options are applied to a throwaway request so a test can assert what
 	// model each step actually rode.
@@ -89,6 +96,16 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 			s.mu.Unlock()
 			return answer, nil
 		}
+	}
+	// THE MODE JUDGE MUST NOT STEAL A TURN STEP. Every door that admits a
+	// task now asks one bit — did they ask to work in their folder — and
+	// that call lands in the middle of a scripted handover the same way
+	// the namer did (#392). Unrecognised, it consumes the next step and
+	// the turn runs off the script. The default answer is no: isolation.
+	if isPlaceCall(snapshot) {
+		s.asides = append(s.asides, snapshot)
+		s.mu.Unlock()
+		return textResponse(`{"in_place":false}`), nil
 	}
 	index := len(s.seen)
 	s.seen = append(s.seen, snapshot)

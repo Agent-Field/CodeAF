@@ -179,7 +179,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing."},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
-	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
+	`"where":{"type":"string","description":"Unused. Isolation is judged from what the person said, not from this field"},` +
 	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own. Left out, it is resolved from what this conversation read and edited"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it — the command that passes, the output that appears. \"It is finished\" is not this"},` +
 	expectsSchemaJSON + `,` +
@@ -255,11 +255,14 @@ type taskSpec struct {
 	// [composeBrief] lays all four out as the node's opening message.
 	brief       string
 	deliverable string
-	// where is empty for the default task-folder worktree, "in place" when the
-	// PERSON said those words, or the exact path they named. A model that fills
-	// this to skip the tree is guessing; [placementThePersonAskedFor] drops the
-	// guess so the ladder still cuts a copy of its own.
+	// where is display: "in place" when [taskSpec.personMode] said so, else
+	// empty. A model-filled value is not stored. Isolation is not this field's
+	// to decide.
 	where string
+	// personMode is how THIS REQUEST asked to stand on its ground. Set only
+	// by [Agent.applyPersonMode] from the person's words. Empty means the
+	// mode falls out of the deliverable — a worktree, standing in a repository.
+	personMode TaskMode
 	// ground is the repository or folder THE WORK IS ABOUT, absolute, and mode is
 	// how the task stands on it (taskstands.go resolves both, and [TaskMode]
 	// spells the five modes out). They are settled at the door, before the person
@@ -525,10 +528,10 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// so a nested worker still finds the person's turn, not its parent's
 	// journal.
 	spec.origin = a.taskOriginRef()
-	// A GUESSED `where` IS DROPPED HERE, before the card is built, so the
-	// notice a person reads does not claim they named a folder they did not.
-	// The resolver filters its own copy too; this is the write that sticks.
-	a.dropGuessedWhere(&spec)
+	// ISOLATION IS NOT THE PROPOSING MODEL'S TO DECIDE. A filled `where`
+	// used to skip the tree. The person's words are judged instead, and a
+	// no — or a stall — leaves the ladder to cut a copy of its own.
+	a.applyPersonMode(ctx, &spec)
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.
@@ -702,7 +705,6 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		summary:     strings.TrimSpace(parsed.Summary),
 		brief:       strings.TrimSpace(parsed.Brief),
 		deliverable: strings.TrimSpace(parsed.Deliverable),
-		where:       strings.TrimSpace(parsed.Where),
 		ground:      strings.TrimSpace(parsed.Ground),
 		acceptance:  strings.TrimSpace(parsed.Acceptance),
 		dependsOn:   parsed.DependsOn,

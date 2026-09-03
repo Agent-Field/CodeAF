@@ -56,7 +56,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -110,10 +109,10 @@ const (
 	taskGroundTouched    = "touched"
 	taskGroundStandingIn = "standing in"
 	taskGroundNothing    = "nothing"
-	// taskGroundHere and taskGroundNamed are the two the `where` argument
-	// answers before the ladder is climbed at all: a person who said "in place"
-	// or named a directory has said where the work happens, which settles where
-	// it stands as well.
+	// taskGroundHere and taskGroundNamed are leftover names from when a
+	// model-filled `where` skipped this ladder. Isolation is not that field's
+	// to decide; the constants stay so a log line written under the old
+	// reading still has a word.
 	taskGroundHere  = "here"
 	taskGroundNamed = "named"
 )
@@ -142,28 +141,22 @@ const taskGroundPathsRead = 400
 // answer to the one question this file exists to have one answer to.
 func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
-	// THE PERSON'S OWN PLACEMENT COMES FIRST, and it is not a rung of the ladder
-	// — it is the whole ladder skipped. `where` says where the work happens, and
-	// work that happens in a named directory is work about that directory.
+	// TWO QUESTIONS, AND `where` IS THE ANSWER TO NEITHER.
 	//
-	// AND IT IS HONORED ONLY WHEN THEY ASKED FOR IT. A non-empty `where` used to
-	// skip the tree for any caller, and both doors that fill the field are
-	// models: propose_task's optional argument, and the `/task` shaper told to
-	// invent `in place` for "non-code work". Either one stood the worker in the
-	// conversation checkout — the person's own working copy, when they opened
-	// aforge in a repository. The schema already said "never guess"; this is
-	// the gate that makes that a fact rather than a prompt.
-	spec.where = placementThePersonAskedFor(spec.request, spec.where, workspace)
-	if where := strings.TrimSpace(spec.where); where != "" {
-		if strings.EqualFold(where, "in place") {
-			return taskStand{dir: workspace, mode: TaskModeInPlace, rung: taskGroundHere}
-		}
-		dir, err := resolveTaskWhere(where, workspace)
-		if err != nil {
-			return taskStand{refusal: "this task names a folder it cannot work in: " + where}
-		}
-		return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
-	}
+	// GROUND is which folder the work is about — the ladder below. A path the
+	// person named is this question: "fix the crash in ~/code/thing" stands
+	// ON thing, in a copy of it, not IN their checkout of it.
+	//
+	// MODE is how it stands on that ground. It falls out of the deliverable
+	// ([groundMode]) unless the person already said how work happens there
+	// ([PlaceRef.Mode]) or, for this request only, asked to work in the
+	// folder itself ([taskSpec.personMode], judged from their words, never
+	// from a model-filled `where`).
+	//
+	// A non-empty `where` used to skip this whole file and force in-place in
+	// that directory. Both doors that fill the field are models. That is how
+	// a parent proposing children stood them in the person's working copy.
+	// The field is ignored here on purpose.
 	stand := a.groundLadder(spec, workspace)
 	if stand.ask != "" || stand.refusal != "" {
 		return stand
@@ -178,13 +171,17 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	} else if reground != "" {
 		stand.dir, stand.rung = reground, taskGroundSaid
 	}
-	// A MODE THE PERSON SAID IS NOT RECOMPUTED. Every rung leaves this blank and
-	// the mode falls out of the deliverable, which is the law above — except for
-	// a referred place carrying the person's own word about how work happens
-	// there ([PlaceRef.Mode]), and their word is the one thing this file obeys
-	// rather than reads.
+	// A MODE THE PERSON SAID IS NOT RECOMPUTED. A referred place may already
+	// carry their word ([PlaceRef.Mode]). A personMode on this spec is the
+	// same word, judged for this request, and it wins only when nothing
+	// already said how this ground is worked. Everything else falls out of
+	// the deliverable — which, standing in a repository, is a worktree.
 	if stand.mode == "" {
-		stand.mode = groundMode(stand, spec, workspace)
+		if spec.personMode == TaskModeInPlace {
+			stand.mode = TaskModeInPlace
+		} else {
+			stand.mode = groundMode(stand, spec, workspace)
+		}
 	}
 	return stand
 }
@@ -679,10 +676,10 @@ func groundHolds(ground, token string) bool {
 // different law.
 //
 // A GROUND SOMEBODY SAID OUT LOUD IS NOT SECOND-GUESSED AT ALL — not moved, and
-// not refused either. A person who named a directory with `where`, or a model
-// that filled in `ground` because it knew, has answered this question already,
-// and a lint that turned their answer back over a path in a paragraph would be
-// the harness overruling the one source it is meant to obey.
+// not refused either. A person who named a directory, or a model that filled
+// in `ground` because it knew, has answered this question already, and a lint
+// that turned their answer back over a path in a paragraph would be the
+// harness overruling the one source it is meant to obey.
 //
 // AND NEITHER IS A PART. A sub-task's branch is cut from its parent's worktree
 // and merges back into it, so a part re-grounded onto a repository named in its
@@ -788,166 +785,4 @@ func looksLikePath(token string) bool {
 	}
 	dot := strings.LastIndex(token, ".")
 	return dot > 0 && dot < len(token)-1 && !strings.ContainsAny(token, " =")
-}
-
-// placementThePersonAskedFor is the gate on `where`: the value a model wrote,
-// kept only when the PERSON's own request named that placement.
-//
-// THE FIELD IS A MODEL-CONTROLLED ISOLATION BYPASS. Any non-empty `where`
-// short-circuits the ground ladder into [TaskModeInPlace] and stands the
-// worker in that directory — the conversation workspace, when the value is
-// `in place`, `.`, `here`, or the workspace path itself. Both doors that fill
-// it are models, and both have been measured inventing it: the shaper was
-// told to use `in place` for "non-code work", and a parent proposing children
-// copies the repository path it can see. Neither is the person opting out.
-//
-// What they actually said is `request` — already the person's words at both
-// doors, set before the ground is resolved. A brief the model groomed is not
-// read here, because the model that invented `where` will invent the same
-// words in the brief.
-//
-// An in-place token the person did not say is dropped, and so is a path that
-// does not appear in their request. What remains is empty, and the ladder
-// cuts a worktree when the conversation is standing in a repository.
-func placementThePersonAskedFor(request, where, workspace string) string {
-	where = strings.TrimSpace(where)
-	if where == "" {
-		return ""
-	}
-	workspace = canonicalPath(workspace)
-	if isInPlaceWhereToken(where) {
-		if personSaidInPlace(request) {
-			return "in place"
-		}
-		return ""
-	}
-	resolved, err := resolveTaskWhere(where, workspace)
-	if err != nil {
-		// A path that cannot be resolved is still a claim. Keep it only when
-		// they named it, so the door that already refuses a bad folder still
-		// refuses one they asked for, and a guess that does not even resolve
-		// falls through to the ladder instead of failing the task.
-		if requestNamesWhere(request, where, "", workspace) {
-			return where
-		}
-		return ""
-	}
-	resolved = canonicalPath(resolved)
-	if resolved != "" && resolved == workspace {
-		// The workspace path is how a model restates "here" without saying
-		// `in place`. Honor it only when they said those words or named the
-		// path themselves — naming the folder they are standing in is them
-		// asking to work in it, and inventing the path is not.
-		if personSaidInPlace(request) || requestNamesWhere(request, where, resolved, workspace) {
-			return where
-		}
-		return ""
-	}
-	if requestNamesWhere(request, where, resolved, workspace) {
-		return where
-	}
-	return ""
-}
-
-// dropGuessedWhere clears a `where` the person did not ask for, so the value
-// stored on the spec — the card, the notice, the journal — matches the stand
-// [Agent.resolveTaskGround] will come to. The resolver also filters its local
-// copy; this is the write that reaches the node.
-func (a *Agent) dropGuessedWhere(spec *taskSpec) {
-	if spec == nil {
-		return
-	}
-	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
-	spec.where = placementThePersonAskedFor(spec.request, spec.where, workspace)
-}
-
-// isInPlaceWhereToken is every spelling that means "the conversation
-// workspace itself", not a folder they named. `here` and `directly` are
-// [placeModeWord]'s own words; `.` and `./` are the same claim written as a
-// path. None of them is a folder to resolve — `here` as a relative path is
-// `workspace/here`, which is a different directory and the wrong one.
-func isInPlaceWhereToken(where string) bool {
-	switch strings.ToLower(strings.TrimSpace(where)) {
-	case "in place", "here", "directly", ".", "./":
-		return true
-	}
-	return false
-}
-
-// personSaidInPlace reports the one phrase that is the person's opt-out of
-// isolation. The word "here" in English is not that phrase — "look here",
-// "the crash is here" — and treating it as one used to skip the tree for
-// ordinary work.
-var inPlacePhrase = regexp.MustCompile(`(?i)\bin\s+place\b`)
-
-func personSaidInPlace(request string) bool {
-	return inPlacePhrase.MatchString(request)
-}
-
-// requestNamesWhere reports whether the person's request named this directory
-// as a path, not as a prose word that happens to match a fragment of one.
-func requestNamesWhere(request, where, resolved, workspace string) bool {
-	if looksLikeWherePath(where) && pathAppearsInRequest(request, where) {
-		return true
-	}
-	if resolved == "" {
-		return false
-	}
-	for _, token := range pathTokens(request) {
-		got, err := resolveTaskWhere(token, workspace)
-		if err != nil {
-			continue
-		}
-		if canonicalPath(got) == resolved {
-			return true
-		}
-	}
-	return false
-}
-
-// looksLikeWherePath is a path somebody could have typed as `where`: absolute,
-// home-relative, or with a separator. A bare word is not one — "docs" in
-// "update the docs" is not a folder they named.
-func looksLikeWherePath(where string) bool {
-	where = strings.TrimSpace(where)
-	if where == "" || where == "." || where == "./" {
-		return false
-	}
-	return strings.HasPrefix(where, "/") || strings.HasPrefix(where, "~") ||
-		strings.HasPrefix(where, "./") || strings.HasPrefix(where, "../") ||
-		strings.ContainsRune(where, '/')
-}
-
-// pathAppearsInRequest is a bounded search: `/tmp/x` does not name `/tmp/xyz`.
-func pathAppearsInRequest(request, path string) bool {
-	if path == "" || path == "." || path == "./" {
-		return false
-	}
-	for start := 0; start < len(request); {
-		i := strings.Index(request[start:], path)
-		if i < 0 {
-			return false
-		}
-		i += start
-		if pathBounded(request, i, i+len(path)) {
-			return true
-		}
-		start = i + 1
-	}
-	return false
-}
-
-func pathBounded(s string, start, end int) bool {
-	if start > 0 && isPathByte(s[start-1]) {
-		return false
-	}
-	if end < len(s) && isPathByte(s[end]) {
-		return false
-	}
-	return true
-}
-
-func isPathByte(b byte) bool {
-	return b == '/' || b == '.' || b == '-' || b == '_' || b == '~' ||
-		(b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }

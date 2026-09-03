@@ -120,12 +120,12 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 	spec := taskSpec{
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
 		summary: firstLine(brief), request: brief, origin: a.taskOriginRef(), brief: work,
-		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
+		acceptance: acceptance, model: a.resolveTaskModel("").model,
 	}
-	// A SHAPER THAT INVENTED `in place` DOES NOT SKIP THE TREE. The field is
-	// honored only when the person's own sentence named a folder or said
-	// those words (taskstands.go's [placementThePersonAskedFor]).
-	a.dropGuessedWhere(&spec)
+	// THE SHAPER DOES NOT DECIDE ISOLATION. Its `where` is ignored. The
+	// person's sentence is judged on its own, and a no leaves the ladder
+	// to cut a copy of its own (task_mode_judge.go).
+	a.applyPersonMode(ctx, &spec)
 	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
 	// ladder a proposal gets, because a person who opened aforge in their home
 	// directory and typed `/task fix the crash` is in exactly the position issue

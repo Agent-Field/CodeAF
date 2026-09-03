@@ -151,8 +151,11 @@ func TestTheShaperCarriesThePlaceNamedInTheRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	settled(t, ran)
-	if got := agent.graph().node(id).spec.where; got != named {
-		t.Fatalf("shaped where = %q, want the named directory %q", got, named)
+	if got := agent.graph().node(id).spec.where; got != "" {
+		t.Fatalf("where = %q, want empty: a folder they named is ground, not an in-place bypass", got)
+	}
+	if agent.graph().node(id).spec.mode == TaskModeInPlace {
+		t.Fatal("a named folder stood the work in place")
 	}
 }
 
@@ -185,7 +188,8 @@ func TestTheShaperCannotInventInPlace(t *testing.T) {
 }
 
 // IT IS BILLED THE WAY EVERY CALL NOBODY TYPED IS: to the session's total and
-// its call count, never to a turn.
+// its call count, never to a turn. Starting a task now asks two of those:
+// the shaper, then the mode judge. Both are auxiliary.
 func TestShapingIsBilledAsAnAuxiliaryCall(t *testing.T) {
 	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse(shapedAnswer), nil
@@ -197,11 +201,11 @@ func TestShapingIsBilledAsAnAuxiliaryCall(t *testing.T) {
 	}
 	settled(t, ran)
 	usage := agent.Usage()
-	if usage.Calls != 1 || usage.Input == 0 || usage.Output == 0 {
-		t.Fatalf("usage = %+v, want one billed call with tokens on it", usage)
+	if usage.Calls != 2 || usage.Input == 0 || usage.Output == 0 {
+		t.Fatalf("usage = %+v, want the shaper and the mode judge billed, with tokens", usage)
 	}
 	if usage.Turns != 0 {
-		t.Fatalf("turns = %d, want the shaping call charged to no turn", usage.Turns)
+		t.Fatalf("turns = %d, want both calls charged to no turn", usage.Turns)
 	}
 }
 

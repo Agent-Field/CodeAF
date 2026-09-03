@@ -1026,6 +1026,10 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		spec.ahead = ahead
 	}
 	ahead.claim()
+	// ISOLATION IS JUDGED FROM THEIR WORDS, same as every other door. This
+	// road has no person-typed `/task`, but it still has their last sentence,
+	// and a model-filled `where` is not a decision here either.
+	a.applyPersonMode(context.Background(), &spec)
 	// AND WHERE THE WORK STANDS (taskstands.go), on the same ladder every other
 	// door climbs. This door cannot ask anything either — the person is told
 	// afterwards that work began — so an evidence that will not settle falls back

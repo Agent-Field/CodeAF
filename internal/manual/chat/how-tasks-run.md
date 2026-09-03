@@ -83,9 +83,9 @@ row carry the ground and how the task stood on it.
 
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on
-its own branch, so you can keep working in yours while it runs. If your request explicitly
-names another folder, the task works in that exact folder instead; its card and its
-`/history` record show the resolved `where`.
+its own branch, so you can keep working in yours while it runs. A path you named is which
+project, not a request to edit your checkout of it. The task still gets a copy of its own
+unless you asked to work in the folder itself, or you already said that about that folder.
 
 aforge makes that copy from your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.
@@ -124,12 +124,11 @@ that task's own journal too, on the line beginning `its world is`.
 
 Two limits:
 
-- An explicitly named folder — a path you wrote in the request, or the words `in place`
-  if you said them — runs **in place** in that directory and says so:
-  `it worked directly in the workspace: there was no repository to branch`.
-  A shaper or a proposal that invents `in place` for "non-code work" does not skip the
-  tree: the work still gets a copy of its own. While a task that really is in place
-  runs, **the chat cannot write in that directory** — see *A task working
+- A task runs **in place** only when you asked to change the folder itself — no copy —
+  or when there is no repository to branch from. A proposal or a shaper filling
+  `where: in place` does not skip the tree. A path you named is the project the work
+  is about, and the task still gets a copy of that project. While a task that really
+  is in place runs, **the chat cannot write in that directory** — see *A task working
   in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
@@ -313,11 +312,12 @@ already went.
 
 ## in place — a task shaped as non-code work, where: in place, non-code work in this conversation's workspace
 
-A task runs **in place** only when you named a folder or said `in place`. The shaper used
-to invent `where: in place` for work it judged "not code work", and that skipped the
-worktree and wrote in this conversation's workspace. It does not invent that now. A
-proposal that fills `in place` without you saying so is dropped, and the task still gets
-a copy of its own under the session folder. The one way to opt out is your own words.
+A task runs **in place** only when you asked to change the folder itself, or when there
+is no repository to cut a copy from. Naming a project is which folder, not how the task
+stands on it. The shaper used to invent `where: in place` for work it judged "not code
+work", and a proposal used to skip the tree with any path it could see. Neither is you
+opting out. Isolation is the default; a copy of its own is what you get unless your
+words asked otherwise.
 
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 
