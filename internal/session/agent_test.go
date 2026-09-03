@@ -60,7 +60,8 @@ type scriptedCompleter struct {
 	// An aside that answers returns its own response and spends NO step, so the
 	// script the test wrote still reaches the turn in the order the test wrote
 	// it. taskname_test.go met this race first and routes by shape with
-	// [isNameCall]; this is the same remedy, made available to every fixture.
+	// [isNameCall]; this is the same remedy, made available to every fixture, and
+	// applied by default to the one errand below that no fixture is about.
 	aside func(messages []ai.Message) (*ai.Response, bool)
 	// asides is what the aside answered, kept out of [scriptedCompleter.seen] so
 	// that a request's index is still the index of the step it rode, and kept at
@@ -89,6 +90,30 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 			s.mu.Unlock()
 			return answer, nil
 		}
+	}
+	// AND THE NARRATOR IS ANSWERED HERE BY DEFAULT, because it is the one errand
+	// beside a turn that NO fixture in this package is about. It arms half a
+	// second into every tool batch (caption.go), which means it can arrive in the
+	// middle of any scripted turn that runs a command for longer than that —
+	// three steer and promote fixtures read an empty tool result where the
+	// sentence carried back to the caller should have been, because the narrator
+	// had taken the step they scripted for the turn. Defaulting it here fixes
+	// every such fixture at once, including the ones nobody has written yet.
+	//
+	// THE NAMERS ARE NOT DEFAULTED, and that is a fact about the fixtures rather
+	// than about the errand: three tests in this package are ABOUT the namer —
+	// they assert its ordering against the work, its request and the tier it ran
+	// on — and a request answered here is one they can no longer see. They opt in
+	// with [answerTheNamerOffTheQueue] instead.
+	//
+	// The answer is silence, which is what an errand nobody could reach already
+	// gives its caller and what every caller in this package already handles. A
+	// fixture that wants the narrator ANSWERED installs an aside, consulted
+	// above, which wins — caption_test.go is the one that does.
+	if isCaptionCall(snapshot) {
+		s.asides = append(s.asides, snapshot)
+		s.mu.Unlock()
+		return textResponse(""), nil
 	}
 	index := len(s.seen)
 	s.seen = append(s.seen, snapshot)

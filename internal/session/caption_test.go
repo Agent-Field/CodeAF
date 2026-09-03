@@ -8,6 +8,37 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// isCaptionCall reports whether this request is the narrator's, by the one thing
+// only it sends: its own system line. The instruction itself rides at the END of
+// the user message, where a small model reads it (caption.go).
+//
+// It is the door a fixture uses to ANSWER the narrator. The narrator is an
+// errand, so it never rides the scripted queue (agent_test.go); a test that
+// wants to see its request or hand it a line installs it as an aside.
+func isCaptionCall(messages []ai.Message) bool {
+	if len(messages) == 0 || messages[0].Role != "system" {
+		return false
+	}
+	return messageContentText(messages[0]) == captionSystem
+}
+
+// answerTheNarrator hands every narrator call one line and counts the asks.
+func answerTheNarrator(client *scriptedCompleter, line string) func() int {
+	asked := 0
+	client.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if !isCaptionCall(messages) {
+			return nil, false
+		}
+		asked++
+		return textResponse(line), true
+	}
+	return func() int {
+		client.mu.Lock()
+		defer client.mu.Unlock()
+		return asked
+	}
+}
+
 func TestTheNarratorDoesNotFireOnABatchThatFinishesFast(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	hub := newEventHub()
@@ -28,17 +59,8 @@ func TestTheNarratorDoesNotFireOnABatchThatFinishesFast(t *testing.T) {
 }
 
 func TestTheNarratorStopsAfterThreeCallsInOneTurn(t *testing.T) {
-	client := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("checking the first silence"), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("checking the second silence"), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("checking the third silence"), nil
-		},
-	}}
+	client := &scriptedCompleter{}
+	asked := answerTheNarrator(client, "checking the silence")
 	agent, _ := newTestAgent(t, client, nil)
 	hub := newEventHub()
 	defer hub.close()
@@ -50,7 +72,7 @@ func TestTheNarratorStopsAfterThreeCallsInOneTurn(t *testing.T) {
 		agent.maybeCaption(ctx, hub, calls, []string{`{"command":"sleep 30"}`})
 	}
 
-	if got := client.requests(); got != captionCalls {
+	if got := asked(); got != captionCalls {
 		t.Fatalf("narrator calls = %d, want the per-turn cap %d", got, captionCalls)
 	}
 	hub.mu.Lock()
@@ -87,19 +109,23 @@ func TestANarratorAnswerThatIsTheInstructionIsRefused(t *testing.T) {
 }
 
 func TestTheNarratorInstructionComesLast(t *testing.T) {
-	client := &scriptedCompleter{steps: []step{
-		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			if got := messageContentText(messages[0]); got != captionSystem {
-				t.Errorf("system message = %q, want character only", got)
-			}
-			user := messageContentText(messages[1])
-			if !strings.HasSuffix(user, captionPrompt) {
-				t.Errorf("instruction is not last:\n%s", user)
-			}
-			return textResponse("checking the fold"), nil
-		},
-	}}
+	client := &scriptedCompleter{}
+	seen := 0
+	client.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if !isCaptionCall(messages) {
+			return nil, false
+		}
+		seen++
+		user := messageContentText(messages[1])
+		if !strings.HasSuffix(user, captionPrompt) {
+			t.Errorf("instruction is not last:\n%s", user)
+		}
+		return textResponse("checking the fold"), true
+	}
 	agent, _ := newTestAgent(t, client, nil)
 	agent.maybeCaption(withEpisode(context.Background(), agent.newEpisode()),
 		newEventHub(), []ai.ToolCall{fixBash("true")}, []string{`{"command":"true"}`})
+	if seen != 1 {
+		t.Fatalf("the narrator asked %d times, want one", seen)
+	}
 }
