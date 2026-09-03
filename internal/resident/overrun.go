@@ -114,14 +114,15 @@ func originalAssignment(brief string) string {
 		if !wrapped {
 			return brief
 		}
-		inner := strings.TrimSpace(rest[:assignmentEnd(rest)])
-		// A wrapper around nothing is not evidence that the assignment was
-		// nothing: keep what was handed in rather than plan against an empty
-		// goal.
-		if inner == "" {
-			return brief
+		// A wrapper around nothing means the round that composed it was given
+		// nothing, and the honest answer is nothing: keeping the wrapper here
+		// so the goal is not empty is the one way this function could still
+		// nest, and an empty assignment is a cheaper wrong answer than a
+		// doubled one.
+		brief = strings.TrimSpace(rest[:assignmentEnd(rest)])
+		if brief == "" {
+			return ""
 		}
-		brief = inner
 	}
 }
 

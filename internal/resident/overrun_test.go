@@ -493,6 +493,11 @@ func TestARemainderGoalDoesNotGrowWithItsRounds(t *testing.T) {
 	// The whole of the allowance is the finding this round carries. A round that
 	// nested would be longer than its predecessor by the entire assignment.
 	for round, goal := range []string{first, second, third} {
+		// Flat is not the same as intact: a round that truncated the assignment
+		// would also stop growing. Both are asserted, or only one is pinned.
+		if !strings.HasPrefix(goal, OverrunPreamble+original) {
+			t.Fatalf("round %d lost the original assignment:\n%.400s", round+1, goal)
+		}
 		grown := len(goal) - len(first)
 		if allowed := len(findings[round]) - len(findings[0]); grown > allowed {
 			t.Fatalf("round %d grew by %d characters over round one, allowed %d — the goal is nesting:\n%.600s",
@@ -540,5 +545,18 @@ func TestEverySectionOfARemainderGoalEndsTheAssignment(t *testing.T) {
 	// is every fresh job.
 	if got := originalAssignment(original); got != original {
 		t.Fatalf("a fresh brief was rewritten by the unwrap: %q", got)
+	}
+
+	// And a wrapper with nothing inside it is still only one wrapper. This is
+	// the last path by which the composition could double: a brief that is
+	// exactly a preamble carries no assignment, and saying so is cheaper than
+	// wrapping the wrapper.
+	for _, empty := range []string{OverrunPreamble, CooperativePreamble, OverrunPreamble + "\n  \n"} {
+		if got := originalAssignment(empty); got != "" {
+			t.Fatalf("a wrapper around nothing was kept whole: %q", got)
+		}
+	}
+	if got := strings.Count(OverrunGoal(store.Node{Brief: OverrunPreamble}, "", nil, "", ""), OverrunPreamble); got != 1 {
+		t.Fatalf("a brief that is exactly a wrapper composed %d wrappers, want 1", got)
 	}
 }
