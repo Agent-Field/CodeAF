@@ -28,6 +28,12 @@ const (
 	productionOwn      = "(tasks 4 and 8 still out) > integrate all branches into feat/folder-picker-v2 > " +
 		"fire the parallel review propose_tasks > gh PR to origin/dev > make build for the binary"
 	productionDrawing = productionHandable + " | " + productionOwn
+
+	// productionChain is the line the mark reader ACTUALLY drew on the real-model
+	// run, and it is a different shape from the one the incident report quotes: a
+	// CHAIN, with no top-level bar in it at all.
+	productionChain = "(headers written for one, two, three) > " +
+		"(waiting on tasks 1 & 2 to return) > (integrate branches, review, open PR)"
 )
 
 // A DRAWING TRAVELS WITHOUT THE PARTS THAT ARE ABOUT WORK ALREADY OUT.
@@ -122,6 +128,28 @@ func TestADrawingTravelsWithoutTheWorkThisConversationIsStillHolding(t *testing.
 			kept:  "integrate 4 branches | write the docs",
 		},
 		{
+			// A CHAIN IS ONE JOB, AND A ONE-PART DRAWING NEVER TRAVELS.
+			//
+			// This is the line a real model drew with tasks 1 and 2 out, and the
+			// reduction does NOTHING to it — correctly. [readShape] reads a chain as
+			// the first stage alone, so the coordination sitting in stages two and
+			// three is not in the reading and cannot be withheld from it. That is not
+			// a hole: a one-part drawing is not a split, so it never heads a brief
+			// ([checkpointSketch.head], asserted below) and never rides as a division.
+			// What catches the coordination on this shape is the BRIEF LADDER — both
+			// model rungs are blanked and the bare ask is refused on a divided drawing
+			// (checkpoint.go's [checkpointCeilingHeldWork]) — which is exactly what
+			// the real run shows, with `kept` empty in its file.
+			//
+			// SO DO NOT WIDEN [readShape] TO "FIND" THESE STAGES. A chain is one job,
+			// and re-reading it as parts is the thing #276's shape rules were measured
+			// against.
+			name:  "the chain a real model drew, with two pieces out",
+			shape: productionChain,
+			held:  heldPieces(heldPiece{1, "the folder picker rail"}, heldPiece{2, "the settings pane copy"}),
+			kept:  productionChain,
+		},
+		{
 			// A WAIT BESIDE REAL WORK, WITH SOMETHING TO BE WAITING FOR. This is
 			// #304's pinned control with the ledger no longer empty, and it is the
 			// one row where the two files answer differently on purpose.
@@ -158,6 +186,44 @@ func TestADrawingTravelsWithoutTheWorkThisConversationIsStillHolding(t *testing.
 				t.Errorf("the remainder is still inside the drawing that travels:\n\t%q", got.shape)
 			}
 		})
+	}
+}
+
+// A CHAIN IS ONE JOB, AND A ONE-PART DRAWING NEVER REACHES A WORKER.
+//
+// The row above pins that the reduction leaves a chain alone. This pins WHY that
+// is safe, which is the half a comment cannot be trusted with: the drawing comes
+// back byte for byte, and a sketch of one job heads nothing — so the coordination
+// standing in the second and third stages of a chain never travels, whatever the
+// reduction did or did not see in it. It is caught at the brief instead
+// (checkpoint.go's brief ladder and [checkpointCeilingHeldWork]).
+func TestAChainIsOneJobAndOneJobHeadsNoBrief(t *testing.T) {
+	held := heldPieces(heldPiece{1, "the folder picker rail"}, heldPiece{2, "the settings pane copy"})
+	drawn := parseCheckpointSketch(productionChain + "\nThe headers first, then the two pieces, then the landing.")
+	got, remainder := drawn.withoutHeldWork(held)
+
+	// BYTE FOR BYTE. Nothing in the reading was the conversation's own, because the
+	// reading is the first stage and the first stage is a job.
+	if got != drawn {
+		t.Errorf("the reduction moved a chain:\n\tgot  %#v\n\twant %#v", got, drawn)
+	}
+	if remainder != "" {
+		t.Errorf("the reduction withheld %q from a chain", remainder)
+	}
+
+	// AND IT NEVER REACHES A WORKER, which is the whole of what makes the above
+	// safe. One part is not a split, so the drawing does not head the brief and the
+	// worker opens on the goal alone — no `WHAT IS LEFT, AS PARTS:` paragraph, and
+	// nothing quoting the stages the reading never held.
+	if got.split() {
+		t.Fatalf("a chain read as a split of %d parts", got.parts)
+	}
+	const goal = "Write the headers for one, two and three."
+	if head := got.head(goal); head != goal {
+		t.Errorf("a one-job drawing headed the brief:\n%s", head)
+	}
+	if strings.Contains(got.head(goal), "waiting on tasks") {
+		t.Error("the coordination in the stages behind the first reached the worker's first paragraph")
 	}
 }
 
