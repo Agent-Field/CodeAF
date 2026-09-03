@@ -123,7 +123,7 @@ func TestABadFlagIsRefusedOnceAndOnStderr(t *testing.T) {
 		t.Fatalf("a bad flag left with 0, and a script cannot tell it from a run that worked:\n%s", errs.String())
 	}
 	said := errs.String()
-	if count := strings.Count(said, "flag provided but not defined"); count != 1 {
+	if count := strings.Count(said, "has no --nosuchflag flag"); count != 1 {
 		t.Fatalf("the same refusal is printed %d times, want once:\n%s", count, said)
 	}
 	if !strings.Contains(said, "aforge do") {
@@ -315,5 +315,108 @@ func TestAMissingKeyIsAnsweredOnceWithTheRemedy(t *testing.T) {
 	}
 	if lines := strings.Split(said, "\n"); len(lines) != 2 {
 		t.Fatalf("the missing-key answer is %d lines, want the cause and the remedy:\n%s", len(lines), said)
+	}
+}
+
+// TestARefusedFlagIsSpelledTheWayItWasTyped is the low row that costs a person
+// a whole scan of the screen.
+//
+// Go's flag package writes `flag provided but not defined: -nosuchflag`, with
+// ONE dash, on a surface where every other door — the usage table, the
+// per-command page, `flagRows` right here — spells a word-length flag with two.
+// Somebody hunting a screenful for their own typo searches for `--nosuchflag`
+// and does not find it, because it is not there.
+func TestARefusedFlagIsSpelledTheWayItWasTyped(t *testing.T) {
+	for _, refusal := range []struct {
+		name string
+		args []string
+		run  func([]string) error
+		want string
+	}{
+		{"an unknown flag", []string{"a task", "--nosuchflag"}, runDo, "--nosuchflag"},
+		{"a count it cannot read", []string{"a task", "--max-turns", "notanumber"}, runExec, "--max-turns"},
+	} {
+		t.Run(refusal.name, func(t *testing.T) {
+			_, errs := captureUsage(t)
+			_ = refusal.run(refusal.args)
+			said, _, _ := strings.Cut(errs.String(), "\n")
+			if !strings.Contains(said, refusal.want) {
+				t.Errorf("the refusal never spells the flag the way it was typed (%s):\n%s", refusal.want, said)
+			}
+			// One dash in front of the flag's own letters is the spelling
+			// nobody typed and nobody can search for.
+			if strings.Contains(said, " -"+strings.TrimLeft(refusal.want, "-")) {
+				t.Errorf("the refusal echoes the flag back with one dash, which is not what was typed:\n%s", said)
+			}
+		})
+	}
+}
+
+// TestTheDoorThatHasNoYoloSaysWhatToTypeInstead is the vocabulary the two
+// surfaces share, and the one place it used to break.
+//
+// `--yolo` is the conversation's word for "do not stop and ask me". A developer
+// arriving at `aforge do` types it, and `do` is unattended by construction — so
+// the flag would mean nothing — but the refusal said only `flag provided but
+// not defined: -yolo` and left with 1, teaching them a word on one surface and
+// refusing it on the other with nothing in between.
+func TestTheDoorThatHasNoYoloSaysWhatToTypeInstead(t *testing.T) {
+	for _, door := range []struct {
+		name  string
+		run   func([]string) error
+		args  []string
+		names string
+	}{
+		{"do", runDo, []string{"a task", "--yolo"}, "--yes-spend"},
+		{"run", runExecute, []string{"program", "--yolo"}, "--yes-spend"},
+		{"exec", runExec, []string{"a prompt", "--yolo"}, "--token-budget"},
+	} {
+		t.Run(door.name, func(t *testing.T) {
+			_, errs := captureUsage(t)
+			_ = door.run(door.args)
+			said, _, _ := strings.Cut(errs.String(), "\n")
+			if !strings.Contains(said, "aforge "+door.name+" has no --yolo flag") {
+				t.Fatalf("`aforge %s --yolo` is not refused in this surface's own words:\n%s", door.name, said)
+			}
+			if !strings.Contains(said, door.names) {
+				t.Errorf("`aforge %s --yolo` refuses the word without naming what does the job here (%s):\n%s",
+					door.name, door.names, said)
+			}
+		})
+	}
+	// And the three say what unattended MEANS on the page somebody reads before
+	// they type anything, not only in the refusal.
+	if !strings.Contains(handWorkFooter, "--yolo") {
+		t.Errorf("the page for do, exec and run never mentions --yolo, so the only place "+
+			"the word is answered is a refusal somebody has to trip over first:\n%s", handWorkFooter)
+	}
+}
+
+// TestABadCountNamesTheFlagAndWhatItTakes is row 26: `logs --tail` was taught to
+// refuse a bad number with a sentence about the flag, and `exec` was left
+// answering with [strconv]'s `parse error` — which says nothing about what the
+// flag takes and nothing to do next.
+func TestABadCountNamesTheFlagAndWhatItTakes(t *testing.T) {
+	for _, typed := range []struct {
+		flag string
+		want string
+	}{
+		{"--max-turns", "a whole number of turns to allow, such as 200"},
+		{"--turns", "a whole number of turns to allow, such as 200"},
+		{"--token-budget", "a whole number of tokens to allow, such as 150000"},
+	} {
+		t.Run(typed.flag, func(t *testing.T) {
+			_, errs := captureUsage(t)
+			_ = runExec([]string{"a prompt", typed.flag, "notanumber"})
+			said, _, _ := strings.Cut(errs.String(), "\n")
+			if strings.Contains(said, "parse error") {
+				t.Errorf("`aforge exec %s notanumber` still answers with the number package's own word for it:\n%s",
+					typed.flag, said)
+			}
+			if !strings.Contains(said, typed.want) {
+				t.Errorf("`aforge exec %s notanumber` never says what the flag takes — want %q:\n%s",
+					typed.flag, typed.want, said)
+			}
+		})
 	}
 }

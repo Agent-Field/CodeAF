@@ -570,18 +570,40 @@ func sourceNumber(t *testing.T, path, name string) int {
 // named constant: a command's walls are often written as literals in the flag
 // declaration itself — `flags.Int("turns", 200, …)` — and that literal is both
 // what the command's own help prints and what a page quoting it must agree with.
+//
+// IT READS EVERY SHAPE A NUMERIC FLAG IS DECLARED IN, and that is the whole
+// reason this comment is longer than the function. A flag that moves to
+// cmd/aforge's [newCountFlag] — the value that refuses a bad count with a
+// sentence about the flag instead of [strconv]'s `parse error` — keeps exactly
+// the same default and stops being `flags.Int` while it does it. A reader that
+// knew only the one shape went RED with a message about a flag that had not
+// changed, and the day somebody "fixed" that by exempting the flag, every
+// figure declared that way would have gone invisible to this gate — silently,
+// which is the failure mode this whole file exists to prevent. `exec`'s two
+// walls and `logs --tail` are all declared that way now. A shape nobody
+// has taught it is still a hard failure, and that is deliberate.
 func flagNumber(t *testing.T, path, name string) int {
 	t.Helper()
-	match := regexp.MustCompile(`Int\(\s*"` + regexp.QuoteMeta(name) + `"\s*,\s*(\d+)`).
-		FindStringSubmatch(sourceText(t, path))
-	if match == nil {
-		t.Fatalf("%s no longer declares a --%s flag with a number for its default", path, name)
+	quoted := regexp.QuoteMeta(name)
+	shapes := []string{
+		// flags.Int("max-turns", 200, …)
+		`Int\(\s*"` + quoted + `"\s*,\s*(\d+)`,
+		// newCountFlag(flags, "max-turns", 200, …)
+		`newCountFlag\([^,]+,\s*"` + quoted + `"\s*,\s*(\d+)`,
 	}
-	value, err := strconv.Atoi(match[1])
-	if err != nil {
-		t.Fatalf("--%s's default = %q is not a number", name, match[1])
+	for _, shape := range shapes {
+		if match := regexp.MustCompile(shape).FindStringSubmatch(sourceText(t, path)); match != nil {
+			value, err := strconv.Atoi(match[1])
+			if err != nil {
+				t.Fatalf("--%s's default = %q is not a number", name, match[1])
+			}
+			return value
+		}
 	}
-	return value
+	t.Fatalf("%s no longer declares a --%s flag with a number for its default, in any shape this reads "+
+		"(flags.Int, newCountFlag) — teach it the new shape rather than dropping the flag, "+
+		"or the figure the manual quotes stops being checked at all", path, name)
+	return 0
 }
 
 // sourceString is one `name = "…" + "…"` string constant out of such a file,

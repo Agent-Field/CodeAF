@@ -201,9 +201,9 @@ func TestTheThreeVerbsReturnOneEnvelope(t *testing.T) {
 			stop: stopError, Artifacts: []string{}, Error: "the store directory could not be made",
 		})),
 		"exec/success": decode(t, buildExecEnvelope(
-			&exec.Outcome{Stop: exec.StopDone, Text: "the answer", Turns: 2, Elapsed: time.Second}, nil, "openai/gpt-5")),
+			&exec.Outcome{Stop: exec.StopDone, Text: "the answer", Turns: 2, Elapsed: time.Second}, nil, "openai/gpt-5", "")),
 		"exec/failure": decode(t, buildExecEnvelope(
-			&exec.Outcome{Stop: exec.StopError}, errors.New("no key"), "openai/gpt-5")),
+			&exec.Outcome{Stop: exec.StopError}, errors.New("no key"), "openai/gpt-5", "")),
 		"run/success": runEnvelope(t, subharnessRun{model: "openai/gpt-5"}, func(run subharnessRun) error {
 			return reportSubharnessRun(run, exec.RunResult{
 				Output: json.RawMessage(`{"fixed":true}`), Report: "the test passes"})
@@ -338,7 +338,7 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 	if !errors.As(err, &status) || status != exitIncomplete {
 		t.Fatalf("the legacy switch reached `run`: %v, want exit 2", err)
 	}
-	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "answer", Turns: 1}, nil, "openai/gpt-5")
+	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "answer", Turns: 1}, nil, "openai/gpt-5", "")
 	if !envelope.OK || envelope.Stop != stopDone || envelope.Answer != "answer" {
 		t.Fatalf("the legacy switch changed the envelope: %+v", envelope)
 	}
@@ -346,5 +346,53 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 	t.Setenv("AFORGE_EXIT_CODES", "")
 	if got := execExit(&exec.Outcome{Stop: exec.StopBudget, Text: "half"}, nil); got != exitLimit {
 		t.Fatalf("the hatch did not close: budget left with %d, want 3", got)
+	}
+}
+
+// TestTheEnvelopeNamesItsRunAndCountsItsCallsAndRounds is the half of row 5
+// that a script reads.
+//
+// `do --json` carried spend, steps, seconds, settled and the models, and no
+// call count and no round count — so a developer who wanted either went to
+// `~/.aforge/logs/calls.jsonl` and counted rows by hand. The two figures are on
+// the object now, and beside them the run id that makes that file joinable to
+// this one.
+//
+// THE THREE KEYS ARE ALWAYS THERE. A verb that measures none of them publishes
+// them at their zero, exactly as `steps` has always done for a saved program: a
+// caller reaching for a key that vanished is a caller crashing, and that is the
+// one thing this contract may not do.
+func TestTheEnvelopeNamesItsRunAndCountsItsCallsAndRounds(t *testing.T) {
+	for name, result := range map[string]runResult{
+		"a run that measured nothing": {},
+		"a run that measured all three": {
+			Run: "0123456789abcdef", Calls: 422, Rounds: 8,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fields := envelopeFields(t, buildResultEnvelope(result))
+			for _, key := range []string{"run", "calls", "rounds"} {
+				if _, present := fields[key]; !present {
+					t.Errorf("the envelope has no %q key at all — a caller that reaches for one "+
+						"which vanished is a caller crashing:\n%v", key, fields)
+				}
+			}
+		})
+	}
+
+	// And the values are the ones the run was given, not a shape with the right
+	// keys and nothing behind them.
+	fields := envelopeFields(t, buildResultEnvelope(runResult{
+		Run: "0123456789abcdef", Calls: 422, Rounds: 8,
+	}))
+	if fields["run"] != "0123456789abcdef" {
+		t.Errorf("run = %v, and the id names the folder the debug record went to and every row "+
+			"this run wrote into the call log", fields["run"])
+	}
+	if fields["calls"] != float64(422) {
+		t.Errorf("calls = %v, want the 422 the run made", fields["calls"])
+	}
+	if fields["rounds"] != float64(8) {
+		t.Errorf("rounds = %v, want the 8 rounds of work it bought", fields["rounds"])
 	}
 }

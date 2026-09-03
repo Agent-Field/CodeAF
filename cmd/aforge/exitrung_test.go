@@ -47,7 +47,7 @@ func TestARunThatSpentMoneyAndFailedDoesNotTellAScriptItNeverRan(t *testing.T) {
 
 	// AND THE ENVELOPE SAYS THE SAME THING IN WORDS. `stop` is what a script is
 	// meant to branch on, so a right number under the wrong word is half a fix.
-	envelope := buildExecEnvelope(outcome, said, "a/model")
+	envelope := buildExecEnvelope(outcome, said, "a/model", "")
 	if envelope.Stop != stopIncomplete {
 		t.Fatalf("the same run published stop %q, and the ladder puts it on exit %d, whose reason is %q",
 			envelope.Stop, int(exitIncomplete), stopIncomplete)

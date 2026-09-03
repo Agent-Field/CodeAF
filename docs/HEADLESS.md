@@ -219,7 +219,10 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
   "tokens": {"in": 18422, "out": 1130},
   "seconds": 184.2,
   "model": "deepseek/deepseek-v4-flash",
-  "steps": 6
+  "steps": 6,
+  "run": "0123456789abcdef",
+  "calls": 47,
+  "rounds": 2
 }
 ```
 
@@ -235,6 +238,9 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | `seconds` | Wall clock. |
 | `model` | The model the work ran on. |
 | `steps` | How many pieces of work ran. A saved program does not count them and reports `0`. |
+| `run` | This invocation's id. `--debug` names its folder after it and every row this run wrote into `~/.aforge/logs/calls.jsonl` carries it, so `aforge logs --run <id>` joins the two. |
+| `calls` | Model calls this run made, counted whether or not the call log is switched on. |
+| `rounds` | How many times the run bought more work after looking at what it had. `exec` and a saved program do not measure it and report `0`. |
 
 **The old field names are still printed, beside the new ones, for one release**,
 so nothing that reads them breaks today: `deliverable` → `answer`, `artifacts` →
@@ -427,7 +433,10 @@ whole; it never has to strip anything out of it.
   "tokens": {"in": 48213, "out": 3110},
   "seconds": 184.2,
   "model": "deepseek/deepseek-v4-flash",
-  "steps": 9
+  "steps": 9,
+  "run": "0123456789abcdef",
+  "calls": 9,
+  "rounds": 0
 }
 ```
 
@@ -440,6 +449,9 @@ wrote two readers and the second one was written wrong.
 | `answer` | The deliverable, whole. Empty is possible, and it is now `stop: "incomplete"` and exit `2` rather than the old `stop: "done"` and exit `6`. |
 | `stop` | `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`. The executor's own endings that are not rungs of their own — `empty`, `overrun`, `promote`, `paused`, `cancelled` — still pass through under their own names and land on exit `2`. |
 | `steps` | Iterations of the tool loop. This is what `turns` was. |
+| `run` | This invocation's id, as above. |
+| `calls` | Model calls this run made. |
+| `rounds` | `exec` does not plan and cannot grow: always `0`. |
 | `seconds` | Wall clock. This is what `elapsed_ms` was, in seconds. |
 | `files` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. This is what `artifacts` was. |
 | `tokens`, `spend_usd` | What `usage` carried, split into the two facts a campaign actually reports. |
@@ -581,7 +593,7 @@ esac
 | `aforge notebook [retract\|restore <seq>]` | Inspect, search, and retract beliefs. |
 | `aforge services [stop <name>]` | Long-running processes it was asked to keep. |
 | `aforge models` | The router ledger — ratings and how many observations back each. |
-| `aforge rebuild [--yes]` | Discard every derived table and replay the journal. |
+| `aforge rebuild [--yes]` | Discard everything worked out from the journal and replay it. |
 | `aforge help env` | The environment table: every variable and its default. It moved off `aforge --help`, which was 127 lines with more than half of them this table. |
 
 ### `aforge chat --once` — one turn, and what it is not

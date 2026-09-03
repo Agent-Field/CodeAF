@@ -90,7 +90,10 @@ stdout, always parseable, printed even when the run failed**:
   "tokens": {"in": 18422, "out": 1130},
   "seconds": 91.4,
   "model": "anthropic/claude-opus-4",
-  "steps": 3
+  "steps": 3,
+  "run": "0123456789abcdef",
+  "calls": 47,
+  "rounds": 2
 }
 ```
 
@@ -106,9 +109,24 @@ stdout, always parseable, printed even when the run failed**:
 | `seconds` | wall clock |
 | `model` | the model the work ran on |
 | `steps` | how many pieces of work ran — `do`'s nodes, `exec`'s turns. A saved program does not measure it: the key is still there, holding `0`, and that `0` is a measurement nobody took rather than a count of none |
+| `run` | this invocation's id. It names the folder `--debug` writes into, and every row this run wrote into `~/.aforge/logs/calls.jsonl` carries it too — so `aforge logs --run <that id>` is how you get from this object to the calls behind it. Empty on a verb that opened no run of its own |
+| `calls` | how many model calls the run made, counted whether or not the call log is switched on. It is the figure you would otherwise count by hand in `calls.jsonl` |
+| `rounds` | how many times the run went back for **more work** after looking at what it had. One is the ordinary shape; eight is a run that kept finding more to do, and it is the number that explains a bill nothing else here accounts for. `exec` does not plan and a saved program does not grow, so both hold `0` — a measurement nobody took, the way `steps` does |
 
 **Within a release a field is never removed and never changes meaning; new fields may
 appear.** `stop` is the field to read for *why*; the exit code only says how much is wrong.
+
+**None of the three takes `--yolo`.** That is the conversation's flag, and it means "stop
+asking me before each tool call" — these three have nobody watching in the first place, so
+nothing in them stops to ask. Typing it is refused by name:
+
+```
+error: aforge do has no --yolo flag — nothing here stops to ask, and --yes-spend answers the one question a run can still stop on
+```
+
+`--yes-spend` is the nearest thing to an equivalent on `do` and `run`: the one thing they
+still refuse is a plan whose price crosses your limit. `exec` has no such flag — what bounds
+one pass there is `--token-budget` and `--timeout`.
 
 `--json` on `aforge plan new` and `aforge plan revise` is a different thing: it is the plan
 itself, the same bytes `--out` would write. `aforge logs --json` is a third: one JSON object per line,
@@ -243,6 +261,10 @@ different situations:
 ```
 build has no transcript: either nothing has run it yet, or the worker that ran it keeps no record.
 ```
+
+**And it leaves with 1**, not 0. The sentence is for you; the exit code is for the script
+that asked, which would otherwise read a success and conclude the id exists and has nothing
+in it. `aforge logs --run <id>` answers a miss the same way.
 
 The id is the one the plan gave that step — the same id `logs --node <id>` filters on, and
 the value of the `node` field in `logs --json`.
@@ -382,23 +404,27 @@ A name nothing answers to is refused — `service "dev-server" is not running` �
 other than `stop <name>` gets the usage line
 `usage: aforge services [--db path] | aforge services stop <name> [--db path]`.
 
-## aforge rebuild — throwing away every derived table and replaying the journal
+## aforge rebuild — throwing away everything worked out from the journal and replaying it
 
-Everything in the store except the journal is derived from the journal, and can be thrown
-away and rebuilt from it. `aforge rebuild` is that, and it is the recovery path when a
-table looks wrong.
+Everything in the store except the journal was worked out from the journal, and can be
+thrown away and worked out again. `aforge rebuild` is that, and it is the recovery path
+when something in the store looks wrong.
 
 ```
 aforge rebuild [--db path] [--yes]
 ```
 
 **It asks first**, on two lines, and only `y` or `yes` proceeds — anything else, an empty
-line included, prints `cancelled` and changes nothing:
+line included, says `cancelled` and changes nothing:
 
 ```
-Rebuild every materialized view in /home/you/.aforge/graph.db from the event journal?
-The journal itself is untouched; everything derived from it is discarded and replayed. [y/N]
+Rebuild everything aforge worked out from the journal in /home/you/.aforge/graph.db?
+The journal itself is untouched; everything worked out from it is discarded and replayed. [y/N]
 ```
+
+**The question is on the error stream, and so is `cancelled`.** Only the line saying what
+was replayed goes to stdout — so `aforge rebuild | tee log` still shows you the question
+and still lets you answer it, and the file gets the result and not the prompt.
 
 `--yes` skips the question for a script. When it is done it says what it replayed:
 
@@ -414,7 +440,8 @@ underneath it:
 a resident is running (pid 41207) — close it before rebuilding
 ```
 
-Conversations, settings and credentials are not derived tables and are not touched.
+Conversations, settings and credentials were not worked out from the journal and are not
+touched.
 
 ## What goes to stdout and what goes to stderr — piping a headless command
 
@@ -466,6 +493,13 @@ model catalog, but spends nothing of yours.
 aforge needs a model to work with.
 export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
 ```
+
+**`OPENROUTER_API_KEY` is not required** — it is the first of three places a key is looked
+for. The variable, then `OPENAI_API_KEY`, then the key kept in your profile, which is where
+the one you pasted on the first run or typed into `/settings` lives. Any one of them is
+enough, so a machine set up in the chat runs `aforge do` with no variable set at all.
+`aforge doctor`'s first row says which one answered — `key set · OPENROUTER_API_KEY`, or
+`key set · /home/you/.aforge/config.json`, or `key none ·` and the two lines above.
 
 **These change state without spending**: `cache clean`, `rebuild`, `notebook
 retract|restore`, `services stop` and `devices revoke`. The two that destroy something ask
@@ -559,6 +593,19 @@ spelling goes away after one release. `--plan-model` on `exec` is the odd one: t
 plans nothing, so the flag is still accepted and now says
 `note: exec does not plan — --plan-model has no effect here.` rather than quietly doing
 nothing.
+
+**A flag that does not exist, and a number that will not read, are both refused in this
+surface's own words** — spelled with the two dashes you typed, never the one dash Go's flag
+package writes:
+
+```
+error: aforge do has no --nosuchflag flag
+error: invalid value "notanumber" for flag --max-turns: a whole number of turns to allow, such as 200
+```
+
+`--max-turns`, `--turns`, `--token-budget`, `--budget` and `logs --tail` all answer that way;
+a negative count is refused too. The command's own usage follows the line, and the exit is 1
+— nothing was attempted.
 
 ## Is this install healthy — aforge doctor, and where it keeps things
 

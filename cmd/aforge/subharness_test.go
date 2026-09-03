@@ -73,9 +73,10 @@ func TestExecutorForAlwaysResolvesToSomething(t *testing.T) {
 	}
 }
 
-// `--subharness` is not a flag, and the way to prove that is the flag package's
-// own sentence rather than a grep: a person who types it is told the flag does
-// not exist, and the run stops there.
+// `--subharness` is not a flag, and the way to prove that is the refusal a
+// person actually reads rather than a grep: they are told the flag does not
+// exist, and the run stops there. (The sentence is this surface's own now, not
+// the flag package's — see [flagRefusal] and row 6.)
 //
 // The usage text is the other half. It is what `aforge --help` prints, and a
 // program that had stopped taking the flag while still advertising it would be
@@ -91,16 +92,16 @@ func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
 	if code := exitCodeOf(err); code != 1 {
 		t.Fatalf("do accepted --subharness (exit %d)", code)
 	}
-	if !strings.Contains(said.String(), "flag provided but not defined") {
-		t.Fatalf("do answered %q, want the flag package's own not-defined error", said.String())
+	if !strings.Contains(said.String(), "aforge do has no --subharness flag") {
+		t.Fatalf("do answered %q, want a refusal naming the flag that does not exist", said.String())
 	}
 	if !strings.Contains(said.String(), "subharness") {
 		t.Fatalf("the refusal does not name what was typed: %q", said.String())
 	}
 	_, said = captureUsage(t)
 	if code := exitCodeOf(runExecute([]string{"--subharness", "linear", "a-program"})); code != 1 ||
-		!strings.Contains(said.String(), "flag provided but not defined") {
-		t.Fatalf("run answered %q, want the flag package's own not-defined error", said.String())
+		!strings.Contains(said.String(), "aforge run has no --subharness flag") {
+		t.Fatalf("run answered %q, want a refusal naming the flag that does not exist", said.String())
 	}
 
 	for _, banned := range []string{"--subharness", "Workers:"} {

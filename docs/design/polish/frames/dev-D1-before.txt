@@ -1,0 +1,5 @@
+models: work deepseek/deepseek-v4-pro (crew custom, inherited) · plan follows the work model (default)
+your crew was set before the work seat existed · it is running on your small work model until you pick a crew with /crew in the conversation
+aforge needs a model to work with.
+export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+exit=1

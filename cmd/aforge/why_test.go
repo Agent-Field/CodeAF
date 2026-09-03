@@ -58,3 +58,33 @@ func TestWhySelfPrintsTodaysRealReceipts(t *testing.T) {
 		t.Fatalf("why self output omitted fact #%d:\n%s", fact.Seq, printed)
 	}
 }
+
+// TestAskingWhyAboutAnIdThatIsNotThereIsNotASuccess is row 27, and it is the
+// difference between "not found" and "found, and empty".
+//
+// `aforge why bogus-node-id` printed its sentence and returned nil, so a script
+// asking whether an id exists read exit 0 and concluded that it did. The
+// sentence tells a PERSON which of the two silences they have; nothing told a
+// caller. `aforge logs` took this same one-line change over the same emptiness.
+func TestAskingWhyAboutAnIdThatIsNotThereIsNotASuccess(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "why-miss.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	err = runWhyTo([]string{"bogus-node-id", "--db", path}, &output, time.Now())
+	if code := exitCodeOf(err); code == 0 {
+		t.Errorf("`aforge why bogus-node-id` left with 0, so a script reads it as an id that exists and has nothing in it — "+
+			"want a non-zero exit beside the sentence:\n%s", output.String())
+	}
+	// The sentence is still printed: the exit is for the script, the words are
+	// for the person, and taking either away costs the other nothing.
+	if !strings.Contains(output.String(), "has no transcript") {
+		t.Errorf("the miss stopped saying which of the two silences it is:\n%s", output.String())
+	}
+}

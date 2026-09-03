@@ -77,7 +77,7 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 		Elapsed: 1234 * time.Millisecond,
 	}
 
-	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil, "openai/gpt-5"))
+	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil, "openai/gpt-5", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 }
 
 func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
-	encoded, err := json.Marshal(buildExecEnvelope(nil, nil, ""))
+	encoded, err := json.Marshal(buildExecEnvelope(nil, nil, "", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
 	if fields["stop"] != string(stopError) || fields["ok"] != false {
 		t.Fatalf("a nil outcome is not reported as unrunnable:\n%s", encoded)
 	}
-	if code := exitFor(buildExecEnvelope(nil, nil, "").Stop); code != exitCannotRun {
+	if code := exitFor(buildExecEnvelope(nil, nil, "", "").Stop); code != exitCannotRun {
 		t.Fatalf("exit code for a nil outcome = %d, want 1", code)
 	}
 }
@@ -390,7 +390,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 		{"a run that could not be started", nil, "error"},
 		{"a run that broke after it started", &exec.Outcome{Stop: exec.StopError, Turns: 3}, envelopeIncomplete},
 	} {
-		envelope := buildExecEnvelope(door.outcome, runErr, "")
+		envelope := buildExecEnvelope(door.outcome, runErr, "", "")
 		fields := envelopeFields(t, envelope)
 		said, _ := fields[door.field].(string)
 		if said == "" {
@@ -411,7 +411,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	}
 
 	// AND THE `error` KEY IS EMPTY, NOT MISSING, ON THE RUN THAT STARTED.
-	ran := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError, Turns: 3}, runErr, "")
+	ran := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError, Turns: 3}, runErr, "", "")
 	encoded, err := json.Marshal(ran)
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +422,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	// A run that worked says nothing. The KEY IS STILL THERE and empty, which is
 	// the envelope's guarantee: a field is never absent, so a caller reading
 	// `.error` on an older or newer run is never handed null.
-	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil, "")
+	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil, "", "")
 	if clean.Error != "" {
 		t.Fatalf("a run that worked reported an error: %q", clean.Error)
 	}

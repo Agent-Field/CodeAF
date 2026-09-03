@@ -139,7 +139,14 @@ func writeNodeTranscript(output io.Writer, graph *store.Store, nodeID string) er
 		// Two different silences, said as one sentence, because a person
 		// holding an empty answer needs to know which of them they have.
 		fmt.Fprintf(output, "%s has no transcript: either nothing has run it yet, or the worker that ran it keeps no record.\n", nodeID)
-		return nil
+		// AND A MISS IS NOT A SUCCESS. This returned nil, so a script asking
+		// whether an id exists read exit 0 and concluded it existed and was
+		// empty — the two states this sentence exists to tell apart, collapsed
+		// again the moment anything but a person read it. `aforge logs` took
+		// exactly this change over the same emptiness, and `notebook retract`
+		// has always got it right. Exit 1 is the rung: nothing ran, because
+		// there was nothing here to run (envelope.go).
+		return exitCannotRun
 	}
 	for _, entry := range entries {
 		fmt.Fprintln(output, transcriptHeadline(entry))

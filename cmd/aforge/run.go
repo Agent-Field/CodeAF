@@ -520,26 +520,37 @@ func spendPreauthorized(flagged bool, getenv func(string) string) bool {
 	return flagged || (getenv != nil && getenv("AFORGE_PREAUTHORIZE_SPEND") == "1")
 }
 
-func authorizeHeadlessRail(input io.Reader, output io.Writer, interactive, preauthorized bool, rail store.DailyRail) (bool, error) {
-	fmt.Fprintln(output, rail.Question())
+// authorizeHeadlessRail is the spend question `run` asks when a rail is
+// reached, and EVERY LINE IT WRITES IS AN ASIDE — the question, the two
+// sentences that answer it without asking, and the newline that tidies up after
+// a keystroke. Not one of them is the answer a script captures.
+//
+// SO THE WRITER IS NAMED FOR WHAT IT IS. It was called `output`, which is this
+// package's name for the stream that carries the answer
+// ([TestNoDoorPrintsItsCommentaryToStdout] reads exactly that name), while the
+// only caller has always handed it os.Stderr. A writer whose name says stdout
+// and whose value is stderr is how the next person threads the wrong one in and
+// puts a question a script cannot see into the pipe.
+func authorizeHeadlessRail(input io.Reader, commentary io.Writer, interactive, preauthorized bool, rail store.DailyRail) (bool, error) {
+	fmt.Fprintln(commentary, rail.Question())
 	if preauthorized {
-		fmt.Fprintln(output, "spend preauthorized; raising today's rail and continuing")
+		fmt.Fprintln(commentary, "spend preauthorized; raising today's rail and continuing")
 		return true, nil
 	}
 	if !interactive {
-		fmt.Fprintln(output, "stdin is not a TTY; rerun with --yes-spend or AFORGE_PREAUTHORIZE_SPEND=1 to continue without a prompt")
+		fmt.Fprintln(commentary, "stdin is not a TTY; rerun with --yes-spend or AFORGE_PREAUTHORIZE_SPEND=1 to continue without a prompt")
 		return false, nil
 	}
-	fmt.Fprint(output, "Continue? [y/N] ")
+	fmt.Fprint(commentary, "Continue? [y/N] ")
 	var answer string
 	if _, err := fmt.Fscan(input, &answer); err != nil {
 		if errors.Is(err, io.EOF) {
-			fmt.Fprintln(output)
+			fmt.Fprintln(commentary)
 			return false, nil
 		}
 		return false, err
 	}
-	fmt.Fprintln(output)
+	fmt.Fprintln(commentary)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	return answer == "y" || answer == "yes", nil
 }

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
@@ -28,9 +29,18 @@ func runExec(args []string) error {
 	// everywhere else in this product — AFORGE_DAILY_BUDGET, /budget,
 	// --max-cost — so `--budget 150000` read as $150,000 exactly once, and the
 	// once was enough. The bound is unchanged; only its spelling is.
-	maxTurns := flags.Int("max-turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
+	// A BAD COUNT IS REFUSED WITH A SENTENCE ABOUT THE FLAG, exactly as
+	// `logs --tail` already refuses one (count.go). These two answered
+	// `invalid value "notanumber" for flag -turns: parse error` — [strconv]'s
+	// word for it, reaching a person through two layers, neither of which
+	// wrote it for anybody to read: it says nothing about what the flag takes
+	// and nothing to do next. The hidden old spellings write through to these,
+	// so `--turns` and `--budget` are refused in the same words.
+	maxTurns := newCountFlag(flags, "max-turns", 200, "turns to allow",
+		"runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
 	renamedFlag(flags, "turns", "max-turns")
-	maxTokens := flags.Int("token-budget", 150000, "token budget for this run (env AFORGE_EXEC_BUDGET)")
+	maxTokens := newCountFlag(flags, "token-budget", 150000, "tokens to allow",
+		"token budget for this run (env AFORGE_EXEC_BUDGET)")
 	renamedFlag(flags, "budget", "token-budget")
 	// A DURATION FLAG TAKES A DURATION, on every door that has one. This was an
 	// integer of seconds while `aforge do --timeout 15m` worked, so the same
@@ -56,9 +66,7 @@ func runExec(args []string) error {
 	asJSON := flags.Bool("json", false, jsonFlagHelp)
 	output := flags.String("out", "", "write the machine-readable result to this file")
 	shorthandFlag(flags, "o", "out")
-	debug := flags.Bool("debug", false,
-		"keep the full record of this run — call bodies, tool calls and the choices made — "+
-			"in a folder of its own under the state root (env AFORGE_DEBUG)")
+	debug := flags.Bool("debug", false, debugFlagHelp())
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -145,7 +153,7 @@ func runExec(args []string) error {
 		fmt.Fprintln(os.Stderr, "error:", execFailureWords(runErr))
 	}
 
-	envelope := buildExecEnvelope(outcome, runErr, settings.Model)
+	envelope := buildExecEnvelope(outcome, runErr, settings.Model, trace.RunFrom(traced))
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return err
@@ -383,7 +391,7 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // already the name `aforge run` publishes "the reason it did not finish" under
 // ([subharnessRun.sayEnvelope]), so the two verbs say one thing one way rather
 // than growing a second word for it.
-func buildExecEnvelope(outcome *exec.Outcome, runErr error, model string) resultEnvelope {
+func buildExecEnvelope(outcome *exec.Outcome, runErr error, model, run string) resultEnvelope {
 	// THE STOP IS READ OFF THE OUTCOME BEFORE THE OUTCOME IS INVENTED. A nil
 	// outcome is the one thing that means "it never ran", so substituting an
 	// empty one first would erase the fact the rung is about.
@@ -413,7 +421,12 @@ func buildExecEnvelope(outcome *exec.Outcome, runErr error, model string) result
 		Seconds:   outcome.Elapsed.Seconds(),
 		Model:     model,
 		Steps:     outcome.Turns,
-		Extra:     extra,
+		Run:       run,
+		// `exec` does not plan and cannot grow, so `rounds` is left at the zero
+		// the contract documents as an absent measurement — the key is there
+		// for a caller that reads one object shape across all three verbs.
+		Calls: calllog.CallsFor(run),
+		Extra: extra,
 	})
 }
 

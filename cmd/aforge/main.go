@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -25,9 +26,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 func main() {
@@ -294,8 +297,11 @@ const (
 // and where taking it out of the group's lines had silently removed it. One
 // source of truth, two places it is read.
 var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
-  the job, exec does not plan, run follows a plan somebody saved. All three
-  end the same way, and why is in --json's stop field:
+  the job, exec does not plan, run follows a plan somebody saved. None of them
+  takes --yolo: they run with nobody watching and nothing in them stops to ask.
+  What do and run can still refuse is a plan whose price crosses your limit,
+  and --yes-spend answers that in advance. All three end the same way, and
+  why is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
   AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
 
@@ -358,7 +364,7 @@ Housekeeping — changes state on disk or on the network
       delete ~/.aforge/cache to free disk. It prints the size and path, then
       asks you to type "` + cacheCleanWord + `" — --yes skips that. Conversations are untouched
   aforge rebuild [--db path] [--yes]
-      discard every derived table and replay the journal
+      discard everything aforge worked out from the journal and replay it
   aforge serve [--workspace path] [--relay url]
       be reachable from your other devices without ssh, with a pairing code
   aforge devices
@@ -422,7 +428,11 @@ Every variable below is read at launch. A variable set here always wins over the
 ` + "`/settings`" + ` sheet in the chat, and that row reads read-only in the sheet rather
 than fighting your shell.
 
-  OPENROUTER_API_KEY   required
+  OPENROUTER_API_KEY   a provider key, and the first of three places one is
+                       looked for — this, then OPENAI_API_KEY, then the key
+                       kept in your profile. Any one of them is enough, so a
+                       machine set up in the chat needs no variable at all;
+                       ` + "`aforge doctor`" + ` names the one that answered.
   AFORGE_MODEL         default ` + config.DefaultModel + `
   AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
                        replans, working methods and the delivery gate on a
@@ -989,6 +999,41 @@ const yesSpendFlagHelp = "spend past today's limit and past the plan-price quest
 // looking for where their data lives searches for a store, and `aforge doctor`
 // now labels the same file that way.
 const storeFlagHelp = "the store to work in"
+
+// debugFlagHelp is what `--debug` keeps AND WHERE IT PUTS IT, said once on the
+// three doors that carry it.
+//
+// It read `in a folder of its own under the state root`, which names no folder
+// at all — and the state root has two of them. The developer who turned the
+// switch on went to `~/.aforge/runs/aforge-do-<n>/`, which is where the run's
+// own line on stderr had just pointed them for a DIFFERENT thing (the graph
+// scratch `--keep` holds), found nothing but a `graph.db`, and concluded the
+// record was never written. It had been: the record is a sibling of the
+// model-call log, under `logs/trace/<run>/`, and the run announces the exact
+// path on stderr when it has written one (internal/trace's Announce).
+//
+// SO THE SENTENCE NAMES THE PLACE, and names it from the constants that own it
+// rather than from a path typed here — a folder that moves and a help page that
+// does not is exactly how this sentence went wrong the first time.
+//
+// It is a function and not a constant because the root MOVES: internal/home
+// reads AFORGE_HOME, so the answer is only right once the environment the door
+// was started with has been read. A package-level string would be computed at
+// init and would name somebody else's path for the rest of the process.
+func debugFlagHelp() string {
+	return "keep the full record of this run — call bodies, tool calls and the choices " +
+		"made — in a folder of its own under " + debugRecordRoot() + " (env AFORGE_DEBUG)"
+}
+
+// debugRecordRoot is where the debug records go, as a person would type it:
+// tilde-shortened when it really is under their home, and absolute otherwise.
+func debugRecordRoot() string {
+	root := home.Join(trace.DirName, trace.TraceDirName)
+	if house, err := os.UserHomeDir(); err == nil && house != "" && strings.HasPrefix(root, house+string(filepath.Separator)) {
+		return "~" + root[len(house):]
+	}
+	return root
+}
 
 // applySeats puts the ladder's answer where the rest of the process reads its
 // two models.

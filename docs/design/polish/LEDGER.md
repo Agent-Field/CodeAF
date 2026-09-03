@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 08:45Z_
+_2026-09-03 09:13Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -56,9 +56,9 @@ _2026-09-03 08:45Z_
 - `C23`   low  CLOSED The two help surfaces spell the same flags differently
 - `C24`   low  CLOSED The `--json` object is described only in a repository design document
 - `C25`   low  CLOSED Two query commands report a miss as a success
-- `C26`   med  open   `exec --turns` takes a bad count without saying which flag, what was given, or what it takes
-- `C27`   med  open   `aforge why <bad-id>` reports a miss as a success
-- `C28`   med  open   `aforge rebuild` asks its question on stdout, and the structural test cannot see it
+- `C26`   med  CLOSED `exec --turns` takes a bad count without saying which flag, what was given, or what it takes
+- `C27`   med  CLOSED `aforge why <bad-id>` reports a miss as a success
+- `C28`   med  CLOSED `aforge rebuild` asks its question on stdout, and the structural test cannot see it
 
 ## commands — [audit-commands.md](audit-commands.md)
 
@@ -94,12 +94,12 @@ _2026-09-03 08:45Z_
 
 ## dev — [audit-dev.md](audit-dev.md)
 
-- `D1`    high open   The crew banner contradicts itself in two consecutive lines
-- `D2`    high open   Global help calls `OPENROUTER_API_KEY` **required** and it is not
-- `D3`    high open   `--debug` promises a record `in a folder of its own under the state root` and the developer could not find it
-- `D4`    med  open   `do` has no `--yolo`, and a developer coming from the chat types it and gets `error: flag provided but not defined: -yolo` and exit 1. `do` IS unattended by construction, so the flag would be meaningless
-- `D5`    med  open   `do --json` carries spend, nodes, seconds, settled and model but no CALL COUNT and no ROUND COUNT, so the developer went to `~/.aforge/logs/calls.jsonl` to reconstruct them
-- `D6`    low  open   A refused flag is echoed back in a spelling the person did not type: `--nosuchflag` comes back as `error: flag provided but not defined: -nosuchflag`. Go's flag package writes it, and every other door on this surface now spells flags with two dashes. Somebody scanning for their own typo is looking for a string that is not there.
+- `D1`    high CLOSED The crew banner contradicts itself in two consecutive lines
+- `D2`    high CLOSED Global help calls `OPENROUTER_API_KEY` **required** and it is not
+- `D3`    high CLOSED `--debug` promises a record `in a folder of its own under the state root` and the developer could not find it
+- `D4`    med  CLOSED `do` has no `--yolo`, and a developer coming from the chat types it and gets `error: flag provided but not defined: -yolo` and exit 1. `do` IS unattended by construction, so the flag would be meaningless
+- `D5`    med  CLOSED `do --json` carries spend, nodes, seconds, settled and model but no CALL COUNT and no ROUND COUNT, so the developer went to `~/.aforge/logs/calls.jsonl` to reconstruct them
+- `D6`    low  CLOSED A refused flag is echoed back in a spelling the person did not type: `--nosuchflag` comes back as `error: flag provided but not defined: -nosuchflag`. Go's flag package writes it, and every other door on this surface now spells flags with two dashes. Somebody scanning for their own typo is looking for a string that is not there.
 - `D7`    ?    open   NOT A DEFECT ON THIS BRANCH, and recorded so nobody reopens it: the report says a bad flag and a failed run both exit 1, so a typo and a failure are indistinguishable to a script. That was TRUE ON DEV and is FALSE HERE. `7d6e372c6` moved `exec.StopError` off exit 1
 - `D8`    ?    open   NOT A DEFECT ON THIS BRANCH: the report says the usage banner prints `--db` and `--timeout 900` while `do --help` prints single-dash, and that the banner still shows the bare-seconds form. Both were fixed here
 

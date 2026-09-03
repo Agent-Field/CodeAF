@@ -458,7 +458,7 @@ models line:
 
 ```
 models: work deepseek/deepseek-v4-flash (crew custom, inherited) · plan deepseek/deepseek-v4-flash (crew custom)
-your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
 ```
 
 `inherited` beside the class means exactly that: **the model came from your crew, but from a
@@ -485,7 +485,7 @@ work takes the class the worker was split out of, **small work**, and the thread
 once, the first time a task starts:
 
 ```
-your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
 ```
 
 **It is said once per session**, when work actually starts, and never per task or per part.
@@ -776,7 +776,8 @@ seating anything this run.
 
 **And no crew receipt is posted.** The line a profile older than the work seat ordinarily gets
 when its first task starts — `your crew was set before the work seat existed · it is running on
-your small work model until you pick a crew again` — is not said under this flag. That line
+your small work seat's model until you pick a crew with /crew in the conversation` — is not said
+under this flag. That line
 reports a substitution, and under the flag there is none: every call is already on the model
 you are talking to, which is your own answer to the question it asks. Picking a crew would not
 change what runs, so the sentence is not offered, and the `/crew` sheet says nothing about an

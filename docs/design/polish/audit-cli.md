@@ -404,3 +404,82 @@ prints — the binary that emitted them is gone), `err-services-{before,after}.t
   about which flag owns which path, which is a design call the audit does not
   settle. The syscall text, the wrapped chain and the missing remedy are closed.
 - **Rows seven, twenty-three and twenty-four** are other lanes' or other passes'.
+
+
+---
+
+## fixed — the developer lane's three (rows 26, 27, 28)
+
+Landed on `ui/polish-v0` alongside `audit-dev.md`'s seven. Every test below was checked by
+reverting its fix and watching it fail.
+
+**Row 26 — `exec --turns` takes a bad count silently.** `cmd/aforge/exec.go` — both numeric
+walls adopt `newCountFlag` (`count.go`), which is what `logs --tail` already uses. Test:
+`TestABadCountNamesTheFlagAndWhatItTakes` in `cmd/aforge/usage_test.go`.
+
+`--token-budget` went with `--turns` rather than being left as an identical defect one line
+below it; the hidden old spellings `--turns` and `--budget` write through to the same values
+and are refused in the same words.
+
+| | |
+| --- | --- |
+| before | `error: invalid value "notanumber" for flag -turns: parse error` |
+| after | `error: invalid value "notanumber" for flag --turns: a whole number of turns to allow, such as 200` |
+
+`frames/cli-C26-before.txt` → `frames/cli-C26-after.txt`.
+
+**This row had a second half nobody had looked for.** `internal/manual/truth_test.go`'s
+`flagNumber` reads a flag's default out of the source with a regex matching `flags.Int(…)`
+only, so `--max-turns`'s figure — which `models-and-cost.md` quotes — went unreadable the
+moment the flag changed shape, and `logs --tail` would have done the same. The reader was
+taught the new shape rather than the flag being exempted: exempting it is how a whole class
+of quoted figures goes silently unchecked. The default did not move, so no page did.
+
+**Row 27 — `aforge why <bad-id>` reported a miss as a success.** `cmd/aforge/why.go`
+(`writeNodeTranscript` returns `exitCannotRun`), `internal/manual/chat/running-from-the-terminal.md`.
+Tests: `TestAskingWhyAboutAnIdThatIsNotThereIsNotASuccess` in `cmd/aforge/why_test.go`, and
+`TestWhySaysSoWhenThereIsNoTranscript` in `transcript_test.go` now asserts the rung beside
+the sentence. The sentence is unchanged — it is for the person; the exit is for the script.
+`frames/cli-C27-before.txt` (exit 0) → `frames/cli-C27-after.txt` (exit 1).
+
+**Row 28 — `aforge rebuild` asked its question in the pipe, and the structural test could
+not see it.** `cmd/aforge/rebuild.go` (the question and `cancelled` go to `aside`; the
+result line stays on stdout), `cmd/aforge/main.go` (`usageText`), `cmd/aforge/run.go`,
+`cmd/aforge/streams_test.go`, `internal/manual/chat/running-from-the-terminal.md`,
+`docs/HEADLESS.md`. Tests: `TestTheRebuildQuestionIsAnAsideAndNotInThePipe`
+(`cmd/aforge/rebuild_test.go`) and `TestNoDoorPrintsItsCommentaryToStdout`.
+
+**The mechanism in the row is not the one that was there, and it matters.** The prompt did
+arrive through a writer passed as a PARAMETER — and that was never the problem: the
+parameter is named `output`, which is one of `answerWriters`, so the call WAS scanned. What
+the scan could not see was the SHAPE. The question mark ended its own line, and the half
+that actually waits for a keystroke ends `[y/N] ` — no colon, no question mark, nothing the
+two existing rules recognise. A bracketed-choice rule is what closes it, and it was checked
+both ways: with the rule and the defect restored the test FAILS; with the old rules and the
+defect restored it goes GREEN, which is the gate slipping exactly as the row said.
+
+The new rule immediately found a second instance nobody had filed: `run.go`'s
+`authorizeHeadlessRail` writes `Continue? [y/N] ` to a parameter named `output` whose only
+caller has always passed `os.Stderr`. A writer whose name says stdout and whose value is
+stderr is how the next person threads the wrong one in, so the parameter is `commentary`
+now — every line that function writes is an aside.
+
+`materialized view` and `derived table` are gone from the prompt, from `usageText`, from
+the manual page and from `docs/HEADLESS.md`. What `rebuild` throws away is **everything
+aforge worked out from the journal**.
+
+| | |
+| --- | --- |
+| before (stdout) | `Rebuild every materialized view in <path> from the event journal?` / `The journal itself is untouched; everything derived from it is discarded and replayed. [y/N] cancelled` |
+| after (stdout) | *empty* |
+| after (stderr) | `Rebuild everything aforge worked out from the journal in <path>?` / `The journal itself is untouched; everything worked out from it is discarded and replayed. [y/N] cancelled` |
+| after (stdout, with `--yes`) | `rebuilt 1 steps from 2 journaled events` |
+
+`frames/cli-C28-before.stdout.txt` → `frames/cli-C28-after.stdout.txt` and
+`frames/cli-C28-after.stderr.txt`.
+
+**Row nineteen is answered by the above and is left for whoever owns it to close.** Its
+skip note said it needed somebody to decide what `aforge rebuild` discards in plain words;
+that decision is made and shipped here — *everything aforge worked out from the journal* —
+and the prompt no longer runs into the answer stream. The number is spelled as a word so
+`scripts/ledger.py` does not close a row this lane was not given.

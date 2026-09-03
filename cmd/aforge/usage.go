@@ -76,12 +76,85 @@ func parseCommandFlags(flags *flag.FlagSet, args []string) error {
 	default:
 		// One sentence, and then the command's own text — never the flag
 		// package's dump of the same list under a different spelling.
-		fmt.Fprintln(usageErr, "error:", err)
+		fmt.Fprintln(usageErr, "error:", flagRefusal(flags.Name(), err))
 		writeCommandUsage(usageErr, flags)
 		// A flag that could not be read is the first rung of the one ladder:
 		// nothing was attempted, so nothing ran (envelope.go).
 		return exitCannotRun
 	}
+}
+
+// flagRefusal is what a person reads when a flag was refused, and it is the
+// flag package's fact said in this surface's own words.
+//
+// TWO DASHES, BECAUSE THAT IS WHAT THEY TYPED. Go writes `flag provided but not
+// defined: -nosuchflag` and `invalid value "x" for flag -turns`, with one dash,
+// on a surface where every other door — the usage table, the per-command page,
+// this file's own [flagRows] — spells a word-length flag with two. Somebody
+// scanning a screenful for their own typo is searching for `--nosuchflag`, and
+// it is not there.
+//
+// AND A NEAR MISS IS NAMED. `do` has no `--yolo`, so a developer arriving from
+// the conversation — where `--yolo` IS the word for this posture — met `error:
+// flag provided but not defined: -yolo` and exit 1, with nothing on the screen
+// connecting the word they knew to the thing they wanted. The refusal answers
+// with the flag that does the job, or with why there is nothing to do.
+//
+// Anything this does not recognise is handed back unchanged: a sentence a
+// flag's own [flag.Value] wrote is already in a person's words (count.go,
+// wall.go), and rephrasing it here would be this seam talking over the door.
+func flagRefusal(command string, err error) string {
+	text := err.Error()
+	if name, found := strings.CutPrefix(text, undefinedFlagPrefix); found {
+		name = strings.TrimLeft(strings.TrimSpace(name), "-")
+		refusal := "aforge " + command + " has no --" + name + " flag"
+		if instead := flagInstead(command, name); instead != "" {
+			return refusal + " — " + instead
+		}
+		return refusal
+	}
+	// `invalid value "notanumber" for flag -turns: <what the flag takes>`. The
+	// half after the colon belongs to the flag and is left exactly as written.
+	if head, tail, found := strings.Cut(text, " for flag -"); found {
+		if name, said, split := strings.Cut(tail, ": "); split {
+			return head + " for flag --" + strings.TrimLeft(name, "-") + ": " + said
+		}
+	}
+	return text
+}
+
+// undefinedFlagPrefix is the flag package's own opening for a flag it has never
+// heard of. It is matched rather than re-implemented because it is the only
+// thing that distinguishes that case from a value it could not read.
+const undefinedFlagPrefix = "flag provided but not defined: "
+
+// flagInstead is the second half of a near miss: what to do instead of the flag
+// that was refused, on the door that refused it. Empty for a flag nobody has a
+// better answer for, where the command's own usage under the refusal is the
+// answer.
+//
+// `--yolo` IS THE ONE ENTRY, and it earns a table rather than an `if` because
+// the vocabulary a person carries between the two surfaces is exactly what this
+// is for: the conversation has `--yolo`, `do` and `exec` and `run` do not, and
+// a word taught on one surface and refused on another with no explanation is
+// the surface teaching a wrong thing.
+func flagInstead(command, flag string) string {
+	if flag != "yolo" {
+		return ""
+	}
+	switch command {
+	case "do", "run":
+		// The one thing these two still stop for is money, and that flag is
+		// named rather than described: it is the equivalent a person came here
+		// looking for.
+		return "nothing here stops to ask, and --yes-spend answers the one question a run can still stop on"
+	case "exec":
+		// `exec` has no --yes-spend and no plan to price: what bounds it is
+		// --token-budget and --timeout, so promising a spend flag here would
+		// send somebody looking for a flag this door does not have.
+		return "nothing here stops to ask, and --token-budget and --timeout are what bound one pass"
+	}
+	return ""
 }
 
 // parseWatcher is told, once per door, what a clean parse actually produced.

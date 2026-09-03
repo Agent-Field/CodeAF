@@ -344,12 +344,30 @@ func (s Seat) crewRung() string {
 // and spoken by the settings sheet and the model picker, and the vocabulary law
 // is about MACHINERY — the program's words for its own process — not about a
 // domain noun the product teaches.
+//
+// AND THE PROMISE ATTRIBUTES THE MODEL RATHER THAN DESCRIBING IT. This read
+// `it is running on your small work model`, printed directly under a models
+// line naming `deepseek/deepseek-v4-pro` — so two consecutive lines called one
+// model by its name and then called it small, and the developer who met them
+// could not tell which model the lane was actually on. The two lines were never
+// in disagreement about the FACT: whenever the source is [SeatInherited] the
+// model on the line above IS the inherited one, always, because that is what
+// inheriting means. What differed was the grammar. `small work` is the NAME OF
+// A SEAT on the settings sheet, one of the five this product seats, and putting
+// it in front of `model` turns a seat's name into an adjective about the model
+// it holds.
+//
+// So the notice never characterises the model a second time — it says which
+// SEAT lent it. `your small work seat's model` cannot be read as a claim about
+// deepseek-v4-pro, and it answers the question the person actually has: this
+// seat has no row of its own, so it is borrowing that one's. A description was
+// always going to contradict the line above it, since the two are one model.
 func (s Seat) Notice() string {
 	if s.Source != SeatInherited {
 		return ""
 	}
 	return "your crew was set before the " + string(s.Role) + " seat existed · " +
-		"it is running on your " + tierWords(s.From) + " model until you pick a crew with " +
+		"it is running on your " + tierWords(s.From) + " seat's model until you pick a crew with " +
 		CrewCommand + " in the conversation"
 }
 

@@ -274,3 +274,67 @@ func rowSaying(text, label string) string {
 	}
 	return ""
 }
+
+// TestTheEnvironmentPageDoesNotCallTheKeyVariableRequired is line 7 of the
+// first table on the front door, and it was wrong in the one direction that
+// costs somebody an afternoon.
+//
+// A developer's first run started with no OPENROUTER_API_KEY at all, because
+// the key they had pasted into the chat lives in the profile's own config.json.
+// `aforge help env` called the variable **required**, so the page said the run
+// they had just watched succeed was impossible, and sent them hunting for a key
+// they already had.
+//
+// The truth is the ladder [config.APIKeyAt] climbs and `aforge doctor` reports:
+// the OpenRouter variable, the OpenAI one, then the profile. This asserts the
+// page against that ladder rather than against a sentence, so a rung added
+// tomorrow is a red test here and not a front door that has quietly gone stale.
+func TestTheEnvironmentPageDoesNotCallTheKeyVariableRequired(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv(fallbackKeyEnv, "")
+	if err := config.WriteAPIKey(profile, "sk-or-v1-a-key-kept-in-the-profile"); err != nil {
+		t.Fatal(err)
+	}
+	// The state the page has to describe: no variable anywhere, and a machine
+	// that talks to a model perfectly well.
+	if config.APIKeyAt(profile) == "" {
+		t.Fatalf("the ladder found no key on a profile that holds one, so this test is not about what it says it is")
+	}
+
+	row := environmentRow(t, config.APIKeyEnv)
+	if strings.Contains(strings.ToLower(row), "required") {
+		t.Errorf("`aforge help env` calls %s required, and a key in the profile answers without it — "+
+			"a required thing that is not required sends somebody to find a key they already have:\n%s",
+			config.APIKeyEnv, row)
+	}
+	// And it says where else a key comes from, because "not required" on its
+	// own leaves a person with no idea what IS.
+	for _, rung := range []string{fallbackKeyEnv, "profile"} {
+		if !strings.Contains(row, rung) {
+			t.Errorf("the %s row never mentions %q, so the page names one rung of a three-rung ladder:\n%s",
+				config.APIKeyEnv, rung, row)
+		}
+	}
+}
+
+// environmentRow lifts one variable's whole entry out of [environmentText] —
+// the name line and every continuation line indented under its text column.
+func environmentRow(t *testing.T, variable string) string {
+	t.Helper()
+	var row []string
+	for _, line := range strings.Split(environmentText, "\n") {
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(line), variable+" "):
+			row = append(row, line)
+		case len(row) > 0 && strings.HasPrefix(line, "      ") && strings.TrimSpace(line) != "":
+			row = append(row, line)
+		case len(row) > 0:
+			return strings.Join(row, "\n")
+		}
+	}
+	if len(row) == 0 {
+		t.Fatalf("`aforge help env` has no row for %s at all", variable)
+	}
+	return strings.Join(row, "\n")
+}

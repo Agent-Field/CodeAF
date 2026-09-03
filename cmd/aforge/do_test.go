@@ -2171,3 +2171,54 @@ func TestAHeadlessErrandSchedulesNoPractice(t *testing.T) {
 		}
 	}
 }
+
+// TestAnErrandCountsTheRoundsItsOwnJobsBought is the second figure a developer
+// went to the call log for, and the reason it comes off the journal.
+//
+// `do --json` said how much a run cost and how many steps ran, and never how
+// many times it had gone back for MORE — which is the number that explains a
+// bill nothing else on the object accounts for (`forceJudgement`'s own worked
+// example is a run of 422 calls and eight growth rounds).
+//
+// IT IS COUNTED PER JOB ROOT AND NOT ACROSS THE STORE, for the reason the bill
+// is: a run sharing a durable store with another session must not report that
+// session's rounds as its own.
+func TestAnErrandCountsTheRoundsItsOwnJobsBought(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rounds.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	const mine, theirs = "session-mine", "session-theirs"
+	for _, job := range []struct{ id, session string }{
+		{"job-a", mine}, {"job-b", mine}, {"job-c", theirs},
+	} {
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+			ID: job.id, Brief: "a job", Stage: 1,
+		}}}, store.Provenance{Origin: store.OriginUser, Intent: "a job", SessionID: job.session}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Two rounds on one of this errand's jobs, one on the other, and one on a
+	// job belonging to somebody else entirely.
+	for _, grown := range []struct {
+		job   string
+		round int
+	}{{"job-a", 1}, {"job-a", 2}, {"job-b", 1}, {"job-c", 1}} {
+		if err := graph.RecordJobGrowth(grown.job, store.JobGrowth{
+			Reason: "review", Lineage: grown.job, Round: grown.round, Allowed: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := errandRounds(graph, mine); got != 3 {
+		t.Errorf("this errand's two jobs bought three rounds between them and it reports %d", got)
+	}
+	if got := errandRounds(graph, theirs); got != 1 {
+		t.Errorf("the other session bought one round and it reports %d — a run may not count "+
+			"a neighbour's rounds as its own", got)
+	}
+}

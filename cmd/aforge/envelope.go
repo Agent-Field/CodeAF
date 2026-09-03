@@ -290,6 +290,36 @@ type resultEnvelope struct {
 	// vanished is a caller crashing. `0` here is an absent measurement and not
 	// a count of zero, which is why nothing may report it as one.
 	Steps int `json:"steps"`
+	// Run is the id this invocation minted at the door (internal/trace), and it
+	// is the JOIN between this object and everything the run wrote down: the
+	// debug record's folder is named after it, and every row the model-call log
+	// wrote for this run carries it under the same key.
+	//
+	// It is here because a developer who wanted a call count went to
+	// `~/.aforge/logs/calls.jsonl` and found nothing on the rows naming which run
+	// had written them — so attribution in a file several runs append to was by
+	// timestamp alone. Publishing the id is the half that makes the other half
+	// usable: `aforge logs --run <run>` is now a question with an answer.
+	Run string `json:"run"`
+	// Calls is how many model calls this run made — every attempt that went out
+	// on the wire, counted at the one door they all pass through
+	// (internal/calllog). It is the figure a person reconstructs by grepping the
+	// call log, and it is counted whether or not that log is switched on.
+	//
+	// A verb that opened no run of its own reports 0, on exactly the terms Steps
+	// states above: an absent measurement, never a count of zero.
+	Calls int `json:"calls"`
+	// Rounds is how many times the run bought MORE WORK after looking at what it
+	// had — the growth decisions journaled against this run's jobs
+	// (store.JobGrowthRounds). One round is the ordinary shape; eight is a run
+	// that kept finding more to do, and it is the number that explains a bill
+	// nothing else on this object accounts for.
+	//
+	// `exec` does not plan and a saved program does not grow, so neither measures
+	// it and both report 0 — the same rule again, and the key stays present for
+	// both because a caller reaching for a key that vanished is a caller
+	// crashing.
+	Rounds int `json:"rounds"`
 
 	// extra is what one verb carries beyond the contract, and it is two things:
 	// the OLD field names, kept readable for one release so that a tool written
@@ -351,6 +381,9 @@ type runResult struct {
 	Seconds   float64
 	Model     string
 	Steps     int
+	Run       string
+	Calls     int
+	Rounds    int
 	// Extra is this verb's own fields: its old spellings, and whatever it knows
 	// that the contract has no room for. Nil for a verb with neither.
 	Extra map[string]any
@@ -385,6 +418,9 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 		Seconds:  result.Seconds,
 		Model:    result.Model,
 		Steps:    result.Steps,
+		Run:      result.Run,
+		Calls:    result.Calls,
+		Rounds:   result.Rounds,
 		extra:    result.Extra,
 	}
 }

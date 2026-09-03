@@ -59,15 +59,29 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 		return fmt.Errorf("a resident is running (pid %d) — close it before rebuilding", holder.PID)
 	}
 	if !*yes {
-		fmt.Fprintf(output, "Rebuild every materialized view in %s from the event journal?\n", path)
-		fmt.Fprint(output, "The journal itself is untouched; everything derived from it is discarded and replayed. [y/N] ")
+		// THE QUESTION IS AN ASIDE AND THE ANSWER IS NOT. This went to the
+		// command's `output` — os.Stdout in the shipped binary — so `aforge
+		// rebuild | tee log` handed the person a blank terminal waiting for a
+		// word they could not see, and put the question in the data file
+		// (streams.go). The result line below is the answer and stays where it
+		// is; everything a person reads ABOUT the command goes here.
+		//
+		// AND IT IS SAID IN THE PRODUCT'S OWN WORDS. `materialized view` is how
+		// the storage engine thinks about itself, and nobody typing this
+		// command has to know the term to decide whether they want it: what is
+		// thrown away is everything aforge worked out from the journal, and the
+		// journal is what is kept.
+		fmt.Fprintf(aside, "Rebuild everything aforge worked out from the journal in %s?\n", path)
+		fmt.Fprint(aside, "The journal itself is untouched; everything worked out from it is discarded and replayed. [y/N] ")
 		reader := bufio.NewReader(input)
 		answer, readErr := reader.ReadString('\n')
 		if readErr != nil && strings.TrimSpace(answer) == "" {
 			return fmt.Errorf("rebuild cancelled")
 		}
 		if reply := strings.ToLower(strings.TrimSpace(answer)); reply != "y" && reply != "yes" {
-			_, err = fmt.Fprintln(output, "cancelled")
+			// Nothing was rebuilt, so there is no answer to write: this is the
+			// aside saying what happened to the question it just asked.
+			_, err = fmt.Fprintln(aside, "cancelled")
 			return err
 		}
 	}

@@ -28,13 +28,24 @@ import (
 //
 // Two shapes, and each is commentary by construction:
 //
-//  1. A PROMPT — a literal that ends on a colon or a question mark with no
-//     newline after it. Nothing that is an answer stops mid-line waiting.
+//  1. A PROMPT — a literal that ends on a colon, a question mark, or a
+//     bracketed choice like `[y/N] `, with no newline after it. Nothing that is
+//     an answer stops mid-line waiting.
 //  2. A LABEL COLUMN — a line of a literal that opens with a lower-case word, a
 //     colon, and two or more spaces of padding to align a value after it. That
 //     is the preamble style every headless door writes its `goal:`,
 //     `workspace:`, `models:` and `panel:` lines in, and a table of results is
 //     not written that way.
+//
+// THE BRACKETED CHOICE WAS THE HOLE ROW 28 FELL THROUGH, and it is worth saying
+// exactly how, because the report guessed a different mechanism. `aforge
+// rebuild` asked its question through a writer that arrives as a PARAMETER —
+// and that was never the problem: the parameter is named `output`, which is one
+// of [answerWriters], so the call WAS scanned. What the scan could not see was
+// the SHAPE. The question mark ended its own line, and the half that actually
+// waits for a keystroke ends `[y/N] ` — no colon, no question mark, nothing the
+// two rules above recognise. So a prompt written the way every yes/no prompt in
+// the world is written was invisible, and the rule now names it.
 func TestNoDoorPrintsItsCommentaryToStdout(t *testing.T) {
 	fileSet := token.NewFileSet()
 	names, err := filepath.Glob("*.go")
@@ -191,6 +202,9 @@ func commentaryShape(text string, endsTheLine bool) string {
 		if last := trimmed[len(trimmed)-1]; last == ':' || last == '?' {
 			return "a question"
 		}
+		if bracketedChoice(trimmed) {
+			return "a question"
+		}
 	}
 	for _, line := range strings.Split(text, "\n") {
 		if labelColumn(line) {
@@ -198,6 +212,26 @@ func commentaryShape(text string, endsTheLine bool) string {
 		}
 	}
 	return ""
+}
+
+// bracketedChoice reports the shape every yes/no prompt ends in: a short
+// bracketed list of the answers, with the cursor left after it. `[y/N] `,
+// `[y/n] `, `[Y/n/a] `. It is bounded and has to contain a separator, so a
+// sentence that merely ends in a bracket — a citation, an index, a note in
+// square brackets — is not mistaken for a question nobody can see.
+func bracketedChoice(trimmed string) bool {
+	if !strings.HasSuffix(trimmed, "]") {
+		return false
+	}
+	open := strings.LastIndex(trimmed, "[")
+	if open < 0 {
+		return false
+	}
+	inside := trimmed[open+1 : len(trimmed)-1]
+	if inside == "" || len(inside) > 8 || strings.ContainsAny(inside, " \t") {
+		return false
+	}
+	return strings.Contains(inside, "/")
 }
 
 // labelColumn reports whether a line opens `word:` followed by the padding that

@@ -1,0 +1,2 @@
+bogus-node-id has no transcript: either nothing has run it yet, or the worker that ran it keeps no record.
+exit=1

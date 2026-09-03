@@ -110,6 +110,14 @@ type headlessOutcome struct {
 	Nodes   int     `json:"nodes"`
 	Seconds float64 `json:"seconds"`
 	Settled bool    `json:"settled"`
+	// Run, Calls and Rounds are what a person went to `calls.jsonl` to
+	// reconstruct: which run this was, how many model calls it made, and how
+	// many times it bought more work after looking at what it had. They are
+	// unexported spellings of the envelope's own keys — the receipt reaches a
+	// caller through [errandEnvelope] and nowhere else.
+	run    string
+	calls  int
+	rounds int
 	// tokensIn and tokensOut are the token half of the bill, summed out of the
 	// same journal read that priced the run. They are unexported because they
 	// reach a caller only through the envelope's `tokens` field, which is the
@@ -216,9 +224,7 @@ func runDo(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0,
 		"tokens every call keeps free for its answer and its reasoning "+
 			"(default "+strconv.Itoa(ctxbudget.DefaultCompletionReserveTokens)+")")
-	debug := flags.Bool("debug", false,
-		"keep the full record of this run — call bodies, tool calls and the choices made — "+
-			"in a folder of its own under the state root (env AFORGE_DEBUG)")
+	debug := flags.Bool("debug", false, debugFlagHelp())
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -233,12 +239,17 @@ func runDo(args []string) error {
 	}
 	ctx := openDebugRecord("do", *model, *workspace)
 	defer trace.Announce(ctx, os.Stderr)
+	// The id the door just minted is carried rather than re-read: it is what
+	// the `--json` envelope publishes and what every row this run writes into
+	// the model-call log carries, and a second reading could name a different
+	// run in a process that had opened two.
+	run := trace.RunFrom(ctx)
 	task, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		return err
 	}
 	return doErrand(doRequest{
-		task: task, database: *database, keep: *keep, workspace: *workspace,
+		task: task, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
 		contextFill: *contextFill, completionReserve: *completionReserve,
@@ -249,7 +260,11 @@ func runDo(args []string) error {
 // doRequest is one invocation, with its streams named so a test drives the
 // whole command rather than a piece of it.
 type doRequest struct {
-	task      string
+	task string
+	// run is the id this invocation minted at the door ([trace.Begin]). It goes
+	// out on the `--json` envelope, where it is the join to the model-call log
+	// and to the debug record's folder, both of which are named by it.
+	run       string
 	database  string
 	keep      bool
 	workspace string
@@ -339,6 +354,14 @@ func doErrand(request doRequest) error {
 		outcome = failedErrand(err, started)
 	}
 	outcome.seated(seats)
+	// THE RUN NAMES ITSELF ON EVERY PATH, including the one where nothing
+	// worked: the id is what joins this object to the rows the model-call log
+	// wrote and to the debug record's folder, and a run that fell over after
+	// making four calls is exactly the run somebody goes to that log about.
+	// Both are read HERE, once, for the same reason the seats are — beside
+	// every return is where one of them gets forgotten.
+	outcome.run = request.run
+	outcome.calls = calllog.CallsFor(request.run)
 	return reportErrand(request, outcome)
 }
 
@@ -565,6 +588,37 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 	// these, and taking them from a second query would be a second bill.
 	outcome.tokensIn = spend.Work.PromptTokens + spend.Spine.PromptTokens
 	outcome.tokensOut = spend.Work.CompletionTokens + spend.Spine.CompletionTokens
+	// AND THE ROUNDS OFF THE SAME JOURNAL. How many times this run bought more
+	// work is read from what was written down, for the reason the bill is: a
+	// counter in this process could not see a round a resident spliced.
+	outcome.rounds = errandRounds(graph, session)
+}
+
+// errandRounds is how many times this errand bought MORE WORK: every growth
+// decision journaled against one of its jobs (store.JobGrowthRounds).
+//
+// It asks per job root rather than across the store because the journal keys
+// growth by the job it grew, and a run sharing a durable store with another
+// session must not count that session's rounds as its own — the same rule the
+// bill is read under one function up. A read that fails leaves the count at
+// zero rather than at a guess.
+func errandRounds(graph *store.Store, session string) int {
+	nodes, err := graph.SessionMemberNodes(session)
+	if err != nil {
+		return 0
+	}
+	rounds := 0
+	for _, node := range nodes {
+		if node.Parent != store.RootID {
+			continue
+		}
+		grown, err := graph.JobGrowthRounds(node.ID)
+		if err != nil {
+			continue
+		}
+		rounds += len(grown)
+	}
+	return rounds
 }
 
 // headlessBrain builds and returns the brain this process will run, or nothing
@@ -2538,6 +2592,9 @@ func errandEnvelope(outcome headlessOutcome) resultEnvelope {
 		Seconds:   outcome.Seconds,
 		Model:     outcome.Model,
 		Steps:     outcome.Nodes,
+		Run:       outcome.run,
+		Calls:     outcome.calls,
+		Rounds:    outcome.rounds,
 		Extra:     legacyErrandFields(outcome),
 	})
 }

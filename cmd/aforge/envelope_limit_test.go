@@ -65,7 +65,7 @@ func TestALimitedExecRunPublishesItsAnswerAndNoError(t *testing.T) {
 				Turns:   12,
 				Elapsed: 90 * time.Second,
 			}
-			envelope := buildExecEnvelope(outcome, errors.New(cut.said), "a/model")
+			envelope := buildExecEnvelope(outcome, errors.New(cut.said), "a/model", "")
 			fields := envelopeFields(t, envelope)
 
 			if envelope.Stop != cut.want {
@@ -116,7 +116,7 @@ func TestARunThatCouldNotStartStillFillsTheErrorField(t *testing.T) {
 	envelope := buildExecEnvelope(
 		nil,
 		errors.New("node task-1: OPENROUTER_API_KEY (or OPENAI_API_KEY) is required"),
-		"a/model")
+		"a/model", "")
 	fields := envelopeFields(t, envelope)
 
 	if envelope.Stop != stopError {
@@ -148,7 +148,7 @@ func TestOnlyTheStopThatMeansItNeverRanFillsTheErrorField(t *testing.T) {
 			verb: "aforge exec, cut off by its token budget",
 			built: buildExecEnvelope(
 				&exec.Outcome{Stop: exec.StopBudget, Text: "half an answer"},
-				errors.New("node task-1: token budget exhausted"), "a/model"),
+				errors.New("node task-1: token budget exhausted"), "a/model", ""),
 		},
 		{
 			verb: "aforge do, cut off by the wall",

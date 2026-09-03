@@ -781,3 +781,42 @@ func TestTheNoticeKeepsTheProductsOwnWordForARowOfTheCrew(t *testing.T) {
 		}
 	}
 }
+
+// TestTheInheritedNoticeNamesTheSeatItBorrowedFromRatherThanDescribingTheModel
+// is the defect a developer met on their first run.
+//
+// The banner read
+//
+//	models: work deepseek/deepseek-v4-pro (crew custom, inherited)
+//	your crew was set before the work seat existed · it is running on your small work model until you pick a crew with /crew in the conversation
+//
+// — two consecutive lines, one naming a model and the next calling that same
+// model small, with no way for the reader to tell which model the lane was
+// actually on. The two were never in disagreement about the fact: an inherited
+// seat's model IS the model on the line above, always. So the notice may not
+// describe the model at all; it names the SEAT the model was borrowed from,
+// which is the only thing the line above does not already say.
+func TestTheInheritedNoticeNamesTheSeatItBorrowedFromRatherThanDescribingTheModel(t *testing.T) {
+	dir := writeProfileRows(t, map[string]string{KeyTierLowModel: "deepseek/deepseek-v4-pro"})
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+
+	report := ResolveSeats(dir, "", "").Report()
+	if !strings.Contains(report, "deepseek/deepseek-v4-pro") {
+		t.Fatalf("the banner never names the model the work seat is on:\n%s", report)
+	}
+	// The row's own name is still said — a person has to know which seat to go
+	// and look at — but never as an adjective in front of `model`.
+	if !strings.Contains(report, "your small work seat's model") {
+		t.Errorf("the notice does not say which seat lent the model, so the reader "+
+			"cannot find the row to change:\n%s", report)
+	}
+	for _, describes := range []string{"small work model", "worker model", "careful work model", "thinking model", "reflex model"} {
+		if strings.Contains(report, describes) {
+			t.Errorf("the banner names %s on one line and calls it %q on the next — "+
+				"a seat's name used as an adjective reads as a claim about the model, "+
+				"and the two lines are about ONE model:\n%s",
+				"deepseek/deepseek-v4-pro", "your "+describes, report)
+		}
+	}
+}

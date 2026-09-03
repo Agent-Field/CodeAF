@@ -397,7 +397,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the observation half: a profile older than the seat is told so, once, when work starts on it",
 	},
 	"inheritedSeatPromise": {
-		screen: "it is running on your small work model",
+		screen: "it is running on your small work seat's model",
 		source: "it is running on your ",
 		pkg:    "internal/config",
 		why: "the promise half, naming the row the work is actually on. It stops at the row rather " +
