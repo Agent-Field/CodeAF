@@ -467,28 +467,133 @@ func (a *app) placeCount(id page) int {
 // A bar that is cut in half is a bar that lies about how many places there are,
 // so it gives up words in a stated order rather than being trimmed:
 //
-//  1. every word, every count — while they fit;
-//  2. the place you are standing in, and the places with something new in them —
-//     which is the whole reading a narrow bar has room to be useful for;
-//  3. the place you are standing in, alone.
+//  1. every word, every count, with the bar's own air between the chips —
+//     while they fit;
+//  2. EVERY WORD AGAIN, WITH THE AIR GIVEN UP. The seven words plus the padding
+//     each chip carries are fifty-seven cells and the air between them is six
+//     more, so a sixty-column terminal — a split pane, an ssh session from a
+//     train, a phone — overshot by three and fell all the way past the middle
+//     rung to the single word `home`, because on a quiet machine no place wears
+//     a count. The words are what this row is FOR and the space between them is
+//     not, so the space is what goes first.
+//  3. as many words as fit, in the bar's own order, always carrying the place
+//     you are standing in and any place wearing a count, and ending with a dim
+//     count of the places that did not fit ([barMoreWord]).
+//
+// THE BAR IS THE SIGN AND THE FOOT IS THE ROUTE. A row this narrow cannot say
+// `tab next place` as well as the words — at rung 3 there are not seven cells
+// spare for it — so what the bar owes a person is that the other rooms EXIST,
+// and the key that reaches them is on the foot of every place
+// ([placeHintTail]), which [hintFit] protects to the last cell there is. A bar
+// collapsed to the word `home` said neither of those things, and six of the
+// seven places were undiscoverable on exactly the tier where a person is least
+// able to go looking for them.
 //
 // `numbered` is the map ([app.mapShowing]): every chip grows the digit that
 // jumps to it, in the cells the words were already in, and nothing moves that a
 // person has to re-find when the map goes away.
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
-	full, spans, ok := a.tabBarAt(width, numbered, pal, func(id page) bool { return true })
-	if ok {
+	every := func(page) bool { return true }
+	if full, spans, ok := a.tabBarAt(width, numbered, pal, every, tabGap, 0); ok {
 		a.tabs = spans
 		return a.placeBarMachine(full, width, pal)
 	}
-	worth := func(id page) bool { return a.barKeeps(id) || a.placeCount(id) > 0 }
-	if some, spans, ok := a.tabBarAt(width, numbered, pal, worth); ok {
+	if tight, spans, ok := a.tabBarAt(width, numbered, pal, every, 0, 0); ok {
 		a.tabs = spans
-		return a.placeBarMachine(some, width, pal)
+		return a.placeBarMachine(tight, width, pal)
 	}
-	alone, spans, _ := a.tabBarAt(width, numbered, pal, a.barKeeps)
+	keep, elided := a.barWordsAt(width, numbered)
+	some, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return keep[id] }, 0, elided)
 	a.tabs = spans
-	return a.placeBarMachine(alone, width, pal)
+	return a.placeBarMachine(some, width, pal)
+}
+
+// barMoreWord is the count of places a narrow bar could not carry, in the two
+// spellings [rowfit.go]'s law 2 asks a fact to degrade through: `+3 more` while
+// there are cells for it, and `+3` when there are not.
+//
+// IT IS A SIGN AND NOT A DOOR, and that is decided rather than unfinished: it
+// opens nothing, wears no cursor and claims no span, exactly as the machine's
+// name at the other end of this row does ([placeBarMachine]). A chip that
+// carried a press would have to pick one of the places it stands for, and the
+// key that reaches them all in order is `tab`.
+func barMoreWord(n, room int) string {
+	if n <= 0 {
+		return ""
+	}
+	for _, say := range [...]string{"+" + itoa(n) + " more", "+" + itoa(n)} {
+		if tabPadCols+ansi.StringWidth(say) <= room {
+			return say
+		}
+	}
+	// AND A FRAME WITH NO ROOM EVEN FOR `+6` SAYS NOTHING, rather than running
+	// past its own edge. A count that overflowed the row would be this ladder
+	// committing the fault it exists to prevent.
+	return ""
+}
+
+// barChipWord is the word one place's chip carries: its own word, the digit the
+// map grows in front of it, and the count behind it. It is factored out of
+// [app.tabBarAt] so the ladder can MEASURE a chip without painting one, and so
+// the measurement and the paint can never come to disagree about how wide a
+// word is.
+func (a *app) barChipWord(at int, id page, numbered bool) string {
+	word := id.word()
+	if numbered {
+		word = itoa(at+1) + " " + word
+	}
+	if n := a.placeCount(id); n > 0 {
+		word += " " + itoa(n)
+	}
+	return word
+}
+
+// barWordsAt chooses the words a bar too narrow for all seven carries, and says
+// how many it had to leave off.
+//
+// THE MANDATORY HALF FIRST: the place you are standing in and the word under the
+// cursor may never go ([app.barKeeps] holds that argument), and neither may a
+// place wearing a count, because a number is this row saying something moved in
+// a room you are not standing in.
+//
+// THEN THE ROW IS FILLED IN THE BAR'S OWN ORDER AND STOPS AT THE FIRST WORD
+// THAT WILL NOT FIT — [rowfit.go]'s law 3 said about words instead of facts. A
+// fill that skipped `standing` because `spend` was shorter would draw a
+// different four places at every width, and `alt+1` … `alt+7` name positions
+// that never move; a prefix plus your own word is a reading a person can learn.
+//
+// The count's own cells are reserved out of the fill, measured against the
+// longest spelling this row could end up drawing, because a bar that spent its
+// last cells on one more word and then had no room to say two others exist
+// would be the collapse this ladder is here to prevent, one word later.
+func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
+	cost := func(at int, id page) int { return ansi.StringWidth(a.barChipWord(at, id, numbered)) + tabPadCols }
+	keep := make(map[page]bool, len(pages()))
+	spent := tabLead
+	for at, id := range pages() {
+		if a.barKeeps(id) || a.placeCount(id) > 0 {
+			keep[id] = true
+			spent += cost(at, id)
+		}
+	}
+	reserve := tabPadCols + ansi.StringWidth("+"+itoa(len(pages())))
+	for at, id := range pages() {
+		if keep[id] {
+			continue
+		}
+		if spent+cost(at, id)+reserve > width {
+			break
+		}
+		keep[id] = true
+		spent += cost(at, id)
+	}
+	elided := 0
+	for _, id := range pages() {
+		if !keep[id] {
+			elided++
+		}
+	}
+	return keep, elided
 }
 
 // placeMachineLead is the word in front of the machine's name at the right end
@@ -564,7 +669,11 @@ type placeTabSpan struct {
 
 // tabBarAt draws the bar over the places `keep` admits, says where each chip
 // landed, and says whether it fit.
-func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool) (string, []placeTabSpan, bool) {
+//
+// `gap` is the air between two chips, which the ladder above gives up before it
+// gives up a word, and `elided` is how many places are not on this bar at all —
+// drawn as [barMoreWord] at the end of the row, in the cells that are left.
+func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool, gap, elided int) (string, []placeTabSpan, bool) {
 	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
 	spans := make([]placeTabSpan, 0, len(pages()))
 	at, first := tabLead, true
@@ -573,21 +682,15 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 			continue
 		}
 		if !first {
-			line += strings.Repeat(" ", tabGap)
-			plain += strings.Repeat(" ", tabGap)
-			at += tabGap
+			line += strings.Repeat(" ", gap)
+			plain += strings.Repeat(" ", gap)
+			at += gap
 		}
 		first = false
-		word := id.word()
-		if numbered {
-			// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
-			// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
-			// map leaves the bar exactly where the eye left it.
-			word = itoa(i+1) + " " + word
-		}
-		if n := a.placeCount(id); n > 0 {
-			word += " " + itoa(n)
-		}
+		// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
+		// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
+		// map leaves the bar exactly where the eye left it ([app.barChipWord]).
+		word := a.barChipWord(i, id, numbered)
 		chip := tabPad + word + tabPad
 		band := ansi.StringWidth(word) + tabPadCols
 		switch {
@@ -621,6 +724,13 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		plain += chip
 		spans = append(spans, placeTabSpan{id: id, from: at, to: at + ansi.StringWidth(chip)})
 		at += ansi.StringWidth(chip)
+	}
+	// AND THE COUNT OF WHAT IS NOT HERE RIDES THE END OF THE ROW, with no span
+	// behind it: it is a sign, and [barMoreWord] says why it is not a door.
+	if more := barMoreWord(elided, width-ansi.StringWidth(plain)); more != "" {
+		chip := tabPad + more + tabPad
+		line += pal.dim(chip)
+		plain += chip
 	}
 	return line, spans, ansi.StringWidth(plain) <= width
 }
@@ -1415,10 +1525,61 @@ func hintFit(hint string, room int) string {
 		parts = append(parts[:keep-1], parts[keep:]...)
 		keep--
 	}
+	line := strings.Join(parts, railSep)
+	// THEN THE CLAUSES INSIDE A SENTENCE, for the foot that is not a key list at
+	// all. Home's own foot is one of these — a refusal about a door, said as a
+	// statement with an elaboration hung off a dash and a gloss in brackets
+	// behind that ([takeover.go]) — and at sixty columns it used to read
+	// `open in another window — enter again to move it here (it …`, which
+	// promises a key and then eats it exactly as the sliced key list did. There
+	// is no `·` in it for the ladder above to work with, so the ladder below
+	// takes the whole trailing clause instead ([hintDropClause]).
+	for ansi.StringWidth(line) > room {
+		shorter, ok := hintDropClause(line)
+		if !ok {
+			break
+		}
+		// AND THE WAY OUT SURVIVES THE SENTENCE LADDER TOO. Where the line has a
+		// `tab next place` on it, a clause whose going would take it with it is
+		// not a clause this may drop.
+		if strings.Contains(line, placeHintTail) && !strings.Contains(shorter, placeHintTail) {
+			break
+		}
+		line = shorter
+	}
 	// A FRAME TOO NARROW FOR THE WAY OUT ALONE is the one case left, and there is
 	// nothing to drop that would help: the tail is cut, exactly as it always was.
-	return fit(strings.Join(parts, railSep), room)
+	return fit(line, room)
 }
+
+// hintDropClause takes the LAST WHOLE CLAUSE off a sentence and says whether
+// there was one, in the two shapes the person-facing sentences on this surface
+// are built out of:
+//
+//	a gloss in brackets   `… move it here (it moves when that window's reply ends)`
+//	a dash elaboration    `open in another window — enter again to move it here`
+//
+// The bracket goes first because a gloss is the lowest-value thing on the line
+// by construction — it explains a clause that is still there — and the dash
+// clause goes second, leaving the STATEMENT, which is the half a person needs
+// to know what happened. It never cuts inside a word and never returns half a
+// bracket: a clause either goes whole or the line is handed on untouched.
+func hintDropClause(line string) (string, bool) {
+	if strings.HasSuffix(line, ")") {
+		if at := strings.LastIndex(line, " ("); at > 0 {
+			return strings.TrimRight(line[:at], " "), true
+		}
+	}
+	if at := strings.LastIndex(line, sentenceDash); at > 0 {
+		return strings.TrimRight(line[:at], " "), true
+	}
+	return line, false
+}
+
+// sentenceDash is how this surface hangs an elaboration off a statement, and it
+// is spelled here once so that [hintDropClause] and the sentences it reads are
+// looking for the same three cells.
+const sentenceDash = " — "
 
 // placeMsgLine is the one refusal line this place has to say, drawn instead of
 // the hint. It replaces rather than stacks, being one field: pressing a door
@@ -1443,7 +1604,12 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	if msg == "" {
 		return "", false
 	}
-	return " " + a.pal.dim(a.pathLink(path, fit(msg, width-2))), true
+	// AND IT IS CUT BY DROPPING CLAUSES, NEVER BY SLICING ONE. A refusal is a
+	// sentence rather than a key list, but it is the same promise: home's own
+	// foot reached sixty columns as `open in another window — enter again to
+	// move it here (it …`, naming a key and then eating it. [hintFit] is the one
+	// fitter every foot on this surface goes through.
+	return " " + a.pal.dim(a.pathLink(path, hintFit(msg, width-2))), true
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────

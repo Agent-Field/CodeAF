@@ -516,7 +516,7 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	add(pal.dim(rule(width)), -1)
 	caretX, caretY := 0, 0
 	if a.home.box.empty() {
-		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
+		add(" "+pal.dim(hintFit(homeFootWord, width-2)), -1)
 		// Same as the wide frame: at rest there is nothing to type into, so the
 		// caret is hidden rather than blinking over the heading.
 		a.caret = false
@@ -783,16 +783,16 @@ func (a *app) homeBar(width int, targets []homeBarTarget, pal palette) string {
 		if a.home.msg != "" {
 			// A refusal or a report is a sentence, not a hint, and it is not
 			// painted like one.
-			return " " + pal.dim(fit(a.home.msg, width-2))
+			return " " + pal.dim(hintFit(a.home.msg, width-2))
 		}
-		return " " + paintHint(fit(word, width-2), pal, pal.dim)
+		return " " + paintHint(hintFit(word, width-2), pal, pal.dim)
 	}
 	// A REFUSAL OUTRANKS THE BAR. Every refusal on this screen is a fact about
 	// a door somebody just tried, and a row of targets drawn over the top of it
 	// would be the screen answering a question nobody asked instead of the one
 	// they did.
 	if a.home.msg != "" {
-		return " " + pal.dim(a.pathLink(a.home.msgPath, fit(a.home.msg, width-2)))
+		return " " + pal.dim(a.pathLink(a.home.msgPath, hintFit(a.home.msg, width-2)))
 	}
 	words := make([]string, 0, len(targets))
 	for _, target := range targets {

@@ -300,6 +300,34 @@ The verbs are the row's own. A conversation that is not asking anything has no `
 that cannot be paused has no `p`. Where a row has no verbs at all, `→` keeps every other
 meaning it already had.
 
+## Why does the line at the bottom say fewer things on a narrow window — the hint line drops whole clauses
+
+**The foot never cuts a word, and it never cuts a key in half.** When the frame is too
+narrow for everything the line has to say, whole clauses are dropped, in a stated order,
+and what is left reads as a shorter sentence rather than as a truncated one. There is no
+`…` on this line.
+
+**What goes, and what never goes.** The way out is the last clause and it is kept to the
+last cell there is — `tab next place`, and the `esc` after it where a place adds one. What
+is dropped is taken from the clause *nearest* that protected tail, working backwards, so at
+80 columns the composer's own line loses `alt+. for the map`, then
+`alt+enter send it off as a task`, leaving `enter talk about it · tab next place`. The head
+clause — what `enter` does on the row you are standing on — is the last thing to go, being
+the only one on the line about the thing under the cursor.
+
+**A foot that is a sentence rather than a key list is cut the same way.** Home's own foot
+says things like
+
+```
+ open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
+```
+
+which has no `·` in it at all. The bracketed gloss goes first, because it explains a clause
+that is still on the line; then the clause hanging off the dash; and what a 40-column
+terminal is left with is the statement, `open in another window`. It used to read
+`open in another window — enter again to move it here (it …`, which named a key and then ate
+it.
+
 ## alt+. — see all the keyboard shortcuts at once, on the page you are on
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
@@ -460,6 +488,39 @@ It has a **second bar** under the place bar: its own sections. Those two bars ar
 repetition — the upper one is the seven places, the lower one is settings' own pages. `←` and
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
+
+## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
+
+**Every one of the seven words is still on the bar at 60 columns.** What a narrow frame
+gives up is the *air between the chips*, not a place: the seven words with the padding each
+chip carries are 57 cells, and the spaces between them are six more, so a 60-column
+terminal — a split pane, an ssh session, a phone in landscape — draws
+
+```
+  home  tasks  standing  memory  spend  search  settings
+```
+
+with two cells between the words instead of three. Nothing else changes: the band under the
+word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+7` all mean exactly
+what they mean on a wide screen.
+
+**Under about 57 columns the bar carries what it can and counts the rest.** It keeps the
+place you are standing in, the word the cursor is on, and any place wearing a count, then
+fills in the bar's own order until the row is full and ends with a dim `+3` — the number of
+places that are not on the row:
+
+```
+  home  tasks  standing  +4
+```
+
+`+3 more` where there are cells for the longer spelling, `+3` where there are not. **The
+count is a sign and not a button** — pressing it does nothing, because it stands for several
+places at once and no single one of them is the answer.
+
+**The key that reaches them is `tab`**, and it is named on the foot of every place —
+`… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+7`
+still go straight to a place whether or not its word is on the row, and the numbers never
+move: they are the bar's full seven-place order, not the order of what happens to be drawn.
 
 ## Why a nearly-empty place says what it is for
 

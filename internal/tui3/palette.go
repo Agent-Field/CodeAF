@@ -1752,15 +1752,22 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 // see to that — so this is a switch and not a sum.
 func (a *app) overlayHeight() int {
 	width, height := a.size()
-	// THE ROOM IS MEASURED BEFORE ANY LIST IS ASKED WHAT IT WANTS, because one of
-	// them wants to know: the command list shows as many commands as the frame
-	// can hold and says how many are left over ([menu.height]), which it cannot
-	// decide from a want it has not been told the size of. Every other list still
-	// answers with its own figure and meets the same clamp at the foot of this
-	// function — the number is one number either way.
-	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+	// WHICH LIST IS OPEN IS ASKED BEFORE THE ROOM IS MEASURED, and the order is a
+	// performance law and not a preference. The measurement below is seven calls
+	// deep and [app.inputHeight] alone composes the whole draft block to find out
+	// how tall it is — twenty-five allocations of work that a frame with NO list
+	// open has no use for, which is nearly every frame there is. Measuring it
+	// above this switch put that cost on every scroll notch and broke the
+	// one-screen scroll ceiling in PERF.md by twenty percent.
+	//
+	// So the command list, which is the only list that wants to be told the size
+	// ([menu.height] shows as many commands as the frame can hold and says how
+	// many are left over), is answered AFTER the room is known rather than inside
+	// the switch. Every other list still answers with its own figure and meets the
+	// same clamp at the foot of this function — the number is one number either
+	// way, and it is still written once.
 	var want int
+	commands := false
 	switch {
 	case a.pick.open:
 		want = a.pick.height(width)
@@ -1785,7 +1792,7 @@ func (a *app) overlayHeight() int {
 	case a.subPage.open:
 		want = a.subPage.height(width)
 	case a.menu.open:
-		want = a.menu.height(width, room)
+		commands = true
 	case a.comp.open:
 		want = a.comp.height(width)
 	default:
@@ -1797,6 +1804,11 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
+	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
+		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+	if commands {
+		want = a.menu.height(width, room)
+	}
 	if want > room {
 		want = room
 	}
