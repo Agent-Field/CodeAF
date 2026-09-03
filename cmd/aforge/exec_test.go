@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"os"
@@ -64,7 +65,7 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 		Elapsed: 1234 * time.Millisecond,
 	}
 
-	encoded, err := json.Marshal(buildExecEnvelope(outcome))
+	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 }
 
 func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
-	encoded, err := json.Marshal(buildExecEnvelope(nil))
+	encoded, err := json.Marshal(buildExecEnvelope(nil, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
 	if string(encoded) != want {
 		t.Fatalf("envelope JSON = %s, want %s", encoded, want)
 	}
-	if code := execExitCode(buildExecEnvelope(nil).Stop, ""); code != 5 {
+	if code := execExitCode(buildExecEnvelope(nil, nil).Stop, ""); code != 5 {
 		t.Fatalf("exit code for a nil outcome = %d, want 5", code)
 	}
 }
@@ -286,5 +287,55 @@ func TestHeadlessDocumentsExec(t *testing.T) {
 		if !strings.Contains(document, want) {
 			t.Fatalf("docs/HEADLESS.md never mentions %q", want)
 		}
+	}
+}
+
+// A FAILURE ENVELOPE THAT CANNOT SAY WHY IS NOT A CONTRACT.
+//
+// `exec --json` used to write `{"text":"","stop":"error",…}` and put the only
+// copy of the sentence on stderr, so a caller reading stdout could learn THAT
+// the run failed and never WHY: a rejected model id, a missing key, an
+// unreachable endpoint and a wall all produced the identical object. `do --json`
+// shipped the same field for the same reason; exec never got it.
+func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
+	runErr := errors.New("node " + execNodeKey + `: after 3 attempts: execute request: Post "http://127.0.0.1:1/chat/completions": dial tcp 127.0.0.1:1: connect: connection refused`)
+	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError}, runErr)
+	if envelope.Error == "" {
+		t.Fatal("the failure envelope carries stop=error and no reason at all, so a script can never learn why")
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"error":`) {
+		t.Fatalf("--json carries no error field:\n%s", encoded)
+	}
+	if !strings.Contains(envelope.Error, "connection refused") {
+		t.Fatalf("the reason names something other than the cause: %q", envelope.Error)
+	}
+	// The single leaf's node id is machinery here — there is only ever the one
+	// node — and it used to stand in front of the cause on the one line where
+	// somebody is looking for it.
+	if strings.Contains(envelope.Error, "node "+execNodeKey) {
+		t.Fatalf("the machine contract leaks the node id in front of the cause: %q", envelope.Error)
+	}
+	// AND THE SAME SENTENCE EITHER WAY: what stderr prints is what the envelope
+	// carries, so a caller reading one is never told something the other did not
+	// say.
+	if execFailureWords(runErr) != envelope.Error {
+		t.Fatalf("stderr says %q and the envelope says %q", execFailureWords(runErr), envelope.Error)
+	}
+	// A run that worked says nothing, and the field is absent from the object
+	// rather than present and empty.
+	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil)
+	if clean.Error != "" {
+		t.Fatalf("a run that worked reported an error: %q", clean.Error)
+	}
+	encoded, err = json.Marshal(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"error"`) {
+		t.Fatalf("a clean run's envelope carries an empty error key:\n%s", encoded)
 	}
 }
