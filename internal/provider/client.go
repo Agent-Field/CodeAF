@@ -504,6 +504,23 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	if c.velocity != nil && carriedCeiling {
 		c.velocity.refuseCeiling(model)
 	}
+	// AND THE SAME MEMO IS TAKEN FOR THE IGNORE LIST, from the only authority on
+	// how many machines serve a model. This process holds the lanes it has timed
+	// and no denominator, so it cannot tell a veto that narrowed a set of five
+	// from one that emptied a set of one — until the router says which it was,
+	// in this sentence. It is written here, once, and read on every later encode
+	// ([velocityLedger.keepTheSetServable]), so the second request for this
+	// model is shaped right rather than paying the same instant refusal again.
+	//
+	// AND ONLY WHEN A VETO OF OURS WAS IN PLAY. The router says this same
+	// sentence when the ignored providers on somebody's ACCOUNT empty the set,
+	// and a refusal we had no hand in teaches us nothing about our own list. The
+	// ledger is asked rather than the object rebuilt, because rebuilding it here
+	// would expire cooldowns and redraw a sampled choice on the way back
+	// ([velocityLedger.holdsVetoes]).
+	if c.velocity != nil && ignoredEverything(peek) && c.velocity.holdsVetoes(model) {
+		c.velocity.refuseCoveringIgnore(model)
+	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
 	// once, and the person is told in a sentence that stays.

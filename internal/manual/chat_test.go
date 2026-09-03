@@ -105,6 +105,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// serve, and why that word is not the one for slow.
 		{"it says coreweave refused", "models-and-cost"},
 		{"a machine will not serve my model", "lanes"},
+		// And the refusal that is about no machine at all, asked in the router's
+		// own sentence and in the words somebody reaches for after reading it.
+		{"all providers have been ignored", "lanes"},
+		{"why did every provider get ignored", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
 		{"why does it say paid model training violation", "models-and-cost"},
 		{"what does guardrail restrictions and data policy mean", "models-and-cost"},
