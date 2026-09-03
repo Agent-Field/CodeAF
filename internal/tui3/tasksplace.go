@@ -192,7 +192,12 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 		put(tasksKeyOf(entry), tasksItem{entry: entry, runs: true, away: true, window: task.Session})
 	}
 
-	sections := [4][]tasksItem{}
+	// A FAMILY STANDS TOGETHER under its most urgent member's section. Splitting
+	// a refused child away from its still-running parent makes one piece of work
+	// look like two unrelated tasks and hides the reason under the wrong row.
+	// The roster already applies this same family judgement (task.go's
+	// railForest); the project record keeps the tree intact here too.
+	visible := make([]tasksItem, 0, len(order))
 	r.held = len(order)
 	for _, key := range order {
 		item := held[key]
@@ -200,6 +205,30 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 			continue
 		}
 		item.section = tasksSectionOf(item, now)
+		visible = append(visible, item)
+	}
+	visibleRoots := make(map[tasksKey]bool, len(visible))
+	for _, item := range visible {
+		if strings.TrimSpace(item.entry.Parent) == "" {
+			visibleRoots[tasksFamilyOf(item.entry)] = true
+		}
+	}
+	familySection := make(map[tasksKey]tasksSection, len(visibleRoots))
+	for _, item := range visible {
+		key := tasksFamilyOf(item.entry)
+		if !visibleRoots[key] {
+			continue
+		}
+		section, found := familySection[key]
+		if !found || item.section < section {
+			familySection[key] = item.section
+		}
+	}
+	sections := [4][]tasksItem{}
+	for _, item := range visible {
+		if section, found := familySection[tasksFamilyOf(item.entry)]; found {
+			item.section = section
+		}
 		sections[item.section] = append(sections[item.section], item)
 	}
 	for _, section := range sections {
@@ -437,11 +466,10 @@ func tasksFamilyOf(entry session.TaskIndexEntry) tasksKey {
 // that hangs under each of them, keeping the order the reading already ranked
 // them in.
 //
-// A CHILD WHOSE ROOT IS NOT IN THIS SECTION IS A ROOT HERE. The sections are
-// what a person acts on next — a worker still running under a root that landed
-// this morning belongs under `running`, where its root is not — and a child
-// filed under a parent nobody can see would be a row that vanished from the
-// page. So the parent has to be present, in this section, for the fold to exist.
+// Every visible member was assigned its family's most urgent section in
+// [readTasks], so a visible root and its visible children are always here
+// together. A child whose root is outside the selected time window still stands
+// alone rather than vanishing behind a row the page cannot draw.
 func tasksFamilies(items []tasksItem) ([]tasksItem, map[tasksKey][]tasksItem) {
 	here := make(map[tasksKey]bool, len(items))
 	for _, item := range items {
@@ -824,6 +852,12 @@ func tasksMiddle(entry session.TaskIndexEntry) string {
 	if activity := strings.TrimSpace(entry.Activity); activity != "" {
 		return activity
 	}
+	if entry.Status == string(session.TaskFailed) && refused(entry.Ending) {
+		if outcome := strings.TrimSpace(entry.Outcome); outcome != "" {
+			return outcome
+		}
+		return endingWordRefused
+	}
 	if entry.Status == string(session.TaskFailed) && strings.TrimSpace(entry.Outcome) != "" {
 		return "gave up, said why"
 	}
@@ -859,6 +893,9 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 	case string(session.TaskDone):
 		return tokens.GlyphSettled, pal.muted
 	case string(session.TaskFailed):
+		if refused(item.entry.Ending) {
+			return glyphHalted, pal.warn
+		}
 		return tokens.GlyphFailed, pal.bad
 	default:
 		return tokens.GlyphQueued, pal.dim

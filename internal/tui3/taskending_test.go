@@ -70,30 +70,48 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 	}
 }
 
-// A CHECK THAT DID NOT ACCEPT THE WORK, OR A RUN THAT BROKE, IS THE CROSS — and
-// its row says which. A failed node an older engine sent with no reason keeps
-// every word it always had.
-func TestARefusedOrBrokenNodeKeepsTheCrossAndAnUnexplainedOneKeepsItsOldWords(t *testing.T) {
+// A CHECK THAT DID NOT ACCEPT THE WORK IS INCOMPLETE, not broken: it wears the
+// steer mark and says what the check still needs. A run that actually broke,
+// and an old failed row with no ending, keep the cross and the word failed.
+func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 	for _, tc := range []struct {
 		ending session.TaskEnding
 		row    string
+		mark   string
+		home   string
+		state  string
 	}{
-		{session.TaskEndingRefused, endingWordRefused + " — " + taskBranchKept},
-		{session.TaskEndingError, endingWordError + " — " + taskBranchKept},
-		{"", taskStoppedKept},
+		{session.TaskEndingRefused, endingWordRefused + " — " + taskBranchKept, glyphHalted, homeStuckGlyph, taskRecordStoppedWord},
+		{session.TaskEndingError, endingWordError + " — " + taskBranchKept, glyphBad, glyphBad, roomFailedWord},
+		{"", taskStoppedKept, glyphBad, glyphBad, roomFailedWord},
 	} {
 		a, _, _ := taskApp(t)
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
 			endedNotice(tc.ending, "incomplete — the parser still drops the last key"))})
 		rail := endedRailText(a)
-		if want := glyphBad + " " + plain(a.taskMark(identFor(7))) + " Port the parser"; !strings.Contains(rail, want) {
+		if want := tc.mark + " " + plain(a.taskMark(identFor(7))) + " Port the parser"; !strings.Contains(rail, want) {
 			t.Fatalf("%q: the rail is missing %q:\n%s", tc.ending, want, rail)
 		}
 		if !strings.Contains(rail, tc.row+" · task/parser") {
 			t.Fatalf("%q: the rail row is missing %q:\n%s", tc.ending, tc.row, rail)
 		}
-		if strings.Contains(rail, glyphHalted+" ") {
-			t.Fatalf("%q: the rail wears the steer mark:\n%s", tc.ending, rail)
+		node := a.tasks[7]
+		if got := a.roomStateWord(node); got != tc.state {
+			t.Fatalf("%q: room state = %q, want %q", tc.ending, got, tc.state)
+		}
+		entry := session.TaskIndexEntry{Status: string(session.TaskFailed), Ending: tc.ending}
+		if got := taskStateWord(entry, false); got != tc.state {
+			t.Fatalf("%q: record state = %q, want %q", tc.ending, got, tc.state)
+		}
+		if got := plain(a.homeTaskGlyph(entry, session.SessionRow{})); got != tc.home {
+			t.Fatalf("%q: home glyph = %q, want %q", tc.ending, got, tc.home)
+		}
+		tail := a.doneTail(&taskDone{failed: true, ending: tc.ending})
+		if !strings.Contains(tail, " · "+tc.state) {
+			t.Fatalf("%q: landed-card tail = %q, want state %q", tc.ending, tail, tc.state)
+		}
+		if tc.ending == session.TaskEndingRefused && strings.Contains(tail, doneFailWord) {
+			t.Fatalf("a refused task still says %q: %q", doneFailWord, tail)
 		}
 	}
 }
