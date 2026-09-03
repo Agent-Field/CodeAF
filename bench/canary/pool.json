@@ -72,7 +72,8 @@
         "errors": 6
       },
       "picked_at": "2026-09-02T15:00:11Z",
-      "measured": "2026-09-03"
+      "measured": "2026-09-03",
+      "constraints": "lib/constraints/Human-Agent-Society__reef.txt"
     },
     {
       "id": "python-attrs-attrs-1416",
@@ -118,7 +119,9 @@
         "failed": 85,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:48:28Z"
+      "picked_at": "2026-09-02T19:48:28Z",
+      "constraints": "lib/constraints/python-attrs__attrs.txt",
+      "measured": "2026-09-03"
     },
     {
       "id": "pypa-packaging-1318",
@@ -165,7 +168,9 @@
         "failed": 0,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:48:58Z"
+      "picked_at": "2026-09-02T19:48:58Z",
+      "constraints": "lib/constraints/pypa__packaging.txt",
+      "measured": "2026-09-03"
     },
     {
       "id": "pallets-click-3740",
@@ -211,7 +216,9 @@
         "failed": 0,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:47:49Z"
+      "picked_at": "2026-09-02T19:47:49Z",
+      "constraints": "lib/constraints/pallets__click.txt",
+      "measured": "2026-09-03"
     },
     {
       "id": "tox-dev-tox-4031",
@@ -255,7 +262,8 @@
       "base_suite": null,
       "picked_at": "2026-09-02T19:47:59Z",
       "base_suite_note": "full suite exceeded the 600s cap; not measured",
-      "measured": "2026-09-03"
+      "measured": "2026-09-03",
+      "constraints": "lib/constraints/tox-dev__tox.txt"
     },
     {
       "id": "pypa-virtualenv-3072",
@@ -302,7 +310,8 @@
         "errors": 0
       },
       "picked_at": "2026-09-02T19:50:21Z",
-      "measured": "2026-09-03"
+      "measured": "2026-09-03",
+      "constraints": "lib/constraints/pypa__virtualenv.txt"
     },
     {
       "id": "pypa-build-860",
@@ -348,7 +357,9 @@
         "failed": 0,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:48:46Z"
+      "picked_at": "2026-09-02T19:48:46Z",
+      "constraints": "lib/constraints/pypa__build.txt",
+      "measured": "2026-09-03"
     },
     {
       "id": "pylint-dev-astroid-2305",
@@ -394,7 +405,9 @@
         "failed": 2,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:48:12Z"
+      "picked_at": "2026-09-02T19:48:12Z",
+      "constraints": "lib/constraints/pylint-dev__astroid.txt",
+      "measured": "2026-09-03"
     },
     {
       "id": "sphinx-doc-sphinx-11437",
@@ -440,7 +453,9 @@
         "failed": 18,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:49:36Z"
+      "picked_at": "2026-09-02T19:49:36Z",
+      "constraints": "lib/constraints/sphinx-doc__sphinx.txt",
+      "measured": "2026-09-03"
     }
   ],
   "frozen_note": "Anchors are frozen: pick.py refuses to overwrite them. reef-145 admitted 2026-09-02T15:00Z by search; the other eight admitted 2026-09-02 ~20:30Z by --only feeds after the pytest -q summary parsing fix (each carries source and tier)."

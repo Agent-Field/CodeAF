@@ -41,6 +41,13 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_POOL = os.path.join(HERE, "pool.json")
 
+# Frozen resolutions live under lib/ deliberately: run.sh copies lib/ into
+# <run>/rig for every run, so the constraints a base was measured under travel
+# beside the code that produced the rows, and cell.sh reaches them from its own
+# $HERE without knowing where the checkout is.
+CONSTRAINTS_REL = "lib/constraints"
+CONSTRAINTS_DIR = os.path.join(HERE, "lib", "constraints")
+
 # The closing sentence every harness receives, spelled exactly as bench/run.sh
 # spells it, so a canary prompt and a benchmark prompt are the same instruction.
 TAIL = ("Work in this repository. Implement the change and make the existing "
@@ -480,6 +487,73 @@ def ladder_from(rung):
     return ladder[ladder.index(rung):] if rung in ladder else ladder
 
 
+# ── the resolution, frozen ───────────────────────────────────────────────────
+#
+# THE ENVIRONMENT A CELL BUILDS IS THE ONE THE BASE WAS MEASURED IN. An install
+# rung is a recipe, not a resolution: `--group dev` is re-resolved by pip at
+# every cell, so the environment a cell gets is whatever PyPI answered that
+# hour. On 2026-09-03 pypa/virtualenv's dev group died with pip's
+# `resolution-too-deep` in every cell of two whole tables, one hour after the
+# same rung resolved here with identical counts. The recipe was right and the
+# resolution was weather. So the venv a base was measured in is frozen to a
+# constraints file, the entry records where it is, and every cell installs
+# under it — with the graph pinned, pip's resolver has nothing left to search.
+
+NAME_IN_TOML = re.compile(r"""^\s*name\s*=\s*["']([^"']+)["']""", re.M)
+NAME_IN_CFG = re.compile(r"^\s*name\s*=\s*(\S.*?)\s*$", re.M)
+
+# WHAT MAY GO IN A CONSTRAINTS FILE IS NARROWER THAN WHAT pip freeze PRINTS.
+# pip refuses a constraint that carries a link, an extra or an editable — the
+# whole install dies on the file rather than on one line — so only the plain
+# `name==version` a PyPI resolution produces is kept. That drops exactly the
+# lines a cell could not honour anyway: an `-e .` or an `@ file://` names a
+# path on the box the measurement ran on, which no cell will ever see.
+PIN_LINE = re.compile(r"^([A-Za-z0-9._-]+)==[^\s@\[;]+$")
+
+
+def normalised(name):
+    """A distribution name compared the way packaging compares one: case does
+    not matter, and any run of `-`, `_` or `.` is the same character. The dot
+    matters as much as the underscore — a project spelled `zope.interface` in
+    its metadata freezes as `zope_interface`, and folding only the underscore
+    would leave the project's own pin in a file that must not carry it."""
+    return re.sub(r"[-_.]+", "-", name.strip().lower())
+
+
+def named_table(text, header):
+    """The body of one `[header]` table, from its header to the next one. A
+    regular expression rather than tomllib, because this file is standard
+    library down to whatever python3 the box has and one `name =` key is all
+    that is read out of it. TOML and setup.cfg spell a section header alike."""
+    start = re.search(r"^\[%s\]\s*$" % re.escape(header), text, re.M)
+    if not start:
+        return ""
+    rest = text[start.end():]
+    nxt = re.search(r"^\[", rest, re.M)
+    return rest[:nxt.start()] if nxt else rest
+
+
+def project_dist_name(tree):
+    """The name the project installs itself under, from `pyproject.toml` or
+    `setup.cfg`, or "" when neither says. It is the one line dropped from the
+    freeze on purpose: a cell installs the project from its own checkout at
+    base, and a version pin on it would either contradict that checkout or
+    drag the released copy down from PyPI over the top of it."""
+    for filename, tables in (("pyproject.toml", ("project", "tool.poetry")),
+                             ("setup.cfg", ("metadata",))):
+        try:
+            with open(os.path.join(tree, filename)) as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for table in tables:
+            body = named_table(text, table)
+            found = NAME_IN_TOML.search(body) or NAME_IN_CFG.search(body)
+            if found:
+                return normalised(found.group(1))
+    return ""
+
+
 class Workbench:
     """One scratch clone with its own venv, at the candidate's base commit."""
 
@@ -489,6 +563,7 @@ class Workbench:
         self.venv = os.path.join(scratch, cand["id"] + "-venv")
         self.install = None
         self.python = None
+        self.constraints = None
         self.last_line = ""
 
     def py(self):
@@ -542,7 +617,32 @@ class Workbench:
             if self.pip(["pytest"], deadline).returncode != 0:
                 return "pytest could not be installed"
         self.python = run([self.py(), "-c", "import sys; print('%d.%d' % sys.version_info[:2])"], timeout=30).stdout.strip()
+        # The resolution is frozen as the last act of building the venv, after
+        # pytest, so that a fresh pick and a --remeasure capture it from ONE
+        # code path: whatever a base was measured in is what a cell rebuilds.
+        self.constraints = self.freeze()
         return None
+
+    def freeze(self):
+        """Write this venv's third-party resolution to `lib/constraints/<repo
+        slug>.txt` and return the relative path an entry records, or None when
+        the freeze itself failed — which leaves the entry unpinned rather than
+        pointing it at a file nobody wrote. The slug spells `/` as `__`, the
+        same way cell.sh spells the mirror directory."""
+        proc = run([self.py(), "-m", "pip", "freeze", "--exclude-editable"], cwd=self.dir, timeout=120)
+        if proc.returncode != 0:
+            return None
+        own = project_dist_name(self.dir)
+        pins = []
+        for line in proc.stdout.splitlines():
+            found = PIN_LINE.match(line.strip())
+            if found and not (own and normalised(found.group(1)) == own):
+                pins.append(line.strip())
+        slug = self.cand["repo"].replace("/", "__")
+        os.makedirs(CONSTRAINTS_DIR, exist_ok=True)
+        with open(os.path.join(CONSTRAINTS_DIR, slug + ".txt"), "w") as fh:
+            fh.write("".join(pin + "\n" for pin in pins))
+        return "%s/%s.txt" % (CONSTRAINTS_REL, slug)
 
     def try_rung(self, rung, deadline):
         """One rung. An extra the project does not declare is a failed rung,
@@ -565,7 +665,14 @@ class Workbench:
         kept on the counts, because a non-zero exit with no summary line (a
         usage error, a broken conftest) is only explicable from that line.
         Only the whole-suite measurement passes `flags`; see SUITE_FLAGS."""
-        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        # pytest keeps its basetemp under $TMPDIR/pytest-of-<user>, shared by
+        # every pytest on the box; a measurement running beside cells or other
+        # sessions died in that shared directory's cleanup ("Directory not
+        # empty") and counted nothing. THE MEASUREMENT OWNS ITS TEMP DIRECTORY,
+        # exactly as cell.sh gives every cell its own.
+        tmp = self.dir + "-tmp"
+        os.makedirs(tmp, exist_ok=True)
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", TMPDIR=tmp)
         proc = run([self.py(), "-m", "pytest", "-q", "-p", "no:cacheprovider"] + list(flags) + paths,
                    cwd=self.dir, timeout=timeout, env=env)
         counts = pytest_counts(proc.stdout + proc.stderr)
@@ -631,6 +738,13 @@ def measure_base_suite(wb, record):
     if code == 124:
         record["base_suite"] = None
         record["base_suite_note"] = "full suite exceeded the %ds cap; not measured" % cap
+    elif code != 0 and not any(counts[k] for k in ("passed", "failed", "errors")):
+        # pytest that exits red having counted nothing did not run the suite —
+        # a usage error, a broken conftest, an interrupted collection — and
+        # ZEROS ARE NOT A BASELINE: a judge comparing against them would call
+        # every failure a regression. The last line pytest printed is the note.
+        record["base_suite"] = None
+        record["base_suite_note"] = "full suite did not run (pytest exit %d: %s); not measured" % (code, wb.last_line)
     else:
         record["base_suite"] = {"passed": counts["passed"], "failed": counts["failed"], "errors": counts["errors"]}
 
@@ -665,6 +779,11 @@ def entry_for(cand, wb, record, source="fresh"):
     entry["tier"] = band_of(len(cand["src_files"]), cand["src_lines"])
     entry["install"] = wb.install
     entry["python"] = wb.python
+    # Where the resolution this base was measured under is written down. A
+    # freeze that failed records nothing, and a cell then installs the rung
+    # the old way: unpinned, and saying so in its own record.
+    if wb.constraints:
+        entry["constraints"] = wb.constraints
     entry.update(record)
     entry["picked_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return entry
@@ -736,6 +855,12 @@ def remeasure_entry(entry, scratch, keep):
         if not keep:
             wb.cleanup()
     entry["install"] = wb.install
+    # A remeasure re-resolves the environment, so the constraints file it just
+    # wrote is the one this base now belongs to. A freeze that failed leaves
+    # the field standing: the last one somebody captured is still closer to
+    # this measurement than no pin at all.
+    if wb.constraints:
+        entry["constraints"] = wb.constraints
     entry["base_suite"] = record["base_suite"]
     # The cap's note is rewritten with the number beside it: a measurement that
     # no longer hits the cap must not leave the old note standing over a count.

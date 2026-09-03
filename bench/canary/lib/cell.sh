@@ -48,6 +48,21 @@ mapfile -t TESTS < <(lines test_files)
 BASE_SUITE="$("$PY" -c 'import json,sys; b=json.load(open(sys.argv[1])).get("base_suite"); print(json.dumps(b) if b else "")' "$ENTRY")"
 MIRROR="$CANARY_CACHE/repos/${REPO//\//__}.git"
 
+# THE ENVIRONMENT A CELL BUILDS IS THE ONE THE BASE WAS MEASURED IN. The entry
+# names the frozen resolution as `lib/constraints/<slug>.txt`; run.sh copies
+# lib/ into <run>/rig, so from in here it is beside this script under $HERE.
+# An entry that names none is a pool written before the resolution was frozen.
+CONSTRAINTS="$(field constraints)"
+PIN=""
+[ -n "$CONSTRAINTS" ] && [ -f "$HERE/constraints/${CONSTRAINTS##*/}" ] && PIN="$HERE/constraints/${CONSTRAINTS##*/}"
+# Whether the suite installed under those pins, as cell.json will report it:
+# empty means the entry named no constraints, so there was nothing to honour
+# and nothing to report. An entry that names a file this rig does not carry is
+# NOT that case — its environment is not the measured one either, and it says
+# so exactly as an unconstrained fallback does.
+INSTALL_CONSTRAINED=""
+[ -n "$CONSTRAINTS" ] && INSTALL_CONSTRAINED=false
+
 # finish writes cell.json and is the only exit. A cell that could not be set up
 # is recorded as such, not as a run that produced nothing.
 finish() {
@@ -57,7 +72,8 @@ finish() {
   local load="$LOAD_START $(cut -d" " -f1 /proc/loadavg)"
   [ "${CANARY_REGRADE:-}" = "1" ] && load=""
   CANARY_ENTRY="$ENTRY" CANARY_OUT_DIR="$OUT" CANARY_SETUP="$ended" \
-  CANARY_CAP="$CANARY_CAP" CANARY_WALL="$CANARY_WALL" CANARY_LOAD="$load" "$PY" - <<'PYX'
+  CANARY_CAP="$CANARY_CAP" CANARY_WALL="$CANARY_WALL" CANARY_LOAD="$load" \
+  CANARY_CONSTRAINED="$INSTALL_CONSTRAINED" "$PY" - <<'PYX'
 import glob, json, os, re
 out = os.environ["CANARY_OUT_DIR"]
 def load(name):
@@ -68,6 +84,8 @@ def load(name):
 entry, door, judge = json.load(open(os.environ["CANARY_ENTRY"])), load("door.json"), load("judge.json")
 cap, wall = float(os.environ["CANARY_CAP"]), int(os.environ["CANARY_WALL"])
 setup = os.environ["CANARY_SETUP"]
+# True, false, or null when the entry named no constraints to install under.
+constrained = {"true": True, "false": False}.get(os.environ.get("CANARY_CONSTRAINED", ""))
 
 def chat_transcript_counts():
     """Count loop outcomes when this chat cell has a v3 transcript.
@@ -120,9 +138,26 @@ tests = "tests green" if f2p.get("pass") else ("tests: %d failed, %d errors, %d 
 # refuses work the tests call green is a defect of this product, and a single
 # pass/fail is exactly where such a defect would hide. `pass` below is their
 # conjunction, and stays the thing a regression is measured on.
+# THE VERDICT COLUMN READS THE DOOR'S OWN LADDER. `aforge do` ends on five
+# exit codes and each one is a different finding, so the rig reads the code
+# rather than inferring the finding from the record the door left behind:
+#   0  done — it finished the work and said so
+#   1  could not run — nothing was attempted
+#   2  ran and did not finish — whatever it managed is on the tree
+#   3  a limit the person set stopped it: the wall, a budget, the turn cap
+#   4  it needed a person, and stopped to ask
+# Rung 3 splits in two, because a clock running out and a budget refusing to
+# spend are different defects: it reads `wall` when the rig's own wall is what
+# fired and `limit` otherwise. `chat` has no such ladder and is read from its
+# record exactly as it always was, and so is any code that is not on the ladder
+# — which is how timeout(1)'s 124 still reads `wall`.
+DO_LADDER = {0: "ok", 1: "could-not-run", 2: "partial", 3: "limit", 4: "asked"}
+
+
 def door_verdict():
-    """One word for how the door ended, asked in the order a reader would: did
-    it stop by itself, did it leave a question, did it exit clean."""
+    """One word for how the door ended: for `do`, the rung it exited on; for
+    `chat`, the order a reader would ask in — did it stop by itself, did it
+    leave a question, did it exit clean."""
     if not door:
         return ""
     ended = door.get("ended", "")
@@ -130,6 +165,12 @@ def door_verdict():
         return "asked"
     if ended != "self":
         return ended.replace(" (killed)", "").replace(" ", "")
+    if entry.get("door") == "do":
+        rung = DO_LADDER.get(door.get("exit"))
+        if rung == "limit" and (door.get("wall_s") or 0) >= wall:
+            return "wall"
+        if rung:
+            return rung
     if door.get("exit", 0) != 0:
         return "partial"
     return "ok"
@@ -187,6 +228,11 @@ cell = {
     "f2p": judge.get("f2p"), "suite": judge.get("suite"), "regressed": judge.get("regressed"),
     "subharness": door.get("subharness"), "nodes": door.get("nodes"),
     "gate_rounds": door.get("gate_rounds"),
+    # Whether the suite was installed under the pool's frozen resolution. A
+    # cell that fell back to an unconstrained install ran in an environment
+    # nobody measured, and the scoreboard says `unpinned` so a reader is not
+    # told a base's counts apply to a base this cell never built.
+    "install_constrained": constrained,
     # The box's one-minute load average when the cell began and when it ended:
     # a wall is only comparable to another wall measured under a similar load.
     "load": os.environ["CANARY_LOAD"],
@@ -201,27 +247,54 @@ PYX
 # venv installs the suite the door will run, by the rung the pick was
 # validated on (pick.py's ladder) and spelled the same way, so a cell builds
 # the environment its grade was measured in: an extra, a dependency group,
-# every requirements file, or nothing but pytest.
+# every requirements file, or nothing but pytest. Given a constraints file,
+# EVERY install in the rung passes it: with the whole graph pinned the
+# resolver has nothing left to search, which is what makes pip's
+# `resolution-too-deep` impossible on a rung that resolved when it was picked.
 venv() {
+  local pin="${1-}"
+  local -a c=()
+  [ -n "$pin" ] && c=(-c "$pin")
   (
     cd "$WORK" || exit 1
     "$PY" -m venv .venv >/dev/null 2>&1 || exit 1
     .venv/bin/pip install -q --upgrade pip >/dev/null 2>&1
     case "$INSTALL" in
       pytest|"")         : ;;
-      requirements*.txt) for r in requirements*.txt; do timeout 300 .venv/bin/pip install -q -r "$r" >/dev/null 2>>"$OUT/pip.err" || exit 1; done ;;
-      "--group "*)       timeout 300 .venv/bin/pip install -q -e . --group "${INSTALL#--group }" >/dev/null 2>"$OUT/pip.err" ;;
-      *)                 timeout 300 .venv/bin/pip install -q -e "$INSTALL" >/dev/null 2>"$OUT/pip.err" ;;
+      requirements*.txt) for r in requirements*.txt; do timeout 300 .venv/bin/pip install -q ${c[@]+"${c[@]}"} -r "$r" >/dev/null 2>>"$OUT/pip.err" || exit 1; done ;;
+      "--group "*)       timeout 300 .venv/bin/pip install -q ${c[@]+"${c[@]}"} -e . --group "${INSTALL#--group }" >/dev/null 2>"$OUT/pip.err" ;;
+      *)                 timeout 300 .venv/bin/pip install -q ${c[@]+"${c[@]}"} -e "$INSTALL" >/dev/null 2>"$OUT/pip.err" ;;
     esac || exit 1
-    .venv/bin/pip install -q pytest >/dev/null 2>&1
+    .venv/bin/pip install -q ${c[@]+"${c[@]}"} pytest >/dev/null 2>&1
   )
+}
+
+# install_suite is the only caller of venv(). Under the pool's pins first, and
+# if THAT fails ONCE more unconstrained: a cell that ran in a resolution nobody
+# measured still says more than a cell that never ran, and the fallback is
+# recorded rather than hidden, so the table can tell a reader that this cell's
+# environment was not the one the base was measured in.
+install_suite() {
+  if [ -z "$PIN" ]; then
+    venv
+    return $?
+  fi
+  if venv "$PIN"; then
+    INSTALL_CONSTRAINED=true
+    return 0
+  fi
+  # Whatever the constrained attempt half-installed must not colour the
+  # fallback: it starts from nothing, the same as a first attempt.
+  rm -rf "$WORK/.venv"
+  INSTALL_CONSTRAINED=false
+  venv
 }
 
 # grade lays the fix pull request's tests over what the door left and runs
 # them; the venv goes afterwards, because it is the biggest thing in the cell
 # and says nothing a log does not.
 grade() {
-  [ -x "$WORK/.venv/bin/python" ] || venv || finish "venv: pip install $INSTALL failed"
+  [ -x "$WORK/.venv/bin/python" ] || install_suite || finish "venv: pip install $INSTALL failed"
   "$PY" "$HERE/judge.py" --work "$WORK" --mirror "$MIRROR" --merge "$MERGE" --base "$BASE" --tests "${TESTS[@]}" \
     --base-suite "$BASE_SUITE" --out "$OUT" 2>"$OUT/judge.err"
   rm -rf "$WORK/.venv"
@@ -264,7 +337,7 @@ git -C "$WORK" fetch -q --depth 1 "$MIRROR" "$BASE" || finish "fetch: $BASE"
 git -C "$WORK" reset -q --hard FETCH_HEAD
 echo ".venv/" >> "$WORK/.git/info/exclude"
 
-venv || finish "venv: pip install $INSTALL failed"
+install_suite || finish "venv: pip install $INSTALL failed"
 canary_home "$HOME_DIR" "$CANARY_MODEL" "$CANARY_CAP"
 export PATH="$WORK/.venv/bin:$PATH"
 
