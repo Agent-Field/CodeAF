@@ -373,7 +373,10 @@ var savedWorkAnswerDropped = map[string]string{
 // TestNoLandingDropsWhatASaveAnswered fails when a call to either save discards
 // the failure without an entry above.
 func TestNoLandingDropsWhatASaveAnswered(t *testing.T) {
-	saves := map[string]int{"stageTaskWork": 0, "commitTaskWork": 1, "commitTaskWorkAs": 2}
+	// The index is the ERROR's position in each save's answer: [commitTaskWorkAs]
+	// answers the typed refusal before it, and the refusal is a reading of that
+	// same error, never a fact of its own.
+	saves := map[string]int{"stageTaskWork": 0, "commitTaskWork": 1, "commitTaskWorkAs": 3}
 	found := map[string]bool{}
 	forEachPackageFile(t, func(path string, file *ast.File, fset *token.FileSet) {
 		var enclosing string

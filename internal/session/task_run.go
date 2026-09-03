@@ -6529,10 +6529,13 @@ func commitTaskWork(dir, title string, wrote []string) ([]string, string, landin
 // stay in step — the same identity, the same `--no-verify`, the same reading of
 // what was actually staged — and the day either moved, only one of them would.
 //
-// IT ANSWERS THREE THINGS AND THE COMMIT IS THE ONE THAT MATTERS. The paths are
+// IT ANSWERS FOUR THINGS AND THE COMMIT IS THE ONE THAT MATTERS. The paths are
 // what was staged, read off the index. THE COMMIT IS THE SHA IT WROTE, empty
 // when there was nothing to write, and the error is a `git commit` that would
-// not run — a hook, a read-only object store, a repository somebody broke.
+// not run — a hook, a read-only object store, a repository somebody broke. The
+// refusal is that same error read for WHO refused, the tree or the work
+// ([landingRefusal]); it is never set without the error and says nothing on its
+// own, so a caller that reads the error may leave it unread.
 //
 // THOSE TWO USED TO BE THROWN AWAY, and that was a fault with teeth: the paths
 // came back looking exactly like a commit that had happened, so a caller could
