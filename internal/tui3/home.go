@@ -3487,7 +3487,7 @@ func homeBucketOf(transcript string) string {
 const homeDoorWord = "space space home"
 
 // homeGesture is TWO SPACES TYPED INTO AN EMPTY BOX, and it is the way back to
-// home from inside a conversation.
+// home — from inside a conversation, and from every place standing over it.
 //
 // WHY A GESTURE AND NOT A KEY. Every ctrl+letter is taken. `esc` was the
 // obvious candidate and is not available: on an idle conversation it already
@@ -3536,16 +3536,36 @@ const homeDoorWord = "space space home"
 // are their own messages and land whatever is drawn over them (app.go's
 // Update). The turn goes on underneath and is still there when esc comes back.
 func (a *app) homeGesture(msg tea.KeyPressMsg) bool {
-	if msg.Key().Text != " " || !a.homeDoorOpen() {
+	if !a.homeDoorOpen() {
 		return false
 	}
-	return a.input.empty() && a.input.cursor > 0 &&
-		a.input.value[a.input.cursor-1] == ' '
+	return a.homeDoorArmed(&a.input, msg)
 }
 
-// homeDoorOpen reports whether home is reachable from this conversation. It is
-// the gesture's guard and the advertisement's condition, which is deliberate: a
-// door that is drawn is a door that works.
+// homeDoorArmed is the part of the door that is about THE BOX, asked the same
+// way whichever box the press landed in — the conversation's draft
+// ([app.homeGesture]) or the box the standing place types into
+// ([app.placeHomeGesture]). A door with two laws about emptiness would be a
+// door that behaved differently depending on which room a person was standing
+// in, which is exactly what this keeps from happening.
+//
+// The law is the one [app.homeGesture] always kept: a space, a box that shows
+// nothing ([editor.empty]), and the space the person just typed behind the
+// caret. It answers for a nil box as well, because a place with no box has no
+// door — there is nothing to type two spaces into.
+func (a *app) homeDoorArmed(box *editor, msg tea.KeyPressMsg) bool {
+	if msg.Key().Text != " " || box == nil {
+		return false
+	}
+	return box.empty() && box.cursor > 0 &&
+		box.value[box.cursor-1] == ' '
+}
+
+// homeDoorOpen reports whether home is reachable from where this keypress is
+// standing — any place or any conversation, except home itself, where the
+// gesture is a no-op and the foot draws no door. It is the gesture's guard and
+// the advertisement's condition, which is deliberate: a door that is drawn is
+// a door that works.
 //
 // HOME IS ALWAYS REACHABLE, AND AN EMPTY HOME IS A SCREEN. This used to ask one
 // more thing — that the machine held a conversation other than this one — on

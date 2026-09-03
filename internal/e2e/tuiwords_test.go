@@ -384,6 +384,33 @@ var tuiWords = map[string]tuiWord{
 		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
 	},
 
+	// ── the task room, and the key the door home had to give back ────────────
+	//
+	// #457/#486 widened `space space` to open home from every place. The room a
+	// task's record is read in is the one place on the surface where a bare space
+	// already MEANT something — it pages the card, the way `pgdown` and `ctrl+f`
+	// do — and the widened door took it. These two words are what the real screen
+	// is read for: that the roster offered the room, and that the room was still
+	// standing after the space was pressed.
+	"tasksEnterRoomWord": {
+		screen: "enter open its room",
+		why:    "the roster's foot over a node this window's graph is still holding: the door into the LIVE room",
+	},
+	"landingKeysWord": {
+		screen: "esc interrupts · ctrl+c twice quits",
+		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
+	},
+	"tasksEnterInsideWord": {
+		screen: "enter go inside it",
+		why: "the roster's other door, over work no window is holding any more — it is the one that opens the " +
+			"record card, which is the mode `space` pages and the door home had to give the key back to",
+	},
+	"taskRoomFootWord": {
+		screen: "esc back · ↑↓ scroll · m puts it in your message",
+		why: "the record's own foot, and the one sentence that says a person is still standing in the room — " +
+			"it names `↑↓ scroll`, which is the family of keys `space` belongs to on this card",
+	},
+
 	// ── the seat a crew older than it never wrote ────────────────────────────
 	//
 	// The two halves of one line, and it is the ENGINE'S sentence: the surface
