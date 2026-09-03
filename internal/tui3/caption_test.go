@@ -73,7 +73,7 @@ func TestABashFloorNamesTheWorkNotTheVerb(t *testing.T) {
 	}
 }
 
-func TestThinkingSuppliesACaptionWhenTheModelSaidNothing(t *testing.T) {
+func TestThinkingNeverBecomesACaption(t *testing.T) {
 	es := []entry{
 		{kind: entryUser, text: "why?", turn: 1},
 		{kind: entryThinking, text: "I should look at the open issues first.\nThen rank them.", turn: 1, settled: true},
@@ -81,8 +81,15 @@ func TestThinkingSuppliesACaptionWhenTheModelSaidNothing(t *testing.T) {
 			detail: toolDetail{Args: `{"command":"gh issue list"}`}},
 	}
 	got := captionsOf(es, 0)
-	if len(got) != 1 || got[0].text != "I should look at the open issues first" {
-		t.Fatalf("thinking caption = %#v", got)
+	if len(got) != 1 {
+		t.Fatalf("caption = %#v", got)
+	}
+	if got[0].text == "I should look at the open issues first" ||
+		strings.Contains(got[0].text, "I should") {
+		t.Fatalf("thinking leaked into the step title: %#v", got[0])
+	}
+	if got[0].source != captionMade || got[0].text != "listing github issues" {
+		t.Fatalf("want a tool floor step, got %#v", got[0])
 	}
 }
 

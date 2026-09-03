@@ -2,11 +2,12 @@ package session
 
 // The line over a batch of work.
 //
-// Most captions cost no second call: the surface lifts the line the working
-// model already said (or the first line of its thinking), or composes an honest
-// floor from the batch's targets. This file owns the last rung — a cheap
-// narrator armed shortly after the batch begins, cancelled when the batch ends
-// so a late answer cannot rewrite a settled caption.
+// Most captions cost no second call: the surface lifts the short narrating line
+// the working model already wrote before its tools, or composes an honest floor
+// from the batch's targets. Thinking is never a caption — it is machinery under
+// the step. This file owns the last rung: a cheap narrator that names the
+// discrete step while the batch runs, cancelled when the batch ends so a late
+// answer cannot rewrite a settled title.
 
 import (
 	"context"
@@ -24,10 +25,11 @@ func init() { roles.Register(roles.RoleCaption, roles.TierLow) }
 
 // captionSystem is character only. A cheap model reads the end of the user
 // message as the thing to do, so [captionPrompt] goes there and goes last.
-const captionSystem = "You say what a working session is doing right now."
+const captionSystem = "You name the discrete step a working session is on right now."
 
-const captionPrompt = "In one line under 60 characters, present tense, lowercase, " +
-	"no first person: what is this work trying to find out? Answer with the line only."
+const captionPrompt = "Name this step in one line under 60 characters, present tense, " +
+	"lowercase, no first person. A step is a checklist item (like \"listing github " +
+	"issues\"), not reasoning and not tool names. Answer with the line only."
 
 const (
 	// captionDwell is short on purpose: long enough that an instant batch pays

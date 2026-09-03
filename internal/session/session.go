@@ -509,10 +509,11 @@ const (
 	// log and an exit code, and none of those is what a task row is drawn from,
 	// so it is published as what it is and the clauses go away.
 	EventJobUpdate
-	// EventCaption carries one line ABOUT A BATCH IN FLIGHT (caption.go): the
-	// cheap narrator asked as the tools begin. Text is the line. It is news
-	// about the open step, never a new block of its own — the surface keys it
-	// onto the caption already drawn for that batch.
+	// EventCaption carries one line NAMING THE OPEN STEP (caption.go): the
+	// cheap narrator asked shortly after the tools begin. Text is the step
+	// title — a checklist item, not reasoning. It is news about the open step,
+	// never a new block of its own — the surface keys it onto the caption
+	// already drawn for that batch.
 	//
 	// A SURFACE THAT IGNORES THIS KIND IS UNCHANGED: the deterministic
 	// composite already stands in the caption slot, and this event only

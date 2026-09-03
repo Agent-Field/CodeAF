@@ -10,11 +10,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// caption is the sentence at the head of one step of a turn's work.
+// caption is the title of one discrete step of a turn's work.
 //
-// A step is a maximal run of calls, headed by the assistant prose that
-// preceded it. THE STEP IS THE UNIT BECAUSE THE MODEL DECIDES IN STEPS: it
-// writes, calls a batch, reads the result, and writes again.
+// A STEP IS NOT THINKING. Thinking is private machinery that may sit under a
+// step the way tool rows do; the caption is the checklist item a person reads —
+// "listing github issues", "ranking by end-result quality" — the shape ChatGPT's
+// o1 outline made familiar. A step is a maximal run of calls, optionally headed
+// by the one short narrating line the model wrote before them.
 type caption struct {
 	text             string
 	source           captionSource
@@ -77,15 +79,9 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 			c.source = captionSaid
 			c.text = captionWords(es[head].text)
 		}
-		// Models often reason without writing the one-line head the prompt asks
-		// for. The first line of that thinking is still what the step is about —
-		// use it before falling through to a tool-verb floor.
-		if c.text == "" {
-			if think := precedingThought(es, from); think >= 0 {
-				c.source = captionSaid
-				c.text = captionWords(es[think].text)
-			}
-		}
+		// THINKING NEVER SUPPLIES THE TITLE. A first-line of chain-of-thought is
+		// reasoning, not a step; without a narrating line we compose a floor from
+		// the tools, and the cheap narrator may overwrite it while the batch runs.
 		if c.text == "" {
 			c.source = captionMade
 			c.text = composeCaption(es, from, to)
@@ -124,25 +120,6 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 func captionWords(text string) string {
 	line := strings.TrimSpace(firstLine(text))
 	return strings.TrimSpace(strings.TrimRight(line, ".!?,;:"))
-}
-
-// precedingThought is the nearest thinking block before this batch in the same
-// turn. It is not stamped as a lifted head — the thinking fold keeps its own
-// shape — it only lends its first line to the caption.
-func precedingThought(es []entry, from int) int {
-	if from <= 0 || from > len(es) {
-		return -1
-	}
-	turn := es[from].turn
-	for i := from - 1; i >= 0 && es[i].turn == turn; i-- {
-		if es[i].kind == entryTool || groupBreaks(&es[i]) {
-			break
-		}
-		if es[i].kind == entryThinking && strings.TrimSpace(es[i].text) != "" {
-			return i
-		}
-	}
-	return -1
 }
 
 // composeCaption is the deterministic floor beneath a model-supplied heading.
