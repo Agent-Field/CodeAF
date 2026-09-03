@@ -42,12 +42,23 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	if graph == nil || plans == nil || !outcome.SplitRequest.Valid() {
 		return 0, nil
 	}
-	// Split gate: refuse divisions that won't pay for their overhead. A
-	// leaf's own division earns its keep under the same rule as the
-	// planner's: the work it found enumerates many independent items.
-	if splitgate.Armed() && !divisionWorthIt(outcome.SplitRequest.Evidence) {
+	// Split gate: refuse divisions that won't pay for their overhead — WHERE
+	// SOMEBODY HAS ASKED FOR THAT. Unpinned the gate has no say and a leaf's
+	// division stands as it asked for it (splitgate's modes.go: the experiment
+	// that moved the default is in docs/design/plan-gate-doe/REPORT.md). Under
+	// `AFORGE_SPLITGATE=1` a leaf's own division earns its keep under the same
+	// rule as the planner's: the work it found enumerates many independent
+	// items.
+	//
+	// NO LEAVES ARE HANDED OVER BECAUSE THERE ARE NONE TO HAND. A running leaf
+	// asking to divide has written down evidence and nothing else — the parts
+	// it wants do not exist yet, so nothing has sized them — and the mode that
+	// reads the plan's own sizing (splitgate.ModeJudgment) is left with the
+	// count here, honestly, rather than being fed an empty graph to read a yes
+	// out of.
+	if decision := splitgate.Judge(outcome.SplitRequest.Evidence, nil); !decision.Keep {
 		log.Printf("split gate: refused division for %s (evidence enumerates %d items, floor %d)",
-			node.ID, enumeratedItems(outcome.SplitRequest.Evidence), divisionFloor)
+			node.ID, decision.Items, divisionFloor)
 		return 0, nil
 	}
 	// The planning client, not the job's. A division is a planning question
@@ -166,17 +177,23 @@ func divisionWorthIt(evidence string) bool { return splitgate.WorthIt(evidence) 
 // the graph is one leaf when the spine drew several. It returns the number of
 // leaves folded, zero when the plan stands as drawn.
 func gatePlanDivision(graph *plan.Graph, goal string) int {
-	// ONE SPELLING OF THE ESCAPE HATCH. The two halves of the gate read the
-	// same switch and used to spell the reading two different ways, one of them
-	// the negation of the other; [splitgate.Armed] is now the only reader.
-	if !splitgate.Armed() {
-		return 0
-	}
-	if graph == nil || divisionWorthIt(goal) {
+	if graph == nil {
 		return 0
 	}
 	leaves := graph.Leaves()
 	if len(leaves) < 2 {
+		return 0
+	}
+	// ONE SPELLING OF THE WHOLE ANSWER, AND IT IS QUIET BY DEFAULT. The two
+	// halves of the gate read the same switch and used to spell the reading two
+	// different ways, one of them the negation of the other; [splitgate.Judge]
+	// is now the only reader of both the pin and the question behind it — and
+	// with nothing pinned it keeps every division, which is what the plan-gate
+	// experiment measured as the best front (splitgate's modes.go). The leaves
+	// go with the goal because `AFORGE_SPLITGATE=judgment` prefers the plan's
+	// own sizing to anything the brief said, and this is the one caller that
+	// has a plan to offer.
+	if splitgate.Judge(goal, gateLeaves(graph, leaves)).Keep {
 		return 0
 	}
 	folded := len(leaves)
@@ -193,9 +210,33 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 		Summary: summary,
 		Brief:   graph.Goal,
 		Undivided: fmt.Sprintf("split gate: goal enumerates %d items, under the %d-item floor — one sitting",
-			enumeratedItems(goal), divisionFloor),
+			splitgate.Items(goal), divisionFloor),
 	})
 	log.Printf("split gate: collapsed %d leaves to one (goal names %d items, floor %d)",
-		folded, enumeratedItems(goal), divisionFloor)
+		folded, splitgate.Items(goal), divisionFloor)
 	return folded
+}
+
+// gateLeaves reduces the planned work nodes to the two facts the gate reads:
+// how big the planner made each one and what each one waits on. The synthesis
+// node is already out, because [plan.Graph.Leaves] leaves it out — the gate is
+// asking whether the WORK divides, and the node that gathers it is neither a
+// part nor a reason the parts are not.
+func gateLeaves(graph *plan.Graph, leaves []int) []splitgate.Leaf {
+	work := make([]splitgate.Leaf, 0, len(leaves))
+	byID := make(map[int]bool, len(leaves))
+	for _, id := range leaves {
+		byID[id] = true
+	}
+	for _, node := range graph.Nodes {
+		if !byID[node.ID] {
+			continue
+		}
+		work = append(work, splitgate.Leaf{
+			ID:    node.ID,
+			Size:  string(node.Size),
+			Needs: node.Needs,
+		})
+	}
+	return work
 }

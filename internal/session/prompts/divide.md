@@ -37,10 +37,10 @@ and never the size — a long dull part is ordinary work, and a short part that
 has to be RIGHT is careful. A careful part is done with more thinking behind it,
 so grading every part careful says nothing at all.
 
-TWO THINGS DECIDE, AND NEITHER OF THEM IS YOUR CONFIDENCE. There must be enough
-separate items to be worth it — below the floor, one worker doing them in order
-beats paying for a working copy, a check and a wait for each part —
-and somebody has to be free to pick the parts up. If either says no you are told
+WHAT DECIDES IS NOT YOUR CONFIDENCE. Somebody has to be free to pick the parts
+up, and the width has to be real — parts one worker could do in order cost more
+in a working copy, a check and a wait apiece than handing them out saves, and
+some runs put a hard floor under that count. If anything says no you are told
 so in one line and NOTHING HAPPENS: nothing is cancelled, nothing is spent, and
 you carry on with the work in your own hands exactly as you were. A no is not a
 failure and is not worth a paragraph in your report.

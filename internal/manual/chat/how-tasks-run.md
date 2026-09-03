@@ -1421,8 +1421,8 @@ carrying on as one worker.
 a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
 
 **Cheap refusals draw nothing.** Where a division is turned down without a reading at all —
-the material does not name enough separate items, or no lane is free to pick the parts up —
-the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
+no lane is free to pick the parts up, or a width floor you turned on says the material names
+too few items — the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
 so only the reading is said.
 
 ## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail

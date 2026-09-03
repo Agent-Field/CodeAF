@@ -147,6 +147,7 @@ func TestLandedWorkLeavesTheTreeAndItsPartsGoWithIt(t *testing.T) {
 }
 
 func TestTheTreeNeverReportsAWorkerThatDoesNotExist(t *testing.T) {
+	floorPinnedOn(t)
 	// NEVER FAKE LIVENESS. A division that was refused invents no rows, and a
 	// task that has divided nothing has no children — the two ways this door
 	// could lie about work being under way.

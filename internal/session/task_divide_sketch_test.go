@@ -130,6 +130,7 @@ func TestASketchWithPartsIsHandedOutWithoutTheWorkerAsking(t *testing.T) {
 // together is the only reader that can say whether they overlap, and it is the
 // same call a worker's own division is put to.
 func TestTheHarnessSubmittedDivisionIsReadByTheSameReviewer(t *testing.T) {
+	floorPinnedOn(t)
 	reviewer := sketchReviewer("the auth test", "the release notes")
 	nest := newDivideNestFrom(t, drawnSpec(batchSketch("A | B",
 		"A is the flaking auth test, B is the release notes for 2.4")),

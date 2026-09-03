@@ -277,6 +277,7 @@ func TestTheReadingThatSizesTheWorkIsDrawnAndThenClears(t *testing.T) {
 // drawn for it would be the surface narrating machinery rather than a wait, which
 // is the emptiness law: a stage nobody waits through is not a stage.
 func TestADivisionRefusedWithoutAReadingDrawsNoPhaseAtAll(t *testing.T) {
+	floorPinnedOn(t)
 	reviewer := &divideReviewer{answer: `{"refuse": true, "why": "unused"}`}
 	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
 	updates := nest.session.TaskUpdates()

@@ -153,16 +153,32 @@ func init() {
 	roles.Register(roles.RoleCareful, roles.TierHigh)
 }
 
-// divideDescription is what the worker reads. THE FLOOR AND THE FAN CAP ARE
-// INTERPOLATED for taskSchemaJSON's stated reason: a number a model reasons
-// with must be the number the code enforces.
+// divideDescription is what the worker reads. THE FAN CAP IS INTERPOLATED for
+// taskSchemaJSON's stated reason: a number a model reasons with must be the
+// number the code enforces.
+//
+// AND THE FLOOR SENTENCE IS CONDITIONAL, BECAUSE THE FLOOR IS. This string used
+// to promise "refused unless your evidence names at least 6 separate items",
+// which was true of every binary until 2026-09-02 and is now true only of one
+// somebody pinned (splitgate's modes.go). A prompt that promises a refusal
+// nobody will make is the fault CLAUDE.md names about system.md — the model
+// reasons from it, and here it would reason its way out of asking for a
+// division that would have been granted. So the clause is spoken where it will
+// be enforced and left out where it will not, and the number is read from the
+// same package that would do the refusing.
 //
 // IT IS WRITTEN FOR DENSITY, for the reason [taskDescription] states about
 // itself: this string is marshalled into the tool block in front of every
 // request of every turn a divided worker takes, so it says each rule once and
 // leaves the teaching to the field it governs — the evidence field says what
 // evidence is, and this preamble no longer says it a second time.
-var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own taken as this work stands right now — everything you have already written is on their disk, and nothing you write afterwards reaches them — and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them PRODUCE, which is refused outright (material they all read is shared and is fine) — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+func divideDescription() string {
+	width := " — and the work has to be genuinely wide: parts one worker could do in order cost more in a working copy, a check and a wait apiece than handing them out saves."
+	if splitgate.Armed() {
+		width = " — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part."
+	}
+	return "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own taken as this work stands right now — everything you have already written is on their disk, and nothing you write afterwards reaches them — and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them PRODUCE, which is refused outright (material they all read is shared and is fine)" + width + " Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+}
 
 // divideSchemaJSON is the wire schema. It is deliberately the SAME vocabulary
 // the resident's `request_split` uses — parts, each with a title, a summary and
@@ -273,7 +289,7 @@ func (a *Agent) divideTools() []bare.Tool {
 	}
 	return []bare.Tool{{
 		Name:        "divide_work",
-		Description: divideDescription,
+		Description: divideDescription(),
 		Schema:      json.RawMessage(divideSchemaJSON),
 		Execute:     a.divideWork,
 	}}
@@ -505,6 +521,16 @@ func (a *Agent) armDivision(spec taskSpec) string {
 // The pieces are joined with newlines because that is how [splitgate.WorthIt]
 // reads a plan: a number and its noun must stand together, and gluing a title
 // onto the front of a brief invents adjacencies neither of them wrote.
+//
+// AND THIS COUNT IS ARMING, NOT THE GATE, which since 2026-09-02 is the whole
+// difference between them. The gate now keeps every division unless somebody
+// pinned AFORGE_SPLITGATE on (splitgate's modes.go, and the experiment behind
+// it in docs/design/plan-gate-doe/REPORT.md), so on an unpinned binary this is
+// the only place the six-item floor still decides anything: it asks whether
+// work looks wide enough to be handed the verb at all, not whether a division
+// somebody already drew is allowed to stand. Reading the pin here would make
+// every task divisible by default, which is a different change and not the one
+// that was measured.
 func enumeratesWidth(pieces ...string) bool {
 	return splitgate.WorthIt(strings.Join(pieces, "\n"))
 }
@@ -674,7 +700,19 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// decided, and handing back the adjudication it never used
 	// ([divisionUnadjudicated]).
 	node := graph.node(parent)
-	thin := splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence)
+	// The gate is asked once, through the one function both products ask
+	// (splitgate's modes.go), and with no leaves: the parts this division wants
+	// do not exist yet, so nothing has sized them, and the mode that would
+	// rather read the plan's sizing than the brief is told honestly that there
+	// is no plan to read.
+	//
+	// AND ON AN UNPINNED BINARY IT IS NEVER THIN. The gate is off unless
+	// somebody pinned AFORGE_SPLITGATE, so this evidence test — and the tiebreak
+	// and the refusal that hang off it below — are reachable only where a run
+	// asked for a floor. Everything they say is still true when it is asked for,
+	// which is why the machinery stays rather than being deleted with the
+	// default.
+	thin := !splitgate.Judge(parsed.Evidence, nil).Keep
 	if thin && !node.armedByJudgement() {
 		line.Decision = divisionRefusedFloor
 		return divisionTooNarrow(parsed.Evidence), "", false
@@ -1234,6 +1272,12 @@ func divideReviewQuestion(parent *TaskNode, parsed divideArguments, thin bool) s
 // divisionTooNarrow is the answer to a division the evidence does not support.
 // It says the number back, because the worker's next move depends on whether it
 // under-counted what it saw or genuinely has narrow work in front of it.
+//
+// IT IS ONLY REACHED WHERE THE GATE WAS PINNED ON. An unpinned binary keeps
+// every division a worker asks for (splitgate's modes.go), so a worker meets
+// this sentence only under AFORGE_SPLITGATE=1 or judgment — which is also why
+// it goes on quoting the floor: a run that asked for a floor is owed the
+// number it is being held to.
 func divisionTooNarrow(evidence string) string {
 	return fmt.Sprintf(
 		"not split: what you found names %d separate items, and work is only split at %d or more — below that one worker doing them in order is faster than a working copy, a check and a wait for each part. Carry on with the work in your own hands. If there really are more items than that, say what they are and how many, and ask again.",

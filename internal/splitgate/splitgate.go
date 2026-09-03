@@ -2,6 +2,17 @@
 // enough independent items for dividing it to beat one worker doing them in
 // order?
 //
+// AND SINCE 2026-09-02 IT ASKS ONLY WHEN SOMEBODY ASKS IT TO. The gate shipped
+// armed under a six-item floor, and a designed experiment — four planner arms
+// against four readings of this gate, 273 judged draws on the plan door — put
+// the planner with the gate OFF on the front and left every armed reading
+// behind it (docs/design/plan-gate-doe/REPORT.md). So an unpinned binary keeps
+// every division the planner drew, and the counting below decides only where
+// somebody has pinned `AFORGE_SPLITGATE=1` or `judgment`. modes.go holds the
+// pin and the reasoning; everything else in this file is the counting itself,
+// which the experiment did not change and which arming still reads
+// (internal/session's enumeratesWidth).
+//
 // IT IS ONE ANSWER, ASKED IN THREE PLACES. The gate was written for the
 // resident's planner and its leaves (cmd/aforge/cooperative.go) and measured
 // against the swarm bench corpus, where it reproduced the empirically best
@@ -32,10 +43,7 @@
 // (task_divide.go reads every division before admitting it).
 package splitgate
 
-import (
-	"os"
-	"strings"
-)
+import "strings"
 
 // Floor is the smallest item count at which division has ever paid in the bench
 // corpus: twelve image files won, four modules and three bugs lost.
@@ -257,11 +265,19 @@ func WorthIt(evidence string) bool {
 	return Items(evidence) >= Floor
 }
 
-// Armed reports whether the gate has the last word. It is on unless somebody
-// has turned it off, and the switch is the literal "0" that
-// cmd/aforge/cooperative.go has always read — a rollback for a wave, not a
-// preference, which is why it is an environment pin and not a settings row
-// (internal/config's settings.go).
-func Armed() bool {
-	return strings.TrimSpace(os.Getenv("AFORGE_SPLITGATE")) != "0"
-}
+// Armed reports whether the gate has the last word.
+//
+// IT IS OFF UNLESS SOMEBODY PINNED IT ON, which is the opposite of what this
+// switch meant until 2026-09-02. The gate shipped armed and rolled back with
+// the literal "0"; a designed experiment then measured four planner arms
+// against four readings of it and the front it drew is the planner with this
+// gate having no say (docs/design/plan-gate-doe/REPORT.md). So the arming moved
+// into the pin: `1` for the count below, `judgment` for the plan's own sizing,
+// and everything else — an unset pin included — for the gate keeping quiet.
+// modes.go's [Mode] is where that is read, and this is one bit of it.
+//
+// It stays an environment pin and not a settings row for the reason it always
+// was one (internal/config's settings.go): it picks which decomposition
+// doctrine the binary runs, which is not something the product has an opinion
+// about, and it disappears when nobody has a reason to reach for it.
+func Armed() bool { return Mode() != ModeOff }

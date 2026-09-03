@@ -131,20 +131,30 @@ func TestTheFloorIsWhereDivisionStartedPaying(t *testing.T) {
 	}
 }
 
-// THE ESCAPE HATCH IS ONE LITERAL. It is `0` and nothing else — not "false",
-// not "off" — because that is what the switch has always meant and a second
-// spelling would be a rollback somebody thought they had taken.
-func TestTheGateIsArmedUnlessSomebodyWroteTheZero(t *testing.T) {
+// THE GATE IS OFF UNLESS SOMEBODY PINNED IT ON.
+//
+// THIS PIN FLIPPED, AND THE COMMENT IT REPLACES SAID THE OPPOSITE: the gate was
+// armed unless somebody wrote the literal `0`. A designed experiment then ran
+// four planner arms against four readings of it and put the arm with the gate
+// OFF on the front (docs/design/plan-gate-doe/REPORT.md), so on 2026-09-02 the
+// default moved and the two words that arm it became exact. `0` still turns it
+// off, because that is what the switch has always meant and a rollback somebody
+// took must not become a no-op that reads as an arming.
+func TestTheGateIsOffUnlessSomebodyPinnedItOn(t *testing.T) {
 	t.Setenv("AFORGE_SPLITGATE", "")
-	if !Armed() {
-		t.Error("the gate is off with nobody having said anything")
+	if Armed() {
+		t.Error("the gate has the last word with nobody having said anything")
 	}
 	t.Setenv("AFORGE_SPLITGATE", "0")
 	if Armed() {
-		t.Error("AFORGE_SPLITGATE=0 did not take the gate away")
+		t.Error("AFORGE_SPLITGATE=0 armed the gate")
 	}
 	t.Setenv("AFORGE_SPLITGATE", "1")
 	if !Armed() {
-		t.Error("AFORGE_SPLITGATE=1 turned the gate off")
+		t.Error("AFORGE_SPLITGATE=1 did not arm the gate")
+	}
+	t.Setenv("AFORGE_SPLITGATE", "judgment")
+	if !Armed() {
+		t.Error("AFORGE_SPLITGATE=judgment did not arm the gate")
 	}
 }
