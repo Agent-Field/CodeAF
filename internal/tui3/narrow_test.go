@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE NARROW TIER ─────────────────────────────────────────────────────────
@@ -70,9 +72,9 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 		if !strings.Contains(bar, a.page.word()) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nand dropped the place you are standing in (%q)", tc.width, bar, a.page.word())
 		}
-		if !strings.Contains(bar, "+") {
-			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a count, as in\n\t%q",
-				tc.width, bar, "  home  tasks  +5")
+		if !strings.Contains(bar, tokens.GlyphCollapsed) {
+			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a marked count, as in\n\t%q",
+				tc.width, bar, "  home  tasks  "+tokens.GlyphCollapsed+" 5")
 		}
 		if got := ansi.StringWidth(bar); got > tc.width {
 			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", tc.width, got, bar)
@@ -86,9 +88,11 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 				missing++
 			}
 		}
-		if !strings.Contains(bar, "+"+itoa(missing)) {
+		// THE COUNT WEARS THE FOLD MARK, which is what tells it from a badge or
+		// a door ([barMoreWord] and [foldSpellings]).
+		if want := tokens.GlyphCollapsed + " " + itoa(missing); !strings.Contains(bar, want) {
 			t.Fatalf("at %d columns the bar drew\n\t%q\nwhich leaves %d places off the row; the count should read %q",
-				tc.width, bar, missing, "+"+itoa(missing))
+				tc.width, bar, missing, want)
 		}
 	}
 	// AND A FRAME WITH NO ROOM FOR THE COUNT SAYS NOTHING RATHER THAN RUNNING

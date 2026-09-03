@@ -1571,8 +1571,17 @@ func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
 	// AND THE LINE TURNS ROUND RATHER THAN VANISHING: it is the way back, so it
 	// still says how many rows it stands for and wears the opened mark
 	// ([switcherReading.addFold]).
-	if !strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 more") {
+	//
+	// IT SAYS `fewer` AND NO LONGER `more`. This assertion used to want
+	// `▾ 5 more` over five rows that were on the frame, where the glyph was the
+	// only thing telling "five are hidden" from "five of these are the ones you
+	// asked for"; [foldWords] settles it, and `fewer` is what pressing the line
+	// again would do.
+	if !strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 fewer") {
 		t.Fatalf("the opened fold is not the way back:\n%s", homeText(a))
+	}
+	if strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 more") {
+		t.Fatalf("an opened fold still says it is hiding five rows:\n%s", homeText(a))
 	}
 
 	onTheFold()

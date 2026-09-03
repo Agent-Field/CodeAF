@@ -272,3 +272,38 @@ reverted (one site only, which is the real defect): the failure prints
   one surface's sake is a decision for whoever owns that library. The audit's own
   alternative — give the DOCK something else — is inside `internal/tui3` and is
   the cheaper half if anyone wants it.
+
+---
+
+## fixed — the blockquote's gutter
+
+**Row 15 — a blockquote is marked with a margin, not with a rule.**
+THE SHARED-LIBRARY QUESTION WAS SETTLED BY LOOKING, and the answer is that there
+is only one reader. `internal/tui2/prose` — the only thing that draws
+`GlyphProseQuote` — is imported by `internal/session`, `internal/tui2/tokens`'s
+own styler and `internal/tui3`, and by NOTHING in `internal/head` or
+`internal/resident`; neither `GlyphProseQuote` nor `GProseQuote` appears anywhere
+in the resident, whose only `tui2/tokens` import is one test file. The resident's
+spawn tree draws `GlyphTreeVert`, a DIFFERENT named slot that happened to share
+the byte, and it is untouched — so the shared constant could move without the
+call site growing a choice about who was asking.
+`GlyphProseQuote` is `▏` now, the byte the code fence's own gutter already
+carries: an eighth of a cell, which is a margin and cannot be mistaken for a
+border. It was `│`, the box-drawing rule this surface's vertical rules are made
+of, drawn at the LEFT margin of the feed while the margin column's divider ran
+down the RIGHT of the very same rows (`chat-md.120x40.txt`, lines 19-20 against
+the column at 91).
+The anti-drift pins moved with it rather than being weakened: `code_test.go`'s
+`TestProseGlyphsShareTheirBytes` names the fence's gutter as the quote's twin
+instead of the tree's trunk, `glyph.go`'s width table carries `'▏'`,
+`glyphvocab_test.go`'s deliberate-sharing entry says what the two now share, and
+`testdata/glyph_parity.golden` was regenerated with `-update-glyph-parity`.
+Files: `internal/tui2/tokens/code.go`, `internal/tui2/tokens/glyph.go`,
+`internal/tui2/tokens/code_test.go`, `internal/tui2/tokens/glyphvocab_test.go`,
+`internal/tui2/tokens/testdata/glyph_parity.golden`.
+Tests: `TestAQuotedPassageIsMarkedWithAMarginAndNotWithARule`,
+`TestTheQuoteBarSharesTheFencesGutterAndNotTheTreesTrunk`
+(`internal/tui3/quotebar_test.go`).
+Reverted: the first prints the quote drawn as
+`│ a quoted sentence long enough that it has to wrap` and says it drew no gutter;
+the second names `"│"` as the spawn tree's trunk.

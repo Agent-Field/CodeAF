@@ -138,7 +138,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"foldMoreWord": {
 		screen: " more",
-		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since aug 31`",
+		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since 6d`",
 		pkg:    tui3Pkg,
 	},
 	// The two fold hints are the CLAUSE THE ROW OWNS and not the whole drawn

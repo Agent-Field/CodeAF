@@ -463,3 +463,47 @@ What the row actually asks for — a verb that UNPARKS — has no seam behind it
 a capability that cannot work is absent rather than broken. The second pass above
 reached the same conclusion from the source; this pass reached it from the frames
 as well, so the row is closed rather than left.
+
+---
+
+## fixed — the accent
+
+**Row 8 — a name keeps its combining accent all the way onto the screen.**
+REPRODUCED FIRST, both halves, on one tmux socket: a shell `printf` of
+`the café pricing page` captures back with U+0301 in the bytes, and the same
+name through `bin/aforge` captures back as `the Cafe Pricing Page` with the mark
+gone. The store is honest — the seeded `meta.json` holds `e` + U+0301 — and so is
+every layer of ours. The loss is BELOW us, and the previous lane named the
+mechanism: bubbletea asks the terminal for mode 2027 at startup and only switches
+its cell buffer to grapheme widths once the terminal answers yes (`tea.go:794`);
+tmux answers no, so cellbuf's `printString` resets the cell before the zero-width
+rune arrives and the mark lands on a cell of its own.
+THE FIX IS NFC AT THE FRAME SEAM. `internal/tui3/view.go`'s `frame()` is now a
+wrapper over `frameBody()` that returns `norm.NFC.String(body)`, so `e` + U+0301
+reaches the terminal as the single rune `é` — one cell under either width table,
+and no information lost, NFC being a canonical mapping.
+**`golang.org/x/text` is already a direct dependency** (`go.mod` line 32,
+v0.40.0) and `unicode/norm` is already imported by `internal/plan/terrain.go`, so
+nothing was added.
+**THE COST IS ZERO ALLOCATIONS AND THERE IS NO GATE**, which is a decision. Two
+were tried. `norm.NFC.IsNormalString` — the obvious gate, and the one the brief
+suggested — costs ONE allocation per call whatever it finds, which is an
+allocation per keystroke to avoid a call that allocates nothing. A hand-rolled
+`unicode.IsMark` walk allocates nothing and is about twice as quick on a frame of
+this program's own chrome (10µs against 21µs on six kilobytes), and buys that by
+answering in a second place a question norm is the authority on, for a saving
+smaller than one entry render. `norm.Form.String` spans the string for the first
+byte composition could change and, finding none, hands back the string it was
+given: measured at 214 allocations for a frame with and without it, and the
+four-thousand-line scroll law is unmoved at 218 against its ceiling of 220.
+Files: `internal/tui3/view.go`.
+Tests: `TestAFrameNeverBreaksALetterFromItsAccent`,
+`TestComposingAFrameCostsNothingWhenThereIsNothingToCompose`
+(`internal/tui3/framecompose_test.go`).
+Reverted: dropping the composition prints "the frame drew the café pricing
+page — an e and a combining acute on their own, which the cell buffer puts on
+two cells"; replacing `norm.NFC.String` with the `norm.NFC.Bytes` form somebody
+reaches for costs two allocations a frame and fails the second test.
+Frames: `home2-before.120x40.txt` (line 11, `the Cafe Pricing Page`, no U+0301 in
+the bytes) → `home2-after.120x40.txt` (line 11, `the Café Pricing Page`, a
+composed `é`).

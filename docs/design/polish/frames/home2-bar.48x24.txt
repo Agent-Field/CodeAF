@@ -1,0 +1,24 @@
+ aforge               $0.13 / $500 · thu 3:39am
+  home  tasks  standing  memory  spend  ▸ 2
+────────────────────────────────────────────────
+
+work aforge ran on its own. 16 pieces of work s…
+
+needs your look
+› ▸ ? Measure the frame budget in every package…
+  ▸   1 file · Eleven packages measured. Four a…
+
+parked
+    ○ Write the change entry and open the pull …
+    ○ Fold the settled work on the task page
+
+done today
+    ✓ Port the picker onto the new list
+      2 files · The picker walks the list's row…
+  ▸ ✓ Count the tabs the bar draws
+  ▸   3 files · One reading of the world, share…
+
+────────────────────────────────────────────────
+ 4 needs your look · 2 parked · 5 done today ·…
+ › say what you want done      here ~/aforge-v2
+ ‹ back

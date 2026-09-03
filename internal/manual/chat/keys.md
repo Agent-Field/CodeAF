@@ -1263,7 +1263,8 @@ walks the cursor. The tasks pages describe what is on it.
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
-`esc back · ↑↓ scroll · m puts it in your message`. Clicking its head row or its foot goes
+`m puts it in your message · ↑↓ scroll`; `esc back` is in the head's right corner instead,
+said once. Clicking its head row or its foot goes
 back to the list; its body is read.
 
 **Rewind timeline** (`/rewind`, or `tab` from inside the quick `esc` `esc` mode): `esc`
@@ -1646,7 +1647,7 @@ and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
 with no verbs the arrows are the fold's, the way they are in the task column: on home's one
-fold — `▸ 15 more, quiet since aug 21` — `enter` or `→` shows every row and `enter` or `←`
+fold — `▸ 15 more, quiet since 6d` — `enter` or `→` shows every row and `enter` or `←`
 folds them back, and on a card `→` opens every folded band while `←` folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
@@ -1695,7 +1696,7 @@ on that same row when what is typed is a slash command, because `enter` runs it 
 sending it (home's page has that rule whole).
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in; a card stands beside it only at 160 columns and wider. **While anything
+this window is in; a card stands beside it only at 136 columns and wider. **While anything
 is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
 with `ask here: "…"` directly above it, both directly above the box, and the matches rise
 above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches

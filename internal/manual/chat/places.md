@@ -363,7 +363,7 @@ Press `alt+.` and the whole key map appears **in the cells you were already read
 the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
 
 **The chord list is built from the place you are on.** It reads
-`alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close`
+`alt+1…7 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
 — and the `→` clause is left out on a place whose rows have no verbs, such as search, rather
 than naming a key that would open nothing there.
 
@@ -550,14 +550,17 @@ what they mean on a wide screen.
 
 **Under about 57 columns the bar carries what it can and counts the rest.** It keeps the
 place you are standing in, the word the cursor is on, and any place wearing a count, then
-fills in the bar's own order until the row is full and ends with a dim `+3` — the number of
+fills in the bar's own order until the row is full and ends with a dim `▸ 3` — the number of
 places that are not on the row:
 
 ```
-  home  tasks  standing  +4
+  home  tasks  standing  ▸ 4
 ```
 
-`+3 more` where there are cells for the longer spelling, `+3` where there are not. **The
+`▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
+same fold mark every other list on this surface puts over the rows it is not drawing, so a
+count on the bar reads as the same idea as `▸ 15 more` at the foot of home. The word gives
+way before the mark does: `▸` is what says there is more behind the row. **The
 count is a sign and not a button** — pressing it does nothing, because it stands for several
 places at once and no single one of them is the answer.
 

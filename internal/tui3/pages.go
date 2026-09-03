@@ -508,9 +508,16 @@ func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	return a.placeBarMachine(some, width, pal)
 }
 
-// barMoreWord is the count of places a narrow bar could not carry, in the two
-// spellings [rowfit.go]'s law 2 asks a fact to degrade through: `+3 more` while
-// there are cells for it, and `+3` when there are not.
+// barMoreWord is the count of places a narrow bar could not carry, in the
+// spellings [rowfit.go]'s law 2 asks a fact to degrade through: `▸ 3 more` while
+// there are cells for it, and `▸ 3` when there are not.
+//
+// IT IS THE SURFACE'S ONE FOLD SENTENCE ([foldSpellings]) AND NO LONGER A `+`.
+// This row and the command menu's own tail mean the same thing — a navigation
+// list has more items than fit — and they were two writers with two spellings:
+// `+3 more` here against `▸ 3 more` there, so a person could not tell whether
+// `+3` was a count, a badge or a door. The mark is the half that says which, and
+// it is on every rung of the ladder: the word `more` gives way before `▸` does.
 //
 // IT IS A SIGN AND NOT A DOOR, and that is decided rather than unfinished: it
 // opens nothing, wears no cursor and claims no span, exactly as the machine's
@@ -521,7 +528,7 @@ func barMoreWord(n, room int) string {
 	if n <= 0 {
 		return ""
 	}
-	for _, say := range [...]string{"+" + itoa(n) + " more", "+" + itoa(n)} {
+	for _, say := range foldSpellings(n, "") {
 		if tabPadCols+ansi.StringWidth(say) <= room {
 			return say
 		}
@@ -1336,12 +1343,42 @@ func (a *app) scopeChip() string {
 func (a *app) scopeWorkspace() string {
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
-			if where := strings.TrimSpace(homeWhere(line)); where != "" {
+			if where := scopeAddress(line); where != "" {
 				return where
 			}
 		}
 	}
 	return strings.TrimSpace(a.workspace)
+}
+
+// scopeAddress is THE ADDRESS A HOME LINE RECORDS, AND NEVER ITS NAME.
+//
+// This used to be [homeWhere], which answers a different question and answers it
+// correctly: `ctrl+t` asks "which bucket does a fresh conversation in this row's
+// project belong to", and a project's NAME is a perfectly good bucket key when
+// nothing recorded a path. The chip is asking where a sentence will LAND, and a
+// name in that slot is not an address: with the cursor on a conversation the
+// chip read `here ~/aforge-v2` and one row down, on a standing item that
+// recorded no directory, `here aforge-v2` — which cannot be told from a second
+// checkout of the same name, and is the exact drift [app.scopeWorkspace]'s own
+// header cites ("a person read `here ~/aforge-v2` and started a task in `~`").
+//
+// SO EVERY ROW ANSWERS WITH A PATH OR WITH NOTHING, and nothing falls through to
+// this window's own workspace, which is what the chip already did for a row that
+// records no project at all.
+func scopeAddress(line homeLine) string {
+	// A conversation: the project directory its journal recorded.
+	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
+		return path
+	}
+	// A standing item: the project root the order belongs to, which
+	// [standing.Item.Workspace] holds as a resolved path for exactly this.
+	if path := strings.TrimSpace(line.item.Workspace); path != "" {
+		return path
+	}
+	// A project heading: the project's own path, which is an address where its
+	// name is not.
+	return strings.TrimSpace(line.proj.Path)
 }
 
 // The sentences the router says. Each is quoted in the manual exactly as it is
@@ -1382,7 +1419,15 @@ const (
 	// so that the line can be built WITH it and drawn WITHOUT it: it is the one
 	// clause on this line that is not true on every place ([placeHintSaid] drops
 	// it where the place declares no verbs).
-	placeMapVerbWords = "→ verbs on this row"
+	//
+	// IT SAYS WHAT THE KEY DOES. It read `→ verbs on this row`, which named a
+	// CATEGORY on a line where `alt+1…7 go to a place`, `alt+enter send it off as
+	// a task` and `esc close` all name an act — and `verbs` is the machinery's
+	// word for the strip rather than anybody's word for what pressing `→` gets
+	// them. The card's own `→ verbs: pause, stop` keeps the noun because the acts
+	// are listed right after it; this line has no room to list them, so it says
+	// what the key is for instead.
+	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
 	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · " +

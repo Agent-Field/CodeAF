@@ -281,3 +281,133 @@ and the change is stated in the test's own comment.
 | `TestTheRightArrowIsNotSeizedOnARowWithNoVerbs` | 120×17, with one frame drawn before the lines are read |
 | `TestAMatchBehindTheCollapseIsFoundAnyway` | 100×17 |
 | `TestHoveringAnotherProjectsRowReadsThatProjectsRepository` | the card is drawn wide enough for a forty-character temporary directory AND a branch; the drop at 36 cells is the layout law, not a lost reading |
+
+---
+
+## fixed — the home lane's second pass
+
+Frames prefixed `home2-` were captured from `bin/aforge` in a real terminal on
+socket `polish-home`, against a demo home seeded this pass. Every fix below was
+REVERTED and its test watched to fail before the fix was put back; where a test
+did not fail on the revert it was rewritten until it did, and the two that could
+not be made to discriminate are named as such.
+
+**Row 14 — home's two folds say one sentence.** There were two writers:
+`switcher.go`'s `addFold` handed a finished `foldLine` and swapping the glyph on
+the front of it (`▸ 4 more, quiet since sep 1`), and `home.go`'s `homeQuietWord`
+building its own (`…7 more, quiet since 3h`) — a leading ellipsis on one and not
+the other, and a calendar date against an elapsed span. `placeprose.go` now holds
+the one speller: `foldWords(open, n, clause)` says the count and, when the fold
+is open, says `N fewer` instead of `N more`; `foldLine` is that word wearing the
+shut mark, for the five folds that are only ever shut; `quietFoldClause` is the
+one spelling of the age. **THE ELAPSED SPELLING WON, and it is `sinceAt`** — the
+same ladder every row's own age is drawn with, so a fold and the rows it stands
+over can be read against each other instead of asking a person to convert
+between two units; `sinceAt` reaches for a calendar date by itself past thirty
+days, which is exactly when the elapsed form stops being readable, and an
+unconditional `Jan 2` was drawing today's date over rows three hours old. The
+`…` is gone: the mark belongs to whoever draws it, which is what let the phone
+draw `▸ …2 more`.
+Files: `internal/tui3/placeprose.go`, `internal/tui3/switcher.go`,
+`internal/tui3/home.go`; manual: `home.md`, `keys.md`, `commands.md`.
+Tests: `TestBothOfHomesFoldsSpellTheirCountAndTheirQuietOneWay`,
+`TestAnOpenedFoldOnHomeSaysHowManyItWouldTakeAway`
+(`internal/tui3/foldword_test.go`).
+Reverted, each half separately: reverting `switcher.go` alone prints
+`▸ 5 more, quiet since aug 23` against `▸ 5 more, quiet since 9d`; reverting
+`homeQuietWord` alone prints `…5 more, quiet since 9d`. Two existing tests
+pinned the old shape and were moved onto the new law with the reason in their
+comments — `TestTheOneFoldOpensAndFoldsOnEveryGesture` wanted `▾ 5 more` over
+five rows a person could see, and `TestTheSwitcherFoldsOnlyTheQuietTailAndCanHideIt`
+wanted `aug 20`.
+
+**Row 3 (H2) — the card arrives at 136 columns, not 160.**
+`homeSwitchFull` was 120, which was the list measured WITH the row's note on it
+— and the note is the fact the card exists to carry, so the layout reserved the
+list's width in order to draw, badly, the sentence the card would have drawn
+properly. It is now an addition of its parts: `homeSwitchName` (70, the longest
+name the list undertakes to draw whole) plus `homeSwitchTail` (26, the mark, the
+two cells after it, a project tag and an age, each with the space
+`switcherTailWidth` puts in front of it) = 96, so `homeCardMin` is 136. The note
+is ranked first out of a row by `switcherPaintRow`'s own ladder, which is the
+mechanism: past 136 the note gives way and the card takes it up, and the name,
+the tag and the age are untouched at every width the tier exists at.
+Files: `internal/tui3/homebridge.go`; manual: `home.md` (the 160-column rule and
+eight passages that repeated it), `keys.md`, `asking-from-home.md`.
+Tests: `TestTheCardArrivesOnAnEverydayWindowAndNotOnlyOnAHugeOne`,
+`TestBesideACardARowStillKeepsItsNameItsProjectAndItsAge`,
+`TestTheListNeverDropsBelowWhatItUndertookToDraw`
+(`internal/tui3/cardtier_test.go`). Reverted to 120: the first prints
+`a 136-column frame is tier 0`, the second `a 140-column frame drew a card of 0
+cells`, the third `homeSwitchFull is 120, want 96`.
+Frames: `home2-before.120x40.txt` and the audit's own `home-idle.140x45.txt` (no
+card) → `home2-after.140x45.txt`, where the card stands beside the list on an
+ordinary laptop window, and `home2-after.{60x30,80x24,120x40,160x50}.txt` for
+the tiers either side.
+
+**Row 8 — `esc` is named for what it does, and the questions it retires get a
+door.** The audit offered two fixes with different meanings; this pass took the
+one the audit itself argues for — *the code is deliberate and the label is the
+defect*. `setupSkipKeysWord` is now the one spelling of that key on all six feet
+(it was `esc skips setup` on five and `esc not now` on the browser-connect step,
+which is the FIRST screen a new install sees, and which reads as a promise that
+the question comes back). And `endSetup` leaves one dim line naming the doors
+onto the questions esc walked past — the step on screen and the ones under it,
+never one already answered: `still yours to set · /crew picks the five models
+aforge works with · /budget sets what it may spend`. A finished flow leaves no
+such line at all.
+Files: `internal/tui3/firstrun.go`; manual: `getting-started.md`.
+Tests: `TestEveryStepOfSetupNamesEscForWhatItDoes`,
+`TestSkippingSetupNamesTheQuestionsItRetired`,
+`TestFinishingSetupLeavesNoLineAboutQuestionsItAsked`
+(`internal/tui3/setupskip_test.go`). Reverted: the first prints
+`step 0's foot reads "enter connects in browser · paste a key · esc not now"`,
+the second that the note left behind never names `/crew` or `/budget`.
+NOT taken: leaving `setup_seen_at` unwritten until the last step. That is a
+product decision about whether the crew and budget questions are ever asked
+again, and neither the audit nor the code settles it.
+
+**Row 15 — one key, one clause, on both feet that name the `→` strip.**
+`homeItemActions` read `enter open where it was asked · → pause · stop`, in which
+`stop` is a verb with no key — the letters are the strip's and only exist once
+`→` has drawn it. `homeStripWord` is the one speller now and says it in the
+grammar the card beside it already uses (`homeVerbsWord`): `→ verbs: pause,
+stop`. The standing place's own foot had the same fault with three verbs and
+goes through the same function.
+Files: `internal/tui3/homestanding.go`, `internal/tui3/place_standing.go`;
+manual: `home.md`, `standing-orders.md`.
+Tests: `TestAnItemsFootNeverOffersAVerbWithNoKey`,
+`TestAFootNamesTheStripInTheCardsOwnGrammar`
+(`internal/tui3/stripword_test.go`). Reverted: the first prints
+`enter open where it was asked · → pause · stop`, naming the clause `"stop"`.
+
+**Row 16 — the scope chip is an address or it is this window's.**
+`scopeWorkspace` was reading `homeWhere`, which answers a different question
+correctly — `ctrl+t` wants a bucket, and a project's NAME is a fine bucket key —
+and wrongly here: the chip says where a sentence will LAND. `scopeAddress` takes
+a conversation's `ProjectDir`, a standing item's `standing.Item.Workspace`, or a
+project row's `Path`, and answers nothing where a row records none, which falls
+through to this window's own workspace exactly as it already did for a row with
+no project at all.
+Files: `internal/tui3/pages.go`.
+Tests: `TestTheScopeChipTakesARowsAddressAndNeverItsName`,
+`TestTwoHomeRowsSayWhereInTheSameWords` (`internal/tui3/scopeaddress_test.go`).
+Reverted: the second prints `the item's chip reads "here aforge-v2" — a name in
+the slot that says where a task will land; the row above it reads "here
+/w/aforge-v2"`. (The first is a pure-function law and does not discriminate on
+that revert; the second is the one that pins the seam.)
+
+**Row 18 — recorded closed by VERIFICATION, which is what this row asked for.**
+No code change: the audit's own fix shape is "none on its own; verify after row 2
+lands". It has. On `home-short.160x24.txt` the list ended at row 14 and the card
+at row 19, five rows apart, which read as one column having been cut; on
+`home2-short.160x24.txt` the list runs to row 19 and the card to row 20, and both
+leave the same blank row above the rule. Confirmed in the reading as well as on
+the frame: at 136×24, 160×24 and 160×50 the two columns end on the same row or
+one apart.
+NO TEST SHIPS WITH THIS ROW, and that is deliberate rather than an omission. The
+two laws that could be written here are either row 2's own — already pinned by
+`TestTheListGrowsToTheFrameAndIsNeverShorterThanEight` — or a claim about two
+columns ending together, which is content-shaped and passed against a reverted
+`capAtRest` on every fixture tried. A test that cannot be made to fail against
+the defect it names is worse than none.

@@ -77,7 +77,7 @@ rather than nothing (see *Home is empty — what an empty home shows*).
 ## Everything I have ever worked on — what home shows
 
 **One column, no borders**, hanging from the top of the frame with nothing typed. A card
-stands beside it only on a frame **160 columns or wider** (see *Why is there no preview on
+stands beside it only on a frame **136 columns or wider** (see *Why is there no preview on
 the right*). Top to bottom:
 
 ```
@@ -93,7 +93,7 @@ the right*). Top to bottom:
  ? Gmail cleanup routine    ~           wants to send on your behalf                 6h
  ◐ Bounty Reward Companies  leadgen     2 tasks running · reading filings            3h
  ○ Researching Santosh      aforge-v2   3 files made                               here
- ▸ 15 more, quiet since aug 21
+ ▸ 15 more, quiet since 6d
 ```
 
 1. **the pulse line**, the machine's own vital signs (its own section below);
@@ -221,14 +221,17 @@ questions and eighteen quiet conversations it leaves the two.
 then one fold over everything else:**
 
 ```
-▸ 15 more, quiet since aug 21
+▸ 15 more, quiet since 6d
 ```
 
 The line says **how many** rows it stands for and, when the first hidden row is a quiet
-one, **how far back** they go. Under `alt+q` the clause is simply `quiet`.
+one, **how far back** they go. The age is spelled the way every row's own age is spelled —
+`3h`, `6d`, and a date like `21 Aug` once it is past a month — so the fold and the rows
+above it can be read against each other. Under `alt+q` the clause is simply `quiet`.
 
 **It is a door.** `enter` or `→` on it shows every row with no cap at all, and its mark
-becomes `▾`; `enter` or `←` folds them back. The hint under the box says
+becomes `▾` and its words become `▾ 15 fewer` — how many pressing it again would take away,
+rather than a count of rows you can now see; `enter` or `←` folds them back. The hint under the box says
 `enter or → show them · esc close`, and `enter or ← fold them away · esc close` while it
 is open. The fold line stays on screen while it is open, because it is the way back.
 
@@ -375,26 +378,34 @@ A machine with **no conversations at all** draws `nothing here yet — say somet
 fills up` where the first row would be, over two rows split at the dash. An empty home is
 the same screen with fewer rows, never a different screen.
 
-## Why is there no preview on the right — the card, and the 160-column rule
+## Why is there no preview on the right — the card, and the 136-column rule
 
-**Below 160 columns home is one column and there is no card at all.** That is deliberate:
-at an ordinary width the card was showing you what pressing `enter` shows a beat later, and
-the **note on the row** now carries the one fact it was really for — what a conversation is
+**Below 136 columns home is one column and there is no card at all.** That is deliberate:
+at a narrow width the card was showing you what pressing `enter` shows a beat later, and
+the **note on the row** carries the one fact it was really for — what a conversation is
 stopped on, what is in flight in it, what it made.
 
-The exact number is the sum of its parts: 120 cells is what a row wants to carry its mark,
-name, project tag, note and age with none of them giving way, the gutter is 4, and a card
-that can still say a whole sentence is 36 — so the card tier begins at **160**, and the
-card is never paid for out of the list.
+The exact number is the sum of its parts: 96 cells is what a row wants to carry its mark,
+its name, its project tag and its age with none of them giving way, the gutter is 4, and a
+card that can still say a whole sentence is 36 — so the card tier begins at **136**, and
+the card is never paid for out of the list.
 
-**Past 160 the list and the card split every extra cell down the middle**, and the card
-stops growing at **56**. So the card is 36 wide on a 160-column frame, 48 at 184, 56 at 200
-and 56 on anything wider, and the list is never below the 120 it asks for at any width —
+**The note is not in that 96, and that is the trade.** It used to be — the number was 120,
+which put the card at 160, so no ordinary window ever drew one. But the note is the very
+fact the card exists to carry properly, so reserving the list's width for it meant holding
+cells back from the card in order to draw the card's own sentence badly in the list. The
+note is ranked first out of a row when it will not fit, so past 136 it gives way and the
+card takes it up; the name, the project tag and the age are untouched at every width the
+card tier exists at.
+
+**Past 136 the list and the card split every extra cell down the middle**, and the card
+stops growing at **56**. So the card is 36 wide on a 136-column frame, 48 at 160, 56 at 176
+and 56 on anything wider, and the list is never below the 96 it asks for at any width —
 that is arithmetic rather than a promise. The card stops at 56 because its clauses have the
 room they need there and the cells after that do more good in the list you read twenty rows
 of.
 
-**At 160 and wider the card stands on the right and it ACTS.** It is the title with the
+**At 136 and wider the card stands on the right and it ACTS.** It is the title with the
 place line under it, and five bands, each drawn only if it has something to say:
 
 ```
@@ -540,7 +551,7 @@ list, ranked by what wants you first, with its project as a tag on the row. Ther
 `elsewhere` rule, no folded block of other projects and no per-project fold.
 
 What *is* folded is the **tail of the one list**: as many rows as the window holds — eight
-at the very least — and then `▸ 15 more, quiet since aug 21`, which `enter` or `→` opens
+at the very least — and then `▸ 15 more, quiet since 6d`, which `enter` or `→` opens
 (*Where did the rest of my chats go*).
 
 **To see the projects again, press `alt+g`.** The rows are drawn in blocks under dim
@@ -673,7 +684,7 @@ is the same conversation the cursor opened on.
 **It is gone, and `↑` off the top row reaches the tab bar instead.**
 
 Home used to have a state called *rest*: `↑` off the top of the list put the cursor on **no
-row at all**, and on a frame 160 columns or wider the right-hand side became a card about
+row at all**, and on a frame 136 columns or wider the right-hand side became a card about
 the machine — `keeping an eye on`, an `agents` chart, `since you left`, `thinking`, and a
 `today` line. The whole state existed so that card had somewhere to be reached from.
 
@@ -695,7 +706,7 @@ by default, open `/settings` and walk to the `thinking` row.
 
 ## The pane on the right of home — the card under the cursor or pointer
 
-**There is a right-hand pane only at 160 columns and wider** (*Why is there no preview on
+**There is a right-hand pane only at 136 columns and wider** (*Why is there no preview on
 the right*). Where there is one, it is about **the row under your mouse pointer while the
 pointer is on one, and the row the cursor is on otherwise** (its own section, below). It is
 read top to bottom as bands separated by blank lines — no rules and no borders anywhere,
@@ -777,7 +788,7 @@ row's verbs, and the chords — `ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t` — act o
 so while you are pointing at one they act on **that** row.
 
 Two cases where the right side does not move under the pointer, both of them by design:
-under 160 columns there is no right column at all, and while your terminal owns the pointer
+under 136 columns there is no right column at all, and while your terminal owns the pointer
 — after `ctrl+s`, or with the `ui.mouse` setting off — there is no hover anywhere, so the
 card is always the cursor's.
 
@@ -804,7 +815,7 @@ Where to go for the whole figure instead:
 - **the tasks place** for the work a project has run, which is the record rather than a
   count;
 - **the spend place** for what it has cost;
-- **a conversation's own card**, at 160 columns and wider, for that one chat's work, files
+- **a conversation's own card**, at 136 columns and wider, for that one chat's work, files
   and figures.
 
 A project's own card existed while home was a tree of project headings. The tree is gone
@@ -891,7 +902,7 @@ lines that do nothing stay plain. So the way to find out whether something on th
 be pressed is to point at it: a task's name row lights, a fold line lights, and the
 headings, the title, the place line, the facts and the `▸ N more tasks` line do not.
 
-The card is only drawn where the frame is genuinely wide — around 160 columns and up. On a
+The card is only drawn where the frame is genuinely wide — 136 columns and up. On a
 narrower window there is no card, and the tasks place (`ctrl+.`) is where the work is
 listed; `enter` or a click on a row there opens the same record.
 
@@ -1116,7 +1127,7 @@ agent whose tool root does not exist and every command and every relative path i
 fail.
 
 Home says so **on the row**, at every width: `folder gone` in the right margin, where the
-age would be. And **on the card**, at 160 columns and wider: the place line under the title
+age would be. And **on the card**, at 136 columns and wider: the place line under the title
 carries `that folder is gone` where the branch would be, against the address it is about.
 
 `enter`, `ctrl+t new chat here` and `ctrl+o open folder` all want that directory — `enter`
@@ -1450,10 +1461,10 @@ refused here.
 press `ctrl+enter` instead of `enter`, and the answer comes back in the pane on the right
 without the command being run (see *Asking from home*).
 
-## How do I see the collapsed sessions — …13 more
+## How do I see the collapsed sessions — 13 more
 
 **There is one fold on home and it is at the foot of the whole list**, not one per project:
-`▸ 15 more, quiet since aug 21`. Home draws as many of the rows that want you most as the
+`▸ 15 more, quiet since 6d`. Home draws as many of the rows that want you most as the
 window can hold — eight at the least — and puts everything else behind that line, so a tall
 terminal folds little and often nothing.
 
@@ -1462,7 +1473,7 @@ drawn, with no cap at all; the mark becomes `▾`, and `enter` or `←` folds th
 Clicking the line toggles it in one press. It is the same fold gesture the task column uses,
 with the same two marks.
 
-Per-project folds — `…13 more, quiet since 1d` under a project's own heading — belong to
+Per-project folds — `▸ 13 more, quiet since 1d` under a project's own heading — belong to
 the **phone shape**, under 60 columns, where home is still an inbox with the projects under
 it.
 
@@ -1874,7 +1885,7 @@ that never became a conversation says
 
 ## What is on the right of home when I'm on one of these rows — the item's card
 
-On a frame **160 columns or wider** — the only width home draws a card at — the right column
+On a frame **136 columns or wider** — the only width home draws a card at — the right column
 shows the same kind of card it shows for a conversation, about the other kind of thing, read
 downward:
 
@@ -1889,14 +1900,16 @@ downward:
 6. a dim line of **how much lately**: `ran 3 times this week · $0.04`, counted
    over the last seven days of the standing ledger;
 7. **how hard it thinks**, if you have said: `thinking high`;
-8. the keys, dim: `enter open where it was asked · → pause · stop ·
-   ctrl+v think harder`.
+8. the keys, dim: `enter open where it was asked · → verbs: pause, stop ·
+   ctrl+v think harder`. Every clause on that line is one key and what it does —
+   the letters `p` and `s` are the row's own `→` strip and appear only once it is
+   drawn, which is why the line names the strip rather than the letters.
 
 Nothing that is zero is drawn. Something set up ten seconds ago is a title, a
 place and a cadence, and nothing else — no `0 runs`, no `$0.00`, no weekly line.
 A window with no ambient side wired to it draws no weekly line at all.
 
-Below 160 columns there is no card, and the row's own note is what it says — what it is
+Below 136 columns there is no card, and the row's own note is what it says — what it is
 asking, or what it is doing right now.
 
 ## Make a reminder think harder — how hard a standing item thinks, and ctrl+v on its card
@@ -2129,7 +2142,7 @@ reading `<age> · <words> · <text>`, for example `4m · keep main green · the 
 is still drawn where a fuller card is drawn: on the **phone sheet** under 60 columns, and on
 the card while you are **searching**. It shows three items, then a `▸ …N more things` door.
 An absent or empty inbox draws no news band at all, and looking at the band does not consume
-the news. The resting card at 160 columns does not carry it, because the ledger above the
+the news. The resting card at 136 columns does not carry it, because the ledger above the
 list already said it once.
 
 ## Where are the files it produced — deliverables on a conversation
@@ -2139,7 +2152,7 @@ its age out at the right — `· report.md   2h`. The basename is a clickable pa
 that support file links, and opens the full recorded path. It shows three files, then a
 `▸ …3 more files` door. A conversation with no indexed files draws no files band at all.
 
-It is one of the five bands the resting card keeps at 160 columns and wider (*Why is there
+It is one of the five bands the resting card keeps at 136 columns and wider (*Why is there
 no preview on the right*), so at any narrower width the way to the files is to open the
 conversation.
 
@@ -2149,7 +2162,7 @@ The card keeps the two sides of the last exchange together: the person's last me
 one muted line beginning `› `, followed by the reply in dim text wrapped to at most two
 lines. A conversation with no turns draws no last-exchange band.
 
-**The resting card does not carry it.** At 160 columns the card is the five bands that act,
+**The resting card does not carry it.** At 136 columns the card is the five bands that act,
 and what a conversation last said is a thing pressing `enter` shows a beat later. It is
 drawn on the **phone sheet** and on the card **while you are searching**, where telling two
 similarly named conversations apart is the whole job.
@@ -2273,7 +2286,7 @@ answers:
 - **the gaps** — the card is four groups with two blank rows between them and one inside
   them (*How much air is on the card*). A card showing one blank row everywhere is a card
   on a frame too short for the wide rhythm; make the window taller;
-- **the width** — the card is 36 cells at 160 columns and grows to 56 by 200, taking half of
+- **the width** — the card is 36 cells at 136 columns and grows to 56 by 176, taking half of
   every extra cell and leaving the other half to the list (*Why is there no preview on the
   right*). Under 160 there is no card at all and the row's own note carries the fact;
 - **the shades** — the title is the brightest text on the screen, the section words are one

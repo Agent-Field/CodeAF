@@ -166,25 +166,60 @@ func TestPhoneRewrapIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestWideTiersUnchanged is the no-regression half: every tier above the phone
-// renders exactly what prose renders, byte for byte.
-func TestWideTiersUnchanged(t *testing.T) {
+// TestAFenceHasNoTierBoundaryAndATableStillDoes replaces a test that
+// pinned the OPPOSITE law: it asserted that every tier above the phone rendered
+// exactly what prose renders, byte for byte, and that 59 cells took a separate
+// "phone path". That was true when a long line inside a fence was CUT at wide
+// widths and only wrapped on a narrow one — and cutting it was the defect,
+// because there is no horizontal scroll anywhere on this surface, so at 160
+// columns the tail of a line of code was simply gone. The tier boundary went
+// with it — FOR FENCES. A TABLE still has one, and should: at 59 cells a grid
+// cannot be drawn as a grid, so it stacks into `Task: refactor` rows, and that
+// is a real judgement about tables rather than a leftover of the old code path.
+// So the law worth pinning is the one that is actually true: a fence is wrapped
+// at every width, and a table keeps the narrow treatment it always had.
+func TestAFenceHasNoTierBoundaryAndATableStillDoes(t *testing.T) {
 	st := tokens.NewStyler(tokens.NoColor, tokens.FocusNormal)
 	const table = "| Task | Model |\n| --- | --- |\n| refactor | opus |\n"
-	for _, src := range []string{mdCodeSample, table} {
-		for _, width := range []int{60, 61, 80, 100, 120, 200} {
-			want := proseRows(st, src, width)
-			got := renderMarkdownWith(st, src, width)
-			if strings.Join(got, "\n") != strings.Join(want, "\n") {
-				t.Fatalf("width %d no longer renders as prose does:\n%s\n---\n%s",
-					width, strings.Join(got, "\n"), strings.Join(want, "\n"))
-			}
+
+	// PROSE THAT IS NOT CODE IS UNTOUCHED. The wave changed fences and nothing
+	// else, so at every width from the table tier up, a table must still come
+	// out of the markdown path byte for byte as prose draws it.
+	for _, width := range []int{60, 61, 80, 100, 120, 200} {
+		want := strings.Join(proseRows(st, table, width), "\n")
+		if got := strings.Join(renderMarkdownWith(st, table, width), "\n"); got != want {
+			t.Fatalf("a table at %d cells no longer renders as prose does:\n%s\n---\n%s", width, got, want)
 		}
 	}
-	// 60 is the floor and it belongs to the tier above: the phone path starts
-	// one cell under it.
-	if got := renderMarkdownWith(st, mdCodeSample, 59); strings.Join(got, "\n") == strings.Join(proseRows(st, mdCodeSample, 59), "\n") {
-		t.Errorf("59 cells did not take the phone path")
+	// And one cell under it the table stacks, which is the boundary that stays.
+	if got := strings.Join(renderMarkdownWith(st, table, 59), "\n"); !strings.Contains(got, "Task: refactor") {
+		t.Fatalf("a table at 59 cells did not stack:\n%s", got)
+	}
+
+	// AND A FENCE IS WRAPPED AT EVERY WIDTH, with no width at which the tail of
+	// a line goes missing. `mdCodeSample`'s first line is 73 cells, so it has a
+	// remainder to lose at 60 and none at 200 — both are checked, and the row
+	// that carries a remainder says so.
+	for _, width := range []int{59, 60, 61, 80, 100, 120, 200} {
+		rows := mdPlainRows(t, mdCodeSample, width)
+		joined := strings.Join(rows, "\n")
+		for _, row := range rows {
+			if ansi.StringWidth(row) > width {
+				t.Fatalf("at %d cells a row is %d wide:\n%q", width, ansi.StringWidth(row), row)
+			}
+		}
+		// Nothing is dropped: every word of the source survives somewhere in
+		// the drawn block, which is the whole point of wrapping over cutting.
+		flat := strings.Join(strings.Fields(strings.ReplaceAll(joined, mdContMark, " ")), " ")
+		for _, word := range strings.Fields("func handle(ctx context.Context, req *Request, out chan<- Result) error {") {
+			if !strings.Contains(flat, word) {
+				t.Fatalf("at %d cells the fence lost %q:\n%s", width, word, joined)
+			}
+		}
+		// A cut would have left an ellipsis where the tail used to be.
+		if strings.Contains(joined, "…") {
+			t.Fatalf("at %d cells a fence line was cut rather than wrapped:\n%s", width, joined)
+		}
 	}
 }
 

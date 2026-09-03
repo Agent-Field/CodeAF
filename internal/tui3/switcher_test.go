@@ -119,7 +119,11 @@ func TestTheSwitcherUsesAmberOnlyForRowsThatNeedThePerson(t *testing.T) {
 func TestTheSwitcherFoldsOnlyTheQuietTailAndCanHideIt(t *testing.T) {
 	lab := newSwitcherLab()
 	text := switcherText(lab.read(false, false, switcherLedgerInput{}), 120)
-	if !strings.Contains(text, "▸ 7 more, quiet since aug 20") {
+	// `5d` AND NOT `aug 20`: the fold's age is [sinceAt], the same ladder the
+	// rows above it wear, so a person is not asked to convert between two units
+	// to find out whether the fold and the last row mean the same day
+	// ([quietFoldClause]).
+	if !strings.Contains(text, "▸ 7 more, quiet since 5d") {
 		t.Fatalf("the quiet fold is wrong:\n%s", text)
 	}
 	hidden := switcherText(lab.read(false, true, switcherLedgerInput{}), 120)

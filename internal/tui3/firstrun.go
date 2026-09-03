@@ -221,7 +221,23 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	dir := strings.TrimSpace(a.profileDir)
 	_ = config.MarkSetupSeen(dir, a.now())
 	a.cancelSetupAuth()
+	// THE QUESTIONS THIS ESC WALKED PAST GET A DOOR. `setup_seen_at` is stamped
+	// whichever way this screen ended and only the key-only form ever reopens,
+	// so the crew and the day's limit are retired here — silently, until this
+	// line. It names the step ON SCREEN and the ones under it, because esc left
+	// that one unanswered too, and nothing a person already answered.
+	var later []string
+	if skipped && a.setup.at < len(a.setup.steps) {
+		for _, step := range a.setup.steps[a.setup.at:] {
+			if word := setupStepLater(step); word != "" {
+				later = append(later, word)
+			}
+		}
+	}
 	a.setup = setupFlow{skipped: skipped}
+	if len(later) > 0 {
+		a.noteFacts(setupLaterWord + " · " + strings.Join(later, " · "))
+	}
 	if !config.APIKeyConfigured(dir) {
 		word := setupNoKeyWord
 		facts := []string{config.APIKeyEnv}
@@ -260,6 +276,34 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 // conversation can be typed into, and the refusal on the first turn will say the
 // rest in its own words.
 const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or export " + config.APIKeyEnv
+
+// setupSkipKeysWord is what esc does, said the same way on every step of the
+// flow. It is a constant because it was SIX spellings of one key and one of them
+// disagreed with the other five: the browser-connect step said `esc not now`,
+// which reads as a promise that the question comes back, and esc on any step
+// stamps `setup_seen_at` and the crew and budget questions never open again
+// ([app.endSetup]).
+const setupSkipKeysWord = "esc skips setup"
+
+// setupLaterWord leads the line [app.endSetup] leaves behind when esc walked
+// past a question. The doors follow it, and only the doors onto questions this
+// person was NOT asked — a line naming a question somebody just answered would
+// be the screen arguing with them.
+const setupLaterWord = "still yours to set"
+
+// setupStepLater is the door onto ONE question esc walked past, said as the
+// thing a person would do rather than as the name of a step. The key step has
+// none: a machine with no key says so in [setupNoKeyWord] already, and two lines
+// about one absence is one too many.
+func setupStepLater(step setupStep) string {
+	switch step {
+	case setupCrew:
+		return "/crew picks the five models " + product + " works with"
+	case setupBudget:
+		return "/budget sets what it may spend"
+	}
+	return ""
+}
 
 // setupNoKeyConnectWord is the local default-provider form. It points at the
 // next ordinary act rather than at a buried settings row: the draft is kept,
@@ -1008,20 +1052,27 @@ func (a *app) setupKeysWord() string {
 		}
 		if strings.TrimSpace(s.text) == "" {
 			if a.routerConnect != nil {
-				return "enter connects in browser · paste a key · esc not now"
+				// `esc skips setup`, IN THE SAME WORDS AS THE OTHER FIVE
+				// BRANCHES. It read `esc not now` here alone, which is a promise
+				// about a later — and what esc actually does is stamp
+				// `setup_seen_at` and retire the crew and budget questions for
+				// good ([app.endSetup]). The key is named for what it does, and
+				// the note it leaves behind says where those two questions live
+				// afterwards.
+				return "enter connects in browser · paste a key · " + setupSkipKeysWord
 			}
-			return "enter goes on without a key · esc skips setup"
+			return "enter goes on without a key · " + setupSkipKeysWord
 		}
-		return "enter saves it · esc skips setup"
+		return "enter saves it · " + setupSkipKeysWord
 	case setupCrew:
-		return "↑↓ choose · enter takes " + config.CrewPresets[s.crew.cursor] + " · esc skips setup"
+		return "↑↓ choose · enter takes " + config.CrewPresets[s.crew.cursor] + " · " + setupSkipKeysWord
 	case setupBudget:
 		if strings.TrimSpace(s.text) == "" {
-			return "enter keeps " + a.setupRailWord(s.rail) + " · esc skips setup"
+			return "enter keeps " + a.setupRailWord(s.rail) + " · " + setupSkipKeysWord
 		}
-		return "enter sets " + setupTyped(strings.TrimSpace(s.text)) + " · esc skips setup"
+		return "enter sets " + setupTyped(strings.TrimSpace(s.text)) + " · " + setupSkipKeysWord
 	}
-	return "esc skips setup"
+	return setupSkipKeysWord
 }
 
 // maskTyped is the key as it is being typed: one bullet per character and the

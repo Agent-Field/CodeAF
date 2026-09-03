@@ -367,7 +367,10 @@ func (p *standingPlace) hint(a *app) string {
 	}
 	line := homeItemEnterWord
 	if len(words) > 0 {
-		line += " · → " + strings.Join(words, " · ")
+		// ONE KEY, ONE CLAUSE ([homeStripWord]). Joining the verbs with the same
+		// `·` that separates the clauses made `stop` and `not here` read as verbs
+		// with no keys of their own.
+		line += " · " + homeStripWord(words...)
 	}
 	return line + " · esc"
 }

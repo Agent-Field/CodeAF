@@ -34,7 +34,7 @@ import (
 // many as it can hold ([switcherReading.capAtRest] does the arithmetic against
 // [switcherView.room]). It was a bare cap for a wave, which is how a fifty-row
 // terminal came to draw eight conversations, fold the other four behind
-// `▸ 4 more, quiet since sep 1`, and leave twenty-eight blank rows under them.
+// `▸ 4 more, quiet since 6d`, and leave twenty-eight blank rows under them.
 const switcherShown = 8
 
 // switcherVerb is one thing the strip can offer for a row: the letter, the word
@@ -622,12 +622,12 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 			quietAt := capped - len(active)
 			if r.view.hideQuiet {
 				clause = "quiet"
-			} else if quietAt < len(quiet) && !quiet[quietAt].at.IsZero() {
-				clause = "quiet since " + strings.ToLower(quiet[quietAt].at.Format("Jan 2"))
+			} else if quietAt < len(quiet) {
+				clause = quietFoldClause(quiet[quietAt].at, r.now)
 			}
 		}
 		r.hidden = hidden
-		r.addFold(foldLine(hidden, clause))
+		r.addFold(hidden, clause)
 	}
 }
 
@@ -659,12 +659,12 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 		if capped < len(all) && !all[capped].needs && !all[capped].moving {
 			if r.view.hideQuiet {
 				clause = "quiet"
-			} else if !all[capped].at.IsZero() {
-				clause = "quiet since " + strings.ToLower(all[capped].at.Format("Jan 2"))
+			} else {
+				clause = quietFoldClause(all[capped].at, r.now)
 			}
 		}
 		r.hidden = more
-		r.addFold(foldLine(more, clause))
+		r.addFold(more, clause)
 	}
 }
 
@@ -672,12 +672,19 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 // wears the mark that says which way it goes — `▸` while it is hiding rows,
 // `▾` once it has been opened, the same two marks every other fold on this
 // surface uses.
-func (r *switcherReading) addFold(word string) {
+//
+// THE SENTENCE IS [foldWords] AND NOT THIS FILE'S OWN. This fold used to be
+// handed a finished [foldLine] and swap the glyph on the front of it, which left
+// an opened fold still saying `▾ 5 more` over five rows a person could see, and
+// left the list spelling the same idea differently from the phone and the
+// project tails. Both callers now hand in the count and the clause, and the one
+// speller says whether it is `more` or `fewer`.
+func (r *switcherReading) addFold(n int, clause string) {
 	mark := tokens.GlyphCollapsed
 	if r.view.all {
 		mark = tokens.GlyphExpanded
 	}
-	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + strings.TrimPrefix(word, tokens.GlyphCollapsed)}
+	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + " " + foldWords(r.view.all, n, clause)}
 	r.lines = append(r.lines, switcherLine{row: &row})
 }
 

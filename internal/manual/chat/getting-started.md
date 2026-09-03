@@ -12,10 +12,13 @@ the frame:
 3. **the limits** — one screen with three rows on it: `per day`, `per plan`, `per
    conversation`
 
-`enter` accepts each step's default and goes on. On the OpenRouter step it starts the
-browser connection; `esc` says not now. When it is done, or skipped, the ordinary empty
+`enter` accepts each step's default and goes on. Every step's foot names `esc` the same
+way — `esc skips setup` — because that is what it does on any of them: the flow is marked
+seen and it does not open again. When it is done, or skipped, the ordinary empty
 conversation appears — the wordmark box and the prompt. The crew and limit questions
-never come back. If OpenRouter is still not connected, its one-step screen returns on the
+never come back, so a skip leaves one dim line naming the doors onto the ones it walked
+past: `still yours to set · /crew picks the five models aforge works with · /budget sets
+what it may spend`. If OpenRouter is still not connected, its one-step screen returns on the
 next local interactive launch because the model cannot work without it.
 
 The line over the question reads `setting up · 1 of 3`; with only one thing missing it
@@ -80,7 +83,7 @@ conversation takes it at once — the next message rides it, no restart.
 
 ## Skip OpenRouter, retry later, and keep the message I typed
 
-`esc` on the idle step says not now. The conversation then says one dim line:
+`esc` on the idle step skips setup. The conversation then says one dim line:
 `openrouter is not connected · enter on your message connects in a browser, or export
 OPENROUTER_API_KEY`. Your draft is not sacrificed to a provider error: type it normally and
 press `enter`, and the one-step connection opens over the conversation before the draft is

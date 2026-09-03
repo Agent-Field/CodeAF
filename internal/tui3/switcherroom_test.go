@@ -37,7 +37,7 @@ func switcherDrawnRows(r switcherReading) int {
 // turned from a ceiling into a floor.
 //
 // A fifty-row terminal used to draw eight conversations, fold the rest behind
-// `▸ 7 more, quiet since aug 20`, and leave the bottom half of the screen
+// `▸ 7 more, quiet since 5d`, and leave the bottom half of the screen
 // blank — the frame had the rows and the reading had no way to be told about
 // them.
 func TestTheListGrowsToTheFrameAndIsNeverShorterThanEight(t *testing.T) {

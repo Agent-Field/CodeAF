@@ -362,7 +362,7 @@ const (
 	// homeSession is one conversation, and the only thing enter means anything
 	// on.
 	homeSession
-	// homeQuiet is a project's tail — "…2 more, quiet since Tue" folded, and
+	// homeQuiet is a project's tail — "2 more, quiet since 3d" folded, and
 	// the same line holding it open when it is not. IT IS A CURSOR STOP AND A
 	// DOOR: enter or → opens the project, ← folds it again, and a click does
 	// the same. A line that says work is being hidden and cannot be asked to
@@ -1849,7 +1849,7 @@ func (h *homeView) blank() {
 // expanded ([homeView.expanded]), and — the one that matters — A SEARCH IS
 // NEVER COLLAPSED. A filter that could not see what it hides would be a filter
 // lying about the machine: somebody typing three letters and getting
-// "…13 more, quiet since 10h" has been told the thing they asked for might be
+// "13 more, quiet since 10h" has been told the thing they asked for might be
 // behind a line they cannot open, which is worse than no search at all.
 func (h *homeView) split(project session.Project, rows []session.SessionRow, query string) (shown []session.SessionRow, quiet int, since time.Time) {
 	for i, row := range rows {
@@ -4506,18 +4506,17 @@ func (h *homeView) projectInk(project session.Project) noteInk {
 // homeQuietWord is the collapsed tail's one line. The age is the newest of the
 // conversations it stands for, so "quiet since" is a fact about the whole group
 // rather than about whichever one sorted last.
+//
+// IT IS [foldWords], AND THE ELLIPSIS IS GONE. This function used to put a `…`
+// on the front of its own sentence while its two callers were already drawing a
+// fold mark in front of that, so the phone read `▸ …2 more` — a mark and an
+// ellipsis saying the same thing on one line — and the list one tier up read
+// `▸ 4 more`. One speller, and the mark belongs to whoever draws it.
 func homeQuietWord(line homeLine, now time.Time) string {
-	if !line.folded {
-		// Open, and the line is now the way back. It says how many it is
-		// holding open rather than how long they have been quiet: the ages are
-		// on the rows themselves, right above it.
-		return "…" + itoa(line.quiet) + " fewer"
-	}
-	word := "…" + itoa(line.quiet) + " more"
-	if age := sinceAt(line.since, now); age != "" {
-		word += ", quiet since " + age
-	}
-	return word
+	// Open, the line is the way back: [foldWords] says how many it is holding
+	// open rather than how long they have been quiet, because the ages are on
+	// the rows themselves, right above it.
+	return foldWords(!line.folded, line.quiet, quietFoldClause(line.since, now))
 }
 
 // homeNote is a conversation's dim tail: what it has going on, then how long
