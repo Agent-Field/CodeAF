@@ -383,7 +383,7 @@ func scopedShare(path string, size int64, scope string) (int, bool) {
 	for _, candidate := range []int{
 		lineRangeShare(lines, scope),
 		lineCountShare(lines, len(text), scope),
-		namedBlockShare(lines, scope),
+		namedBlockShare(lines, len(text), scope),
 	} {
 		if candidate <= 0 {
 			continue
@@ -501,44 +501,124 @@ func headingRankIn(scope string) int {
 	return 0
 }
 
-// namedBlockShare finds the heading the scope spells and returns the extent of
-// the block under it. The candidates are the things a scope spells a heading
-// with — a backticked span, or a capitalised word — and each is resolved by
-// EQUALITY against a heading line of the file, never by containment: a scope
-// that mentions "North" measures the North block or nothing, and never a line
-// that happens to have the word in it.
-func namedBlockShare(lines []string, scope string) int {
-	labels := map[string]bool{}
+// namedBlockShare finds the heading the scope spells and returns what the scope
+// named of it. The candidates are the things a scope spells a heading with — a
+// backticked span, or a capitalised word — and each is resolved by EQUALITY
+// against a heading line of the file, never by containment: a scope that
+// mentions "North" measures the North block or nothing, and never a line that
+// happens to have the word in it.
+//
+// Two laws bound what a matched heading is worth, and both were written after
+// the same lane was refused at the plan door for the second time.
+//
+// A HEADING NAMED AS A LINE WEIGHS THAT LINE. The lane that builds a contents
+// section sourced `HANDBOOK.md (the '# Handbook' line and the list of all
+// chapter headings to construct contents)`. It will read one line and thirty
+// headings. This pass matched `Handbook` against the file's `# Handbook`
+// heading and handed back its SECTION, and a person who writes "the '# Handbook'
+// line" has said which of the two they meant.
+//
+// A HEADING WHOSE SECTION IS THE WHOLE FILE IS NOT A SHARE. `# Handbook` is a
+// rank-one title over thirty rank-two chapters, so its section runs to the end
+// of the file: 84.8 KB, the whole document, charged to a lane that touches one
+// line of it. A scope that resolves to the entire file has said nothing narrower
+// than the file, so it is no reading at all and this shape declines it — the
+// name is left unmeasured rather than charged whole through a scope. THE BARE
+// NAME IS UNAFFECTED: a source that says `HANDBOOK.md` and stops still weighs
+// every byte of it, which is what keeps the guarantee from issue #384.
+func namedBlockShare(lines []string, size int, scope string) int {
+	// Each label with the two ways the scope may have named it. They are kept
+	// apart rather than reduced to one flag because a scope may do both — "the
+	// North section and the North heading line" — and a node that names both
+	// will read both, so the section is what it weighs.
+	labels := map[string]mention{}
+	note := func(label string) {
+		if label == "" {
+			return
+		}
+		asLine, plain := mentionsOf(scope, label)
+		was := labels[label]
+		labels[label] = mention{line: was.line || asLine, section: was.section || plain}
+	}
 	for _, match := range backticked.FindAllStringSubmatch(scope, -1) {
-		labels[headingKey(match[1])] = true
+		note(headingKey(match[1]))
 	}
 	for _, match := range capitalised.FindAllString(scope, -1) {
-		labels[headingKey(match)] = true
+		note(headingKey(match))
 	}
-	delete(labels, "")
 	if len(labels) == 0 {
 		return 0
 	}
 	largest := 0
 	for index, line := range lines {
 		rank, label, ok := headingLine(line)
-		if !ok || !labels[label] {
+		if !ok {
+			continue
+		}
+		named, ok := labels[label]
+		if !ok {
 			continue
 		}
 		bytes := 0
-		for reach := index; reach < len(lines); reach++ {
-			if reach > index {
+		if named.line {
+			bytes = len(line)
+		}
+		if named.section {
+			section := len(line)
+			for reach := index + 1; reach < len(lines); reach++ {
 				if next, _, ok := headingLine(lines[reach]); ok && next <= rank {
 					break
 				}
+				section += len(lines[reach])
 			}
-			bytes += len(lines[reach])
+			// A section that is the whole document is not a share of it, so it
+			// contributes nothing — and a line reading beside it still stands.
+			if section < size && section > bytes {
+				bytes = section
+			}
 		}
 		if bytes > largest {
 			largest = bytes
 		}
 	}
 	return largest
+}
+
+// mention is the two ways a scope can name one heading, kept apart because a
+// scope may do both and the readings differ by three orders of magnitude.
+type mention struct {
+	line    bool
+	section bool
+}
+
+// mentionsOf reads how a scope named this heading: as a LINE — the label, then
+// quotes or marks, then the word "line" — or plainly, which names the section
+// under it. A scope that does both gets both, and the caller takes the larger,
+// because a node that names both will read both.
+//
+// The line marker is deliberately tight: the word has to follow the label, not
+// merely appear somewhere in the scope, because "header lines, North block
+// heading, 1,160 North records" names the North SECTION and mentions lines in
+// the same breath about something else entirely.
+func mentionsOf(scope, label string) (asLine, plain bool) {
+	quoted := regexp.QuoteMeta(label)
+	every, err := regexp.Compile(`(?i)` + quoted)
+	if err != nil {
+		return false, true
+	}
+	marked, err := regexp.Compile(`(?i)` + quoted + "[`'\"\\s#:,.\\-]{0,6}(?:heading\\s+)?lines?\\b")
+	if err != nil {
+		return false, true
+	}
+	all := len(every.FindAllString(scope, -1))
+	lines := len(marked.FindAllString(scope, -1))
+	// A label the scope spells but this reader cannot find again — the trimming
+	// that made the key was not reversible — is read the way every label was
+	// read before line-naming existed: as its section.
+	if all == 0 {
+		return false, true
+	}
+	return lines > 0, all > lines
 }
 
 // headingLine reads one line as a heading and says at what rank. Markdown marks
@@ -617,6 +697,15 @@ var (
 // into a refusal (issue #480). A node that names a whole file larger than one
 // worker's window has no such division behind it and is corrected as it always
 // was.
+//
+// THE EXEMPTION ASKS FOR ATOMIC AND NOT MERELY FOR A SIZING, which is the
+// issue's own wording and is worth stating because it has a live consequence: a
+// lane the ruler called BORDERLINE over a file its siblings share is still
+// corrected to oversized here. That is not obviously wrong — borderline is the
+// ruler saying the node is already past the size it would like, and a division
+// it half-doubted is a weaker signature than three confident atomics — but it is
+// a live question rather than a settled one, and it is the owner's to answer. It
+// is written down here rather than quietly widened.
 func correctBeyondReach(graph *Graph) {
 	reach := graph.reach()
 	if !reach.known() {

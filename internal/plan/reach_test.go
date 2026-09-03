@@ -299,6 +299,97 @@ func readFile(t *testing.T, dir, name string) string {
 	return string(data)
 }
 
+// A heading named as a LINE weighs that line, not the section under it. The
+// lane that builds a contents section will read one line and thirty headings,
+// and it says so: "the '# Handbook' line".
+func TestAHeadingLineNamedAsALineWeighsTheLine(t *testing.T) {
+	dir, handbook := handbookWorkspace(t)
+	title := 0
+	for _, line := range strings.SplitAfter(readFile(t, dir, "HANDBOOK.md"), "\n") {
+		if strings.HasPrefix(line, "# Handbook") {
+			title = len(line)
+			break
+		}
+	}
+	if title == 0 {
+		t.Fatal("the fixture wrote no title line")
+	}
+	measurement := ReachFor(dir, 0).Measure("HANDBOOK.md (the '# Handbook' line)")
+	if got := measurement.Bytes; got != title {
+		t.Fatalf("the '# Handbook' line measured %d bytes, want the %d the line weighs, of a %d-byte file",
+			got, title, handbook)
+	}
+
+	// The same heading named as itself is its section, which is the reading the
+	// line-naming is a departure from. The North block of the register is one
+	// third of a file, so it is a share and it is charged as one.
+	register, whole := registerWorkspace(t)
+	reach := ReachFor(register, 0)
+	block := reach.Measure("register.txt: the North block heading")
+	if block.Bytes <= whole/4 || block.Bytes >= whole/2 {
+		t.Fatalf("the North section measured %d bytes of a %d-byte register", block.Bytes, whole)
+	}
+	// And a scope that names one heading BOTH ways will read both, so the
+	// section is what it weighs. Collapsing the two into one flag charged this
+	// node a single heading line for material it reads a third of a file of.
+	both := reach.Measure("register.txt: the North heading line and the whole North block")
+	if both.Bytes != block.Bytes {
+		t.Fatalf("a heading named as a line and as a section measured %d bytes, want its section's %d",
+			both.Bytes, block.Bytes)
+	}
+}
+
+// A heading whose section is the whole document is not a share OF the document.
+// `# Handbook` is a rank-one title over thirty rank-two chapters, so its section
+// runs to the end of the file: naming it charged a lane that touches one line
+// the whole 84.8 KB. A scope that resolves to the entire file has said nothing
+// narrower than the file, so it is no reading at all.
+func TestATitleHeadingOverTheWholeFileIsNotAShare(t *testing.T) {
+	dir, handbook := handbookWorkspace(t)
+	if got := ReachFor(dir, 0).Measure("HANDBOOK.md (the Handbook section, all of it)"); got.Taken() {
+		t.Fatalf("a title heading over the whole file measured %+v of %d bytes", got, handbook)
+	}
+	// And the bare name is untouched: a source that says the file and stops
+	// still weighs every byte of it, which is the guarantee from issue #384.
+	if got := ReachFor(dir, 0).Measure("HANDBOOK.md"); got.Bytes != handbook {
+		t.Fatalf("the bare name measured %d bytes of a %d-byte file", got.Bytes, handbook)
+	}
+}
+
+// The three lanes of fixture B as the shipped model actually wrote them at the
+// plan door, sources and all. Lanes one and two say their share in words no
+// arithmetic reaches and are left to the sizer; lane three names one line and
+// weighs one line. None of the three is refused.
+func TestTheHandbookLanesAsTheModelWroteThemAreNeverRefused(t *testing.T) {
+	dir, _ := handbookWorkspace(t)
+	graph := &Graph{Goal: "three lanes over HANDBOOK.md", NextID: 1, Workspace: dir,
+		Stages: []Stage{{Title: "Lanes", Summary: "three lanes that share no lines"}}}
+	for _, lane := range []struct{ title, source string }{
+		{"Headings", "HANDBOOK.md (all lines matching '## chapter N: ...' headings)"},
+		{"Links", "HANDBOOK.md (all lines containing sentences matching 'See also chapter N and the X note.')"},
+		{"Contents", "HANDBOOK.md (the '# Handbook' line and the list of all chapter headings to construct contents)"},
+	} {
+		graph.Add(Node{Kind: KindWork, Stage: 1, Title: lane.title,
+			Summary: "one lane of the handbook", Sources: []string{lane.source}})
+	}
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"}, {Node: 3, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{1, 2, 3} {
+		if got := graph.Node(id); got.Size != SizeAtomic || got.Undivided != "" {
+			t.Fatalf("lane %d was sized %q/%q", id, got.Size, got.Undivided)
+		}
+	}
+	// And the third lane is measured rather than merely spared: it names one
+	// line, so one line is what it weighs.
+	reach := ReachFor(dir, 0)
+	if got := reach.Measure(graph.Node(3).Sources...); !got.Taken() || got.Exceeds() {
+		t.Fatalf("the contents lane measured %+v", got)
+	}
+}
+
 // The other half of the law, and the guarantee from issue #384 kept whole: a
 // node that names the register and does not say which part of it names all of
 // it, and one worker cannot hold all of it.

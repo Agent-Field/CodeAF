@@ -28,6 +28,11 @@ count of records or lines, valued as that many mean lines of the file; or a name
 block or heading matched by equality and continuing to the next heading of the
 same rank. A heading count reads the rank its scope spells — the `##` of
 `` `## chapter N: …` `` — so it charges the headings named and no others. A
+heading named as a LINE — "the `# Handbook` line" — weighs that line and not the
+section under it, and a heading whose section would be the whole document (a
+rank-one title over lower-ranked sections) is not a share reading at all: it has
+said nothing narrower than the file, so it is left unmeasured rather than
+charged whole through a scope. A
 scoping mark with no words after it is not a scope, and the name stands bare. A
 file mentioned more than once is weighed by the largest of its mentions, so the
 order the sources were written in is not a measurement. Anything else is not
