@@ -82,7 +82,7 @@ var complexityDebt = map[string]int{
 	"decodeTasks":           28,
 	"taskSegments":          26,
 	"TaskGraph.rehydrate":   22,
-	"TaskGraph.runFrontier": 22,
+	"TaskGraph.runFrontier": 19,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
 	"groundLint":            21,
@@ -104,8 +104,11 @@ var whyTheDebtIsStillThere = map[string]string{
 		"waiting to be written as one.",
 	"TaskGraph.rehydrate": "the other half of the same road — one restored record turned back " +
 		"into a live node, field by field, with a default per absent field.",
-	"TaskGraph.runFrontier": "the scheduler. Every reason a runnable node may not start yet is " +
-		"one arm of it, and they are read in an order that is itself the policy.",
+	"TaskGraph.runFrontier": "the scheduler. #381 took the reasons a ready node may not " +
+		"start yet out of it — they are [TaskGraph.holdOnStartingLocked] now, where the order " +
+		"that is itself the policy can be read on one screen — and paid for the quit's own " +
+		"gate with the room that made. What is left is the walk, the transitions and the " +
+		"starts.",
 	"Agent.workTaskNode": "the node's whole life, and #260 took its world, its handoff " +
 		"contract, its unfinished settlements and its landing out of it. What is left is the " +
 		"one-worker-or-two loop and the gate's three verdicts, which is its own issue.",

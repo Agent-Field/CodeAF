@@ -2144,6 +2144,19 @@ type Agent struct {
 	// periodic telemetry.
 	ambient []userMessage
 	closed  bool
+	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
+	// the close complete for everybody rather than only for whoever got there
+	// first.
+	//
+	// A SECOND CLOSE MUST NOT RETURN BEFORE THE FIRST HAS FINISHED. `closed`
+	// above is set at the top of Close, before a single node is cut, so a
+	// concurrent caller that read it and returned was told the session was
+	// closed while its turn, its nodes and its jobs were all still running —
+	// which is the very sentence this session's quit exists to make true
+	// (issue #381). It is made under the same lock that sets `closed`, so a
+	// caller that loses the race is guaranteed to find a channel to wait on
+	// rather than a nil one.
+	closeDone chan struct{}
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.

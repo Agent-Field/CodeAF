@@ -419,7 +419,15 @@ func (r *jobRegistry) startWatch(spec watchSpec) (*job, error) {
 	// cancel, reached through job.signal by jobs kill and by Close.
 	ctx, cancel := context.WithCancel(context.Background())
 	started.stop = cancel
-	r.add(started)
+	if err := r.add(started); err != nil {
+		// THE SLOT GOES BACK, exactly as it does when the job could not be made
+		// above. It was claimed before the job existed, and a watch refused at
+		// the registry's door is never going to tick — a slot left claimed here
+		// would lower this session's watch limit for good.
+		r.releaseWatch()
+		cancel()
+		return nil, fmt.Errorf("could not start the watch: %w", err)
+	}
 
 	go r.runWatch(ctx, cancel, started, spec)
 	return started, nil

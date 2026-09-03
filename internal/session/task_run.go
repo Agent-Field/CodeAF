@@ -481,9 +481,32 @@ type TaskNode struct {
 	// checker, each repair round — because they are one node working, and a
 	// reader outside the process is asking about the node.
 	beat *taskBeat
-	// cancel ends this node's run: the deadline's context, cancelled early by
-	// jobs kill or by Close.
+	// ctx is the context this node's whole run happens under and cancel ends it:
+	// cut by jobs kill, by a person's stop, or by Close.
+	//
+	// BOTH ARE MADE WHEN THE NODE IS STARTED AND NOT INSIDE THE GOROUTINE THAT
+	// RUNS IT ([TaskGraph.runFrontier]), which is the law issue #381 was: a node
+	// that becomes reachable only from inside its own goroutine is a node a
+	// quit cannot see for as long as that goroutine takes to be scheduled — and
+	// what it did in that window was open a log, build a child agent and spend
+	// on two model calls for a session that had already left.
+	ctx    context.Context
 	cancel context.CancelFunc
+	// claimed says A RUNNER HAS TAKEN THIS NODE UP: [Agent.runTaskNode] sets it
+	// in the one hold of the lock that also reads the context it is about to run
+	// under ([TaskNode.claimRun]), and a test's stand-in for a run sets it
+	// through [TaskNode.setCancel]. It is never cleared, because a node is taken
+	// up once.
+	//
+	// IT IS THE QUESTION A STOP ASKS BEFORE IT PROMISES TO WAIT. That question
+	// used to be asked of `cancel` — nil meant nobody was running this node, so
+	// nothing was ever going to settle it and the stop settled it itself
+	// (cancel.go's [TaskGraph.stop]). The frontier now mints the cancel at
+	// admission so a quit can reach a node whose goroutine has not started yet,
+	// which left `cancel` unable to answer it: every running node has a handle
+	// now, including the ones nobody has picked up. So the fact is written down
+	// on its own rather than inferred from a pointer that no longer means it.
+	claimed bool
 	// stopped marks a node a PERSON ended (cancel.go). It is set BEFORE the
 	// context is cut, so that the landing this stop causes already knows whose
 	// decision it was — a flag written afterwards would be a flag the update
@@ -691,6 +714,23 @@ type TaskGraph struct {
 	// assembly) is the thing worth testing on its own, and it should not need a
 	// provider and a git repository to be looked at.
 	run func(*TaskNode)
+	// runners counts the node goroutines this graph has out: one Add per node
+	// the frontier starts, taken UNDER THE LOCK beside the transition that
+	// authorized it, and one Done as that goroutine returns.
+	//
+	// IT IS HOW THE QUIT KNOWS THE GRAPH IS EMPTY ([TaskGraph.stopAll]), and it
+	// counts goroutines rather than landings for a reason a `done` channel
+	// cannot: a node whose run is interrupted by Close returns through
+	// [TaskGraph.handBackLane] WITHOUT settling, on purpose, so that recovery
+	// resumes it — its `done` is never closed, and a stop that waited on that
+	// channel would wait for something nobody is going to send.
+	runners sync.WaitGroup
+	// quitting is set once, by the graph's bounded stop, and it is what makes a
+	// closed session a session with no running nodes: after it the frontier
+	// starts nothing, so no goroutine can join the wait that is already under
+	// way. It is read and written under `mu` beside the Add above, which is
+	// what keeps a node from being counted after the count is being waited on.
+	quitting bool
 	// report is called once per node reaching a final state, outside the lock.
 	// It is how the world hears: the update event, and the note that reaches the
 	// model through the steering lane.
@@ -1035,7 +1075,17 @@ func (g *TaskGraph) runFrontier() {
 	orders := g.standingWorld()
 
 	g.mu.Lock()
+	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
+	// graph's bounded stop starts nothing ([TaskGraph.stopAll]). Every pass this
+	// refuses is one a node winding up caused — a hand-back parks and turns the
+	// frontier — and starting fresh work on the way out is how the orphan of
+	// issue #381 was made in the first place.
+	if g.quitting {
+		g.mu.Unlock()
+		return
+	}
 	var starting, failing, waiting []*TaskNode
+	var releases []context.CancelFunc
 	machineHeld := false
 	for _, id := range g.order {
 		node := g.nodes[id]
@@ -1050,24 +1100,8 @@ func (g *TaskGraph) runFrontier() {
 			failing = append(failing, node)
 			continue
 		}
-		// What is holding this node, in the words the surface draws. A node that
-		// is not ready is held by its own edges and says NOTHING here: DependsOn
-		// is already on the notice, and a second word for the same fact would be
-		// the wire saying it twice.
-		hold := ""
-		switch {
-		case !ready:
-		// A NODE THAT TAKES NO SLOT IS HELD BY NEITHER CEILING, and it is the one
-		// case that has to come before both of them ([taskSpec.takesSlot] makes
-		// the whole argument). The two ceilings model a node as an agent with a
-		// checkout and a build; a design is two model calls and a person reading
-		// a card, and queueing one behind a full machine would be a harness
-		// nobody can start because the machine is busy running tasks.
-		case !node.takesSlot():
-		case g.limit > 0 && g.running >= g.limit:
-			hold = waitingSlot
-		case busy:
-			hold = waitingMachineBusy
+		hold := g.holdOnStartingLocked(node, ready, busy)
+		if hold == waitingMachineBusy {
 			machineHeld = true
 		}
 		if !ready || hold != "" {
@@ -1093,8 +1127,26 @@ func (g *TaskGraph) runFrontier() {
 		if node.takesSlot() {
 			g.running++
 		}
+		// THE NODE'S CONTEXT IS MADE HERE, IN THE SAME HOLD OF THE LOCK THAT
+		// MARKED IT RUNNING, and not inside the goroutine below. That is what
+		// makes a node reachable from the moment it starts: a stop reads
+		// `cancel` under this same lock, so there is no window in which the
+		// graph believes a node is running and has no handle on it. A node
+		// belongs to the process and not to a turn or a surface, so the parent
+		// is Background — detaching a renderer ends nothing here.
+		ctx, cancel := context.WithCancel(context.Background())
+		node.ctx, node.cancel = ctx, cancel
 		starting = append(starting, node)
+		// The handle is kept here as well as on the node, because the goroutine
+		// below must release THE CONTEXT THIS PASS MADE — reading it back off
+		// the node would read whatever is there by then, which in the tests is
+		// a stub somebody else installed.
+		releases = append(releases, cancel)
 	}
+	// AND THE GOROUTINES ARE COUNTED BEFORE THEY EXIST, under the lock the quit
+	// reads `quitting` under, so that a node cannot join the count after the
+	// quit has started waiting on it.
+	g.runners.Add(len(starting))
 	g.mu.Unlock()
 
 	// A machine hold is the one hold nothing will come along and lift.
@@ -1117,15 +1169,60 @@ func (g *TaskGraph) runFrontier() {
 		close(node.done)
 		g.announce(node)
 	}
-	for _, node := range starting {
+	for at, node := range starting {
 		g.announce(node)
-		go g.run(node)
+		// The run is wrapped rather than started bare so that the two things
+		// that are true of EVERY node's goroutine, whatever `run` is — the
+		// count it was already added to comes back down, and the context made
+		// above is released — happen on every road out of it, including the
+		// scripted runners the tests put here.
+		//
+		// THE HOOK ITSELF IS READ HERE AND PASSED IN, on this goroutine, which is
+		// where a bare `go g.run(node)` read it too. Reading it from inside the
+		// new goroutine instead would move that read off the road the caller is
+		// on, and a test that installs its runner right after starting a node
+		// would be racing a read that used to have happened already.
+		go func(node *TaskNode, release context.CancelFunc, run func(*TaskNode)) {
+			defer g.runners.Done()
+			defer release()
+			run(node)
+		}(node, releases[at], g.run)
 	}
 	// A cascade needs one more pass: the nodes just failed may block others,
 	// and a failure frees no slot, so nothing else can have moved.
 	if len(failing) > 0 {
 		g.runFrontier()
 	}
+}
+
+// holdOnStartingLocked is what is holding one READY node back, in the words the
+// surface draws, and "" for a node that may start now.
+//
+// It is read with the graph's lock held, by the frontier, once per queued node
+// per pass. The order of the arms IS the policy and it is why they are a switch
+// rather than a set of ifs: the first true one is the reason a person is shown.
+//
+// A node that is not ready is held by its own edges and says NOTHING here:
+// DependsOn is already on the notice, and a second word for the same fact would
+// be the wire saying it twice.
+func (g *TaskGraph) holdOnStartingLocked(node *TaskNode, ready, busy bool) string {
+	switch {
+	case !ready:
+		return ""
+	// A NODE THAT TAKES NO SLOT IS HELD BY NEITHER CEILING, and it is the one
+	// case that has to come before both of them ([taskSpec.takesSlot] makes the
+	// whole argument). The two ceilings model a node as an agent with a checkout
+	// and a build; a design is two model calls and a person reading a card, and
+	// queueing one behind a full machine would be a harness nobody can start
+	// because the machine is busy running tasks.
+	case !node.takesSlot():
+		return ""
+	case g.limit > 0 && g.running >= g.limit:
+		return waitingSlot
+	case busy:
+		return waitingMachineBusy
+	}
+	return ""
 }
 
 // armPoll sets the one clock this scheduler has.
@@ -1159,6 +1256,69 @@ func (g *TaskGraph) armPoll() {
 		g.mu.Unlock()
 		g.runFrontier()
 	})
+}
+
+// stopAll is THE GRAPH'S BOUNDED STOP AT QUIT, and the whole of it: nothing
+// more starts, every node that is running is cut, and the quit waits — bounded
+// by `grace` — for their goroutines to return.
+//
+// A CLOSED SESSION HAS NO RUNNING NODES. Before this, Close reached nodes only
+// through the jobs round, which walks a registry a node puts itself in as its
+// first act — so a node admitted in the last moments of a session was invisible
+// to the quit for as long as its goroutine took to be scheduled, and what it
+// did next was open a log under a session that had left, build a child agent
+// and spend on model calls nobody could stop or find (issue #381).
+//
+// THE WAIT IS ON THE GOROUTINES AND NOT ON THE NODES' `done`, and that is not
+// an accident of implementation: a run this cancels returns through
+// [TaskGraph.handBackLane] WITHOUT settling, deliberately, so that recovery
+// resumes it — its `done` never closes, and a wait on it would be a quit that
+// hangs for the whole grace on every node it stopped.
+//
+// IT IS NOT [Agent.Abandon], which is ONE TURN'S bounded stop at a person's
+// escape and never touches a node: that ends the work of answering, this ends
+// the work itself, and a session that abandons a turn goes on running its
+// tasks. Two bounded stops in one package are two mechanisms, and they are
+// named beside each other here so that nobody later unifies them.
+//
+// It is bounded because it is what a person's quit waits behind. Past the grace
+// a straggler is left to the round below — the registry closes there, so a node
+// that surfaces after this can no longer register anything into a session that
+// has gone.
+func (g *TaskGraph) stopAll(grace time.Duration) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.quitting = true
+	var cuts []context.CancelFunc
+	for _, id := range g.order {
+		node := g.nodes[id]
+		// A node that has landed has already released its own context, and one
+		// that never started has none to release; what is left is exactly the
+		// work this session is doing.
+		if node == nil || node.state != TaskRunning || node.cancel == nil {
+			continue
+		}
+		cuts = append(cuts, node.cancel)
+	}
+	g.mu.Unlock()
+
+	// OUTSIDE THE LOCK, because a cancel wakes a run that will immediately ask
+	// the graph for its lane back.
+	for _, cut := range cuts {
+		cut()
+	}
+
+	// The wait is a goroutine over the count so that it can be given a deadline:
+	// one that outlives the grace outlives it holding nothing, and the process
+	// is on its way out behind it.
+	landed := make(chan struct{})
+	go func() {
+		g.runners.Wait()
+		close(landed)
+	}()
+	waitDone(landed, grace)
 }
 
 // doomedDependencies is the proposal-time half of [readinessLocked]: which of
@@ -1399,16 +1559,7 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 		// have finished work ageing on disk.
 		node.elapsed = time.Since(node.started)
 	}
-	// A PARKED NODE HAS ALREADY GIVEN ITS LANE BACK ([TaskGraph.park]), so
-	// landing it must not give the same one back twice. And a node that never
-	// took one — a design (see [TaskNode.takesSlot]) — must not hand one back
-	// either: both would be quietly raising the cap for everybody else, which
-	// is the same fault [TaskGraph.resettle] refuses one function down.
-	if node.parked {
-		node.parked = false
-	} else if g.running > 0 && node.takesSlot() {
-		g.running--
-	}
+	g.handBackSlotLocked(node)
 	g.mu.Unlock()
 	close(node.done)
 
@@ -1416,6 +1567,30 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.grade(node)
 	g.announce(node)
 	g.runFrontier()
+}
+
+// handBackSlotLocked returns one node's slot to the graph, and it is the ONE
+// place that arithmetic is written.
+//
+// A PARKED NODE HAS ALREADY GIVEN ITS LANE BACK ([TaskGraph.park]), so landing
+// it must not give the same one back twice. And a node that never took one — a
+// design (see [TaskNode.takesSlot]) — must not hand one back either: both would
+// be quietly raising the cap for everybody else, which is the same fault
+// [TaskGraph.resettle] refuses one function down.
+//
+// ITS TWO CALLERS ARE THE TWO WAYS A NODE STOPS HOLDING A SLOT IT TOOK.
+// [TaskGraph.complete] is the ordinary one: the runner landed the node. The
+// other is cancel.go's [TaskGraph.stop], for a running node no runner had taken
+// up yet — there, nobody is coming to land it, so the stop that settles it must
+// also give its lane back. The lock is the caller's.
+func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
+	if node.parked {
+		node.parked = false
+		return
+	}
+	if g.running > 0 && node.takesSlot() {
+		g.running--
+	}
 }
 
 // resettle moves a node that has ALREADY landed to a new final state: an
@@ -1783,11 +1958,59 @@ func thresholdOr(value, fallback int) int {
 	return value
 }
 
-// setCancel hands the node the handle that ends its run.
+// setCancel hands the node the handle that ends its run. The frontier writes
+// the node's own pair as it starts it ([TaskGraph.runFrontier]); this is for a
+// caller that stands in for a run and wants the stop to reach it instead.
+//
+// STANDING IN FOR A RUN IS TAKING THE NODE UP, so this claims it as well
+// ([TaskNode.claimed]): a stop must promise to wait for the caller that said it
+// was running this node, rather than settle the node out from under it.
 func (n *TaskNode) setCancel(cancel context.CancelFunc) {
 	n.graph.mu.Lock()
 	n.cancel = cancel
+	n.claimed = true
 	n.graph.mu.Unlock()
+}
+
+// claimRun is the one act that says "this goroutine is now running this node",
+// and it answers false when there is nothing left to run.
+//
+// THE CLAIM AND THE TWO REASONS NOT TO RUN ARE READ UNDER ONE HOLD OF THE LOCK,
+// which is the whole of why this is a function rather than three lines at the
+// top of [Agent.runTaskNode]. A stop that arrives before the claim settles the
+// node itself, because nothing else was ever going to (cancel.go's
+// [TaskGraph.stop]); a stop that arrives after it promises to wait for this
+// goroutine. Two separate reads across that seam let both happen to one node —
+// the stop settling it while this goroutine went on to run it, and the run's own
+// landing then closing a `done` that was already closed.
+//
+// A cut context with the node still running is the other road in: that is the
+// quit ([TaskGraph.stopAll]), and the node deliberately stays running so a
+// recovery resumes it.
+func (n *TaskNode) claimRun() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.state != TaskRunning || n.ctx == nil || n.ctx.Err() != nil {
+		return false
+	}
+	n.claimed = true
+	return true
+}
+
+// runContext is the context this node's run happens under, with the handle that
+// ends it.
+//
+// It is the pair the frontier made in the same hold of the lock that marked the
+// node running. A node that somehow reaches its body without one — no door in
+// this package does — is given one here rather than a nil to dereference, and it
+// is written to the node so that a stop can still find it.
+func (n *TaskNode) runContext() (context.Context, context.CancelFunc) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.ctx == nil {
+		n.ctx, n.cancel = context.WithCancel(context.Background())
+	}
+	return n.ctx, n.cancel
 }
 
 // finish writes the node's leavings before its state changes, so the update
@@ -3091,11 +3314,29 @@ func dropWatcher(watchers []*eventStream, stream *eventStream) []*eventStream {
 // the end frees the slot and turns the frontier.
 func (a *Agent) runTaskNode(node *TaskNode) {
 	// A NODE BELONGS TO THE PROCESS, NOT THE SURFACE. Detaching a renderer ends
-	// no context here. Close and an explicit stop reach this cancel through the
-	// job registry; time is checked only between completed turns below.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	node.setCancel(cancel)
+	// no context here. The context and its cancel were made by the frontier when
+	// it marked this node running, one hold of the graph's lock before this
+	// goroutine existed ([TaskGraph.runFrontier]), and the frontier releases it
+	// when this function returns; a stop reaches this node through that handle
+	// whether or not this line has been reached yet. Time is checked only
+	// between completed turns below.
+	ctx, cancel := node.runContext()
+
+	// AND THE NODE IS TAKEN UP HERE, OR NOT RUN AT ALL. Close and a person's stop
+	// both land in the window between the admission and this line, and the whole
+	// of issue #381 was what a run did in it: a job log opened under a session
+	// that had left, a child agent built, two model calls of real spend for work
+	// that was already stopped. [TaskNode.claimRun] refuses both — a cut context
+	// and a node the stop has already settled — under the one lock the stop reads
+	// the claim under. The lane goes back for the reason it goes back below: the
+	// goroutine holding it is returning on this line. A node the quit cut keeps
+	// its state, so recovery reads a node that was running and resumes it; a node
+	// the stop settled has moved already, and the hand-back leaves it alone
+	// ([TaskGraph.park] answers nothing for a node that is not running).
+	if !node.claimRun() {
+		node.graph.handBackLane(node)
+		return
+	}
 
 	// AND THE STORE LEARNS IT IS ALIVE AT THE CADENCE OF ITS WORK (task_beat.go).
 	// The checkpoint is written at admission and at landing, so between them the
