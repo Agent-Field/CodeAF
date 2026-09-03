@@ -89,12 +89,15 @@ func (f machineFacts) nearCeiling() bool {
 }
 
 // machineFactsAt is that reading, taken once per [homeEvery] and answered from
-// the view in between.
+// the memo in between.
 //
-// IT IS KEPT ON THE VIEW AND DIES WITH THE SCREEN ([homeView] is zeroed when
-// home closes), which is the same bargain every other cache on this surface
-// makes: the numbers are worth a walk of the disk twice a minute and never
-// worth one per paint.
+// THE MEMO DIES WITH THE SCREEN AND THE FACTS DO NOT. [homeView] is zeroed when
+// home closes, so walking out of home costs one more reading and never a
+// different answer: every figure below is taken from the machine itself — the
+// usage ledger, the person's own daily row — and not from what a screen happened
+// to be holding when they left it. The money was the one that was not, and it is
+// why the top line read `$1.85` on home and `$0.37` on tasks
+// ([app.machineSpentToday] carries the whole story).
 func (a *app) machineFactsAt(now time.Time) machineFacts {
 	h := &a.home
 	if !h.machineAt.IsZero() && !now.IsZero() && now.Sub(h.machineAt) < homeEvery {
@@ -199,48 +202,40 @@ func (a *app) machineWants() int {
 	return wants
 }
 
-// machineSpentToday is what the day's work cost.
+// machineSpentToday is WHAT THIS MACHINE HAS SPENT TODAY, and it is the usage
+// ledger's answer — the same reading, through the same arithmetic
+// ([spendDayTotal]), that the spend place draws as `today $3.42 of $500`.
 //
 // THE DAY IS THE PERSON'S OWN DAY and not twenty-four hours: since midnight
-// where they are sitting, which is what the standing ledger already means by it
-// (internal/standing's ledger.go).
+// where they are sitting, which is what every other reading of the day on this
+// surface already means by it.
 //
-// WHAT THE MONEY IS MADE OF IS WHAT CAN BE HONESTLY DATED. A task carries the
-// instant it landed and what it cost ([session.TaskIndexEntry]), and the
-// standing ledger is a file per day; a conversation's own spend is a lifetime
-// total on its meta.json with no day in it, so it is NOT split across days
-// here. A figure invented by pretending a week of talking happened this morning
-// would be worse than the one this leaves out.
+// THERE IS ONE READING BECAUSE TWO WERE TWO ANSWERS. This function used to sum
+// the task records under home's own world and add the standing ledger to them,
+// which was a THIRD accounting of money the ledger already holds: the top line
+// drew `$1.85 / $500.00` over a spend place drawing `today $0.13 of $500` on the
+// same frame, fourteen times apart against one denominator, and a person could
+// not tell which of the two was their bill. The ledger is the only reading that
+// sees every call — internal/session writes a row as each call's bill is
+// decoded, interrupted turns included (docs/changes/unreleased's
+// 290-one-ledger-one-number) — so the second reading is gone rather than made to
+// agree, because two readings that agree today are two readings that disagree
+// later.
+//
+// A LEDGER NOBODY CAN READ COSTS NOTHING RATHER THAN ZERO. Over a connection the
+// far machine may not have answered yet ([app.usageSince] carries the seam's own
+// "not known"), and the emptiness law renders an unknown as an absent segment
+// and never as `$0.00`.
 func (a *app) machineSpentToday(now time.Time) float64 {
 	day := machineDayStart(now)
 	if day.IsZero() {
 		return 0
 	}
-	spent := 0.0
-	for _, project := range a.home.everyProject() {
-		for _, row := range project.Sessions {
-			for _, entry := range row.Tasks.Rows {
-				if !entry.EndedAt.IsZero() && !entry.EndedAt.Before(day) {
-					spent += entry.Cost
-				}
-			}
-		}
-	}
-	return spent + a.machineStandingSpend(day)
-}
-
-// machineStandingSpend is what everything standing spent today, out of the
-// ledger the ticker writes. A surface with no way to ask answers nothing, which
-// is the same absence [app.standWeek] answers with.
-func (a *app) machineStandingSpend(day time.Time) float64 {
-	if a.stands.Runs == nil {
+	lines, known := a.usageSince(day)
+	if !known {
 		return 0
 	}
-	total := 0.0
-	for _, spend := range a.stands.Runs(day) {
-		total += spend.USD
-	}
-	return total
+	return spendDayTotal(lines, now)
 }
 
 // machineDayStart is midnight, locally.

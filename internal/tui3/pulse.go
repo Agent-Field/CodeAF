@@ -18,11 +18,21 @@ package tui3
 //
 // ── THE LAWS ──
 //
-//   - IT READS WHAT THE MACHINE'S CARD READS. Every segment comes off
-//     [app.machineFactsAt], which is the same reading the `keeping an eye on`,
-//     `since you left` and `today` bands draw from. One reader, two surfaces: a
-//     top line saying `4 moving` over a card listing three would be the screen
-//     arguing with itself.
+//   - THE MONEY ON THIS LINE IS THE MONEY ON THE SPEND PLACE, and it is ONE
+//     FUNCTION rather than two that agree. Every segment comes off
+//     [app.machineFactsAt], and the day's figure inside it comes off the usage
+//     ledger through [spendDayTotal] — the same arithmetic over the same rows that
+//     draws `today $3.42 of $500` in the body of the spend place and `today` on
+//     Settings→Spending. This line used to sum the task records hanging off home's
+//     own world instead, so it drew `$1.85 / $500.00` over a spend place drawing
+//     `today $0.13 of $500` on the same frame, and which of the two you were shown
+//     depended on which rooms you had walked through. A top line that argues with
+//     the body under it is worse than no top line.
+//
+//   - AND NO SEGMENT IS A FACT ABOUT A SCREEN. A place a person walked out of is
+//     not a source of facts about the machine: the figures here are read from the
+//     machine itself, on this line's own three-second beat, and [homeView] holds
+//     the memo of that reading and never the reading.
 //
 //   - EVERY SEGMENT OBEYS THE EMPTINESS LAW. Nothing stopped on anybody draws no
 //     `want you` clause — not `0 want you` — nothing in flight draws no `moving`,
@@ -155,6 +165,11 @@ func (a *app) pulseSegments(now time.Time, pal palette) []string {
 	if facts.spent > 0 {
 		// GREEN, BECAUSE IT IS MONEY, and green on a place is money and nothing
 		// else (styles.go's [hueMoney]).
+		//
+		// AND IT IS THE DAY THE WHOLE MACHINE HAD, not this conversation's: every
+		// model call written down since midnight, wherever it was made — the chat
+		// in front of the person, a task running behind it, a standing order that
+		// fired at six.
 		//
 		// THE CEILING IS DRAWN ONLY WHERE THERE IS ONE. A machine with no
 		// allowance set has no denominator, and `$0.55 / ` with nothing after it

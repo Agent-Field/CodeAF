@@ -202,6 +202,7 @@ func (a *app) readSpendLines(now time.Time) {
 	} else {
 		lines, _ = a.spend.cache.Read(time.Time{})
 	}
+
 	a.spend.lines, a.spend.read = lines, now
 	// AND THE WORLD WITH THE LINES, on the same beat and for the same reason the
 	// bands and the world are read together on home: a ledger line minted by work
@@ -224,12 +225,42 @@ func (a *app) readSpendLines(now time.Time) {
 	a.rebuildSpend()
 }
 
+// usageSince is THE DOOR ONTO THE MACHINE'S SPENDING for a reader that is not
+// standing on this page — the pulse at the top of every place
+// ([app.machineSpentToday]) — and it goes through the same two answers
+// [app.readSpendLines] goes through, in the same order.
+//
+// THE SEAM COMES FIRST BECAUSE THE LEDGER MAY NOT BE ON THIS DISK. Over a
+// connection the money belongs to the far machine and arrives through a cache the
+// link keeps warm (tui3.go's [Options.Ledger]); a reader that opened
+// [app.usageLedger] there would be drawing THIS laptop's bill on a screen about
+// somebody else's machine, and PERF.md's law that a frame over a connection asks
+// the far machine nothing is why it is that cache and never the wire.
+//
+// THE BOOL IS "IS THIS AN ANSWER" AND NOT "IS THERE ANY MONEY". A far machine
+// that has not replied yet, and a ledger this process cannot open, have both said
+// NOTHING — and the emptiness law draws an unknown as an absent segment rather
+// than as a zero. A machine that has genuinely spent nothing answers no lines and
+// true.
+func (a *app) usageSince(from time.Time) ([]session.UsageLine, bool) {
+	if a.ledger != nil {
+		lines, _, known := a.ledger(from)
+		return lines, known
+	}
+	lines, err := session.ReadUsage(a.usageLedger, from)
+	if err != nil {
+		return nil, false
+	}
+	return lines, true
+}
+
 // rebuildSpend is the pure half: the window applied to the held lines, then the
 // titles joined onto the ids the ledger carries.
 func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
-		railed(a.machineAllowance()).lost(session.UsageDrops())
+		railed(a.machineAllowance()).lost(session.UsageDrops()).
+		todayed(spendDayTotal(p.lines, p.read))
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
