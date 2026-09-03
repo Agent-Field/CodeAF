@@ -68,7 +68,9 @@ import (
 //     CANNOT produce: a proxy, a static host, a mistyped path and a plain nginx
 //     all answer in HTML or bare text, and none of them has an envelope to
 //     answer in;
-//   - the request went to a router at all ([Client.isOpenRouter]), because this
+//   - the request went to a base that has SHOWN it serves several endpoints
+//     behind a model ([Client.baseServesLanes] — the endpoints page it
+//     answered, never its hostname), because this
 //     whole ladder is about which of several endpoints may serve one model, and
 //     a single endpoint has no endpoint set that can be emptied;
 //   - the model is one the CATALOG KNOWS ([Client.catalogKnowsModel]), which is
@@ -247,7 +249,15 @@ func (c *Client) routingRefusal(model string, status int, payload []byte) bool {
 	if endpointRefusalPhrase(payload) {
 		return true
 	}
-	if !c.isOpenRouter() {
+	// A SHEET SITE (#433), and it is the sheet's answer rather than the
+	// preference one on purpose. What this clause asks is "does this base have
+	// a SET of endpoints behind a model that could be emptied" — a single
+	// endpoint has none — and the base that has shown one is exactly the base
+	// that served an endpoints page. Keyed on the preference answer instead it
+	// would read a plain endpoint's very first 404 as a routing layer with
+	// nothing left to try and strip four fields off the person's request to
+	// find out otherwise.
+	if !c.baseServesLanes() {
 		return false
 	}
 	upstream, ok := routerErrorEnvelope(payload)
@@ -549,7 +559,14 @@ func (c *Client) recoverFromRefusal(
 }
 
 // widenPastTheRetiredPin is the ONE retry a request earns for having just cost
-// somebody their pin.
+// somebody their preference.
+//
+// TWO CALLERS AND ONE RULE (client.go's [Client.sendRecovered]). A pin the
+// router says it cannot serve for this model is retired (issue #456), and a
+// BASE that says it will not carry a `provider` object at all is filed as such
+// (issue #433). Both are the same shape of fact learned at the same instant —
+// the demand that was on this request will not be on any later one — and both
+// owe the request in hand the same answer: send it again, once, without it.
 //
 // It is rung one of the ladder and nothing else: the whole `provider` object
 // comes off ([relaxedPreferences]), so what goes out is the request `auto`

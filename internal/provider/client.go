@@ -152,6 +152,11 @@ type Client struct {
 	// It is a fact about the BASE URL rather than about a model, which is why it
 	// lives on the client and not in the velocity ledger.
 	unstreamable atomic.Bool
+	// prefSent is whether any request from this client has really carried a
+	// routing preference, which is what makes a later answer with no lane
+	// information EVIDENCE about the base rather than a fact about a request
+	// that never asked (prefcarry.go's [Client.prefWentOut]).
+	prefSent atomic.Bool
 }
 
 // ErrNoAPIKey is what a request meets on a client built without a key and not
@@ -289,7 +294,11 @@ func (c *Client) ExecuteToolCallLoop(
 	call ai.CallFunc,
 	options ...ai.Option,
 ) (*ai.Response, *ai.ToolCallTrace, error) {
-	if c.isOpenRouter() {
+	// THE HINT AND NOT THE PREFERENCE ANSWER. Which of two transports drives
+	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
+	// categories header, the refusal ladder — and not about whether some base
+	// carries a `provider` object (prefcarry.go).
+	if c.shippedRouterHint() {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
 	base := c.sdkClient()
@@ -417,6 +426,7 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// [tellRetiredPins]). It is one nil check on a call nobody is reading and
 	// on every call after the sentence has been said.
 	tellRetiredPins(ctx)
+	tellUncarriedPins(ctx)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	if err != nil || (response != nil && response.StatusCode >= 400) {
 		c.releaseEndpoint(ctx, c.modelFor(request))
@@ -440,6 +450,17 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	// THE BASE REFUSING THE FIELD ITSELF IS ANSWERED BEFORE ANYTHING ELSE
+	// (#433). A refusal that names `provider` on a base with no lane evidence is
+	// that base saying it will not carry a preference: the answer is filed, the
+	// person is told once, and THE REQUEST GOES OUT WITHOUT THE PREFERENCE
+	// RATHER THAN NOT AT ALL — the same single widened retry a retired pin
+	// earns, at the rung that drops the whole provider object, which is now
+	// exactly what this client will encode.
+	if readErr == nil && c.prefsJustRefused(ctx, response.StatusCode, peek) {
+		response.Body.Close()
+		return c.widenPastTheRetiredPin(ctx, request, knobs, stream, began, response.StatusCode, peek)
+	}
 	if readErr != nil || !c.routingRefusal(model, response.StatusCode, peek) {
 		// Not this class. The body is handed back whole — a peek must never
 		// shorten what the caller goes on to read.
@@ -812,6 +833,11 @@ func (c *Client) completionInOnePiece(
 	// A completion teaches the lane its longest reply just as a stream does;
 	// without this line a lane that only ever answered whole — every headless
 	// worker's — never earned a wall at all.
+	// AND THE BASE ITSELF IS READ, ONCE (#433). Whether it named the lane that
+	// served this answer is what tells this build whether a routing preference
+	// reaches its wire at all — the one reading there is, and prefcarry.go says
+	// what it cannot tell apart.
+	c.notePrefsFromAnswer(ctx, served)
 	c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	c.noteVelocity(
@@ -1693,6 +1719,11 @@ func (c *Client) completeWithMessagesStreaming(
 	// the wait to be served plus the writing — because that is what the wall
 	// bounds, and it is recorded whatever the routing preference says
 	// (velocity.go's [Client.noteRun]).
+	// AND THE BASE ITSELF IS READ, ONCE (#433). Whether it named the lane that
+	// served this answer is what tells this build whether a routing preference
+	// reaches its wire at all — the one reading there is, and prefcarry.go says
+	// what it cannot tell apart.
+	c.notePrefsFromAnswer(ctx, served)
 	c.noteRun(c.modelFor(request), served, generation.Sub(began))
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	if !firstToken.IsZero() {
@@ -1896,7 +1927,10 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
-	if c.isOpenRouter() {
+	// THE HINT AND NOT THE PREFERENCE ANSWER. These headers are read by one
+	// machine's ranking page and by nothing else, so the question really is
+	// "is this that machine" (prefcarry.go says why every other site moved).
+	if c.shippedRouterHint() {
 		ApplyAttribution(httpRequest.Header)
 	}
 	// The header half of cache affinity. Routers that ignore the body field
@@ -1908,7 +1942,24 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	return httpRequest, nil
 }
 
-func (c *Client) isOpenRouter() bool {
+// shippedRouterHint reports whether this client is talking to THE SHIPPED
+// ROUTER, recognised by its hostname or by a model spelled `openrouter/…`.
+//
+// IT IS A HINT ABOUT ONE MACHINE AND IT IS NOT A DECISION ABOUT ANY BEHAVIOUR.
+// It was named `isOpenRouter` and it WAS the decision — whether a routing
+// preference went on the wire, whether a lane was measured, whether a probe was
+// bought — and every one of those is now [Client.carriesPreferences], which is
+// what the base itself answered (prefcarry.go, issue #433). A capability
+// decided by where a base lives rather than by what it answers is the defect
+// class #373 and #433 both closed, and a reader who mistakes this for the
+// decision would reopen it.
+//
+// WHAT IS LEFT TO IT IS THE TWO THINGS THAT REALLY ARE ABOUT THAT ONE MACHINE:
+// the attribution headers OpenRouter's own ranking page reads
+// ([Client.newHTTPRequest]), and the choice of this adapter's transport over
+// the SDK's ([Client.ExecuteToolCallLoop]). Neither is a preference and neither
+// is a claim about lanes.
+func (c *Client) shippedRouterHint() bool {
 	return strings.Contains(strings.ToLower(c.config.BaseURL), "openrouter.ai") ||
 		strings.HasPrefix(normalizeModel(c.config.Model), "openrouter/")
 }

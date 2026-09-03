@@ -219,6 +219,21 @@ left standing: the row reads `parasail refused`, which is what actually
 happened. A row still saying `trying …` about a request that has already failed
 is the one thing it will not do.
 
+**And one refusal is about the base rather than about a machine.** Some bases
+take no lane choice at all — a plain OpenAI-compatible endpoint behind
+`AFORGE_BASE_URL`, a proxy that strips the field, a gateway that never heard of
+it. aforge finds out by asking: your choice goes out on a real request, once. If
+the base refuses the field, or answers without saying which machine served, your
+pin cannot be sent there — and you are told once, in the conversation:
+
+```
+api.example.com does not take a lane choice; coreweave is not being asked for, and your requests still go out
+```
+
+Your work still goes out; only the choice is left off. The settings row says it
+too, so `pinned:` never stands as a claim about a request that did not carry it:
+`pinned: coreweave (not taken on this base)`.
+
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 
 Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
@@ -230,24 +245,28 @@ as the built-in endpoint does, with the same auto ranking, pins, hedges and
 status line. Nothing about the address is inspected; a router is recognised by
 what it answers, not by where it lives.
 
-A base that **has no endpoints page at all** — it answers the ask with a
-not-found page rather than the router's own error message, the way a plain
-proxy or a mirror of the completions route does — is remembered as having none
-for five minutes. aforge then sends every request with no lane opinion, as it
-would to any single endpoint, and it does not keep asking: that base is asked
-again once every five minutes, in the background, and never in front of a
-request. A router that has the page but simply **does not publish that one
-model** — it answers not found in its own words, about the model — is not
-treated that way: the model has no sheet this round, nothing is remembered
-about the base, and the next model is fetched at once. An error that is not a
-not-found — a 500, a timeout, a rate limit — is a bad afternoon and not an
-answer, so the base is simply asked again on the next beat.
+A base that **has no endpoints page at all** — it answers with a not-found page
+rather than the router's own error message, the way a plain proxy or a mirror of
+the completions route does — is remembered as having none for five minutes, and
+asked again after that, in the background and never in front of a request. A
+router that has the page but simply **does not publish that one model** answers
+not found in its own words, about the model, and nothing is remembered about the
+base. An error that is not a not-found — a 500, a timeout, a rate limit — is a
+bad afternoon and not an answer, so the base is asked again on the next beat.
 
-Two things worth knowing. The check costs nothing extra: it is the sheet fetch
-aforge was going to make anyway, so the built-in endpoint pays no additional
-request. And a base that has said it has no page at all is believed for those
-five minutes even if you ask about a different model — that answer is about the
-address, not the model. Only the answer about one model is about the model.
+**Whether a base honours a lane choice is learned the same way**, never from
+its address. A base that served an endpoints page takes one, by the router's own
+contract. Any other base is asked once — your choice goes out on a real request
+and the answer decides — and a base that refuses the field, or that answers
+without ever naming the machine that served, is remembered as not taking one and
+**says so** (the refusal section above has the sentence). aforge cannot tell a
+choice honoured silently from one dropped on the floor: nothing in such an
+answer says which machine served, so it takes the reading that tells you.
+
+The check costs nothing extra either way — it is the sheet fetch and the request
+aforge was going to make anyway — so the built-in endpoint pays no additional
+call. Pointing `AFORGE_BASE_URL` somewhere else asks the new address afresh,
+about both questions.
 
 ## Turning lane routing off
 

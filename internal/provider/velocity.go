@@ -309,11 +309,15 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // ago applies to the request now being written, without anything having to
 // carry it forward.
 //
-// It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
-// compatible endpoint that is not a router either ignores it or 400s on it —
-// neither of which is worth risking for a preference it could not honour.
+// IT IS THE DECISION SITE OF ISSUE #433, and the gate on it is what the BASE
+// ANSWERED rather than what its hostname says. The field is a router's dialect
+// and an endpoint that is not a router either ignores it or 400s on it — but
+// which of the two a base does is a thing only the base can say, so it is asked
+// once and remembered, and only a base that has answered "no" is left off
+// (prefcarry.go's [Client.carriesPreferences]). Until it has answered, the
+// preference goes on: the asking IS the sending.
 func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
-	if !c.isOpenRouter() {
+	if !c.carriesPreferences() {
 		return nil
 	}
 	strategy := c.routingFor(knobs.intent)
@@ -601,7 +605,10 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 // joining the queue behind it — the retries of the call that drew the 429
 // still wait it out, because their body is already written.
 func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433): a pace is written against a NAMED lane, and lane
+	// names come back only from a base that carries a preference. `pace` itself
+	// refuses an unnamed one, which is the attribution law and the real floor.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return
 	}
 	c.velocity.pace(model, served, wait)
@@ -620,7 +627,9 @@ func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
 // provider — and in every one of those the next attempt goes back to the same
 // lane. See [StreamCut.Rerouted] for what is decided from it.
 func (c *Client) noteCutProvider(model, served string) bool {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433), under [Client.notePacedProvider]'s gate word for
+	// word: a strike against a named lane, on a base that carries a preference.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
 	}
 	return c.velocity.pace(model, served, 0)
@@ -740,7 +749,8 @@ func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error)
 // files a moment, [velocityLedger.pace] sets strikes rather than incrementing
 // them), so the second is the first said again.
 func (c *Client) strikeRefusal(model string, refusal laneRefusal) bool {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433), under the same gate as the two paces above.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
 	}
 	if !refusal.struck() {

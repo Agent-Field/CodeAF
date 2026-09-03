@@ -705,13 +705,26 @@ func TestAProbePairAsksTwoLanesForOneTokenEach(t *testing.T) {
 	}
 }
 
-func TestAProbeRefusesAClientThatIsNotTalkingToARouter(t *testing.T) {
+// A PROBE IS REFUSED ON A BASE THAT HAS SAID IT WILL NOT CARRY A DEMAND.
+//
+// WHAT WAS TRUE: the refusal was a hostname test, so a prober was refused to
+// every proxy, mirror and self-hosted router as well (issue #433). WHAT IS TRUE
+// NOW: a base nobody has asked is wired — the asking is the sending, and a
+// frontier with no lane in it buys nothing anyway — and only a base that has
+// answered is refused.
+func TestAProbeRefusesAClientOnABaseThatWillNotCarryADemand(t *testing.T) {
 	client, err := NewClient(Config{APIKey: "test-key", BaseURL: "http://provider.test", Model: "sim/model"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !InstallLaneProber(client, nil) {
+		t.Fatal("a base nobody has asked was refused a prober, so it can never be asked")
+	}
+	if !lanes.HeardPrefsSilent(client.config.BaseURL) {
+		t.Fatal("the answer was not filed against the base the client is talking to")
+	}
 	if InstallLaneProber(client, nil) {
-		t.Fatal("a probe was wired to an endpoint that cannot honour `only`")
+		t.Fatal("a probe was wired to an endpoint that has said it cannot honour `only`")
 	}
 }
 

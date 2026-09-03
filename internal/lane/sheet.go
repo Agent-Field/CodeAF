@@ -144,6 +144,72 @@ const (
 	answerSheetless
 )
 
+// ── AND WHETHER IT CARRIES A ROUTING PREFERENCE ─────────────────────────────
+//
+// The same law one layer up, and it is the same law for the same reason. This
+// build used to decide whether a `provider` object went on the wire at all by
+// testing the base URL for `openrouter.ai` or the model id for the prefix
+// `openrouter/` (internal/provider's isOpenRouter). So on a proxy, a mirror, a
+// self-hosted router or the router reached by its IP, a person could rank
+// lanes, pin one, and watch the settings row go on reading `pinned: X` while
+// the preference was never sent: a silent substitution, which is the thing this
+// repository's law forbids (issue #433).
+//
+// WHETHER A BASE HONOURS A PREFERENCE IS LEARNED FROM THE BASE, NEVER FROM ITS
+// HOSTNAME. Two things teach it, and both are readings of a request that was
+// going out anyway:
+//
+//   - A BASE THAT SERVED AN ENDPOINTS PAGE CARRIES THEM. That is the router's
+//     own contract — a machine that publishes which lanes serve a model is a
+//     machine that takes an instruction about which one to use — so [answerServes]
+//     answers this question too and the shipped router pays nothing for the law.
+//   - EVERY OTHER BASE IS ASKED ONCE, by a real request carrying a real
+//     preference, and answers with what comes back: an answer that NAMES the
+//     lane that served it carries them; a refusal that names the `provider`
+//     field does not; and a 200 that carries no lane information at all is
+//     read as "does not", which is the safe reading under the law — the person
+//     is told, and the request still goes out.
+//
+// ONLY AN ANSWER TO A REQUEST THAT REALLY CARRIED ONE TEACHES ANYTHING. The
+// widened retry that follows a refusal carries no preference, and it is
+// answered — often perfectly, naming its lane — by the very base that had just
+// refused the field. Read as evidence it would put the base straight back to
+// [prefCarries] and the next turn would pay the identical refusal.
+//
+// WHAT THAT SILENT CASE CANNOT TELL APART, said plainly because a reader will
+// otherwise assume it can: a base that honoured the preference silently and a
+// base that dropped it on the floor look identical from here. Nothing in an
+// OpenAI-compatible answer says which lane served it, so there is no evidence
+// to separate them, and this build takes the reading that produces a sentence
+// rather than the one that produces a silence.
+//
+// THE FIRST DEFINITE ANSWER STANDS, and only one of the three is indefinite. A
+// base that served a sheet or named its lane has SHOWN it takes an instruction;
+// a base that refused the field has SAID it does not; and either of those is the
+// end of the question, because a build where the beat's next sheet could talk a
+// refusal round would re-pay that refusal every five minutes for as long as the
+// window lived, and a build where one refusal could overrule the shipped
+// router's own contract would retire the feature on the machine it works on.
+// Silence is the indefinite one: it proved nothing, so either definite answer
+// arriving later replaces it. What clears any of them is the base MOVING, which
+// is [wire]'s law and is the only one there is.
+type prefAnswer int
+
+const (
+	// prefUnasked is a base nobody has put a preference to yet. IT SENDS: the
+	// asking IS the sending, and there is no other way to learn.
+	prefUnasked prefAnswer = iota
+	// prefCarries is a base that served an endpoints page, or that named the
+	// lane which served a request carrying a preference.
+	prefCarries
+	// prefSilent is a base that answered such a request with no lane
+	// information at all. It is the indefinite one: nothing was proved, and
+	// either definite answer arriving later replaces it.
+	prefSilent
+	// prefRefused is a base that refused the `provider` field in words.
+	prefRefused
+)
+
 // Wanter is the optional half of a [Sheet]: one that can be ASKED about a model
 // without being made to fetch on the spot.
 //
@@ -199,6 +265,11 @@ type sheet struct {
 	// evidence about another.
 	answered sheetAnswer
 	askedAt  time.Time
+	// carries is what the base above has said about honouring a routing
+	// preference, under the rules written at [prefAnswer]. It is cleared beside
+	// `answered` when [wire] points this sheet somewhere else, for the same
+	// reason: what one router carried is not evidence about another.
+	carries prefAnswer
 	// now is the clock the probe ages its answer on. Nil is the wall clock,
 	// which is what every wiring outside a test gets; a test that has to watch
 	// [sheetTTL] pass sets it, because five minutes of real waiting is not a
@@ -268,16 +339,20 @@ func WireSheet(base, key string, fetch Fetcher, known bool) bool {
 func (s *sheet) wire(base, key string, fetch Fetcher, known bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	base = strings.TrimSuffix(strings.TrimSpace(base), "/")
+	base = trimBase(base)
 	// A BASE THAT MOVED FORGETS WHAT THE OLD ONE ANSWERED. The probe is cached
 	// per base, and carrying one router's answer over to the next address would
 	// be exactly the mistake this whole file is here to stop.
 	if base != s.base {
-		s.answered, s.askedAt = answerUnasked, time.Time{}
+		s.answered, s.askedAt, s.carries = answerUnasked, time.Time{}, prefUnasked
 	}
 	s.base, s.key, s.fetch = base, strings.TrimSpace(key), fetch
 	if known {
-		s.answered, s.askedAt = answerServes, time.Time{}
+		// A BASE KNOWN TO PUBLISH A SHEET IS KNOWN TO TAKE A PREFERENCE, by the
+		// router's own contract ([prefAnswer]). Setting it here rather than
+		// waiting for the first fetch is what keeps the shipped path at exactly
+		// the requests it made before this law existed.
+		s.answered, s.askedAt, s.carries = answerServes, time.Time{}, prefCarries
 	}
 }
 
@@ -331,10 +406,155 @@ func (s *sheet) heardLocked(base string, err error, now time.Time) bool {
 	}
 	switch {
 	case err == nil:
+		// AND A SERVED SHEET IS ALSO THE ANSWER TO THE PREFERENCE QUESTION. It
+		// is the router's contract rather than a second reading: a base that
+		// publishes which lanes serve a model takes an instruction about which
+		// one to use, so this costs no extra request ([prefAnswer]).
+		//
+		// IT DOES NOT OVERRULE A REFUSAL IN WORDS. A base that has said it does
+		// not know the `provider` field has answered the question directly, and
+		// a build where the beat could talk it round would re-pay that refusal
+		// every five minutes for as long as the window lived.
 		s.answered, s.askedAt = answerServes, now
+		if s.carries != prefRefused {
+			s.carries = prefCarries
+		}
 	case errors.Is(err, ErrNoSheetHere) && s.answered != answerServes:
 		s.answered, s.askedAt = answerSheetless, now
 	}
+	return true
+}
+
+// PrefsCarried reports whether base will carry a routing preference.
+//
+// UNKNOWN ANSWERS TRUE, and that is the whole shape of the law: the only way to
+// learn is to ask, and asking is sending. Only a base that has ANSWERED — with
+// silence where a lane name belonged, or with a refusal naming the field — is
+// left off ([prefAnswer] states what teaches which).
+//
+// The answer is read under the base it was filed against, so a sheet that has
+// since been pointed somewhere else answers about the new base and never about
+// the old one.
+func PrefsCarried(base string) bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return true
+	}
+	return own.prefsCarried(trimBase(base))
+}
+
+// SheetServes reports whether base has HANDED BACK an endpoints page, which is
+// a different and narrower question from [PrefsCarried].
+//
+// IT IS FALSE UNTIL THE BASE HAS SHOWN ONE, where PrefsCarried is true until a
+// base has refused one, and the difference is which way the safe reading points
+// for what is being asked. "Send the preference" cannot be learned without
+// sending it, so an unasked base sends. "This model is served by several
+// machines here" is a claim about the base's shape that costs nothing to be
+// wrong about in the cautious direction: a build that assumed it would offer a
+// person a lane list for a base that has one endpoint, and would read a plain
+// endpoint's 404 as a routing layer emptying a set it does not have.
+//
+// The shipped router answers true with no request at all, through the `known`
+// hint [WireSheet] takes.
+func SheetServes(base string) bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return false
+	}
+	base = trimBase(base)
+	if base == "" {
+		return false
+	}
+	own.mu.RLock()
+	defer own.mu.RUnlock()
+	return own.base == base && own.answered == answerServes
+}
+
+// PrefsCarriedHere is [PrefsCarried] about whichever base the live sheet is
+// wired to. It is what a SURFACE asks — a settings row saying whether the lane
+// somebody pinned can be asked for at all — because a panel holds no client and
+// so has no base URL of its own to name.
+func PrefsCarriedHere() bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return true
+	}
+	own.mu.RLock()
+	defer own.mu.RUnlock()
+	return own.carries == prefUnasked || own.carries == prefCarries
+}
+
+// HeardPrefsCarried, HeardPrefsSilent and HeardPrefsRefused are the three
+// answers a base can give, each with its own door.
+//
+// THREE DOORS AND NOT ONE FLAG, because the three are different strengths and a
+// caller that handed a boolean across would have to know the ranking to get it
+// right — which is precisely the knowledge that belongs here. Each files under
+// the base it was asked of and under no other, exactly as [sheet.heardLocked]
+// does, and each reports whether it was filed at all: false is a sheet that has
+// moved on, and the caller has learnt nothing about where it points now.
+func HeardPrefsCarried(base string) bool { return fileAnswer(base, prefCarries) }
+
+// HeardPrefsSilent files the weaker no: a request that carried a preference was
+// answered with no lane information at all.
+func HeardPrefsSilent(base string) bool { return fileAnswer(base, prefSilent) }
+
+// HeardPrefsRefused files the terminal no: the base named the `provider` field
+// in a refusal.
+func HeardPrefsRefused(base string) bool { return fileAnswer(base, prefRefused) }
+
+// fileAnswer is the one body the three doors share.
+func fileAnswer(base string, answer prefAnswer) bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return false
+	}
+	return own.heardPrefs(trimBase(base), answer)
+}
+
+// trimBase is how a base URL is spelled in this file: trimmed, with no trailing
+// slash. It is written once because [wire] files under this spelling and every
+// reader has to ask under the same one.
+func trimBase(base string) string {
+	return strings.TrimSuffix(strings.TrimSpace(base), "/")
+}
+
+// prefsCarried is [PrefsCarried] on one sheet.
+func (s *sheet) prefsCarried(base string) bool {
+	if base == "" {
+		// AN EMPTY BASE IS NOT A BASE. Nothing was ever asked of it and nothing
+		// can be, so it carries nothing — which is also what this build did
+		// before the question was asked at all.
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.base != base {
+		return true
+	}
+	return s.carries == prefUnasked || s.carries == prefCarries
+}
+
+// heardPrefs files one base's answer about routing preferences, under the
+// ranking [prefAnswer] states: the first DEFINITE answer stands, and silence is
+// the one that is not definite.
+func (s *sheet) heardPrefs(base string, answer prefAnswer) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if base == "" || s.base != base {
+		return false
+	}
+	if s.carries == prefCarries || s.carries == prefRefused {
+		// THE FIRST DEFINITE ANSWER STANDS. Both of those are one, and the
+		// reasons they cannot be overturned are opposite and both stated at
+		// [prefAnswer].
+		return true
+	}
+	if answer == prefSilent && s.carries == prefSilent {
+		return true
+	}
+	s.carries = answer
 	return true
 }
 

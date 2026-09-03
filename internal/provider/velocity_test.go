@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -481,18 +482,35 @@ func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
 	}
 }
 
-// The preference object is a router's dialect. An endpoint that is not a router
-// either ignores it or 400s on it, and neither is worth risking.
-func TestNonRouterEndpointCarriesNoPreferences(t *testing.T) {
+// A PLAIN ENDPOINT IS ASKED ONCE AND THEN CARRIES NO PREFERENCE.
+//
+// WHAT WAS TRUE: the field went out only where the base URL held `openrouter.ai`
+// or the model was spelled `openrouter/…`, so a proxy, a mirror or a
+// self-hosted router never got one and a person's pin was silently left off
+// (issue #433). WHAT IS TRUE NOW: the base is asked, once, by a real request —
+// there is no other way to learn — and its own answer is remembered. This
+// endpoint serves the completion and names no lane, which is read as "does not
+// carry" under the safe reading, so the second request goes out bare.
+func TestAPlainEndpointIsAskedOnceAndThenCarriesNoPreferences(t *testing.T) {
 	client, recorded := newTestClient(t, Config{Routing: StaticRouting(RoutingLatency)})
 	client.velocity = newVelocityLedger()
-	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
-		t.Fatal(err)
-	}
-	if raw := recorded.body(0); raw != nil {
-		if _, ok := raw["provider"]; ok {
-			t.Fatalf("provider = %v on a plain endpoint, want the field absent", raw["provider"])
+	for _, turn := range []string{"hello", "again"} {
+		if _, err := client.CompleteWithMessages(context.Background(), userMessages(turn)); err != nil {
+			t.Fatal(err)
 		}
+	}
+	if raw := recorded.body(0); raw == nil {
+		t.Fatal("nothing reached the endpoint")
+	} else if _, asked := raw["provider"]; !asked {
+		t.Fatal("the first request carried no preference, so the base was never asked and can never answer")
+	}
+	if raw := recorded.body(1); raw != nil {
+		if _, ok := raw["provider"]; ok {
+			t.Fatalf("provider = %v after the base said nothing about lanes, want the field absent", raw["provider"])
+		}
+	}
+	if lanes.PrefsCarried(client.config.BaseURL) {
+		t.Fatal("an endpoint that named no lane is still believed to carry a preference")
 	}
 }
 
