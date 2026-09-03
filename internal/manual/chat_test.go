@@ -370,6 +370,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the other half: a fork whose hands declared their files in full and
 		// were refused every single write.
 		{"how do I say which files each hand may write", "tasks"},
+		// And what a hand may reach for at all: it reads the caller's own
+		// instructions, so the question is asked as "which of these are mine".
+		{"what tools does a hand have", "tasks"},
 		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
 		// The same question in the two plainest ways somebody types it, which
