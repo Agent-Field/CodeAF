@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -424,28 +423,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	settled.SessionFile, settled.Resumed = transcript, resumed
 	seam := &v3Seam{proc: proc, boot: &settled, seed: seed}
 
-	// The byte meter, off unless a developer named a log file (wire.go). A nil
-	// writer here is the same launch this door has always made.
-	wire, closeWire := v3Wire()
-	defer closeWire()
-
-	// Anything written to the standard logger while the surface owns the
-	// terminal tears straight through the frame as a raw row — a checkpoint
-	// warning or a media fallback lands spliced into whatever the person is
-	// typing. Same fix as the v2 door, for the same reason: the logger goes to
-	// a file beside the profile for the surface's whole lifetime, and comes
-	// back to stderr on the way out. A profile that cannot take the file keeps
-	// stderr — a lost frame is better than a lost warning.
-	if logFile, logErr := os.OpenFile(chatLogPath(settings.ProfileDir),
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
-		log.SetOutput(logFile)
-		defer func() {
-			log.SetOutput(os.Stderr)
-			_ = logFile.Close()
-		}()
-	}
-
-	return tui3.Run(ctx, tui3.Options{
+	// The byte meter and the logger redirect both belong to the surface rather
+	// than to this door, and [runSurface] (chatv3_surface.go) is where every
+	// door gets them.
+	return runSurface(ctx, tui3.Options{
 		Agent: agent,
 		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
@@ -461,7 +442,6 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// once by internal/session so a reader and a writer cannot spell it two
 		// ways (internal/session's UsageLedgerPath).
 		UsageLedger: session.UsageLedgerPath(),
-		Output:      wire,
 		// The sub-harness registry under the state root, which is where every
 		// window on this machine writes and reads them: /harness is a list of
 		// what is SAVED, so it has to be the same directory the builder saved

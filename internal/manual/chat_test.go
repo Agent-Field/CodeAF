@@ -55,6 +55,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is the debug record", "debug-record"},
 		{"turn on logging", "debug-record"},
 		{"what does /debug do", "debug-record"},
+		// And the OTHER log, which is a different question with the same word in
+		// it: where the running program writes its own warnings and recovered
+		// faults, on every door rather than only the one that starts a session
+		// here (#404).
+		{"where does aforge write its log file", "starting-aforge"},
+		{"what is chat.log", "starting-aforge"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.

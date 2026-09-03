@@ -262,6 +262,36 @@ temporary directory, a launcher — it works in a folder of its own instead, so
 scratch files and downloads land somewhere they can be thrown away with the
 conversation.
 
+## Where aforge writes its log — chat.log, the crash log, and why nothing appears on screen
+
+Aforge keeps one log file for the running program: `chat.log`, beside the rest of what it
+keeps. With nothing moved that is `~/.aforge/chat.log`; `AFORGE_HOME` moves it with the
+rest of aforge's state, and `AFORGE_PROFILE_DIR` puts it inside that profile folder
+instead. Read it with `cat ~/.aforge/chat.log`, or `tail -f ~/.aforge/chat.log` in a
+second terminal while aforge is running.
+
+**Everything the program logs while the conversation is on screen goes there and never on
+the screen.** That is on purpose: aforge takes over the whole terminal, so a warning
+printed to it would land spliced into the middle of what you are typing and be gone with
+the next redraw. It holds internal warnings, recovered internal faults with their stacks,
+and notes about things aforge fell back from — the kind of thing to send along if you are
+reporting something odd. The redirect lasts exactly as long as the conversation is up, and
+ordinary output goes back to the terminal when you quit.
+
+**It is the same file however you started.** Opened here, opened on another machine with
+`--host`, reached over a relay with `--at`, or handed to a session already running in the
+background — all four write to `chat.log` in this machine's profile, the machine you are
+sitting at.
+
+If aforge stops with `aforge hit an internal fault and had to stop`, the details it points
+you at are appended to that same file, so there is one place to look either way. In the
+rare case aforge cannot write there at all — a profile folder it has no permission for —
+it leaves the log on the terminal rather than dropping it, on the grounds that a torn
+frame is better than a lost warning.
+
+This is not the record of what aforge sent the model: that is a separate file, read with
+`aforge logs`, and `aforge logs --path` prints where it is.
+
 ## Asking aforge about itself
 
 Aforge ships with this manual compiled into it, and it reads it with a tool

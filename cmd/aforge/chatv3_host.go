@@ -476,13 +476,10 @@ func openChatV3Host(launch hostLaunch) error {
 		return runHostOnce(agent, launch.once)
 	}
 	options := hostOptions(client, agent, dest, welcome, launch.pick)
-	// The byte meter, off unless a developer named a log file (wire.go). It
-	// measures what this surface DRAWS and is therefore as local as the terminal
-	// is — the same launch the local door makes.
-	meter, closeMeter := v3Wire()
-	defer closeMeter()
-	options.Output = meter
-	return tui3.Run(context.Background(), options)
+	// THE SAME WAY THE SURFACE IS RUN AT EVERY OTHER DOOR (chatv3_surface.go):
+	// the byte meter and the logger redirect are the terminal's business rather
+	// than this connection's, and a door does not state them for itself.
+	return runSurface(context.Background(), options)
 }
 
 // correctHostChoices makes the session agree with --model and --reasoning when
