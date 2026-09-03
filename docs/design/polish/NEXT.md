@@ -82,6 +82,59 @@ identical timed-out tool calls — and 4 more · no files changed · 41m17s
 
 — sev: high
 
+### Six specimens, and what they settle
+
+The trial went looking for more rather than letting one line stand for the
+class. **Provenance is not uniform and the row must not pretend it is**: `C`,
+`D` and the twice-refused pair below have exact `file:line` and were read in
+context; `A`, `B` and `E` are verbatim text recovered by a `grep -rh` across
+several trees and their paths are still being searched. **Do not cite A, B or E
+by location until those land.** They are recorded here for their SHAPE, which is
+what this row needs them for, and the shape is not in doubt.
+
+**THE BRANCH THE FIRST SPECIMEN GOT WRONG — a file genuinely was written:**
+
+```
+A. gate: refused — register.txt — The deliverable changed the tree (register.txt
+was written) but the request explicitly said 'Do not write, create or edit any
+file'. This is a direct violation of the request's instruction. — no more work
+could be started on it  6m49s
+```
+
+**This settles rule 3, and it settles it on both sides.** `A` states the tree as
+a FACT and builds the violation on the REQUEST. The `CLAUDE.md` specimen states
+the tree as a PREMISE and builds the verdict on the file. Same gate, same
+grammar, and the difference between a sentence that survives its first clause
+being wrong and one that collapses with it. Neither `A` nor `B` says `file of
+record`, so that phrase is not the gate's habit — it is one line's.
+
+**THREE SHAPES, and a lane must write one sentence that serves all three:**
+
+- **with a leading file token** (`A`, `B`) — a file really was written, and the
+  comparison is against the request.
+- **with no file at all** (`C`, `D`) — the deliverable itself is the problem
+  (`The deliverable is a plan for what to run next, not the finished work
+  itself`). Same grammar minus the leading token, and the sentence carries its
+  own subject without trouble.
+- **outcome first** (`E`) — `carrying on has stopped changing anything — twice
+  over now, nothing was written or altered — so this is handed over as it
+  stands.` **This one is ALREADY IN THE TARGET SHAPE**, and it is the strongest
+  argument the row has: the first of the four rules is not a proposal, it is
+  something this product already does somewhere else. Write the others to look
+  like `E`.
+
+**TWO CONSTRAINTS THE SPECIMENS ADD, and both would have been missed:**
+
+1. **A run can be refused MORE THAN ONCE and still exit 0.** Two refusals at
+   30m11s and 50m22s on one run, then exit 0
+   (`…/scratchpad/s3sec.md:61-62`). So whatever is written has to read sensibly
+   THE THIRD TIME A PERSON SEES IT in one stream — which is an argument against
+   any long sentence, and for the `fact — quoted thing — count` shape that can
+   be skimmed at a glance and told apart from its neighbours.
+2. **The header can disagree with its own sentence.** In `B` the leading token
+   names one file while the prose names two. That is its own small defect and it
+   is filed as `N7`.
+
 **N2 — `do --json` carries no `exit_code`, and the stream never prints one.**
 `shows:` verified on this branch — the envelope has `ok`, `stop`, `error` and
 fifteen other keys, and no number. `stop` is the better field for a program to
@@ -134,6 +187,29 @@ spend, or a clause under it, or a fact the spend page owns rather than the
 settle line?
 `engine:` the retry and hedge behaviour itself.
 — sev: med
+
+**N7 — a refusal's leading token names one file while its own prose names two.**
+`shows:` specimen `B` leads with `CONVENTIONS.md` and then says `wrote
+CONVENTIONS.md and register.txt`. The token is the part a person reads first and
+the part a stream is skimmed by, so a header that disagrees with its sentence
+sends somebody to the wrong file. Either the token carries the count the way
+every other folded thing on this surface does, or it names the deliverable
+rather than one of its files.
+`engine:` none.
+— sev: med
+
+**N8 — a node reported success having written nothing, and a refusal
+contradicted it twenty-eight minutes later.**
+`shows:` `✓ Timeout stop reason (linear) 13m43s` in the stream, from a leaf whose
+own record shows nineteen turns, fifty-two `sh` calls and ZERO writes; the gate
+then refused the same work. A `✓` is the strongest thing this surface can say
+and a person who reads one stops watching. Two marks about one piece of work
+disagreeing, half an hour apart, is worse than either being wrong alone. The
+surface half is what a `✓` is allowed to mean and whether this one had the
+standing to claim it.
+`engine:` why the node reported success.
+*Frame:* `run-510.log:46` in the trial's captures.
+— sev: high
 
 ---
 
