@@ -1781,7 +1781,7 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 
 func (c *Client) isOpenRouter() bool {
 	return strings.Contains(strings.ToLower(c.config.BaseURL), "openrouter.ai") ||
-		strings.HasPrefix(strings.ToLower(c.config.Model), "openrouter/")
+		strings.HasPrefix(normalizeModel(c.config.Model), "openrouter/")
 }
 
 // adaptiveCompletionTimeout accounts for reasoning and output tokens being
