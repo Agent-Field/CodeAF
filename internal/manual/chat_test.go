@@ -839,6 +839,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a run if aforge restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		{"why did it break my job into stages", "adaptive-runs"},
+		{"why did it plan the whole thing again instead of just doing it", "adaptive-runs"},
+		{"how does it know the work is too big for one worker", "adaptive-runs"},
 		{"the run said the brief could not be written, what happened", "adaptive-runs"},
 		// The run that had the answer and kept going, asked the two ways it was
 		// actually reported: as time and money spent after the fact, and as the

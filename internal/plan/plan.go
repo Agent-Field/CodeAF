@@ -288,8 +288,9 @@ type Options struct {
 	// that weighs a node's material against its siblings' runs off the document
 	// and not off these options. See Graph.Workspace and reach.go.
 	//
-	// Empty measures nothing and changes no verdict — a caller with no
-	// workspace plans exactly as it always did.
+	// Empty measures nothing, renders nothing, and changes no verdict — a
+	// caller with no workspace plans exactly as it always did, on the prompt
+	// bytes it always sent.
 	Workspace string
 
 	// Asked are the separable requests the caller's reading of the ask found in
@@ -479,6 +480,20 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		// that checks a size verdict against the material a node names is
 		// reached through the document and not through these options.
 		Workspace: strings.TrimSpace(options.Workspace)}
+	// The measurement is taken once, here, before any call is made: one pass
+	// over the material the GOAL names by name, weighed against what one worker
+	// holds. Its answer is frozen onto the graph beside the terrain because it
+	// joins the same shared prefix — a figure re-read while workers are writing
+	// into the workspace would move that prefix under passes still in flight.
+	//
+	// It is read off the document rather than off the options because the
+	// document is where the reach lives (see Graph.reach), and because a second
+	// derivation of the same two numbers is a second answer waiting to drift.
+	// This is the WHOLE-PLAN reading and it is never a verdict about a node: a
+	// node is weighed against its siblings, once, by correctBeyondReach.
+	// Nothing measurable renders nothing at all. See reach.go.
+	named := graph.reach().Measure(goal)
+	graph.Named = named.Line()
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal and the workspace it
@@ -528,7 +543,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				choice, spineErr = nil, guard.Note("plan/build spine", recovered)
 			}
 		}()
-		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, asked, options.SpineSamples, progress)
+		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, asked, named, options.SpineSamples, progress)
 	}()
 	go func() {
 		defer opening.Done()
@@ -537,7 +552,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				groundErr = guard.Note("plan/build ground", recovered)
 			}
 		}()
-		grounding, usage, err := GroundWith(groundCtx, client, goal, terrain, asked, options.Recall)
+		grounding, usage, err := GroundWith(groundCtx, client, goal, terrain, asked, graph.Named, options.Recall)
 		groundUsage.merge(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()
@@ -607,7 +622,23 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		// not asked here, the ruler's reach is, and a remainder past one worker
 		// still falls through to the pipeline where the fan-out and the stage
 		// question divide it on its size. See admitsEnumeratedPieces.
-		withinReach, reachUsage, err := withinOneWorker(ctx, client, graph, single)
+		//
+		// AND WHERE THE MATERIAL HAS ALREADY BEEN WEIGHED PAST ONE WORKER, THE
+		// RULER IS NOT ASKED AT ALL. Its one question is whether this node fits
+		// inside one worker, and a goal whose named material has been measured
+		// larger than one worker holds is that question answered by arithmetic;
+		// putting it to a model afterwards is the guess this whole seam replaced
+		// (reach.go). It is the GOAL's measurement and not a node's, which is
+		// exactly what makes it usable here: there is one node on this road and
+		// the goal is its brief, so what the goal names is what that worker
+		// would hold. The per-node question — the one with a clause about
+		// siblings in it — is asked once, elsewhere, by correctBeyondReach, and
+		// nothing on this road may answer it a second time. Nothing measurable
+		// asks the ruler exactly as it always did.
+		withinReach, reachUsage, err := false, Usage{}, error(nil)
+		if !named.Exceeds() {
+			withinReach, reachUsage, err = withinOneWorker(ctx, client, graph, single)
+		}
 		graph.Usage.merge(reachUsage)
 		reachErr = err
 		if withinReach {
@@ -616,7 +647,11 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 			report("undivided", time.Since(start), "one worker — within the ruler's reach")
 			return graph, errors.Join(groundErr, reachErr)
 		}
-		report("undivided", time.Since(start), "past one worker's reach — planned in full")
+		if named.Exceeds() {
+			report("undivided", time.Since(start), "measured past one worker's reach — planned in full")
+		} else {
+			report("undivided", time.Since(start), "past one worker's reach — planned in full")
+		}
 	}
 
 	// --- ensemble hook (ensemble.go) ---------------------------------------
@@ -781,7 +816,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// every-node-work at depth 0. A chain the ruler put past one worker's reach
 	// is not a chain of sittings, and folding one back would hand out exactly the
 	// node the division was bought to avoid.
-	if collapsed := collapseAtomicChain(graph); collapsed != 0 {
+	if collapsed := collapseAtomicChain(graph, named); collapsed != 0 {
 		report("collapse", time.Since(start), fmt.Sprintf("chain of %d atomic nodes is one sitting", collapsed))
 		emitProgress(progress, "steps", "1", "")
 		return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr)
@@ -877,13 +912,16 @@ func withinOneWorker(ctx context.Context, client Completer, graph *Graph, node N
 // node's only need the node before it — work the spine
 // drew as stages and the ruler then measured as sittings one agent could each
 // just do. Four links is the most the rule trusts: past that the sittings sum
-// past what one context ought to hold, and the graph stands as drawn.
+// past what one context ought to hold, and the graph stands as drawn. Where the
+// material the GOAL names has been weighed, that ceiling stops being the only
+// guard — a fold whose brief names more than one worker's reach is not one
+// sitting however few links it has, and it is not folded.
 //
 // The collapse is the undivided shortcut reached by evidence rather than by
 // the spine's coin: one work node, the goal as its brief, the first link's
 // title. It returns how many nodes were folded, zero when the shape is
 // anything else.
-func collapseAtomicChain(graph *Graph) int {
+func collapseAtomicChain(graph *Graph, named Measurement) int {
 	var chain []*Node
 	for index := range graph.Nodes {
 		node := &graph.Nodes[index]
@@ -913,6 +951,36 @@ func collapseAtomicChain(graph *Graph) int {
 			return 0
 		}
 	}
+	// The fold is a third pass that hands a node to one worker, so it is bound
+	// by the same law as the one above it: THE FOLDED NODE CARRIES THE WHOLE
+	// GOAL AS ITS BRIEF, which is what one worker would be holding, and it is
+	// therefore the goal that is weighed here. Each link being a sitting on its
+	// own says nothing about their sum — that was the guess the four-link
+	// ceiling above was standing in for — and where the goal's material has
+	// actually been weighed and is larger than one worker's reach, the chain
+	// stands as drawn.
+	//
+	// IT IS THE GOAL AND NEVER THE LINKS. Measuring the links' own sources here
+	// would be this pass taking a second reading of a question that has one
+	// answer and one place that computes it: correctBeyondReach weighs a node
+	// against its SIBLINGS, and a lane of a division it deliberately spared
+	// would be refused again here by a reader that cannot see a sibling — the
+	// defect of issue #480 arriving by a third road. It needs no such reading
+	// either: every link in this shape is sized atomic, and a link the
+	// measurement had ruled beyond reach was corrected to oversized by that same
+	// pass and would have failed the shape test above.
+	//
+	// AND IT IS HANDED THE MEASUREMENT RATHER THAN TAKING ONE. This runs after
+	// sizing and expansion, and workers write into the workspace while a build
+	// is still going; a reading taken here would be a second, later answer about
+	// the same goal, disagreeing with the one frozen onto the graph and stated
+	// in every prompt this build sent. There is one measurement per build, taken
+	// before the first call. Nothing measurable folds exactly as it always did.
+	// See Graph.Named and reach.go.
+	if named.Exceeds() {
+		return 0
+	}
+
 	folded := len(chain)
 	first := chain[0]
 	graph.Nodes = graph.Nodes[:0]

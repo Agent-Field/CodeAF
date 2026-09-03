@@ -249,7 +249,7 @@ func Enumerated(settled []Settlement) bool {
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
 func Ground(ctx context.Context, client Completer, goal string) (Grounding, Usage, error) {
-	return GroundWith(ctx, client, goal, "", nil, nil)
+	return GroundWith(ctx, client, goal, "", nil, "", nil)
 }
 
 // GroundWith resolves the goal with the workspace it stands on and optional
@@ -266,9 +266,12 @@ func Ground(ctx context.Context, client Completer, goal string) (Grounding, Usag
 // exists, so the terrain is handed in directly rather than read off one.
 // The usage is the pass's rather than one response's, because a reply that
 // bound nothing buys one free retry and both calls are the plan's to pay for.
-func GroundWith(ctx context.Context, client Completer, goal, terrain string, asked []string, recall []store.RecallHit) (Grounding, Usage, error) {
+// The measurement of what the goal names travels beside the terrain because it
+// is a reading of the same disk, and every pass that renders the shared block
+// renders the same one. Empty measures nothing and leaves the prompt as it was.
+func GroundWith(ctx context.Context, client Completer, goal, terrain string, asked []string, named string, recall []store.RecallHit) (Grounding, Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanGround)
-	user := goalBlock(strings.TrimSpace(goal), terrain, asked)
+	user := goalBlock(strings.TrimSpace(goal), terrain, asked, named)
 	if remembered := store.FormatRecall(recall, 8<<10); remembered != "" {
 		user += "\n\n" + remembered
 	}
@@ -337,7 +340,7 @@ type groundReply struct {
 // which is the failure this whole file exists to prevent.
 func (g *Graph) context() string {
 	var block strings.Builder
-	block.WriteString(goalBlock(g.Goal, g.Terrain, g.Asked))
+	block.WriteString(goalBlock(g.Goal, g.Terrain, g.Asked, g.Named))
 	if len(g.Settled) > 0 {
 		block.WriteString("\n\nSettled for this goal. Use these exactly as written. Never substitute\nyour own choice for one of these, and never leave one of them vague:\n")
 		for _, item := range SettledLines(g.Settled) {
@@ -367,8 +370,23 @@ func (g *Graph) context() string {
 // assembled its own version of the block, the four calls would have described the
 // same workspace four ways, and the prefix every later pass shares would have
 // matched none of them.
-func goalBlock(goal, terrain string, asked []string) string {
-	return "Goal:\n" + goal + terrainBlock(terrain) + askedBlock(asked)
+func goalBlock(goal, terrain string, asked []string, named string) string {
+	return "Goal:\n" + goal + terrainBlock(terrain) + namedBlock(named) + askedBlock(asked)
+}
+
+// namedBlock renders the measurement of what the goal names, or nothing at all.
+//
+// It sits directly under the workspace listing because it is a reading of that
+// workspace and not a new subject, and because a reader — model or person — who
+// has just been shown what is lying around is exactly the reader for whom the
+// next useful sentence is how much of it there is. Nothing measured writes zero
+// bytes, so every run with no workspace sends the prompt it always sent. See
+// reach.go.
+func namedBlock(named string) string {
+	if named == "" {
+		return ""
+	}
+	return "\n\n" + named
 }
 
 // askedBlock renders the separable requests the ask was read as containing, in

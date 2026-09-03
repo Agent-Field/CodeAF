@@ -335,7 +335,7 @@ func TestASplicedChainIsNotCollapsedBackIntoOneSitting(t *testing.T) {
 	if _, _, err := ExpandLevel(t.Context(), client, graph, Options{MaxDepth: 2, NodeBudget: 40}); err != nil {
 		t.Fatalf("ExpandLevel: %v", err)
 	}
-	if folded := collapseAtomicChain(graph); folded != 0 {
+	if folded := collapseAtomicChain(graph, Measurement{}); folded != 0 {
 		t.Fatalf("the one-sitting collapse folded %d nodes of a spliced chain — the division was undone", folded)
 	}
 	if len(graph.Nodes) != 3 {

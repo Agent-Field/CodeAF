@@ -21,7 +21,7 @@ func TestTheAskedRequestsReachThePlannerInThePersonsOwnWords(t *testing.T) {
 		"Write me a haiku about the first cold morning of autumn.",
 		"Find out which three vendors ship the parser we are on and what each charges.",
 	}
-	block := goalBlock("Two unrelated things.", "", requests)
+	block := goalBlock("Two unrelated things.", "", requests, "")
 
 	for _, request := range requests {
 		if !strings.Contains(block, request) {
@@ -49,7 +49,7 @@ func TestTheAskedRequestsReachThePlannerInThePersonsOwnWords(t *testing.T) {
 // the same case as none: there is nothing for it to stand apart from.
 func TestAnAskWithFewerThanTwoRequestsChangesNoPromptByte(t *testing.T) {
 	const goal = "summarise the responses"
-	want := goalBlock(goal, "", nil)
+	want := goalBlock(goal, "", nil, "")
 	if want != "Goal:\n"+goal {
 		t.Fatalf("the bare goal block has moved: %q", want)
 	}
@@ -58,7 +58,7 @@ func TestAnAskWithFewerThanTwoRequestsChangesNoPromptByte(t *testing.T) {
 		"blank entries": {"", "   "},
 		"one and blank": {goal, "  "},
 	} {
-		if got := goalBlock(goal, "", asked); got != want {
+		if got := goalBlock(goal, "", asked, ""); got != want {
 			t.Fatalf("%s changed the prompt\n got: %q\nwant: %q", name, got, want)
 		}
 	}

@@ -21,7 +21,7 @@ func TestCollapseAtomicChain(t *testing.T) {
 	}
 
 	graph := chainOf(3)
-	if folded := collapseAtomicChain(graph); folded != 3 {
+	if folded := collapseAtomicChain(graph, Measurement{}); folded != 3 {
 		t.Fatalf("collapseAtomicChain = %d, want 3", folded)
 	}
 	if len(graph.Nodes) != 1 {
@@ -36,11 +36,11 @@ func TestCollapseAtomicChain(t *testing.T) {
 	}
 
 	// A one-node graph is nothing to fold.
-	if folded := collapseAtomicChain(chainOf(1)); folded != 0 {
+	if folded := collapseAtomicChain(chainOf(1), Measurement{}); folded != 0 {
 		t.Fatalf("single node folded = %d, want 0", folded)
 	}
 	// Five links is past one sitting.
-	if folded := collapseAtomicChain(chainOf(5)); folded != 0 {
+	if folded := collapseAtomicChain(chainOf(5), Measurement{}); folded != 0 {
 		t.Fatalf("five-link chain folded = %d, want 0", folded)
 	}
 	// Width is not a chain: two nodes in stage 1 stand.
@@ -48,19 +48,19 @@ func TestCollapseAtomicChain(t *testing.T) {
 	wide.Nodes[0].Stage = 1
 	wide.Nodes[1].Stage = 1
 	wide.Nodes[1].Needs = nil
-	if folded := collapseAtomicChain(wide); folded != 0 {
+	if folded := collapseAtomicChain(wide, Measurement{}); folded != 0 {
 		t.Fatalf("wide graph folded = %d, want 0", folded)
 	}
 	// A node the ruler has not finished with is not collapsible.
 	unmeasured := chainOf(2)
 	unmeasured.Nodes[1].Size = SizeBorderline
-	if folded := collapseAtomicChain(unmeasured); folded != 0 {
+	if folded := collapseAtomicChain(unmeasured, Measurement{}); folded != 0 {
 		t.Fatalf("borderline chain folded = %d, want 0", folded)
 	}
 	// A fan-in is not a chain.
 	fanIn := chainOf(2)
 	fanIn.Nodes[1].Needs = []int{fanIn.Nodes[0].ID, 99}
-	if folded := collapseAtomicChain(fanIn); folded != 0 {
+	if folded := collapseAtomicChain(fanIn, Measurement{}); folded != 0 {
 		t.Fatalf("fan-in graph folded = %d, want 0", folded)
 	}
 	// A chain that is one node's inside is not the graph's own shape. This is
@@ -74,7 +74,7 @@ func TestCollapseAtomicChain(t *testing.T) {
 	}
 	spliced.Add(Node{Kind: KindSynthesis, Stage: 1, Title: "Work",
 		Needs: []int{spliced.Nodes[1].ID}})
-	if folded := collapseAtomicChain(spliced); folded != 0 {
+	if folded := collapseAtomicChain(spliced, Measurement{}); folded != 0 {
 		t.Fatalf("a spliced chain folded = %d, want 0 — the division was undone", folded)
 	}
 }

@@ -772,6 +772,45 @@ var (
 	bareLabel    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _'-]{0,60}$`)
 )
 
+// admissible drops the spine samples the measurement has already ruled out.
+//
+// It is a levelling step and not a second vote, which is the distinction that
+// matters. levelled turns what a sample SAYS into the shape the rest of the
+// planner reads; this says which shapes are available to be read at all. When
+// the material a goal names is larger than one worker holds, "one stage" is not
+// a shape this goal has — one stage is one worker holding all of it — so a
+// sample that came back with one is set aside before the medoid rather than
+// argued with inside it, and the medoid then picks the most typical of the
+// answers that are actually available exactly as it always did.
+//
+// THE MEASUREMENT IT READS IS THE GOAL'S AND NEVER A NODE'S. A goal that names
+// more than one worker holds is a true statement about the whole plan — there
+// are no nodes yet when the spine runs, and nothing here is a verdict about one
+// of them. The per-node question has one answer and one place that computes it,
+// correctBeyondReach, which weighs a node against its siblings and stores what
+// it finds on Node.BeyondReach; this pass never asks it and could not, because
+// a division does not exist until the spine has drawn the stages it is made of.
+//
+// If every sample said one stage, every sample is kept. The spine cannot be
+// made to invent a gate it did not find, and the measurement has one more place
+// downstream — the undivided shortcut — where the same fact about the same goal
+// is applied to the shape of the whole build.
+func admissible(candidates [][]Stage, named Measurement) [][]Stage {
+	if !named.Exceeds() {
+		return candidates
+	}
+	staged := make([][]Stage, 0, len(candidates))
+	for _, candidate := range candidates {
+		if len(candidate) > 1 {
+			staged = append(staged, candidate)
+		}
+	}
+	if len(staged) == 0 {
+		return candidates
+	}
+	return staged
+}
+
 // correctBeyondReach is the measurement overruling the judgment, on the one
 // pass whose judgment it can check — and, in its second half, the measurement
 // declining to.
