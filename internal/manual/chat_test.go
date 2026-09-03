@@ -306,6 +306,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop for no progress", "how-tasks-run"},
 		{"does generating an image count as progress", "how-tasks-run"},
 		{"where did the files go when my task was stopped", "how-tasks-run"},
+		// Written from #568: a task ran an eight-minute test suite, could not
+		// wait on it, polled it with sleep and tail, was read as repeating
+		// itself and killed a run that was passing. Both halves are what the
+		// person then asks — is my task stuck, and does the wait cost it.
+		{"is my task stuck while it waits for its test suite", "how-tasks-run"},
+		{"does waiting for a long command use up my task's hour", "how-tasks-run"},
 		// The words under a stopped row, asked the way the rail spells them and
 		// the way a person who has not read it asks.
 		{"my task says lost the connection what does that mean", "how-tasks-run"},

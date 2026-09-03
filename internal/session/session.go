@@ -2210,6 +2210,13 @@ type Agent struct {
 	// wakes for itself ([Agent.postTaskNews]).
 	taskNotes int
 	taskNews  chan struct{}
+	// jobParkBound is the allowance a task worker's run was given, and it is
+	// non-zero only on a worker: it is what ARMS the wait on a command this agent
+	// started in the foreground and had taken over into a job (task_job_park.go's
+	// [Agent.armJobPark]). A conversation leaves it zero, and its park returns
+	// having done nothing, because a person's chat answers a long command by
+	// yielding the keyboard rather than by waiting.
+	jobParkBound time.Duration
 	// handover is the seam a delivery's last two writes are made across, and the
 	// seam the runner reads them across ([Agent.handOverTaskNews] and
 	// [Agent.taskNewsStanding], which states the law). The pair it guards lives

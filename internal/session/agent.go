@@ -172,6 +172,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// (jobrow.go). It is set here rather than passed to the constructor because
 	// it closes over the agent the constructor is building.
 	agent.jobs.announce = agent.announceJobRow
+	// And the registry gets the RELEASE lane, for the same reason and by the same
+	// route: a command this agent started in the foreground and had taken over
+	// into a job is one the work is still waiting for, so the registry says when
+	// that ending has been handed over and whoever is parked on it goes and reads
+	// it (task_job_park.go). A conversation arms no park and this is never called
+	// with anybody waiting.
+	agent.jobs.paid = agent.releaseParkedOnJob
 	// And the accounts seam before the belt for the belt's own reason: the two
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
@@ -1017,6 +1024,20 @@ type userMessage struct {
 	// wrote every other note on here, and it did not write this one.
 	steered bool
 
+	// ending marks A BACKGROUND JOB'S ENDING — an exit, a person's stop, a
+	// render's last word — and it is read for exactly one thing: releasing a task
+	// worker parked on a command it started (task_job_park.go).
+	//
+	// IT IS THE OTHER NEWS A PARKED WORKER WAITS FOR, and it is marked for
+	// `steered`'s reason and released in the same locked step, so there is no
+	// instant in which the ending is queued and the waiter has not been woken for
+	// it ([Agent.enqueueNote]). Every ending carries it, including ones nobody is
+	// parked on: a park woken by news it was not waiting for re-reads, finds
+	// itself still owed and parks again on a fresh generation, which costs one
+	// pass of a loop — while an ending that failed to wake the one worker waiting
+	// for it costs that worker its whole allowance.
+	ending bool
+
 	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
 	// [Agent.Steer]): a correction to the question already being worked on,
 	// riding this queue for the reason everything else on it does — a step
@@ -1088,8 +1109,31 @@ func wakeNote(text string) userMessage {
 // needs. The complete output remains in the job's ring and log, addressable
 // through `jobs output`; repeating that tail in every later request would turn
 // a notification into a second copy of the log.
-func jobNote(text string) userMessage {
-	return wakeNote(firstLine(strings.TrimSpace(text)))
+//
+// AND AN OWED ENDING TRAVELS WHOLE. A WAIT IS ONLY WORTH TAKING IF WHAT IT
+// WAKES WITH IS WORTH READING: a command the work is still standing over stops
+// that work from asking anything at all (task_job_park.go), and it stops it so
+// that the command's own ending can be the next thing the work reads. Trimmed
+// to its first line, that ending would say no more than the row at the foot of
+// every tool result already showed — which is the reading the wait was taken
+// INSTEAD of. So an owed ending arrives with its last lines and the path to the
+// whole log, exactly as it was composed ([jobRegistry.settleExit]).
+//
+// The flag is an argument rather than a second envelope because there is one
+// envelope for a job's ending and this is one fact about it. It also has an end
+// in sight: the general trim is a defect of its own (issue #573), and when it
+// goes the argument goes with it rather than a whole road.
+func jobNote(text string, whole bool) userMessage {
+	text = strings.TrimSpace(text)
+	note := wakeNote(text)
+	if !whole {
+		note = wakeNote(firstLine(text))
+	}
+	// AND EVERY ENDING IS MARKED AS ONE. It is what releases a worker parked on
+	// the command this note is about, in the same locked step as the append
+	// ([userMessage.ending]).
+	note.ending = true
+	return note
 }
 
 // watchNoteMessage is one ambient watch TICK reduced to the newest fact. The
@@ -2331,8 +2375,13 @@ func (a *Agent) enqueueSteering(text string) {
 
 // enqueueJobNote is the registry's owed lane. The headline enters the boundary
 // batch; the complete output remains available through `jobs output`.
-func (a *Agent) enqueueJobNote(text string) {
-	a.enqueueNote(jobNote(text))
+//
+// `whole` is the one ending that is not reduced to its headline — a command the
+// work is still WAITING for, whose ending is the reading that wait was taken for
+// ([jobNote] states the law). Every other caller passes false and travels
+// exactly as it always did.
+func (a *Agent) enqueueJobNote(text string, whole bool) {
+	a.enqueueNote(jobNote(text, whole))
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
@@ -2448,11 +2497,20 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		return false
 	}
 	a.steering = append(a.steering, note)
-	if note.steered {
+	if note.steered || note.ending {
 		// A NODE'S RUNNER IS WAITING TO BE TOLD, and this is the same release a
 		// report makes without being a report ([Agent.postTaskNews]). It is done
 		// under the lock the append is done under so there is no instant in
 		// which the line is queued and the waiter has not been woken for it.
+		//
+		// A JOB'S ENDING RIDES WITH ITS OWN APPEND FOR THAT EXACT REASON. A worker
+		// parked on a command it started (task_job_park.go) is waiting for this
+		// note and nothing else, and every shape of release that fired somewhere
+		// NEAR the append instead of with it had an interleaving that let the
+		// worker wake to an empty queue: the reaper releasing from inside a
+		// person's kill before that person's line was written, and a job exiting
+		// on its own in the instant a person pressed stop. Both close here,
+		// where the queue and the wake are one step ([userMessage.ending]).
 		a.releaseTaskWaitLocked()
 	}
 	if note.wake {

@@ -63,12 +63,40 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	// never cancelled leaves this path behaving exactly as it did. What it must
 	// not do is inherit a turn's context: a person who asks for a job to stop
 	// is owed the kill even if the turn they asked from is already over.
+	//
+	// A PERSON'S STOP OWNS THE ENDING IT ASKED FOR, and the mark goes on BEFORE
+	// the kill. [job.requestKill] is what makes the death requested, so a settle
+	// that sees the requested death also sees this — and the reaper, which
+	// releases every other requested death the instant it lands, steps over this
+	// one ([jobRegistry.settleExit]). Without the mark the release happened from
+	// inside the kill below, while the line this stop owes the model was still
+	// unwritten, and a worker parked on the command woke to an empty queue.
+	target.markPersonStopped()
 	_, failed := jobs.kill(context.Background(), number)
 	if failed {
 		// The job ended between the running check and the kill: same news as
 		// a second press on work that has already landed.
+		//
+		// AND THIS STOP PAYS ONLY FOR AN ENDING NOBODY ELSE WILL SPEAK FOR. The
+		// job settled on its own account in that gap, and which account it was
+		// decides who owes the parked worker its release. An ordinary EXIT is the
+		// reaper's road: it has a note and the release rides with it, so paying
+		// here would be a second, earlier release with nothing behind it. A death
+		// somebody ASKED for is the other half of the mark above — the reaper was
+		// just told to step over it, so nobody is coming, and the debt is settled
+		// here or not at all. It is read off the job rather than inferred from the
+		// failed kill, which fails for both reasons and cannot tell them apart.
+		if target.settledKilled() && target.payOwed() {
+			a.releaseParkedOnJob()
+		}
 		return name + " has already finished; there is nothing to stop", nil
 	}
+	// AND THE DEBT IS CLEARED BEFORE THE NOTE, for [jobRegistry.settleExit]'s
+	// reason exactly: the release rides with the append ([userMessage.ending]),
+	// and a note that released while the debt still stood would wake the park,
+	// which would read itself owed and park again on a generation nothing will
+	// ever close.
+	target.payOwed()
 	// A KILL THIS SESSION ASKED FOR DOES NOT REPORT ITS OWN DEATH — the
 	// registry's flag is set, the reaper stays quiet, and that rule still
 	// holds, because a note from the watcher would be the agent telling
@@ -76,7 +104,11 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	// job is a different caller: the model did not ask, and without a note it
 	// would keep reasoning about work that is no longer running. The owed
 	// lane is how every other job ending reaches it.
-	a.enqueueJobNote(fmt.Sprintf("job %d was stopped", number))
+	//
+	// It travels as a headline like every other job note: the sentence IS the
+	// whole of the news, and there is no ending to read out of the log that the
+	// person did not just ask for the end of.
+	a.enqueueJobNote(fmt.Sprintf("job %d was stopped", number), false)
 	return "stopped " + name + " — its log is kept", nil
 }
 

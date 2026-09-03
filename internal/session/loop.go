@@ -578,6 +578,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			return false
 		}
 
+		// A COMMAND THIS WORK IS STILL WAITING FOR IS NOT A QUESTION FOR THE MODEL
+		// (task_job_park.go). It is here, before the drain, because the drain is what
+		// puts the ending in front of the model: the wait ends when the news is
+		// queued, and the very next line carries it.
+		a.parkOnOwedJob(ctx)
+
 		// Steering lands here, between batches: the transcript tail is a tool
 		// result or an assistant answer, both legal places for a user message.
 		a.drainSteering(hub)

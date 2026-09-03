@@ -116,6 +116,15 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	if limits.deadline <= 0 {
 		limits.deadline = taskDeadline
 	}
+	// AND THE WORKER WAITS FOR THE COMMANDS IT STARTS. A foreground `bash` that
+	// crossed its bound is still the call this node is waiting for, so the node
+	// waits for its ending rather than being asked what to do next while it runs
+	// (task_job_park.go). It is armed HERE, by the runner, and nowhere else: a
+	// person's conversation answers a long command by yielding so the keyboard
+	// stays theirs, and a worker has nobody to yield to. The bound is the whole
+	// allowance this run was given, defaulted a line above, because no single wait
+	// may outlast it.
+	child.armJobPark(limits.deadline)
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	// ── THE DOOR SHUTS ON EVERY ROAD OUT, NOT JUST THE CLEAN ONE ──
@@ -554,6 +563,22 @@ func (r *childRun) landIfStopped() {
 	if r.stopped == "" || r.ctx.Err() != nil {
 		return
 	}
+	// A LANDING TURN NEVER WAITS. This node has already been stopped — its
+	// deadline, its steps or its repetition — and the turn below exists only to
+	// write down what is already in hand. A command still running from before the
+	// stop is not something this turn has any business waiting for
+	// (task_job_park.go): waiting on one would hold a stopped node open for a
+	// second whole allowance and delay the very deliverable it was stopped to
+	// collect.
+	//
+	// IT IS DISARMED HERE AND NOT IN [runTaskChild], because the only slot there
+	// is between the working turns and [childRun.foldParts] — and a parent folding
+	// its parts MUST still park: it is waiting on the parts and on its own command
+	// at once, and disarming for it would put back exactly the polling this
+	// removed. This is the one turn that must not wait, so it is the one place
+	// that says so. Nothing re-arms it, and nothing needs to: a node that reaches
+	// here is stopped, so the fold below runs no turns at all.
+	r.child.armJobPark(0)
 	restore := r.child.withdrawTools(landingBelt, landingWithdrawal)
 	landing := landingInstruction(r.child.beltTools())
 	savedInLanding := false

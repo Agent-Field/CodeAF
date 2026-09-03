@@ -281,14 +281,21 @@ func (a *Agent) steerRunningBashLocked(words string) (string, []*job) {
 		}
 		var started *job
 		var adopted bool
+		// NEITHER ARM IS OWED, AND THAT IS THE DIFFERENCE FROM A CLOCK'S
+		// PROMOTION. A promotion is a command the work is still waiting for, so
+		// the work waits for its ending rather than being asked what to do next
+		// (task_job_park.go). A steer is the PERSON redirecting the work: their
+		// words are the next step, and a model made to wait for the command they
+		// just talked over would be answering them minutes late — or, where they
+		// stopped it, answering an ending nobody wants.
 		if stop {
 			started, adopted = a.adoptRunningBashAs(call, func(*job) string {
 				return "stopped by the person: " + words
-			}, true)
+			}, adoption{quiet: true})
 		} else {
 			started, adopted = a.adoptRunningBashAs(call, func(one *job) string {
 				return steerPromotedSentence(one.id, call.Command(), call.RunningFor())
-			}, true)
+			}, adoption{quiet: true})
 		}
 		if !adopted {
 			continue
