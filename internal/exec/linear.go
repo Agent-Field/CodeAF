@@ -1069,6 +1069,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// write tool and every sh-produced file converges, so a count
 		// before and after is the cheapest honest mutation signal.
 		artifactsBefore := len(l.workspace.Artifacts(task.leafKey()))
+		// And the same signal answers the decay pass's question. Everything the
+		// transcript holds at this point was in front of the model when it
+		// asked for this turn's calls, so if the turn changes the workspace,
+		// the model acted on what it had read. See decayer.retire.
+		historyBefore := len(messages)
 
 		results := make([]Result, len(calls))
 		var group sync.WaitGroup
@@ -1125,6 +1130,15 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			})
 		}
 		fade.observe(admitted)
+
+		// Read once and used twice: the decay pass learns what this turn acted
+		// past, and the no-progress guard below weighs the same pair. Nothing
+		// between here and there can add an artifact, because only a tool call
+		// can, and this turn's have all finished.
+		artifactsAfter := len(l.workspace.Artifacts(task.leafKey()))
+		if artifactsAfter > artifactsBefore {
+			fade.actedPast(historyBefore)
+		}
 
 		for _, result := range results {
 			if len(result.Followup) == 0 || result.IsError {
@@ -1226,7 +1240,6 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// legitimate bound has spoken: the leaf had money and turns left and was
 		// not advancing.
 		if landing == 0 {
-			artifactsAfter := len(l.workspace.Artifacts(task.leafKey()))
 			switch progress.observe(calls, results, artifactsBefore, artifactsAfter) {
 			case progressConclude:
 				progress.markConcluded()

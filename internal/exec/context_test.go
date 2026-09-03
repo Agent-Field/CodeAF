@@ -459,14 +459,21 @@ func TestRepeatedBytesBecomeAPointerToTheFirstCopy(t *testing.T) {
 	}
 }
 
-// Decay is running underneath this, so the sentence changes once the target has
-// been stubbed: the bytes are no longer above, they are only in the file. The
-// address itself does not change, because it was fixed before any pointer
-// existed.
-func TestAPointerNamesTheSpillFileOnceTheOriginalHasDecayed(t *testing.T) {
+// A re-read of retired bytes is answered with the bytes.
+//
+// This test used to assert the opposite: that once decay had stubbed the target,
+// the repeat was answered with a pointer whose sentence sent the model to the
+// spill file. That was measured costing a leaf its whole budget — the model
+// re-read the material the stub told it to re-read, was handed a description of
+// it, and walked the spill file in slices until the wall, each slice fresh bytes
+// pushing the window over again. The claim was wrong, not the code that broke
+// it, so the test changed with the law: a pointer may only stand for a copy the
+// model can still read above it.
+func TestARereadOfRetiredBytesIsAnsweredWithTheBytes(t *testing.T) {
 	space := workspace(t)
 	tools := NewToolbox(space, "2", nil)
-	fade := newDecayer(map[string]string{}, tools.decaySpill)
+	spill := &countingSpill{inner: tools.decaySpill}
+	fade := newDecayer(map[string]string{}, spill.fn)
 	carried := newObservations(fade)
 	body := strings.Repeat("A", 20<<10)
 	fresh := strings.Repeat("B", 20<<10)
@@ -480,21 +487,30 @@ func TestAPointerNamesTheSpillFileOnceTheOriginalHasDecayed(t *testing.T) {
 	if decayed := fade.decay(messages, observationBudget); decayed != 1 {
 		t.Fatalf("decayed = %d, want the older result stubbed", decayed)
 	}
-
-	pointer := carried.admit(6, call("c12", "sh", `{"cmd":"cat big.txt"}`), Result{Content: body})
 	wantPath := filepath.Join(obsDir, "2-decay-c7.txt")
-	if !strings.Contains(pointer, wantPath) {
-		t.Fatalf("the pointer does not send the model to where the bytes went: %q", pointer)
-	}
-	if strings.Contains(pointer, "read it above") {
-		t.Fatalf("the pointer still sends the model to a stub: %q", pointer)
-	}
-	if strings.Contains(pointer, body[:64]) {
-		t.Fatal("the pointer carried the body it was meant to replace")
-	}
-	// The stub that replaced the target names the same file the pointer does.
 	if stub := contentOf(messages[0]); !strings.Contains(stub, wantPath) {
-		t.Fatalf("the stub and the pointer disagree about where the bytes are: %q", stub)
+		t.Fatalf("the stub does not say where the bytes went: %q", stub)
+	}
+	writesBefore := spill.writes
+
+	again := carried.admit(6, call("c12", "sh", `{"cmd":"cat big.txt"}`), Result{Content: body})
+	if again != body {
+		t.Fatalf("a re-read of retired bytes was answered with %q, want the bytes back", clipForTest(again))
+	}
+	if spill.writes != writesBefore {
+		t.Errorf("the re-read wrote the same bytes to disk %d more times; the recorded path is reused",
+			spill.writes-writesBefore)
+	}
+
+	// And the copy just admitted is the canonical one, so the NEXT duplicate
+	// points at something quoted rather than at the stub again.
+	messages = append(messages, ai.Message{Role: "tool", ToolCallID: "c12", Content: text(again)})
+	third := carried.admit(7, call("c13", "sh", `{"cmd":"cat big.txt"}`), Result{Content: body})
+	if !strings.Contains(third, "turn 6") || !strings.Contains(third, "read it above") {
+		t.Fatalf("the third copy did not point at the copy still quoted: %q", clipForTest(third))
+	}
+	if !strings.Contains(third, wantPath) {
+		t.Fatalf("the pointer forgot the address the bytes already have: %q", third)
 	}
 	on, err := os.ReadFile(filepath.Join(space.Root(), wantPath))
 	if err != nil || string(on) != body {
@@ -756,6 +772,143 @@ func TestDecayKeepsNewestInFull(t *testing.T) {
 	}
 	if !strings.Contains(contentOf(messages[0]), "sh ls") {
 		t.Error("the stub does not say what the result was, so the model cannot tell it already ran that")
+	}
+}
+
+// THE LAW: an observation is retired in order of how long ago it was last
+// needed, not how long ago it arrived.
+//
+// Retiring by age alone cost a measured leaf its whole budget: it had to read
+// more material than the window holds before it could act on any of it, so the
+// earliest reads — the ones it had not used yet — were the first to go, and it
+// spent every remaining turn getting the same material back. What a result cost
+// is the same whenever it arrived; what it is still worth is whether the model
+// has acted past it.
+//
+// Four history results of equal size against a window that fits two of them, so
+// exactly two must go and the only question is which.
+func TestRetirementFollowsUseRatherThanAge(t *testing.T) {
+	const each = 8 << 10
+	// oldest first: r0 r1 r2 r3, each in its own turn, and a live assistant
+	// message at the end so none of them counts as this turn's raw material.
+	transcript := func() []ai.Message {
+		var messages []ai.Message
+		for index := 0; index < 4; index++ {
+			id := fmt.Sprintf("r%d", index)
+			messages = append(messages,
+				ai.Message{Role: "assistant", Content: text("thinking about " + id),
+					ToolCalls: []ai.ToolCall{{ID: id}}},
+				ai.Message{Role: "tool", ToolCallID: id,
+					Content: text(strings.Repeat(string(rune('A'+index)), each))})
+		}
+		return append(messages, ai.Message{Role: "assistant", Content: text("still thinking")})
+	}
+	// The index of r1's answering tool message, which is where "everything
+	// before this turn" starts for the first two results.
+	const pastR1 = 4
+
+	for _, probe := range []struct {
+		name      string
+		used      []string
+		actedPast int
+		stubbed   []string
+	}{{
+		name: "nothing has been acted on, so the oldest still go first",
+		// The old behaviour, kept exactly where it is still the right answer:
+		// with nothing to separate the results by use, age is all there is.
+		stubbed: []string{"r0", "r1"},
+	}, {
+		name:    "results already read twice go before older ones read once",
+		used:    []string{"r1", "r2"},
+		stubbed: []string{"r1", "r2"},
+	}, {
+		name: "unconsumed results go only when the spent ones did not suffice, oldest first",
+		// One spent result is not enough room, so the pass reaches into
+		// material the model has not used — and takes the oldest of it.
+		used:    []string{"r3"},
+		stubbed: []string{"r0", "r3"},
+	}, {
+		name: "a turn that changed the workspace spends everything read before it",
+		// The mutation signal is a prefix rather than a key: whatever the model
+		// had in front of it when it acted has been acted on.
+		actedPast: pastR1,
+		stubbed:   []string{"r0", "r1"},
+	}} {
+		t.Run(probe.name, func(t *testing.T) {
+			messages := transcript()
+			fade := newDecayer(map[string]string{}, nil)
+			for _, key := range probe.used {
+				fade.used(key)
+			}
+			fade.actedPast(probe.actedPast)
+
+			if decayed := fade.decay(messages, observationBudget); decayed != len(probe.stubbed) {
+				t.Fatalf("decayed = %d, want %d", decayed, len(probe.stubbed))
+			}
+			want := map[string]bool{}
+			for _, key := range probe.stubbed {
+				want[key] = true
+			}
+			for _, message := range messages {
+				if message.Role != "tool" {
+					continue
+				}
+				stub := strings.Contains(contentOf(message), "superseded")
+				if stub != want[message.ToolCallID] {
+					state := map[bool]string{true: "retired", false: "still quoted in full"}
+					t.Errorf("%s is %s; want the other", message.ToolCallID, state[stub])
+				}
+			}
+			if live := liveObservationBytes(messages); live > observationBudget {
+				t.Errorf("the window is still %d bytes against a %d budget; the mark is not optional",
+					live, observationBudget)
+			}
+		})
+	}
+}
+
+// The two halves are one mechanism. A body asked for a second time is answered
+// with a pointer, and that pointer is the other way a result becomes spent: the
+// material is now reachable from a durable address whatever happens to the copy
+// above, so the copy above is what the decay pass should take — even when older
+// material sits behind it that has only been read once.
+func TestAPointerSpendsTheCopyItPointsAt(t *testing.T) {
+	space := workspace(t)
+	tools := NewToolbox(space, "2", nil)
+	fade := newDecayer(map[string]string{}, tools.decaySpill)
+	carried := newObservations(fade)
+	const each = 8 << 10
+	repeated := strings.Repeat("A", each)
+
+	var messages []ai.Message
+	for index, body := range []string{strings.Repeat("B", each), repeated, strings.Repeat("C", each)} {
+		id := fmt.Sprintf("c%d", index)
+		one := call(id, "sh", fmt.Sprintf(`{"cmd":"read %d"}`, index))
+		fade.labels[id] = callLabel(one)
+		messages = append(messages,
+			ai.Message{Role: "assistant", Content: text("thinking"), ToolCalls: []ai.ToolCall{one}},
+			ai.Message{Role: "tool", ToolCallID: id, Content: text(carried.admit(index+1, one, Result{Content: body}))})
+	}
+
+	again := call("c9", "sh", `{"cmd":"read 1 again"}`)
+	fade.labels[again.ID] = callLabel(again)
+	pointer := carried.admit(4, again, Result{Content: repeated})
+	if !strings.Contains(pointer, "identical to the result of") {
+		t.Fatalf("the repeat was not pointed at all: %q", clipForTest(pointer))
+	}
+	messages = append(messages,
+		ai.Message{Role: "assistant", Content: text("thinking"), ToolCalls: []ai.ToolCall{again}},
+		ai.Message{Role: "tool", ToolCallID: again.ID, Content: text(pointer)},
+		ai.Message{Role: "assistant", Content: text("still thinking")})
+
+	if decayed := fade.decay(messages, observationBudget); decayed != 1 {
+		t.Fatalf("decayed = %d, want exactly the copy the pointer stands for", decayed)
+	}
+	if !strings.Contains(contentOf(messages[3]), "spilled to ") {
+		t.Errorf("the pointed-at copy is still carried whole: %q", clipForTest(contentOf(messages[3])))
+	}
+	if strings.Contains(contentOf(messages[1]), "spilled to ") {
+		t.Error("older material the model has read once went before a copy it can reach from disk")
 	}
 }
 
