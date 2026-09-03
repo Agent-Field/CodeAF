@@ -207,12 +207,12 @@ func groundList(items []string) string {
 
 // runStart is when this node's run began, and the ZERO TIME when nothing knows.
 //
-// A node that started in this process has the instant it was marked running. A
-// node rehydrated from a checkpoint has no such instant — it has only the age it
-// had when the checkpoint was written — so its window is measured back from now,
-// which lands LATER than the truth and can only ever miss an overlap rather than
-// invent one. That direction is chosen deliberately: this file's first law is
-// that a false alarm costs more than a quiet miss.
+// A node that started in this process or was restored from a checkpoint has the
+// recorded instant it was marked running. Only an older record with no stamp
+// falls back to measuring its window back from now by its elapsed age, which
+// lands LATER than the truth and can only ever miss an overlap rather than invent
+// one. That direction is chosen deliberately: this file's first law is that a
+// false alarm costs more than a quiet miss.
 func (n *TaskNode) runStart() time.Time {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
