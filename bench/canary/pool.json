@@ -67,11 +67,12 @@
         "skipped": 0
       },
       "base_suite": {
-        "passed": 0,
-        "failed": 0,
+        "passed": 1370,
+        "failed": 10,
         "errors": 6
       },
-      "picked_at": "2026-09-02T15:00:11Z"
+      "picked_at": "2026-09-02T15:00:11Z",
+      "measured": "2026-09-03"
     },
     {
       "id": "python-attrs-attrs-1416",
@@ -251,12 +252,10 @@
         "errors": 0,
         "skipped": 0
       },
-      "base_suite": {
-        "passed": 0,
-        "failed": 0,
-        "errors": 1
-      },
-      "picked_at": "2026-09-02T19:47:59Z"
+      "base_suite": null,
+      "picked_at": "2026-09-02T19:47:59Z",
+      "base_suite_note": "full suite exceeded the 600s cap; not measured",
+      "measured": "2026-09-03"
     },
     {
       "id": "pypa-virtualenv-3072",
@@ -302,7 +301,8 @@
         "failed": 9,
         "errors": 0
       },
-      "picked_at": "2026-09-02T19:50:21Z"
+      "picked_at": "2026-09-02T19:50:21Z",
+      "measured": "2026-09-03"
     },
     {
       "id": "pypa-build-860",
