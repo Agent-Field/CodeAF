@@ -68,10 +68,11 @@ const (
 
 // laneRefusal is one refusal as every reader of it needs it.
 //
-// THREE FIELDS AND NO MORE, because three is what the three readers want
-// between them: what happened, which machine it is about, and whether that
-// machine is finished for this model. A field a reader has to interpret would
-// be this classification happening a second time somewhere else.
+// FOUR FIELDS AND NO MORE, because four is what the four readers want between
+// them: what happened, which machine it is about, whether that machine is
+// finished for this model, and whether any machine was asked at all. A field a
+// reader has to interpret would be this classification happening a second time
+// somewhere else.
 type laneRefusal struct {
 	Kind refusalKind
 	// Lane is the machine the refusal is ABOUT, empty when it is about none.
@@ -88,10 +89,27 @@ type laneRefusal struct {
 	// router will not serve this model from that machine" is a fact about the
 	// pairing, and asking again produces the identical 404 for nothing.
 	Terminal bool
+	// Unasked says NO MACHINE ANSWERED THIS. A list emptied the endpoint set
+	// before the request reached one — this process's own vetoes, or the ignored
+	// providers standing on the account.
+	//
+	// IT SEPARATES TWO THINGS `Terminal` ALONE CONFLATED, and the separation is
+	// the point. The DEMAND is finished either way: a pairing nobody can use is
+	// a pairing to stand down, so a person's pin is retired and they are told,
+	// exactly as before. The MACHINE is not: it never got the request, so it has
+	// said nothing, and striking it would file a list's verdict against a
+	// machine and widen the very list that caused the refusal. So the pin path
+	// reads `Terminal` and the ledger reads this.
+	Unasked bool
 }
 
 // struck reports whether there is a lane here for the ledger to act on.
-func (r laneRefusal) struck() bool { return r.Kind != refusalNone && r.Lane != "" }
+//
+// A MACHINE THAT WAS NEVER ASKED IS NOT ONE OF THEM, whatever this request
+// demanded of it (see [laneRefusal.Unasked]).
+func (r laneRefusal) struck() bool {
+	return r.Kind != refusalNone && r.Lane != "" && !r.Unasked
+}
 
 // RescueNews is a rescue as a SURFACE may read it, narrowed from [laneRefusal]
 // so that a status line never has to interpret a transport's vocabulary.
@@ -171,18 +189,24 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if !c.routingRefusal(model, refusal.Status, []byte(refusal.Body)) {
 		return laneRefusal{}
 	}
+	demanded = strings.TrimSpace(demanded)
 	// A REFUSAL ABOUT A LIST IMPLICATES NO MACHINE — the second half of the law
 	// [velocityLedger.keepTheSetServable] enforces on the way out, standing here
-	// on the way back. This sentence says an ignore list emptied the set, so the
-	// demanded lane was never asked and never answered; filing it as that lane's
-	// refusal would pace the machine, write it out of the serving set, and widen
-	// the very list that caused the refusal, so the next request is refused
-	// sooner. The list is what has to change, and it does, at the seam above.
-	if ignoredEverything([]byte(refusal.Body)) {
-		return laneRefusal{Kind: refusalRouting}
+	// on the way back. This sentence says a list emptied the set, so the demanded
+	// lane was never asked and never answered; striking it would pace the
+	// machine, write it out of the serving set, and widen the very list that
+	// caused the refusal, so the next request is refused sooner.
+	//
+	// THE DEMAND IS STILL FINISHED, and that half is unchanged: a pairing this
+	// account cannot use is one to stand down, so a person's pin is retired and
+	// they are told (lanepin.go, issues #456 and #533). Only the machine is
+	// spared, which is what [laneRefusal.Unasked] carries.
+	return laneRefusal{
+		Kind:     refusalRouting,
+		Lane:     demanded,
+		Terminal: demanded != "",
+		Unasked:  ignoredEverything([]byte(refusal.Body)),
 	}
-	demanded = strings.TrimSpace(demanded)
-	return laneRefusal{Kind: refusalRouting, Lane: demanded, Terminal: demanded != ""}
 }
 
 // onlyLane is the ONE machine this request demanded on the wire, empty when it
@@ -238,7 +262,8 @@ func (c *Client) onlyLane(model string, knobs callKnobs, request *ai.Request) st
 // under one and read under the other would rebuild that disagreement one layer
 // down.
 func (c *Client) refuseServing(model string, refusal laneRefusal) {
-	if !refusal.Terminal {
+	if !refusal.Terminal || refusal.Unasked {
+		// A machine that never got the request cannot have refused to serve it.
 		return
 	}
 	lanes.RefuseServing(laneModel(model), refusal.Lane)

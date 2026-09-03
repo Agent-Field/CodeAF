@@ -469,20 +469,6 @@ func (c *Client) carriedCeiling(model string, knobs callKnobs, request *ai.Reque
 	return prefs != nil && prefs.MaxPrice != nil
 }
 
-// carriedIgnore reports whether the request that was just refused went out with
-// any veto of this process's own on it.
-//
-// IT IS THE GUARD ON THE MEMO, and it is the same shape as [carriedCeiling] for
-// the same reason. "All providers have been ignored" is also what the router
-// says when the ignored providers on somebody's ACCOUNT empty the set, and a
-// request that carried no list of ours proves nothing about ours. Taking the
-// memo on that answer would file somebody's settings as evidence about this
-// ledger, and a veto earned honestly an hour later would be released for it.
-func (c *Client) carriedIgnore(model string, knobs callKnobs, request *ai.Request) bool {
-	prefs := c.wirePreferences(model, knobs, request)
-	return prefs != nil && len(prefs.Ignore) > 0
-}
-
 // recoverFromRefusal climbs the ladder and then the fallback chain, narrating
 // each attempt, and ends in an error a person can act on.
 //

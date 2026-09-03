@@ -511,7 +511,14 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// in this sentence. It is written here, once, and read on every later encode
 	// ([velocityLedger.keepTheSetServable]), so the second request for this
 	// model is shaped right rather than paying the same instant refusal again.
-	if c.velocity != nil && ignoredEverything(peek) && c.carriedIgnore(model, knobs, request) {
+	//
+	// AND ONLY WHEN A VETO OF OURS WAS IN PLAY. The router says this same
+	// sentence when the ignored providers on somebody's ACCOUNT empty the set,
+	// and a refusal we had no hand in teaches us nothing about our own list. The
+	// ledger is asked rather than the object rebuilt, because rebuilding it here
+	// would expire cooldowns and redraw a sampled choice on the way back
+	// ([velocityLedger.holdsVetoes]).
+	if c.velocity != nil && ignoredEverything(peek) && c.velocity.holdsVetoes(model) {
 		c.velocity.refuseCoveringIgnore(model)
 	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the

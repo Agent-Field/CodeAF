@@ -1121,6 +1121,37 @@ func (v *velocityLedger) ceilingRefused(model string) bool {
 	return v.noCeiling[normalizeModel(model)]
 }
 
+// holdsVetoes reports whether this process currently refuses any endpoint for a
+// model — that is, whether a veto of ours was in play when a request went out.
+//
+// IT IS A PURE READ, AND THAT IS THE WHOLE REASON IT EXISTS. The obvious way to
+// ask "did the refused request carry our list" is to build the object again and
+// look; [Client.onlyLane] does exactly that for its one field and says why it is
+// safe THERE. It is not safe here. Rebuilding runs [velocityLedger.preferences],
+// which EXPIRES cooldowns as it goes, and the lane chooser, which is a sampled
+// decision that records the ask it drew — so a question asked on the way back
+// would quietly move the ledger and rewrite the attribution of a request that
+// was never sent. Nothing here writes anything.
+//
+// It answers a slightly weaker question than "the wire carried it", and the
+// difference does not matter: the memo it guards only ever permits releasing a
+// lane when the vetoes cover every lane this process knows, which cannot happen
+// unless this process was vetoing.
+func (l *velocityLedger) holdsVetoes(model string) bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	for _, entry := range l.lanes[normalizeModel(model)] {
+		if !entry.ignoredUntil.IsZero() && now.Before(entry.ignoredUntil) {
+			return true
+		}
+	}
+	return false
+}
+
 // refuseCoveringIgnore records that the router answered an ignore list covering
 // everything this process knows with an empty serving set. From here on
 // [velocityLedger.keepTheSetServable] releases a lane rather than send one for

@@ -182,8 +182,8 @@ func TestALaneIsNotStruckForARefusalAboutAList(t *testing.T) {
 	body := []byte(`{"error":{"code":404,"message":"All providers have been ignored. ` +
 		`To change your default ignored providers, visit your settings."}}`)
 	refusal := client.laneRefusalFor(model, "beta", apiError(404, body))
-	if refusal.Lane != "" || refusal.Terminal {
-		t.Fatalf("refusal = %#v, want no machine named by a refusal about a list", refusal)
+	if !refusal.Unasked || refusal.struck() {
+		t.Fatalf("refusal = %#v, want no machine on the ledger's hook for a refusal about a list", refusal)
 	}
 	if client.strikeRefusal(model, refusal) {
 		t.Fatal("a lane was struck for a list's verdict")
@@ -206,8 +206,8 @@ func TestADemandedLaneIsStillStruckForARefusalItGave(t *testing.T) {
 
 	body := []byte(`{"error":{"code":404,"message":"No endpoints found that support tool use."}}`)
 	refusal := client.laneRefusalFor(model, "beta", apiError(404, body))
-	if refusal.Lane != "beta" || !refusal.Terminal {
-		t.Fatalf("refusal = %#v, want the demanded machine named", refusal)
+	if refusal.Lane != "beta" || !refusal.Terminal || refusal.Unasked || !refusal.struck() {
+		t.Fatalf("refusal = %#v, want the demanded machine named and on the hook", refusal)
 	}
 }
 
@@ -253,17 +253,57 @@ func TestACoveredDemandReleasesOneMachineAndKeepsTheRest(t *testing.T) {
 
 // AND THE MEMO IS NOT TAKEN FROM SOMEBODY ELSE'S LIST. The same sentence is
 // what the router says when the ignored providers on an ACCOUNT empty the set;
-// a request that carried no veto of ours proves nothing about ours.
-func TestARefusalOnARequestWithNoVetoOfOursTeachesNothing(t *testing.T) {
+// a refusal this process had no hand in teaches it nothing about its own list.
+func TestARefusalWithNoVetoOfOursTeachesNothing(t *testing.T) {
 	client, _ := routedClient(t, RoutingLatency, answered(plainAnswer))
 	const model = "vendor/fast-model"
 	client.velocity.brisk(model, "alpha")
 
-	knobs := callKnobs{intent: IntentInteractive}
-	if client.carriedIgnore(model, knobs, &ai.Request{}) {
-		t.Fatal("a request with a healthy ledger carried a veto")
+	if client.velocity.holdsVetoes(model) {
+		t.Fatal("a healthy ledger reported a veto in play")
 	}
 	if client.velocity.coveringIgnoreRefused(model) {
 		t.Fatal("the memo was taken before anything was refused")
+	}
+	// And asking the question moved nothing: a diagnostic read on the way back
+	// from a refusal must not expire a cooldown or redraw a sampled choice.
+	client.velocity.pace(model, "alpha", time.Minute)
+	if !client.velocity.holdsVetoes(model) {
+		t.Fatal("a struck lane was not reported as a veto in play")
+	}
+	if _, ignore := client.velocity.preferences(model); !equalStrings(ignore, []string{"alpha"}) {
+		t.Fatalf("ignore = %v after the question was asked, want the ledger untouched by it", ignore)
+	}
+}
+
+// AND A PIN NOBODY CAN USE IS STILL STOOD DOWN. The machine is spared because it
+// never got the request; the DEMAND is finished either way, so the pin path
+// still sees a terminal refusal naming it (issues #456 and #533).
+func TestAPinIsStillRetiredWhenAListEmptiedTheSet(t *testing.T) {
+	client, _ := routedClient(t, RoutingLatency, answered(plainAnswer))
+	const model = "vendor/fast-model"
+	client.velocity.brisk(model, "alpha")
+	client.velocity.brisk(model, "beta")
+
+	body := []byte(`{"error":{"code":404,"message":"All providers have been ignored. ` +
+		`To change your default ignored providers, visit your settings."}}`)
+	refusal := client.laneRefusalFor(model, "beta", apiError(404, body))
+	if refusal.Lane != "beta" || !refusal.Terminal {
+		t.Fatalf("refusal = %#v, want the demand named and finished so the pin can stand down", refusal)
+	}
+	if !refusal.Unasked {
+		t.Fatalf("refusal = %#v, want it marked as a machine that was never asked", refusal)
+	}
+	if refusal.struck() {
+		t.Fatal("a machine that never got the request is on the ledger's hook for it")
+	}
+	if client.strikeRefusal(model, refusal) {
+		t.Fatal("a lane was struck for a list's verdict")
+	}
+	if _, ignore := client.velocity.preferences(model); len(ignore) != 0 {
+		t.Fatalf("ignore = %v after a refusal nobody answered, want the list unchanged", ignore)
+	}
+	if !lanes.Serves(model, "beta") {
+		t.Fatal("the demanded lane was written out of the serving set by a list's verdict")
 	}
 }
