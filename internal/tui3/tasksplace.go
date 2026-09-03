@@ -162,15 +162,8 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 		held[key] = item
 	}
 
-	for _, project := range world.Projects {
-		for _, row := range project.Sessions {
-			for _, entry := range row.Tasks.Rows {
-				// The world scan has already judged this row against the
-				// conversation that wrote it (world.go's first law), so its
-				// answer travels with it.
-				put(tasksKeyOf(entry), tasksItem{entry: entry, row: row, runs: row.Runs(entry)})
-			}
-		}
+	for _, we := range world.Work() {
+		put(tasksKeyOf(we.Entry), tasksItem{entry: we.Entry, row: we.Row, runs: we.Row.Runs(we.Entry)})
 	}
 	for _, row := range mine.rows {
 		put(tasksKeyOf(row.entry), tasksItem{

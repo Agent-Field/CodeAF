@@ -136,6 +136,70 @@ func (w World) Sessions() []SessionRow {
 	return rows
 }
 
+// WorkEntry pairs a task with the conversation that ran it. It is what
+// [Work] returns so that callers never have to re-derive the session row
+// from the entry's SessionID — the row was already in hand during flattening
+// and re-looking it up by an identity that may be empty loses it.
+type WorkEntry struct {
+	Entry TaskIndexEntry
+	Row   SessionRow
+}
+
+// Work is every task this machine has run, ordered by the work's own facts.
+//
+// It is the shared reading for every surface that lists tasks — the tasks page,
+// the roster, and anything that asks "what has this machine done" rather than
+// "which conversation is newest". The order is:
+//
+//	needs a person     unverified or refused — the work is stopped on a question
+//	running            work that is still going
+//	everything else    by when it landed, newest first
+//
+// Within each tier the tiebreak is (SessionID, ID), which is the pair the rest
+// of this package states identifies one row. The order is stable: calling it
+// twice on the same world returns the same slice.
+func (w World) Work() []WorkEntry {
+	var entries []WorkEntry
+	for _, project := range w.Projects {
+		for _, row := range project.Sessions {
+			for _, entry := range row.Tasks.Rows {
+				entries = append(entries, WorkEntry{Entry: entry, Row: row})
+			}
+		}
+	}
+	now := w.Read
+	if now.IsZero() {
+		now = time.Now()
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		a, b := entries[i].Entry, entries[j].Entry
+		// needs-a-person: unverified, or a check refused it
+		aNeeds := a.Status == string(TaskUnverified) || a.Ending == TaskEndingRefused
+		bNeeds := b.Status == string(TaskUnverified) || b.Ending == TaskEndingRefused
+		if aNeeds != bNeeds {
+			return aNeeds
+		}
+		// running next
+		aRunning := a.Live()
+		bRunning := b.Live()
+		if aRunning != bRunning {
+			return aRunning
+		}
+		// then by taskIndexAt newest-first
+		aAt := taskIndexAt(a, now)
+		bAt := taskIndexAt(b, now)
+		if !aAt.Equal(bAt) {
+			return aAt.After(bAt)
+		}
+		// tiebreak on (SessionID, ID)
+		if a.SessionID != b.SessionID {
+			return a.SessionID < b.SessionID
+		}
+		return a.ID < b.ID
+	})
+	return entries
+}
+
 // Project is one bucket: a workspace, the conversations held in it, and the
 // index of work they commissioned.
 type Project struct {
