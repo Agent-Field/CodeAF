@@ -39,15 +39,23 @@ def counts(output):
     return {"passed": found["passed"], "failed": found["failed"], "errors": found["error"] + found["errors"]}
 
 
-def keep_diff(work, out):
+def keep_diff(work, out, base):
     """Record what the door changed: the tracked diff and the untracked names."""
     _, status = sh(["git", "status", "--porcelain"], cwd=work)
-    _, diff = sh(["git", "diff"], cwd=work)
+    _, diff = sh(["git", "diff", base], cwd=work)
+    _, tracked = sh(["git", "diff", "--name-only", base], cwd=work)
+    _, commits = sh(["git", "rev-list", "--count", f"{base}..HEAD"], cwd=work)
+    _, commit_log = sh(["git", "log", "--oneline", f"{base}..HEAD"], cwd=work)
     with open(os.path.join(out, "work.patch"), "w") as handle:
         handle.write(diff)
+    with open(os.path.join(out, "work.commits"), "w") as handle:
+        handle.write(commit_log)
     with open(os.path.join(out, "work.status"), "w") as handle:
         handle.write(status)
-    return len([line for line in status.splitlines() if line.strip()])
+    untracked = [line[3:] for line in status.splitlines() if line.startswith("?? ")]
+    changed = set(line for line in tracked.splitlines() if line.strip())
+    changed.update(untracked)
+    return len(changed), int(commits.strip())
 
 
 def overlay(work, mirror, merge, tests):
@@ -75,13 +83,14 @@ def main():
     parser.add_argument("--work", required=True)
     parser.add_argument("--mirror", required=True)
     parser.add_argument("--merge", required=True)
+    parser.add_argument("--base", required=True)
     parser.add_argument("--tests", nargs="+", required=True)
     parser.add_argument("--base-suite", default="", help="JSON of the pool's base counts, or empty")
     parser.add_argument("--out", required=True, help="directory for judge.json and the logs")
     parser.add_argument("--suite-cap", type=int, default=600)
     args = parser.parse_args()
 
-    changed = keep_diff(args.work, args.out)
+    changed, commits = keep_diff(args.work, args.out, args.base)
     overlay(args.work, args.mirror, args.merge, args.tests)
     f2p_code, f2p = pytest(args.work, args.tests, 600, os.path.join(args.out, "f2p.log"))
     suite_code, suite = pytest(args.work, [], args.suite_cap, os.path.join(args.out, "suite.log"))
@@ -92,6 +101,7 @@ def main():
         regressed = suite["failed"] + suite["errors"] > base.get("failed", 0) + base.get("errors", 0)
     json.dump({
         "changed_files": changed,
+        "commits": commits,
         "f2p": {**f2p, "exit": f2p_code, "pass": f2p_code == 0 and f2p["passed"] > 0},
         "suite": {**suite, "exit": suite_code, "capped": suite_code == 124},
         "regressed": regressed,

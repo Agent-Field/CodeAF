@@ -183,7 +183,7 @@ cell = {
     "task_done_s": door.get("task_done_s"), "asked_s": door.get("asked_s"),
     "done_to_wall_s": door.get("done_to_wall_s"),
     "mark_fails": mark_fails, "carry_ons": carry_ons, "steward_last": steward_last,
-    "calls": door.get("calls"), "changed_files": judge.get("changed_files"),
+    "calls": door.get("calls"), "changed_files": judge.get("changed_files"), "commits": judge.get("commits"),
     "f2p": judge.get("f2p"), "suite": judge.get("suite"), "regressed": judge.get("regressed"),
     "subharness": door.get("subharness"), "nodes": door.get("nodes"),
     "gate_rounds": door.get("gate_rounds"),
@@ -222,7 +222,7 @@ venv() {
 # and says nothing a log does not.
 grade() {
   [ -x "$WORK/.venv/bin/python" ] || venv || finish "venv: pip install $INSTALL failed"
-  "$PY" "$HERE/judge.py" --work "$WORK" --mirror "$MIRROR" --merge "$MERGE" --tests "${TESTS[@]}" \
+  "$PY" "$HERE/judge.py" --work "$WORK" --mirror "$MIRROR" --merge "$MERGE" --base "$BASE" --tests "${TESTS[@]}" \
     --base-suite "$BASE_SUITE" --out "$OUT" 2>"$OUT/judge.err"
   rm -rf "$WORK/.venv"
   finish ok
