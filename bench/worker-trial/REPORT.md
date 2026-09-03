@@ -11,11 +11,20 @@ plan `moonshotai/kimi-k3:high`. One scratch worktree per item, cut from `origin/
 
 ## The table
 
-| item | complexity | quality | cost | wall | calls / rounds | exit | hand-work still needed | DX friction | Opus lane est. |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| #510 | — | — | — | — | — | — | — | — | — |
-| #515 | — | — | — | — | — | — | — | — | — |
-| #520 | — | — | — | — | — | — | — | — | — |
+| item | complexity | crew | quality | cost | wall | calls / rounds | exit | hand-work still needed | DX friction | Opus lane est. |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| #510 | — | — | — | — | — | — | — | — | — | — |
+| #515 | — | — | — | — | — | — | — | — | — | — |
+| #520 | — | — | — | — | — | — | — | — | — | — |
+
+### How rounds and calls are counted
+
+`aforge do --json` reports spend, seconds, nodes and the two model seats, but **no call
+count and no round count**. The run's own store under `~/.aforge/runs/aforge-do-<n>/`
+holds a graph scratch and a trace log, and **no call rows**. So every calls/rounds figure
+in the table is reconstructed from `~/.aforge/logs/calls.jsonl` over the run's timestamp
+window — a log shared with every other session on this box, whose `start` rows carry no
+run id. Each row says which method it used; all of them, so far, say *window*.
 
 ### How the Opus-lane column is estimated
 
