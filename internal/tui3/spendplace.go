@@ -54,6 +54,17 @@ type spendReading struct {
 	// rail is the machine's daily limit, for the pointer line at the top of the
 	// page ([spendReading.railed]). Zero is no limit.
 	rail float64
+	// today is WHAT THIS MACHINE HAS SPENT SINCE MIDNIGHT, handed in with
+	// everything else this reading answers from ([spendReading.todayed]).
+	//
+	// IT IS A FACT ABOUT THE MACHINE'S DAY AND NOT ABOUT THIS WINDOW, which is
+	// why it is handed in rather than picked out of the buckets below. It used to
+	// be read back out of [spendReading.days] — the bucket covering `now` — so a
+	// person who paged the fortnight back a month was shown a pointer line with
+	// no `today` on it at all, and the top line of the same frame went on drawing
+	// the day. The line says what the day has cost and where the limits are set;
+	// neither of those two facts moves when the window does.
+	today float64
 	// unwritten is how many spending records the machine failed to write down
 	// ([session.UsageDrops]), handed in on the read like everything else here so
 	// that DRAWING stays arithmetic over what was already gathered. Zero is the
@@ -103,6 +114,14 @@ func (r spendReading) crewed(crew spendCrew) spendReading {
 // word rather than drawing a denominator nobody set.
 func (r spendReading) railed(rail float64) spendReading {
 	r.rail = rail
+	return r
+}
+
+// todayed hands the reading what this machine has spent since midnight
+// ([spendDayTotal]). It answers a copy, for [spendReading.naming]'s reason: a
+// reading is an immutable answer.
+func (r spendReading) todayed(usd float64) spendReading {
+	r.today = usd
 	return r
 }
 
@@ -368,7 +387,7 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 // drawing a fraction with nothing under the line.
 func (r spendReading) railsRow(width int, pal palette) string {
 	fields := []rowField{}
-	if today := r.todaySpend(); today > 0 {
+	if today := r.today; today > 0 {
 		// THE POINTER LINE USES [dollars] AND NOT THIS PAGE'S OWN SLIVER WORD.
 		// It is the same reading Settings→Spending's `today` row draws and a door
 		// onto that row, and issue #269's whole law is that one number reads the
@@ -400,16 +419,28 @@ func (r spendReading) railsRow(width int, pal palette) string {
 	return pal.dim(fit(rowTail(fields, width), width))
 }
 
-// todaySpend is what the bucket covering now has cost, out of the days this
-// reading is already holding. It is zero when the window has been paged off
-// today, which is the honest answer: this page is then not showing today.
-func (r spendReading) todaySpend() float64 {
-	for _, day := range r.days {
-		if sameSpendBucket(r.now, day.At, r.window.Grain) {
-			return day.USD
+// spendDayTotal is WHAT ONE DAY COST, summed off ledger lines — and it is THE
+// arithmetic behind that figure everywhere it is drawn.
+//
+// IT IS A PACKAGE FUNCTION AND NOT A METHOD ON THE READING because the two
+// surfaces that draw the day do not share a page. The spend place hands it the
+// lines it is already holding ([app.rebuildSpend]); the pulse at the top of every
+// place hands it the lines it read for the purpose ([app.machineSpentToday]).
+// One function, one number: the top line and the body of the spend place cannot
+// disagree about the day on the frame a person is looking at, which is exactly
+// what they used to do.
+//
+// A ZERO-PRICED LINE IS LEFT OUT, for [readSpend]'s reason: zero means unpriced,
+// and the emptiness law does not let an unknown price become a measured free
+// call.
+func spendDayTotal(lines []session.UsageLine, now time.Time) float64 {
+	total := 0.0
+	for _, line := range lines {
+		if line.USD > 0 && sameSpendBucket(session.UsageLineDay(line), now, session.GrainDay) {
+			total += line.USD
 		}
 	}
-	return 0
+	return total
 }
 
 // windowHeaderRow is what the window came to on the left and the window itself

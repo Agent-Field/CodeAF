@@ -743,10 +743,18 @@ type homeView struct {
 	// instead of the door.
 	cardHover string
 	repos     map[string]homeRepoReading
-	// machine is what this machine has to say about ITSELF — the reading the
-	// pulse line at the top of the screen draws from, taken at most once per
-	// [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt when
-	// it was taken.
+	// machine is the MEMO of what this machine has to say about ITSELF — the
+	// reading the pulse line at the top of every place draws, taken at most once
+	// per [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt
+	// when it was taken.
+	//
+	// IT IS A MEMO AND NOT A SOURCE, and the difference is the whole of issue
+	// #525. Every figure in it is read from the MACHINE — the usage ledger, the
+	// person's own daily row — so closing home costs the next place one more
+	// reading and never a different answer. It used to be read from what this
+	// screen was holding, which made the day's spend on the top line a function
+	// of which rooms you had walked through: `$1.85` on home, `$0.37` on tasks.
+	// A memo may die with the screen; a fact about the machine may not.
 	machine   machineFacts
 	machineAt time.Time
 	// week is what the standing ledger says about the last seven days, by item
