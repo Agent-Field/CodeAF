@@ -33,16 +33,32 @@ import (
 // makes a repository of its own in a t.TempDir() is invisible to it, which is
 // right: that repository is the test's, and the suite may do as it likes there.
 //
+// AND IT WATCHES FOUR FACTS, BECAUSE TWO WERE NOT ENOUGH. The head and the
+// porcelain caught the first incident and were silent through the second
+// (#578): a t.TempDir() that lands INSIDE a checkout — which is where Go 1.26
+// puts one when GOTMPDIR or TMPDIR names a directory in somebody's tree — is a
+// directory whose repository, to `git rev-parse --show-toplevel`, is the
+// checkout above it. A task grounded there cuts `task/do-the-thing-<hex>` in
+// the person's own repository and registers a worktree at
+// `<checkout>/.aforge-v3/tasks/s1/1`, and neither shows here: the branch never
+// moves HEAD, and everything under `.aforge-v3/` is in .gitignore, so
+// `git status --porcelain` never names it. So the branches and the registered
+// worktrees are read too, and they are read the same symmetric way.
+//
 // It cannot see a content change to a file that was already dirty before the
 // run — hashing the whole checkout each run costs more than it is worth — and
-// the incident's shape, new commits and new files, is what it catches.
+// the incident's shape, new commits, new files, new branches and new worktrees,
+// is what it catches.
 
 // checkout is what the tree looked like at a moment: the commit it stood on,
-// and the paths git considered dirty or unknown.
+// the paths git considered dirty or unknown, the branches it had, and the
+// worktrees registered against it.
 type checkout struct {
-	root  string
-	head  string
-	dirty map[string]bool
+	root      string
+	head      string
+	dirty     map[string]bool
+	branches  map[string]bool
+	worktrees map[string]bool
 }
 
 // watchTheCheckout reads the repository this test binary is running inside. A
@@ -63,6 +79,8 @@ func watchTheCheckout() checkout {
 		return checkout{}
 	}
 	watched.dirty = porcelain(root)
+	watched.branches = branchNames(root)
+	watched.worktrees = worktreePaths(root)
 	return watched
 }
 
@@ -88,19 +106,40 @@ func (c checkout) moved() string {
 	if moved := differing(c.dirty, porcelain(c.root)); len(moved) > 0 {
 		said = append(said, "these paths are not what they were before the run:\n\t"+strings.Join(moved, "\n\t"))
 	}
+	// A BRANCH IS A WRITE THAT MOVES NOTHING. `task/do-the-thing-<hex>` cut in
+	// the person's repository leaves HEAD exactly where it was and leaves the
+	// porcelain empty, and it is still the suite committing into a tree it does
+	// not own — the merge that would have moved HEAD is the only part that did
+	// not happen yet.
+	if moved := differing(c.branches, branchNames(c.root)); len(moved) > 0 {
+		said = append(said, "these branches are not what they were before the run:\n\t"+strings.Join(moved, "\n\t"))
+	}
+	// AND A WORKTREE IS A WRITE GIT IS TOLD TO IGNORE. The ground ladder puts a
+	// task's tree under `.aforge-v3/`, which .gitignore covers, so the porcelain
+	// above stays silent about a whole second checkout sitting in the person's
+	// tree. The registration is not ignorable: git keeps it, so it is asked for.
+	if moved := differing(c.worktrees, worktreePaths(c.root)); len(moved) > 0 {
+		said = append(said, "these worktrees are not what they were before the run:\n\t"+strings.Join(moved, "\n\t"))
+	}
 	if len(said) == 0 {
 		return ""
 	}
 	return "session tests changed the checkout they were running in (" + c.root + "):\n" +
 		strings.Join(said, "\n") + "\n" +
-		"a git command was given a working directory the suite does not own — most likely none at all, " +
-		"which exec reads as this process's own (task_run.go's gitWith). Undo the above before pushing.\n" +
-		"(a second checkout running this same suite beside you cannot cause this; a test that names no directory can.)"
+		"a git command ran against a repository the suite does not own, by one of two roads. " +
+		"Either it was given no working directory at all, which exec reads as this process's own " +
+		"(task_run.go's gitWith, #402); or it was given a directory it does own whose ground " +
+		"resolved to the repository ABOVE it — a t.TempDir() inside this checkout, which " +
+		"`rev-parse --show-toplevel` answers with this checkout (task_run.go's repositoryRoot, " +
+		"#578). Which one it was, this guard cannot tell you; if the run had GOTMPDIR or TMPDIR " +
+		"pointing inside a checkout, suspect the second. Undo the above before pushing.\n" +
+		"(a second checkout running this same suite beside you cannot cause this; a test that names no directory can, and so can a temporary directory that is not outside your tree.)"
 }
 
-// differing names every porcelain line that is in one listing and not the
-// other, marked with the direction it moved, sorted so the failure reads the
-// same way twice.
+// differing names every line that is in one listing and not the other, marked
+// with the direction it moved, sorted so the failure reads the same way twice.
+// It reads a set of paths, a set of branches and a set of worktrees alike,
+// because the question asked of all three is the same one.
 //
 // A file that was ALREADY dirty and was then written again is invisible here,
 // and deliberately: its content is the person's own work in progress, hashing
@@ -136,6 +175,50 @@ func porcelain(root string) map[string]bool {
 	for _, line := range out {
 		if len(line) > 3 {
 			found[line] = true
+		}
+	}
+	return found
+}
+
+// branchNames is the set of branch names in root. It is asked with an explicit
+// format rather than read off plain `git branch --list`, whose leading `* ` on
+// the current branch would turn a head move into a second, invented line here.
+//
+// An unreadable tree is an empty set, for the same reason [porcelain] gives:
+// two empty sets say nothing changed, which is what a guard owes a machine it
+// cannot see.
+func branchNames(root string) map[string]bool {
+	found := map[string]bool{}
+	out, err := gitLines(root, "branch", "--list", "--format=%(refname:short)")
+	if err != nil {
+		return found
+	}
+	for _, line := range out {
+		if line = strings.TrimSpace(line); line != "" {
+			found[line] = true
+		}
+	}
+	return found
+}
+
+// worktreePaths is the set of worktree directories registered against root — the
+// main one and every linked one, including a linked one the suite hid under an
+// ignored folder.
+//
+// ONLY THE PATHS ARE KEPT. The plain listing carries each worktree's head
+// beside its path, so keeping the whole line would report a head move a second
+// time, in different words, from a set that is meant to answer a different
+// question. The porcelain form is asked for so the path can be taken on its
+// own, and an unreadable tree is an empty set as everywhere else here.
+func worktreePaths(root string) map[string]bool {
+	found := map[string]bool{}
+	out, err := gitLines(root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return found
+	}
+	for _, line := range out {
+		if path := strings.TrimPrefix(line, "worktree "); path != line && strings.TrimSpace(path) != "" {
+			found[strings.TrimSpace(path)] = true
 		}
 	}
 	return found
