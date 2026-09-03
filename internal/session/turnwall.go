@@ -81,10 +81,12 @@ const turnWallShare = 3
 // that began late was given a third the wall no longer had: on a 900 s wall the
 // reef cell's turn began with 310 s left, ran its full 300 s, and handed over at
 // 894 s — six seconds before the wall, which is #546's own shape with the seam
-// that was written to prevent it doing the handing over. So the stretch is
-// bounded by the SMALLER of the share and what is left less this allowance, and
-// a turn that begins with less than the allowance in front of it is moved at its
-// first boundary, while there is still something for the task to be moved into.
+// that was written to prevent it doing the handing over. A task started then
+// cannot be set up, let alone checked, so the handover road had nothing to offer
+// and the two model calls behind asking it were a cost with no return. THE SEAM
+// HANDS OVER ONLY WHAT CAN STILL BE CHECKED BEFORE THE WALL: it fires when the
+// stretch has passed the share AND at least this much of the wall is left, and a
+// turn that began with less runs to the wall inline, asked nothing.
 const taskAllowance = gitRootPatience + auditDeadline
 
 // turnWallShareNote is the ONE LINE a person reads when a turn that has spent the
@@ -138,14 +140,12 @@ const checkpointDecisionRanLong = "ran long"
 // leaving the one moment the two readings are equal to whichever way an operator
 // happened to be typed.
 //
-// AND THE STRETCH IS BOUNDED BY WHAT IS LEFT AS WELL AS BY THE SHARE. The bound
-// on one turn is the smaller of the share and what remained of the wall when the
-// turn began less [taskAllowance]; and because the turn's stretch and the wall's
-// remainder move together on the one clock, "the stretch exceeds what remained
-// at the start less the allowance" is the same reading as "what is left now is
-// under the allowance", which is the form that needs no second clock and no
-// record of where the turn began. The allowance's own boundary is inline for
-// the share's reason: exactly the allowance left is still enough.
+// AND IT FIRES ONLY WHERE A TASK STILL FITS. Past the share, the wall's remainder
+// is read off the same clock, and under [taskAllowance] the door stays shut: the
+// road behind it can only start a task, a task that cannot be set up and checked
+// is not an offer, and asking the two minds about it would put their calls on
+// the bill for nothing. The allowance's own boundary is inside for the share's
+// reason turned around: exactly the allowance left is still enough.
 func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) bool {
 	if meter == nil || meter.shareSpent {
 		return false
@@ -159,7 +159,7 @@ func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) boo
 	if share <= 0 {
 		return false
 	}
-	if steward.since(started) <= share && budget.Wall-budget.SpentWall >= taskAllowance {
+	if steward.since(started) <= share || budget.Wall-budget.SpentWall < taskAllowance {
 		return false
 	}
 	meter.shareSpent = true

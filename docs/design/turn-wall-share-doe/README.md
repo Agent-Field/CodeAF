@@ -107,10 +107,12 @@ things:
    that begins late gets a third the wall no longer has.** The one firing in six
    cells was reef: a turn that began with 310 s left ran its full 300 s and handed
    over at 894 s, six seconds before the wall — the exact shape #546 opened with.
-   The bound is now the smaller of the share and what is left less the setup and
-   check a task needs (`taskAllowance` in turnwall.go, the two limits a task is
-   already held to), landed in the same pull request with reef's 894 s as the
-   before in `TestATurnThatBeginsLateIsBoundedByWhatIsLeft`.
+   The seam now hands over only what can still be checked before the wall: past
+   the share it fires only while at least a task's setup and check (`taskAllowance`
+   in turnwall.go, the two limits a task is already held to) is left, and a turn
+   with less runs to the wall inline with nothing spent asking. Landed in the same
+   pull request with reef's 894 s as the before in
+   `TestATurnThatCannotBeCheckedBeforeTheWallIsNotMoved`.
 3. **What actually ran to the wall was the task's check.** In three of the six
    wall cells the task had finished and the check that reads it — the full suite,
    run once by the task and again by each check, 150 s a time on these projects —
