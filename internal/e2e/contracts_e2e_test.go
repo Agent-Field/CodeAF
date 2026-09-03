@@ -513,10 +513,25 @@ func TestOneWideCheckIsNotOrderedByEveryPart(t *testing.T) {
 	}
 
 	// AND NOTHING WAS BORN OF A REFUSED DIVISION. A refusal is free and admits
-	// nothing; the parts that exist are the ones some LATER, admitted division
-	// made, which is the re-ask reported below.
-	if len(run.admitted()) == 0 && len(run.parts()) > 0 {
-		t.Errorf("%d part(s) exist under a family whose only divisions were refused", len(run.parts()))
+	// nothing; the parts that exist are the ones some later division admitted.
+	//
+	// IT IS READ OFF WHAT A DIVISION ADMITTED AND NEVER OFF ITS DECISION WORD,
+	// and that had to be learned out here. This was `len(run.admitted()) == 0`,
+	// which counts the decision spelled exactly `admitted` — and the moment the
+	// road gained a SECOND way to admit parts (`repaired:shared-check`, which
+	// admits the division with the family-wide command lifted off every part) a
+	// perfectly correct repair read as three parts born of nothing. The law is
+	// about whether any division let parts into the world, so it is asked of the
+	// count that says so, and a third admitting decision tomorrow needs no edit
+	// here.
+	born := false
+	for _, one := range run.divisions {
+		if one.TaskID == run.root && one.Admitted > 0 {
+			born = true
+		}
+	}
+	if !born && len(run.parts()) > 0 {
+		t.Errorf("%d part(s) exist under a family in which no division admitted anything:\n%s", len(run.parts()), run.divisionLog())
 	}
 
 	// ── what the model then did, measured and reported, asserted nowhere ──
