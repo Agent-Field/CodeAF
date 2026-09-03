@@ -11,6 +11,8 @@ invalidates:
   - "Finished work was a reading of the task graph and nothing else, so a session that did the whole fix with its own hands — the change, a test file, a green suite, no task started — was told `nothing has been finished yet` in every brief, and the standstill stopped the run over green work one second after it finished tidying. Work the session did itself now counts as finished, with a witness: its own files are not evidence about themselves, so the reader has to agree that nothing is left. And a reader saying nothing is left is now a fact of its own rather than the same empty string as `there was nobody to ask` and `the call failed`."
   - "The before-reading of the checks skipped only the hunt's own list, so a suite that wrote its cache (`.pytest_cache`, `.hypothesis`, both ignored by the repository) read as a check that moved the tree, was thrown away, and left every red the work met looking new. The walk now uses the one skip list and the repository's own ignore rules, a check that still moved the tree is carried as unread and its red is never counted against the run, and the brief says which checks were already failing before the work."
   - "A session's checks were harvested from the ask as well as the acceptance, so a pasted issue's reproduction steps were run against the tree as if they proved the work: one tox session ran `chmod 000 tox.ini` from the pasted issue as a baseline check. Nothing harvested from the ask is executed against the tree now; the acceptance the session composed and the nodes' own doors are the only sources."
+  - "A handover reached after the run's own owner had read the ending and said the ask was met still handed the work over, on the grounds that the reply had not read its last results: one cell's owner said done at 5m10s over a green tree, the write seam handed over nineteen seconds later, and the two tasks it started ran to the fifteen-minute wall. Done now seals exactly as a stop does — the session's declared checks are run from clean first, exactly as at a stopped turn, then the turn ends on `finishing here · what was asked is done` and no task is started — because the owner's done is read off the landings, the tree, the checks and a second reader, none of which another reply would have added to."
+  - "Work the session did with its own hands counted only files it created, so a fix that was one edit to a file the project already had — the commonest fix there is — read as `nothing has been finished yet` at every ending until the standstill stopped the run over green work. A modified file under the deliverable now counts too, in a ledger of its own that nothing may sweep."
 ---
 
 Every ending of an unattended run is now read by the same goal owner, and every
@@ -28,3 +30,7 @@ every red look new, and a pasted reproduction was run as a check. Each is now a
 fact the decision reads: the session's own work counts with a witness, a discarded
 reading is carried as unread, and the ask is a story about the bug, not a list of
 commands.
+
+Pass four read the same three cells again. Reef's owner said done for the first time
+and the write seam handed over anyway; tox fixed its bug with one edit and was told
+nothing had been finished. Done seals now, and an edit is work.

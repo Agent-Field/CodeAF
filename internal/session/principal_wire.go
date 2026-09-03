@@ -409,10 +409,13 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// files are not a second opinion about themselves
 	// ([Remains.finishedSomething]).
 	//
-	// IT IS FILES THIS SESSION CREATED, not every file it touched: a modified file
-	// is somebody else's file with our changes in it and this build's ledger
-	// deliberately does not keep one ([Agent.rememberCreated]).
-	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0
+	// IT IS FILES THIS SESSION CREATED OR CHANGED under the tree. The two are
+	// kept in separate ledgers because only the created ones may ever be swept
+	// ([Agent.rememberCreated]); the changed ones are read and never acted on
+	// ([Agent.rememberChanged]). A fix that is one edit to a file the project
+	// already had is the commonest shape of finished work there is, and a Made
+	// that counted only new files read it as nothing (#513).
+	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0 || a.changedInDeliverable()
 	remains.ReaderSaysDone = reader.nothingLeft
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
 	// decision — rather than beside the checks themselves: the checks are run

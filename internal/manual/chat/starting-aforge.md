@@ -148,10 +148,14 @@ So before the work moves, the same reading a stopped turn gets is taken:
 
 - **Something of yours is still running** — the work moves onto a task exactly as it always
   did, and you read the same line about it.
-- **Nothing is left and nothing is running** — the work still moves onto a task, because what
-  reached this point was tool results the reply has not read yet. **A turn is never finished
-  over results its own model has not seen.** Being finished is decided one reply later, at the
-  ordinary end of a reply, where the last thing that happened was the model talking.
+- **Nothing is left and nothing is running** — the run ends there, on the line
+  `finishing here · what was asked is done`, and **no task is started**. It used to hand the
+  work over anyway, on the grounds that the reply had not yet read its last results; measured,
+  that started two tasks nineteen seconds after the run had already read the tree, the checks
+  and the second reader and said the ask was met, and both ran to the wall. Being finished is
+  read from those, not from the reply's own words, so nothing a further reply said could change
+  it. If a piece of work is still running when that happens, it is not ended there: the work
+  moves onto a task as usual and the same answer is read again at the next ending.
 - **The same thing is left as last time** — it stops for good with the reason, on the same
   `stopping here · ` line every other stop uses. If a piece of work is still running when
   that happens, it does **not** stop there: the work moves onto a task as usual and the same
@@ -198,6 +202,9 @@ and carried on over a finished tree until its wall ran out.
 **And work aforge did itself counts as finished work.** The question is not only "did a
 task come home": a session that made the change and wrote the tests **inline**, with no
 task at all, has finished something — as long as the second reader agrees nothing is left.
+That includes a fix that is one edit to a file the project already had, which is the
+commonest fix there is: it used to count only files the session created, so a one-line change
+to an existing file read as nothing finished until the run stopped itself over green work.
 Before this, a run that did the whole job in the conversation read `nothing has been
 finished yet` at the end of every reply over a tree it had just written, said the same
 thing twice, and stopped itself for going round in circles one second after tidying up. If

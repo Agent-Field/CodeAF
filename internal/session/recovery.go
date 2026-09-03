@@ -252,7 +252,7 @@ func (c *changeLedger) PostFeedback(_ context.Context, ep *episode, _ *eventHub,
 			// fold here rather than a second stat there, because the only moment
 			// that measurement is available has already gone by then.
 			if change, known := ep.changes.change(path); known {
-				c.agent.rememberCreated(change)
+				c.agent.rememberChange(change)
 			}
 		}
 	}

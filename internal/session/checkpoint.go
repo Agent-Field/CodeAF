@@ -1568,6 +1568,10 @@ const (
 	// finished, because a handover may not end a turn on that: the model has not
 	// read the results its last step returned, and the work moves.
 	checkpointCeilingStopped = "dropped:stopped"
+	// checkpointCeilingDone is the ending a handover takes when the session's
+	// principal read the ending and said the ask is finished: the turn is sealed
+	// there and no task is started ([Agent.endTurnUnderSteward]).
+	checkpointCeilingDone = "dropped:done"
 )
 
 // ── the carry ladder ────────────────────────────────────────────────────────
@@ -2604,15 +2608,8 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 	a.journalAbsorbed(remains)
 	decision := principal.Decide(remains)
 	if decision.Verb == DecideDone && remains.Acceptance != "" {
-		checks, found := a.terminalAudit(ctx)
-		remains.Checks = checks
-		// AND THE BASELINE IS RE-READ WITH THEM. The reading above was assembled
-		// before the checks ran, when the before-reading may not have landed;
-		// [Agent.terminalAudit] waits for it, so by here it has, and a reading
-		// still carrying the old "not yet" would count nothing against the tree
-		// it has just measured.
-		remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
-		decision = principal.Decide(remains)
+		var found reconciliation
+		decision, found = a.decideOverTheChecks(ctx, remains)
 		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
 		// checks and carries on may be about to read the very files this would
 		// remove, so what was sorted is acted on only once the session is
@@ -2646,6 +2643,27 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 // AND EACH IS SAID ONCE. The reading is taken at the end of every reply and the
 // answer does not change, so a row per turn would be one fact written thirty
 // times. What is already written down is remembered for the life of the session.
+// decideOverTheChecks is the SECOND READING a done has to survive: the session's
+// declared checks are run from clean over the tree as it stands, what was
+// already red before the work is folded in beside them, and the principal is
+// asked again with the results in front of it. Both roads that can end a run on
+// a done — the stopped turn ([Agent.decideRemains]) and the handover
+// ([Agent.decideHandover]) — take it, so neither can finish on a done nobody
+// checked. It also returns what the audit's sweep found, for the caller that
+// tidies.
+//
+// THE BASELINE IS RE-READ WITH THE CHECKS. The reading handed in was assembled
+// before the checks ran, when the before-reading may not have landed;
+// [Agent.terminalAudit] waits for it, so by here it has, and a reading still
+// carrying the old "not yet" would count nothing against the tree it has just
+// measured.
+func (a *Agent) decideOverTheChecks(ctx context.Context, remains Remains) (Decision, reconciliation) {
+	checks, found := a.terminalAudit(ctx)
+	remains.Checks = checks
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	return a.who().Decide(remains), found
+}
+
 func (a *Agent) journalAbsorbed(remains Remains) {
 	lines := remains.absorbed()
 	if len(lines) == 0 || a.steward() == nil {
@@ -3324,26 +3342,51 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 	// have decided than a stop — and a row written before the flight was read
 	// could not say which of the two happened.
 	defer func() { a.journalDecision(decision) }()
-	if decision.Verb != DecideStop {
+	if decision.Verb != DecideStop && decision.Verb != DecideDone {
 		return stewardReading{read: true, decision: decision}, checkpointHandover{}, false
 	}
+	// DONE SEALS, EXACTLY AS A STOP DOES. A handover is an ending the principal
+	// reads, and an ending it has answered "done" to is an ending: the ask is
+	// met, so there is no work left to move and no task worth starting. It used
+	// to hand over anyway, on the reasoning that a step boundary is a moment the
+	// model has not read its last results and "finished" should wait for the
+	// next stopped turn. Measured (#513), a cell's goal owner said done at 5m10s
+	// over a green tree, the write seam handed over nineteen seconds later, and
+	// the two tasks it started ran to the fifteen-minute wall. The principal's
+	// done is not the model's claim over unread results: it is read off the
+	// tree, the landings, the checks and a second reader, none of which another
+	// round of the model would have added to.
 	usage, moving, sealed := a.sealTurnWithNothingMoving(decision.Spent, *turn, started, model)
 	if !sealed {
-		decision = heldForMovingWork(decision)
+		decision = heldForMovingWork(decision, moving)
 		return stewardReading{read: true, decision: decision}, checkpointHandover{}, false
 	}
-	if len(moving) > 0 {
-		decision.Reason += stopLeftItMovingTail
+	note, ending := checkpointDoneNote, checkpointCeilingDone
+	if decision.Verb == DecideStop {
+		if len(moving) > 0 {
+			decision.Reason += stopLeftItMovingTail
+		}
+		note, ending = checkpointStoppedNote+decision.Reason, checkpointCeilingStopped
+	} else {
+		// A DONE THAT SEALED IS FINISHED WITH WHAT IT MADE, so the tidy the
+		// stopped-turn road takes with its second reading is taken here, now that
+		// the turn is known to end ([Agent.decideHandover]).
+		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
 	}
-	note := checkpointStoppedNote + decision.Reason
 	hub.send(Event{Kind: EventNotice, Text: note})
 	a.record(textMessage("assistant", note))
 	hub.send(Event{Kind: EventTurnDone, Usage: usage})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
 	return stewardReading{read: true, decision: decision},
-		checkpointHandover{moved: true, decision: checkpointCeilingStopped}, true
+		checkpointHandover{moved: true, decision: ending}, true
 }
+
+// checkpointDoneNote is the ONE LINE a person reads when a handover met a goal
+// owner that had just read the ending and said the ask is finished. It is the
+// done twin of [checkpointStoppedNote]: the turn ends here and nothing is
+// started.
+const checkpointDoneNote = "finishing here · what was asked is done"
 
 // stewardReading is what a handover road learns from the session's goal owner,
 // and it exists so the roads below can tell THREE things apart that a bare
@@ -3398,17 +3441,29 @@ const stopLeftItMovingTail = " · work was still going and was left where it was
 // the journal disagreeing with the transcript. The reason says why the stop was
 // not taken, which is the only part of the original answer still worth keeping —
 // the goal owner has not changed its mind, and says so again at the next ending.
-func heldForMovingWork(decision Decision) Decision {
+func heldForMovingWork(decision Decision, moving []string) Decision {
+	brief := decision.Brief
+	if strings.TrimSpace(brief) == "" {
+		// A HELD DONE HAS NO BRIEF OF ITS OWN — nothing was left — so the
+		// continuation says the one true thing rather than falling back to the
+		// person's bare ask and starting the work over: what is left is the work
+		// still moving, by name.
+		brief = heldDoneBrief + strings.Join(moving, ", ")
+	}
 	return Decision{
 		Verb:     DecideCarryOn,
-		Brief:    decision.Brief,
+		Brief:    brief,
 		Reason:   stopHeldReason,
 		Observed: decision.Observed,
 	}
 }
 
+// heldDoneBrief opens the carry-on a done becomes when work is still moving:
+// nothing is left but that work, and the names follow.
+const heldDoneBrief = "nothing is left to do but wait for the work still running: "
+
 // stopHeldReason is why a stop did not end the turn it was answered at.
-const stopHeldReason = "work is still going, so it was not stopped here"
+const stopHeldReason = "work is still going, so it was not ended here"
 
 // sealTurnWithNothingMoving is [Agent.endTurnUnderSteward]'s seal, AND THE
 // READING THAT ALLOWS IT, IN ONE STEP.
@@ -3445,20 +3500,22 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 }
 
 // decideHandover puts a handover to the principal, and it is
-// [Agent.decideRemains] with ONE THING TAKEN OUT.
+// [Agent.decideRemains] with ONE THING MOVED.
 //
-// THE SECOND READING IS NOT TAKEN HERE, and neither is the sweep that rides with
-// it. On the stopped-turn road a principal that says the ask is met is answered
-// by re-running the session's declared checks from clean and asking again, and
-// the tidy follows because the session is finished with what it made
-// (principal_audit.go). Neither belongs at a handover: done is not an ending on
-// this road ([Agent.endTurnUnderSteward]), so the checks would be a process each
-// bought to change nothing, and a sweep would delete what the session is working
-// with while it goes on working with it.
+// THE SECOND READING IS TAKEN HERE TOO. Done is an ending on this road now
+// ([Agent.endTurnUnderSteward]), so a done that had not been answered by
+// re-running the session's declared checks from clean would be a run finishing
+// on a done nobody checked — the one thing the stopped-turn road exists to
+// prevent. It used to be left out because done did not end a handover, and the
+// checks would have been a process each bought to change nothing.
 //
-// WHAT IS KEPT IS THE STOP'S OWN TIDY, for [Agent.decideRemains]'s reason: a run
-// that stopped is the ending most likely to leave a mess, and whoever comes to
-// look at the tree afterwards is owed it however the run ended.
+// WHAT IS MOVED IS THE DONE'S TIDY. On the stopped-turn road the sweep rides
+// with the second reading; here a done can still be HELD over work that is
+// moving and turned back into a carry-on, and a sweep taken before that was
+// known would delete what the session is about to go on working with. So the
+// caller sweeps once the turn is actually sealed. The stop's own tidy stays
+// where it was, for [Agent.decideRemains]'s reason: a run that stopped is the
+// ending most likely to leave a mess.
 //
 // AND THE ANSWER IS JOURNALED BY THE CALLER, whichever it is: the row says what
 // the goal owner made of every ending rather than only of the ones it acted on,
@@ -3468,6 +3525,9 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 	remains := a.remainsFor(said, reader)
 	a.journalAbsorbed(remains)
 	decision := a.who().Decide(remains)
+	if decision.Verb == DecideDone && remains.Acceptance != "" {
+		decision, _ = a.decideOverTheChecks(ctx, remains)
+	}
 	if decision.Verb == DecideStop {
 		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
 	}

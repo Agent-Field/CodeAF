@@ -2137,6 +2137,13 @@ type Agent struct {
 	// before the call" — because that ledger is dropped at the end of every turn
 	// and the question this answers is asked once, at the end of the session.
 	createdFiles []fileChange
+	// changedFiles is EVERY FILE THIS SESSION MODIFIED THAT WAS THERE BEFORE, in
+	// first-touch order (principal_audit.go). It is kept apart from createdFiles
+	// on purpose: that ledger is what the tidy may remove, and nothing in this
+	// build may remove a file the session did not make. This one is only ever
+	// READ, to answer whether the session put work on the deliverable with its
+	// own hands ([Remains.Made]).
+	changedFiles []fileChange
 	// writes is THE RUNNING TURN'S account of what it has changed under the
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a

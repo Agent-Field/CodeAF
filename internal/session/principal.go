@@ -280,7 +280,7 @@ type Remains struct {
 	Landed bool
 
 	// Made says this session put work on the deliverable WITH ITS OWN HANDS —
-	// files it created under the tree, no task involved.
+	// files it created or changed under the tree, no task involved.
 	//
 	// A SESSION THAT CHANGED THE DELIVERABLE HAS FINISHED SOMETHING. Landed is a
 	// reading of the task graph, so a run that did the whole job inline had it

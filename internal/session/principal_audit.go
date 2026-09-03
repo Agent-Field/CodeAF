@@ -301,6 +301,69 @@ func (a *Agent) createdList() []fileChange {
 	return append([]fileChange(nil), a.createdFiles...)
 }
 
+// rememberChange folds one write the turn's ledger saw into the session's own:
+// a file that was not there before goes to the created ledger the tidy may act
+// on, a file that was goes to the changed ledger nothing acts on.
+func (a *Agent) rememberChange(change fileChange) {
+	if change.created {
+		a.rememberCreated(change)
+		return
+	}
+	a.rememberChanged(change)
+}
+
+// rememberChanged keeps one modified file so the session knows it put work on
+// the deliverable with its own hands.
+//
+// IT IS NEVER WRITTEN TO THE JOURNAL'S CREATED LINE, whose whole value is the
+// word created ([journalCreated]), and it is not journaled at all: the only
+// question it answers is asked of the running session ([Remains.Made]), and a
+// session resumed from its file has a tree and a graph to read instead.
+//
+// Measured (#513): a cell fixed its issue with one edit to a file the project
+// already had, went green, and was told `nothing has been finished yet` at every
+// ending until the standstill stopped it — the created ledger was empty, because
+// nothing had been created.
+func (a *Agent) rememberChanged(change fileChange) {
+	if change.created || strings.TrimSpace(change.path) == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, known := range a.changedFiles {
+		if known.path == change.path {
+			return
+		}
+	}
+	a.changedFiles = append(a.changedFiles, change)
+}
+
+// changedInDeliverable says whether a file this session modified is under the
+// deliverable tree and still a file there. A path outside the tree is a note or
+// a scratch file, not the work; a path that has since gone is not work anybody
+// can point at.
+func (a *Agent) changedInDeliverable() bool {
+	tree := a.deliverableTree()
+	if tree == "" {
+		return false
+	}
+	a.mu.Lock()
+	changed := append([]fileChange(nil), a.changedFiles...)
+	a.mu.Unlock()
+	for _, change := range changed {
+		// THE SAME CONTAINMENT THE CREATED LEDGER USES ([underTree]): canonical
+		// paths, so a symlink under the workspace pointing out of it is not
+		// counted as work on the deliverable.
+		if !underTree(tree, change.path) {
+			continue
+		}
+		if info, err := os.Lstat(change.path); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
+}
+
 // reconciliation is what the sweep found: what belongs to the answer, and what
 // was left lying beside it.
 //

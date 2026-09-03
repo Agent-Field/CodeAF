@@ -41,6 +41,54 @@ func TestTheSessionsChecksComeOffItsOwnAcceptance(t *testing.T) {
 	}
 }
 
+// AN EDIT TO A FILE THE PROJECT ALREADY HAD IS WORK THE SESSION MADE.
+//
+// [Remains.Made] read the created ledger alone, so a session whose whole fix was
+// one edit to an existing file — the commonest shape of a fix there is — was
+// told `nothing has been finished yet` at every ending until the standstill
+// stopped it over green work (#513, the tox cell). The changed ledger answers
+// it, and it stays apart from the created one: only what the session made may
+// ever be swept.
+func TestAnEditToAFileTheProjectAlreadyHadIsWorkTheSessionMade(t *testing.T) {
+	tree := t.TempDir()
+	existing := filepath.Join(tree, "discover.py")
+	if err := os.WriteFile(existing, []byte("def discover(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a session that has written nothing was said to have made something")
+	}
+
+	agent.rememberChange(fileChange{path: existing, shown: "discover.py", created: false})
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("an edit to the project's own file was not counted as work the session made")
+	}
+	if created := agent.createdList(); len(created) != 0 {
+		t.Fatalf("a modified file reached the ledger the tidy may sweep: %+v", created)
+	}
+
+	// AND A FILE CHANGED OUTSIDE THE TREE IS NOT THE WORK: a note the session
+	// kept for itself somewhere else says nothing about the deliverable.
+	aside, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	elsewhere := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(elsewhere, []byte("notes\n"), 0o644); err != nil {
+		t.Fatalf("writing the note: %v", err)
+	}
+	aside.rememberChange(fileChange{path: elsewhere, shown: elsewhere, created: false})
+	if aside.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a file changed outside the deliverable was counted as work on it")
+	}
+}
+
 // NOTHING HARVESTED FROM THE ASK IS EXECUTED AGAINST THE TREE. A pasted
 // reproduction says how the person saw the bug, while the acceptance is the
 // work's own promise about what proves it.
@@ -244,6 +292,32 @@ func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("a tree that fails its own check was allowed to finish: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "false does not pass") {
+		t.Fatalf("the brief does not name the check:\n%s", got.Brief)
+	}
+}
+
+// AND THE SAME READING IS TAKEN AT A HANDOVER. Done seals a handover now
+// (checkpoint.go's [Agent.endTurnUnderSteward]), so a done reached there has to
+// survive the declared checks exactly as one reached at a stopped turn does — or
+// a run could finish on a done nobody checked, on the one road that used to skip
+// the reading because done did not end it.
+func TestADoneAtAHandoverIsCheckedAgainstTheTreeFirst(t *testing.T) {
+	tree := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("port the parser; check it with `false`")
+	steward.setAcceptance("the parser builds and `false` passes")
+	landOne(agent, TaskDone, "port the parser", "")
+
+	got := agent.decideHandover(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("a handover over a tree that fails its own check was allowed to finish: %+v", got)
 	}
 	if !strings.Contains(got.Brief, "false does not pass") {
 		t.Fatalf("the brief does not name the check:\n%s", got.Brief)

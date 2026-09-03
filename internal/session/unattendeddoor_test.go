@@ -71,15 +71,18 @@ func TestAHandoverWithWorkRunningCarriesOnAndHandsOver(t *testing.T) {
 	}
 }
 
-// A TURN IS NOT ENDED OVER RESULTS ITS MODEL HAS NOT READ.
+// DONE SEALS: A HANDOVER AT WHICH THE GOAL OWNER SAYS THE ASK IS MET ENDS THE
+// RUN, AND STARTS NOTHING.
 //
-// A handover is reached at a step boundary: the batch has run, its results are in
-// the transcript, and the model has not said a word about them. "The ask is
-// finished" is not a claim anybody may make over the top of that — the results
-// may hold the very failure that answers it — so however finished the work looks
-// from outside, the handover hands over. Whether the ask ended is decided at the
-// next stopped turn, where the model HAS read them.
-func TestAHandoverOverResultsTheModelHasNotReadNeverEndsTheTurn(t *testing.T) {
+// This law used to read the other way — a handover is reached at a step boundary
+// the model has not read its results at, so "finished" waited for the next
+// stopped turn and the handover handed over. Measured (#513), that put two tasks
+// on the rail nineteen seconds after the goal owner had said done over a green
+// tree, and they ran to the fifteen-minute wall. The principal's done is not the
+// model's claim over unread results: it is read off the landings, the tree, the
+// checks and a second reader, none of which another round would have added to.
+// So the turn ends on its own line, no task is started, and the row says done.
+func TestAHandoverAtWhichTheGoalOwnerSaysDoneEndsTheRun(t *testing.T) {
 	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps(), nil)
 	// THE LANDED UNIT IS ADMITTED THROUGH THE GRAPH'S OWN DOOR, because the
 	// handover admits one too and a node placed beside the id space would be
@@ -99,21 +102,24 @@ func TestAHandoverOverResultsTheModelHasNotReadNeverEndsTheTurn(t *testing.T) {
 	waitDoneNode(t, graph.node(landed))
 
 	collected := collect(t, mustSubmit(t, agent, "work through the four things I listed and report back"))
-	ran.await(t)
 
-	// THE WORK MOVED. Nothing was ended, and the person reads the handover's own
-	// line rather than a stop.
-	if count := admitted(graph); count != 2 {
-		t.Fatalf("%d nodes are in the graph, want the landed one and the one the handover started", count)
+	// NOTHING MOVED. The only node in the graph is the one that had landed, the
+	// handover never said its line, and the person reads the done line instead.
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d nodes are in the graph, want only the landed one: a finished ask started a task", count)
 	}
-	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
-		t.Fatalf("the handover never said its line; notices were %q", noticeTexts(collected))
+	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
+		t.Fatalf("the handover said its line over an ask the goal owner had just called done: %q", noticeTexts(collected))
 	}
-	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
-		t.Fatal("the turn was ended over tool results the model had not read")
+	if !saidSomething(noticeTexts(collected), checkpointDoneNote) {
+		t.Fatalf("the run ended without its done line; notices were %q", noticeTexts(collected))
 	}
-	// AND THE READING WAS STILL TAKEN AND STILL WRITTEN DOWN: the goal owner said
-	// the ask was met, and the harness handed over anyway.
+	if last := lastMessage(agent); last.Role != "assistant" ||
+		!strings.Contains(messageText(last), checkpointDoneNote) {
+		t.Fatalf("the turn did not end on its own line; the transcript ends with a %s saying %q",
+			last.Role, messageText(last))
+	}
+	// AND THE ROW SAYS WHAT WAS DECIDED.
 	if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"done"`) {
 		t.Fatalf("the goal owner's answer to the handover reached no line of the journal:\n%s", lines)
 	}

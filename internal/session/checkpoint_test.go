@@ -3357,6 +3357,9 @@ func TestTheCarriedOnNoteSaysWhatWasObserved(t *testing.T) {
 		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
 		Checks:     []CheckRun{{Command: "go build ./...", Passed: false}},
+		// A red that counts is a red the before-reading has landed for; until it
+		// has, no check is counted against the run and the note says so instead.
+		BaselineRead: true,
 	})
 	note := checkpointCarriedOnNote(decision.Observed)
 	if !strings.Contains(note, "wire the handlers did not finish") ||
