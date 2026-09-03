@@ -73,9 +73,13 @@ func TestANarratorAnswerThatIsTheInstructionIsRefused(t *testing.T) {
 	if got := cleanCaption("Caption: checking where the fold is minted"); got != "checking where the fold is minted" {
 		t.Fatalf("an ordinary caption cleaned to %q", got)
 	}
-	long := "checking where the fold is minted across every possible layout path carefully today"
-	if got := cleanCaption(long); got != "checking where the fold is minted across every possible layout" {
-		t.Fatalf("cleanCaption kept too many words: %q", got)
+	got := cleanCaption("Good leads. Fetching the key pages to confirm which are open.")
+	if got != "Fetching the key pages to confirm which are open" {
+		t.Fatalf("cleanCaption did not keep one short sentence: %q", got)
+	}
+	long := "fetching the key pages to confirm which are actually still open tonight in toronto"
+	if got := cleanCaption(long); got != "fetching the key pages to confirm" {
+		t.Fatalf("cleanCaption left a mid-clause cut: %q", got)
 	}
 	if strings.Contains(cleanCaption(long), "…") {
 		t.Fatal("cleanCaption appended an ellipsis")

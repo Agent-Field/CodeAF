@@ -119,29 +119,86 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 
 func captionWords(text string) string {
 	line := strings.TrimSpace(firstLine(text))
-	line = strings.TrimSpace(strings.TrimRight(line, ".!?,;:"))
 	return shortCaption(line)
 }
 
-// shortCaption keeps a glanceable step title. Same budget as session.cleanCaption:
-// at most ten words, no ellipsis — the row wraps when the window is narrow.
+// shortCaption keeps ONE short sentence for the step title. Same rules as
+// session.cleanCaption: prefer a complete sentence under ten words; never
+// ellipsis-cut mid-clause — the row wraps what remains.
 const captionWordMax = 10
-const captionCharMax = 72
 
 func shortCaption(line string) string {
-	fields := strings.Fields(strings.TrimSpace(line))
-	if len(fields) == 0 {
+	line = strings.TrimSpace(line)
+	if line == "" {
 		return ""
 	}
-	if len(fields) > captionWordMax {
-		fields = fields[:captionWordMax]
+	var pick string
+	for _, sentence := range captionSentences(line) {
+		words := strings.Fields(strings.TrimSpace(strings.TrimRight(sentence, ".!?;:")))
+		if len(words) == 0 {
+			continue
+		}
+		if len(words) < 3 {
+			if pick == "" {
+				pick = strings.Join(words, " ")
+			}
+			continue
+		}
+		if len(words) > captionWordMax {
+			words = captionTrimDangling(words[:captionWordMax])
+		}
+		return strings.Join(words, " ")
 	}
-	out := strings.Join(fields, " ")
-	runes := []rune(out)
-	if len(runes) > captionCharMax {
-		out = string(runes[:captionCharMax])
+	return pick
+}
+
+func captionSentences(line string) []string {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return nil
 	}
-	return strings.TrimSpace(out)
+	var out []string
+	start := 0
+	for i, r := range line {
+		switch r {
+		case '.', '!', '?':
+			piece := strings.TrimSpace(line[start : i+1])
+			if piece != "" {
+				out = append(out, piece)
+			}
+			start = i + 1
+		}
+	}
+	if rest := strings.TrimSpace(line[start:]); rest != "" {
+		out = append(out, rest)
+	}
+	if len(out) == 0 {
+		return []string{line}
+	}
+	return out
+}
+
+func captionTrimDangling(words []string) []string {
+	dangling := map[string]bool{
+		"a": true, "an": true, "the": true, "and": true, "or": true, "but": true,
+		"to": true, "of": true, "in": true, "on": true, "at": true, "for": true,
+		"from": true, "by": true, "with": true, "as": true, "into": true,
+		"which": true, "that": true, "this": true, "these": true, "those": true,
+		"who": true, "whom": true, "whose": true, "where": true, "when": true,
+		"is": true, "are": true, "was": true, "were": true, "be": true, "been": true,
+		"being": true, "have": true, "has": true, "had": true, "do": true, "does": true,
+		"did": true, "will": true, "would": true, "can": true, "could": true,
+		"should": true, "may": true, "might": true, "must": true,
+		"actually": true, "still": true, "also": true, "just": true, "very": true,
+	}
+	for len(words) > 2 {
+		last := strings.ToLower(strings.Trim(words[len(words)-1], ",;:"))
+		if !dangling[last] {
+			break
+		}
+		words = words[:len(words)-1]
+	}
+	return words
 }
 
 // composeCaption is the deterministic floor beneath a model-supplied heading.

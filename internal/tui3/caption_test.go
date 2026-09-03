@@ -115,14 +115,20 @@ func TestConsecutiveHeadsWithNoWorkBetweenThemMerge(t *testing.T) {
 	}
 }
 
-func TestACaptionStaysUnderTenWords(t *testing.T) {
-	long := "checking where the fold is minted across every possible layout path carefully today"
-	got := shortCaption(long)
-	if got != "checking where the fold is minted across every possible layout" {
+func TestACaptionIsOneShortSentence(t *testing.T) {
+	// Two sentences: skip the thin opener, keep the fuller short sentence.
+	got := shortCaption("Good leads. Fetching the key pages to confirm which are open.")
+	if got != "Fetching the key pages to confirm which are open" {
 		t.Fatalf("shortCaption = %q", got)
 	}
-	if strings.Contains(got, "…") || strings.Contains(got, "...") {
-		t.Fatalf("shortCaption used an ellipsis: %q", got)
+	// A long single sentence shrinks without ending mid-clause.
+	long := "fetching the key pages to confirm which are actually still open tonight in toronto"
+	got = shortCaption(long)
+	if got != "fetching the key pages to confirm" {
+		t.Fatalf("long shortCaption = %q", got)
+	}
+	if strings.Contains(got, "…") || strings.HasSuffix(got, "are") || strings.HasSuffix(got, "which") {
+		t.Fatalf("caption ended mid-clause: %q", got)
 	}
 }
 

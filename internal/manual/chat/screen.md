@@ -1470,13 +1470,14 @@ ever — a column of ticks is a column you must read to learn nothing. In the
 screen-reader tier the marks are `o` queued, `*` running, `x` failed, `.` idle; `?` is
 already ASCII.
 
-Calls in one step fold under a short **caption** — about 5 to 10 words saying
-what that step is doing and where, with the honest call count at the right. On a
-narrow window the caption wraps onto the next line; it is never cut with an
-ellipsis. Press `ctrl+o` on the live caption or click it to show the tool rows. A
-caption can be wrong; the rows beneath it are the truth. Before a long live run
-has a caption, at most **3** calls stay on screen and the rest use the fallback
-`↳ 1 earlier tool call · ctrl+o` or `↳ N earlier tool calls · ctrl+o`.
+Calls in one step fold under a short **caption** — one sentence of about 5 to
+10 words saying what that step is doing and where, with the honest call count
+at the right. On a narrow window the caption wraps onto the next line; it is
+never cut with an ellipsis mid-sentence. Press `ctrl+o` on the live caption or
+click it to show the tool rows. A caption can be wrong; the rows beneath it are
+the truth. Before a long live run has a caption, at most **3** calls stay on
+screen and the rest use the fallback `↳ 1 earlier tool call · ctrl+o` or
+`↳ N earlier tool calls · ctrl+o`.
 
 A **task's page** keeps more in that no-caption fallback — as many calls as the window is
 tall — and its line reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there

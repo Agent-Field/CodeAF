@@ -25,16 +25,15 @@ func init() { roles.Register(roles.RoleCaption, roles.TierLow) }
 
 // captionSystem is character only. A cheap model reads the end of the user
 // message as the thing to do, so [captionPrompt] goes there and goes last.
-const captionSystem = "You write short status lines a person can glance at while work runs."
+const captionSystem = "You write one short status sentence a person can glance at while work runs."
 
-// captionPrompt asks for a checklist step: what is happening and where, short
-// enough to read mid-turn without studying the tool rows.
-const captionPrompt = "Write one short status line for a person watching this work. " +
-	"5 to 10 words. Present tense, lowercase, no first person. " +
+// captionPrompt asks for a single short checklist sentence: what and where.
+const captionPrompt = "Write one short status sentence for a person watching this work. " +
+	"A single sentence, 5 to 10 words, present tense, lowercase, no first person. " +
 	"Say what is happening and where (path, repo, host, or topic) when you know it. " +
-	"This is a checklist step, not reasoning and not tool names. " +
+	"Not reasoning, not tool names, not two sentences. " +
 	"Examples: listing open github issues · reading the caption renderer · ranking bugs by quality. " +
-	"Answer with the line only."
+	"Answer with the sentence only."
 
 const (
 	// captionDwell is short on purpose: long enough that an instant batch pays
@@ -48,13 +47,10 @@ const (
 	// captionClip keeps the narrator on the tail of the work. A caption is about
 	// what is happening now, not a digest of the whole conversation.
 	captionClip = 1500
-	// captionWordMax is the person-facing length. Longer lines stop being a
-	// glance and start being a paragraph; the surface wraps instead of cutting
-	// with an ellipsis, so the budget is words, not characters with a mark.
+	// captionWordMax is the soft ceiling for one short sentence. The surface
+	// wraps; it does not ellipsis-cut. When a line must shrink, trailing
+	// dangling words are dropped so it does not end on "which are".
 	captionWordMax = 10
-	// captionCharMax is only a safety bound for a single runaway token. It never
-	// appends an ellipsis — the drawing path wraps.
-	captionCharMax = 72
 )
 
 // maybeCaption asks for one line about the batch in flight. It is called only
@@ -144,9 +140,8 @@ func captionTail(transcript string) string {
 	return strings.TrimSpace(transcript[start:])
 }
 
-// cleanCaption takes exactly one plain status line and refuses an instruction
-// echo. It keeps at most captionWordMax words and never appends an ellipsis —
-// a long word is hard-cut; the surface wraps the rest.
+// cleanCaption takes one plain short sentence and refuses an instruction echo.
+// It never appends an ellipsis — the surface wraps what remains.
 func cleanCaption(raw string) string {
 	line := stripMarkup(strings.TrimSpace(firstLine(raw)))
 	line = stripOpener(line)
@@ -158,21 +153,81 @@ func cleanCaption(raw string) string {
 	return shortCaption(line)
 }
 
-// shortCaption is the person-facing length of a step title: enough to say what
-// and where, short enough to glance. Words beyond the budget drop; there is no
-// ellipsis mark, because the drawing path wraps instead of truncating.
+// shortCaption keeps ONE short sentence. Prefer a complete sentence under the
+// word budget; if a longer sentence must shrink, drop trailing dangling words
+// so the title does not end mid-clause ("… which are").
 func shortCaption(line string) string {
-	fields := strings.Fields(strings.TrimSpace(line))
-	if len(fields) == 0 {
+	line = strings.TrimSpace(line)
+	if line == "" {
 		return ""
 	}
-	if len(fields) > captionWordMax {
-		fields = fields[:captionWordMax]
+	var pick string
+	for _, sentence := range captionSentences(line) {
+		words := strings.Fields(strings.TrimSpace(strings.TrimRight(sentence, ".!?;:")))
+		if len(words) == 0 {
+			continue
+		}
+		if len(words) < 3 {
+			if pick == "" {
+				pick = strings.Join(words, " ")
+			}
+			continue
+		}
+		if len(words) > captionWordMax {
+			words = captionTrimDangling(words[:captionWordMax])
+		}
+		return strings.Join(words, " ")
 	}
-	out := strings.Join(fields, " ")
-	runes := []rune(out)
-	if len(runes) > captionCharMax {
-		out = string(runes[:captionCharMax])
+	return pick
+}
+
+func captionSentences(line string) []string {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return nil
 	}
-	return strings.TrimSpace(out)
+	var out []string
+	start := 0
+	for i, r := range line {
+		switch r {
+		case '.', '!', '?':
+			piece := strings.TrimSpace(line[start : i+1])
+			if piece != "" {
+				out = append(out, piece)
+			}
+			start = i + 1
+		}
+	}
+	if rest := strings.TrimSpace(line[start:]); rest != "" {
+		out = append(out, rest)
+	}
+	if len(out) == 0 {
+		return []string{line}
+	}
+	return out
+}
+
+// captionTrimDangling drops trailing glue words left by a hard word budget so
+// a caption reads as a finished short sentence, not a cut clause.
+func captionTrimDangling(words []string) []string {
+	dangling := map[string]bool{
+		"a": true, "an": true, "the": true, "and": true, "or": true, "but": true,
+		"to": true, "of": true, "in": true, "on": true, "at": true, "for": true,
+		"from": true, "by": true, "with": true, "as": true, "into": true,
+		"which": true, "that": true, "this": true, "these": true, "those": true,
+		"who": true, "whom": true, "whose": true, "where": true, "when": true,
+		"is": true, "are": true, "was": true, "were": true, "be": true, "been": true,
+		"being": true, "have": true, "has": true, "had": true, "do": true, "does": true,
+		"did": true, "will": true, "would": true, "can": true, "could": true,
+		"should": true, "may": true, "might": true, "must": true,
+		"actually": true, "still": true, "also": true, "just": true, "very": true,
+	}
+	for len(words) > 2 {
+		last := strings.ToLower(strings.Trim(words[len(words)-1], ",;:"))
+		if !dangling[last] {
+			break
+		}
+		words = words[:len(words)-1]
+	}
+	return words
 }

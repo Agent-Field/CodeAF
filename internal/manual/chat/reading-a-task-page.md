@@ -57,12 +57,13 @@ caption whenever its words and the work appear to disagree.
 
 ## What is that line — caption, why did it collapse, and how do I see what it did
 
-The short status line over a batch is its **caption** — about 5 to 10 words naming
-what the step is doing and where. A collapsed stack of those lines is the
-**outline**. On a narrow window a caption wraps; it is never cut with an ellipsis.
-It says what each step is trying to settle rather than repeating commands the rows
-already name. A live caption may shimmer while its rows are folded; opening it
-stops the shimmer and shows the running calls.
+The short status line over a batch is its **caption** — one sentence of about
+5 to 10 words naming what the step is doing and where. A collapsed stack of
+those lines is the **outline**. On a narrow window a caption wraps; it is never
+cut mid-sentence with an ellipsis. It says what each step is trying to settle
+rather than repeating commands the rows already name. A live caption may shimmer
+while its rows are folded; opening it stops the shimmer and shows the running
+calls.
 
 Use **`ctrl+e` on an empty box** to open the newest `▸ worked` chip onto the outline.
 Then click the caption, select it and press `enter`, or press **`ctrl+o` on the live
