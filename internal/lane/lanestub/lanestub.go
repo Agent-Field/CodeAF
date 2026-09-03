@@ -94,6 +94,19 @@ type Profile struct {
 	// written for StallFor. A zero StallAfter stalls nothing.
 	StallAfter int
 	StallFor   time.Duration
+	// StallUntil holds the stall open on a SIGNAL instead of a duration: after
+	// StallAfter deltas nothing is written until this channel closes or the
+	// request is cancelled. It overrides StallFor when set, and its zero value
+	// is today's behaviour, so nothing that only names a duration changes.
+	//
+	// IT EXISTS BECAUSE A SCRIPTED ARM MUST ORDER ITSELF BY A SIGNAL AND NEVER
+	// BY ELAPSED TIME. A hedge test that wants the rescue to take the answer is
+	// asserting a rule — the first arm to finish cleanly commits — and a stalled
+	// arm timed to resume a little after the rescue lands asserts nothing but
+	// the slack between two wall-clock figures, which a starved machine eats.
+	// Held on a channel the test never closes in time, the primary CANNOT
+	// finish first, and the assertion is about the rule again.
+	StallUntil <-chan struct{}
 	// FailWith is an HTTP status this lane answers with instead of streaming.
 	// Zero serves normally.
 	FailWith int
@@ -801,11 +814,27 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			return true
 		}
 		wait := gap
-		if lane.StallAfter > 0 && delta == lane.StallAfter {
+		// A stall held on a signal spends NO scripted time, so the clock's own
+		// ledger of elapsed time stays a sum of the durations the script named
+		// — the wait here is the ordinary gap between two tokens and nothing
+		// more. Only after that gap is spent does the arm hang on the channel.
+		stalling := lane.StallAfter > 0 && delta == lane.StallAfter
+		held := stalling && lane.StallUntil != nil
+		if stalling && !held {
 			wait += lane.StallFor
 		}
 		delta++
-		return clock.Wait(ctx, wait)
+		if !clock.Wait(ctx, wait) {
+			return false
+		}
+		if held {
+			select {
+			case <-lane.StallUntil:
+			case <-ctx.Done():
+				return false
+			}
+		}
+		return true
 	}
 	for thought := 0; thought < lane.Reasoning; thought++ {
 		if !pause() {

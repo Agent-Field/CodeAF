@@ -43,15 +43,26 @@ func ladderChoice(model string, _ time.Duration) lanes.Choice {
 
 func TestARefusedRescueWalksToTheNextLaneRatherThanRelaxingTheRequest(t *testing.T) {
 	told := listen(t)
+	// A IS HELD BY A SIGNAL AND NOT BY A DURATION. The claim is that the walk
+	// reaches C, and it only reads that way while A is still quiet: an A told to
+	// resume after nine hundred milliseconds finishes on its own the moment a
+	// starved machine spends that long on the two hops to C, and then the answer
+	// is A's forty tokens and this test fails on an arithmetic race rather than
+	// on the rung order it is named for. Held open until the channel closes — and
+	// it closes only at teardown — A cannot finish first at any speed.
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "ladder/walk",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
 			TTFT: 2 * time.Millisecond, Rate: 1000,
 			Reasoning: 100, Tokens: 40,
-			StallAfter: 100, StallFor: 900 * time.Millisecond,
+			StallAfter: 100, StallUntil: resume,
 		}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{FailWith: 400}},
 		lanestub.Lane{Name: "C", Profile: lanestub.Profile{TTFT: 3 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	// Released after the assertions and BEFORE the rig closes its server, so a
+	// run that never reached the cancel still lets the handler go.
+	t.Cleanup(func() { close(resume) })
 	rig.believes("A", 2, 250)
 
 	report := &HedgeReport{}
