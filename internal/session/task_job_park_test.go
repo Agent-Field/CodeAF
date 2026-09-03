@@ -39,6 +39,10 @@ package session
 // read where a duration is worth printing, and it is read from [job.settle]'s own
 // stamp ([waitSettled]) rather than from anybody watching.
 //
+// AND THE ORDER IS NOT LEFT TO A CLOCK EITHER — that is what [heldCommand] is
+// for, and its comment is the second law of this file: A TEST MUST NOT RACE A
+// CLOCK IT CAN OWN.
+//
 // AND THE LOOP DETECTOR IS LEFT ALONE. A worker that polls a log after its
 // ending has arrived is repeating itself, and being stopped for it is the reader
 // working correctly — #568 says so in as many words. So the nudge is asserted
@@ -48,6 +52,8 @@ package session
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -63,8 +69,9 @@ import (
 // jobNest is [newNest] with the session's background-after clock wound down to
 // one second. That figure is the whole premise of this file: the promotion has
 // to fire while the command is still running — otherwise there is no wait to be
-// wrong about — and it has to fire fast enough that a test can afford to sit
-// through the rest of the command.
+// wrong about — and one second is short enough that a test does not sit through
+// it. HOW LONG THE COMMAND THEN RUNS IS NOT THIS NUMBER'S BUSINESS: it is the
+// test's, and [heldCommand] is how the test holds it.
 //
 // The namer is answered off the queue because a promoted command becomes a job,
 // and a job is named by a small call on a goroutine of its own (jobname.go). Left
@@ -78,6 +85,58 @@ func jobNest(t *testing.T, completer *scriptedCompleter) *nest {
 	// which this field has a single reader.
 	here.node.config.BashBackgroundAfterSeconds = 1
 	return here
+}
+
+// heldCommand is a command WHOSE ENDING BELONGS TO THE TEST. It prints its
+// opening line, spins on a path that does not exist until the test creates it,
+// and then prints its last word and exits.
+//
+// A TEST MUST NOT RACE A CLOCK IT CAN OWN. The first draft of this file wrote
+// `sleep 3` and asked it to outlast a one-second handoff clock, which is a
+// margin — and a margin is a bug waiting for a busy box: the handoff timer fires
+// late, or the sleep finishes before the promotion lands, and then there is no
+// promotion, no wait, and nothing for anything below to be right or wrong about.
+// The failure that produces is a lie about the mechanism, because the mechanism
+// was never reached.
+//
+// A command that ends WHEN THE TEST SAYS SO has no margin to lose. It runs for
+// exactly as long as the promotion takes, however long the machine makes that;
+// the test releases it once it has SEEN the promotion, and the release is the
+// ending. Nothing here is timed and nothing here is hoped.
+//
+// The spin is `until [ -f … ]` and not `wait` or a fifo because it is the
+// portable shape: it needs one test of one path and a short sleep, and it holds
+// under any /bin/sh this suite could be handed.
+type heldCommand struct {
+	// gate is the path whose appearance ends the command. It lives under the
+	// test's own temporary directory, so it cannot exist before the test writes
+	// it and it is gone when the test is.
+	gate string
+	// text is the command as the model would have asked for it.
+	text string
+}
+
+// holdACommand builds one of those, printing `opening` at once and `ending` on
+// its way out — the two words the promotion's own tail and the ending note are
+// then read for.
+func holdACommand(t *testing.T, opening, ending string) *heldCommand {
+	t.Helper()
+	gate := filepath.Join(t.TempDir(), "release")
+	return &heldCommand{
+		gate: gate,
+		text: fmt.Sprintf("echo %s; until [ -f '%s' ]; do sleep 0.05; done; echo %s",
+			opening, gate, ending),
+	}
+}
+
+// release ends the command. A command that is never released runs until the
+// registry kills it, which is what a test wants from something that has to be
+// STILL RUNNING at the moment it looks.
+func (h *heldCommand) release(t *testing.T) {
+	t.Helper()
+	if err := os.WriteFile(h.gate, nil, 0o600); err != nil {
+		t.Fatalf("the command could not be released: %v", err)
+	}
 }
 
 // bashStep is one scripted turn that makes a foreground `bash` call and records
@@ -155,20 +214,89 @@ func (l *askLog) ranBefore(ending time.Time) []string {
 	return ran
 }
 
+// generously is the instant a wait for something another goroutine will do must
+// give up at: the asked-for stretch, cut short of the test's own deadline if
+// there is one, so that a wait reports what it was waiting for instead of being
+// killed mid-poll and blamed on whichever test was running.
+//
+// THE NUMBER IS ONLY EVER A CEILING. Every wait below returns the moment the
+// thing it names has happened, so a generous bound costs nothing on any machine
+// where it happens — and where it does not happen, the bound is the difference
+// between a named failure and a hang.
+func generously(t *testing.T, want time.Duration) time.Time {
+	t.Helper()
+	until := time.Now().Add(want)
+	if deadline, set := t.Deadline(); set {
+		if slack := deadline.Add(-5 * time.Second); slack.Before(until) {
+			return slack
+		}
+	}
+	return until
+}
+
 // waitPromoted waits for the promotion road to have adopted a running command
 // and answers the job it became. It is the signal a test needs before it can say
 // anything at all about the wait: "the worker has not been asked again" is not a
 // claim anybody can make before the promotion that would ask it.
+//
+// AND IT IS WAITED FOR RATHER THAN ASSUMED. The handoff clock is one second, and
+// a test that took that for the truth would be reading its own optimism on a box
+// where the timer fires late. If the promotion never comes at all, THAT is a real
+// failure and it is said plainly.
 func waitPromoted(t *testing.T, node *Agent) *job {
 	t.Helper()
-	for until := time.Now().Add(20 * time.Second); time.Now().Before(until); {
-		if all := node.jobs.all(); len(all) > 0 {
+	for until := generously(t, 30*time.Second); time.Now().Before(until); {
+		if all := node.jobs.all(); len(all) > 0 && all[0].running() {
 			return all[0]
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("the foreground command was never taken over by the promotion road")
+	t.Fatal("the foreground command was never taken over by the promotion road, so there was no running job for this worker to be waiting on")
 	return nil
+}
+
+// parkedOnItsCommand reads whether this worker has TAKEN THE GENERATION it parks
+// on ([Agent.taskNewsWait]).
+//
+// THAT READING IS THE ORDERING AND NOT A GUESS AT IT. The park takes its channel
+// BEFORE it asks whether anything is still owed, precisely so that news landing
+// from that instant onward cannot be missed (task_job_park.go states the law) —
+// so a test that has seen the channel exist knows that an ending it causes from
+// here will reach the worker, which is the only fact it needs before causing
+// one.
+func parkedOnItsCommand(a *Agent) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.taskNews != nil
+}
+
+// waitParkedOnItsCommand returns once the worker has either parked on the
+// command it started or PROVED IT HAS NOT, by asking for something else. It is
+// what a test calls between seeing the promotion and ending the command.
+//
+// ── WHY THE PROOF OF THE WRONG ANSWER IS PART OF THE WAIT ──
+//
+// The claim under test is an order: the worker's next request either comes
+// before its command's ending or after it. A test that ended the command on a
+// timer would be deciding that order with a stopwatch — and on a tree without
+// the wait, a slow enough box could let the ending overtake the very request
+// that proves the wait is missing, which is a red test going green for the worst
+// reason there is.
+//
+// So the ending is caused by an OBSERVED fact either way. Parked, and the test
+// releases knowing the worker is holding; asked again, and the test releases
+// knowing the request that should not exist has already been made and snapshot.
+// The bound underneath is only a ceiling for the case where neither is ever
+// true, and it returns rather than failing, because the assertion the caller is
+// about to make is the one entitled to judge that.
+func waitParkedOnItsCommand(t *testing.T, node *Agent, completer *scriptedCompleter, asked int) {
+	t.Helper()
+	for until := generously(t, 30*time.Second); time.Now().Before(until); {
+		if parkedOnItsCommand(node) || completer.requests() > asked {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // waitSettled waits for one job to be final and answers THE EXACT INSTANT its
@@ -181,7 +309,7 @@ func waitPromoted(t *testing.T, node *Agent) *job {
 // looked, and the gaps this file prints are sub-millisecond once the wait exists.
 func waitSettled(t *testing.T, node *Agent, id int) time.Time {
 	t.Helper()
-	for until := time.Now().Add(30 * time.Second); time.Now().Before(until); {
+	for until := generously(t, 30*time.Second); time.Now().Before(until); {
 		if one := node.jobs.find(id); one != nil && !one.running() {
 			settled := one.info()
 			return settled.started.Add(settled.elapsed)
@@ -233,27 +361,40 @@ func nudgedWhileParked(a *Agent) (string, bool) {
 	return "", false
 }
 
+// theCallAlone is how many requests this worker has made when its command is
+// promoted: the one that made the call, and nothing else. Every test below hands
+// it to [waitParkedOnItsCommand] as the count a second request would exceed.
+const theCallAlone = 1
+
 // ── the wait ────────────────────────────────────────────────────────────────
 
 // THE MEASURED FAILURE, PINNED. A foreground command outlives the handoff clock,
 // the promotion road takes the process, and the first thing the worker is asked
 // after that must be the turn that carries the command's ending.
 //
-// The command is a real one on a real clock, because what broke was the ordering
-// between a timer and a turn and a fake clock would test the fake (promote_test.go
-// makes the same choice for the same reason). It prints, it outlives the
-// one-second handoff by a comfortable margin, and its last word is the word the
+// The command is a real one in a real shell, because what broke was the ordering
+// between a call and a turn and a fake would test the fake (promote_test.go
+// makes the same choice for the same reason). It prints, it outlives the handoff
+// because the test holds it open across it, and its last word is the word the
 // ending has to carry.
 func TestATaskParksOnItsPromotedForegroundCommandUntilItExits(t *testing.T) {
 	record := &askLog{}
-	const suite = "echo starting the suite; sleep 3; echo PASS"
+	suite := holdACommand(t, "starting the suite", "PASS")
 	completer := &scriptedCompleter{steps: []step{
-		bashStep(record, "the-suite", suite),
+		bashStep(record, "the-suite", suite.text),
 		sayStep(record, "the suite passed"),
 	}}
 	here := jobNest(t, completer)
 
 	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6})
+
+	// THE COMMAND ENDS WHERE THE TEST SAYS AND NOT WHERE A TIMER DOES: once the
+	// promotion has actually happened, and once the worker has either parked on
+	// it or shown that it did not.
+	waitPromoted(t, here.node)
+	waitParkedOnItsCommand(t, here.node, completer, theCallAlone)
+	suite.release(t)
+
 	select {
 	case <-done:
 	case <-time.After(60 * time.Second):
@@ -307,11 +448,16 @@ func TestATaskParksOnItsPromotedForegroundCommandUntilItExits(t *testing.T) {
 // This is the half that would hang. A wait released only by a clean exit leaves a
 // worker parked on a process nobody is going to see exit, until its bound runs
 // out, with the person's own stop as the last thing that happened.
+//
+// The command here is never released, so THE PERSON'S STOP IS THE ONLY ENDING IT
+// CAN HAVE. A `sleep 30` stood here once and was the same test with a ceiling on
+// it: nothing about this is supposed to depend on the stop arriving within half
+// a minute.
 func TestAStoppedCommandWakesTheWaitWithItsOwnEnding(t *testing.T) {
 	record := &askLog{}
-	const long = "echo the long one; sleep 30; echo never"
+	long := holdACommand(t, "the long one", "never")
 	completer := &scriptedCompleter{steps: []step{
-		bashStep(record, "the-long-one", long),
+		bashStep(record, "the-long-one", long.text),
 		sayStep(record, "somebody stopped it; here is where I got to"),
 	}}
 	here := jobNest(t, completer)
@@ -323,6 +469,10 @@ func TestAStoppedCommandWakesTheWaitWithItsOwnEnding(t *testing.T) {
 
 	promoted := waitPromoted(t, here.node)
 	pid := promoted.cmd.Process.Pid
+	// The stop is made once the worker is holding — or once it has shown it is
+	// not — so what follows is about the stop and never about which of the two
+	// goroutines the machine ran first.
+	waitParkedOnItsCommand(t, here.node, completer, theCallAlone)
 	answer, err := here.node.Cancel(fmt.Sprintf("%s:%d", CancelJob, promoted.id))
 	if err != nil {
 		t.Fatalf("the person's stop was refused: %v", err)
@@ -383,12 +533,23 @@ func TestAStoppedCommandWakesTheWaitWithItsOwnEnding(t *testing.T) {
 // This one passed before the wait existed and must go on passing after it: it is
 // the guard against a fix that reads "a job is running" where the law says "the
 // call this worker made has not ended".
+//
+// The command is held rather than slept for the reason the others are, and here
+// the reason is the LAST assertion: "the job really is still running" is the
+// evidence that what was measured is a worker letting go, and a sleep can expire
+// out from under that evidence on a slow enough box. A held command cannot. The
+// two clock readings that remain are what they always were — two scripted turns
+// that do no work at all, against ten seconds — and they are a bound on a
+// worker that never blocks rather than a race between two things that both take
+// about as long as each other.
 func TestAnExplicitBackgroundJobDoesNotHoldATaskOpen(t *testing.T) {
 	record := &askLog{}
+	server := holdACommand(t, "the server is up", "never")
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			record.ask("sleep 30")
-			return toolResponse("the-server", "bash", `{"command":"sleep 30","background":true}`), nil
+			record.ask(server.text)
+			return toolResponse("the-server", "bash",
+				fmt.Sprintf(`{"command":%q,"background":true}`, server.text)), nil
 		},
 		sayStep(record, "it runs while I carry on"),
 	}}
@@ -401,9 +562,9 @@ func TestAnExplicitBackgroundJobDoesNotHoldATaskOpen(t *testing.T) {
 	case <-time.After(20 * time.Second):
 		t.Fatal("the worker was held open by a job nobody was waiting for")
 	}
-	// WELL UNDER THE SLEEP. The command has twenty-odd seconds left to run and
-	// the worker is finished, which is the whole difference between a call that
-	// was owed an ending and one that was not.
+	// WELL WITHIN A BOUND THE WORK CANNOT REACH. The worker's two turns run no
+	// command of their own, so ten seconds is a ceiling on a run that should take
+	// milliseconds, and the command it started is still going.
 	if elapsed := time.Since(started); elapsed > 10*time.Second {
 		t.Fatalf("the worker took %v, want it done long before its background command", elapsed)
 	}
@@ -440,9 +601,9 @@ func TestAnExplicitBackgroundJobDoesNotHoldATaskOpen(t *testing.T) {
 // which is the reader working correctly and is deliberately not asserted about.
 func TestTheWaitOnItsCommandSpendsNoStepAndNoNudge(t *testing.T) {
 	record := &askLog{}
-	const suite = "echo starting the suite; sleep 3; echo PASS"
+	suite := holdACommand(t, "starting the suite", "PASS")
 	const poll = "sleep 0.2; echo still running"
-	steps := []step{bashStep(record, "the-suite", suite)}
+	steps := []step{bashStep(record, "the-suite", suite.text)}
 	for round := 0; round < 3; round++ {
 		steps = append(steps, bashStep(record, fmt.Sprintf("poll-%d", round), poll))
 	}
@@ -451,6 +612,16 @@ func TestTheWaitOnItsCommandSpendsNoStepAndNoNudge(t *testing.T) {
 	here := jobNest(t, completer)
 
 	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6})
+
+	// AND THE COMMAND OUTLIVES THE POLL THE WORKER WOULD HAVE INVENTED, BECAUSE
+	// THE TEST HOLDS IT. Released only once the promotion has happened and the
+	// worker has parked — or has reached for the first poll and proved it did
+	// not — so the ending below is on the far side of whichever of those two
+	// happened, and never on the near side by an accident of scheduling.
+	waitPromoted(t, here.node)
+	waitParkedOnItsCommand(t, here.node, completer, theCallAlone)
+	suite.release(t)
+
 	select {
 	case <-done:
 	case <-time.After(60 * time.Second):
