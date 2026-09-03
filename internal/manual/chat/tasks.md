@@ -2956,6 +2956,17 @@ done-condition, and ask again — it is not a finding that the work cannot be sp
 checks that name different things — a package each, a file each — are two checks and are
 admitted; nothing here reads which program is being run or how long it takes.
 
+**And you are only told once.** If the same task asks again with the same shared check still in
+every part — which is what a worker does when it cannot rewrite three done-conditions — the
+division is **taken** rather than refused a second time, with that check **removed from every
+part** and given to the parent instead. It is never left on the first part: the whole finding
+is that it belongs to the family. The parent is then told, under its own done-condition, that
+these checks are the family's and are to be run **once, after every part's work has come
+home**, and its own checking is allowed to run them. Nothing rewrites what the parent was
+admitted with; the checks are something the task now carries alongside it. A refusal you
+cannot act on is worse than a wasteful split, and a worker that spends its steps asking the
+same question is a task that finishes nothing.
+
 **Shared material is read, never written — and that half is not enforced.** A file every
 part reads is nobody's to change: everything the parts write goes into one deliverable, so
 a shared file two of them edited is kept once and the other's edit is simply gone, which is

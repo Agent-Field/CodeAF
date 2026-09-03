@@ -418,3 +418,166 @@ func TestTwoQuotedCommandsThatDifferInsideTheQuotesAreAdmitted(t *testing.T) {
 		t.Fatalf("the division bore %d parts, want 2", len(kids))
 	}
 }
+
+// ── the second telling: the harness lifts what the worker could not ──────────
+
+// familyParts is the measured shape — parts that each have a check of their own
+// and each carry the family's suite — written once because the cases below put
+// the SAME SHAPE twice, and "the same shape" is the whole point of them.
+//
+// THE NUMBER OF PARTS IS THE CALLER'S because a task may hand out only so many
+// pieces in its life ([TaskGraph.claimChild]), and a case that asks three times
+// has to fit three asks under that ceiling rather than trip it and report the
+// wrong refusal.
+func familyParts(titles ...string) []dividePart {
+	parts := make([]dividePart, 0, len(titles))
+	for _, title := range titles {
+		parts = append(parts, dividePart{Title: title, Summary: "s",
+			Brief:      "write " + title + ".go",
+			Acceptance: title + "_test.go passes; " + familySuite + " passes"})
+	}
+	return parts
+}
+
+// A REFUSAL A WORKER CANNOT ACT ON IS A DOOR IT BURNS ITS STEPS AGAINST. On a
+// cheap model the divider re-asked with the same shape four times, collected
+// four refusals and ended `stopped: 6 steps without progress` with all three
+// parts' files already written. So the FIRST telling refuses — a worker that can
+// rewrite its done-conditions still does — and the SECOND admits the division
+// with the shared command taken off every part and given to the parent.
+func TestASecondAskWithTheSameSharedCheckIsRepairedRatherThanRefusedAgain(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+
+	refused := nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+	if !strings.HasPrefix(refused, "not split:") {
+		t.Fatalf("the first ask was told %q, want the refusal: a worker that can redraw its "+
+			"done-conditions must still be asked to", refused)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts exist after the first ask, want none", len(kids))
+	}
+
+	// AND THE SAME SHAPE AGAIN, which is the worker saying by doing it that it
+	// cannot take the road it was pointed at.
+	admitted := nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+	if !strings.HasPrefix(admitted, "split into 3 parts:") {
+		t.Fatalf("the second ask was told %q, want the division admitted: refusing twice is a "+
+			"worker spending its steps against a door", admitted)
+	}
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 3 {
+		t.Fatalf("the second ask bore %d parts, want 3", len(kids))
+	}
+
+	// THE CHECK IS OFF EVERY PART AND NOT MERELY OFF TWO. It is the family's, so
+	// leaving it on the first part would keep exactly the run that judges a tree
+	// without its siblings' files in it.
+	for _, kid := range kids {
+		if carriesTheFamilySuite(kid.acceptance()) {
+			t.Errorf("the part %q was admitted still ordered to run the family-wide suite: %q",
+				kid.title(), kid.acceptance())
+		}
+	}
+	// AND EACH PART KEPT ITS OWN. A part with nothing to be finished against is
+	// a part nobody can check.
+	for _, own := range []struct{ title, check string }{
+		{"rank", "rank_test.go"}, {"sessions", "sessions_test.go"}, {"browse", "browse_test.go"},
+	} {
+		for _, kid := range kids {
+			if kid.title() == own.title && !strings.Contains(kid.acceptance(), own.check) {
+				t.Errorf("the part %q is finished against %q, want it to keep %q",
+					own.title, kid.acceptance(), own.check)
+			}
+		}
+	}
+
+	// AND THE PARENT OWNS IT NOW.
+	family := nest.parent.familyChecks()
+	if len(family) != 1 || !strings.Contains(family[0], "internal/tui3") {
+		t.Fatalf("the parent owns %v, want the family-wide check that came off its parts", family)
+	}
+
+	// AND THE RECORD TELLS THE TWO TELLINGS APART.
+	divisions := journaledDivisions(t, nest.journal)
+	if len(divisions) != 2 {
+		t.Fatalf("the record holds %d divisions, want the two that were put", len(divisions))
+	}
+	if divisions[0].Decision != divisionRefusedShared {
+		t.Errorf("the first line says %q, want %q", divisions[0].Decision, divisionRefusedShared)
+	}
+	if divisions[1].Decision != divisionRepairedShared {
+		t.Fatalf("the second line says %q, want %q: an autopsy has to tell a worker that fixed it "+
+			"from a harness that moved it", divisions[1].Decision, divisionRepairedShared)
+	}
+	if divisions[1].Admitted != 3 {
+		t.Errorf("the repaired line says %d parts were admitted, want 3", divisions[1].Admitted)
+	}
+	if len(divisions[1].Shared) == 0 {
+		t.Errorf("the repaired line names nothing that moved, want the family-wide check")
+	}
+}
+
+// THE PARENT IS TOLD WHAT IT NOW OWNS, in the sentence a worker reads to find
+// out what finishing means — and told WHEN, because a parent that ran it the
+// moment it noticed it would be making the parts' own mistake one level up.
+func TestTheParentsInstructionNamesTheFamilyChecksItWasGiven(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+
+	// A NODE THAT OWNS NOTHING DRAWS NOTHING. The emptiness law, and the reason
+	// this line is safe on the road every node's brief travels.
+	if before := nest.parent.instruction(); strings.Contains(before, familyChecksRule) {
+		t.Fatalf("a node that owns no family checks is already told about them: %q", before)
+	}
+
+	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+
+	told := nest.parent.instruction()
+	if !strings.Contains(told, familySuite) {
+		t.Fatalf("the parent is never told which check it owns:\n%s", told)
+	}
+	if !strings.Contains(told, familyChecksRule) {
+		t.Fatalf("the parent is told the command with no sentence saying whose it is or when it "+
+			"runs, which is how it comes to run it before its parts are home:\n%s", told)
+	}
+	// AND IT IS SAID UNDER THE DONE-CONDITION, because that is the section a
+	// worker reads for what finishing means.
+	if at := strings.Index(told, briefDoneHeading); at < 0 || at > strings.Index(told, familyChecksRule) {
+		t.Fatalf("the family's checks are not under %q:\n%s", briefDoneHeading, told)
+	}
+}
+
+// AND THE PARENT'S OWN DOOR OPENS ON THEM. A node told to run a check its bash
+// refuses is a node told to do something it cannot, which is the exact shape
+// task_checks.go exists to remove.
+func TestTheParentsAuditDoorOffersTheFamilyChecksItOwns(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+
+	door := auditDoorFor(nest.parent, auditPlace{ground: t.TempDir()})
+	if !strings.Contains(door.offer(), familySuite) {
+		t.Fatalf("the parent's door offers %q, want the family-wide check it now owns", door.offer())
+	}
+}
+
+// AND A THIRD ASK IS NOT A THIRD TELLING. Once the node has been told, every
+// later ask takes the repair road — and the parent must not collect the same
+// command twice, which would be a run somebody paid for twice and a
+// done-condition that said one thing in two places.
+func TestAThirdAskAfterARepairNeitherRefusesNorDoublesTheFamilysChecks(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	// TWO PARTS AN ASK, so that three asks fit under the number of pieces one
+	// task may ever hand out. A third ask that tripped the fan ceiling would
+	// report a refusal this case is not about.
+	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "browse")...))
+	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "browse")...))
+
+	third := nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "browse")...))
+	if !strings.HasPrefix(third, "split into 2 parts:") {
+		t.Fatalf("the third ask was told %q, want the division admitted", third)
+	}
+	if family := nest.parent.familyChecks(); len(family) != 1 {
+		t.Fatalf("the parent owns %v, want the one check it was given, listed once", family)
+	}
+}

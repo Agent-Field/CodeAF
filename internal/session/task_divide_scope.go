@@ -433,3 +433,178 @@ func checkOrderedByTwoParts(shared []string) string {
 	}
 	return names + " each stand in more than one part's done-condition"
 }
+
+// ── the second telling: the harness lifts what the worker could not ──────────
+//
+// A REFUSAL A WORKER CANNOT ACT ON IS A DOOR IT BURNS ITS STEPS AGAINST. The
+// rule above is right and the road out of it exists, but taking that road means
+// rewriting three done-conditions, and a cheap model does not. Measured on
+// deepseek-v4-flash: the divider re-asked with the SAME SHAPE four times,
+// collected four refusals, and ended `stopped: 6 steps without progress` with
+// all three parts' files already written. A wasteful-but-working division had
+// been turned into a worker that never divided at all.
+//
+// SO THE FIRST TELLING REFUSES AND THE SECOND REPAIRS. A worker that can redraw
+// its done-conditions is asked to, exactly as before — that is the whole of the
+// first answer and none of it moved. A worker that comes back with the same
+// shape has said, by doing it, that it cannot; and at that point the honest
+// thing is not to say no more loudly. The division is admitted with the shared
+// command TAKEN OFF EVERY PART and given to the parent.
+//
+// IT IS NEVER LEFT ON THE FIRST PART, and that is the law rather than an
+// implementation choice: the whole finding is that the check is the FAMILY'S and
+// not any part's. Leaving it on one part would keep the run that judges a tree
+// without its siblings' files in it — the wrong answer, once instead of three
+// times — and would give one part a done-condition about work it does not own.
+//
+// AND THE RECORD SAYS WHICH HAPPENED ([divisionRepairedShared]), because "the
+// worker was told and fixed it" and "the worker was told twice and the harness
+// moved it" are two different facts about a model, and an autopsy that could not
+// tell them apart would be counting the road's successes and its rescues
+// together.
+
+// sharedCheckAnswer is the whole of the shared-check rule at one call site: what
+// the worker is told, the parts as they should now stand, and the commands the
+// rule found.
+//
+// THE THREE ANSWERS ARE ONE DECISION AND NOT THREE, which is why they come back
+// together. Nothing shared: the parts stand as written and nothing is said.
+// Shared and this node has not been told: the refusal, and the parts are handed
+// back untouched because none of them is going to exist. Shared and it HAS been
+// told: the parts come back with those clauses lifted, this node owns the checks
+// from here on, and nothing is said to the worker at all — the answer it gets is
+// the ordinary "split into n parts", because from where the worker stands the
+// division it asked for is what happened.
+func (a *Agent) sharedCheckAnswer(node *TaskNode, parts []dividePart, ending string) (string, []dividePart, []string) {
+	shared := sharedCheckCommands(parts)
+	if len(shared) == 0 {
+		return "", parts, nil
+	}
+	if node.tellSharedOnce() {
+		return divisionRepeatsOneCheck(shared, ending), parts, shared
+	}
+	node.ownFamilyChecks(shared)
+	return "", liftSharedChecks(parts, shared), shared
+}
+
+// tellSharedOnce answers whether this is the FIRST time this node has been told
+// its parts repeat a check, and marks it told. It is [TaskNode.takeTiebreak]
+// spelled again for a different one-shot, and it is spelled again rather than
+// generalised because the two are one-shots over different things: a tiebreak is
+// a reading somebody pays for, and this is a sentence somebody was told.
+func (n *TaskNode) tellSharedOnce() bool {
+	if n == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.sharedTold {
+		return false
+	}
+	n.sharedTold = true
+	return true
+}
+
+// ownFamilyChecks gives this node the checks its parts were carrying, and it
+// NEVER ADDS ONE TWICE — a node may divide more than once, and a family check
+// listed twice would be a run somebody paid for twice and a done-condition that
+// said the same thing to a worker in two places.
+func (n *TaskNode) ownFamilyChecks(shared []string) {
+	if n == nil || len(shared) == 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	held := make(map[string]bool, len(n.Family))
+	for _, command := range n.Family {
+		held[command] = true
+	}
+	for _, command := range shared {
+		if held[command] {
+			continue
+		}
+		held[command] = true
+		n.Family = append(n.Family, command)
+	}
+}
+
+// familyChecks is what this node owns for its family, copied out under the lock
+// so a reader cannot be handed a slice the graph is still appending to.
+func (n *TaskNode) familyChecks() []string {
+	if n == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return append([]string(nil), n.Family...)
+}
+
+// liftSharedChecks is the parts with the family's checks taken out of their
+// done-conditions, and nothing else about them touched.
+//
+// IT REBUILDS THE SENTENCE FROM THE CLAUSES THAT SURVIVE rather than cutting
+// bytes out of the original, because the original's punctuation was around the
+// clause that is going: "rank_test.go passes; <the family's suite> passes" with
+// the second clause deleted in place would leave a done-condition ending in a
+// semicolon. The clauses are the unit the rule read and they are the unit it
+// writes back.
+//
+// AND A PART LEFT WITH NOTHING GETS THE PACKAGE'S OWN WEAKEST HONEST SENTENCE
+// ([divisionStandInDone]), because A PART WITH NO DONE-CONDITION IS A PART
+// NOBODY CAN CHECK — a checker judges a part against its acceptance ALONE
+// (task_audit.go), so an emptied one would be admitted to be judged against
+// nothing. It is the same stand-in a part drawn out of a sketch is given, for
+// the same reason, rather than a second answer to one question.
+func liftSharedChecks(parts []dividePart, shared []string) []dividePart {
+	lifting := make(map[string]bool, len(shared))
+	for _, command := range shared {
+		lifting[command] = true
+	}
+	out := make([]dividePart, 0, len(parts))
+	for _, part := range parts {
+		kept := make([]string, 0, 2)
+		for _, clause := range checkClauses(part.Acceptance) {
+			if ordersWork(clause) && lifting[normalizedCheckCommand(clause)] {
+				continue
+			}
+			if said := strings.TrimSpace(clause); said != "" {
+				kept = append(kept, said)
+			}
+		}
+		part.Acceptance = strings.Join(kept, "; ")
+		if part.Acceptance == "" {
+			part.Acceptance = divisionStandInDone(part.Title)
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+// withFamilyChecks is the done-condition a worker READS when this node owns
+// checks for the family it handed out: its own sentence, then the family's, said
+// as what they are.
+//
+// IT SAYS WHEN, AND THAT IS THE POINT OF SAYING IT AT ALL. A parent told only
+// which commands it owns would run them at the first moment it noticed them,
+// against a tree that does not hold its parts' work yet — which is the same
+// wrong answer the parts were making, moved up one level. So the sentence
+// carries the condition: once, after every part's work is home.
+//
+// AN EMPTY LIST DRAWS NOTHING, the emptiness law, which is what makes this safe
+// to put on the road every node's brief travels: a node that owns no family
+// checks — which is nearly all of them — gets the document it has always got,
+// byte for byte.
+func withFamilyChecks(acceptance string, family []string) string {
+	if len(family) == 0 {
+		return acceptance
+	}
+	said := strings.TrimSpace(acceptance)
+	if said != "" {
+		said += "\n\n"
+	}
+	return said + familyChecksRule + "\n  " + strings.Join(family, "\n  ")
+}
+
+// familyChecksRule is that sentence, written down once because it is read by a
+// worker and pinned by a test, and two spellings of it would be two contracts.
+const familyChecksRule = "AND THESE CHECKS ARE THE WHOLE FAMILY'S RATHER THAN ANY ONE PART'S. They are yours to run ONCE, after every part's work has come home — not before, because until then the tree does not hold what the parts wrote:"

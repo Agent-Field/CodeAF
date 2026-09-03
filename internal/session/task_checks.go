@@ -273,6 +273,13 @@ func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
 	if node != nil {
 		checks = appendChecks(checks, declaredChecks(node.instruction(), place.ground))
 		checks = appendChecks(checks, ranChecks(node.lastReceipts(), place.ran))
+		// AND SOURCE (c): THE CHECKS THIS NODE OWNS FOR THE FAMILY IT HANDED OUT
+		// ([TaskNode.Family]). They were taken off its parts because a check that
+		// proves the whole proves nothing about a part, and they were given to
+		// this node because it is the only one that can honestly make them — so
+		// its own door has to open on them, or the node would be told to run a
+		// check its bash refuses.
+		checks = appendChecks(checks, node.familyChecks())
 	}
 	allowed := make([]string, 0, len(checks)+len(auditReadCommands))
 	allowed = append(allowed, checks...)

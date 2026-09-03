@@ -326,6 +326,31 @@ type TaskNode struct {
 	// stands NOW would be the same divergence arriving through the one road that
 	// does not prepare its tree at the door.
 	Frozen string
+	// Family is THE CHECKS THIS NODE OWNS FOR THE WHOLE FAMILY IT HANDED OUT: a
+	// check that every part of a division was told to run, taken off all of them
+	// and given to the one node that can honestly make it — this one, once, after
+	// every part's work is home (task_divide_scope.go).
+	//
+	// IT IS A FIELD RATHER THAN A WRITE TO THE SPEC, and that is a law and not a
+	// convenience. NOTHING IN THIS PACKAGE WRITES A SPEC AFTER ADMISSION — the
+	// contract a node was admitted with is the contract it is judged against, and
+	// [TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal] pins
+	// it. So the repair does not edit `spec.acceptance`; it puts what it lifted
+	// HERE, where the two readers that need it can find it: the worker is told
+	// ([TaskNode.instructionOn]) and its own checking door opens on it
+	// ([auditDoorFor]).
+	//
+	// IT IS ON THE CHECKPOINT (task_store.go), UNLIKE [TaskNode.sharedTold], and
+	// the two go opposite ways for one reason: the telling is about a
+	// conversation that is over, and this is about a run that has not happened
+	// yet. The parent's own check is made after every part is home, which can be
+	// hours later and a different process from the one that divided — a resumed
+	// node that had forgotten it would be a check nobody ever makes.
+	//
+	// It is exported among unexported neighbours for [TaskNode.Ground]'s reason:
+	// it is read by name from more than one place. Like them it is guarded by the
+	// graph's lock.
+	Family []string
 	// Base is the machine commit the parent's world was sealed into and Universe
 	// is furrow's name for the fork, when a rung made either. They are here for
 	// the SAME REASON Rung and Seal are — the landing needs them and the landing
@@ -358,7 +383,21 @@ type TaskNode struct {
 	// too (task_store.go re-arms from the text alone), so a node that comes back
 	// cannot reach this path at all.
 	adjudicated bool
-	state       TaskState
+	// sharedTold says this node has already been told once that its parts were
+	// each ordered to run one check (task_divide_scope.go). The FIRST telling is
+	// the refusal, which is the answer a worker that can redraw its
+	// done-conditions acts on; a SECOND firing of the same rule on the same node
+	// is a worker that cannot, so the harness lifts the check onto this node
+	// instead of refusing again.
+	//
+	// IT IS GUARDED BY THE GRAPH'S LOCK like every other field a worker's
+	// goroutine touches, and it is deliberately NOT ON THE CHECKPOINT for exactly
+	// [TaskNode.adjudicated]'s reason: a restart loses the telling too, so a node
+	// that comes back cannot reach the repair road without being told again. The
+	// repair spends a worker's own second ask; a node that never had a first one
+	// must not inherit the answer to it.
+	sharedTold bool
+	state      TaskState
 	// report, changed, branch, worktree and merge are the node's leavings,
 	// written by the goroutine that ran it and read by everybody else. worktree
 	// is where it worked, and it is kept for one reader only: a recovery that has
@@ -1876,7 +1915,14 @@ func (n *TaskNode) instruction() string {
 func (n *TaskNode) instructionOn(tree taskTree) string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance,
+	// AND THE FAMILY'S OWN CHECKS RIDE THE DONE-CONDITION, because that is the
+	// sentence a worker reads to find out what finishing means. They are composed
+	// into the section rather than written into the spec ([TaskNode.Family] says
+	// why that distinction is a law), and a node that owns none draws nothing —
+	// the emptiness law, applied here as it is to every other section of this
+	// document.
+	return composeBrief(n.spec.request, n.brief, n.spec.deliverable,
+		withFamilyChecks(n.spec.acceptance, n.Family),
 		expectsSection(n.spec.expects), n.spec.origin, taskCopyFor(tree))
 }
 
