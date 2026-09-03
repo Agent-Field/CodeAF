@@ -927,7 +927,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// (hooks.go). It is the one seam left in this loop that can end a turn out
 		// of a judgement, and a false is the turn carrying on exactly as it would
 		// have.
-		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls) {
+		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil) {
 			return true
 		}
 

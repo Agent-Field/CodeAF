@@ -446,6 +446,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// work that never came home.
 		{"why did it stop at a task that was finished", "starting-aforge"},
 		{"it ended without starting more work", "starting-aforge"},
+		{"it said nothing was left but the work was not finished", "starting-aforge"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},

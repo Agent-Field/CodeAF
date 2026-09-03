@@ -161,8 +161,18 @@ So before the work moves, the same reading a stopped turn gets is taken:
   and says so on the end of its own line: `· work was still going and was left where it was`.
   Nothing is killed and nothing is thrown away; what was running is where you left it.
 
+**And a handover it asked for is never dropped.** A long turn can normally talk its own
+handover out of happening: if the model says nothing is left AND the second reader's sketch
+says the same, the work stays where it is and the turn finishes. On a run with a budget that
+only holds while the run's own owner agrees — and when it has just read the ending and said
+the ask is **not** finished, the work moves anyway, on its account of what is left rather
+than on your bare sentence. A run measured before this said "not yet confirmed" at its
+write seam and again at its ceiling, had both handovers thrown away by the two readers, and
+ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
+
 None of this applies to a session you are sitting in front of: your turn's work moves onto a
-task exactly as it always has, and nothing is decided for you.
+task exactly as it always has, nothing is decided for you, and the two readers agreeing
+still leaves your answer where it is.
 
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 

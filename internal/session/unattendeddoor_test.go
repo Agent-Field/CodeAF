@@ -28,6 +28,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -361,6 +363,138 @@ func closedJournal(t *testing.T, agent *Agent, path string) string {
 		t.Fatalf("reading the journal: %v", err)
 	}
 	return string(content)
+}
+
+// ── the goal owner's carry-on outranks the two-minds decline ────────────────
+
+// A HANDOVER THE SESSION'S GOAL OWNER ASKED FOR IS NEVER DROPPED.
+//
+// The decline rests on two readers of the WORK agreeing that none is left: the
+// running model answering the dowry ask with the remains token, and the mark's
+// own sketch saying done. Both are readings of the transcript. The goal owner
+// has just read the same ending against THE ASK — what landed, what the checks
+// said, what finished means — and said it is not finished, and that is not a
+// third opinion to be outvoted by the two.
+//
+// Measured (#513): the attrs cell's write seam fired at round 34 and its ceiling
+// at round 40, the goal owner answered carry on at both — "not yet confirmed" —
+// and the decline threw both handovers away. The turn ran 830 seconds and ended
+// inside a git stash with the fix uncommitted.
+//
+// AND A PERSON'S SESSION IS UNTOUCHED, which is the second arm: nobody reads the
+// ending on their behalf, so the two minds are the whole of the evidence and the
+// decline stands exactly as it did.
+func TestAHandoverTheGoalOwnerAsksForIsNeverDropped(t *testing.T) {
+	for _, unattended := range []bool{true, false} {
+		name := "watched"
+		if unattended {
+			name = "left running with a ceiling"
+		}
+		t.Run(name, func(t *testing.T) {
+			// BOTH MINDS SAY THE WORK IS FINISHED: the sketch reads `(done)` and
+			// the dowry ask is answered with the remains token.
+			completer := &scriptedCompleter{
+				steps: writingSteps(12, checkpointDoneSketch, checkpointNothingLeft),
+			}
+			agent, transcript := seamAgent(t, completer, unattended)
+			ran := make(ranNodes, 2)
+			graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+			collected := collect(t, mustSubmit(t, agent, "rename the parser and fix everything that calls it"))
+
+			if !unattended {
+				if count := admitted(graph); count != 0 {
+					t.Fatalf("%d tasks were started out of a turn two readers agreed was finished", count)
+				}
+				if saidSomething(noticeTexts(collected), writeSeamNote) {
+					t.Fatalf("a person was told their answer was being moved; notices were %q",
+						noticeTexts(collected))
+				}
+				return
+			}
+			ran.await(t)
+			if count := admitted(graph); count != 1 {
+				t.Fatalf("%d tasks were started, want the one the goal owner asked for", count)
+			}
+			if !saidSomething(noticeTexts(collected), writeSeamNote) {
+				t.Fatalf("the handover never said its line; notices were %q", noticeTexts(collected))
+			}
+			// AND IT MOVED ON THE GOAL OWNER'S OWN ACCOUNT OF WHAT IS LEFT. The
+			// running model spent its answer on the token, so there is no draft;
+			// the only remainder anybody in the building has written down is the
+			// brief that overruled the decline, and handing the worker the
+			// person's bare sentence instead would be this road throwing away the
+			// reason it did not drop.
+			node := graph.node(1)
+			if node == nil {
+				t.Fatal("the handover started no node")
+			}
+			if !strings.Contains(node.spec.brief, "nothing has been finished yet") {
+				t.Fatalf("the task runs on %q, want the goal owner's own remainder", node.spec.brief)
+			}
+			if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"carry on"`) {
+				t.Fatalf("the reading that overruled the decline reached no line of the journal:\n%s", lines)
+			}
+		})
+	}
+}
+
+// AND THE CEILING IS A HANDOVER ROAD, SO IT IS READ AND THE READING IS WRITTEN
+// DOWN.
+//
+// The "not over unread results" law is about DONE and nothing else — a ceiling
+// can only carry on or stop — so skipping the reading because the last thing in
+// the transcript was a batch left the one ending that matters decided with the
+// one opinion that matters unasked. In the measured cell there was no principal
+// row against the ceiling at all.
+func TestTheCeilingUnderAStewardJournalsItsDecision(t *testing.T) {
+	rounds := checkpointMarkAt(checkpointMarks)
+	steps := grindingSteps(rounds+checkpointSlack, checkpointDoneSketch, checkpointNothingLeft)
+	agent, transcript := stewardCheckpointAgent(t, &scriptedCompleter{steps: steps}, nil)
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	collect(t, mustSubmit(t, agent, "write the eight files I listed and smoke-check them"))
+	ran.await(t)
+
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were started, want the one the ceiling moved", count)
+	}
+	lines := closedJournal(t, agent, transcript)
+	if !strings.Contains(lines, `"who":"steward"`) || !strings.Contains(lines, `"event":"decided"`) {
+		t.Fatalf("the ceiling decided an ending with nobody asked:\n%s", lines)
+	}
+	if !strings.Contains(lines, `"decision":"carry on"`) {
+		t.Fatalf("the goal owner's answer at the ceiling reached no line of the journal:\n%s", lines)
+	}
+}
+
+// seamAgent is [writeSeamAgent] with the one knob these two arms turn: whether
+// somebody left the run going with a ceiling, and so whether there is a goal
+// owner to read the ending at all.
+func seamAgent(t *testing.T, completer Completer, unattended bool) (*Agent, string) {
+	t.Helper()
+	answerTheNamerOffTheQueue(completer)
+	dir := t.TempDir()
+	transcript := filepath.Join(dir, "transcript.jsonl")
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = dir
+		config.SessionFile = transcript
+		config.AskConsent = true
+		config.Divide = true
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierMastermind): checkpointMarkModel,
+		})
+		if unattended {
+			config.Unattended = true
+			config.Budget = Budget{Wall: time.Hour}
+		}
+	})
+	if got := agent.steward() != nil; got != unattended {
+		t.Fatalf("the fixture built a session with steward=%v, want %v", got, unattended)
+	}
+	return agent, transcript
 }
 
 // ── 2. the control: a reason that is about the WORK still goes back ──────────

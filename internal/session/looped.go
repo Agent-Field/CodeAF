@@ -887,11 +887,10 @@ func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user use
 		rounds := meter.rounds + 1
 		read := a.readMark(ctx)
 		a.journalMarkRead(read, checkpointMarks, rounds, read.sketch.carryOnDecision())
-		// The model has NOT spoken since its last batch here — this is a step
-		// boundary, like every other road into the ceiling that is not a stopped
-		// turn — so the goal owner may stop the run on it but never call the ask
-		// finished over results nobody has read ([Agent.endTurnUnderSteward]).
-		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read, false) {
+		// NO READING HAS BEEN TAKEN FOR THIS ENDING YET — this is a step boundary
+		// and not a stopped turn — so the ceiling takes one of its own
+		// ([Agent.endTurnUnderSteward]).
+		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read, nil) {
 			return true
 		}
 	}
