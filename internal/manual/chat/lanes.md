@@ -82,11 +82,11 @@ somewhere else because it thinks it knows better.
 
 **There is exactly one thing that ends a pin without you: the machine you named
 saying it will not serve that model at all.** That is not a wait and not a bad
-afternoon — the router answers `no endpoints found … your request's
-provider.only preference permits only: coreweave`, which is the wire saying this
-machine and this model do not go together. Asking again would buy the same 404,
-so aforge stops asking, and says so once, in the conversation, at the moment it
-happens:
+afternoon — the router answers `No allowed providers are available for the
+selected model. … but your request's provider.only preference permits only:
+coreweave`, which is the wire saying this machine and this model do not go
+together. Asking again buys the same 404, so aforge stops asking, and says so
+once, in the conversation, at the moment it happens:
 
 ```
 coreweave cannot serve this model; routing on auto for this model until you pin again
@@ -97,13 +97,13 @@ What that means, exactly:
 - **for that model**, every later request in this run goes out with no machine
   demanded at all — routed the way `auto` routes;
 - **the request that collected the refusal is widened and sent again**, once, so
-  your answer still arrives. If that one is refused too the turn ends and the
-  refusal is named;
-- **your settings row is not touched.** It still reads `pinned: coreweave` —
-  nothing on disk changed;
+  your answer still arrives. If that is refused too the turn ends, and says so;
+- **your settings row is not touched.** It still reads `pinned: coreweave`;
 - **every other model still goes to that machine.** The refusal was about one
   pairing;
-- **pinning again puts it straight back**, on the very next request;
+- **pinning again puts it straight back**, on the very next request — and that
+  includes choosing the machine you already had, which is a row that did not
+  change and an instruction that did;
 - it lasts until you pin again or you close the window, and a task the
   conversation starts inherits it rather than paying for the refusal again.
 
@@ -198,9 +198,10 @@ it is asking you to sit through.
 `slow` and `refused` are two different facts and the row says which. **Slow** is
 a wait: the machine is answering and taking its time. **Refused** is a machine
 saying it will not serve this model at all — the router answers
-`no endpoints found … your request's provider.only preference permits only:
-coreweave`, which means the machine aforge asked for is not in the set that
-serves this model right now.
+`No allowed providers are available for the selected model. Providers serving
+<model>: digitalocean, deepinfra, … but your request's provider.only preference
+permits only: coreweave`, which means the machine aforge asked for is not in the
+set that serves this model right now.
 
 A refusal is final for that machine, immediately:
 

@@ -2196,7 +2196,8 @@ something is already being done about it.
 
 **A machine that REFUSED is not a machine that was slow, and the line says so.** When the
 router answers that the machine aforge asked for is not one that serves this model —
-`your request's provider.only preference permits only: coreweave` — the same spot reads
+`No allowed providers are available for the selected model. … but your request's
+provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That machine is then finished for this model: it is not asked
 again, and it leaves the set aforge chooses from for thirty minutes. If the
 machine the answer moved to refuses as well, the promise is withdrawn rather than left on
