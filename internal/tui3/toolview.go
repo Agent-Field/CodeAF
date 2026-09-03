@@ -121,9 +121,9 @@ type toolDetail struct {
 func (a *app) clusterRows(d deck, out []row, from, to, width int) []row {
 	turn := d.entries[from].turn
 	start := from
-	if window := d.window(); to-from > window && !d.unfolded[turn] {
+	if window := a.foldWindow(d); to-from > window && !d.unfolded[turn] {
 		start = to - window
-		word := foldWord(start-from, d.toolTail > 0)
+		word := foldWord(start-from, d.lens.toolTail != nil)
 		fold := a.pal.dim(a.pal.toolGlyph() + word)
 		if a.hoveringFold(turn) {
 			fold = a.pal.accent(a.pal.toolGlyph()) + a.pal.dim(word)

@@ -1,9 +1,151 @@
-# Reading a task's page — scrolling, earlier tool calls, and a page that looks stuck
+# Reading a task's page — what is on this task page, what folds, and a page that looks stuck
 
 A task's page is the whole of what the task did, drawn with the conversation's own
-blocks: its instruction, its prose, every tool call, and its report. This page is about
-reading a long one — where the earlier calls went, how scrolling reaches them, and what
-to do when the page seems empty or stuck at the top.
+blocks: its instruction, its prose, its tool calls, and its report. It is built for the
+visit people actually make — a glance to see whether the work is going right, and a
+correction if it is not — so the settled work is folded and the machinery is one gesture
+away. This page is about what is folded, how to open it, and what to do when the page
+seems empty or stuck at the top.
+
+## What is on this task page — everything a task's page shows, in order
+
+The instruction it was given, folded to three lines with a door. The work it did, folded
+into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
+covers the work behind it. Anything you steered into it, drawn where you said it. The report
+at the end. And pinned above all of it, one line saying what it is doing, how long it has
+been going, what it has cost and how many calls it has made.
+
+Nothing here is thrown away — what is folded is one keypress from open.
+
+## Why most of the work is hidden on a task page — the `▸ worked` chips, and `ctrl+e` to open them
+
+**This is the answer to "my task page is hiding most of the work", "where did the tool
+calls go", "why can I not see what the task did", and "what are these little grey lines".**
+Nothing is lost. Settled work is folded, and one gesture opens it.
+
+Between each paragraph the task wrote is the thinking and the calls that led to it, and
+that stretch collapses to one dim chip:
+
+```
+▸ worked 2m · thought 10s · 14 tool calls · ctrl+e
+```
+
+The figures are counted from the rows the chip covers — how long that stretch took, the
+thinking time when there was any, and the real call count. Nothing on a chip is a summary
+of the work; a summary can be wrong and a count cannot.
+
+**Three ways to open one**, and any of them works on a page that has already finished:
+
+- **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
+- **click** the chip.
+- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. It
+  opens the chip nearest the top and keeps your place: the rows you were reading stay on
+  the same screen lines and the work appears above them. Nothing jumps. The same gesture
+  opens a folded run of tool calls, so scrolling up keeps reaching further back rather
+  than stopping dead.
+
+An opened chip stays open, and the chip line stays with it so you can close it again.
+
+**Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
+in a task's page exactly as in the conversation.
+
+### What stays on the page whatever happens
+
+**Every paragraph the task wrote stays standing**, above the chip that covers the work
+before it, and so does the report at the end. So the page reads as the story of the work
+with the machinery filed, rather than as a scroll of calls you have to read to find out
+what happened.
+
+**What the task is doing right now never folds.** Everything after the last paragraph it
+wrote is the live edge, and that keeps as many of the newest calls as your window is tall
+— you came to watch, so there is nothing hidden from you there.
+
+**These never fold either**, wherever they are on the page: your instruction, every
+correction you typed into the running work, every call that failed, and every question the
+task asked you. They are the record of what you asked for and what you decided, and a
+fold may never hide your own words.
+
+### Why the conversation's chips are cut differently
+
+Out in the conversation the page folds **by turn** — one chip per question you asked,
+hiding the work between the question and its answer. A task's page folds **by phase**
+instead, because a task is one long question and folding it by turn would put the whole
+page behind one chip.
+
+## See earlier tool calls in one long run — the `↳` line, scroll up or `ctrl+o`
+
+When one stretch of a task's page has made more calls than fit, the page shows a screenful
+of the newest ones above a dim line reading:
+
+```
+↳ 87 earlier tool calls · scroll up or ctrl+o
+```
+
+Three ways open it: **scroll up** at the top of the page, **`ctrl+o`** with an empty box,
+or **click** the line. Scrolling back down to the newest line re-joins the live edge — the
+page follows the task again as it works — and the opened calls stay open. A task's page
+keeps its own fold state, separate from the conversation's; `ctrl+o` inside a task never
+folds or unfolds anything in the conversation you left behind.
+
+`ctrl+o` and `ctrl+e` are different keys here: `ctrl+o` opens this run of calls, and the
+long instruction at the top of the page; `ctrl+e` opens a `▸ worked` chip.
+
+**How many calls the page keeps on screen**: as many as your window is tall, and never
+fewer than three. The number is taken from the window at the moment the page is drawn, so
+resizing the terminal, growing the draft by a line, or the task roster changing its width
+all re-fit it. Only the overflow folds. The conversation keeps exactly the last **3** calls
+of a turn above a line reading `N earlier tool calls · ctrl+o`, and scrolling the
+conversation never opens a fold — `ctrl+o` or a click does.
+
+## What the line at the top of a task's page tells you
+
+The pinned header is the whole glance, and it says as much of this as your frame is wide
+enough for, in this order:
+
+```
+⠙ main ▸ Port the loader · working · 3m 20s · $0.42 · 14 tool calls · bash
+```
+
+The task's name first — that never gets cut while there is room for it — then what it is
+doing, how long it has been going, what it has cost, how many calls it has made, and what
+is running right now. A stretch where nothing has arrived for ten seconds says `still
+working`, which is the truest thing the page can say about a silence.
+
+**Anything nobody has published is simply absent.** A task that has cost nothing shows no
+cost, one that has called nothing shows no count, and a queued one has no clock — a figure
+that is zero is a figure nobody measured. On a narrow terminal the line gives up facts
+from the end, in that order, and never cuts the name.
+
+The first of those facts — the word for what the work is doing — has a fixed vocabulary,
+and the next section lists every word it can be.
+
+## What the word at the top of a task's page means — the task page header says sizing the work, queued, checking what it left, the header word on a task's page
+
+The pinned header of a task's page carries one word for what the work is doing right now.
+Every word it draws:
+
+- `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
+  held behind named work instead, it reads `waits: <the work it waits on>`.
+- `sizing the work` — the reading that decides whether this job is handed out in parts and
+  how. It is the first thing a brand new task does, before its worker has said a word, and
+  it is why a page can sit there for a few seconds with nothing on it.
+- `working` — its worker is getting on with it. This is the ordinary one.
+- `checking what it left` — the worker has stopped and what it produced is being read.
+- `closing gaps · round 1 of 2` — the check found something and a round is closing it.
+- `finishing` — a gap is being tied off on work that is otherwise done.
+- `waiting` — still running, but its calls to the model are being paced.
+- `stopping` — you ended it and it is still letting go; `stopped` once it has.
+- `needs your look` — it finished and nobody could say whether the work holds.
+- `merged`, `in your own folder`, `conflicted`, `stopped`, `done`, `failed` — it is over,
+  and the word says how it ended: its branch came home; there was no branch to bring home,
+  so it edited your own files; the merge clashed; it was ended early; it is over and nothing
+  was said about a branch; or it did not come off.
+- A sub-harness being designed says what it is doing in its own words — `designing`, and
+  `awaiting your look` while its page sits waiting on you.
+
+**`briefing a worker` is not one of them.** That one is on the status line under the message
+box in the conversation while your turn is being handed to a task — before the task, and its
+page, exist at all.
 
 ## Can't scroll in a task — the wheel and pgup do nothing
 
@@ -12,46 +154,8 @@ recall all scroll a task's page. If the page is short — the task has said less
 screen's worth — there is nothing to scroll and the page hangs from the top with the
 slack under it, exactly as a young conversation does.
 
-A page whose one turn made many tool calls used to be the case where the wheel really did
-nothing: only the last three calls were on the page and the rest sat behind one fold line
-with nowhere to scroll to. That is no longer how a task's page folds. The page keeps as
-many of the newest calls as your window is tall, so it fills the frame — and scrolling up
-at the very top opens the rest (next section).
-
-## See earlier tool calls in a task — scroll up, or ctrl+o
-
-When a turn on a task's page has made more calls than fit, the page shows a screenful
-of the newest ones above a dim line reading:
-
-```
-↳ 87 earlier tool calls · scroll up or ctrl+o
-```
-
-Three ways open it, and they all do the same thing:
-
-- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. The
-  page opens the turn and keeps your place: the call that was under the fold line stays
-  on the same screen line, the earlier calls appear above it, and the next tick up walks
-  into them. Nothing jumps.
-- **`ctrl+o`** with an empty box, which is the same key that opens the fold in the
-  conversation. Press it again and the turn folds back to a screenful.
-- **click** the fold line.
-
-Scrolling back down to the newest line re-joins the live edge as usual — the page follows
-the task again as it works — and the opened calls stay open. A task's page keeps its own
-fold state, separate from the conversation's; `ctrl+o` inside a task never folds or
-unfolds anything in the conversation you left behind.
-
-## How many calls a task's page keeps on screen
-
-As many as your window is tall, and never fewer than three. The number is taken from
-the window at the moment the page is drawn, so resizing the terminal, growing the draft
-by a line, or the task roster changing its width all re-fit it. Only the overflow folds.
-
-The conversation is different on purpose: there the fold sits among the prose, and it
-keeps exactly the last **3** calls of a turn above a line reading `N earlier tool calls ·
-ctrl+o`. Scrolling the conversation never opens a fold — `ctrl+o` or a click does — because
-in the conversation the fold is one block among many rather than the whole page.
+If the page looks short because most of it is behind chips, that is the fold doing its
+job: `ctrl+e` or a scroll up at the top opens it.
 
 ## Task page is empty, looks stuck, or hangs at the top with a blank below it
 
@@ -199,33 +303,6 @@ task's foot spends its cells on the half nothing else on the screen is saying.
 
 The header is the other half of the answer, and it has always been true: if it says the work
 is running, it is running. The next section lists every word it draws.
-
-## What the word at the top of a task's page means — the task page header says sizing the work, queued, checking what it left, the header word on a task's page
-
-The pinned header of a task's page carries one word for what the work is doing right now.
-Every word it draws:
-
-- `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
-  held behind named work instead, it reads `waits: <the work it waits on>`.
-- `sizing the work` — the reading that decides whether this job is handed out in parts and
-  how. It is the first thing a brand new task does, before its worker has said a word, and
-  it is why a page can sit there for a few seconds with nothing on it.
-- `working` — its worker is getting on with it. This is the ordinary one.
-- `checking what it left` — the worker has stopped and what it produced is being read.
-- `closing gaps · round 1 of 2` — the check found something and a round is closing it.
-- `finishing` — a gap is being tied off on work that is otherwise done.
-- `waiting` — still running, but its calls to the model are being paced.
-- `stopping` — you ended it and it is still letting go; `stopped` once it has.
-- `needs your look` — it finished and nobody could say whether the work holds.
-- `merged`, `inplace`, `conflicted`, `stopped`, `done`, `failed` — it is over, and the word
-  says how it ended: its branch came home, it worked in your own folder, the merge clashed,
-  it was ended early, it landed with no branch to bring home, or it did not come off.
-- A sub-harness being designed says what it is doing in its own words — `designing`, and
-  `awaiting your look` while its page sits waiting on you.
-
-**`briefing a worker` is not one of them.** That one is on the status line under the message
-box in the conversation while your turn is being handed to a task — before the task, and its
-page, exist at all.
 
 ## How long did a call take in a task — the 1.4s at the end of a call's row on a task's page, and the dim lines between its calls
 

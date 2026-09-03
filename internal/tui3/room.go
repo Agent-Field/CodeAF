@@ -61,15 +61,14 @@ import (
 // What a room still owns is what a room IS: which node, where the reader is in
 // it, and the two doors — steering in, esc out.
 //
-// WITH ONE THING THE CONVERSATION DOES THAT A ROOM MUST NOT: FOLD THE WORK
-// AWAY. Out in the thread a finished turn's machinery collapses to
-// "▸ worked · 10 tool calls · ctrl+e", because the person asked a question and
-// what they were owed is the answer. In here that same rule ate the page: a
-// node's life is one long turn ending in a report, so the moment it stopped
-// running everything it had said and done went behind the chip and the only
-// thing left was the report — the exact thing somebody opens a room to see past.
-// [taskRoom.deck] therefore says [deck.showsWork], and workfold.go states the
-// law where the chips are derived.
+// WITH ONE THING IT DOES DIFFERENTLY, AND IT IS DECLARED RATHER THAN SCATTERED:
+// [taskRoom.deck] takes [overseerLens] (lens.go). Out in the thread a finished
+// turn's machinery collapses to "▸ worked · 10 tool calls · ctrl+e"; in here
+// the same chip is spent per SETTLED PHASE instead of per turn, because a
+// node's life is one long turn and folding by turn swallowed the whole page the
+// instant it stopped running. The live frontier never folds and keeps a whole
+// screenful of calls. workfold.go states the law where the chips are derived,
+// with the reversal it went through boxed beside it.
 //
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
@@ -309,12 +308,13 @@ func (r *taskRoom) deck() deck {
 	if r.lane != nil && !r.done {
 		running = r.turn
 	}
-	// showsWork is the room's whole reason for existing, said to the renderer:
-	// this page is the machinery, so none of it collapses into a chip
-	// (workfold.go's [app.deckFolds]).
+	// THE LENS IS THE WHOLE OF WHAT MAKES THIS PAGE A ROOM (lens.go): settled
+	// phases fold to chips, the numbers gather in the header rather than under
+	// each turn, the session's clock does not run over a node's turns, and a
+	// folded cluster keeps a screenful of calls instead of three.
 	return deck{
 		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen,
-		showsWork: true, runningTurn: running,
+		lens: overseerLens, runningTurn: running,
 	}
 }
 
@@ -466,12 +466,19 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 // the same act in here, and [app.roomTouched] is that act named for the several
 // other files that perform it.
 //
-// THE FOUR THE CHAT INSTALLS ARE ABSENT AND THE ABSENCE IS THE DESIGN. A node
+// THE THREE THE CHAT INSTALLS ARE ABSENT AND THE ABSENCE IS THE DESIGN. A node
 // draws no spawn card, so it forms none, refuses none and throws none away when
-// a request is cut; a node's spend is folded by its pilot and never twice
-// (see [app.roomEvent]). `closed` is left nil deliberately — the lane that walks
-// a room's finished calls into the header instrument installs it there
-// (docs/design/lens/DESIGN.md, Decision 3).
+// a request is cut (lens.go's [lens.spawnCards] is where the chat declares that
+// it does); a node's spend is folded by its pilot and never twice (see
+// [app.roomEvent]).
+//
+// AND `closed` IS INSTALLED, which is the fourth (Decision 4). A call that
+// finished is the only event that moves the ambient counts, and a node's calls
+// move them exactly as the conversation's do: `bash` with background:true starts
+// a process on this machine whoever asked for it. Folding it here — at the
+// instant the wire says the call closed — is what makes the header instrument
+// and the Σ segment one set of numbers instead of two clocks, and it is the one
+// place a room can drop a cache the conversation owns ([app.tallyNode]).
 //
 // IT CLOSES OVER THE PAGE AND NOT OVER [app.room], because the page is built
 // before it is the one on screen, and a reducer pointed at whatever room happens
@@ -484,7 +491,10 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 		}
 		a.touch()
 	}
-	return feedHooks{now: a.now, follow: grew, touch: grew}
+	return feedHooks{
+		now: a.now, follow: grew, touch: grew,
+		closed: func(*entry, session.Event) { a.tallyNode(r.id, r.entries) },
+	}
 }
 
 func (a *app) openRoom(id uint64, title string) {
@@ -512,6 +522,11 @@ func (a *app) openRoom(id uint64, title string) {
 	room := a.newRoom(id, title)
 	room.entries, room.turn = a.roomRecord(
 		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
+	// AND WHAT THIS NODE HAS ALREADY STARTED JOINS THE SESSION'S COUNTS. Opening
+	// the page is the moment this surface first READS a node's history, and a
+	// background job it started an hour ago is as alive as one it starts while
+	// somebody is watching ([app.tallyNode], Decision 4).
+	a.tallyNode(id, room.entries)
 	a.room = room
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
@@ -1962,51 +1977,187 @@ func (a *app) roomBackAt(y int) bool {
 	return a.roomOpen() && a.headHeight() != 0 && y == 0
 }
 
-// roomHeadWord is the header's left: the node's mark, the trail, the three
-// facts about the work, and — where somebody has set one — the rung it thinks
-// at. Every one of them is DROPPED when nobody has published it: a queued node
-// has no clock, an unpriced one has no cost, and a node nobody has dialled has
-// no rung. That is the reason the turn footer drops its own fields
-// (timestamps.go): a figure that is zero is a figure nobody measured.
+// ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
+//
+// roomHeadWord is the header's left, and it carries THE JUDGMENT AND
+// ACCOUNTABILITY ACTS WHOLE so that the transcript below it does not have to:
+// which node this is, what it is doing, how long it has been at it, what it has
+// cost, how many calls it has made, and — where it is running — the vaguest
+// true sentence about what is happening right now.
+//
+// WHY THEY ARE HERE AND NOT DOWN THE PAGE. A person comes to a task to steer
+// and to check. The check is one glance, and a glance is a fixed number of
+// cells at the top of the frame — so a room's numbers gather in one line
+// instead of dribbling down a scroll that has to be read to be summed
+// (lens.go's [receiptsHeader]; the conversation keeps its per-turn receipts,
+// which is the opposite posture and the right one out there).
+//
+// EVERY SEGMENT IS DROPPED WHEN NOBODY HAS PUBLISHED IT — THE EMPTINESS LAW,
+// PER SEGMENT. A queued node has no clock, an unpriced one no cost, a node that
+// has called nothing no count, and a node nobody has dialled no rung. That is
+// the reason the turn footer drops its own fields (timestamps.go): a figure
+// that is zero is a figure nobody measured, and `$0.00 · 0 tool calls` is the
+// row spending its scarce cells saying nothing twice.
+//
+// AND IT DEGRADES BY WHAT IT IS FOR, on the fitter every list on this surface
+// already uses (rowfit.go). THE IDENTITY IS WHOLE OR THE ROW IS POINTLESS: the
+// mark and the trail take every cell they ask for before a fact gets one,
+// because a person on a narrow terminal is first of all working out which page
+// they are on. The facts behind it are a RANKED PREFIX — the first one that
+// will not fit ends the line and nothing later is skipped forward into the gap
+// — so a narrow header says the same ranked things a wide one does, with the
+// tail missing rather than a different tail.
 //
 // It is built PLAIN, without paint, because the whole line is painted once by
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
 // the rest of the line would fall back to the terminal's default mid-sentence.
 func (a *app) roomHeadWord(width int) string {
-	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the three facts under
-	// it are a node's — a state, a clock, a spend — and a run has none of them.
+	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the facts under it
+	// are a node's — a state, a clock, a spend — and a run has none of them.
 	// What it has instead is a tank, and the tank is the fact that cannot be left
 	// off this line.
 	if a.orchOpen() {
 		return a.orchHeadWord(width)
 	}
 	node := a.roomNode()
-	word := a.roomMark(node) + " " + a.roomTrail()
+	name := a.roomMark(node) + " " + a.roomTrail()
+	room := max(width-roomHeadFurniture, 0)
 	if node == nil {
 		// A room on a node this surface has had no update for. The trail is still
 		// true and nothing else is, which is exactly what gets said.
-		return fit(word, width)
+		return fit(name, room)
 	}
-	// The model joins the three because it answers the same kind of question
-	// they do — what is true of this work right now — and it is dropped by the
-	// same rule when nobody published one. It goes last: the state and the clock
-	// change while you watch, and whose hands the work is in was settled before
-	// it started.
-	//
-	// AND THE RUNG GOES AFTER THE MODEL, for the reason the model goes after the
-	// clock, one step further along the same argument: how hard this node is
-	// asked to think is a setting somebody made about it rather than news, it
-	// belongs beside the model because the two together are what a call is made
-	// of, and it is dropped by the same rule — a node nobody has set a rung on
-	// says nothing at all (taskeffort.go's [app.taskEffortClause]). It is
-	// `ctrl+v` on this page that moves it.
-	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node),
-		strings.TrimSpace(node.model), a.taskEffortClause(node)} {
-		if part != "" {
-			word += " · " + part
+	name = fit(name, room)
+	tail := rowTail(a.roomHeadFacts(node), room-ansi.StringWidth(name)-len(rowSep))
+	if tail == "" {
+		return name
+	}
+	return name + rowSep + tail
+}
+
+// roomHeadFurniture is what [app.legendLine] spends on the header's own rule
+// before the words start: the lead `─ `, the space after the left label, and the
+// one fill cell that line refuses to draw without. It is subtracted here so the
+// fitter is measuring the cells the words actually have, rather than fitting to
+// the frame and letting the legend fall back to a cut.
+const roomHeadFurniture = 4
+
+// roomHeadFacts is the instrument's ranked prefix: what a person checking on
+// work reads, in the order they read it.
+//
+// THE ORDER IS THE ARGUMENT. The verb is first because "is it going right" is
+// the question the visit is for. Elapsed and spend are next because they are
+// the two figures nobody can recover by looking at the page. The call count is
+// the size of what happened, and the live line is the one thing on the row that
+// moves. The model and the rung come last together: they are settings somebody
+// made before the work started, not news, and they are the first thing a narrow
+// frame can afford to lose.
+func (a *app) roomHeadFacts(node *taskNode) []rowField {
+	work := roomWorkOf(a.roomEntries())
+	return []rowField{
+		rowSay(a.roomStateWord(node)),
+		rowSay(a.roomClock(node)),
+		rowSay(a.roomSpend(node)),
+		roomCallField(work.calls),
+		rowSay(a.roomLiveWord(node, work)),
+		rowSay(strings.TrimSpace(node.model), modelBase(strings.TrimSpace(node.model))),
+		rowSay(a.taskEffortClause(node)),
+	}
+}
+
+// roomCallField is HOW MUCH WORK THIS IS, counted. It is the chip's own grammar
+// (workfold.go's [app.workfoldLabel]) so that the header and the chips under it
+// count in one vocabulary, with a shorter spelling for a narrow frame.
+//
+// A NODE THAT HAS CALLED NOTHING SAYS NOTHING. The emptiness law, per segment:
+// `0 tool calls` is a measurement of nothing dressed as a measurement.
+func roomCallField(calls int) rowField {
+	if calls <= 0 {
+		return rowSay()
+	}
+	if calls == 1 {
+		return rowSay("1 tool call", "1 call")
+	}
+	return rowSay(itoa(calls)+" tool calls", itoa(calls)+" calls")
+}
+
+// roomLiveWord is THE LIVE LINE: what is happening on this node right now, and
+// nothing when the honest answer is that nobody knows.
+//
+// THE VAGUEST TRUE SENTENCE IS WHAT IS LEFT WHEN NO BETTER ONE IS KNOWN, which
+// is the conversation's own ladder read downwards (render.go's [stillWorking]).
+// A call in flight is the specific answer and it wins; past that, a page that
+// has not moved for ten seconds says so, because from the outside a retry and a
+// long tool-free think are indistinguishable from a hang and "still working" is
+// true of both.
+//
+// IT NEVER REPEATS THE VERB BESIDE IT. The state word already says `designing`
+// or `awaiting your look` where the engine published one ([app.roomStateWord]),
+// and one line saying the same thing twice is a line read twice to learn once.
+//
+// A NODE THAT IS NOT RUNNING HAS NO LIVE LINE AT ALL. What a finished node is
+// doing is nothing, and the surface does not spend a segment saying so.
+func (a *app) roomLiveWord(node *taskNode, work roomWork) string {
+	if node.state != session.TaskRunning {
+		return ""
+	}
+	word := work.running
+	if word == "" && !work.last.IsZero() && a.now().Sub(work.last) >= stillWorking {
+		word = strings.TrimPrefix(stillWorkingWord, " · ")
+	}
+	if word == a.roomStateWord(node) {
+		return ""
+	}
+	return word
+}
+
+// roomWork is what the page's own rows say about the work: how many calls have
+// CLOSED, which one is in flight, and when anything last moved.
+//
+// It is one walk answering three questions because all three are read on the
+// same frame by the same line, and three walks over the same slice is the same
+// arithmetic done three times. It reads the ENTRIES — the rows a person can see
+// — so the header cannot claim a call the page does not show.
+type roomWork struct {
+	calls   int
+	running string
+	last    time.Time
+}
+
+func roomWorkOf(es []entry) roomWork {
+	var out roomWork
+	for i := range es {
+		e := &es[i]
+		if !e.ended.IsZero() && e.ended.After(out.last) {
+			out.last = e.ended
+		}
+		if !e.began.IsZero() && e.began.After(out.last) {
+			out.last = e.began
+		}
+		if callClosed(e) {
+			// THE SAME "FINISHED" THE AMBIENT COUNTS USE (app.go's [callClosed]),
+			// so the figure in the header and the figures in the Σ segment cannot
+			// be counting two different things.
+			out.calls++
+			continue
+		}
+		if e.kind == entryTool && e.status == toolRunning {
+			// THE NEWEST ONE IN FLIGHT, because a row that named the oldest would
+			// go stale while the work moved on under it.
+			out.running = e.tool
 		}
 	}
-	return fit(word, width)
+	return out
+}
+
+// roomEntries is the open page's blocks, or none. It is a door rather than a
+// field read because the header is drawn for a run's page too, and a run has a
+// graph where a node has a transcript.
+func (a *app) roomEntries() []entry {
+	if a.room == nil || a.room.orch != nil {
+		return nil
+	}
+	return a.room.entries
 }
 
 // roomKinRowCap is how many rows the kin block may take under the header. Three
@@ -2295,16 +2446,16 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// (task.go's [taskUnverifiedWord]).
 		return taskUnverifiedWord
 	}
-	switch node.merge {
-	case mergeWordConflicted:
-		return mergeWordConflicted
-	case mergeWordAborted:
-		return taskStoppedWord
-	case "":
-		return roomDoneWord
-	default:
-		return node.merge
+	// WHERE THE WORK LANDED, IN A PERSON'S WORDS. It is one table lookup and not
+	// a switch with a fall-through, because the fall-through was drawing the
+	// engine's own token: a task in a folder with no repository publishes
+	// "inplace", and this line said `inplace` to somebody who has never read
+	// internal/session (task.go's [mergeScreenWords] holds the table and the
+	// argument). A node the engine published no merge word for is simply done.
+	if word := mergeScreenWord(node.merge); word != "" {
+		return word
 	}
+	return roomDoneWord
 }
 
 // The three words the header has that nothing else on this surface says.
@@ -2445,9 +2596,7 @@ func (a *app) roomRows(width int) []row {
 		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
-	d := room.deck()
-	d.toolTail = a.roomToolTail()
-	out, closed := a.deckRows(d, width)
+	out, closed := a.deckRows(room.deck(), width)
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
 		closed = false
@@ -2683,22 +2832,50 @@ func (a *app) roomUnfoldAtTop(total, height int) bool {
 	room := a.room
 	rows := a.roomRows(a.bodyWidth())
 	end := min(height, total)
-	fold := -1
-	for i := 0; i < end; i++ {
-		if rows[i].hit == hitFold {
-			fold = i
-			break
-		}
+	var open func()
+	for i := 0; i < end && open == nil; i++ {
+		open = a.roomFoldDoor(rows[i])
 	}
-	if fold < 0 {
+	if open == nil {
 		return false
 	}
-	a.unfold(rows[fold].turn)
+	open()
 	grown := len(a.roomRows(a.bodyWidth())) - total
 	room.offset = max(grown, 0)
 	room.stick = false
 	a.touch()
 	return true
+}
+
+// roomFoldDoor is what a row on a room's page OPENS, or nil for a row that
+// opens nothing. It is the whole of what [app.roomUnfoldAtTop] knows about the
+// two kinds of fold a room draws, said once.
+//
+// TWO KINDS, ONE GESTURE. A cluster's `↳ N earlier tool calls` line and a
+// phase's `▸ worked …` chip are both history a person came into a room to read,
+// and scroll is the universal read-history gesture — so the wheel opens
+// whichever of them it reaches first. A ladder that opened one and stopped dead
+// at the other would dead-end exactly where the ruling that put the chips there
+// promised it would not (workfold.go's [app.deckFolds]).
+//
+// AND IT ONLY EVER OPENS. A cluster's fold line exists only while it is folded,
+// so toggling it was the same as opening it; a chip is drawn open OR shut, so a
+// toggle would have made the wheel close the phase it had just opened and the
+// next tick open it again. The chip already showing its work is not a door, and
+// the scan walks past it to the next one that is.
+func (a *app) roomFoldDoor(r row) func() {
+	switch r.hit {
+	case hitFold:
+		return func() { a.unfold(r.turn) }
+	case hitWorkFold:
+		// A CHIP ALREADY SHOWING ITS WORK IS NOT A DOOR — whether the reader
+		// opened it or `ui.work = open` did (render.go's [app.deckRows]).
+		if a.room == nil || a.workFoldOpen(a.room.deck(), r.turn) {
+			return nil
+		}
+		return func() { a.openWorkfold(r.turn) }
+	}
+	return nil
 }
 
 // roomSteerLaneRows is the box's placeholder while a room is open: who the
