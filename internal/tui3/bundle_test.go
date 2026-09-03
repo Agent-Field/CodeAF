@@ -4021,7 +4021,7 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 		t.Fatal("a rail click did not open the node's room")
 	}
 	page := roomText(a)
-	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first.",
+	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first",
 		"read internal/parse/keys.go"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the replayed journal is missing %q:\n%s", want, page)
@@ -4075,7 +4075,7 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 	clickRail(t, a, 0)
 
 	page := roomText(a)
-	if !strings.Contains(page, "Looking at the loader.") {
+	if !strings.Contains(page, "Looking at the loader") {
 		t.Fatalf("the deltas did not coalesce into one block:\n%s", page)
 	}
 	if n := strings.Count(page, "read etc/load.go"); n != 1 {

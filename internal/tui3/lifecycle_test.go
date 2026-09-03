@@ -597,11 +597,12 @@ func TestHoverFollowsTheFoldLineAndTheThinkingBlock(t *testing.T) {
 	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 	var fold string
 	for _, r := range rows(a) {
-		if r.hit == hitCaption {
+		if r.hit == hitCaption && a.isHot(r) {
 			fold = r.text
+			break
 		}
 	}
-	if !strings.Contains(fold, background) {
+	if fold == "" || !strings.Contains(fold, background) {
 		t.Fatalf("the hovered fold line did not react: %q", fold)
 	}
 

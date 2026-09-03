@@ -390,6 +390,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				capOpen := a.captionCallsOpen(d, c)
 				out = append(out, a.captionRows(c, false, capOpen, width)...)
 				if capOpen {
+					out = append(out, a.captionBody(d, c, width)...)
 					for at := toolsFrom; at < toolsTo; at++ {
 						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
 					}
@@ -428,6 +429,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width)...)
 				toolsFrom, toolsTo := captionTools(c, es)
 				if open {
+					out = append(out, a.captionBody(d, c, width)...)
 					start := toolsFrom
 					if window := a.foldWindow(d); toolsTo-start > window && !d.unfolded[e.turn] {
 						start = toolsTo - window
@@ -476,6 +478,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				out = append(out, row{text: text, entry: i, hit: hit})
 			}
 			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			continue
+		}
+
+		// A CAPTION HEAD IS DRAWN BY THE CAPTION, not here. Its first line is the
+		// heading; the remainder rides under an open caption via [captionBody].
+		// Drawing it again would put the body above the heading.
+		if e.kind == entryAssistant && e.capHead {
 			continue
 		}
 
@@ -688,6 +697,28 @@ func (a *app) isHot(r row) bool {
 		return r.hit == hitBrief && r.entry == a.hot.entry
 	}
 	return false
+}
+
+// captionBody is the narration under an open step heading: the remainder of a
+// demoted prose head after its first line was lifted into the caption. THE
+// OUTLINE HIDES IT; expanding the caption puts those words back above the calls.
+func (a *app) captionBody(d deck, c caption, width int) []row {
+	if c.source != captionSaid || c.head < 0 || c.head >= len(d.entries) {
+		return nil
+	}
+	e := &d.entries[c.head]
+	text := e.text
+	if e.capCut > 0 && e.capCut <= len(text) {
+		text = text[e.capCut:]
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	var out []row
+	for _, line := range a.workingProse(text, width) {
+		out = append(out, row{text: line, entry: c.head, hit: hitNone, turn: e.turn})
+	}
+	return out
 }
 
 // opensTurn reports whether the entry at i is the first thing its turn drew.

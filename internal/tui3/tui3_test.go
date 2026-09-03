@@ -711,6 +711,33 @@ func plainRows(a *app) []string {
 // shape, not the hierarchy the gutter carries, so it strips it first.
 func unindented(r string) string { return strings.TrimPrefix(r, "  ") }
 
+// openFirstCaption expands the first outline heading so its tool rows show.
+func openFirstCaption(t *testing.T, a *app) {
+	t.Helper()
+	d := a.bodyDeck()
+	stampHierarchy(d.entries, a.deckFolds(d))
+	caps := deriveCaptions(d.entries, d.runningTurn)
+	if len(caps) == 0 {
+		t.Fatalf("no captions to open:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	a.setCapOpen(d, caps[0].start, true)
+	a.touch()
+}
+
+// overlapToolClocks makes every tool in the turn share one parallel window so
+// they fall under a single caption (deriveCaptions splits sequential rounds).
+func overlapToolClocks(a *app) {
+	base := time.Unix(100, 0)
+	for i := range a.entries {
+		if a.entries[i].kind != entryTool {
+			continue
+		}
+		a.entries[i].began = base
+		a.entries[i].ended = base.Add(time.Second)
+	}
+	a.touch()
+}
+
 // clickHit drives a left click on the first VISIBLE row of a kind. Visible is
 // the point: a click carries a screen row, and a transcript taller than the
 // window has a screen row that is not its row-list index.
@@ -779,10 +806,14 @@ func TestATurnStreamsTextToolsAndSettles(t *testing.T) {
 	if strings.Contains(got, "✓") {
 		t.Fatalf("a settled call drew a success glyph:\n%s", got)
 	}
-	// And ctrl+e puts it back, drawn on the rail and indented under the chip.
+	// And ctrl+e opens the outline; a further expand on the caption shows the call.
 	drive(t, a, key("ctrl+e"))
+	if opened := plain(frame(a)); !strings.Contains(opened, "foo/bar") {
+		t.Fatalf("ctrl+e did not open the turn's outline:\n%s", opened)
+	}
+	openFirstCaption(t, a)
 	if opened := plain(frame(a)); !strings.Contains(opened, "  ╰─▶ read foo/bar.go") {
-		t.Fatalf("ctrl+e did not open the turn's work:\n%s", opened)
+		t.Fatalf("opening the caption did not show the turn's work:\n%s", opened)
 	}
 	if agent.sent[0] != "what does bar.go do?" {
 		t.Fatalf("submitted %q", agent.sent[0])
@@ -879,8 +910,10 @@ func TestSpacingLaw(t *testing.T) {
 			shape = append(shape, "_")
 		case strings.HasPrefix(bare, "›"):
 			shape = append(shape, "u")
-		case strings.HasPrefix(bare, "▸ worked"):
+		case strings.HasPrefix(bare, "▸ worked") || strings.HasPrefix(bare, "▾ worked"):
 			shape = append(shape, "w")
+		case strings.HasPrefix(bare, "▸ ") || strings.HasPrefix(bare, "▾ "):
+			shape = append(shape, "c")
 		case strings.HasPrefix(bare, "├─▶") || strings.HasPrefix(bare, "╰─▶"):
 			shape = append(shape, "t")
 		default:
@@ -888,13 +921,10 @@ func TestSpacingLaw(t *testing.T) {
 		}
 	}
 	got := strings.Join(collapse(shape), "")
-	// _ u _ w t _ x _ t _ x _ u _ x — one row of air where the conversation
-	// begins, a blank before each user message, the CHANGE-OF-SPEAKER blank
-	// after each one (render.go's wasUser: the reply is a different voice and
-	// does not open wedged under the question), one on each side of a cluster
-	// that sits between two blocks of text, and nowhere else. The chip still
-	// rides at the top of the work it stands for.
-	if want := "_u_wt_x_t_x_u_x"; got != want {
+	// _ u _ w c _ x _ u _ x — with WorkOpen the chip opens onto the caption
+	// outline (not the tool rows). Captions collapse to one `c`; tools stay
+	// behind a further expand.
+	if want := "_u_wc_x_u_x"; got != want {
 		t.Fatalf("layout shape is %q, want %q:\n%s", got, want, strings.Join(list, "\n"))
 	}
 	for i, r := range list {
@@ -928,8 +958,7 @@ func collapse(shape []string) []string {
 // A cluster that is the WHOLE turn still opens under the change-of-speaker
 // blank: the person said "build it", and the surface answering with a call is
 // a different voice, so exactly one row of silence sits between the message
-// and the first tool line (render.go's wasUser). A turn with no trailing
-// answer never folds (workfold.go), so the call is on the page to be measured.
+// and the first work row — the caption heading, with the tool under it.
 func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
@@ -941,7 +970,12 @@ func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 
 	list := plainRows(a)
 	for i, r := range list {
-		if !strings.HasPrefix(unindented(r), "╰─▶") {
+		bare := unindented(r)
+		if !(strings.HasPrefix(bare, "▸ ") || strings.HasPrefix(bare, "▾ ") ||
+			strings.HasPrefix(bare, "╰─▶") || strings.HasPrefix(bare, "├─▶")) {
+			continue
+		}
+		if strings.HasPrefix(bare, "▸ worked") || strings.HasPrefix(bare, "▾ worked") {
 			continue
 		}
 		if i < 2 || strings.TrimSpace(list[i-1]) != "" || strings.TrimSpace(list[i-2]) == "" {
@@ -962,6 +996,9 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "read both")
+	// PARALLEL CALLS SHARE ONE CAPTION. Give both tools the same clocks so the
+	// outline treats them as one step — the rail still tees inside that step.
+	overlapToolClocks(a)
 
 	list := plainRows(a)
 	first, last := -1, -1
