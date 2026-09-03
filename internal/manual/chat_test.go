@@ -658,6 +658,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I get back to home with one chat", "home"},
 		{"why is home empty", "home"},
 		{"can I open home with only one conversation", "home"},
+		// The gesture widened: two spaces answer from every place, not only
+		// from a conversation, and these are asked from where a person is
+		// standing when they want out of it.
+		{"how do I get back to the home screen from the tasks page", "home"},
+		{"double space does not go home from the memory page", "home"},
 		{"does closing one conversation quit aforge", "commands"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},
