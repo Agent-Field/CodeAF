@@ -1557,8 +1557,8 @@ func asExitStatus(err error, status *exitStatus) bool {
 
 func keptHome(stderr string) string {
 	for _, line := range strings.Split(stderr, "\n") {
-		if strings.HasPrefix(line, "store kept at ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "store kept at "))
+		if strings.HasPrefix(line, "record kept at ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "record kept at "))
 		}
 	}
 	return ""

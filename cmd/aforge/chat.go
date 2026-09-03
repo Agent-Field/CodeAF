@@ -5085,7 +5085,15 @@ func subtreePrefix() (string, error) {
 // facts belong to the same errand: the task name is what the cache key and the
 // spend row are built from, and the role is what the router is built from.
 func errandContext(ctx context.Context, settings config.Config, task string, role lane.Role) context.Context {
-	return provider.WithRole(settings.Context(ctx, task), role)
+	// The errand's name is also what the model-call log calls its rows
+	// (provider.WithCallTag). It is set here rather than at each of the ten call
+	// sites for the reason the role is: the name is already the one word that
+	// says what the call is for, and a second spelling of it beside every call
+	// is a second spelling that can disagree. Without it these rows carried no
+	// tag at all — they open no routing slot for one to be derived from — so a
+	// distillation cancelled on the way out of a run read as an anonymous
+	// failed call to a person trying to work out what their run had done.
+	return provider.WithCallTag(provider.WithRole(settings.Context(ctx, task), role), task)
 }
 
 // jobIDOf resolves the top-level job a node belongs to, which names its
