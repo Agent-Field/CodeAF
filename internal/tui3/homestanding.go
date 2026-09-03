@@ -79,11 +79,6 @@ const (
 	// line from the verbs the row under the cursor actually has and needs this
 	// half without the other two ([standingPlace.hint]).
 	homeItemEnterWord = "enter open where it was asked"
-	// homeItemActions is the dim line at the foot of an item's card: the three
-	// things this screen can do to one. The two letters are real now — they are
-	// the row's `→` strip (verbstrip.go), which is what "no key does anything
-	// that isn't drawn on screen right now" costs and buys.
-	homeItemActions = homeItemEnterWord + " · → " + homeItemPauseWord + " · " + homeItemStopWord
 	// homeItemNoDoor is what enter says on an item that was made at home and
 	// never became a conversation ([standing.Origin.Exchange]). It is a fact and
 	// not a refusal: there genuinely is no transcript to open, and saying so is
@@ -137,6 +132,29 @@ const (
 	homeRanWord  = "ran "
 	homeWeekWord = " this week"
 )
+
+// homeStripWord is HOW A FOOT NAMES THE ROW'S `→` STRIP, and it is one function
+// because two feet name it.
+//
+// EVERY CLAUSE ON A HINT LINE IS ONE KEY AND WHAT IT DOES. These two feet broke
+// that: `enter open where it was asked · → pause · stop` put the strip's second
+// verb in the slot where a clause's KEY goes, so a person read `stop` as a verb
+// with no key, pressed `s`, and got nothing — the letters belong to the strip
+// and only appear once `→` has drawn it. What is offered here is one key over
+// one strip, and the verbs behind it are listed under it in the grammar the card
+// beside it already uses for the same thing ([homeVerbsWord], home.go).
+func homeStripWord(words ...string) string {
+	if len(words) == 0 {
+		return ""
+	}
+	return homeVerbsWord + ": " + strings.Join(words, ", ")
+}
+
+// homeItemActions is the dim line at the foot of an item's card: what this
+// screen can do to one. The letters are real — they are the row's `→` strip
+// (verbstrip.go), which is what "no key does anything that isn't drawn on screen
+// right now" costs and buys.
+var homeItemActions = homeItemEnterWord + " · " + homeStripWord(homeItemPauseWord, homeItemStopWord)
 
 // homeWeek is how far back `this week` reaches on a card: the last seven days
 // of the ledger, counted from the reading's own clock rather than from a

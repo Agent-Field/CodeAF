@@ -142,7 +142,7 @@ func TestHomeSlashUnknownAnswer(t *testing.T) {
 		t.Fatalf("an unknown command moved the surface to %v", a.page)
 	}
 	notes := homeNotes(a)
-	if !strings.Contains(notes, "unknown command: /nonsense · try /help") {
+	if !strings.Contains(notes, unknownCommandWord("nonsense")) {
 		t.Fatalf("the unknown-command answer chat gives did not land:\n%s", notes)
 	}
 	if len(next.sent) != 0 {

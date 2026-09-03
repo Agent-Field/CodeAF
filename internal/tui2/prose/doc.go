@@ -37,7 +37,8 @@
 //     is a wide window, not a wide sentence; [Options.Measure] is the reading
 //     length and [Options.Width] is the hard ceiling. Figures — tables and code
 //     blocks — get the full width, because a figure is looked at rather than
-//     read along.
+//     read along, and so does a single token that cannot be broken — a URL, a
+//     path, a hash — which is copied rather than read along.
 //   - Headings promote by TIER, never by size (5.13). There is no larger type in
 //     a terminal, so a heading is louder by standing higher on the grey ramp and
 //     by the whitespace around it; h1 also takes bold, and every level past the

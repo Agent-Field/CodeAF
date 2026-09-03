@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
@@ -64,7 +65,13 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 	}
 	text := output.String()
 	for _, want := range []string{
-		"brain", path, "desktop · pid 4321", "standing watch", "installed",
+		// `store` and `background timer` were `brain` and `standing watch`.
+		// Nobody looking for where their data lives searches for a brain, and
+		// `standing watch` is the RESIDENT's vocabulary — a word the chat's own
+		// manual is forbidden to use, so the manual could not quote this row
+		// and stay legal. What the row measures, in a developer's words, is
+		// what is running, since when, and whether it still answers.
+		"store", path, "desktop · pid 4321", "background timer", "installed",
 		"last wake 2m ago", "next check in 3m", "$3.40 today · rail $20.00",
 		"1 active charter · 1 pending question",
 	} {
@@ -72,7 +79,7 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 			t.Fatalf("doctor output missing %q:\n%s", want, text)
 		}
 	}
-	for _, forbidden := range []string{"daemon", "launchd", "systemd", "service"} {
+	for _, forbidden := range []string{"daemon", "launchd", "systemd", "service", "brain", "standing watch"} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Fatalf("doctor output contains %q:\n%s", forbidden, text)
 		}
@@ -122,10 +129,212 @@ func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) 
 	text := output.String()
 	for _, want := range []string{
 		path + " · not created", "this terminal while open", "not installed",
-		"$0.00 today · rail unlimited", "0 active charters · 0 pending questions",
+		// A machine that has spent nothing and holds nothing standing says so
+		// by leaving those figures out: the rail is the only claim here that
+		// anybody made (the emptiness law, emptiness_test.go).
+		"rail unlimited",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, text)
 		}
 	}
+}
+
+// ── C14: DOCTOR SAID NOTHING ABOUT THE ONE THING THAT STOPS EVERYTHING ───────
+//
+// `aforge doctor` is what somebody runs when nothing works. On a machine with
+// no provider key it reported six healthy-looking rows and left with 0, and the
+// single most common reason nothing works was the one thing it did not check.
+func TestDoctorSaysThereIsNoKeyAndWhatToTypeAboutIt(t *testing.T) {
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv(fallbackKeyEnv, "")
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
+
+	path := filepath.Join(t.TempDir(), "graph.db")
+	var output bytes.Buffer
+	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	line := rowSaying(text, "key")
+	if line == "" {
+		t.Fatalf("doctor has no `key` row at all, so a machine that cannot call a model reads as healthy:\n%s", text)
+	}
+	if !strings.Contains(line, "none") {
+		t.Fatalf("the key row does not say there is no key.\n  row:  %q\n  want: it to say `none`", line)
+	}
+	// AND WHAT TO DO ABOUT IT, in the door's own words.
+	for _, want := range []string{"export " + config.APIKeyEnv, fallbackKeyEnv} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("the key row says the cause and never what to type.\n  row:  %q\n  want it to name %q",
+				line, want)
+		}
+	}
+}
+
+// AND WHERE IT CAME FROM WHEN THERE IS ONE. Three rungs answer, and knowing
+// WHICH is the difference between "my shell has it" and "this machine has it" —
+// the question behind every report of a timer-driven run that could not
+// authenticate while the terminal beside it could.
+func TestDoctorNamesWhereTheKeyCameFrom(t *testing.T) {
+	profile := t.TempDir()
+	if err := config.WriteAPIKey(profile, "sk-or-v1-persisted-000000000000"); err != nil {
+		t.Fatal(err)
+	}
+	secret := "sk-or-v1-this-must-never-be-printed"
+
+	for _, probe := range []struct {
+		name       string
+		openRouter string
+		openAI     string
+		want       string
+	}{
+		{name: "the OpenRouter variable", openRouter: secret, want: config.APIKeyEnv},
+		{name: "the OpenAI variable", openAI: secret, want: fallbackKeyEnv},
+		{name: "the profile file", want: config.BudgetConfigPath(profile)},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			t.Setenv(config.APIKeyEnv, probe.openRouter)
+			t.Setenv(fallbackKeyEnv, probe.openAI)
+			t.Setenv(config.ProfileDirEnv, profile)
+
+			var output bytes.Buffer
+			if err := runDoctorWith([]string{"--db", filepath.Join(t.TempDir(), "graph.db")},
+				&output, 0, fakeDoctorWatch{}); err != nil {
+				t.Fatal(err)
+			}
+			line := rowSaying(output.String(), "key")
+			if !strings.Contains(line, "set") || !strings.Contains(line, probe.want) {
+				t.Fatalf("the key row does not name the rung that answered.\n  row:  %q\n  want: `set` and %q",
+					line, probe.want)
+			}
+			// A KEY IS A SECRET. The row names where it came from and never
+			// what it is, so the page can be pasted into a defect report.
+			if strings.Contains(output.String(), secret) || strings.Contains(output.String(), "persisted") {
+				t.Fatalf("doctor printed the key itself:\n%s", output.String())
+			}
+		})
+	}
+}
+
+// The row and the door must not be able to disagree. [readKeyReport] climbs the
+// rungs one at a time so it can say WHICH answered; [config.APIKeyAt] folds them
+// into one string. This is the seam that keeps them one reading, so a ladder
+// that grows a step fails here rather than leaving doctor telling a working
+// machine it has no key.
+func TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey(t *testing.T) {
+	withKey := t.TempDir()
+	if err := config.WriteAPIKey(withKey, "sk-or-v1-persisted-000000000000"); err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range []struct {
+		name       string
+		openRouter string
+		openAI     string
+		profile    string
+	}{
+		{name: "nothing anywhere", profile: t.TempDir()},
+		{name: "the OpenRouter variable", openRouter: "sk-or-v1-aaaaaaaaaaaaaaaaaaaa", profile: t.TempDir()},
+		{name: "the OpenAI variable", openAI: "sk-aaaaaaaaaaaaaaaaaaaaaaaa", profile: t.TempDir()},
+		{name: "only the profile file", profile: withKey},
+		{name: "a variable over a profile file", openRouter: "sk-or-v1-bbbbbbbbbbbbbbbbbbbb", profile: withKey},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			t.Setenv(config.APIKeyEnv, probe.openRouter)
+			t.Setenv(fallbackKeyEnv, probe.openAI)
+			doorFound := config.APIKeyAt(probe.profile) != ""
+			doctorFound := readKeyReport(probe.profile).Where != ""
+			if doorFound != doctorFound {
+				t.Fatalf("doctor and the door disagree about whether this machine has a key.\n"+
+					"  config.APIKeyAt found a key: %v\n  doctor's row found one:      %v",
+					doorFound, doctorFound)
+			}
+		})
+	}
+}
+
+// And doctor names the same two variables the refusal at the door names. There
+// is no exported constant for the OpenAI-shaped one, so this is the pin that
+// keeps the two spellings one fact.
+func TestDoctorNamesTheSameKeyVariablesTheDoorDoes(t *testing.T) {
+	refusal := config.ErrNoAPIKey.Error()
+	for _, variable := range []string{config.APIKeyEnv, fallbackKeyEnv} {
+		if !strings.Contains(refusal, variable) {
+			t.Fatalf("doctor points at %q and the door's refusal does not name it: %q", variable, refusal)
+		}
+	}
+}
+
+// rowSaying is one labelled line out of doctor's block, found by its label.
+func rowSaying(text, label string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, label+" ") {
+			return line
+		}
+	}
+	return ""
+}
+
+// TestTheEnvironmentPageDoesNotCallTheKeyVariableRequired is line 7 of the
+// first table on the front door, and it was wrong in the one direction that
+// costs somebody an afternoon.
+//
+// A developer's first run started with no OPENROUTER_API_KEY at all, because
+// the key they had pasted into the chat lives in the profile's own config.json.
+// `aforge help env` called the variable **required**, so the page said the run
+// they had just watched succeed was impossible, and sent them hunting for a key
+// they already had.
+//
+// The truth is the ladder [config.APIKeyAt] climbs and `aforge doctor` reports:
+// the OpenRouter variable, the OpenAI one, then the profile. This asserts the
+// page against that ladder rather than against a sentence, so a rung added
+// tomorrow is a red test here and not a front door that has quietly gone stale.
+func TestTheEnvironmentPageDoesNotCallTheKeyVariableRequired(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv(fallbackKeyEnv, "")
+	if err := config.WriteAPIKey(profile, "sk-or-v1-a-key-kept-in-the-profile"); err != nil {
+		t.Fatal(err)
+	}
+	// The state the page has to describe: no variable anywhere, and a machine
+	// that talks to a model perfectly well.
+	if config.APIKeyAt(profile) == "" {
+		t.Fatalf("the ladder found no key on a profile that holds one, so this test is not about what it says it is")
+	}
+
+	row := environmentRow(t, config.APIKeyEnv)
+	if strings.Contains(strings.ToLower(row), "required") {
+		t.Errorf("`aforge help env` calls %s required, and a key in the profile answers without it — "+
+			"a required thing that is not required sends somebody to find a key they already have:\n%s",
+			config.APIKeyEnv, row)
+	}
+	// And it says where else a key comes from, because "not required" on its
+	// own leaves a person with no idea what IS.
+	for _, rung := range []string{fallbackKeyEnv, "profile"} {
+		if !strings.Contains(row, rung) {
+			t.Errorf("the %s row never mentions %q, so the page names one rung of a three-rung ladder:\n%s",
+				config.APIKeyEnv, rung, row)
+		}
+	}
+}
+
+// environmentRow lifts one variable's whole entry out of [environmentText] —
+// the name line and every continuation line indented under its text column.
+func environmentRow(t *testing.T, variable string) string {
+	t.Helper()
+	var row []string
+	for _, line := range strings.Split(environmentText, "\n") {
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(line), variable+" "):
+			row = append(row, line)
+		case len(row) > 0 && strings.HasPrefix(line, "      ") && strings.TrimSpace(line) != "":
+			row = append(row, line)
+		case len(row) > 0:
+			return strings.Join(row, "\n")
+		}
+	}
+	if len(row) == 0 {
+		t.Fatalf("`aforge help env` has no row for %s at all", variable)
+	}
+	return strings.Join(row, "\n")
 }

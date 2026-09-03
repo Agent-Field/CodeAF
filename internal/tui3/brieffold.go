@@ -91,7 +91,7 @@ func briefFoldHidden(e *entry, width int) int {
 	if e == nil || !e.brief {
 		return 0
 	}
-	if n := len(wrap(e.text, width-userLeadCols)) - briefFoldLines; n > 0 {
+	if n := len(wrap(e.text, userBodyCols(width))) - briefFoldLines; n > 0 {
 		return n
 	}
 	return 0
@@ -99,8 +99,20 @@ func briefFoldHidden(e *entry, width int) int {
 
 // briefFoldCut is the instruction's visible opening: the first [briefFoldLines]
 // of it while it is folded, and all of it once somebody has opened it.
+//
+// IT IS GATED ON THE SAME FIELD [briefFoldHidden] IS GATED ON, and that is the
+// whole of this function's law rather than a tidiness. The two are one fold seen
+// from its two ends — this one takes the lines away, that one counts what was
+// taken and is what makes the door and the key exist ([app.deckRows] draws the
+// door only for a non-zero count, and [app.toggleBriefFold] skips every block
+// that returns zero) — so a cut that fired where the count did not is a fold
+// WITH NO DOOR, NO KEY AND NO ELLIPSIS. That is exactly what happened to an
+// ordinary message out in the conversation: it was cut at three rows mid-
+// sentence, and the rest of what somebody typed was unreachable with nothing on
+// screen saying it had been taken. The header above states the law it broke —
+// the one thing on this surface a fold may never hide is the person's own words.
 func briefFoldCut(e *entry, body []string) []string {
-	if e.full || len(body) <= briefFoldLines {
+	if e == nil || !e.brief || e.full || len(body) <= briefFoldLines {
 		return body
 	}
 	return body[:briefFoldLines]

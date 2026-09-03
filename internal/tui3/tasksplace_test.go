@@ -70,7 +70,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 		}
 		last = at
 	}
-	if !strings.Contains(page, "work aforge ran on its own. 14, $34.10 of it.") {
+	if !strings.Contains(page, "work aforge ran on its own. 14 pieces of work, $34.10 between them.") {
 		t.Fatalf("header did not count the window and its known spend:\n%s", page)
 	}
 	// AND THE HEAD LINE IS THE WINDOW'S CONTROL TOO (SCREEN 3d), exactly as
@@ -192,8 +192,13 @@ func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 			t.Fatalf("the section word %q is preceded by two blank lines", line.text)
 		}
 	}
-	if words != 4 {
-		t.Fatalf("the fixture drew %d section words, want 4", words)
+	// FIVE, BECAUSE THE FIXTURE HAS SOMETHING IN EVERY SECTION. `render fight
+	// clip` is queued in a conversation that is open, which is work admitted and
+	// waiting rather than work a worker is in — the place files that under
+	// `parked` now, and the rhythm above has to hold across the extra heading.
+	if words != len(tasksSectionOrder) {
+		t.Fatalf("the fixture drew %d section words, want %d — one per section it has rows in",
+			words, len(tasksSectionOrder))
 	}
 }
 
@@ -505,5 +510,296 @@ func TestVisibleChildrenKeepTheirOwnSectionsWhenTheRootIsAbsent(t *testing.T) {
 		if line.kind == tasksLineTask && (line.kin == tasksKinCont || line.kin == tasksKinLast) {
 			t.Fatalf("orphan child %q was drawn under an absent root", line.item.entry.Label)
 		}
+	}
+}
+
+// ── ONE ROW, LAID OUT BY WHAT IT IS FOR ─────────────────────────────────────
+//
+// These are the polish wave's rows against this place: the name kept whole, the
+// facts separated and ranked, the sections in the order their headings promise,
+// and a head sentence that counts the PLACE rather than the query.
+
+// tasksPolishFixture is one conversation's three finished pieces of work,
+// spelled the way the demo home spells them — long names, a long sentence of
+// detail beside each — and arriving OUT of time order, which is what the world
+// scan hands this place.
+func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
+	loc := time.FixedZone("fixture", -4*60*60)
+	now := time.Date(2026, time.September, 2, 23, 3, 0, 0, loc)
+	done := func(id, label, outcome string, files int, cost float64, ago time.Duration) session.TaskIndexEntry {
+		return session.TaskIndexEntry{
+			ID: id, Label: label, Title: label, SessionID: "room-a",
+			Status: string(session.TaskDone), EndedAt: now.Add(-ago),
+			FilesChanged: files, Outcome: outcome, Cost: cost,
+		}
+	}
+	row := session.SessionRow{ID: "room-a", Title: "The Annual Toggle", Project: "aforge", Open: true}
+	row.Tasks.Rows = []session.TaskIndexEntry{
+		done("1", "Put the annual toggle on the pricing page",
+			"Annual is the default and the monthly price stays visible beside it.", 2, .27, 5*time.Hour),
+		done("2", "Port the picker onto the new list",
+			"The picker walks the list's rows and keeps its own cursor; the keys are unchanged.", 2, .31, 45*time.Minute),
+		done("3", "Write the morning sweep down",
+			"The sweep is a standing order now, with a cap of a dollar a day.", 1, .14, 2*time.Hour),
+	}
+	world := session.World{Projects: []session.Project{
+		{Name: "aforge", Sessions: []session.SessionRow{row}},
+	}, Read: now}
+	return world, session.LastDays(now, 14), now
+}
+
+// tasksPage is the whole page as a person reads it, with no colour on it.
+func tasksPage(r tasksReading, width int) string {
+	rows := r.rows(width, newPalette(tokens.NoColor, false))
+	for i := range rows {
+		rows[i] = plain(rows[i])
+	}
+	return strings.Join(rows, "\n")
+}
+
+// tasksRowFor finds the drawn row a name is on. It is deliberately a search of
+// the PAINTED page rather than of the reading: what is on the screen is the
+// thing under test.
+func tasksDrawnRow(page, name string) string {
+	for _, line := range strings.Split(page, "\n") {
+		if strings.Contains(line, name) {
+			return strings.TrimRight(line, " ")
+		}
+	}
+	return ""
+}
+
+// THE IDENTITY IS WHOLE OR THE ROW IS POINTLESS (rowfit.go, law 1). The list
+// exists to let a person MATCH NAMES, and `✓ Put the…` matches nothing: the row
+// used to hand every fact its full spelling first and give the name whatever
+// was left, so at a hundred and sixty columns — the most room anybody has —
+// three rows in four still cut the name.
+func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
+	world, win, now := tasksPolishFixture()
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	for _, width := range []int{60, 80, 120, 160} {
+		page := tasksPage(reading, width)
+		for _, item := range reading.items {
+			name := tasksLabel(item.entry)
+			if !strings.Contains(page, name) {
+				t.Fatalf("at %d columns the page drew\n%s\nand no row on it carries the whole name %q", width, page, name)
+			}
+		}
+	}
+	// AND THE OTHER HALF OF LAW 1: a name that had to be cut takes the whole
+	// row, because a row that has already spent the one thing it was drawn to
+	// say may not spend cells on a figure as well.
+	item := reading.items[0]
+	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, newPalette(tokens.NoColor, false)))
+	if strings.Contains(narrow, "$") || strings.Contains(narrow, rowSep) {
+		t.Fatalf("a frame too narrow for the name alone drew\n  %s\nwant the cut name and no facts beside it", narrow)
+	}
+}
+
+// THE FACTS ARE JOINED BY ` · ` AND RANKED. `The Certificate Rotation
+// incomplete now` was three separate facts a reader had to re-parse into three,
+// and one row mixed a real ` · ` INSIDE a fact with bare spaces BETWEEN facts,
+// so the only separator on the row meant two different things.
+func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
+	world, win, now := tasksPolishFixture()
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	const name = "Put the annual toggle on the pricing page"
+	// AND THEY DEGRADE BY SPELLING RATHER THAN BY ENDING THE TAIL (law 2): the
+	// detail sentence is seventy-seven cells at its longest and seven at its
+	// shortest, and each width says the longest it has room for.
+	for _, want := range []struct {
+		width int
+		tail  string
+	}{
+		{160, "5h · $0.27 · The Annual Toggle · 2 files · Annual is the default and the monthly price stays visible beside it."},
+		{120, "5h · $0.27 · The Annual Toggle · 2 files"},
+		{80, "5h · $0.27 · The Annual Toggle"},
+	} {
+		row := tasksDrawnRow(tasksPage(reading, want.width), name)
+		if !strings.HasSuffix(row, want.tail) {
+			t.Fatalf("at %d columns the row reads\n  %s\nand it should end on\n  … %s", want.width, row, want.tail)
+		}
+	}
+}
+
+// A SECTION NAMED BY TIME IS ORDERED BY IT. Under `done today` the ages used to
+// read `2h, 50m, 5h, 5h`, because the rows arrived in the world scan's order —
+// projects sorted by when somebody was last in one of their CONVERSATIONS,
+// which is a fact about conversations and not about work.
+func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
+	world, win, now := tasksPolishFixture()
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	want := []string{
+		"Port the picker onto the new list",
+		"Write the morning sweep down",
+		"Put the annual toggle on the pricing page",
+	}
+	var got []string
+	for _, line := range reading.lay(120) {
+		if line.kind == tasksLineTask {
+			got = append(got, tasksLabel(line.item.entry))
+		}
+	}
+	if strings.Join(got, " / ") != strings.Join(want, " / ") {
+		t.Fatalf("`done today` reads\n  %s\nand it should read, newest first\n  %s",
+			strings.Join(got, " / "), strings.Join(want, " / "))
+	}
+	// AND A FAMILY MOVES AS ONE, placed by its root's own stamp with the workers
+	// under it in their own order.
+	fam, famWin, famNow := tasksFamilyFixture()
+	family := readTasks(fam, tasksMine{}, famWin, time.Time{}, famNow)
+	family.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
+	var kin []string
+	for _, line := range family.lay(120) {
+		if line.kind == tasksLineTask {
+			kin = append(kin, line.kin)
+		}
+	}
+	if strings.Join(kin, "") != tasksFoldOpen+tasksKinCont+tasksKinCont+tasksKinLast+tasksKinPad {
+		t.Fatalf("an opened family came out as %q, and the three workers must stand together under their root", kin)
+	}
+}
+
+// THE HEAD SENTENCE IS A CLAIM ABOUT THE PLACE AND THE FILTER IS A PROPERTY OF
+// THE QUERY. Typing a word nothing matches used to draw `work aforge ran on its
+// own. nothing.` across the top of a machine that had run ten pieces of work.
+func TestAFilterThatMatchesNothingStillCountsThePlace(t *testing.T) {
+	world, win, now := tasksPolishFixture()
+	a := &app{pal: newPalette(tokens.NoColor, false)}
+	a.clock = func() time.Time { return now }
+	a.raisePlace(pageTasks)
+	a.taskSheet.world = world
+	a.taskSheet.reading = readTasks(world, tasksMine{}, win, time.Time{}, now)
+	a.taskSheet.query.setText("zzz")
+
+	r := a.tasksFiltered()
+	if len(r.items) != 0 {
+		t.Fatalf("the query kept %d rows and it should have emptied the list", len(r.items))
+	}
+	got := r.head(120, false)
+	want := "work aforge ran on its own. 3 pieces of work, $0.72 between them."
+	if got != want {
+		t.Fatalf("a query nothing matches makes the page say\n  %s\nand what is true of the machine is\n  %s", got, want)
+	}
+}
+
+// THE FIGURE GETS ITS NOUN, and the shut fold says what it is holding in words.
+// `10,` is a number a person has to guess the unit of; `+3 under` is arithmetic
+// with a preposition for a noun.
+func TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords(t *testing.T) {
+	world, win, now := tasksPolishFixture()
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	if got, want := reading.head(120, false), "work aforge ran on its own. 3 pieces of work, $0.72 between them."; got != want {
+		t.Fatalf("the head reads\n  %s\nwant\n  %s", got, want)
+	}
+	// THE WINDOW'S EDGE IS CARRIED WHERE THE CONTROL IS NOT DRAWN, and the spend
+	// clause is what a frame too narrow for the whole sentence gives up — never
+	// a figure cut in half.
+	edge := reading.head(80, true)
+	if !strings.Contains(edge, " pieces of work since ") || !strings.HasSuffix(edge, "$0.72 between them.") {
+		t.Fatalf("the narrow head reads\n  %s\nwant `… N pieces of work since <date>, $0.72 between them.`", edge)
+	}
+	if got := reading.head(60, true); strings.Contains(got, "$") || !strings.HasSuffix(got, ".") {
+		t.Fatalf("at sixty cells the head reads\n  %s\nwant the sentence without its spend clause", got)
+	}
+	// ONE piece of work is one piece of work.
+	one := reading
+	one.whole, one.wholeCost = 1, 0.27
+	if got, want := one.head(120, false), "work aforge ran on its own. 1 piece of work, $0.27 of it."; got != want {
+		t.Fatalf("one row makes the head read\n  %s\nwant\n  %s", got, want)
+	}
+	if got, want := tasksUnderWord(3), "holds 3 more"; got != want {
+		t.Fatalf("a shut fold says %q, want %q", got, want)
+	}
+	if got, want := tasksUnderWord(1), "holds 1 more"; got != want {
+		t.Fatalf("a fold holding one says %q, want %q", got, want)
+	}
+	// AND IT IS THE FIRST THING THE TAIL SAYS, joined like every other fact.
+	// `3 files holds 3 more` ran two claims together with a bare space, at the
+	// far right of the row, eleven cells from the edge where the eye does not go.
+	fam, famWin, famNow := tasksFamilyFixture()
+	shut := readTasks(fam, tasksMine{}, famWin, time.Time{}, famNow)
+	row := tasksDrawnRow(tasksPage(shut, 120), "port the parser")
+	if !strings.Contains(row, "holds 3 more · ") {
+		t.Fatalf("the shut family's row reads\n  %s\nand its count must lead the tail: `… holds 3 more · <facts>`", row)
+	}
+}
+
+// A ROW NOBODY IS RUNNING IS NOT DATED `now`. The row said in one half that the
+// window running it is gone and in the other that it is happening this second,
+// and the age is the half a person believes. Nothing in the record dates a row
+// that never landed, so the honest answer is no age at all.
+func TestARowNobodyIsRunningIsNotDatedNow(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	stalled := session.TaskIndexEntry{
+		ID: "3", Label: "Rotate the wildcard certificate", Title: "Rotate the wildcard certificate",
+		Status: string(session.TaskRunning), SessionID: "a-window-that-went",
+	}
+	reading := readTasks(session.World{}, tasksMine{rows: []tasksMineRow{{entry: stalled}}},
+		session.LastDays(now, 10), time.Time{}, now)
+	row := tasksDrawnRow(tasksPage(reading, 120), "Rotate the wildcard certificate")
+	if !strings.HasSuffix(row, taskRecordStoppedWord) {
+		t.Fatalf("a row nobody is behind reads\n  %s\nand it should end on\n  … %s, with no age after it", row, taskRecordStoppedWord)
+	}
+}
+
+// A CHILD DOES NOT REPEAT ITS PARENT'S CONVERSATION. Opening a family drew the
+// root's title once per row down the page, spending twenty-odd cells to restate
+// a fact the row two lines up had already stated — on rows whose names were
+// being cut to make room for it.
+func TestAnOpenedFamilyNamesItsConversationOnce(t *testing.T) {
+	world, win, now := tasksFamilyFixture()
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
+	page := tasksPage(reading, 120)
+	if got := strings.Count(page, "the split"); got != 2 {
+		t.Fatalf("the conversation is named %d times on\n%s\nwant once per root and never on a worker", got, page)
+	}
+	if !strings.Contains(page, "port the lexer") {
+		t.Fatalf("the opened family drew no workers:\n%s", page)
+	}
+}
+
+// ONE STATE WORD ON BOTH SURFACES. The list read `gave up, said why` where the
+// page one keypress away read `failed`, and a person who filed the row under one
+// of those words could not find it under the other.
+func TestTheListAndThePageSayOneWordAboutWorkThatFailed(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	entry := session.TaskIndexEntry{
+		ID: "4", Label: "Rebuild the frame budget report", Title: "Rebuild the frame budget report",
+		SessionID: "room-a", Status: string(session.TaskFailed), Cost: .18,
+		EndedAt: now.AddDate(0, 0, -8), Outcome: "the package manager refused the archive",
+	}
+	word := taskStateWord(entry, false)
+	if got := tasksMiddle(entry); !strings.HasPrefix(got, word+rowSep) {
+		t.Fatalf("the list says\n  %s\nand its own page says\n  %s\nwhich must be the first word of both", got, word)
+	}
+	a := &app{pal: newPalette(tokens.NoColor, false)}
+	a.clock = func() time.Time { return now }
+	a.raisePlace(pageTasks)
+	if got := a.taskCardWhenLine(entry); !strings.HasPrefix(got, word) {
+		t.Fatalf("the page opens on\n  %s\nand the list says\n  %s", got, word)
+	}
+	// AND WORK THAT FAILED DID NOT LAND. `landed` is this codebase's word for
+	// work that ARRIVED.
+	if got := a.taskCardWhenLine(entry); !strings.Contains(got, "stopped 8d ago") || strings.Contains(got, "landed") {
+		t.Fatalf("the failed task's page reads\n  %s\nwant `%s · stopped 8d ago …`", got, word)
+	}
+}
+
+// THE PAGE IS A SUPERSET OF THE ROW IT OPENED FROM. The row carries the
+// conversation the work came out of; the card — the surface a person opens
+// precisely to learn more — used to drop it, so the one fact tying the record to
+// a conversation was available only on the row they had just left.
+func TestTheTaskPageNamesTheConversationItCameOutOf(t *testing.T) {
+	world, _, now := tasksPolishFixture()
+	entry := world.Projects[0].Sessions[0].Tasks.Rows[0]
+	a := &app{pal: newPalette(tokens.NoColor, false)}
+	a.clock = func() time.Time { return now }
+	a.raisePlace(pageTasks)
+	a.taskSheet.world = world
+	body := plain(strings.Join(a.taskCardBody(entry, 90), "\n"))
+	if !strings.Contains(body, "out of The Annual Toggle") {
+		t.Fatalf("the card reads\n%s\nand the row it opened from says the work came out of %q", body, "The Annual Toggle")
 	}
 }

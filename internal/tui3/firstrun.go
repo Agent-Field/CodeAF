@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"errors"
+	"io/fs"
 	"strconv"
 	"strings"
 
@@ -219,7 +221,23 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	dir := strings.TrimSpace(a.profileDir)
 	_ = config.MarkSetupSeen(dir, a.now())
 	a.cancelSetupAuth()
+	// THE QUESTIONS THIS ESC WALKED PAST GET A DOOR. `setup_seen_at` is stamped
+	// whichever way this screen ended and only the key-only form ever reopens,
+	// so the crew and the day's limit are retired here — silently, until this
+	// line. It names the step ON SCREEN and the ones under it, because esc left
+	// that one unanswered too, and nothing a person already answered.
+	var later []string
+	if skipped && a.setup.at < len(a.setup.steps) {
+		for _, step := range a.setup.steps[a.setup.at:] {
+			if word := setupStepLater(step); word != "" {
+				later = append(later, word)
+			}
+		}
+	}
 	a.setup = setupFlow{skipped: skipped}
+	if len(later) > 0 {
+		a.noteFacts(setupLaterWord + " · " + strings.Join(later, " · "))
+	}
 	if !config.APIKeyConfigured(dir) {
 		word := setupNoKeyWord
 		facts := []string{config.APIKeyEnv}
@@ -258,6 +276,34 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 // conversation can be typed into, and the refusal on the first turn will say the
 // rest in its own words.
 const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or export " + config.APIKeyEnv
+
+// setupSkipKeysWord is what esc does, said the same way on every step of the
+// flow. It is a constant because it was SIX spellings of one key and one of them
+// disagreed with the other five: the browser-connect step said `esc not now`,
+// which reads as a promise that the question comes back, and esc on any step
+// stamps `setup_seen_at` and the crew and budget questions never open again
+// ([app.endSetup]).
+const setupSkipKeysWord = "esc skips setup"
+
+// setupLaterWord leads the line [app.endSetup] leaves behind when esc walked
+// past a question. The doors follow it, and only the doors onto questions this
+// person was NOT asked — a line naming a question somebody just answered would
+// be the screen arguing with them.
+const setupLaterWord = "still yours to set"
+
+// setupStepLater is the door onto ONE question esc walked past, said as the
+// thing a person would do rather than as the name of a step. The key step has
+// none: a machine with no key says so in [setupNoKeyWord] already, and two lines
+// about one absence is one too many.
+func setupStepLater(step setupStep) string {
+	switch step {
+	case setupCrew:
+		return "/crew picks the five models " + product + " works with"
+	case setupBudget:
+		return "/budget sets what it may spend"
+	}
+	return ""
+}
 
 // setupNoKeyConnectWord is the local default-provider form. It points at the
 // next ordinary act rather than at a buried settings row: the draft is kept,
@@ -404,7 +450,7 @@ func (a *app) adoptOpenRouterFlow(msg openRouterFlowMsg) tea.Cmd {
 	}
 	a.setup.authStarting = false
 	if msg.err != nil {
-		a.setup.refusal = msg.err.Error()
+		a.setup.refusal = setupConnectFailedWord
 		a.setup.authID = 0
 		a.touch()
 		return nil
@@ -426,7 +472,7 @@ func (a *app) adoptOpenRouterFlow(msg openRouterFlowMsg) tea.Cmd {
 		return nil
 	}
 	if err := processOpener(a.setup.authLink); err != nil {
-		a.setup.refusal = err.Error() + " · open the link above"
+		a.setup.refusal = setupBrowserWord
 	}
 	a.touch()
 	flow, ctx := msg.flow, a.ctx
@@ -448,7 +494,7 @@ func (a *app) adoptOpenRouterKey(msg openRouterKeyMsg) tea.Cmd {
 	a.setup.authLink = ""
 	a.setup.authID = 0
 	if msg.err != nil {
-		a.setup.refusal = msg.err.Error()
+		a.setup.refusal = setupSignInLostWord
 		a.touch()
 		return nil
 	}
@@ -465,7 +511,7 @@ func (a *app) adoptOpenRouterKey(msg openRouterKeyMsg) tea.Cmd {
 		return nil
 	}
 	if err := row.Apply(key); err != nil {
-		a.setup.refusal = err.Error()
+		a.setup.refusal = setupSaid(err, setupSaveFailedWord)
 		a.touch()
 		return nil
 	}
@@ -512,7 +558,7 @@ func (a *app) setupCommit() bool {
 			return true
 		}
 		if err := row.Apply(key); err != nil {
-			s.refusal = err.Error()
+			s.refusal = setupSaid(err, setupSaveFailedWord)
 			return false
 		}
 		return true
@@ -522,7 +568,7 @@ func (a *app) setupCommit() bool {
 			return true
 		}
 		if err := row.Apply(config.CrewPresets[s.crew.cursor]); err != nil {
-			s.refusal = err.Error()
+			s.refusal = setupSaid(err, setupSaveFailedWord)
 			return false
 		}
 		a.refreshSettings()
@@ -561,7 +607,7 @@ func (a *app) setupRail(at int) bool {
 		raw = setupRailDefault(at)
 	}
 	if err := row.Apply(raw); err != nil {
-		s.refusal = err.Error()
+		s.refusal = setupSaid(err, setupSaveFailedWord)
 		return false
 	}
 	s.railText[at] = raw
@@ -569,8 +615,71 @@ func (a *app) setupRail(at int) bool {
 	return true
 }
 
-// setupKeyShapeWord is the one refusal the key step has of its own. Everything
-// else it could say is the row's.
+// ── WHAT THIS SCREEN SAYS WHEN SOMETHING GOES WRONG ─────────────────────────
+//
+// THE FIRST SCREEN OF A FRESH INSTALL MAY NOT PRINT A GO ERROR. Seven of this
+// setup's refusals were `err.Error()`, so the first sentence a new person could
+// be shown — on the one screen where they have done nothing yet and something
+// has already failed — was a wrapped chain like `write config daily_budget_usd:
+// open /home/…/.aforge/config.json: permission denied`. It names a function, a
+// key, a path inside the program's own storage and an errno, and there is no act
+// in it. Three lines away this same file already had the right shape twice
+// ([setupKeyShapeWord], [setupNoKeyWord]): the cause, and then what to do.
+//
+// THE THREE THAT ARE ALWAYS THE MACHINE'S are authored outright — nothing a
+// browser trip can return is a sentence for a person — and the four that write
+// through a settings row go through [setupSaid], which keeps the REGISTRY's own
+// refusal and replaces the operating system's.
+const (
+	// setupConnectFailedWord is the browser sign-in that never started: the
+	// listener, the flow, the round trip to openrouter.
+	setupConnectFailedWord = "could not reach openrouter to start the sign-in — check the network, or paste a key instead"
+	// setupBrowserWord is the browser that would not open. The link is on the
+	// screen directly above it, which is the whole of what to do about it.
+	setupBrowserWord = "could not open your browser · open the link above"
+	// setupSignInLostWord is the trip that started and did not come back —
+	// closed tab, refused page, a connection that went away mid-flight.
+	setupSignInLostWord = "the browser sign-in did not finish — enter tries again, or paste a key instead"
+	// setupSaveFailedWord is the answer that could not be written down. It names
+	// no path: the folder is aforge's own, a person who needs its name asks
+	// /status, and a permission on a directory is the one thing they can act on.
+	setupSaveFailedWord = "could not save that — the folder aforge keeps your settings in is not writable"
+)
+
+// setupSaid is the line under the box for an error a SETTINGS ROW handed back:
+// the row's own words where it wrote them for a person, and the authored
+// sentence where the operating system wrote them for a program.
+//
+// THE TEST IS STRUCTURAL AND NOT A GUESS AT THE PROSE. Every refusal the
+// registry authors is a plain fmt.Errorf with nothing wrapped inside it —
+// `that's not a dollar amount — a number, or none for no limit`,
+// `pick one of: frugal, balanced, max`, `OpenRouter key is set by
+// OPENROUTER_API_KEY` — while every failure that came off the disk is wrapped
+// around the operating system's own error (internal/config's
+// writeProfileValues wraps each one with %w). So an error that wraps another
+// error is the machine talking, and an error that wraps nothing is a person's
+// sentence this screen has no business rewriting. The two file errors are
+// checked as well, for the writer that hands one back unwrapped.
+//
+// It is the settings panel's own bargain kept on this screen: that panel draws
+// `item.row.Apply`'s refusal as it stands (settings.go's [app.applySetting]),
+// because the rows are written to be read.
+func setupSaid(err error, instead string) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Unwrap(err) != nil || errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrNotExist) {
+		return instead
+	}
+	if said := strings.TrimSpace(err.Error()); said != "" {
+		return said
+	}
+	return instead
+}
+
+// setupKeyShapeWord is the one refusal the key step has about the SHAPE of what
+// was typed. Everything else it could say is either the row's or one of the
+// four sentences above.
 const setupKeyShapeWord = "not the shape of an openrouter key — they start with sk-or-"
 
 // setupBudgetDefault is the ceiling enter accepts, spelled from the one
@@ -631,9 +740,21 @@ func (a *app) setupRailWord(at int) string {
 func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	pal := a.pal
 	s := &a.setup
-	// The block is as wide as a sentence is comfortable to read, and narrower
-	// on a window that has less: the same ceiling a note wraps at.
-	inner := min(width-4, setupWidth)
+	// ── ONE RULE, ONE MEASURE, FOR THE TWO SCREENS THE WORDMARK IS DRAWN ON ───
+	//
+	// This block and the greeting that replaces it are the ONLY two screens that
+	// draw the wordmark, and they used to be laid out by two different rules:
+	// this one took an exact half of a sixty-four-cell measure of its own, the
+	// greeting takes two fifths of the slack over [welcomeUnitWidth]. At 160x50
+	// that put the setup's wordmark at row 18 column 49 and the identical
+	// letterform, one keypress later, at row 17 column 43 — a six-column jump on
+	// the one object that is supposed to say "this is still the same program".
+	//
+	// So the measure and the lift are the greeting's, named from its own
+	// constants rather than copied: `welcomeUnitWidth` for the width the block is
+	// centred on, and [welcomeAbove] for how much of the slack goes over it.
+	// [setupWidth] is gone with the second rule it was the only user of.
+	inner := min(width-4, welcomeUnitWidth)
 	if inner < 20 {
 		inner = max(width-2, 1)
 	}
@@ -644,15 +765,29 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	pad := strings.Repeat(" ", lead)
 
 	body := make([]string, 0, 24)
+	// soft marks the rows this block CAN DO WITHOUT, row for row with body.
+	//
+	// A SHORT WINDOW GIVES UP ROWS FROM THE MIDDLE AND NEVER FROM THE FOOT. The
+	// block used to be centred and then cut at `height`, so a twelve-row split
+	// pane drew the wordmark, the question and four lines of prose and stopped:
+	// no `›` box, no `enter connects in browser · paste a key · esc not now`,
+	// and therefore no visible way off a screen that looked like an install that
+	// had hung. The prose is what a person can be without; the box they type
+	// into and the line naming the way out are not. It is the same law
+	// [homeBands] keeps for a card — the bands go, the title stays.
+	soft := make([]bool, 0, 24)
 	caretRow, caretX := -1, 0
-	add := func(line string) { body = append(body, line) }
+	add := func(line string) { body, soft = append(body, line), append(soft, false) }
+	// addSoft adds a row that a window too short for the whole block gives up,
+	// last one first.
+	addSoft := func(line string) { body, soft = append(body, line), append(soft, true) }
 
 	// The wordmark, at rest and muted: the same letterforms the welcome box
 	// draws, so the screen after this one reads as the same place.
 	for _, row := range wordmarkRows(pal.ascii) {
-		add(pal.muted(row))
+		addSoft(pal.muted(row))
 	}
-	add("")
+	addSoft("")
 	add(pal.dim(setupTitle(s)))
 	add("")
 
@@ -662,12 +797,12 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 		case s.authStarting:
 			add(pal.ink("connecting openrouter"))
 			for _, line := range wrap(setupConnectStartingWord, inner) {
-				add(pal.dim(line))
+				addSoft(pal.dim(line))
 			}
 		case s.authFlow != nil:
 			add(pal.ink("finish connecting openrouter"))
 			for _, line := range wrap(setupConnectWaitingWord, inner) {
-				add(pal.dim(line))
+				addSoft(pal.dim(line))
 			}
 			if s.authLink != "" {
 				add("")
@@ -684,7 +819,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			}
 			add(pal.ink(heading))
 			for _, line := range wrap(word, inner) {
-				add(pal.dim(line))
+				addSoft(pal.dim(line))
 			}
 			add(pal.dim("or get a key at ") + pal.ink(linkify(setupKeyURL, setupKeyURL)))
 			add("")
@@ -696,7 +831,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	case setupCrew:
 		add(pal.ink("the crew"))
 		for _, line := range wrap(setupCrewWord, inner) {
-			add(pal.dim(line))
+			addSoft(pal.dim(line))
 		}
 		add("")
 		for _, line := range s.crew.rows(inner, s.crew.height(), pal, -1, a) {
@@ -707,7 +842,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 		// with, in the same words, written through the same registry rows.
 		add(pal.ink(setupRailsTitle))
 		for _, line := range wrap(setupRailsWord, inner) {
-			add(pal.dim(line))
+			addSoft(pal.dim(line))
 		}
 		add("")
 		for at, rail := range setupRails {
@@ -735,9 +870,9 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 				}
 			}
 		}
-		add("")
+		addSoft("")
 		for _, line := range wrap(setupRailsRest, inner) {
-			add(pal.dim(line))
+			addSoft(pal.dim(line))
 		}
 	}
 	if s.refusal != "" {
@@ -749,9 +884,15 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	}
 	add(pal.dim(a.setupKeysWord()))
 
-	// Centred vertically, and never past the top: a window shorter than the
-	// block shows the head of it, which is where the question is.
-	top := (height - len(body)) / 2
+	// A SHADE ABOVE THE MIDDLE, WHICH IS WHERE A CENTRED THING LOOKS CENTRED, and
+	// it is the greeting's own arithmetic rather than a second copy of it
+	// ([welcomeAbove] states why two fifths and not a half). Never past the top:
+	// a window shorter than the block shows the head of it, which is where the
+	// question is.
+	// AND WHAT WILL NOT FIT IS GIVEN UP BEFORE THE BLOCK IS PLACED, out of its
+	// middle, so that the two rows a person acts on are still on the screen.
+	body, caretRow = setupTrim(body, soft, caretRow, height)
+	top := welcomeAbove(len(body), height-len(body))
 	if top < 0 {
 		top = 0
 	}
@@ -765,16 +906,56 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
-	if len(lines) > height {
-		lines = lines[:height]
+	caretY := top + caretRow
+	if over := len(lines) - height; over > 0 {
+		// THE LAST RESORT TAKES THE HEAD AND NOT THE FOOT. Every soft row has
+		// already gone and the block is still taller than the window, so what is
+		// left is the question, the box and the keys — and of those three the
+		// one a person can do without is the one at the top.
+		lines = lines[over:]
+		caretY -= over
 	}
 	a.caret = caretRow >= 0
-	return lines, lead + caretX, top + caretRow
+	return lines, lead + caretX, caretY
 }
 
-// setupWidth is the block's ceiling in cells. Sixty-four is a sentence's width
-// on this surface — the same figure a note stops wrapping at.
-const setupWidth = 64
+// setupTrim gives the window back the rows it does not have, taking them from
+// the block's MIDDLE — the prose and the wordmark, last one first — and never
+// from its foot, where the box and the keys line are.
+//
+// The caret rides the trim: it is a row of this block and not a number about the
+// screen, so a line dropped above it moves it up with everything else.
+func setupTrim(body []string, soft []bool, caret, height int) ([]string, int) {
+	over := len(body) - height
+	if over <= 0 {
+		return body, caret
+	}
+	drop := make(map[int]bool, over)
+	for at := len(body) - 1; at >= 0 && over > 0; at-- {
+		if !soft[at] || at == caret {
+			continue
+		}
+		drop[at] = true
+		over--
+	}
+	out := make([]string, 0, len(body))
+	moved := caret
+	for at, line := range body {
+		if drop[at] {
+			if caret >= 0 && at < caret {
+				moved--
+			}
+			continue
+		}
+		out = append(out, line)
+	}
+	return out, moved
+}
+
+// THERE IS NO setupWidth ANY MORE. It was sixty-four — a sentence's comfortable
+// width — and it was the second of the two measures that made the wordmark jump
+// six columns between this screen and the greeting. [welcomeUnitWidth] is the
+// one measure now, and [app.setupFrame] says why.
 
 // setupLead is the mark in front of the box, the same one the cursor wears on
 // every list here.
@@ -792,26 +973,32 @@ func setupTitle(s *setupFlow) string {
 // The three questions' own sentences. Each is one calm line about what the
 // answer does — the person's real question here is about money and about
 // which model is which, and both are answered before anything is asked.
+//
+// AND EVERY ONE OF THEM NAMES THE PRODUCT FROM [product] AND NEVER FROM A
+// LITERAL. The wordmark three rows above this prose is drawn from that same
+// constant, and when the two were spelled separately the first screen anybody
+// ever sees said `openaf` in the letterforms and `aforge` in the sentence under
+// them.
 const (
-	setupKeyWord = "aforge talks to models through openrouter, on your key and your card. " +
+	setupKeyWord = product + " talks to models through openrouter, on your key and your card. " +
 		"nothing is sent until you do."
 	setupKeyURL      = "https://openrouter.ai/settings/keys"
 	setupConnectWord = "sign in once in your browser. openrouter makes a key for this profile; " +
-		"aforge stores it on this machine. no prompt is sent and no model is called."
+		product + " stores it on this machine. no prompt is sent and no model is called."
 	setupConnectStartingWord = "opening a private return address on this machine…"
 	setupConnectWaitingWord  = "finish signing in in your browser. this page will continue when openrouter sends you back."
 	// THE CREW STEP SAYS WHAT IT IS NOT. People conflate the crew with the model
 	// they talk to, and /crew's own confirmation already has to say the same
 	// thing after the fact (crew.go's applyCrew). Here it is said before.
-	setupCrewWord = "these five are the models aforge uses on its own behalf — the work " +
+	setupCrewWord = "these five are the models " + product + " uses on its own behalf — the work " +
 		"inside every task, planning, checking, reading every turn. the model you talk to is a separate choice, " +
 		"made with /model."
 	// THE RAILS SCREEN'S OWN WORDS. `none` is offered in the header on purpose:
 	// no limits is a choice a person should SEE, rather than a trick they learn
 	// later from a `0` that reads as its own opposite.
-	setupRailsTitle = "what may aforge spend?"
+	setupRailsTitle = "what may " + product + " spend?"
 	setupRailsWord  = "enter keeps a default · type a number · none means no limit"
-	setupRailsRest  = "the rest — a task, a standing run, aforge's own practice — start with " +
+	setupRailsRest  = "the rest — a task, a standing run, " + product + "'s own practice — start with " +
 		"a small limit or none. change any of them later with /budget."
 )
 
@@ -850,7 +1037,7 @@ func setupBudgetWord(registry *config.Settings) string {
 	if row, ok := registry.Row(config.KeyDailyBudget); ok && strings.TrimSpace(row.Hint) != "" {
 		return strings.ToLower(row.Hint[:1]) + row.Hint[1:]
 	}
-	return "what aforge may spend on your work in a day."
+	return "what " + product + " may spend on your work in a day."
 }
 
 // setupKeysWord is the foot: what enter does RIGHT NOW, and that esc leaves.
@@ -865,20 +1052,27 @@ func (a *app) setupKeysWord() string {
 		}
 		if strings.TrimSpace(s.text) == "" {
 			if a.routerConnect != nil {
-				return "enter connects in browser · paste a key · esc not now"
+				// `esc skips setup`, IN THE SAME WORDS AS THE OTHER FIVE
+				// BRANCHES. It read `esc not now` here alone, which is a promise
+				// about a later — and what esc actually does is stamp
+				// `setup_seen_at` and retire the crew and budget questions for
+				// good ([app.endSetup]). The key is named for what it does, and
+				// the note it leaves behind says where those two questions live
+				// afterwards.
+				return "enter connects in browser · paste a key · " + setupSkipKeysWord
 			}
-			return "enter goes on without a key · esc skips setup"
+			return "enter goes on without a key · " + setupSkipKeysWord
 		}
-		return "enter saves it · esc skips setup"
+		return "enter saves it · " + setupSkipKeysWord
 	case setupCrew:
-		return "↑↓ choose · enter takes " + config.CrewPresets[s.crew.cursor] + " · esc skips setup"
+		return "↑↓ choose · enter takes " + config.CrewPresets[s.crew.cursor] + " · " + setupSkipKeysWord
 	case setupBudget:
 		if strings.TrimSpace(s.text) == "" {
-			return "enter keeps " + a.setupRailWord(s.rail) + " · esc skips setup"
+			return "enter keeps " + a.setupRailWord(s.rail) + " · " + setupSkipKeysWord
 		}
-		return "enter sets " + setupTyped(strings.TrimSpace(s.text)) + " · esc skips setup"
+		return "enter sets " + setupTyped(strings.TrimSpace(s.text)) + " · " + setupSkipKeysWord
 	}
-	return "esc skips setup"
+	return setupSkipKeysWord
 }
 
 // maskTyped is the key as it is being typed: one bullet per character and the

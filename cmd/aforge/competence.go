@@ -19,7 +19,7 @@ func runCompetence(args []string) error {
 
 func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
 	flags := commandFlags("competence")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	modelFlag := flags.String("model", "", "working model whose profile buckets to include")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err

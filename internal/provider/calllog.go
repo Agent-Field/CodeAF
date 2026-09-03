@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -189,7 +190,13 @@ func (c *Client) record(facts recordFacts) {
 	// read where the file is written.
 	model := c.modelFor(facts.request)
 	record := calllog.Record{
-		Time:   logNow().Format("2006-01-02T15:04:05.000Z07:00"),
+		Time: logNow().Format("2006-01-02T15:04:05.000Z07:00"),
+		// The run this call belongs to, read off the context the caller
+		// threaded — the same id that names the debug record's folder and that
+		// the headless verbs publish in their `--json` envelope. A call made
+		// with no run on its context falls back to this process's own, which is
+		// exactly what the record does (internal/trace's RunFrom).
+		Run:    trace.RunFrom(facts.ctx),
 		Phase:  facts.phase,
 		Tag:    callTag(facts.ctx),
 		Node:   callNode(facts.ctx),

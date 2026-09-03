@@ -443,7 +443,7 @@ func rewindSheetAnnotate(rows []rewindSheetRow, transcript []session.DisplayEntr
 		}
 		var segs []string
 		if tools > 0 {
-			segs = append(segs, itoa(tools)+" "+plural("tool", tools))
+			segs = append(segs, toolCallWord(tools))
 		}
 		if len(files) > 0 {
 			segs = append(segs, itoa(len(files))+" "+plural("file", len(files)))

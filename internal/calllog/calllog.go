@@ -89,6 +89,22 @@ type Record struct {
 	// than a counter because several agents in one process append to one file,
 	// and a counter would need a lock that says nothing a random token does not.
 	ID string `json:"id,omitempty"`
+	// Run is the invocation this call belongs to — the id internal/trace mints
+	// at every door, and the same id that names the debug record's folder.
+	//
+	// IT IS WHAT MAKES THIS FILE JOINABLE. A developer who wanted the call
+	// count and the round count of one `aforge do` came here to reconstruct
+	// them, and found rows carrying a tag, a node and a timestamp and nothing
+	// at all naming the run — so attribution was by clock alone, in a file
+	// several runs on one machine append to. The run id is on the row and in
+	// the `--json` envelope the same run printed, and the two are joined by
+	// looking at them.
+	//
+	// It is on BOTH rows of a pair rather than only the start: the end row is
+	// the one that carries the cost and the finish reason, and a reader
+	// filtering the file to one run must not have to pair every row first to
+	// keep the halves that matter.
+	Run string `json:"run,omitempty"`
 	// Phase is "start" on the row written the moment a call goes out, and
 	// ABSENT on the row written when it comes back. One word rather than two,
 	// because the pair is what a reader is looking for: a start with no end
@@ -377,7 +393,47 @@ func Path() string {
 // nothing about a model call may depend on a disk.
 func Append(record Record) {
 	noteLast(record)
+	countCall(record)
 	shared.write(record)
+}
+
+// calls is how many model calls each run this process opened has started. It is
+// kept in memory beside [last] and for the same reason: the figure a headless
+// verb publishes in its `--json` envelope may not depend on whether anybody
+// turned the file on, and AFORGE_CALL_LOG=off must not change what a run
+// reports about itself.
+//
+// COUNTED ON THE START ROW, so a call that is still in flight when the run is
+// priced is counted — it was made, whatever came back — and a retried attempt
+// counts once per attempt, which is what a person reading this file counts too.
+//
+// One entry per run, minted once per door ([trace.Begin]), so the map is a
+// handful of entries in the longest-lived process and never grows per call.
+var calls struct {
+	mutex sync.Mutex
+	by    map[string]int
+}
+
+func countCall(record Record) {
+	if record.Phase != PhaseStart || record.Run == "" {
+		return
+	}
+	calls.mutex.Lock()
+	defer calls.mutex.Unlock()
+	if calls.by == nil {
+		calls.by = make(map[string]int, 2)
+	}
+	calls.by[record.Run]++
+}
+
+// CallsFor is how many model calls one run has made. Zero for a run that has
+// made none, and for a run this process never opened — which is the same
+// answer, and the caller that publishes it is the one that knows whether the
+// run is its own.
+func CallsFor(run string) int {
+	calls.mutex.Lock()
+	defer calls.mutex.Unlock()
+	return calls.by[strings.TrimSpace(run)]
 }
 
 // LastCall is the newest call this process has heard back from: the model that

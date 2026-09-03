@@ -60,11 +60,20 @@ func TestThePickerRowKeepsItsNameAndSpendsFactsInRankOrder(t *testing.T) {
 		// itself, and the fitter spends the line under it instead of the
 		// remainder of this one.
 		{40, "› deepseek/deepseek-v4-flash\n    via coreweave · ▲0.4s · $0.18/M · 1M"},
-		{60, "› deepseek/deepseek-v4-flash via coreweave · ▲0.4s · $0.18/M"},
+		// AT SIXTY THE PRICE STEPS ONE RUNG DOWN ITS OWN LADDER — `$0.18/M` to
+		// `$0.18` — because [rowGutter] is two cells now and the row is one cell
+		// tighter than it was. That is law 2 working: a fact takes the longest
+		// spelling that fits, and the spelling it fell back to is one the row
+		// authored.
+		{60, "› deepseek/deepseek-v4-flash   via coreweave · ▲0.4s · $0.18"},
 		{80, "› deepseek/deepseek-v4-flash      via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M"},
 		{100, "› deepseek/deepseek-v4-flash       via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
-		{120, "› deepseek/deepseek-v4-flash                           via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
-		{160, "› deepseek/deepseek-v4-flash                                                                   via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
+		// AND FROM HERE UP THE ROW STOPS GROWING. Every fact is already said, so
+		// the only thing a wider frame could add is blank cells between the name
+		// and them — which is what [overlayMeasure] is for. 120 and 160 draw the
+		// same hundred-and-two cells and leave the rest of the frame empty.
+		{120, "› deepseek/deepseek-v4-flash         via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
+		{160, "› deepseek/deepseek-v4-flash         via coreweave · ▲0.4s · $0.09/$0.18 per M · 1M · 24t/s · elo 1290"},
 	} {
 		if got := rowfitRow(a, c.width); got != c.want {
 			t.Fatalf("at %d columns the row is\n got %q\nwant %q", c.width, got, c.want)

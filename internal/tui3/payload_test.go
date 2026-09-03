@@ -104,7 +104,7 @@ func TestANoteChipsTheDoorItNames(t *testing.T) {
 	}
 	// AND A WORD THAT ONLY LOOKS LIKE ONE IS NOT PROMISED. The chip's second law
 	// (slashchip.go) survives the move into this lane.
-	plain := noteRows(a, "unknown command: /tsak")
+	plain := noteRows(a, unknownCommandWord("tsak"))
 	if strings.Contains(plain[0], a.pal.chip("/tsak")) {
 		t.Fatalf("a word this surface refuses was chipped as though it ran:\n%q", plain[0])
 	}

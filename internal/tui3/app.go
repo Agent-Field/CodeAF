@@ -722,6 +722,11 @@ type (
 )
 
 type app struct {
+	// ruler measures a string the way the RENDERER will draw it rather than the
+	// way this package would prefer to read it. The two disagree about a
+	// variation-selector emoji and a flag, and the rail bent two cells wherever
+	// one appeared (cellwidth.go).
+	ruler cellRuler
 	ctx   context.Context
 	agent Agent
 	fresh func() (Agent, string, error)
@@ -2107,12 +2112,19 @@ type app struct {
 	resume         func(file string) (Agent, error)
 }
 
-// landingKeysWord is the opening line of every session: the two keys the status
+// landingKeysWord is the opening line of every session: the keys the status
 // line has no room for. It is named because the note that writes it also names
-// the two chords inside it for THE PAYLOAD RULE (payload.go), and a sentence
+// the chords inside it for THE PAYLOAD RULE (payload.go), and a sentence
 // spelled in one place with its keys spelled in another is a sentence that gets
 // reworded while the keys stay where they were.
-const landingKeysWord = "esc interrupts · ctrl+c twice quits"
+//
+// AND THE THIRD CLAUSE IS WHERE `?` IS ADVERTISED. The key is bound over an
+// empty box on both roads (commands.go's [helpAskKey]) and SCREEN 3a's clause is
+// that no key does anything that is not drawn — so the one line every session
+// opens with, which is already about the keys nothing else names, is where it is
+// written down. It is the third and last clause because the two in front of it
+// are about the session a person is in and this one is about the program.
+const landingKeysWord = "esc interrupts · ctrl+c twice quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
@@ -2348,10 +2360,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		a.note(notice)
 	}
 	if a.resumed && a.file != "" {
-		// The journal is named with its machine on a remote session, for /status's
-		// reason (statusnote.go): a path a person is shown is a path they may go
-		// looking for, and this one is not on their disk.
-		a.note("resumed " + a.hostedPath(a.file))
+		a.note(a.resumedNote())
 	}
 	// The opening line says the two keys the status line has no room for. The
 	// other two — /help and ctrl+o — moved to that line's right end this wave
@@ -2407,7 +2416,57 @@ func newApp(ctx context.Context, opts Options) *app {
 // own dim. It is spelled in the hint slot's own grammar — chord, then what it
 // does — and the facts are named rather than recognized, because a note is prose
 // to this surface and only the line that wrote it knows otherwise.
-func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c") }
+func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c", helpAskKey) }
+
+// resumedWord opens the line a session says on the frame it opens over a
+// conversation that already existed.
+const resumedWord = "resumed"
+
+// resumedNote is that whole line, and WHAT IT SAYS IS WHICH CONVERSATION.
+//
+// It used to say where the journal file lives, absolutely, and that was the
+// first thing on the page: four to six wrapped rows of transcript path above the
+// person's own first message, a fifth of a sixty-column screen, broken into
+// seventeen-character stubs. It is a machine's fact standing where a person's
+// first impression goes, and the fact somebody actually wants at that moment is
+// that this is the conversation they left off in — which is its NAME.
+//
+// THE PATH IS NOT LOST, IT IS ASKED FOR: `/status` carries it on its `file` row
+// (statusnote.go), whole, with its machine on a remote session, which is where a
+// person who wants to go and look for the file goes.
+//
+// The ladder ends on the path all the same, because a line that named nothing
+// would be worse than a long one — and there it is written against `$HOME`
+// ([tildePath]) so the commonest journal comes back inside one row, and with its
+// machine on a remote session for /status's reason: a path a person is shown is
+// a path they may go looking for, and this one is not on their disk.
+func (a *app) resumedNote() string {
+	if name := a.resumedName(); name != "" {
+		return resumedWord + " · " + name
+	}
+	return resumedWord + " " + a.hostedPath(tildePath(a.file, a.tilde))
+}
+
+// resumedName is what to call the conversation that just opened: the name it
+// gave itself, and failing that the opening of the first thing the person said
+// in it.
+//
+// IT IS THE RESUME PICKER'S OWN LADDER minus its last rung (resume.go's
+// [humanName]), and it stops one rung early on purpose: that page falls back to
+// the transcript's file name because it is choosing BETWEEN conversations and
+// owes every row something, while this line has a better answer for that case —
+// the path itself, said once, below.
+func (a *app) resumedName() string {
+	if name := a.sessionName(); name != "" {
+		return name
+	}
+	for _, e := range a.entries {
+		if e.kind == entryUser && strings.TrimSpace(e.text) != "" {
+			return openingName(e.text)
+		}
+	}
+	return ""
+}
 
 var _ tea.Model = (*app)(nil)
 
@@ -2493,6 +2552,13 @@ func (a *app) Init() tea.Cmd {
 // here costs one tick on the frames where anything is owed and nothing at all on
 // the rest, because [app.wake] answers nil to a clock that is already running.
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// THE TERMINAL'S ANSWER ABOUT HOW WIDE AN EMOJI IS, taken before anything
+	// else looks at the message. bubbletea acts on this same report to switch
+	// its own renderer and passes it through to us, so reading it here is how
+	// the layout and the paint end up measuring one frame the same way.
+	if mode, ok := msg.(tea.ModeReportMsg); ok {
+		a.ruler.noteModeReport(mode)
+	}
 	model, cmd := a.update(msg)
 	// A TASK BRIEF BEING SHAPED IS THE SECOND THING ARMED HERE, and it is the
 	// colder start of the two. Both doors onto the forming block — `/task` typed
@@ -5592,7 +5658,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// explanation, so the first column steps to ink while the second stays in
 		// the note's own dim. The rows that name a slash command need nothing from
 		// the list — a command wears its chip wherever it is written.
-		help := helpText(a.hostedPath(a.file), a.chords)
+		// AND THE PATH ON ITS LAST ROW IS WRITTEN AGAINST $HOME, for the reason
+		// the opening line of every resumed session is ([app.resumedNote]): an
+		// absolute journal path is four wrapped rows at eighty columns and seven
+		// at sixty, and `~/.aforge/v3/…` is the one shortening that survives being
+		// pasted into a shell. /status still prints it whole.
+		help := helpText(a.hostedPath(tildePath(a.file, a.tilde)), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
 		return nil
 
@@ -5754,6 +5825,23 @@ func (a *app) slash(line string) tea.Cmd {
 		// want, and a command that took a project name would be asking a person
 		// to remember what home exists to show them (home.go).
 		return a.showPage(pageHome)
+
+	case "search":
+		// THE TYPED DOOR ONTO THE SEARCH PLACE, and it takes no argument on
+		// purpose. The place IS a box — typing in it searches and the read goes
+		// out when the box has been quiet for a moment (place_search.go) — so a
+		// query handed in at the command line would be a second way of asking the
+		// same question that could rank its answers differently from the one the
+		// person then keeps typing into.
+		return a.showPage(pageSearch)
+
+	case "spend":
+		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word
+		// was an alias of /cost until this wave, so the one guess a developer makes
+		// for "what has this cost" printed one conversation's figures and never
+		// mentioned the machine-wide ledger. /cost still answers this conversation
+		// and says so on its own row (commands.go).
+		return a.showPage(pageSpend)
 
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
@@ -5971,7 +6059,7 @@ func (a *app) slash(line string) tea.Cmd {
 		if a.droppedLine(line) {
 			return a.edited()
 		}
-		a.note("unknown command: /" + name + " · try /help")
+		a.note(unknownCommandWord(name))
 		return nil
 	}
 }
@@ -7713,12 +7801,18 @@ func firstNonEmpty(values ...string) string {
 
 // dollars formats a running cost the way the status line wants it: cents while
 // the session is cheap, so a first turn is not rendered as $0.00.
+//
+// A POSITIVE AMOUNT NEVER DRAWS AS ZEROS. Under a cent this reads
+// settingspend.go's [subCent], which is the same rule a limit is written by —
+// four places, and a floor under them so a cost too small for four places says
+// `<$0.0001` rather than `$0.0000`. `$0.00` above stays: it is this line's one
+// sanctioned zero and it means nothing has been spent.
 func dollars(usd float64) string {
 	switch {
 	case usd <= 0:
 		return "$0.00"
 	case usd < 0.01:
-		return fmt.Sprintf("$%.4f", usd)
+		return subCent(usd)
 	default:
 		return fmt.Sprintf("$%.2f", usd)
 	}

@@ -286,7 +286,7 @@ func TestATypedDropOnHomeEnteredAtOnceStillAttachesAndStarts(t *testing.T) {
 	if !strings.Contains(sees.text, imageToken(1)) {
 		t.Fatalf("the sentence sent was %q, want the picture named in it", sees.text)
 	}
-	if got := plain(frame(a)); strings.Contains(got, "unknown command") {
+	if got := plain(frame(a)); strings.Contains(got, unknownCommandLead) {
 		t.Fatalf("a typed drop on home was refused as a command:\n%s", got)
 	}
 }

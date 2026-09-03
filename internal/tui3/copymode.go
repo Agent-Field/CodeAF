@@ -299,17 +299,31 @@ func (a *app) copyBlock() {
 // fenceAt is the run of code rows around one row: rows drawn behind the
 // hairline markdown puts down the left of a fenced block (markdown.go).
 func (c *copyMode) fenceAt(at int) (int, int, bool) {
-	if !strings.HasPrefix(strings.TrimLeft(c.text[at], " "), tokens.GlyphCodeGutter) {
+	if !copyCodeRow(c.text[at]) {
 		return 0, 0, false
 	}
 	from, to := at, at
-	for from > 0 && strings.HasPrefix(strings.TrimLeft(c.text[from-1], " "), tokens.GlyphCodeGutter) {
+	for from > 0 && copyCodeRow(c.text[from-1]) {
 		from--
 	}
-	for to < len(c.text)-1 && strings.HasPrefix(strings.TrimLeft(c.text[to+1], " "), tokens.GlyphCodeGutter) {
+	for to < len(c.text)-1 && copyCodeRow(c.text[to+1]) {
 		to++
 	}
 	return from, to, true
+}
+
+// copyCodeRow reports whether a drawn row belongs to a fenced block: it sits
+// behind the hairline markdown puts down the left of one.
+//
+// IT ALSO KNOWS THE CONTINUATION MARKER, and it has to. A code line too long
+// for the frame is wrapped rather than cut (markdown.go's [segmentedMarkdown]),
+// and the row carrying the rest of it opens on [mdContMark] where its
+// neighbours open on spaces — so a run of code rows read by the gutter alone
+// ENDED at the first wrapped line, and `a` selected the top half of a block.
+func copyCodeRow(line string) bool {
+	trimmed := strings.TrimLeft(line, " ")
+	trimmed = strings.TrimPrefix(trimmed, mdContMark)
+	return strings.HasPrefix(trimmed, tokens.GlyphCodeGutter)
 }
 
 // entryAt is the run of rows one block of the frozen list occupies.
@@ -368,7 +382,11 @@ func (a *app) copyYank() tea.Cmd {
 // a note sit on the first row of a block and say who is speaking, which is a
 // fact somebody quoting a conversation usually wants kept. A rail says nothing
 // except "these rows are one thing", which the paste already shows.
-var copyRails = []string{railCont, railContASCII, tokens.GlyphCodeGutter + " "}
+// The wrapped-code row's lead is here for [copyCodeRow]'s reason: a line the
+// renderer split is still one line of source, and a paste that carried `↳ ` into
+// the middle of it would be a paste that does not compile.
+var copyRails = []string{railCont, railContASCII,
+	tokens.GlyphCodeGutter + " ", mdContMark + tokens.GlyphCodeGutter + " "}
 
 // copyClean is one frozen row as it should reach a clipboard: the drawn left
 // rail lifted, and the trailing cells — hover padding, row padding — with it.

@@ -208,7 +208,10 @@ same for the task's page.
 
 Press `enter` on the job's row in the `jobs` section, or click it. Opening a job opens a
 **page**, not a chat: a full-frame card with the name (or `job 4` until one arrives), the
-handle and clock or ending, the command, the log tail, and a foot. The title is the name
+handle and clock or ending (`job 3 · exited 1 · ran 49s` — the same word the section's
+row uses, never the engine's own `failed`), the command, the log tail, and a foot. The
+rule and the foot sit under the last row the page drew unless the log is long enough to
+scroll, in which case they are at the bottom of the frame. The title is the name
 or the handle — never the raw command, which the body draws once. There is no composer on
 it at all.
 
@@ -225,8 +228,21 @@ be short of the ending.
 
 The keys, quoted:
 
-- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
-- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
+- running: `x stop it · c copy path · m puts it in your message · ↑↓ scroll`
+- settled: `c copy path · m puts it in your message · ↑↓ scroll`
+
+**`esc back` is not on either of them, because the head is already saying it** — in the
+right corner of the title row, where your eye lands when the page opens. Naming it again
+at the end of the foot spent two of the page's words on one instruction. Where a long
+name takes the whole head line there is no corner left, and then the foot carries the way
+out, **last**: `x stop it · ↑↓ scroll · c copy path · m puts it in your message · esc back`.
+
+A narrow terminal fits these feet by dropping WHOLE clauses — never half of one — working
+backwards from the end, and the last clause is kept to the last cell there is. So at
+forty columns the running foot reads `x stop it · ↑↓ scroll` and the settled one
+`↑↓ scroll`; `m` and `c` are gone off the line and still work. `x` is first on the running
+foot because stopping something is the one thing on that page you cannot do from anywhere
+else, and the scroll is last because it is the cheapest clause worth keeping.
 
 `x` stops a running job (the tasks page has the confirmation). `m` drops the name, the
 handle, the ending, and the last few log lines into your message box underneath, then
@@ -284,10 +300,10 @@ two cannot disagree.
 
 What each foot means now:
 
-- `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message` — a
+- `x stop it · c copy path · m puts it in your message · ↑↓ scroll` — a
   background job that is still running. The lines above it are its log and they are still
-  arriving. `x` stops it.
-- `esc back · ↑↓ scroll · c copy path · m puts it in your message` — a background job that
+  arriving. `x` stops it. `esc back` is in the head.
+- `c copy path · m puts it in your message · ↑↓ scroll` — a background job that
   has ended. Nothing more is coming; scroll up to read what it wrote.
 - `this task has finished — say it to main` — a **task** that is over, whatever kind it
   was. Nothing more is coming; scroll up to read what it did. Where the task has a parent

@@ -38,6 +38,12 @@ type Options struct {
 	// Tables and code blocks ignore it and take the full Width, because a
 	// figure is looked at rather than read along: narrowing a table to a
 	// sentence's length is how a table becomes soup.
+	//
+	// AND SO DOES A TOKEN THAT CANNOT BE BROKEN — a URL, a path, a hash. It is
+	// given the whole Width before it is cut, for the same reason and on the same
+	// terms ([wrapper.commit]): a link is copied rather than read along, and a
+	// link broken at the measure while the column stood half empty was a link
+	// that did not work.
 	Measure int
 	// Styler paints every cell. Nil renders unpainted text — the honest
 	// headless default, and exactly what a NoColor profile would draw anyway.

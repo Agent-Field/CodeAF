@@ -124,8 +124,8 @@ func TestARunThatDidNotFinishSaysWhyOnStderrAndNeverCallsItAFailure(t *testing.T
 	}
 	stdout, stderr, err := drive(t, headlessRegistry(t, program), "tidy-notes", `{"folder":"inbox"}`, nil)
 	var status exitStatus
-	if !errors.As(err, &status) || status != exitPartial {
-		t.Fatalf("a run that ran and did not finish leaves with %d, got %v", int(exitPartial), err)
+	if !errors.As(err, &status) || status != exitIncomplete {
+		t.Fatalf("a run that ran and did not finish leaves with %d, got %v", int(exitIncomplete), err)
 	}
 	if !strings.Contains(stderr, "it ran out of room before it was finished") {
 		t.Errorf("the reason belongs on stderr, got %q", stderr)
@@ -194,9 +194,9 @@ func TestAQuestionWithNoDefaultStopsTheRunAndIsNeverAnApproval(t *testing.T) {
 			return newHeadlessEnv(nil, nil, approval.Policy{}, manifest, &journal, &progress)
 		})
 	var status exitStatus
-	if !errors.As(runErr, &status) || status != exitPartial {
+	if !errors.As(runErr, &status) || status != exitIncomplete {
 		t.Fatalf("a run stopped by a question ran and did not finish, so it leaves with %d, got %v",
-			int(exitPartial), runErr)
+			int(exitIncomplete), runErr)
 	}
 	if !strings.Contains(stderr, "send it to the whole list?") {
 		t.Errorf("the question it stopped at belongs on stderr, got %q", stderr)
@@ -376,8 +376,8 @@ func TestALongWayThatWouldReachPastTheCeilingIsNotTaken(t *testing.T) {
 		`{"brief":"reconcile the March statement"}`, nil)
 
 	var status exitStatus
-	if !errors.As(err, &status) || status != exitPartial {
-		t.Fatalf("a run that stopped without finishing leaves with %d, got %v", int(exitPartial), err)
+	if !errors.As(err, &status) || status != exitIncomplete {
+		t.Fatalf("a run that stopped without finishing leaves with %d, got %v", int(exitIncomplete), err)
 	}
 	if generalist.ran != 0 {
 		t.Fatalf("a program approved for nothing reached the general worker anyway, %d times", generalist.ran)

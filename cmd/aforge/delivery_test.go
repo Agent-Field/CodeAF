@@ -217,7 +217,7 @@ func TestTheUngroundedGapNoteComesAfterTheWorkAndOnlyOnce(t *testing.T) {
 		timeout: 60 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitPartial {
+	if !asExitStatus(err, &status) || status != exitIncomplete {
 		t.Fatalf("errand: %v, want the partial code\n%s", err, stderr.String())
 	}
 	home := keptHome(stderr.String())

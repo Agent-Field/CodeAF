@@ -94,14 +94,23 @@ const (
 // syscall.
 const pathWordMax = 512
 
-// pathChainMax is how many rows one split path may be reassembled across.
+// pathChainMax is how many CELLS of reassembled text one split path may be put
+// back together from. It was a count of ROWS, and a row is the wrong unit for
+// the thing it is bounding.
 //
-// It is a bound on WORK and not a judgement about names: each extra row is one
-// more stat, and eight of them is a path eight panes wide — a generated file,
-// several directories deep, in a forty-four column frame. It has to be this
-// generous precisely because the narrow frame is the case this whole pass
-// exists for; a path that fits on one row never needed a join.
-const pathChainMax = 8
+// It is a bound on WORK and not a judgement about names: each extension is one
+// more stat. But how many rows a path takes is a fact about the FRAME, not
+// about the path — the same name is three rows at 160 columns and ten at 28 —
+// so a row bound is loosest exactly where paths are shortest and tightest
+// exactly where the narrow frame this whole pass exists for needs it most. A
+// generated file a few directories deep stopped being a link at 28 columns
+// while remaining one at 55, which is the opposite of the intended behaviour.
+//
+// Measured in cells the bound says what it means: text longer than this is not
+// a name, whatever width it was drawn at. It is [pathWordMax], because that is
+// this file's already-written-down answer to how long a name can be, and two
+// numbers for one idea is how they come to disagree.
+const pathChainMax = pathWordMax
 
 // pathSeenMax bounds the memo. A conversation that has named four thousand
 // distinct words is a conversation whose oldest answers are far off screen, and
@@ -622,7 +631,7 @@ func (l linker) join(flats []string, words [][]wordSpan, taken []int, spans [][]
 		bestTo   int
 		bestOpen string
 	)
-	for next := at + 1; next < len(flats) && len(rows) < pathChainMax; next++ {
+	for next := at + 1; next < len(flats) && len(text) < pathChainMax; next++ {
 		if len(words[next]) == 0 || taken[next] > 0 {
 			break
 		}

@@ -32,6 +32,70 @@ import "strings"
 // own, read back as words when it arrived as one token.
 func (a *app) sessionName() string { return readableName(a.title) }
 
+// unnamedConversationWord is what a conversation with no name yet is CALLED in
+// the one column that exists to let a person tell one conversation from
+// another. It is the word this surface already uses for the same fact — the
+// entry line's `new conversation · …`, [hopNewWord] on the ring — rather than a
+// ninth spelling of it.
+const unnamedConversationWord = "new conversation"
+
+// listName is what a conversation is called ON A LIST, and it is [humanName]'s
+// ladder with its last rung taken out.
+//
+// THE DEFECT IT FIXES. That ladder ends at the transcript's own file name, and
+// under Decision 26 a session folder is named with an id, so the row a person is
+// most likely to be standing in — the one they just opened, which nothing has
+// named yet — drew `○ 927D303242f9d00e     aforge-v2 here`. At sixty columns
+// that hex is a third of the row, and it is a machine's word in the one column
+// whose whole job is matching names. It is worse than nothing, too, because
+// title-casing it makes it read as a name SOMEBODY CHOSE: a person scanning for
+// their own conversation has to learn that the capitalised thing is not one.
+//
+// WHAT THE ROW ACTUALLY HAS. A [session.SessionRow] carries the title and the
+// paths and no transcript text at all — no opening line, nothing the person
+// typed — and home may not go and read one, because this list is rebuilt on
+// every frame and reading a transcript here is reading a hundred of them sixty
+// times a second (tui3.go's seam law). So the person's own words are not
+// available to borrow at this layer, and the honest answer is a WORD: the
+// emptiness law says an unknown draws nothing, and where a column cannot be
+// blank it says so in a sentence rather than in hex.
+//
+// THE FILE NAME'S RUNG SURVIVES FOR THE ONE CASE IT WAS RIGHT ABOUT: a stem that
+// genuinely reads as words — a folder somebody or some other tool named
+// `port-the-parser` — is still a better name than a generic one, and
+// [idShaped] is the guard that tells the two apart.
+func listName(title, transcript string) string {
+	if name := strings.TrimSpace(title); name != "" {
+		return titleCase(unpackName(name))
+	}
+	if stem := strings.TrimSuffix(sessionStem(transcript), ".jsonl"); stem != "" && !idShaped(stem) {
+		return titleCase(unpackName(stem))
+	}
+	return unnamedConversationWord
+}
+
+// idShaped reports whether a name is a MACHINE'S name rather than a person's:
+// a timestamp, a hex tail, a ULID, a folder minted by a counter.
+//
+// It is [readableName]'s own guard asked as a question instead of applied as a
+// rewrite, and it is deliberately the same guard: two answers to "is this a
+// name or an id" would drift, and the day they disagreed one surface would
+// title-case what the other refused to draw.
+func idShaped(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return true
+	}
+	for _, segment := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '_' || r == '-' || r == ' ' || r == '.'
+	}) {
+		if !wordish(segment) {
+			return true
+		}
+	}
+	return false
+}
+
 // readableName turns a one-token machine name into words, and leaves everything
 // else exactly as it found it.
 //

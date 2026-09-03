@@ -225,8 +225,33 @@ func TestAnotherWindowWithNoNameSaysOnlyThatItIsAnotherWindow(t *testing.T) {
 	if !strings.Contains(row, taskAwayWord) {
 		t.Fatalf("the row does not say where the work is:\n%s", row)
 	}
-	if strings.Contains(row, taskAwayWord+railSep) {
-		t.Fatalf("an unnamed window left a separator standing in for its name:\n%s", row)
+	// THE MISSING NAME IS ABSENT, NOT BLANK — asked of the note itself rather
+	// than by hunting for `another window · ` in the drawn row.
+	//
+	// WHY THIS MOVED. The row's tail used to be cells laid out with spaces
+	// between them, so `another window` was the only thing on the row that could
+	// put a ` · ` after itself and looking for one was the same question as this
+	// one. The tail is now one ranked row of facts joined by [railSep]
+	// (tasksplace.go's fitter), and the fact after the note is the AGE — `now`,
+	// on every row another window is still holding — so the old spelling read the
+	// join between two true facts as a missing third one. The law it was written
+	// for is [taskAwayNote]'s and is unchanged: no separator with nothing behind
+	// it. So that is what is asked, at the seam that decides it and again on the
+	// drawn row, where a blank between two separators is the shape the defect
+	// would take.
+	note := ""
+	for _, item := range a.tasksFiltered().items {
+		if item.entry.Title == "Sweep the call sites" {
+			note = tasksNote(item)
+		}
+	}
+	if note != taskAwayWord {
+		t.Fatalf("an unnamed window's note is %q, want the bare %q", note, taskAwayWord)
+	}
+	for _, seg := range strings.Split(strings.TrimSpace(row), railSep) {
+		if strings.TrimSpace(seg) == "" {
+			t.Fatalf("an unnamed window left a separator standing in for its name:\n%s", row)
+		}
 	}
 }
 

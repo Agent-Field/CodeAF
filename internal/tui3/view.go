@@ -1,9 +1,11 @@
 package tui3
 
 import (
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/text/unicode/norm"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -226,8 +228,53 @@ func (a *app) View() tea.View {
 	return v
 }
 
-// frame is the whole screen and where the caret sits in it.
+// frame is the whole screen and where the caret sits in it, COMPOSED.
+//
+// THE COMPOSITION IS THE LAST THING THAT HAPPENS TO A FRAME, AND IT IS HERE
+// BECAUSE OF ONE RUNE. A conversation named `the café pricing page` is stored
+// the way a Mac's own keyboard writes it — `e` followed by U+0301, the combining
+// acute — and every layer of ours carries the mark faithfully: [titleCase],
+// [fit] and ansi.Truncate all hand it on, and tmux captures it when a shell
+// prints it. It is lost BELOW us. bubbletea asks the terminal for mode 2027 at
+// startup and only switches its cell buffer to grapheme widths once the terminal
+// answers yes; tmux answers no, so the buffer resets the cell it is filling
+// before a zero-width rune arrives and the accent lands on a cell of its own,
+// where it is either dropped or drawn beside the letter it belongs to. The
+// surface then renames somebody's conversation, which is the one thing
+// [titleCase] promises never to do.
+//
+// NFC is the fix at OUR level: `e` + U+0301 becomes the single rune `é`, which
+// is one cell whichever width table the buffer is using, and no information is
+// lost — NFC is a canonical mapping, so what a person typed and what we draw are
+// the same text.
+//
+// AND IT COSTS NOTHING ON THE FRAMES THAT DO NOT NEED IT, WHICH IS ALL BUT A
+// FEW. This runs on every draw and this surface is under an allocation law —
+// PERF.md's four-thousand-line scroll ceiling is measured through this very
+// function — so what it must not do is build a second copy of the screen sixty
+// times a second. [norm.Form.String] is written for exactly that: it spans the
+// string for the first byte composition could change and, finding none, HANDS
+// BACK THE STRING IT WAS GIVEN, with no allocation at all.
+//
+// SO THERE IS NO GATE IN FRONT OF IT, and that is a decision and not an
+// oversight. Two were tried. [norm.Form.IsNormalString] answers the same
+// question and costs one allocation per call whatever it finds — an allocation
+// per keystroke to avoid a call that allocates nothing. A hand-rolled walk
+// looking for a combining mark allocates nothing and is about twice as quick on
+// a frame of this program's own chrome (10µs against 21µs on six kilobytes),
+// and it buys that by answering a question norm is the authority on, in a
+// second place, for a saving smaller than one entry render.
+// [TestComposingAFrameCostsNothingWhenThereIsNothingToCompose] is the law that
+// holds the fast path, so a normaliser that rebuilt the frame — [norm.Form.Bytes]
+// is the one somebody reaches for — fails rather than quietly costing a frame.
 func (a *app) frame() (string, int, int) {
+	body, caretX, caretY := a.frameBody()
+	return norm.NFC.String(body), caretX, caretY
+}
+
+// frameBody is the frame as every surface in this package builds it, before the
+// one composition pass [app.frame] puts over the whole of it.
+func (a *app) frameBody() (string, int, int) {
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)

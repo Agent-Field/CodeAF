@@ -1776,6 +1776,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// device had been stopped. It cannot any more, and the words a person brings
 		// to that are the two sentences they just read on their own screen.
 		{"it said paired and then that the device was stopped, what happened?", "reaching-this-machine-without-ssh"},
+		// THE TERMINAL VERBS. Six of them — `why`, `notebook`, `competence`,
+		// `services`, `wake` and `rebuild` — were in no page at all, so a person
+		// who asked the chat how to see what a piece of work did was answered by
+		// improvisation. These are the words a developer actually types, and the
+		// gate that would have caught the omission is
+		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
+		{"can I run this without the chat", "running-from-the-terminal"},
+		{"what does aforge wake do", "running-from-the-terminal"},
+		// "how do I see what a task did" is deliberately NOT here: in the chat a
+		// task's own room is that question's answer, and how-tasks-run rightly
+		// wins it. The terminal reader is asked for in the words of the thing it
+		// reads — a step of a headless run, a node, its turns and tool calls.
+		{"how do I see what one step of a headless run did", "running-from-the-terminal"},
+		{"how do I read a node's record", "running-from-the-terminal"},
+		{"show me the turns and tool calls of one piece of work", "running-from-the-terminal"},
+		{"how do I read a headless run's record afterwards", "running-from-the-terminal"},
+		{"what have I spent today from the terminal", "running-from-the-terminal"},
+		{"how do I retract a lesson aforge learned", "running-from-the-terminal"},
+		{"what is aforge measured as being good at", "running-from-the-terminal"},
+		{"how do I stop a dev server aforge started", "running-from-the-terminal"},
+		{"what background processes are still running", "running-from-the-terminal"},
+		{"how do I replay the journal and rebuild the tables", "running-from-the-terminal"},
+		{"which commands need no api key", "running-from-the-terminal"},
+		{"how do I read a plan file back as a table", "running-from-the-terminal"},
+		{"why does aforge show --help print a file error", "running-from-the-terminal"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

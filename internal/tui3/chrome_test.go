@@ -161,7 +161,7 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	if got := settingTabs[a.sheet.tab]; got != tabSession {
 		t.Fatalf("the panel opened on %q, want %q", got, tabSession)
 	}
-	for _, want := range []string{"memory", "fallback models", "ssh reuse"} {
+	for _, want := range []string{"memory", "fallback models"} {
 		if !sheetHas(a, want) {
 			t.Fatalf("the Session tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
 		}
@@ -169,10 +169,12 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	if sheetHas(a, "compact at") {
 		t.Fatal("a Context row is showing on the Session tab")
 	}
-	// AND THE THREE QUESTIONS THAT LEFT IT ARE GONE FROM IT. The gate belongs to
-	// Safety, the task rows to Tasks and the money to Spending
-	// (docs/design/spending/DESIGN.md's information hierarchy).
-	for _, gone := range []string{"ask before running", "per conversation", "tasks at once"} {
+	// AND THE FOUR QUESTIONS THAT LEFT IT ARE GONE FROM IT. The gate belongs to
+	// Safety, the task rows to Tasks, the money to Spending
+	// (docs/design/spending/DESIGN.md's information hierarchy) — and the ssh
+	// link to Workspace, because it lands next launch and is a fact about this
+	// machine rather than about the conversation in front of the reader.
+	for _, gone := range []string{"ask before running", "per conversation", "tasks at once", "ssh reuse"} {
 		if sheetHas(a, gone) {
 			t.Fatalf("%q is still on the Session tab:\n%s", gone, strings.Join(sheetLabels(a), "\n"))
 		}
@@ -197,6 +199,17 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	drive(t, a, key("left"), key("left"), key("left"))
 	if got := settingTabs[a.sheet.tab]; got != tabSession {
 		t.Fatalf("← past the first tab landed on %q", got)
+	}
+	// AND THE SSH ROWS ARE ON WORKSPACE, the tab about what this machine reaches
+	// on your behalf, two steps right of the one they used to be on.
+	drive(t, a, key("right"), key("right"))
+	if got := settingTabs[a.sheet.tab]; got != tabWorkspace {
+		t.Fatalf("→ landed on %q, want %q", got, tabWorkspace)
+	}
+	for _, want := range []string{"ssh reuse", "ssh heartbeat", "ssh missed heartbeats", "ssh traffic"} {
+		if !sheetHas(a, want) {
+			t.Fatalf("the Workspace tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
+		}
 	}
 	for i := 0; i < len(settingTabs)+3; i++ {
 		drive(t, a, key("right"))
@@ -479,7 +492,7 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.openSettings()
 
-	spans := tabSpans()
+	spans := tabSpans(a.width, a.sheet.tab)
 	_, hits, _, _ := a.sheetFrame(a.width, a.height)
 	bar := -1
 	for y, hit := range hits {

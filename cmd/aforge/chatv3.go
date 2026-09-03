@@ -93,8 +93,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	maxCost := flags.Float64("max-cost", envFloat("AFORGE_MAX_COST"),
 		"how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)")
 	debug := flags.Bool("debug", false,
-		"keep the full record of this run — call bodies, tool calls and the choices made — "+
-			"in a folder of its own under the state root (env AFORGE_DEBUG; /debug turns it on mid-session)")
+		debugFlagHelp()+" · /debug turns it on mid-session")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}

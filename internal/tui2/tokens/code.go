@@ -85,7 +85,17 @@ const (
 	GlyphProseBullet = "·"
 	// GlyphProseQuote is the gutter bar down the left of a blockquote —
 	// structure without boxes (5.21), one column wide.
-	GlyphProseQuote = "│"
+	//
+	// IT IS THE HAIRLINE AND NO LONGER THE BOX RULE. It was `│` — the same byte
+	// the spawn tree's trunk ([GlyphTreeVert]) and every vertical rule in the
+	// product are drawn from — and a blockquote sat at the left margin of the
+	// chat feed while the margin column's own divider ran down the right of the
+	// very same rows, so on a screen with no other vertical rules two `│`
+	// columns meaning unrelated things read as one broken frame. The fence
+	// beside it already owned the right mark for "this block is set apart", so
+	// the quote takes [GlyphCodeGutter]'s byte instead: an eighth of a cell,
+	// which is a margin and cannot be mistaken for a frame.
+	GlyphProseQuote = "▏"
 	// GlyphCodeGutter is the hairline down the left of a fenced code block. It
 	// is one eighth of a cell of ink: enough to bound the block on the side the
 	// eye returns to, and far too little to read as a border. There is no line

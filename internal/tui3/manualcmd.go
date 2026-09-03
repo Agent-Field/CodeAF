@@ -40,17 +40,32 @@ const manualChatSections = 2 * manual.DefaultResults
 // though it had been asked for, which would read as though the page existed —
 // and the refusal prints the pages that do exist, because somebody one letter
 // away from the name they wanted should not have to guess at it twice.
+// THE LISTING IS A BLOCK AND NOT PROSE, and that is the whole of row 7 of the
+// polish audit. [manual.Corpus.Listing] builds one line per page — the name a
+// person types, then the title the page gives itself — and an ordinary note
+// RE-FLOWS its text to the frame ([app.note], render.go's [wrap]). So a title
+// longer than the room left after the name column wrapped, and its last word
+// landed on the next line flush at the column the page NAMES are in: the first
+// list of pages anybody ever sees had a page called `later` on it, and typing
+// `/manual later` then answered "there is no manual page named later". A
+// listing that shows a page that does not exist is worse than one that shows
+// fewer pages.
+//
+// [app.noteBlock] is the door for exactly this shape — a note whose LINE
+// STRUCTURE IS ITS MEANING — and it cuts a line too wide rather than re-flowing
+// it, so a long title now ends in an ellipsis on its own row and the name
+// column is the only thing at the margin.
 func (a *app) runManualCommand(rest string) {
 	asked := strings.TrimSpace(rest)
 	switch {
 	case asked == "":
-		a.note(manual.Chat().Listing())
+		a.noteBlock(manual.Chat().Listing())
 	case strings.ContainsAny(asked, " \t"):
 		a.runManualQuestion(asked)
 	default:
 		text, found := manual.Chat().Page(asked)
 		if !found {
-			a.note("there is no manual page named " + asked + "\n\n" + manual.Chat().Listing())
+			a.noteBlock("there is no manual page named " + asked + "\n\n" + manual.Chat().Listing())
 			return
 		}
 		a.note(text)
@@ -67,7 +82,9 @@ func (a *app) runManualQuestion(question string) {
 		// aforge worth saying — it usually means the answer is "no, it does not
 		// do that" — and the pages go under it so the next question is one
 		// keystroke away rather than a guess.
-		a.note("the manual has nothing on that, which usually means aforge does not do it\n\n" + manual.Chat().Listing())
+		// AND THE LISTING UNDER IT IS A BLOCK for [app.runManualCommand]'s reason
+		// exactly: one page per line, cut rather than re-flowed.
+		a.noteBlock("the manual has nothing on that, which usually means aforge does not do it\n\n" + manual.Chat().Listing())
 		return
 	}
 	a.note(manual.RenderWhole(sections))

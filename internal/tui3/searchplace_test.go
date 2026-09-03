@@ -130,7 +130,9 @@ func TestSearchCursorStopsOnlyOnConversationRows(t *testing.T) {
 	stops := 0
 	for i, row := range rows {
 		_, ok := r.at(i)
-		want := strings.HasPrefix(row, tokens.GlyphPromptChat+" ")
+		// The body's one-cell lead comes off first: every row of this place hangs
+		// from column 2 now, the way tasks, standing and spend already did.
+		want := strings.HasPrefix(row, " "+tokens.GlyphPromptChat+" ")
 		if ok != want {
 			t.Fatalf("row %d mapped=%v, conversation-row=%v: %q", i, ok, want, row)
 		}

@@ -52,9 +52,20 @@ import (
 // name and the first of them. Both are the values every list on this surface
 // already used; they are named here because the arithmetic now happens in one
 // place instead of in each caller's head.
+// rowGutter IS TWO CELLS AND NOT ONE. A single space is not a gutter, it is a
+// word space: at eighty columns the Spending tab drew
+//
+//	per task no limit of its own · it spends against the day and this conversation
+//
+// — a label and a tail that exactly filled the frame, and the eye read `per task
+// no limit` as one sentence. Every other row on that tab had a wide gutter, so
+// the one row that ran out of room was also the one row whose column structure
+// disappeared, which is the opposite of what a fitter is for. At two, a tail
+// that cannot leave two cells drops its last FACT instead (law 3), which is a
+// row that still reads.
 const (
 	rowSep    = " · "
-	rowGutter = 1
+	rowGutter = 2
 )
 
 // rowUnbounded is the width of a frame with no edge — what [rowAll] fits

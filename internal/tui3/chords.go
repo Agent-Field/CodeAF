@@ -71,6 +71,20 @@ type chordSpelling struct {
 const (
 	chordAltWord  = "alt+"
 	chordMetaWord = "⌥"
+	// chordCmdWord is THE SECOND MODIFIER WITH TWO KEYCAPS, and it is here for
+	// the first one's reason exactly. The send-and-wait chord is authored
+	// `cmd+enter` (steer.go's [parkKey]) because that is what it is called on the
+	// keyboard it was chosen for — and until this wave that literal was drawn on
+	// every platform, so the key sheet on a Linux box named a modifier that
+	// keyboard does not have. The keystroke itself arrives as `super+enter` or
+	// `meta+enter` there, which is why steer.go binds both names; this is the
+	// half a person READS.
+	chordCmdWord = "cmd+"
+	// chordCmdGlyph is what a Mac's keycap says, and chordSuperWord is what every
+	// other keyboard says on the same key — the Windows key, the Super key, the
+	// one with a diamond on it.
+	chordCmdGlyph  = "⌘"
+	chordSuperWord = "super+"
 	// chordCtrlWord is the SECOND encoding's prefix, spelled once for the same
 	// reason: it is `ctrl+` on every keyboard there is — a Mac's Control key wears
 	// the same word — so it has one spelling and no platform reading at all.
@@ -146,11 +160,29 @@ func chordTerminal(env tokens.Env) (name, setting string) {
 // without touching it would be the first chord spelled two ways on one screen.
 // The modifier is the only part that differs, so the modifier is the only part
 // this knows about.
+// IT SUBSTITUTES TWO MODIFIERS AND NOT ONE. `alt+` is the class the places are
+// built on; `cmd+` is the one chord on the send (steer.go), and it is spelled
+// here for the same reason and through the same door — a sentence that named a
+// modifier straight out of a constant was the defect on both.
 func (c chordSpelling) say(sentence string) string {
-	if c.meta == "" || c.meta == chordAltWord {
-		return sentence
+	if c.meta == chordMetaWord {
+		sentence = strings.ReplaceAll(sentence, chordAltWord, c.meta)
 	}
-	return strings.ReplaceAll(sentence, chordAltWord, c.meta)
+	return strings.ReplaceAll(sentence, chordCmdWord, c.cmdWord())
+}
+
+// cmdWord is what the send modifier is CALLED on this terminal's keycaps: `⌘` on
+// a Mac and `super+` everywhere else.
+//
+// THE ZERO VALUE ANSWERS `super+`, which is right rather than merely safe: a
+// spelling nobody detected is a spelling built without a door, and every
+// keyboard that is not a Mac's wears the same word on this key. The Mac reading
+// is the one that has to be discovered, exactly as `⌥` is.
+func (c chordSpelling) cmdWord() string {
+	if c.meta == chordMetaWord {
+		return chordCmdGlyph
+	}
+	return chordSuperWord
 }
 
 // placeHint is the line under the composer, IN THIS TERMINAL'S OWN SPELLING.
@@ -317,7 +349,15 @@ func (a *app) chordNote(width int) string {
 	if !a.chordLost || a.chords.meta != chordMetaWord || width < 4 {
 		return ""
 	}
-	return " " + a.pal.dim(fit(a.chords.chordOptionWords(), width-2))
+	// AND IT DROPS ITS REMEDY WHOLE RATHER THAN SLICING IT. The sentence is a
+	// diagnosis with the fix hung off a dash — `your terminal sends alt as a
+	// letter — turn on "use option as meta" in Terminal: Profiles → Keyboard` —
+	// and a character ruler took sixty columns straight through the middle of the
+	// quoted menu item, so the line named a setting and then ate it. [noteFit] is
+	// the statement fitter — this row is a note and not a key sheet — and it takes
+	// the dash clause whole, leaving the diagnosis, which is the half that tells a
+	// person the chords are not broken rather than the terminal misconfigured.
+	return " " + a.pal.dim(noteFit(a.chords.chordOptionWords(), width-2))
 }
 
 // chordSetupWords is what the first-run setup leaves behind on a Mac, and it is

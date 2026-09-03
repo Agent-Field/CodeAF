@@ -179,11 +179,16 @@ locally.
   how it ended. It answers from the record the worker wrote while it ran, so it
   still answers after the job's working directory is gone. A node whose worker
   keeps no record says so rather than printing nothing.
-- `aforge plan "<goal>"`, `aforge run <graph.json>`, `aforge revise`,
-  `aforge show` — the static pipeline: build a graph to a file, execute exactly
-  what the file says, re-plan it from what happened. Reach for these to read or
-  hand-edit a plan. To *do* a job, `aforge do` is the one that thinks while it
-  works.
+- `aforge plan new "<goal>"`, `aforge plan show`, `aforge plan revise`,
+  `aforge plan run` — the static pipeline: build a plan to a file, read it,
+  re-plan it from what happened, execute exactly what the file says. Reach for
+  these to read or hand-edit a plan. To *do* a job, `aforge do` is the one that
+  thinks while it works. The four used to be top-level verbs — `plan`, `show`,
+  `revise` and `run` — and those spellings still work for one release, printing
+  one line that names the new one.
+- `aforge run <program> --input <file.json>` — run one saved program on typed
+  input. It was `aforge run subharness <name>`; `run` used to name this and the
+  pipeline both.
 
 ## Writing the task for `aforge do`
 

@@ -35,16 +35,29 @@ const (
 	// card's own spelling ([taskCardBackWord]): the list is underneath, and a
 	// page that promised to close would be lying about the next keystroke.
 	jobPageBackWord = taskCardBackWord
-	// jobPageKeysOver is the foot on a job that has ended: the way out, the
-	// scroll, the path, and the mention. It matches [taskCardKeys]'s spelling
-	// and separator exactly, and adds the one verb a job has that a record
-	// card does not — copying the log's path.
-	jobPageKeysOver = "esc back · ↑↓ scroll · c copy path · m puts it in your message"
+	// jobPageKeysOver is the foot on a job that has ended: the scroll, the path,
+	// the mention, and the way out. It matches [taskCardKeys]'s spelling, its
+	// separator and its ORDER exactly — the way out last, because [hintFit]
+	// keeps the final clause to the last cell there is and spends the ones in
+	// front of it first — and adds the one verb a job has that a record card
+	// does not, copying the log's path.
+	jobPageKeysOver = "↑↓ scroll · c copy path · m puts it in your message · " + jobPageBackWord
+	// jobPageKeysOverHeld is that sheet WITHOUT the way out — the one the foot
+	// draws wherever the head's corner has already named it — ranked the way
+	// [taskCardKeysHeld] explains: the scroll last, because [hintFit] keeps the
+	// final clause and the mention is too wide to be the clause it keeps, and the
+	// copy in front of it because a log path is the one thing this page has that
+	// no other surface does.
+	jobPageKeysOverHeld = "c copy path · m puts it in your message · ↑↓ scroll"
 	// jobPageKeysRun is that foot while the process is still going. `x stop it`
 	// is [stopRaiseKey] and [stopActWord] in this surface's legend grammar; a
 	// job that has already ended draws [jobPageKeysOver] instead, rather than a
-	// key that would refuse.
-	jobPageKeysRun = "esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message"
+	// key that would refuse. It is the FIRST clause of the four because stopping
+	// something that is still running is the one thing on this page a person
+	// cannot recover by any other route — and it is the last of them to be
+	// dropped before the way out.
+	jobPageKeysRun     = "x stop it · " + jobPageKeysOver
+	jobPageKeysRunHeld = "x stop it · " + jobPageKeysOverHeld
 	// jobPageHostedWord is what the body says when the log is on the ENGINE's
 	// machine. An empty body would read as a job that has not written yet; the
 	// file is sitting perfectly well on the other disk.
@@ -343,7 +356,8 @@ func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int)
 		return lines, hits, 0, 0
 	}
 
-	add(a.jobPageTitle(width, *job), jobPageHitHead)
+	title, wayOut := a.jobPageTitleLine(width, *job)
+	add(title, jobPageHitHead)
 	add("", jobPageHitHead)
 	add(pal.dim(rule(width)), jobPageHitNone)
 
@@ -366,24 +380,24 @@ func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int)
 	} else {
 		top = clampTop(0, len(body), room)
 	}
-	for i := 0; i < room; i++ {
-		at := top + i
-		if at >= len(body) {
-			add("", jobPageHitNone)
-			continue
-		}
-		add(" "+body[at], jobPageHitNone)
+	// THE FOOT RIDES UNDER THE LAST DRAWN ROW, for [app.taskCardFrame]'s reason:
+	// this page has no composer under it, so a rule pinned to the bottom of the
+	// terminal under eight lines of log is a rule pinned for nobody. A log long
+	// enough to SCROLL fills the room and the foot sits where it always did,
+	// because there the bottom of the frame is where the content ends.
+	drawn := room
+	if len(body) < drawn {
+		drawn = len(body)
+	}
+	for i := 0; i < drawn; i++ {
+		add(" "+body[top+i], jobPageHitNone)
 	}
 
 	add(pal.dim(rule(width)), jobPageHitNone)
 	if path := strings.TrimSpace(job.LogPath); path != "" {
 		add(" "+pal.dim(fit(a.hostedPath(path), width-2)), jobPageHitFoot)
 	}
-	keys := jobPageKeysOver
-	if !job.Over() {
-		keys = jobPageKeysRun
-	}
-	add(" "+paintHint(fit(keys, width-2), pal, pal.dim), jobPageHitFoot)
+	add(" "+paintHint(hintFit(jobPageFootKeys(job.Over(), wayOut), width-2), pal, pal.dim), jobPageHitFoot)
 
 	if len(lines) > height && height > 1 {
 		lines = append(lines[:1], lines[len(lines)-(height-1):]...)
@@ -392,8 +406,10 @@ func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int)
 	return lines, hits, 0, 0
 }
 
-// jobPageTitle is the head: what this job is called on the left, and how to
-// get back on the right. It is [app.taskCardTitle] pointed at a job.
+// jobPageTitleLine is the head — what this job is called on the left, and how to
+// get back on the right — AND whether it had room for that right corner. It is
+// [app.taskCardTitleLine] pointed at a job, including the second answer: the
+// foot names the way out only where this one could not.
 //
 // THE TITLE IS THE NAME, OR THE HANDLE WHEN THERE IS NO NAME YET. It is never
 // the raw command: the body already draws the command in full, and putting the
@@ -401,7 +417,7 @@ func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int)
 // number a person came looking for (`job 8`). Until the namer answers, `job N`
 // is the honest title — short, stable, and the same handle the foot and the
 // column already use.
-func (a *app) jobPageTitle(width int, job session.JobNotice) string {
+func (a *app) jobPageTitleLine(width int, job session.JobNotice) (string, bool) {
 	words := strings.TrimSpace(job.Name)
 	if words == "" {
 		words = jobPageHandle(job.ID)
@@ -409,15 +425,30 @@ func (a *app) jobPageTitle(width int, job session.JobNotice) string {
 	right := jobPageBackWord + " "
 	room := width - ansi.StringWidth(right) - 1
 	if room < 1 {
-		return fit(" "+a.pal.bold(a.pal.ink(words)), width)
+		return fit(" "+a.pal.bold(a.pal.ink(words)), width), false
 	}
 	words = fit(words, room)
 	left := " " + a.pal.bold(a.pal.ink(words))
 	gap := width - ansi.StringWidth(" "+words) - ansi.StringWidth(right)
 	if gap < 1 {
-		return fit(left, width)
+		return fit(left, width), false
 	}
-	return left + strings.Repeat(" ", gap) + a.pal.dim(right)
+	return left + strings.Repeat(" ", gap) + a.pal.dim(right), true
+}
+
+// jobPageFootKeys is the foot's sheet: the verbs this job's state actually has,
+// and the way out only where the head has not already said it
+// ([taskCardFootKeys] states the law).
+func jobPageFootKeys(over, headSaysTheWayOut bool) string {
+	switch {
+	case over && headSaysTheWayOut:
+		return jobPageKeysOverHeld
+	case over:
+		return jobPageKeysOver
+	case headSaysTheWayOut:
+		return jobPageKeysRunHeld
+	}
+	return jobPageKeysRun
 }
 
 // jobPageBody is everything under the rule: the handle and the clock or the
@@ -495,17 +526,18 @@ func (a *app) jobPageClock(job session.JobNotice) string {
 	return countUpWord(job.Elapsed)
 }
 
-// jobPageEnding is the clock on a running job, and the state (and, when it
-// failed, the exit) on a settled one. Zero and unknown drop out — the
-// emptiness law over a process.
+// jobPageEnding is the clock on a running job, and how it ended on a settled
+// one. Zero and unknown drop out — the emptiness law over a process.
+//
+// THE ENDING IS THE COLUMN'S OWN WORD ([jobStateWord]) and never the engine's
+// enum: the section a person pressed enter in and the page that opened have to
+// say one thing about one job, and `exited 1` already carries the code the page
+// used to spell out a second time.
 func jobPageEnding(job session.JobNotice, clock string) string {
 	var segs []string
 	if job.Over() {
-		if word := strings.TrimSpace(string(job.State)); word != "" {
+		if word := jobStateWord(job); word != "" {
 			segs = append(segs, word)
-		}
-		if job.State == session.JobFailed && job.ExitCode != 0 {
-			segs = append(segs, "exit "+itoa(job.ExitCode))
 		}
 		if clock != "" {
 			segs = append(segs, "ran "+clock)

@@ -54,9 +54,35 @@ const (
 	// underneath, and a card that promised to close would be lying about the
 	// next keystroke — the same honesty [tasksClearFilterWord] keeps.
 	taskCardBackWord = "esc back"
-	// taskCardKeys is the foot: the way out, the scroll, and the one gesture
-	// this card carries that the row it came from used to.
-	taskCardKeys = "esc back · ↑↓ scroll · m puts it in your message"
+	// taskCardKeys is the foot: the scroll, the one gesture this card carries
+	// that the row it came from used to, and the way out.
+	//
+	// THE WAY OUT IS LAST BECAUSE IT IS SPENT LAST. This line is fitted by
+	// [hintFit], which keeps its final clause to the last cell there is and
+	// drops the clauses in front of it working backwards — so a foot with `esc
+	// back` at the head was a foot that gave the way out away FIRST, and a
+	// sixty-cell card ended up offering `m puts it in your message` and no way
+	// off the page. Every other key sheet on this surface already ends on its
+	// esc (`↑↓ pick · enter use it · esc back`, `filter · ↑↓ · enter open · esc
+	// cancel`); this one now does too.
+	taskCardKeys = "↑↓ scroll · m puts it in your message · " + taskCardBackWord
+	// taskCardKeysHeld is the same keys WITHOUT the way out, and it is the sheet
+	// the foot draws on almost every frame. The head's right corner already says
+	// `esc back` at every width it has a corner to say it in, and a page that
+	// named the same instruction twice on a six-line card spent two of its
+	// sixteen words repeating itself (docs/design/polish/audit-tasks.md row 15).
+	// So THE FOOT CARRIES THE WAY OUT ONLY WHERE THE HEAD DOES NOT, which is
+	// [app.taskCardTitleLine]'s own answer and not a second guess at it.
+	//
+	// AND IT ENDS ON THE SCROLL RATHER THAN ON THE MENTION, which is the one way
+	// its clauses are ordered differently from the sheet above. [hintFit] keeps a
+	// key row's FINAL clause to the last cell there is and spends the ones in
+	// front of it first — that is why the way out is last up there — so the final
+	// clause of a sheet that has no way out on it has to be the one both worth
+	// keeping and cheap enough to keep. `m puts it in your message` is
+	// twenty-five cells; left at the end it would be the clause a narrow foot
+	// SLICED, which is the one thing no hint on this surface does.
+	taskCardKeysHeld = "m puts it in your message · ↑↓ scroll"
 	// taskCardTailHead heads the report. "what it said at the end" and not
 	// "final assistant message": the node is a thing that did some work and then
 	// said how it went, and that is the sentence a person came here to read.
@@ -422,7 +448,8 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	entry := a.taskSheet.detail
-	add(a.taskCardTitle(width, entry), taskCardHitHead)
+	title, wayOut := a.taskCardTitleLine(width, entry)
+	add(title, taskCardHitHead)
 	add("", taskCardHitHead)
 	add(pal.dim(rule(width)), taskCardHitNone)
 
@@ -434,16 +461,28 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 
 	body := a.taskCardBody(entry, width-2)
 	a.taskSheet.detailTop = clampTop(a.taskSheet.detailTop, len(body), room)
-	for i := 0; i < room; i++ {
-		at := a.taskSheet.detailTop + i
-		if at >= len(body) {
-			// Padding, and it answers to NOTHING — a gap that fell through to the
-			// way out would be a click that did something a person could not see
-			// coming ([app.expandFrame] holds the original of this).
-			add("", taskCardHitNone)
-			continue
-		}
-		add(" "+body[at], taskCardHitNone)
+	// THE FOOT RIDES UNDER THE LAST DRAWN ROW, AND THE FRAME ENDS THERE.
+	//
+	// This page has no composer under it. A rule pinned to the bottom of a
+	// fifty-row terminal, with seventeen blank rows between it and a six-line
+	// card, is a foot pinned for nobody: the reader's eye travels the whole
+	// frame to find `esc back` for a page that ended at line eleven, and the
+	// emptiness the law forbids in a figure is drawn here as rows of it
+	// (docs/design/polish/audit-tasks.md row 5).
+	//
+	// A PAGE THAT SCROLLS KEEPS ITS PINNED FOOT, because there the bottom of the
+	// frame IS where the content ends — so the pad is gone and nothing else is:
+	// `drawn` is the room whenever the body fills it. And this is a page and not
+	// a PLACE. A place has a composer and a place strip at fixed rows, and blank
+	// space between a short list and the rule there is honest emptiness rather
+	// than a defect (composerlayer.go's law); nothing below moves here because
+	// there is nothing below.
+	drawn := room
+	if len(body) < drawn {
+		drawn = len(body)
+	}
+	for i := 0; i < drawn; i++ {
+		add(" "+body[a.taskSheet.detailTop+i], taskCardHitNone)
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
@@ -452,7 +491,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 		line, _ := a.taskCardBar(width)
 		add(line, taskCardHitMention)
 	} else {
-		add(" "+paintHint(fit(taskCardKeys, width-2), pal, pal.dim), taskCardHitFoot)
+		add(" "+paintHint(hintFit(taskCardFootKeys(wayOut), width-2), pal, pal.dim), taskCardHitFoot)
 	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
@@ -464,9 +503,27 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	return lines, hits, 0, 0
 }
 
-// taskCardTitle is the head: what this task was called on the left, and how to
-// get back to the list on the right.
-func (a *app) taskCardTitle(width int, entry session.TaskIndexEntry) string {
+// taskCardFootKeys is the foot's sheet: everything the card can do, and the way
+// out only where the head has not already said it.
+//
+// IT IS THE ONE PLACE THAT DECIDES, and it is handed the head's own answer
+// rather than re-deriving it from the width — the head keeps or drops its corner
+// on the TITLE's length as well as on the width, so a second guess here would be
+// a card that says `esc back` twice on one frame and, on the frame after, not at
+// all.
+func taskCardFootKeys(headSaysTheWayOut bool) string {
+	if headSaysTheWayOut {
+		return taskCardKeysHeld
+	}
+	return taskCardKeys
+}
+
+// taskCardTitleLine is the head — what this task was called on the left, and how
+// to get back to the list on the right — AND whether it had room for that right
+// corner at all. The frame asks for both in one call so the head and the foot
+// cannot disagree about who is naming `esc back` on this frame
+// ([taskCardFootKeys]).
+func (a *app) taskCardTitleLine(width int, entry session.TaskIndexEntry) (string, bool) {
 	words := strings.TrimSpace(entry.Title)
 	if words == "" {
 		words = strings.TrimSpace(entry.Label)
@@ -474,15 +531,15 @@ func (a *app) taskCardTitle(width int, entry session.TaskIndexEntry) string {
 	right := taskCardBackWord + " "
 	room := width - ansi.StringWidth(right) - 1
 	if room < 1 {
-		return fit(" "+a.pal.bold(a.pal.ink(words)), width)
+		return fit(" "+a.pal.bold(a.pal.ink(words)), width), false
 	}
 	words = fit(words, room)
 	left := " " + a.pal.bold(a.pal.ink(words))
 	gap := width - ansi.StringWidth(" "+words) - ansi.StringWidth(right)
 	if gap < 1 {
-		return fit(left, width)
+		return fit(left, width), false
 	}
-	return left + strings.Repeat(" ", gap) + a.pal.dim(right)
+	return left + strings.Repeat(" ", gap) + a.pal.dim(right), true
 }
 
 // taskCardBody is everything under the rule, in one fixed order: what state the
@@ -520,6 +577,14 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	}
 
 	var facts []string
+	// WHERE IT CAME OUT OF, because the page a person opens to learn MORE may
+	// not know less than the row they opened it from. The row carries the
+	// conversation (tasksplace.go's [tasksFacts]); the card dropped it, and on a
+	// machine with three projects and twelve conversations `Port the picker onto
+	// the new list` alone does not say which codebase it touched.
+	if line := a.taskCardSourceLine(entry); line != "" {
+		facts = append(facts, pal.dim(fit(line, width)))
+	}
 	if line := taskCardSpendLine(entry); line != "" {
 		facts = append(facts, pal.dim(fit(line, width)))
 	}
@@ -553,7 +618,7 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 	segs := []string{taskStateWord(entry, a.recordRuns(&entry))}
 	if !entry.EndedAt.IsZero() {
-		segs = append(segs, "landed "+session.TaskAgeWord(a.now().Sub(entry.EndedAt))+" ago")
+		segs = append(segs, taskCardEndWord(entry)+" "+session.TaskAgeWord(a.now().Sub(entry.EndedAt))+" ago")
 	}
 	// THE CLOCK IS WRITTEN WHEN THE WORK LANDS and is zero on every row that has
 	// not, so a row still claiming to be running says nothing about how long —
@@ -565,6 +630,42 @@ func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 		}
 	}
 	return strings.Join(segs, railSep)
+}
+
+// taskCardSourceLine is the conversation this work came out of, spelled the way
+// the row that opened the card spells it: the conversation's own title, and the
+// project when nothing has titled the conversation yet.
+//
+// IT ASKS THE READING'S OWN LADDER ([tasksRowFor]) rather than a second one, so
+// the card and the row cannot name two different conversations for one piece of
+// work. Where nothing knows the conversation the line is not drawn — the
+// emptiness law, and `out of ` with nothing after it is a preposition standing
+// in for a fact.
+func (a *app) taskCardSourceLine(entry session.TaskIndexEntry) string {
+	row := tasksRowFor(a.taskSheet.world, a.taskSheet.mine, entry)
+	source := strings.TrimSpace(row.Title)
+	if source == "" {
+		source = strings.TrimSpace(row.Project)
+	}
+	if source == "" {
+		return ""
+	}
+	return "out of " + source
+}
+
+// taskCardEndWord is what the clock clause CALLS the end, and it follows the
+// state the segment in front of it has just named.
+//
+// WORK THAT FAILED DID NOT LAND. `landed` is this codebase's own word for work
+// that ARRIVED, and the refused task's page opened `failed · landed 8d ago ·
+// ran 4m 0s` — six words telling a person both that nothing came of the run and
+// that it came home. The stamp is the same either way; only the verb over it
+// was wrong.
+func taskCardEndWord(entry session.TaskIndexEntry) string {
+	if entry.Status == string(session.TaskFailed) {
+		return "stopped"
+	}
+	return "landed"
 }
 
 // taskCardSpendLine is what the work ran on and what it cost. The model is

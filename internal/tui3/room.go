@@ -392,8 +392,13 @@ const (
 	// spells a family relation in — "waits: <title>", so "part of: <title>" and
 	// "spawned: <title>" (task.go's [app.railUnder]). A person who has read the
 	// roster's rows has already learned this punctuation.
-	roomKinUnderWord   = "part of: "
-	roomKinSpawnedWord = "spawned: "
+	roomKinUnderWord = "part of: "
+	// AND `spawned:` WAS THE MACHINERY'S OWN WORD. It is what a process does to
+	// another process, and this house bans it in anything a person reads — the
+	// same rule that took `worktree` off the completion card. What actually
+	// happened is that this piece of work handed some of itself out, which is the
+	// verb the rest of the surface already uses for it.
+	roomKinSpawnedWord = "handed out: "
 	// roomKinStateSep joins a child to its state word on the spawned line. It is
 	// the em dash the surface already uses to hang a condition off a name
 	// (task.go's [taskStoppedKept], "stopped — branch kept"), so the two levels
@@ -1502,7 +1507,13 @@ func (a *app) roomHint() string {
 		// printed on the foot as well — but the foot is at the far end of a page
 		// somebody is reading, and this slot is the one place on the frame a
 		// person looks for the next keystroke (tasksettle.go).
-		return roomSettleHint
+		//
+		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
+		// all ([app.legend]), so the full sentence — four cells too long at sixty
+		// columns — left the narrowest terminal naming none of the keys that
+		// answer the question it was standing on. [roomSettleHintAt] is the
+		// ranked prefix of it that fits.
+		return a.settleHintAt(a.width, "")
 	}
 	return ""
 }
@@ -2033,7 +2044,17 @@ func (a *app) roomHeadWord(width int) string {
 		// true and nothing else is, which is exactly what gets said.
 		return fit(name, room)
 	}
-	name = fit(name, room)
+	// LAW 1, AND IT NOW HAS SOMETHING TO SPEND. The name arrives WHOLE — the
+	// engine's own title for the work, uncut ([taskTitleOf]; until this wave it
+	// was cut to three words before any width was known, so this header at a
+	// hundred and sixty columns named the work no better than a twenty-four-cell
+	// rail row did) — and the identity takes every cell it asks for before a fact
+	// gets one. A name that had to be CUT takes the whole line: an ellipsis in it
+	// has already spent the one thing the row was drawn to say, and a spend
+	// figure beside it would be a second loss.
+	if ansi.StringWidth(name) > room {
+		return fit(name, room)
+	}
 	tail := rowTail(a.roomHeadFacts(node), room-ansi.StringWidth(name)-len(rowSep))
 	if tail == "" {
 		return name
@@ -2174,6 +2195,20 @@ func (a *app) roomEntries() []entry {
 // family would take the transcript a person opened the room to read.
 const roomKinRowCap = 3
 
+// roomKinNameFloor is the least of a relative's name worth drawing. Under it
+// the name is an ellipsis with a letter in front of it, so the row keeps that
+// many cells and lets [railWrap] take the overflow onto the next row rather
+// than drawing a fragment.
+const roomKinNameFloor = 8
+
+// roomKinName is one relative's name in the cells this row can spare it.
+func roomKinName(name string, room int) string {
+	if room < roomKinNameFloor {
+		room = roomKinNameFloor
+	}
+	return fit(name, room)
+}
+
 // roomKinRows is the pinned header's second region: WHERE THIS NODE SITS IN ITS
 // FAMILY, in at most [roomKinRowCap] dim rows under the accent line.
 //
@@ -2218,6 +2253,13 @@ func (a *app) roomKinRows(width int) []string {
 		return nil
 	}
 	kids, byKey := a.railKin()
+	// THE ROWS ARE A BUDGET AND THE NAMES ARE FITTED TO IT. These lines are dim
+	// telemetry with a hard cap of [roomKinRowCap] rows, so a relative's name
+	// that arrives whole (taskident.go's [taskTitleOf]) is cut HERE, where the
+	// width is known — the alternative is what a name spilled over the cap
+	// actually looks like: the block wrapping to three rows and the last one
+	// ending on a bare `—` with the state word cut off the bottom of it.
+	inner := width - ansi.StringWidth(roomKinIndent)
 	var lines []string
 	// WHO ASKED FOR THE WORK, AND IT IS NOT A DEPENDENCY — session's
 	// task_contract.go states that difference in those words, and this line is
@@ -2227,7 +2269,7 @@ func (a *app) roomKinRows(width int) []string {
 	// already applies at the other end of the family: "part of: 7" has told a
 	// person nothing.
 	if up := byKey[node.ParentID()]; up != nil && up != node {
-		lines = append(lines, roomKinUnderWord+up.title)
+		lines = append(lines, roomKinUnderWord+roomKinName(up.title, inner-ansi.StringWidth(roomKinUnderWord)))
 	}
 	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
 	// everywhere else on the surface. The order is [app.railKin]'s, which is the
@@ -2235,8 +2277,18 @@ func (a *app) roomKinRows(width int) []string {
 	// because any other moves a row a person is watching for a reason they
 	// cannot see.
 	var spawned []string
-	for _, kid := range kids[stripKey(node)] {
-		spawned = append(spawned, kid.title+roomKinStateSep+a.roomKinWord(kid))
+	// Each piece gets an EQUAL SHARE of what is left after the lead and the
+	// separators between them, less its own state word: the names are the
+	// identities on this line and the state words the facts, and a share is what
+	// keeps one long name from spending the row a sibling was going to use.
+	if pieces := kids[stripKey(node)]; len(pieces) > 0 {
+		room := inner - ansi.StringWidth(roomKinSpawnedWord) -
+			(len(pieces)-1)*ansi.StringWidth(railSep)
+		for _, kid := range pieces {
+			word := a.roomKinWord(kid)
+			share := room/len(pieces) - ansi.StringWidth(roomKinStateSep) - ansi.StringWidth(word)
+			spawned = append(spawned, roomKinName(kid.title, share)+roomKinStateSep+word)
+		}
 	}
 	if len(spawned) > 0 {
 		lines = append(lines, roomKinSpawnedWord+strings.Join(spawned, railSep))
@@ -2249,7 +2301,6 @@ func (a *app) roomKinRows(width int) []string {
 	if len(lines) == 0 {
 		return nil
 	}
-	inner := width - ansi.StringWidth(roomKinIndent)
 	out := make([]string, 0, roomKinRowCap)
 	for _, line := range lines {
 		// THE SENTENCE WRAPS ON ITS SPACES and is cut at the cap, exactly as the
@@ -2265,19 +2316,26 @@ func (a *app) roomKinRows(width int) []string {
 	return out
 }
 
-// roomKinWord is a CHILD's state on the spawned line: [app.roomStateWord]'s
+// roomKinWord is a CHILD's state on the handed-out line: [app.roomStateWord]'s
 // answer about that child, except that one held behind a prerequisite says only
-// "queued".
+// the one word the column already says about it.
 //
 // THE DEPENDENCY SENTENCE BELONGS TO THE PAGE YOU WOULD OPEN TO ACT ON IT. A row
-// reading "spawned: draft — waits: fetch the RFCs · review — running" is one
+// reading "handed out: draft — waits: fetch the RFCs · review — running" is one
 // line carrying three tasks' business, and the task it is actually about is the
 // one it says least about. What this line owes a person is which pieces exist
 // and which of them are still moving; what a piece is behind is on its own row
 // in the roster and in its own header the moment they walk in.
+//
+// AND THAT ONE WORD IS `parked` AND NOT `queued`. "queued" says a scheduler will
+// get to this child, and nothing is coming: its prerequisite is the piece of work
+// whose room this is, sitting there waiting on the person reading this very page.
+// The column has called these children `parked` the whole time
+// ([railGroupWords], [railParked] — "admitted and BLOCKED"), so the word is read
+// out of the column's own table rather than spelled a second time here.
 func (a *app) roomKinWord(node *taskNode) string {
 	if node.state == session.TaskQueued && !node.stopped && a.railWaits(node) != "" {
-		return roomQueuedWord
+		return railGroupWords[railParked]
 	}
 	return a.roomStateWord(node)
 }
@@ -2499,7 +2557,11 @@ func (a *app) roomSpend(node *taskNode) string {
 // had no title for read "task · task 7" — a place named after its own id twice.
 // The chip is the same object the header pins at the top of the page, said once
 // more at the bottom, so the two ends of the frame agree about where you are.
-func (a *app) roomChip() string {
+// room is the cells the cluster may spend, and a room of zero or less is NO
+// BOUND AT ALL — the reading every caller that is not laying the status row out
+// wants ([app.identity], and the deck, which fits row 1 to its own width after
+// it has the telemetry beside it).
+func (a *app) roomChip(room int) string {
 	if a.room == nil {
 		return ""
 	}
@@ -2507,11 +2569,25 @@ func (a *app) roomChip() string {
 	// took [app.roomMark]'s answer for a node this surface has never seen — the
 	// queued glyph — which would draw a run that is spending money as work that
 	// has not started.
+	mark := a.roomMark(a.roomNode())
 	if a.room.orch != nil {
-		return a.orchHeadMark() + " " + a.room.title
+		mark = a.orchHeadMark()
 	}
-	return a.roomMark(a.roomNode()) + " " + a.room.title
+	title := strings.TrimSpace(a.room.title)
+	if room > 0 {
+		title = fit(title, room-ansi.StringWidth(mark)-1)
+	}
+	if title == "" {
+		return mark
+	}
+	return mark + " " + title
 }
+
+// roomChipFloor is the fewest cells the name may be cut to before the row has
+// stopped saying where you are. It is [doneTitleFloor]'s figure — the tool
+// line's own — because it is the same question asked about the same kind of
+// string, and a second number here would be a second answer to drift from.
+const roomChipFloor = doneTitleFloor
 
 // roomModelLead is the word in front of a node's model wherever the status line
 // says one, and the space after it is part of it. See [app.roomModelWord].

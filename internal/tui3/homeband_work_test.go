@@ -496,8 +496,13 @@ func TestTheRightArrowIsNotSeizedOnARowWithNoVerbs(t *testing.T) {
 			"chat "+strconv.Itoa(i), work, now.Add(-time.Duration(i+1)*time.Hour))
 	}
 	a := lab.app(lab.session("-alpha", "zzzz000000000001", "mine", work, now))
-	a.width, a.height = 120, 30
+	// A FRAME THE LIST CANNOT FILL, because it draws as many rows as the window
+	// holds now (switcher.go's [switcherView.room]) and folds only what is
+	// genuinely under them — and one frame is drawn first, because the height
+	// reaches the list through the draw (place_home.go's [placeHome.body]).
+	a.width, a.height = 120, 17
 	a.openHome()
+	homeText(a)
 	foldAt := -1
 	for at, line := range a.home.lines {
 		if line.kind == homeSwitchFold {

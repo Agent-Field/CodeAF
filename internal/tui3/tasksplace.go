@@ -27,7 +27,7 @@ package tui3
 // never walk a directory or find a different `now` halfway through one screen.
 
 import (
-	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,9 +41,28 @@ type tasksSection int
 const (
 	tasksNeeds tasksSection = iota
 	tasksRunning
+	// tasksParked is work that has been admitted and that NOTHING IS DOING: a
+	// node waiting behind the piece that needs a person, or behind a slot.
+	//
+	// IT USED TO BE FILED UNDER `running` and counted with it, because the one
+	// liveness answer this place carries ([tasksItem.runs]) is true for a queued
+	// node as well as a working one. So a machine with nothing executing on it
+	// drew two rows under `running` and a foot that said `2 running`, and a
+	// developer read that as two workers burning tokens somewhere and went
+	// looking for the window they were in. The column one keypress away called
+	// the same two nodes `2 parked` the whole time — two surfaces, one fact, two
+	// words — and this is the word both of them say now ([railGroupWords]).
+	tasksParked
 	tasksToday
 	tasksEarlier
+	tasksSectionCount
 )
+
+// tasksSectionOrder is the one order the page is drawn in and counted in, and
+// there is exactly one of it: a heading list and a tally list that were spelled
+// out separately are two places a new section can be forgotten, and the foot
+// would then count a page it does not describe.
+var tasksSectionOrder = [...]tasksSection{tasksNeeds, tasksRunning, tasksParked, tasksToday, tasksEarlier}
 
 // tasksItem is one piece of work as this place files it: the row itself, the
 // conversation it came out of, and the two judgements the reading is not allowed
@@ -120,9 +139,20 @@ type tasksReading struct {
 	// four shift-arrows are moving. Teaching in the second case swallowed the way
 	// back, so `shift+←` on a real machine looked like the page had been wiped.
 	held int
-	win  session.UsageWindow
-	seen time.Time
-	now  time.Time
+	// whole is how much work THE WINDOW holds and what that came to, counted
+	// before any query narrowed the page.
+	//
+	// THE HEAD SENTENCE IS A CLAIM ABOUT THE PLACE AND THE FILTER IS A PROPERTY
+	// OF THE QUERY. Counting the sentence off the rows that survived a filter
+	// told a person who typed a word they half-remembered that their history was
+	// empty — `work aforge ran on its own. nothing.` across the top of a machine
+	// that had run ten pieces of work. The news that nothing matches already has
+	// its own home on the note line ([taskSheetFilterLine]).
+	whole     int
+	wholeCost float64
+	win       session.UsageWindow
+	seen      time.Time
+	now       time.Time
 	// open is which families are unfolded, and it is the PLACE'S state handed in
 	// rather than the reading's own: a snapshot is replaced whole every time a
 	// node lands (place_tasks.go), and a fold that lived here would shut itself
@@ -224,7 +254,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 			familySection[key] = item.section
 		}
 	}
-	sections := [4][]tasksItem{}
+	sections := [tasksSectionCount][]tasksItem{}
 	for _, item := range visible {
 		if section, found := familySection[tasksFamilyOf(item.entry)]; found {
 			item.section = section
@@ -232,9 +262,51 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 		sections[item.section] = append(sections[item.section], item)
 	}
 	for _, section := range sections {
-		r.items = append(r.items, section...)
+		r.items = append(r.items, tasksInTimeOrder(section, now)...)
+	}
+	// WHAT THE PLACE IS HOLDING IS COUNTED HERE, ONCE, off the rows before any
+	// query has touched them ([tasksReading.whole] states why).
+	r.whole = len(r.items)
+	for _, item := range r.items {
+		r.wholeCost += item.entry.Cost
 	}
 	return r
+}
+
+// tasksInTimeOrder puts one section's rows in the order the heading over them
+// promises: newest first.
+//
+// THE SECTION IS NAMED BY TIME AND MUST THEREFORE BE ORDERED BY IT. Under
+// `done today` the ages used to read `2h, 50m, 5h, 5h`, so the one question the
+// heading answers — what happened most recently — could not be answered by
+// reading down. The order was inherited from the world scan, which sorts
+// PROJECTS by when somebody was last in one of their CONVERSATIONS
+// (internal/session's world.go): a fact about conversations and not about work,
+// and one that reshuffled this page every time a conversation was opened, on a
+// page that is supposed to be a record.
+//
+// A FAMILY IS ONE PIECE OF WORK AND MOVES AS ONE. The root's own stamp places
+// the whole family and the workers are ordered among themselves, because a
+// child sorted on its own would drift out from under the row that explains it.
+// A child whose root is outside the window is a root here ([tasksFamilies]
+// states that), and is placed by its own stamp like any other.
+func tasksInTimeOrder(items []tasksItem, now time.Time) []tasksItem {
+	if len(items) < 2 {
+		return items
+	}
+	newest := func(a, b tasksItem) bool {
+		return tasksEntryAt(a.entry, now).After(tasksEntryAt(b.entry, now))
+	}
+	roots, kids := tasksFamilies(items)
+	sort.SliceStable(roots, func(i, j int) bool { return newest(roots[i], roots[j]) })
+	out := make([]tasksItem, 0, len(items))
+	for _, root := range roots {
+		out = append(out, root)
+		under := kids[tasksFamilyOf(root.entry)]
+		sort.SliceStable(under, func(i, j int) bool { return newest(under[i], under[j]) })
+		out = append(out, under...)
+	}
+	return out
 }
 
 // tasksRowFor is the conversation to LABEL one of this project's rows with: the
@@ -260,12 +332,26 @@ func tasksSectionOf(item tasksItem, now time.Time) tasksSection {
 	switch {
 	case item.entry.Status == string(session.TaskUnverified) || (item.row.NeedsPerson() && item.runs):
 		return tasksNeeds
-	case item.runs:
+	case tasksWorking(item):
 		return tasksRunning
+	case item.runs:
+		return tasksParked
 	case tasksLandedToday(item.entry, now):
 		return tasksToday
 	}
 	return tasksEarlier
+}
+
+// tasksWorking reports whether a WORKER IS IN THIS ROW right now, which is the
+// narrower of the two questions [tasksItem.runs] used to be asked.
+//
+// runs answers "is this admitted and held by a live conversation", and it is
+// true of a queued node as much as of a working one — the whole of row 3's
+// defect. This asks the other half: the engine's own state word says a child
+// agent is in the worktree. Both are needed and neither is the other, so the
+// place asks each by name.
+func tasksWorking(item tasksItem) bool {
+	return item.runs && item.entry.Status == string(session.TaskRunning)
 }
 
 func tasksLandedToday(entry session.TaskIndexEntry, now time.Time) bool {
@@ -369,13 +455,13 @@ func (r tasksReading) lay(width int) []tasksLine {
 	// its `since` clause; a frame too narrow for the control keeps the clause,
 	// because a head line that named neither would leave the four arrow keys
 	// moving something nothing on the frame reports.
-	head := r.head(false)
+	head := r.head(width, false)
 	if arrows, _ := placeWindowFits(width, head, r.win); !arrows {
-		head = r.head(true)
+		head = r.head(width, true)
 	}
 	add(tasksLineWord, head)
 	phone := layoutTier(width) == tierPhone
-	for _, section := range []tasksSection{tasksNeeds, tasksRunning, tasksToday, tasksEarlier} {
+	for _, section := range tasksSectionOrder {
 		items := r.section(section)
 		// A SECTION WITH NOTHING IN IT IS NOT DRAWN AT ALL, filter or no filter.
 		// It is the emptiness law: a `running` word with a blank under it says
@@ -384,7 +470,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 			continue
 		}
 		add(tasksLineAir, "")
-		add(tasksLineWord, tasksSectionWord(section))
+		add(tasksLineWord, tasksSectionHead(section, len(items), r.shown(items)))
 		// THE SECTION IS DRAWN AS FAMILIES AND NOT AS A FLAT LIST. A run that
 		// split into eight workers used to arrive as eight peers of everything
 		// else on the page, which buried the six other things this machine did
@@ -555,19 +641,17 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lead s
 	if layoutTier(width) == tierPhone {
 		return lead + kin + tasksCardHead(line.item, room, pal)
 	}
-	row := tasksRow(line.item, room, r.now, pal)
-	if line.folds && !line.open {
-		// A SHUT FOLD SAYS WHAT IS UNDER IT. A mark with no count is a mark a
-		// person has to open to find out whether it was worth opening.
-		row = tasksRow(line.item, room-ansi.StringWidth(tasksUnderWord(line.kids))-1, r.now, pal) +
-			" " + pal.dim(tasksUnderWord(line.kids))
-	}
-	return lead + kin + row
+	return lead + kin + tasksRow(line, room, r.now, pal)
 }
 
 // tasksUnderWord is what a shut fold says about the work it is holding.
+//
+// IT IS A SENTENCE AND NOT A NOTATION. `+3 under` is arithmetic with a
+// preposition for a noun — the sort of shorthand a person has to be taught —
+// and this surface says what things are in words: the fold HOLDS three more
+// pieces of work, and one of them reads `holds 1 more`.
 func tasksUnderWord(kids int) string {
-	return "+" + itoa(kids) + " " + plural("under", kids, "")
+	return "holds " + itoa(kids) + " more"
 }
 
 // at is the work drawn on one painted line, and whether the cursor may stand
@@ -588,7 +672,7 @@ func (r tasksReading) at(lines []tasksLine, i int) (tasksItem, bool) {
 // THE WINDOW EDGE IS SAID HERE AND NOWHERE ELSE. It used to be repeated on a
 // fold at the foot of every section, which is one number in two places and the
 // drift the one-source-of-truth law exists to stop.
-func (r tasksReading) head(edge bool) string {
+func (r tasksReading) head(width int, edge bool) string {
 	// A WINDOW HOLDING NONE OF IT SAYS SO IN WORDS AND NOT AS A ZERO. The
 	// emptiness law reaches this sentence: `0 since aug 12` is the figure the law
 	// exists to forbid, and `nothing since aug 12` is the same fact a person can
@@ -599,25 +683,37 @@ func (r tasksReading) head(edge bool) string {
 	// on a frame with no room for the control; where the control is drawn, the
 	// span sits between its arrows and a `since` clause here would be the same
 	// date in two places on one line ([tasksReading.lay] decides which).
-	if len(r.items) == 0 {
-		word := "work aforge ran on its own. nothing"
-		if start := tasksWindowStart(r.win); edge && start != "" {
-			word += " since " + start
-		}
-		return word + "."
-	}
-	word := fmt.Sprintf("work aforge ran on its own. %d", len(r.items))
+	//
+	// IT COUNTS THE PLACE AND NOT THE QUERY ([tasksReading.whole]).
+	since := ""
 	if start := tasksWindowStart(r.win); edge && start != "" {
-		word += " since " + start
+		since = " since " + start
 	}
-	var cost float64
-	for _, item := range r.items {
-		cost += item.entry.Cost
+	if r.whole == 0 {
+		return "work aforge ran on its own. nothing" + since + "."
 	}
-	if cost > 0 {
-		word += ", " + dollars(cost) + " of it"
+	// THE FIGURE GETS ITS NOUN. `10,` is a number a person has to guess the unit
+	// of, and the comma after it spliced two clauses that were not a sentence —
+	// worse at sixty cells, where `10 since aug 20` read as if 10 were a sum of
+	// money. The count and the spend are one clause each, and the noun comes
+	// from the same helper the rest of this file counts with.
+	said := "work aforge ran on its own. " + itoa(r.whole) + " " + plural("piece", r.whole) + " of work" + since
+	// AND THE SPEND CLAUSE IS THE FIRST THING A NARROW FRAME GIVES UP, because
+	// the alternative is [placeHeadRow] cutting the sentence — and a figure with
+	// its end cut off is a wrong number, which is the one thing rowfit.go's law
+	// forbids anywhere on this surface. The count and the window edge are what a
+	// person reads this line for; the spend has a whole place of its own.
+	full := said + "."
+	if r.wholeCost > 0 {
+		between := " between them"
+		if r.whole == 1 {
+			between = " of it"
+		}
+		if whole := said + ", " + dollars(r.wholeCost) + between + "."; width <= 0 || ansi.StringWidth(whole) <= width {
+			return whole
+		}
 	}
-	return word + "."
+	return full
 }
 
 func tasksWindowStart(win session.UsageWindow) string {
@@ -643,14 +739,81 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 //
 // THE EMPTINESS LAW HOLDS HERE TOO. A section with nothing in it is not counted
 // as zero — it is not mentioned — and the line is empty when the page is.
+//
+// AND IT COUNTS THE WORK AND NEVER THE ROWS. It read `7 done today` over a
+// section drawing four rows once, and the four were right — three of the seven
+// were workers folded under a root — but the SEVEN is the number that belongs
+// here: this line is what the PLACE is holding (place_tasks.go's
+// [tasksPlace.note] says so), it is the per-section split of the head's own
+// `10 pieces of work`, and 7 + 3 is that ten. A tally counting drawn rows would
+// trade this disagreement for a larger one with the head, and would change under
+// somebody opening a fold, which is a fact about the screen and not about the
+// work. What reconciles the two is [tasksSectionHead], on the heading standing
+// between them.
 func (r tasksReading) tally() string {
 	var segs []string
-	for _, section := range []tasksSection{tasksNeeds, tasksRunning, tasksToday, tasksEarlier} {
+	for _, section := range tasksSectionOrder {
 		if n := len(r.section(section)); n > 0 {
 			segs = append(segs, itoa(n)+" "+tasksSectionWord(section))
 		}
 	}
 	return strings.Join(segs, railSep)
+}
+
+// shown is how many rows of work one section actually draws: its roots, and the
+// workers under the roots somebody has opened.
+//
+// IT ASKS THE SAME SPLITTER THE PAGE IS BUILT WITH ([tasksFamilies]) AND READS
+// THE SAME FOLD STATE ([tasksReading.open]), so the count and the rows cannot
+// be made to disagree by a change to either — which is the whole point of the
+// clause it feeds. [TestTheSectionHeadCountsTheRowsItActuallyDraws] pins it
+// against the rows [tasksReading.lay] really produces rather than against this
+// arithmetic said twice.
+func (r tasksReading) shown(items []tasksItem) int {
+	roots, kids := tasksFamilies(items)
+	n := len(roots)
+	for _, item := range roots {
+		family := tasksFamilyOf(item.entry)
+		if r.open[family] {
+			n += len(kids[family])
+		}
+	}
+	return n
+}
+
+// tasksSectionHead is the heading over one section: its word, and — only where a
+// fold is holding rows back — how much of what the foot counts is on the page.
+//
+// THE COUNT AND THE ROWS MEET HERE, which is the one place between them. The foot
+// says `5 done today` because five pieces of work landed today
+// ([tasksReading.tally]); the section draws two rows because three of the five
+// are workers folded under a root. A person reads the foot, counts the rows and
+// finds a defect — and the only thing on the frame reconciling the two used to be
+// a clause in the middle of one row's tail.
+//
+// IT IS ON THE HEADING AND NOT ON THE FOOT, and that is a decision about width.
+// The foot is one dim line holding every section at once, already 67 cells with
+// five sections on it, and it is FITTED rather than wrapped — a clause added
+// there came out as `… · 5 done today, 2 s…` at sixty columns, which is a figure
+// with its end cut off, the one thing rowfit.go's law forbids anywhere on this
+// surface. The heading has a whole row to itself at every width, and it stands
+// directly over the rows it is counting, which is where the eye is when it
+// counts them.
+//
+// AND IT IS ON THE HEADING AND NOT IN THE FAMILY COLUMN. That column is exactly
+// two cells on every row of the page; widening it on the rows that fold would
+// leave every glyph ragged, and widening it everywhere would take two cells off
+// every name — which is exactly what the name-first fix was made to stop.
+//
+// NOTHING IS SAID WHERE NOTHING IS HELD BACK. Open the fold and the numbers agree
+// by themselves, and the clause goes: the emptiness law applied to a fact that
+// has stopped being one.
+func tasksSectionHead(section tasksSection, held, shown int) string {
+	word := tasksSectionWord(section)
+	if shown >= held {
+		return word
+	}
+	return word + railSep + itoa(shown) + " of " + itoa(held) + " shown"
 }
 
 func tasksSectionWord(section tasksSection) string {
@@ -659,6 +822,12 @@ func tasksSectionWord(section tasksSection) string {
 		return "needs your look"
 	case tasksRunning:
 		return taskSheetNowHead
+	case tasksParked:
+		// ONE WORD FOR ONE FACT, AND IT IS THE COLUMN'S. The rail already calls
+		// these nodes `parked` in its heading and in its footer, so the word is
+		// read out of the rail's own vocabulary rather than spelled a second time
+		// here — a second spelling is how the two surfaces came to disagree.
+		return railGroupWords[railParked]
 	case tasksToday:
 		return "done today"
 	default:
@@ -677,69 +846,220 @@ func tasksLabel(entry session.TaskIndexEntry) string {
 	return strings.TrimSpace(entry.Title)
 }
 
-// tasksRow is one piece of work on a wide frame. The label is the elastic
-// column; every other cell either earns its room or disappears in the stated
-// order, so no painted row can cross the terminal edge.
-func tasksRow(item tasksItem, width int, now time.Time, pal palette) string {
-	entry := item.entry
+// tasksRow is one piece of work on a wide frame, laid out by the law rowfit.go
+// holds and every other list on this surface already obeys.
+//
+// WHAT IT USED TO DO, AND WHY IT WAS THE LAW INVERTED. The facts were measured
+// first and the NAME was handed whatever remained, with a drop loop that only
+// fired once the facts had taken more than the row had — so the name was
+// guaranteed eight cells and the facts were guaranteed everything. At a hundred
+// and sixty columns, the most room anybody has, three rows in four still drew
+// `✓ Put the…` beside a ninety-character sentence of detail at its full width.
+// A list exists to let a person MATCH NAMES; a name they cannot match is a row
+// they have to open to read, and every scan of the page became a sequence of
+// opens.
+//
+// So: the name keeps every cell it asks for before a fact gets one (law 1), the
+// facts behind it are a RANKED PREFIX that degrades by spelling rather than
+// vanishing (laws 2 and 3), and they are joined by ` · ` — the separator every
+// other list here joins facts with, including this task's own page one keypress
+// away. `The Certificate Rotation incomplete now` was three facts a reader had
+// to re-parse into three.
+//
+// IT FITS AGAINST THE ROOM AND NOT THE FRAME, which is why it reaches
+// [rowPlan.fit] rather than [rowHalves]: the caller has already spent the
+// cursor's lead and the family column, and the two-line phone lane is
+// [tasksCardHead]'s ([tasksReading.paint] routes to it before this is called),
+// so the tier question is settled before we are here.
+//
+// It takes the LAID-OUT LINE and not the work alone, because two of the things
+// on the row are facts about where it sits rather than about what it did — the
+// fold it is holding shut, and the root above it that has already named their
+// conversation — and the layout is where both were decided
+// ([tasksReading.lay]); the paint may not re-derive either.
+func tasksRow(line tasksLine, width int, now time.Time, pal palette) string {
+	item := line.item
 	glyph, glyphInk := tasksGlyph(item, pal)
-	lead := glyphInk(glyph) + " "
+	lead := glyph + " "
+	facts := tasksFacts(line, now, pal)
+	plan := rowPlan{primary: tasksLabel(item.entry), fields: tasksFields(facts)}
+	label, tail := plan.fit(width - ansi.StringWidth(lead))
+	left := glyphInk(glyph) + " " + tasksLabelInk(item, pal)(label)
+	if tail == "" {
+		return fit(left, width)
+	}
+	pad := width - ansi.StringWidth(lead+label) - ansi.StringWidth(tail)
+	if pad < 1 {
+		pad = 1
+	}
+	return fit(left+strings.Repeat(" ", pad)+tasksPaintTail(tail, facts, pal), width)
+}
+
+// tasksFact is one fact on a row: what it can say, in the spellings the fitter
+// chooses between, and the ink it is painted in when it survives.
+type tasksFact struct {
+	field rowField
+	// ink is nil for everything the surface draws dim, which is nearly all of
+	// it. A fact with an ink of its own has it because the ink is part of the
+	// fact — money is the only one on this row.
+	ink func(string) string
+}
+
+// tasksFacts is the ranked prefix: what a person scanning this list reads, in
+// the order they read it.
+//
+// THE ORDER IS THE ARGUMENT. A SHUT FOLD'S COUNT comes first because it is not
+// a fact about the work at all — it is the row saying that three more rows are
+// behind it, which is the difference between a page a person believes they have
+// read and one they have not. The note is next because it is the only thing
+// that can CORRECT the glyph — a claim of running with nobody behind it, or work
+// happening in another window — and a row whose mark and whose words disagree is
+// worse than a row missing a fact. The age follows, because every section here
+// is named by time and the age is what a person scans down; then money, the
+// figure nobody can recover by looking; then where the work came from, then what
+// came of it, and last the kind — a setting somebody chose before the work
+// started, which is news to nobody afterwards.
+func tasksFacts(line tasksLine, now time.Time, pal palette) []tasksFact {
+	item := line.item
+	entry := item.entry
 	source := strings.TrimSpace(item.row.Title)
 	if source == "" {
 		source = strings.TrimSpace(item.row.Project)
 	}
-	parts := []tasksCell{
-		{text: source, ink: pal.dim, drop: tasksDropSource},
-		{text: tasksMiddle(entry), ink: pal.dim, drop: tasksDropMiddle},
-		{text: session.TaskKindWord(entry.Kind), ink: pal.dim, drop: tasksDropKind},
+	// A CHILD DOES NOT REPEAT ITS PARENT'S CONVERSATION. Opening a family drew
+	// the root's title four times down the page, spending twenty-odd cells a row
+	// to restate a fact the row two lines up had already stated — on the rows
+	// whose names were being cut to make room for it.
+	if line.kin == tasksKinCont || line.kin == tasksKinLast {
+		source = ""
 	}
+	fold := rowSay()
+	if line.folds && !line.open && line.kids > 0 {
+		// A MARK WITH NO COUNT is a mark a person has to open to find out
+		// whether it was worth opening.
+		fold = rowSay(tasksUnderWord(line.kids))
+	}
+	money := rowSay()
 	if entry.Cost > 0 {
-		parts = append(parts, tasksCell{text: dollars(entry.Cost), ink: placeMoneyInk(pal), drop: tasksDropCost})
+		money = rowSay(dollars(entry.Cost))
 	}
-	// THE NOTE AND THE AGE ARE NEVER DROPPED. The note is the only place a row
-	// says WHERE the work is or that a claim of running has nobody behind it,
-	// and both are facts no other cell repeats.
-	if note := tasksNote(item); note != "" {
-		parts = append(parts, tasksCell{text: note, ink: pal.dim, drop: tasksDropNote})
+	return []tasksFact{
+		{field: fold},
+		{field: rowSay(tasksNote(item))},
+		{field: tasksAgeField(item, now)},
+		{field: money, ink: placeMoneyInk(pal)},
+		{field: rowSay(source)},
+		{field: tasksMiddleField(entry)},
+		{field: rowSay(session.TaskKindWord(entry.Kind))},
 	}
-	parts = append(parts, tasksCell{text: sinceAt(tasksEntryAt(entry, now), now), ink: pal.dim, drop: tasksDropAge})
-	if width < 80 {
-		parts = tasksOmit(parts, tasksDropMiddle)
+}
+
+// tasksFields is the facts as the fitter takes them.
+func tasksFields(facts []tasksFact) []rowField {
+	fields := make([]rowField, 0, len(facts))
+	for _, fact := range facts {
+		fields = append(fields, fact.field)
 	}
-	for tasksFixedWidth(parts)+ansi.StringWidth(lead)+8 > width {
-		before := len(parts)
-		for _, drop := range []tasksDrop{tasksDropMiddle, tasksDropCost, tasksDropSource, tasksDropKind} {
-			parts = tasksOmit(parts, drop)
-			if len(parts) < before {
-				break
+	return fields
+}
+
+// tasksPaintTail paints a fitted tail fact by fact.
+//
+// IT PAINTS THE SEPARATORS ITSELF because a hue nested inside a hue ends at the
+// inner one's reset (room.go's [app.roomHeadWord] states the same rule), so a
+// tail carrying a money figure may not be painted whole. Anything the fitter
+// spelled that no fact answers to — the halves of a detail sentence that had a
+// ` · ` of its own inside it — is the dim every other fact wears.
+func tasksPaintTail(tail string, facts []tasksFact, pal palette) string {
+	if tail == "" {
+		return ""
+	}
+	ink := func(said string) string {
+		for _, fact := range facts {
+			if fact.ink == nil || said == "" {
+				continue
+			}
+			if said == fact.field.full || said == fact.field.short || said == fact.field.tiny {
+				return fact.ink(said)
 			}
 		}
-		if len(parts) == before {
-			break
+		return pal.dim(said)
+	}
+	said := strings.Split(tail, rowSep)
+	for i := range said {
+		said[i] = ink(said[i])
+	}
+	return strings.Join(said, pal.dim(rowSep))
+}
+
+// tasksAgeField is HOW LONG AGO, and it is the fact this page's own headings
+// promise.
+//
+// A STOPPED ROW IS NOT DATED `now`. [tasksEntryAt] files an undated row at the
+// moment of the reading, which is the right answer for a WINDOW — a window
+// cannot judge a row with no stamp on it — and the wrong one for an AGE: a row
+// reading `The Certificate Rotation incomplete now` says in one half that the
+// window running this is gone and in the other that it is happening this
+// second, and the age is the half a person believes.
+//
+// AND NOTHING DATES IT. The index holds one stamp, [session.TaskIndexEntry]'s
+// EndedAt, and it is zero on exactly the rows this case is about — a row that
+// claims to be running has not landed, and no start time is written anywhere a
+// window that died could have left one. So the row says NOTHING about when,
+// which is the emptiness law's own answer, and the note beside it carries the
+// whole of what is known: `incomplete`.
+//
+// NOR IS A PARKED ROW DATED `now`. A node admitted and waiting behind the piece
+// that needs a person has not started, so there is no age to count from either
+// end of it, and `now` on that row said the work was happening this second.
+func tasksAgeField(item tasksItem, now time.Time) rowField {
+	return rowSay(sinceAt(tasksEntryStamp(item, now), now))
+}
+
+// tasksEntryStamp is the moment a row's work IS, for DRAWING AN AGE FROM, and
+// the zero time whenever nobody knows one — which [sinceAt] then draws as
+// nothing at all.
+//
+// IT IS NOT [tasksEntryAt], AND THE DIFFERENCE IS THE WHOLE POINT. That one
+// answers the time WINDOW, which cannot judge a row with no stamp on it and so
+// files an undated row at the moment of the reading rather than dropping it off
+// the page. This one answers a person, and a person told `now` about work that
+// nothing is doing has been told something false. The three silences here are a
+// node nothing has started, a row whose window died, and work replayed out of a
+// checkpoint that kept how long it ran and never when it began.
+func tasksEntryStamp(item tasksItem, now time.Time) time.Time {
+	if item.entry.Live() {
+		if tasksWorking(item) {
+			return now
+		}
+		return time.Time{}
+	}
+	return item.entry.EndedAt
+}
+
+// tasksMiddleField is what came of the work, in two spellings: everything the
+// record can say about it, and the count of files alone.
+//
+// LAW 2: A FACT DEGRADES BEFORE IT DISAPPEARS. `2 files · Annual is the default
+// and the monthly price stays visible beside it.` is ninety cells of detail
+// that used to end the tail and eat the name beside it; `2 files` is the same
+// fact at seven, and it survives three widths further down.
+func tasksMiddleField(entry session.TaskIndexEntry) rowField {
+	full := tasksMiddle(entry)
+	if full == "" {
+		return rowSay()
+	}
+	if entry.FilesChanged > 0 {
+		if short := itoa(entry.FilesChanged) + plural(" file", entry.FilesChanged); short != full {
+			return rowSay(full, short)
 		}
 	}
-	fixed := tasksFixedWidth(parts)
-	labelRoom := width - ansi.StringWidth(lead) - fixed
-	if labelRoom < 0 {
-		labelRoom = 0
+	// A FAILED ROW'S SHORT SPELLING IS ITS STATE WORD, which is the word its own
+	// page says ([tasksMiddle] joins the two).
+	if word := taskStateWord(entry, false); strings.HasPrefix(full, word+rowSep) {
+		return rowSay(full, word)
 	}
-	label := fit(tasksLabel(entry), labelRoom)
-	left := lead + tasksLabelInk(item, pal)(label)
-	used := ansi.StringWidth(left)
-	pad := width - used - fixed
-	if pad < 0 {
-		pad = 0
-	}
-	var b strings.Builder
-	b.WriteString(left)
-	b.WriteString(strings.Repeat(" ", pad))
-	for _, part := range parts {
-		if part.text != "" {
-			b.WriteByte(' ')
-			b.WriteString(part.ink(part.text))
-		}
-	}
-	return fit(b.String(), width)
+	return rowSay(full)
 }
 
 // tasksCardHead is the first line of a phone card: the state and the name, in
@@ -765,7 +1085,9 @@ func tasksCardTail(item tasksItem, now time.Time) string {
 	if note := tasksNote(item); note != "" {
 		segs = append(segs, note)
 	}
-	if age := sinceAt(tasksEntryAt(item.entry, now), now); age != "" {
+	// The card dates a row the way the wide row does, and says nothing where
+	// nothing dated it ([tasksAgeField]).
+	if age := tasksAgeField(item, now).full; age != "" {
 		segs = append(segs, age)
 	}
 	return strings.Join(segs, railSep)
@@ -800,42 +1122,6 @@ func tasksNote(item tasksItem) string {
 	return ""
 }
 
-type tasksDrop int
-
-const (
-	tasksDropMiddle tasksDrop = iota
-	tasksDropCost
-	tasksDropSource
-	tasksDropKind
-	tasksDropNote
-	tasksDropAge
-)
-
-type tasksCell struct {
-	text string
-	ink  func(string) string
-	drop tasksDrop
-}
-
-func tasksOmit(parts []tasksCell, drop tasksDrop) []tasksCell {
-	for i, part := range parts {
-		if part.drop == drop && part.text != "" {
-			return append(parts[:i:i], parts[i+1:]...)
-		}
-	}
-	return parts
-}
-
-func tasksFixedWidth(parts []tasksCell) int {
-	width := 0
-	for _, part := range parts {
-		if part.text != "" {
-			width += 1 + ansi.StringWidth(part.text)
-		}
-	}
-	return width
-}
-
 // tasksEntryAt is WHEN a row is, for the time window and for the age on it: the
 // moment it landed, and NOW for work that is still going or that nothing dated.
 // An undated row is filed at the moment of the reading rather than dropped — a
@@ -859,7 +1145,13 @@ func tasksMiddle(entry session.TaskIndexEntry) string {
 		return endingWordRefused
 	}
 	if entry.Status == string(session.TaskFailed) && strings.TrimSpace(entry.Outcome) != "" {
-		return "gave up, said why"
+		// ONE STATE WORD ON BOTH SURFACES. The row used to read `gave up, said
+		// why` where its own page, one keypress away, opened `failed · landed 8d
+		// ago`, and a person who filed the row under one of those words could not
+		// find it under the other. The word is [taskStateWord]'s, which is where
+		// the page takes it from too, and the reason follows it rather than being
+		// promised — a promise of a reason is a row you have to open to read.
+		return taskStateWord(entry, false) + rowSep + strings.TrimSpace(entry.Outcome)
 	}
 	var parts []string
 	if entry.FilesChanged > 0 {

@@ -41,7 +41,7 @@ func TestABriefThatBeginsWithADashIsTheBrief(t *testing.T) {
 	if err := flags.Parse(reorder(flags, []string{"--json", brief})); err != nil {
 		t.Fatalf("a bullet brief must parse: %v", err)
 	}
-	text, err := readText(flags.Args())
+	text, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestABriefMayArriveOnStandardInput(t *testing.T) {
 	if err := flags.Parse(reorder(flags, []string{"--keep", "-"})); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	text, err := readText(flags.Args())
+	text, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestABriefMayArriveOnStandardInput(t *testing.T) {
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Fatal(err)
 	}
-	text, err = readText(nil)
+	text, err = readText("do", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

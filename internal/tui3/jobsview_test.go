@@ -288,7 +288,10 @@ func TestAJobsSectionCountsTheRemainderOnAnEarlierLine(t *testing.T) {
 	if hidden != 4 {
 		t.Fatalf("hid %d of 6, want 4:\n%s", hidden, text)
 	}
-	want := glyphShut + " " + itoa(hidden) + " " + jobsEarlierWord
+	// The count alone, with no fold mark in front of it: the line is not a fold
+	// and it opens nothing, and the mark it used to wear is the subject of
+	// [TestTheJobsOverflowCountWearsNoMarkItCannotOpen] next door.
+	want := itoa(hidden) + " " + jobsEarlierWord
 	if !strings.Contains(text, want) {
 		t.Fatalf("the remainder is not %q:\n%s", want, text)
 	}

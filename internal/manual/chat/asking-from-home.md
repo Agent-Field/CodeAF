@@ -208,8 +208,8 @@ than written out, so it cannot name a digit that would do nothing.
 
 ## Ask here on a narrow window — the exchange takes the whole screen
 
-On a terminal too narrow for two columns — **under 160 columns**, which is every ordinary
-width now — home has no right-hand pane to put an exchange in. It does not refuse. The two
+On a terminal too narrow for two columns — **under 136 columns** — home has no right-hand
+pane to put an exchange in. It does not refuse. The two
 zones are **stacked** instead of sat side by side:
 
 - the **list** is the screen until you enter an exchange;

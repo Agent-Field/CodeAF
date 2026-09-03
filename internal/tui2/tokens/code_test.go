@@ -130,7 +130,12 @@ func TestCodeSlotNames(t *testing.T) {
 func TestProseGlyphsShareTheirBytes(t *testing.T) {
 	for _, pair := range []struct{ name, prose, twin string }{
 		{"bullet", GlyphProseBullet, GlyphSeparator},
-		{"quote", GlyphProseQuote, GlyphTreeVert},
+		// The quote's twin is the CODE GUTTER and no longer the spawn tree's
+		// trunk. Both are a block set apart from the prose around it and both
+		// want a margin rather than a border; the trunk is a rule in a drawing,
+		// which is what put a second `│` column on a chat frame that already had
+		// one down its right-hand side.
+		{"quote", GlyphProseQuote, GlyphCodeGutter},
 	} {
 		if pair.prose != pair.twin {
 			t.Errorf("%s: prose slot is %q, its twin is %q", pair.name, pair.prose, pair.twin)

@@ -138,7 +138,7 @@ rather than pasting it, the path landed in the box as plain text — and because
 with `/`, `enter` handed it to the slash router, which answered about a screenshot:
 
 ```
-unknown command: /var/folders/…/Screenshot · try /help
+there is no command called /var/folders/…/Screenshot · / lists them
 ```
 
 Now the path becomes a chip before you ever press `enter`. And if a drop somehow reaches

@@ -321,6 +321,14 @@ func TestHoveringAnotherProjectsRowReadsThatProjectsRepository(t *testing.T) {
 	}
 	width, _ := a.size()
 	_, right := homeColumns(width)
+	// THE CARD IS DRAWN WIDE ENOUGH TO HOLD THE ADDRESS AND THE BRANCH BOTH. The
+	// place line spends its cells on the address first (place_home.go's
+	// [app.homeCardPlace]) and this lab's workspace is a forty-character
+	// temporary directory, which a thirty-six-cell card cannot hold a branch
+	// beside — dropping the clause there is the layout law, not a lost reading.
+	if room := ansi.StringWidth(alpha) + 24; right < room {
+		right = room
+	}
 	card := ansi.Strip(strings.Join(a.homeDetail(right, 40, a.pal), "\n"))
 	if !strings.Contains(card, "feature/alpha") {
 		t.Fatalf("the hovered project's branch is not on the card:\n%s", card)

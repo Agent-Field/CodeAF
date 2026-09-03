@@ -125,7 +125,8 @@ func TestAnUnnamedJobsPageTitleIsTheHandle(t *testing.T) {
 	}
 	a := jobPageApp(t, job)
 	width, _ := a.size()
-	title := ansi.Strip(a.jobPageTitle(width, job))
+	head, _ := a.jobPageTitleLine(width, job)
+	title := ansi.Strip(head)
 	if !strings.Contains(title, "job 8") {
 		t.Fatalf("an unnamed job's title is not the handle: %q", title)
 	}
@@ -144,7 +145,9 @@ func TestAnUnnamedJobsPageTitleIsTheHandle(t *testing.T) {
 func TestARunningJobsFootOffersAStopAndASettledOneDoesNot(t *testing.T) {
 	log := jobLogFile(t)
 	running := jobPageApp(t, jobNotice(3, session.JobRunning, "ffmpeg -i in.mp4 out.mp4", log))
-	if !strings.Contains(jobPageText(running), jobPageKeysRun) {
+	// The sheet the foot DRAWS is the one without the way out, because the head
+	// is on screen naming it (jobpage.go's [jobPageFootKeys]).
+	if !strings.Contains(jobPageText(running), jobPageKeysRunHeld) {
 		t.Fatalf("a running job's foot does not offer a stop:\n%s", jobPageText(running))
 	}
 	if !strings.Contains(jobPageText(running), "x stop it") {
@@ -153,7 +156,7 @@ func TestARunningJobsFootOffersAStopAndASettledOneDoesNot(t *testing.T) {
 
 	settled := jobPageApp(t, jobNotice(3, session.JobFailed, "ffmpeg -i in.mp4 out.mp4", log))
 	text := jobPageText(settled)
-	if !strings.Contains(text, jobPageKeysOver) {
+	if !strings.Contains(text, jobPageKeysOverHeld) {
 		t.Fatalf("a settled job's foot is not the ended legend:\n%s", text)
 	}
 	if strings.Contains(text, "x stop it") || strings.Contains(text, stopActWord) {

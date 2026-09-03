@@ -166,7 +166,7 @@ func (a *app) stampRow(turn, width int) string {
 		fields = append(fields, word)
 	}
 	if stamp.tools > 0 {
-		fields = append(fields, itoa(stamp.tools)+" "+plural("tool", stamp.tools))
+		fields = append(fields, toolCallWord(stamp.tools))
 	}
 	if stamp.cost > 0 {
 		fields = append(fields, dollars(stamp.cost))
@@ -177,6 +177,22 @@ func (a *app) stampRow(turn, width int) string {
 	}
 	painted := a.stampPaint(stamp)(plain)
 	return rightAlign(painted, plain, width)
+}
+
+// toolCallWord is how many calls a turn made, and it is the ONE spelling of
+// that number on this surface.
+//
+// THE DEFECT IT FIXES: one turn counted its calls in two words six rows apart —
+// `1 tool call` on the fold chip (workfold.go) and `1 tool` on the receipt under
+// the same turn — and the rewind sheet said `1 tool` for a third time. Two
+// spellings of one number invite the reader to check whether they are two
+// numbers, which is the whole of the cost.
+//
+// THE NOUN IS THE CALL AND NOT THE TOOL, because that is what is counted: a
+// turn that ran `bash` four times made four calls and used one tool, and
+// `4 tools` is the reading that is actually wrong.
+func toolCallWord(calls int) string {
+	return itoa(calls) + " " + plural("tool call", calls)
 }
 
 // stampClock is the footer's first field: four digits, or the whole instant

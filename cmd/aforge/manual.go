@@ -44,10 +44,25 @@ func runManual(args []string) error { return runManualWith(args, os.Stdout) }
 func runManualWith(args []string, out io.Writer) error {
 	asked := strings.TrimSpace(strings.Join(args, " "))
 	switch {
-	case asked == "", asked == "-h", asked == "--help":
-		// The list IS this command's help: what it can be asked for is the set
-		// of pages, so a person who typed the word they know from every other
-		// tool gets the answer rather than a refusal.
+	case asked == "-h", asked == "-help", asked == "--help":
+		// `--help` MEANS THE SAME THING ON THIS DOOR AS ON THE OTHER
+		// TWENTY-TWO: how do I call this. It used to print the page list and
+		// nothing else, on the good argument that the list IS what the command
+		// can be asked for — but that made one verb in the binary answer the
+		// gesture differently from every other, and a person probing an
+		// unfamiliar command was shown an answer where they had asked for a
+		// shape. The usage goes on top and the list stays under it, so nothing
+		// is lost and the gesture keeps one meaning.
+		if err := commandHelp("manual"); err != nil && err != exitHelped {
+			return err
+		}
+		if err := writeManualPages(usageOut); err != nil {
+			return err
+		}
+		return exitHelped
+	case asked == "":
+		// The bare form is the listing, and that is not a refusal: what this
+		// command can be asked for is the set of pages.
 		return writeManualPages(out)
 	case strings.ContainsAny(asked, " \t"):
 		return writeManualAnswer(out, asked)

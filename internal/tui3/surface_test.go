@@ -877,7 +877,7 @@ func TestAnAliasTypedInFullRunsWithoutTheList(t *testing.T) {
 	if a.agent != Agent(second) {
 		t.Fatal("/reset typed in full did not reach /new")
 	}
-	if got := plain(frame(a)); strings.Contains(got, "unknown command") {
+	if got := plain(frame(a)); strings.Contains(got, unknownCommandLead) {
 		t.Fatalf("an alias was answered as unknown:\n%s", got)
 	}
 
@@ -946,7 +946,7 @@ func TestRewindIsOnTheTableAndDispatches(t *testing.T) {
 		}
 		b := newTestApp(&fakeAgent{model: "m"})
 		typeLine(t, b, "/"+word)
-		if got := plain(frame(b)); strings.Contains(got, "unknown command") {
+		if got := plain(frame(b)); strings.Contains(got, unknownCommandLead) {
 			t.Fatalf("/%s was not dispatched:\n%s", word, got)
 		}
 	}
@@ -1013,7 +1013,7 @@ func TestTheTableRefusesAWordThatMeansTwoThings(t *testing.T) {
 func TestAnUnknownSlashStillReachesTheOldAnswer(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	typeLine(t, a, "/nonsense")
-	if !strings.Contains(plain(frame(a)), "unknown command: /nonsense") {
+	if !strings.Contains(plain(frame(a)), unknownCommandWord("nonsense")) {
 		t.Fatalf("an unknown slash has to answer:\n%s", plain(frame(a)))
 	}
 	if a.menu.open {

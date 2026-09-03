@@ -124,7 +124,13 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 			if entry.Name == "" || entry.Label == "" {
 				t.Fatalf("the work %q came back without a slug or a row label: %+v", entry.Title, entry)
 			}
-			if len(entry.Label) > 56 {
+			// THE CAP IS COUNTED IN CHARACTERS AND THE FIGURE COMES FROM ONE
+			// PLACE. It used to be a literal 56 counted in BYTES, which is not
+			// the cut the engine makes: taskLabel keeps 55 bytes and appends a
+			// three-byte ellipsis, so every label the engine cuts is 58 bytes and
+			// this assertion would have failed the first time a title was long
+			// enough to be cut. Nothing was long enough until [roomLongTitle].
+			if len([]rune(entry.Label)) > demoTaskLabelLimit {
 				t.Fatalf("the work %q has a label longer than the engine's own cap: %q", entry.Title, entry.Label)
 			}
 		}

@@ -1,5 +1,18 @@
 # Saved shapes of work — saving a way of working and reusing it
 
+## How do I save a way of working and reuse it
+
+Ask for it in a sentence, in your own words: "we should have a saved procedure for release
+notes", "make a harness for triaging flaky tests", "save what we just did so I can run it
+again". aforge writes a design, shows it to you as a card, and saves it when you approve.
+After that the saved way of working is offered back whenever your words look like the work
+it was built for, and it can be run without the chat at all with `aforge run <name>`.
+
+The saved thing is called a **harness** — a named, versioned procedure with steps, the
+tools those steps may use, and its own bounds. Everything below is what that means: how one
+is designed, what a design room shows you, what running one costs, and what you can change
+before it is saved.
+
 ## What a harness is
 
 A harness is a shape of work you have done before, saved so it can be recognised and

@@ -131,6 +131,11 @@ mid-flight — and last one footer line:
 4m12s · 6 nodes · $0.0731
 ```
 
+**A part of that line that is zero is left out.** A run that spent nothing ends without a
+figure, a run with no nodes says nothing about nodes, and a run that never got started has
+no footer at all — `0s · 0 nodes · $0.0000` would be three claims nobody earned, printed
+directly under the sentence saying it did not run.
+
 **Everything else goes to the error stream**: the `models:` line it opens with, a row per
 piece of work as it starts and as it lands, and, when half a minute passes with nothing to
 report, a line like `still waiting: 1 task pending, 1 running · last call <model> 40s ago —
@@ -168,32 +173,46 @@ With no prompt written out, it reads the prompt from whatever is piped in.
 
 | flag | what it does |
 | --- | --- |
-| `-w <dir>` | the directory it works in |
+| `--dir <dir>` | the directory it works in (`-w` is the shorthand, and keeps working) |
 | `--system <text>` | the working method for the worker |
-| `--turns <n>` | a runaway backstop on how many times it goes round its loop |
-| `--budget <n>` | the token budget for the whole run |
-| `--timeout <seconds>` | a hard wall in seconds; unset, it is scaled from the token budget |
+| `--max-turns <n>` | a runaway backstop on how many times it goes round its loop |
+| `--token-budget <n>` | the token budget for the whole run |
+| `--timeout <duration>` | a hard wall, `15m` or `2h` or a bare number of seconds; unset, it is scaled from the token budget |
 | `--json` | print a machine-readable result instead of the plain text |
-| `-o <file>` | write that same result to a file as well |
+| `--out <file>` | write that same result to a file as well (`-o` is the shorthand) |
 | `--model <slug>` | the work model |
-| `--plan-model <slug>` | taken and ignored |
+| `--plan-model <slug>` | taken, and it says on stderr that `exec` does not plan |
+
+`--turns` and `--budget` are the old spellings of `--max-turns` and `--token-budget`. They
+still work for one release and each says so once on stderr: *budget* is a word about money
+everywhere else in this product, so a token count wearing it read as dollars.
 
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
 when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
-and the machine-readable result says which — it carries the worker's text, the reason it
-stopped, what it used, and the files it made. **A run that failed also carries `error`**:
-the reason in the same words a person would read on the error stream, so a script reading
-only standard output can learn why and not just that. It says `"stop":"error"` and that
-field together, and a run that answered carries no `error` key at all rather than an empty
-one. The same object is what `-o <file>` writes, so the file, standard output and the
-error stream cannot disagree about why a run fell over.
+and the machine-readable result says which — it carries the worker's `answer`, the reason
+it stopped, what it used, and the files it made. **A run that failed also carries
+`error`**: the reason in the same words a person would read on the error stream, so a
+script reading only standard output can learn why and not just that.
 
-`--plan-model` is accepted only so that every command you can run without the screen takes
-the same flags. `exec` plans nothing, so naming it changes nothing.
+**Its exit code is the one ladder every headless command leaves on**, and it is written in
+`aforge --help` beside the command: `0` done · `1` it could not be run at all · `2` it ran
+and did not finish · `3` a limit you set stopped it · `4` it needed an answer and nobody
+was there. Which limit stopped it is in `stop`. **`1` means nothing ran at all** — a
+missing key, or a model id the provider rejected before the first call — so a run that
+started, spent money and then fell over leaves with `2`, not `1`.
+
+`aforge exec` used to leave on six rungs of its own — `2` the token budget, `3` the turn
+cap, `4` the wall, `5` an error, `6` nothing to say — and never returned `1`. Setting
+`AFORGE_EXIT_CODES=legacy` puts those old numbers back for one release and changes nothing
+else.
+
+`--plan-model` is still taken so that a command line written before it went away keeps
+working. `exec` plans nothing, so naming it changes nothing, and it says so once on the
+error stream.
 
 Without `--json`, standard output is the worker's own text and nothing else. It opens on the
-error stream with one seat rather than two — `models: work <model> (crew frugal)` — because
-only one of them runs anything.
+error stream naming one model rather than two — `models: work <model> (crew frugal)` —
+because only one of them runs anything.
 
 ## What one costs and what happens when the money runs out
 
@@ -669,6 +688,11 @@ check what it did, not a run that ran out of time.
 
 - **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
   which is the point of a one-shot.
+- **It fell over at the door** — no API key, a `-w` directory that cannot be made, a store
+  that will not open — and there is nothing to keep: the folder goes and no path is printed.
+  Nothing ever ran, so a `record kept at` line would only point you at an empty directory on
+  the one line where you are already looking for the cause. `--keep` and `--debug` still
+  keep it, because those asked for it by name.
 - **It did not** — exit 1, or the partial exit 2 above, or a run you stopped with Ctrl+C —
   and the store is **kept**, with no flag and nothing decided in advance. The last thing the
   run writes on the error stream is where it is:

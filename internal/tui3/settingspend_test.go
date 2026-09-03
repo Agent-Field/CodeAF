@@ -463,3 +463,59 @@ func profileBytes(t *testing.T, dir string) string {
 	}
 	return string(raw)
 }
+
+// ── A REAL AMOUNT NEVER DRAWS AS ZEROS ──────────────────────────────────────
+
+// THE OPPOSITE OF THE EMPTINESS LAW'S FAILURE. That law forbids drawing a zero
+// for something unknown; this was a known, positive, spent amount drawn as
+// `$0.0000` — four zeros, on a surface that has taught every reader that a zero
+// means nothing happened. `dollars` and `railFigure` now share one sub-cent rule
+// ([subCent]) with a floor under it, so the smallest thing either can write is
+// still a figure and never a row of noughts.
+func TestAPositiveCostIsNeverDrawnAsZeros(t *testing.T) {
+	for _, usd := range []float64{0.000006, 0.00001, 0.000049, 1e-9} {
+		for _, c := range []struct {
+			what string
+			got  string
+		}{
+			{"a cost", dollars(usd)},
+			{"a limit", railFigure(usd)},
+		} {
+			if strings.Contains(c.got, "0.0000") && !strings.HasPrefix(c.got, "<") {
+				t.Fatalf("%s of %g is drawn %q — a positive amount rendered as its own opposite", c.what, usd, c.got)
+			}
+			if c.got != "<$0.0001" {
+				t.Fatalf("%s of %g is drawn %q, want %q", c.what, usd, c.got, "<$0.0001")
+			}
+		}
+	}
+}
+
+// AND EVERY FIGURE ABOVE THE FLOOR IS UNTOUCHED, which is what makes the change
+// safe to make in the one function every price on this surface goes through:
+// the only readings that move are the ones that used to be a lie.
+func TestTheMoneyFloorMovesNoFigureAboveIt(t *testing.T) {
+	for _, c := range []struct {
+		usd  float64
+		want string
+	}{
+		{0, "$0.00"},
+		{0.0001, "$0.0001"},
+		{0.0004, "$0.0004"},
+		{0.0052, "$0.0052"},
+		{0.01, "$0.01"},
+		{1.63, "$1.63"},
+		{123.456, "$123.46"},
+	} {
+		if got := dollars(c.usd); got != c.want {
+			t.Fatalf("%g is drawn %q, want %q", c.usd, got, c.want)
+		}
+	}
+	// The limit's own spelling is unmoved too: whole dollars when whole.
+	if got := railFigure(500); got != "$500" {
+		t.Fatalf("a whole limit is drawn %q, want %q", got, "$500")
+	}
+	if got := railFigure(0.0004); got != "$0.0004" {
+		t.Fatalf("a tenth-of-a-cent limit is drawn %q, want %q", got, "$0.0004")
+	}
+}

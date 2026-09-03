@@ -143,8 +143,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}
 	settings, err := config.Load()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "aforge do needs a model to work with.")
-		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
+		// The sentence about a missing key is said at the one exit every
+		// command leaves through (main.go), not here: this used to print it and
+		// then let the machine form print underneath, which said one fact twice.
 		return nil, err
 	}
 	if opts.seats != nil {

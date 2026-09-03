@@ -92,6 +92,28 @@ func homeWorkName(entry session.TaskIndexEntry, width int, now time.Time, pal pa
 // put there — a landed task with no outcome, no files and no cost says nothing
 // rather than drawing an empty indent (the emptiness law).
 func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width int, pal palette) []string {
+	return homeWorkUnderSaid(entry, row, width, pal, false)
+}
+
+// homeWorkUnderSaid is [homeWorkUnder] for a caller whose row ABOVE has already
+// drawn this task's price.
+//
+// ONE SOURCE OF TRUTH FOR A FIGURE DRAWN TWICE. The band above (this file's
+// [homeWorkName]) right-aligns how long ago the work landed, so the money has
+// nowhere else to be and belongs down here. The CARD's name row
+// (place_home.go's [app.homeCardWork]) right-aligns the price itself — and then
+// appended these rows under it, so a task that was not simply done drew
+// `$0.52` on the name row and `$0.52` again four cells under it in a second
+// ink. A figure a person sees twice is a figure they have to check against
+// itself, and the second copy was what pushed the file count and the outcome
+// sentence into an ellipsis.
+//
+// THE NAME ROW WINS. It is right-aligned in the money ink at the card's own
+// margin, which puts every task's price in one column a reader can run an eye
+// down; the under-block's copy sat mid-sentence between a state word and a file
+// count, in the dim, where no two rows line up. So the caller that already said
+// it says so, and the file count gets the cells back.
+func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, width int, pal palette, saidCost bool) []string {
 	room := width - homeWorkIndent
 	if room < 8 {
 		return nil
@@ -139,7 +161,7 @@ func homeWorkUnder(entry session.TaskIndexEntry, row session.SessionRow, width i
 	if entry.FilesChanged > 0 {
 		parts = append(parts, itoa(entry.FilesChanged)+plural(" file", entry.FilesChanged))
 	}
-	if entry.Cost > 0 {
+	if entry.Cost > 0 && !saidCost {
 		parts = append(parts, dollars(entry.Cost))
 	}
 	if len(parts) == 0 {

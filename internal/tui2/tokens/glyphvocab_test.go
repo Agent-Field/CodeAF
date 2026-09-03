@@ -88,7 +88,7 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 		GlyphStepRunning: "working, at two scales",
 		GlyphStepBlocked: "blocked on something else, at two scales",
 		GlyphProseBullet: "a middle dot: the telemetry separator's byte, a different slot",
-		GlyphProseQuote:  "a vertical rule: the spawn tree's byte, a different slot",
+		GlyphProseQuote:  "an eighth block: the code fence's gutter, and the blockquote's — both are a margin beside a block set apart",
 		GlyphShell:       "a dollar: the spend mark's byte, told apart by what follows it",
 	}
 	plainOwner := map[string]string{}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -393,5 +394,50 @@ func TestAnAbandonedStreamStillEndsItsRow(t *testing.T) {
 	rows := ended(read())
 	if len(rows) == 0 || !rows[len(rows)-1].Stream {
 		t.Fatalf("the abandoned stream left no end row: %+v", rows)
+	}
+}
+
+// TestBothRowsOfACallNameTheRunThatMadeIt is what makes this file joinable to
+// the run that wrote it.
+//
+// A developer wanting the call count and the round count of one `aforge do`
+// came here to reconstruct them, and found rows carrying a tag, a node and a
+// timestamp and NOTHING naming the run — in a file every run on the machine
+// appends to. Attribution was by clock alone. `aforge logs --run <id>` had been
+// reading a `run` key off these rows for as long as it has existed, and nothing
+// wrote one.
+//
+// Both rows carry it, not only the start: the end row is the one with the cost
+// and the finish reason on it, and a reader filtering the file down to one run
+// must not have to pair every row first to keep the halves that matter.
+func TestBothRowsOfACallNameTheRunThatMadeIt(t *testing.T) {
+	read := loggingTo(t)
+	client, _ := newTestClient(t, Config{
+		SupportsParameter: func(string, string) (bool, bool) { return true, true },
+	})
+	ctx := trace.Begin(context.Background())
+	run := trace.RunFrom(ctx)
+	if run == "" {
+		t.Fatal("the door minted no run id, so there is nothing for a row to carry")
+	}
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello"), ai.WithMaxTokens(8_192)); err != nil {
+		t.Fatal(err)
+	}
+
+	records := read()
+	if len(records) != 2 {
+		t.Fatalf("one call should leave a start and an end; got %d rows", len(records))
+	}
+	for _, record := range records {
+		if record.Run != run {
+			t.Errorf("a %s row carries run %q, and the call was made under %q — "+
+				"a log a person is driven to read is attributable by timestamp alone without it",
+				map[string]string{calllog.PhaseStart: "start", "": "end"}[record.Phase], record.Run, run)
+		}
+	}
+	// And the count the run publishes in its `--json` envelope is the same
+	// fact, kept in memory so it survives the log being switched off.
+	if got := calllog.CallsFor(run); got != 1 {
+		t.Errorf("the run made one call and reports %d", got)
 	}
 }

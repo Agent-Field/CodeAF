@@ -313,11 +313,12 @@ func Glyphs() []GlyphInfo {
 		{"Spend", GlyphSpend, '$', false},
 		// The prose slots (code.go). They are named there because a slot is a
 		// MEANING and not a byte, and they are walked HERE because the width
-		// gate is the one place a glyph may not hide: GlyphCodeGutter is the
-		// only mark in the product with no byte twin elsewhere in this list,
-		// and until it was added it escaped the sweep entirely.
+		// gate is the one place a glyph may not hide: GlyphCodeGutter arrived
+		// with no byte twin elsewhere in this list and escaped the sweep
+		// entirely until it was added. It has one now — the blockquote's gutter
+		// moved onto it, off the box rule it shared with the spawn tree.
 		{"ProseBullet", GlyphProseBullet, '·', true},
-		{"ProseQuote", GlyphProseQuote, '│', true},
+		{"ProseQuote", GlyphProseQuote, '▏', true},
 		{"CodeGutter", GlyphCodeGutter, '▏', true},
 		{"Gauge0", GaugeCells[0], '▁', true},
 		{"Gauge1", GaugeCells[1], '▂', true},

@@ -17,7 +17,7 @@ package tui3
 //	 20 chats · what wants you first                    alt+g group by project
 //	 ? Swarm Task Splitting     aforge-v2   asks: add a --report-only mode?  2h
 //	 ◐ Bounty Reward Companies  leadgen     2 tasks running · reading filings 3h
-//	 ▸ 15 more, quiet since aug 21
+//	 ▸ 15 more, quiet since 6d
 //	───────────────────────────────────────────────────────────────────────────
 //
 // ── THE LAWS ────────────────────────────────────────────────────────────────
@@ -65,21 +65,50 @@ const (
 // sentence is a preview nobody reads.
 const homeCardCol = 36
 
+// homeSwitchName is the longest conversation NAME this list undertakes to draw
+// whole beside its facts. Seventy cells is a sentence of a title — far past what
+// a session names itself and past what most people type — and the law it serves
+// is rowfit.go's first: the identity is whole before any fact gets a cell, so
+// what this number buys is that the drop ladder never has to reach the title.
+const homeSwitchName = 70
+
+// homeSwitchTail is what a row spends on everything BUT its name at that
+// reading: the mark and the two cells after it, then a project tag and an age,
+// each carrying the one space [switcherTailWidth] puts in front of a fact.
+const homeSwitchTail = 1 + 2 + (1 + 18) + (1 + 3)
+
 // homeSwitchFull is the width at which the flat list stops wanting cells — the
 // baseline SCREEN 1a is drawn at, where a row can carry its mark, its name, its
-// project tag, its note and its age with none of them giving way
-// ([switcherPaintRow] drops them in that order below it).
-const homeSwitchFull = 120
+// project tag and its age with none of them giving way ([switcherPaintRow] drops
+// them in that order below it).
+//
+// THE NOTE IS NOT IN THAT LIST, AND THAT IS THE WHOLE OF THIS NUMBER. It was
+// 120, which was this same reading WITH the row's note on it — the `asks: May I
+// re-run the typecheck job…` clause — and that put [homeCardMin] at a hundred
+// and sixty, so no ordinary window ever drew a card. The arithmetic was honest
+// and the input was not: the note is THE FACT THE CARD EXISTS TO CARRY, and
+// reserving the list's width for it meant the layout held cells back from the
+// card in order to draw, in the list, the sentence the card would have drawn
+// properly. A 120- and a 140-column window got neither.
+//
+// So the note is not what the list is measured at. It is ranked first out of the
+// row ([switcherPaintRow]'s ladder drops it before the project tag and the age),
+// which is the mechanism for this: past [homeCardMin] the note gives way and the
+// card takes it up, and the name, the tag and the age are untouched at every
+// width the tier exists at.
+const homeSwitchFull = homeSwitchName + homeSwitchTail
 
 // homeCardMin is the width at which a card appears beside the list — WHICH IS
 // THE SUM OF THE TWO COLUMNS AND THE GUTTER, and not a number chosen next to
-// them. A hundred and sixty cells is where the list has everything it asks for
-// AND a card still fits; the tier begins exactly there because that is what the
-// parts add up to, and it moves by itself the day one of them changes.
+// them. A hundred and thirty-six cells is where the list has everything it asks
+// for AND a card still fits; the tier begins exactly there because that is what
+// the parts add up to, and it moves by itself the day one of them changes.
 //
 // THE CARD IS NOT PAID FOR OUT OF THE LIST. Below this the list would have to
-// give up its note — the one fact the card was for — to make room for a card
-// saying that same fact, which is the layout arguing with itself.
+// give up a fact its own ladder ranks above the note — the project tag, the age,
+// or the name itself — to make room for a card, which is the layout arguing with
+// itself. The NOTE is a different matter and is exactly what changes hands here:
+// see [homeSwitchFull].
 const homeCardMin = homeSwitchFull + homeGutter + homeCardCol
 
 // homeCardCap is the widest the card is drawn.

@@ -360,6 +360,16 @@ func (p *standingPlace) note(a *app, width int) []string { return nil }
 // would be this surface advertising a key that does nothing — the exact fault
 // the verb strip was built to end (verbstrip.go's header).
 func (p *standingPlace) hint(a *app) string {
+	// AND A PAGE WITH NO ORDER UNDER THE CURSOR NAMES NO ROW KEY EITHER. On a
+	// machine that has been asked to keep nothing true the body teaches what a
+	// standing order is, and the foot under it went on saying `enter open where
+	// it was asked` over a page with nothing to open — [standingPlace.enter]
+	// already asks the same question of the same cursor and does nothing when
+	// there is no order there, so the clause was the one half of that pair that
+	// had not been told.
+	if _, ok := p.choice(); !ok {
+		return "esc"
+	}
 	verbs := p.verbs(a)
 	words := make([]string, 0, len(verbs))
 	for _, v := range verbs {
@@ -367,7 +377,10 @@ func (p *standingPlace) hint(a *app) string {
 	}
 	line := homeItemEnterWord
 	if len(words) > 0 {
-		line += " · → " + strings.Join(words, " · ")
+		// ONE KEY, ONE CLAUSE ([homeStripWord]). Joining the verbs with the same
+		// `·` that separates the clauses made `stop` and `not here` read as verbs
+		// with no keys of their own.
+		line += " · " + homeStripWord(words...)
 	}
 	return line + " · esc"
 }

@@ -38,12 +38,21 @@ type builtHome struct {
 	UsageLines    int
 	Messages      int
 	Artifacts     int
+	// Nodes and Jobs are the ONE conversation's own record of what it had out:
+	// the checkpointed task graph and the background jobs beside it
+	// (seed_room.go). They are counted apart from Tasks because they are a
+	// different store answering a different question — Tasks is what a PROJECT
+	// has landed, and these are what a CONVERSATION still holds.
+	Nodes int
+	Jobs  int
 }
 
 func (b builtHome) line() string {
 	return fmt.Sprintf("built a demo home in %s: %d projects, %d conversations, %d pieces of work, "+
-		"%d standing orders, %d memories, %d spending lines, %d messages, %d made things",
-		b.Dir, b.Projects, b.Conversations, b.Tasks, b.Standing, b.Memories, b.UsageLines, b.Messages, b.Artifacts)
+		"%d standing orders, %d memories, %d spending lines, %d messages, %d made things, "+
+		"%d nodes in one graph, %d background jobs",
+		b.Dir, b.Projects, b.Conversations, b.Tasks, b.Standing, b.Memories, b.UsageLines, b.Messages,
+		b.Artifacts, b.Nodes, b.Jobs)
 }
 
 // seedDemoHome writes a whole v3 state into dir and answers what it wrote.
@@ -94,6 +103,17 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 		return built, err
 	}
 	built.Tasks = tasks
+
+	// AND THE ONE CONVERSATION THAT STILL HAS WORK OUT writes its own graph and
+	// its own jobs into its own folder. It is a separate store from the index
+	// above and it feeds a separate set of surfaces — the task column, a task
+	// room, the jobs section and a job's page — none of which the project index
+	// can reach (seed_room.go).
+	nodes, jobs, err := writeTaskGraphs(projects, ids, now)
+	if err != nil {
+		return built, err
+	}
+	built.Nodes, built.Jobs = nodes, jobs
 
 	orders, err := writeStanding(filepath.Join(root, "v3", "standing"), projects, now)
 	if err != nil {

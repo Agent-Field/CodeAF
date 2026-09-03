@@ -656,3 +656,70 @@ func TestTheCardDrawsNoBandItHasNothingBehind(t *testing.T) {
 		}
 	}
 }
+
+// ── ONE PRICE PER TASK ON A CARD ────────────────────────────────────────────
+
+// A TASK'S PRICE WAS DRAWN TWICE ON ONE CARD, four cells apart, in two different
+// inks: `$0.52` right-aligned on the name row and `$0.52` again in the dim
+// under-block beside the file count. It happened for every task that was not
+// simply done, because that is exactly when the under-block is appended.
+//
+// The name row wins — it is the column a reader runs an eye down — and the
+// under-block is told so rather than left to guess
+// (homeband_work.go's [homeWorkUnderSaid]). The cells it gives back are the ones
+// the file count and the outcome sentence were losing to an ellipsis.
+func TestACardDrawsATasksPriceOnceAndNotTwice(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", "/tmp/alpha", now)
+	other := lab.session("-tmp-alpha", "aaaa000000000002", "cut every list", "/tmp/alpha", now.Add(-time.Hour))
+	lab.task("-tmp-alpha", session.TaskIndexEntry{
+		ID: "3", Name: "cut-lists", Label: "Cut every list over to the row fitter",
+		Title:  "Cut every list over to the row fitter",
+		Status: string(session.TaskUnverified), SessionID: "aaaa000000000002",
+		EndedAt: now.Add(-20 * time.Minute), Cost: 0.52, FilesChanged: 4,
+		Outcome: "The four lists now fit their own width.",
+	})
+
+	a := lab.app(mine)
+	a.openHome()
+	card := homeCardFor(t, a, other)
+
+	// The reading is scoped to the WORK BAND — the heading and the rows under it
+	// until the next blank. The card's own totals band ("touched 4 files · spent
+	// …") is a different fact about a different subject, and a conversation that
+	// ran one task is the case where the two figures agree.
+	head := cardLine(card, homeCardWorkWord)
+	if head < 0 {
+		t.Fatalf("the card has no work band:\n%s", strings.Join(card, "\n"))
+	}
+	var band []string
+	for _, line := range card[head:] {
+		if strings.TrimSpace(plain(line)) == "" && len(band) > 1 {
+			break
+		}
+		band = append(band, plain(line))
+	}
+	figure := dollars(0.52)
+	said := 0
+	for _, line := range band {
+		said += strings.Count(line, figure)
+	}
+	if said != 1 {
+		t.Fatalf("the work band says %s %d times, want once — one source of truth for a figure drawn twice:\n%s",
+			figure, said, strings.Join(band, "\n"))
+	}
+	// AND IT IS THE NAME ROW THAT KEPT IT, hard against the card's right edge
+	// where every figure on this surface sits.
+	name := cardLine(card, "Cut every list")
+	if name < 0 {
+		t.Fatalf("the card has no work on it:\n%s", strings.Join(card, "\n"))
+	}
+	if row := strings.TrimRight(plain(card[name]), " "); !strings.HasSuffix(row, figure) {
+		t.Fatalf("the price left the name row rather than the block under it: %q", row)
+	}
+	// AND THE FILE COUNT, WHICH WAS BEING SQUEEZED OUT, IS THERE.
+	if at := cardLine(card, "4 files"); at < 0 {
+		t.Fatalf("the file count is still missing from the card:\n%s", strings.Join(card, "\n"))
+	}
+}

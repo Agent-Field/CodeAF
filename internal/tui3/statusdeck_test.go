@@ -299,13 +299,21 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 // literal since the deck: the segment was written to stand at the head of the
 // telemetry and drew for nobody, because it was guarded on an empty profile
 // directory — the ordinary launch (crew.go's [app.crewReading]).
+//
+// AND THE BILL GAINED ITS RESERVATION, which is the second. The money segment
+// holds one width for every spelling a turn walks through, so the row does not
+// shove sideways as the figure grows a place and loses it again (render.go's
+// [costCell]). `$0.31` is five cells inside an eight-cell segment, so three of
+// the cells the gap used to hold moved to the other side of the crew word — the
+// row is the same length and the same segments, and the two right-hand clusters
+// stand exactly where they stood.
 func TestTheWideStatusRowIsByteForByteWhatItWas(t *testing.T) {
 	a, _ := deckApp(t)
 	a.width = 120
 	a.touch()
 
 	const want = "Fix the nil-map crash · deepseek-v4-flash" +
-		"                                  crew balanced · $0.31 · 24k/200k · 12% · idle"
+		"                               crew balanced ·    $0.31 · 24k/200k · 12% · idle"
 	if got := plain(strings.Join(a.statusRows(120), "\n")); got != want {
 		t.Fatalf("the wide status row changed:\n got %q\nwant %q", got, want)
 	}

@@ -443,11 +443,10 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 		parts = append(parts, "thought "+word)
 	}
 	if f.tools > 0 {
-		word := " tool call"
-		if f.tools != 1 {
-			word += "s"
-		}
-		parts = append(parts, itoa(f.tools)+word)
+		// ONE SPELLING OF THIS NUMBER, and it is timestamps.go's
+		// ([toolCallWord]) — the receipt six rows under this chip counts the same
+		// calls and used to spell them differently.
+		parts = append(parts, toolCallWord(f.tools))
 	}
 	parts = append(parts, "ctrl+e")
 	return strings.Join(parts, " · ")

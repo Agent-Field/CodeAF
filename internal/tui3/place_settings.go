@@ -131,21 +131,33 @@ func (placeSettings) box(a *app) *editor {
 
 // note is what the panel is holding: the submenu's label, the last refusal, or
 // the count of rows that differ from a profile nobody has touched.
+//
+// EVERY ONE OF THESE FOUR LINES DROPS CLAUSES RATHER THAN CUTTING CHARACTERS.
+// They are sentences with clauses in them — the foot note is two, separated by
+// the surface's own middle dot (`saved to your profile · a project's own
+// .aforge/config.json is a hand edit`), and a pinned row's note is a statement
+// with the remedy hung off a dash — and a character ruler took sixty columns
+// through the middle of a path and through the middle of the word `unset`. So
+// they all go through [noteFit], which is the STATEMENT half of the pair the
+// foot of every place is fitted by: a note's first clause is what happened and
+// its later ones elaborate, so it drops from the end and the answer survives. On
+// a line with nothing to drop it is exactly [fit], so the labels keep it too
+// rather than each site having to decide.
 func (placeSettings) note(a *app, width int) []string {
 	pal := a.pal
 	switch {
 	case a.sheet.sel != nil:
-		return []string{" " + pal.dim(fit(a.sheet.sel.label, width-2))}
+		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
 	case a.sheet.edit != nil:
 		// THE LABEL IS THE NOTE AND THE VALUE IS THE COMPOSER. The panel used to
 		// draw both on one line of its own foot; under the router the box a person
 		// is typing in is THE composer, so what is left here is the one thing the
 		// box cannot say — which setting this is.
-		return []string{" " + pal.dim(fit(a.sheet.edit.label, width-2))}
+		return []string{" " + pal.dim(noteFit(a.sheet.edit.label, width-2))}
 	case a.sheet.msg != "":
-		return []string{" " + pal.bad(fit(a.sheet.msg, width-2))}
+		return []string{" " + pal.bad(noteFit(a.sheet.msg, width-2))}
 	}
-	return []string{" " + pal.dim(fit(a.sheet.footNote(), width-2))}
+	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
 }
 
 func (placeSettings) hint(a *app) string { return a.sheet.keysLine() }

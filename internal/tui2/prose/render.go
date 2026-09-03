@@ -237,7 +237,7 @@ func (r *renderer) paragraph(n ast.Node) {
 // wrapInline is the shared tail of every prose block: walk the inline children
 // into a wrapper at the given width and emit what it produces.
 func (r *renderer) wrapInline(n ast.Node, st style, width int) {
-	w := newWrapper(width, r.emit)
+	w := newWrapper(width, r.figureWidth(), r.emit)
 	r.inline(n, w, st)
 	w.flush()
 }

@@ -176,7 +176,7 @@ func TestTheSettingsTabsAreChipsAndTheirPaddingIsClickable(t *testing.T) {
 	// AND THE SPANS COVER THE PADDING. The first cell of a chip and its last are
 	// that chip's, which is what makes a near miss land on the tab a person was
 	// aiming at rather than on nothing.
-	spans := tabSpans()
+	spans := tabSpans(120, 1)
 	if len(spans) != len(settingTabs) {
 		t.Fatalf("the bar recorded %d spans for %d tabs", len(spans), len(settingTabs))
 	}
@@ -185,7 +185,7 @@ func TestTheSettingsTabsAreChipsAndTheirPaddingIsClickable(t *testing.T) {
 			t.Fatalf("tab %q spans %d cells, want %d", settingTabs[i], got, len(settingTabs[i])+tabPadCols)
 		}
 		for _, x := range []int{span.from, span.to - 1} {
-			at, ok := tabAtColumn(x)
+			at, ok := tabAtColumn(x, 120, 1)
 			if !ok || at != i {
 				t.Fatalf("column %d of tab %q resolved to %d (ok=%v)", x, settingTabs[i], at, ok)
 			}
@@ -193,7 +193,7 @@ func TestTheSettingsTabsAreChipsAndTheirPaddingIsClickable(t *testing.T) {
 	}
 	// The bar's plain width agrees with the last span, so a click past the end
 	// lands on nothing rather than on the tab before it.
-	if _, ok := tabAtColumn(spans[len(spans)-1].to); ok {
+	if _, ok := tabAtColumn(spans[len(spans)-1].to, 120, 1); ok {
 		t.Fatal("the cell after the last chip answered as a tab")
 	}
 	if got, want := ansi.StringWidth(flat), spans[len(spans)-1].to; got != want {

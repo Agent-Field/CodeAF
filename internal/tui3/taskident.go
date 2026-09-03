@@ -120,18 +120,13 @@ func (a *app) taskMarkSel(ident taskIdent, sel bool) string {
 	return a.pal.bold(a.taskMark(ident))
 }
 
-// The two caps on a name.
+// The caps on a name.
 const (
-	// taskTitleWords is how long a name is allowed to be. Three is the length a
-	// person reads as a label rather than as a sentence — "Fix nil-map crash",
-	// "Collect the sources" — and it is a cap and not a target: a two-word title
-	// is left at two.
-	//
-	// IT IS THE ENGINE'S OWN FIGURE and not a second copy of it. The namer that
-	// makes a piece of work's short name asks for exactly this many words
-	// (internal/session's taskname.go), so a cap written twice would be either a
-	// column truncating a name that was made to fit it or a namer paying for
-	// words the column throws away.
+	// taskTitleWords is how long the ENGINE lets a name be, and it is kept here
+	// as a reference and not as a ruler. The namer that makes a piece of work's
+	// short name asks for exactly this many words (internal/session's
+	// taskname.go), so a name that arrives already short arrived that way — this
+	// surface does not cut it a second time, and [taskTitleOf] says why.
 	taskTitleWords = session.TaskNameWords
 	// taskSubtitleMax is the subtitle's width in cells. Ninety is about a line of
 	// prose at the width the cards are drawn at; past it the "one line" promise
@@ -139,21 +134,49 @@ const (
 	taskSubtitleMax = 90
 )
 
-// taskTitleOf is the NAME: the first few words of the engine's own title, or of
-// the assignment when there is no title, or the id when there is neither.
+// taskTitleOf is the NAME: the engine's own title for the work WHOLE, or the
+// first sentence of the assignment when there is no title, or the id when there
+// is neither.
+//
+// IT DOES NOT CUT, AND THAT IS THE POINT. Until this wave it answered
+// `firstWords(label, taskTitleWords)` — three words, decided here, BEFORE ANY
+// WIDTH WAS KNOWN — so a hundred-and-sixty-column room header named the work no
+// better than a twenty-four-column rail row did: a family of six pieces that all
+// begin with a verb and a plural noun came out as `Cut every list`, `Fold the
+// settled`, `Move the tab`, and the room a person opened to find out more told
+// them exactly what the column already had. That is [rowfit.go]'s first law
+// broken at the earliest possible moment — a fitter cannot give back cells that
+// were spent before it was asked — and the answer is the one that file states:
+// the identity comes to the row whole and the ROW decides what it can afford
+// ([app.roomHeadWord] is the worked example, and every other site that draws a
+// name already fits it to its own space).
+//
+// What is left here is grooming and not cutting: the words are normalised onto
+// single spaces so a title with a newline in it cannot break a row, and the
+// punctuation that ended the sentence it came out of is dropped.
 //
 // The id floor matters more than it looks. A node whose title never arrived is
 // exactly the node a person is most likely to be trying to identify — something
 // went wrong early — and "task 7" is a name they can say out loud, ask about,
 // and match against the rail. An empty string is not.
 func taskTitleOf(label, assignment string, id uint64) string {
-	if name := firstWords(label, taskTitleWords); name != "" {
+	if name := wholeName(label); name != "" {
 		return name
 	}
-	if name := firstWords(leadSentence(assignment), taskTitleWords); name != "" {
+	if name := wholeName(leadSentence(assignment)); name != "" {
 		return name
 	}
 	return taskIDWord(id)
+}
+
+// wholeName is [firstWords] with no cap: one line, single-spaced, without the
+// full stop that ended the sentence it was lifted from.
+func wholeName(text string) string {
+	fields := strings.Fields(strings.TrimSpace(text))
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.TrimRight(strings.Join(fields, " "), ".,:;")
 }
 
 // taskIDWord is the LAST-RESORT name: the word a person uses for a node nobody

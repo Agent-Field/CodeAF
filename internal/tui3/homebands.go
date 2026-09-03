@@ -126,9 +126,17 @@ func bandClausesWithSeparator(width, indent int, separator string, ink func(stri
 	return rows
 }
 
-// bandSides keeps a label and its trailing fact on one row when both retain
-// the label's floor. When they cannot share, the fact gets a complete row of
-// its own, aligned to the right whenever it fits there.
+// bandSides keeps a label and its trailing fact on one row WHILE THE LABEL FITS
+// WHOLE beside it. When they cannot share, the fact gets a complete row of its
+// own, aligned to the right whenever it fits there.
+//
+// THE LABEL IS THE ROW AND THE TAIL IS A FACT ABOUT IT (rowfit.go's law 1). The
+// gate used to be an eight-cell FLOOR: the tail was measured first and given
+// every cell it wanted, and the label took what was left with an ellipsis in it
+// — so a card drew `✓ Port the picker onto the ne… $0.31`, which names no piece
+// of work and prices it exactly. The two-line branch below was already here and
+// was fired by the wrong question: it asked whether the LABEL was short, when
+// what matters is whether the label had to be CUT.
 func bandSides(width, indent, floor int, label, tail string, labelInk, tailInk func(string) string) []string {
 	return bandSidesWithSeparator(width, indent, floor, "", label, tail, labelInk, tailInk)
 }
@@ -144,7 +152,13 @@ func bandSidesWithSeparator(width, indent, floor int, separator, label, tail str
 	sharedTail := separator + tail
 	tailWidth := ansi.StringWidth(sharedTail)
 	labelRoom := width - tailWidth - 1
-	if label != "" && labelRoom >= floor {
+	// AND THE FLOOR IS THE LAST RESORT AND NOT THE RULE. A label that will not
+	// fit whole on a row of its OWN is a label that is going to be cut whichever
+	// shape this row takes, and a second row spent on a tail beside a cut label
+	// is a row spent for nothing — so at that width the two share again, down to
+	// the floor the caller named.
+	if label != "" && (ansi.StringWidth(label) <= labelRoom ||
+		(ansi.StringWidth(label) > width && labelRoom >= floor)) {
 		shown := fit(label, labelRoom)
 		gap := width - ansi.StringWidth(shown) - tailWidth
 		return []string{labelInk(shown) + strings.Repeat(" ", gap) + tailInk(sharedTail)}

@@ -281,9 +281,25 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // that each forget ([app.compose]).
 func (placeBase) box(a *app) *editor { return &a.compose }
 
-// hint is the router's own line, named here rather than in six place files so
-// that a hint and the router can never disagree about which keys exist.
-func (placeBase) hint(a *app) string { return placeHintWords }
+// ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
+//
+// [placeBase] used to answer `hint` with [placeHintWords], and it made a place
+// that had never written a foot draw a sentence about SOMEBODY ELSE'S keys. The
+// search place said `enter talk about it` six rows under its own body saying
+// `enter opens the conversation at the matching turn.`, and the spend place hid
+// `enter`, `→ b the limits` and its shift-arrow window behind the same line —
+// two rooms lying with one borrowed sentence, and neither of them a compile
+// error, a test failure or anything a reader of either file would notice.
+//
+// So `hint` joins `id`, `word` and `cursorAt` as a method [placeBase] does NOT
+// carry: a place with no foot of its own does not build. `TestEveryPlaceSaysItsOwnKeys`
+// reads this file back with go/ast and says the same thing a second time, so
+// that a default quietly restored here is caught by a name rather than by
+// somebody eventually reading a frame.
+//
+// [placeHintWords] survives as the CONVERSATION's composer foot — the line the
+// design fixes for a frame with no place standing on it — and is nobody's
+// fallback.
 
 // placeRegistry is every place, by id, filled by each `place_<word>.go`'s `init`
 // exactly as `registerHomeBand` fills the bands. A place added later is a file
@@ -317,6 +333,23 @@ func registerPlace(p place) {
 
 // pages is the tab bar's order, read from the registry's order table.
 func pages() []page { return placeOrder }
+
+// placeWordList is the seven words in the bar's own order, for the one sentence
+// on the key sheet that has to say which digit is which (commands.go).
+//
+// IT IS READ OFF [placeOrder] AND NOT TYPED OUT, because a hand-written list on
+// the help sheet is a second answer to what `alt+3` opens — and the day a place
+// is added or the order changes, the sheet is the last thing anybody would think
+// to edit. One source of truth (CLAUDE.md's design laws).
+func placeWordList() string {
+	words := make([]string, 0, len(placeOrder))
+	for _, id := range placeOrder {
+		if pl, ok := placeRegistry[id]; ok {
+			words = append(words, pl.word())
+		}
+	}
+	return strings.Join(words, " ")
+}
 
 // placeFor is the place one id names, and nil for the conversation or for an id
 // nothing answers to. It is THE registry lookup, and every question this file
@@ -434,28 +467,140 @@ func (a *app) placeCount(id page) int {
 // A bar that is cut in half is a bar that lies about how many places there are,
 // so it gives up words in a stated order rather than being trimmed:
 //
-//  1. every word, every count — while they fit;
-//  2. the place you are standing in, and the places with something new in them —
-//     which is the whole reading a narrow bar has room to be useful for;
-//  3. the place you are standing in, alone.
+//  1. every word, every count, with the bar's own air between the chips —
+//     while they fit;
+//  2. EVERY WORD AGAIN, WITH THE AIR GIVEN UP. The seven words plus the padding
+//     each chip carries are fifty-seven cells and the air between them is six
+//     more, so a sixty-column terminal — a split pane, an ssh session from a
+//     train, a phone — overshot by three and fell all the way past the middle
+//     rung to the single word `home`, because on a quiet machine no place wears
+//     a count. The words are what this row is FOR and the space between them is
+//     not, so the space is what goes first.
+//  3. as many words as fit, in the bar's own order, always carrying the place
+//     you are standing in and any place wearing a count, and ending with a dim
+//     count of the places that did not fit ([barMoreWord]).
+//
+// THE BAR IS THE SIGN AND THE FOOT IS THE ROUTE. A row this narrow cannot say
+// `tab next place` as well as the words — at rung 3 there are not seven cells
+// spare for it — so what the bar owes a person is that the other rooms EXIST,
+// and the key that reaches them is on the foot of every place
+// ([placeHintTail]), which [hintFit] protects to the last cell there is. A bar
+// collapsed to the word `home` said neither of those things, and six of the
+// seven places were undiscoverable on exactly the tier where a person is least
+// able to go looking for them.
 //
 // `numbered` is the map ([app.mapShowing]): every chip grows the digit that
 // jumps to it, in the cells the words were already in, and nothing moves that a
 // person has to re-find when the map goes away.
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
-	full, spans, ok := a.tabBarAt(width, numbered, pal, func(id page) bool { return true })
-	if ok {
+	every := func(page) bool { return true }
+	if full, spans, ok := a.tabBarAt(width, numbered, pal, every, tabGap, 0); ok {
 		a.tabs = spans
 		return a.placeBarMachine(full, width, pal)
 	}
-	worth := func(id page) bool { return a.barKeeps(id) || a.placeCount(id) > 0 }
-	if some, spans, ok := a.tabBarAt(width, numbered, pal, worth); ok {
+	if tight, spans, ok := a.tabBarAt(width, numbered, pal, every, 0, 0); ok {
 		a.tabs = spans
-		return a.placeBarMachine(some, width, pal)
+		return a.placeBarMachine(tight, width, pal)
 	}
-	alone, spans, _ := a.tabBarAt(width, numbered, pal, a.barKeeps)
+	keep, elided := a.barWordsAt(width, numbered)
+	some, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return keep[id] }, 0, elided)
 	a.tabs = spans
-	return a.placeBarMachine(alone, width, pal)
+	return a.placeBarMachine(some, width, pal)
+}
+
+// barMoreWord is the count of places a narrow bar could not carry, in the
+// spellings [rowfit.go]'s law 2 asks a fact to degrade through: `▸ 3 more` while
+// there are cells for it, and `▸ 3` when there are not.
+//
+// IT IS THE SURFACE'S ONE FOLD SENTENCE ([foldSpellings]) AND NO LONGER A `+`.
+// This row and the command menu's own tail mean the same thing — a navigation
+// list has more items than fit — and they were two writers with two spellings:
+// `+3 more` here against `▸ 3 more` there, so a person could not tell whether
+// `+3` was a count, a badge or a door. The mark is the half that says which, and
+// it is on every rung of the ladder: the word `more` gives way before `▸` does.
+//
+// IT IS A SIGN AND NOT A DOOR, and that is decided rather than unfinished: it
+// opens nothing, wears no cursor and claims no span, exactly as the machine's
+// name at the other end of this row does ([placeBarMachine]). A chip that
+// carried a press would have to pick one of the places it stands for, and the
+// key that reaches them all in order is `tab`.
+func barMoreWord(n, room int) string {
+	if n <= 0 {
+		return ""
+	}
+	for _, say := range foldSpellings(n, "") {
+		if tabPadCols+ansi.StringWidth(say) <= room {
+			return say
+		}
+	}
+	// AND A FRAME WITH NO ROOM EVEN FOR `+6` SAYS NOTHING, rather than running
+	// past its own edge. A count that overflowed the row would be this ladder
+	// committing the fault it exists to prevent.
+	return ""
+}
+
+// barChipWord is the word one place's chip carries: its own word, the digit the
+// map grows in front of it, and the count behind it. It is factored out of
+// [app.tabBarAt] so the ladder can MEASURE a chip without painting one, and so
+// the measurement and the paint can never come to disagree about how wide a
+// word is.
+func (a *app) barChipWord(at int, id page, numbered bool) string {
+	word := id.word()
+	if numbered {
+		word = itoa(at+1) + " " + word
+	}
+	if n := a.placeCount(id); n > 0 {
+		word += " " + itoa(n)
+	}
+	return word
+}
+
+// barWordsAt chooses the words a bar too narrow for all seven carries, and says
+// how many it had to leave off.
+//
+// THE MANDATORY HALF FIRST: the place you are standing in and the word under the
+// cursor may never go ([app.barKeeps] holds that argument), and neither may a
+// place wearing a count, because a number is this row saying something moved in
+// a room you are not standing in.
+//
+// THEN THE ROW IS FILLED IN THE BAR'S OWN ORDER AND STOPS AT THE FIRST WORD
+// THAT WILL NOT FIT — [rowfit.go]'s law 3 said about words instead of facts. A
+// fill that skipped `standing` because `spend` was shorter would draw a
+// different four places at every width, and `alt+1` … `alt+7` name positions
+// that never move; a prefix plus your own word is a reading a person can learn.
+//
+// The count's own cells are reserved out of the fill, measured against the
+// longest spelling this row could end up drawing, because a bar that spent its
+// last cells on one more word and then had no room to say two others exist
+// would be the collapse this ladder is here to prevent, one word later.
+func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
+	cost := func(at int, id page) int { return ansi.StringWidth(a.barChipWord(at, id, numbered)) + tabPadCols }
+	keep := make(map[page]bool, len(pages()))
+	spent := tabLead
+	for at, id := range pages() {
+		if a.barKeeps(id) || a.placeCount(id) > 0 {
+			keep[id] = true
+			spent += cost(at, id)
+		}
+	}
+	reserve := tabPadCols + ansi.StringWidth("+"+itoa(len(pages())))
+	for at, id := range pages() {
+		if keep[id] {
+			continue
+		}
+		if spent+cost(at, id)+reserve > width {
+			break
+		}
+		keep[id] = true
+		spent += cost(at, id)
+	}
+	elided := 0
+	for _, id := range pages() {
+		if !keep[id] {
+			elided++
+		}
+	}
+	return keep, elided
 }
 
 // placeMachineLead is the word in front of the machine's name at the right end
@@ -531,7 +676,11 @@ type placeTabSpan struct {
 
 // tabBarAt draws the bar over the places `keep` admits, says where each chip
 // landed, and says whether it fit.
-func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool) (string, []placeTabSpan, bool) {
+//
+// `gap` is the air between two chips, which the ladder above gives up before it
+// gives up a word, and `elided` is how many places are not on this bar at all —
+// drawn as [barMoreWord] at the end of the row, in the cells that are left.
+func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool, gap, elided int) (string, []placeTabSpan, bool) {
 	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
 	spans := make([]placeTabSpan, 0, len(pages()))
 	at, first := tabLead, true
@@ -540,21 +689,15 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 			continue
 		}
 		if !first {
-			line += strings.Repeat(" ", tabGap)
-			plain += strings.Repeat(" ", tabGap)
-			at += tabGap
+			line += strings.Repeat(" ", gap)
+			plain += strings.Repeat(" ", gap)
+			at += gap
 		}
 		first = false
-		word := id.word()
-		if numbered {
-			// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
-			// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
-			// map leaves the bar exactly where the eye left it.
-			word = itoa(i+1) + " " + word
-		}
-		if n := a.placeCount(id); n > 0 {
-			word += " " + itoa(n)
-		}
+		// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
+		// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
+		// map leaves the bar exactly where the eye left it ([app.barChipWord]).
+		word := a.barChipWord(i, id, numbered)
 		chip := tabPad + word + tabPad
 		band := ansi.StringWidth(word) + tabPadCols
 		switch {
@@ -588,6 +731,13 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 		plain += chip
 		spans = append(spans, placeTabSpan{id: id, from: at, to: at + ansi.StringWidth(chip)})
 		at += ansi.StringWidth(chip)
+	}
+	// AND THE COUNT OF WHAT IS NOT HERE RIDES THE END OF THE ROW, with no span
+	// behind it: it is a sign, and [barMoreWord] says why it is not a door.
+	if more := barMoreWord(elided, width-ansi.StringWidth(plain)); more != "" {
+		chip := tabPad + more + tabPad
+		line += pal.dim(chip)
+		plain += chip
 	}
 	return line, spans, ansi.StringWidth(plain) <= width
 }
@@ -1086,7 +1236,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// out drawn as a target; the layer has taken the keyboard and has a way out
 		// of its own, and two feet arguing about what `esc` does is worse at every
 		// width than one foot naming the keys that are live.
-		add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), nil)
+		add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
 	case bar != nil:
 		if line, hit, ok = bar(width); ok {
 			add(line, hit)
@@ -1097,7 +1247,7 @@ func placeFrameWithBar(a *app, width, height int,
 		if msg, ok := a.placeMsgLine(width); ok {
 			add(msg, nil)
 		} else {
-			add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), nil)
+			add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
 		}
 	}
 
@@ -1193,12 +1343,42 @@ func (a *app) scopeChip() string {
 func (a *app) scopeWorkspace() string {
 	if a.at(pageHome) {
 		if line, ok := a.home.previewLine(); ok {
-			if where := strings.TrimSpace(homeWhere(line)); where != "" {
+			if where := scopeAddress(line); where != "" {
 				return where
 			}
 		}
 	}
 	return strings.TrimSpace(a.workspace)
+}
+
+// scopeAddress is THE ADDRESS A HOME LINE RECORDS, AND NEVER ITS NAME.
+//
+// This used to be [homeWhere], which answers a different question and answers it
+// correctly: `ctrl+t` asks "which bucket does a fresh conversation in this row's
+// project belong to", and a project's NAME is a perfectly good bucket key when
+// nothing recorded a path. The chip is asking where a sentence will LAND, and a
+// name in that slot is not an address: with the cursor on a conversation the
+// chip read `here ~/aforge-v2` and one row down, on a standing item that
+// recorded no directory, `here aforge-v2` — which cannot be told from a second
+// checkout of the same name, and is the exact drift [app.scopeWorkspace]'s own
+// header cites ("a person read `here ~/aforge-v2` and started a task in `~`").
+//
+// SO EVERY ROW ANSWERS WITH A PATH OR WITH NOTHING, and nothing falls through to
+// this window's own workspace, which is what the chip already did for a row that
+// records no project at all.
+func scopeAddress(line homeLine) string {
+	// A conversation: the project directory its journal recorded.
+	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
+		return path
+	}
+	// A standing item: the project root the order belongs to, which
+	// [standing.Item.Workspace] holds as a resolved path for exactly this.
+	if path := strings.TrimSpace(line.item.Workspace); path != "" {
+		return path
+	}
+	// A project heading: the project's own path, which is an address where its
+	// name is not.
+	return strings.TrimSpace(line.proj.Path)
 }
 
 // The sentences the router says. Each is quoted in the manual exactly as it is
@@ -1235,9 +1415,23 @@ const (
 	// where FIDELITY.md item 3 puts it, and a tail that repeated it would put the
 	// same chord on two lines of the same frame.
 	placeHintTail = "tab next place"
+	// placeMapVerbWords is the map's clause about the row under the cursor, named
+	// so that the line can be built WITH it and drawn WITHOUT it: it is the one
+	// clause on this line that is not true on every place ([placeHintSaid] drops
+	// it where the place declares no verbs).
+	//
+	// IT SAYS WHAT THE KEY DOES. It read `→ verbs on this row`, which named a
+	// CATEGORY on a line where `alt+1…7 go to a place`, `alt+enter send it off as
+	// a task` and `esc close` all name an act — and `verbs` is the machinery's
+	// word for the strip rather than anybody's word for what pressing `→` gets
+	// them. The card's own `→ verbs: pause, stop` keeps the noun because the acts
+	// are listed right after it; this line has no room to list them, so it says
+	// what the key is for instead.
+	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close"
+	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · " +
+		placeMapVerbWords + " · " + mapCloseWords
 	// mapCloseWords is that line's last clause, named so the switcher's own
 	// clause can be spliced IN FRONT of it rather than after it (hop.go): `esc
 	// close` is the way out and the way out is always said last.
@@ -1281,7 +1475,7 @@ func (a *app) placeHintSaid() string {
 		// every place and drawn on none of them would break SCREEN 3a's clause,
 		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…7`
 		// alias ([chordSpelling.mapLine]).
-		line := a.chords.mapLine(placeMapWords, a.ctrlDigits())
+		line := a.chords.mapLine(a.placeMapSaid(), a.ctrlDigits())
 		if a.hopAvailable() {
 			line = strings.Replace(line, mapCloseWords, hopMapWords+" · "+mapCloseWords, 1)
 		}
@@ -1312,6 +1506,29 @@ func (a *app) placeHintSaid() string {
 	return placeTailed(pl.hint(a))
 }
 
+// placeMapSaid is the map's chord list FOR THE PLACE IT IS DRAWN OVER: the
+// fixed line, minus the clause about the row under the cursor where this place
+// has no verbs to open.
+//
+// A KEY DRAWN THAT DOES NOTHING IS SCREEN 3a'S CLAUSE READ BACKWARDS. The map
+// promised `→ verbs on this row` over all seven places while [placeSearch]
+// declares no verbs at all — so on search the arrow the map named opened
+// nothing and fell through to the caret inside the box. The line is built from
+// what the standing place actually declares rather than from a constant that
+// cannot know, which is the same rule the foot above it already keeps: key
+// hints true for where you stand.
+//
+// IT ASKS THE PLACE AND NOT A TABLE, so a place that grows a verb gains the
+// clause on the day it does, and a row with nothing to open loses it — [verb]
+// lists are built per row on every place that has any.
+func (a *app) placeMapSaid() string {
+	pl := a.showing()
+	if pl != nil && len(pl.verbs(a)) > 0 {
+		return placeMapWords
+	}
+	return strings.Replace(placeMapWords, placeMapVerbWords+railSep, "", 1)
+}
+
 // placeTailed puts the router's own keys on a place's sentence, and puts them
 // BEFORE THE WAY OUT: every hint on this surface ends with `esc`, because the
 // way out is the last thing a person needs to be told and the first thing they
@@ -1320,11 +1537,185 @@ func placeTailed(hint string) string {
 	if strings.Contains(hint, placeHintTail) {
 		return hint
 	}
+	// A PLACE WITH NOTHING TO SAY BUT THE WAY OUT — a bare memory page, an
+	// untouched ledger — says only `esc`, and the router's clause then goes IN
+	// FRONT of it rather than behind. Appending would draw `esc · tab next
+	// place`, which puts the way out first: the one position this line's whole
+	// law says it never takes.
+	if hint == "esc" || strings.HasPrefix(hint, "esc ") {
+		return placeHintTail + " · " + hint
+	}
 	if at := strings.LastIndex(hint, " · esc"); at >= 0 {
 		return hint[:at] + " · " + placeHintTail + hint[at:]
 	}
 	return hint + " · " + placeHintTail
 }
+
+// ── FITTING THE FOOT: WHOLE HINTS, NEVER HALF OF ONE ────────────────────────
+//
+// hintFit is the foot cut to room cells BY DROPPING CLAUSES, and it is
+// [rowfit.go]'s ranked-prefix law (law 3) applied to a sentence instead of to a
+// row of facts: what a narrow frame shows is a subset of what a wide one shows,
+// chosen by rank, and never a clause with its end sliced off.
+//
+// WHAT IT REPLACES. The foot used to be handed to `fit`, which is a character
+// ruler with no idea what a clause is, so at eighty columns the composer's own
+// line came out as `… · alt+. for the map · t…` — an ellipsis where `tab next
+// place` had been, on the commonest terminal size there is. A key sheet that
+// loses the way out is worse than a key sheet with one fewer key on it.
+//
+// THE RANK, AND WHY IT IS SPELLED THIS WAY ROUND. The last clause is the way
+// out — `tab next place`, and `esc` after it where a place adds one — and it is
+// kept to the last cell there is. Everything from [placeHintTail] onward is
+// therefore protected, and what is dropped is taken from the clause NEAREST
+// that protected tail, working backwards: on the composer's own line that is
+// `alt+. for the map` first, then `alt+enter send it off as a task`, leaving
+// `enter talk about it · tab next place`. The head clause — what `enter` does
+// on the row you are standing on — is the last thing to go, because it is the
+// only clause on the line about the thing under the cursor.
+//
+// It is pure and deterministic: the same sentence at the same width is the same
+// string, which is what lets a test paste a foot.
+func hintFit(hint string, room int) string {
+	if room <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(hint) <= room {
+		return hint
+	}
+	parts := strings.Split(hint, railSep)
+	// keep is the index of the FIRST protected clause: the way out, and
+	// everything after it. A foot with no `tab next place` in it — the map's
+	// line, a layer's own foot — protects its last clause, which on every one of
+	// them is `esc close` or `esc`.
+	keep := len(parts) - 1
+	for at, part := range parts {
+		if strings.Contains(part, placeHintTail) {
+			keep = at
+			break
+		}
+	}
+	// A CLAUSE THAT BEGINS `or` IS AN ALTERNATIVE, NOT A WAY OUT, AND IT GOES
+	// FIRST. The ladder above protects the LAST clause because on a key sheet
+	// that is where `esc close` lives — but a trailing `· or keep typing to steer
+	// the planner` is not a way out at all: by construction it offers a SECOND
+	// route to something the clause in front of it already offers a first route
+	// to, which makes it the lowest-value clause on the line for exactly the
+	// reason a bracketed gloss is ([hintDropClause]). Protecting it would have
+	// spent a gate card's narrow row on the alternative and dropped `enter
+	// answers`, which is the key the card exists to be answered with.
+	//
+	// It applies only where there is no `tab next place` on the line, because a
+	// place's foot has a real way out and the clauses behind it are the router's,
+	// not an author's sentence.
+	if !strings.Contains(hint, placeHintTail) {
+		for len(parts) > 1 && ansi.StringWidth(strings.Join(parts, railSep)) > room &&
+			strings.HasPrefix(strings.TrimSpace(parts[len(parts)-1]), "or ") {
+			parts = parts[:len(parts)-1]
+			keep = len(parts) - 1
+		}
+	}
+	for keep > 0 && ansi.StringWidth(strings.Join(parts, railSep)) > room {
+		parts = append(parts[:keep-1], parts[keep:]...)
+		keep--
+	}
+	line := strings.Join(parts, railSep)
+	// THEN THE CLAUSES INSIDE A SENTENCE, for the foot that is not a key list at
+	// all. Home's own foot is one of these — a refusal about a door, said as a
+	// statement with an elaboration hung off a dash and a gloss in brackets
+	// behind that ([takeover.go]) — and at sixty columns it used to read
+	// `open in another window — enter again to move it here (it …`, which
+	// promises a key and then eats it exactly as the sliced key list did. There
+	// is no `·` in it for the ladder above to work with, so the ladder below
+	// takes the whole trailing clause instead ([hintDropClause]).
+	for ansi.StringWidth(line) > room {
+		shorter, ok := hintDropClause(line)
+		if !ok {
+			break
+		}
+		// AND THE WAY OUT SURVIVES THE SENTENCE LADDER TOO. Where the line has a
+		// `tab next place` on it, a clause whose going would take it with it is
+		// not a clause this may drop.
+		if strings.Contains(line, placeHintTail) && !strings.Contains(shorter, placeHintTail) {
+			break
+		}
+		line = shorter
+	}
+	// A FRAME TOO NARROW FOR THE WAY OUT ALONE is the one case left, and there is
+	// nothing to drop that would help: the tail is cut, exactly as it always was.
+	return fit(line, room)
+}
+
+// noteFit is [hintFit]'s twin FOR A STATEMENT INSTEAD OF A KEY SHEET, and the
+// one thing that differs is which end of the line is protected.
+//
+// WHY THERE ARE TWO. [hintFit] keeps the LAST clause because on a key sheet the
+// last clause is the way out — `esc close` — and the way out is the one thing a
+// narrow frame may never take. A note is the other way round: it is a sentence
+// whose FIRST clause is what happened and whose later clauses elaborate on it.
+// The settings foot is the worked example — `saved to your profile · a project's
+// own .aforge-v3/config.json is a hand edit` — where the first clause answers
+// the question a person asked ("where did that go?") and the second is an aside
+// about a file most people will never open. A character ruler took sixty columns
+// through the middle of that path; [hintFit] would have kept the aside and
+// dropped the answer. So a note drops from the END, whole clause at a time, and
+// then falls through to the same sentence ladder ([hintDropClause]) for the
+// dash elaborations and bracketed glosses that have no middle dot to split on.
+//
+// It is pure and deterministic and it never cuts inside a word, which is the
+// whole point of both of them.
+func noteFit(note string, room int) string {
+	if room <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(note) <= room {
+		return note
+	}
+	parts := strings.Split(note, railSep)
+	for len(parts) > 1 && ansi.StringWidth(strings.Join(parts, railSep)) > room {
+		parts = parts[:len(parts)-1]
+	}
+	line := strings.Join(parts, railSep)
+	for ansi.StringWidth(line) > room {
+		shorter, ok := hintDropClause(line)
+		if !ok {
+			break
+		}
+		line = shorter
+	}
+	// A NOTE TOO LONG EVEN AS ONE CLAUSE is cut, because there is nothing left to
+	// drop that would help — the same last resort [hintFit] ends on.
+	return fit(line, room)
+}
+
+// hintDropClause takes the LAST WHOLE CLAUSE off a sentence and says whether
+// there was one, in the two shapes the person-facing sentences on this surface
+// are built out of:
+//
+//	a gloss in brackets   `… move it here (it moves when that window's reply ends)`
+//	a dash elaboration    `open in another window — enter again to move it here`
+//
+// The bracket goes first because a gloss is the lowest-value thing on the line
+// by construction — it explains a clause that is still there — and the dash
+// clause goes second, leaving the STATEMENT, which is the half a person needs
+// to know what happened. It never cuts inside a word and never returns half a
+// bracket: a clause either goes whole or the line is handed on untouched.
+func hintDropClause(line string) (string, bool) {
+	if strings.HasSuffix(line, ")") {
+		if at := strings.LastIndex(line, " ("); at > 0 {
+			return strings.TrimRight(line[:at], " "), true
+		}
+	}
+	if at := strings.LastIndex(line, sentenceDash); at > 0 {
+		return strings.TrimRight(line[:at], " "), true
+	}
+	return line, false
+}
+
+// sentenceDash is how this surface hangs an elaboration off a statement, and it
+// is spelled here once so that [hintDropClause] and the sentences it reads are
+// looking for the same three cells.
+const sentenceDash = " — "
 
 // placeMsgLine is the one refusal line this place has to say, drawn instead of
 // the hint. It replaces rather than stacks, being one field: pressing a door
@@ -1349,7 +1740,12 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	if msg == "" {
 		return "", false
 	}
-	return " " + a.pal.dim(a.pathLink(path, fit(msg, width-2))), true
+	// AND IT IS CUT BY DROPPING CLAUSES, NEVER BY SLICING ONE. A refusal is a
+	// sentence rather than a key list, but it is the same promise: home's own
+	// foot reached sixty columns as `open in another window — enter again to
+	// move it here (it …`, naming a key and then eating it. [hintFit] is the one
+	// fitter every foot on this surface goes through.
+	return " " + a.pal.dim(a.pathLink(path, hintFit(msg, width-2))), true
 }
 
 // ── opening a place ─────────────────────────────────────────────────────────

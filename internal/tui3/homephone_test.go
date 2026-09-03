@@ -390,11 +390,13 @@ func TestTheTaskRecordsFootIsBandsOnAPhone(t *testing.T) {
 	if hits[len(hits)-1] != taskCardHitMention {
 		t.Fatalf("the foot row answers %v", hits[len(hits)-1])
 	}
-	// AND A WIDE FRAME IS UNTOUCHED.
+	// AND A WIDE FRAME IS UNTOUCHED: the key legend rather than two bands. It is
+	// the HELD sheet, because the head's right corner is naming the way out on a
+	// frame this wide (taskrecord.go's [taskCardFootKeys]).
 	a.width = 100
 	width, height = a.size()
 	lines, _, _, _ = a.taskCardFrame(width, height)
-	if !strings.Contains(ansi.Strip(lines[len(lines)-1]), taskCardKeys) {
+	if !strings.Contains(ansi.Strip(lines[len(lines)-1]), taskCardKeysHeld) {
 		t.Fatalf("a wide record lost its keys line: %q", ansi.Strip(lines[len(lines)-1]))
 	}
 }

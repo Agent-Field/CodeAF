@@ -79,9 +79,34 @@ type phaseNewsMsg struct{}
 type phaseDesk struct {
 	mu     sync.RWMutex
 	latest map[string]PhaseNews
+	// waits is when the WAIT a model is currently inside began — the moment a
+	// person asked for something and nothing of it has come back since. It is
+	// kept beside the phase rather than inside it because a phase is one stage
+	// of that wait and the wait outlives every one of them ([phaseWaiting]).
+	waits map[string]time.Time
 }
 
-var phases = phaseDesk{latest: map[string]PhaseNews{}}
+var phases = phaseDesk{latest: map[string]PhaseNews{}, waits: map[string]time.Time{}}
+
+// phaseWaiting reports whether a phase is part of ONE WAIT: the stretch that
+// begins when a person asks for something and ends when the first of it comes
+// back. A handshake, the queue before the first word, a pacing wait, a retry,
+// a rescue, a fallback model and the two sentences the surface adds to a stall
+// are all the same wait wearing different words.
+//
+// Everything else — thinking, writing, a tool running, a check, a compaction —
+// is WORK IN PROGRESS, and its clock is honestly its own: a person reading
+// "running go test · 41s" is asking how long that test has been going, not how
+// long the turn has.
+func phaseWaiting(phase provider.Phase) bool {
+	switch phase {
+	case provider.PhaseConnecting, provider.PhaseFirstWord, provider.PhasePaced,
+		provider.PhaseRetrying, provider.PhaseSwitching, provider.PhaseSwitchingModel,
+		session.PhaseAsking, session.PhaseAllSlow:
+		return true
+	}
+	return false
+}
 
 // PostPhaseNews is how the layer that holds the turn tells the surface what it
 // is doing. It is safe from any goroutine and it never blocks on a draw: it is
@@ -112,7 +137,38 @@ func PostPhaseNews(news PhaseNews) {
 	defer phases.mu.Unlock()
 	if news.Phase == "" {
 		delete(phases.latest, news.Model)
+		delete(phases.waits, news.Model)
 		return
+	}
+	// ONE INSTANT FOR THE WHOLE WAIT, AND THE CLOCK NEVER RUNS BACKWARDS.
+	//
+	// THE DEFECT THIS FIXES, measured: a turn nineteen seconds old read `all
+	// lanes slow · still waiting · 10s`, and ten seconds after that it read
+	// `via openinference · first word 4.5s`. Every posting layer is honest —
+	// each phase carries when THAT phase began, and a retry builds a whole new
+	// clock for its attempt — but a person is not reading a stage, they are
+	// reading how long they have been waiting, and a figure that halves while
+	// they watch it is read as the program having lost track of itself. It sits
+	// next to an elapsed clock that is still climbing, which is what makes it
+	// unmissable.
+	//
+	// So the desk carries the wait's own start across every phase of it and
+	// hands it to the drawing sites, which go on counting up from the moment
+	// the request left. It is done HERE, at the one door every phase comes
+	// through, rather than at the two places that draw one — two answers to
+	// "when did this wait begin" is how it came to have two.
+	//
+	// A wait ends the moment something that is not a wait is posted, and a
+	// poster that knows an EARLIER start than the desk does wins: internal
+	// provider's allSlow deliberately keeps the wait's own instant, and this
+	// must never round that forward.
+	switch began := phases.waits[news.Model]; {
+	case !phaseWaiting(news.Phase):
+		delete(phases.waits, news.Model)
+	case began.IsZero() || news.Since.Before(began):
+		phases.waits[news.Model] = news.Since
+	default:
+		news.Since = began
 	}
 	phases.latest[news.Model] = news
 }
@@ -134,6 +190,7 @@ func forgetPhases() {
 	phases.mu.Lock()
 	defer phases.mu.Unlock()
 	phases.latest = map[string]PhaseNews{}
+	phases.waits = map[string]time.Time{}
 }
 
 // livePhase is the phase this conversation's model is in right now, false when

@@ -69,8 +69,9 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 		}
 	}
 	// The rail is spelled from the constant that owns it, so raising the shipped
-	// default is one edit and not two.
-	wantRail := fmt.Sprintf("today's spend: $0.00 of $%.2f daily rail", config.DefaultDailyBudgetUSD)
+	// default is one edit and not two. A day that has cost nothing says nothing
+	// about what it cost — the emptiness law — so the rail stands alone.
+	wantRail := fmt.Sprintf("daily rail: $%.2f", config.DefaultDailyBudgetUSD)
 	if !strings.Contains(rendered, wantRail) {
 		t.Fatalf("notebook omitted daily rail: %q", rendered)
 	}
@@ -204,5 +205,68 @@ func assertNotebookStatus(t *testing.T, path string, seq int64, want string) {
 	fact, found, err := graph.FactBySeq(seq)
 	if err != nil || !found || fact.Status != want {
 		t.Fatalf("fact #%d status = %q found=%t err=%v, want %q", seq, fact.Status, found, err, want)
+	}
+}
+
+// ── C21: A COLUMN HEADER OVER NO ROWS ────────────────────────────────────────
+//
+// On a fresh machine `aforge notebook` printed `SEQ SCOPE KIND AGE USES RIDES
+// BAD STATUS BELIEF` and nothing under it, which is the whole output. Nine
+// column names with no rows read as a table that failed to load rather than as
+// a notebook nothing has been written in yet — and an empty state has to say
+// what fills it.
+func TestAnEmptyNotebookSaysSoInsteadOfPrintingAHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	var output bytes.Buffer
+	if err := writeNotebook(&output, graph, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, column := range []string{"SEQ", "SCOPE", "KIND", "USES", "RIDES", "BELIEF"} {
+		if strings.Contains(text, column) {
+			t.Fatalf("the column header %q is drawn over no rows at all:\n%s", column, text)
+		}
+	}
+	if !strings.Contains(text, "the notebook is empty") {
+		t.Fatalf("an empty notebook said nothing about being empty:\n%s", text)
+	}
+	// AND IT SAYS WHAT TO DO NEXT. A person who typed the command and got one
+	// flat sentence still does not know what would put something on the page.
+	if !strings.Contains(text, "hand aforge some work") {
+		t.Fatalf("the empty state does not say what fills the page:\n%s", text)
+	}
+}
+
+// AND THE HEADER IS BACK THE MOMENT THERE IS A ROW. The rule is that a header
+// is never drawn WITHOUT one, not that the table went away.
+func TestTheNotebookHeaderReturnsAsSoonAsThereIsARow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if _, err := graph.RecordFact("", "tool:git", store.FactLesson, "always verify changes"); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := writeNotebook(&output, graph, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, column := range []string{"SEQ", "SCOPE", "KIND", "BELIEF"} {
+		if !strings.Contains(text, column) {
+			t.Fatalf("a notebook with a fact in it lost the column %q:\n%s", column, text)
+		}
+	}
+	if strings.Contains(text, "the notebook is empty") {
+		t.Fatalf("a notebook with a fact in it said it was empty:\n%s", text)
 	}
 }

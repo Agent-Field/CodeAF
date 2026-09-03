@@ -124,6 +124,21 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key == chordMapAlias && a.ctrlDigits() {
 		key = placeMapKey
 	}
+	// AND `?` OVER AN EMPTY BOX IS THE MAP, normalised here for the alias's
+	// reason exactly: `?` means "show me the keys for where I am standing", and
+	// on a place the map IS that answer (commands.go's [helpAskKey] argues the
+	// binding and why it is not the /help sheet here). Reading it as the one
+	// spelling above the switch is what makes it toggle, dismiss and draw
+	// identically to the chord instead of nearly so.
+	//
+	// A BOX WITH ANYTHING IN IT KEEPS THE KEY. The places' filters and composers
+	// are the same box a sentence is typed into, so the guard is the guard on the
+	// conversation's road: empty, or the character types.
+	if key == helpAskKey {
+		if box := a.placeBox(); box == nil || box.empty() {
+			key = placeMapKey
+		}
+	}
 	// AND THE MAP IS DISMISSED BY THE NEXT KEY, WHATEVER IT IS — then that key
 	// does what it was always going to do. A map that had to be closed before
 	// anything could be pressed would be a mode, and the whole point of drawing

@@ -120,15 +120,31 @@ func (h *homeView) buildSwitch() {
 	// written to close.
 	world := h.world
 	world.Projects = h.everyProject()
+	// THE ERRANDS ARE COUNTED BEFORE THE READING IS TAKEN, because they stand
+	// over it and spend its rows (they are appended below).
+	errands := h.switchExchanges()
+	// AND THE FRAME'S OWN HEIGHT GOES IN WITH THE FACTS. The list draws as many
+	// rows as the column can hold and never fewer than [switcherShown]; the room
+	// is what is left of the column under the errands, because those rows are
+	// spent before the reading gets any. `h.room` is what [placeHome.body] was
+	// handed and is ZERO UNTIL A FRAME HAS BEEN DRAWN — a reading with no room
+	// is exactly the reading this file made before it had one.
+	room := 0
+	if h.room > 0 {
+		room = h.room - len(errands)
+		if len(errands) > 0 {
+			room-- // the blank row between the errands and the list
+		}
+		room = max(0, room)
+	}
 	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket, coming: h.claim, hosted: h.far}, h.gone, h.seen, h.world.Read,
-		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen}, h.ledger)
+		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen, room: room}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in
 	// the world at all ([homeExchange] — they are kept outside v3/projects on
 	// purpose), so the ranked list cannot hold one. They go where the thing you
 	// asked for a minute ago belongs: at the top, above everything the machine
 	// has to say for itself.
-	errands := h.switchExchanges()
 	h.lines = append(h.lines, errands...)
 	if len(errands) > 0 && len(h.reading.lines) > 0 {
 		h.lines = append(h.lines, homeLine{kind: homeBlank})
@@ -583,26 +599,70 @@ func (a *app) homeCardPlace(row session.SessionRow, width int, pal palette) []st
 	if where == "" {
 		return nil
 	}
-	parts := []string{where}
+	// THE LINE IS THREE THINGS AND ONLY THE MIDDLE ONE GIVES WAY.
+	//
+	// `state` is what is true of the checkout — the branch and the dirty count,
+	// or the refusal drawn in place of them — and `door` is what enter will do
+	// to this row. The address and the door are the two a person acts on; the
+	// repository's clause is the one they can read on the card's own bands.
+	state, door := "", ""
+	missing := a.homeGone(where)
 	switch {
-	case a.homeGone(where):
-		parts = append(parts, homeGoneWord)
+	case missing:
+		state = homeGoneWord
 	default:
 		if repo := a.home.repos[where]; repo.line != "" {
-			parts = append(parts, strings.Join(strings.Split(repo.line, " · "), ", "))
+			state = strings.Join(strings.Split(repo.line, " · "), ", ")
 		}
 	}
 	switch {
 	case a.homeMark(row) == markHere:
-		parts = append(parts, homeHereWord)
+		door = homeHereWord
 	case row.Open || row.Live:
-		parts = append(parts, a.homeHolding(row))
+		door = a.homeHolding(row)
+	}
+	// THE ADDRESS KEEPS ITS CELLS AND THE FACT ABOUT IT GIVES WAY WHOLE.
+	//
+	// [fitLeft] is right about a PATH ALONE — the basename at its end is what
+	// tells one checkout from another, which is its own doc comment — and wrong
+	// the moment that path is joined to facts about it, because what survives is
+	// then the tail of the WHOLE joined string. So a card at a hundred and sixty
+	// columns drew `…e-v2 · master, 3 files dirty · here` and at two hundred
+	// `…rge-v2 · master, 3 files dirty · open in another window`: the title one
+	// row above already names the conversation, and the only job this line has is
+	// saying WHICH CHECKOUT — which is the half that was going.
+	//
+	// So the ranked fact drops WHOLE and from the end (rowfit.go's law 3) and the
+	// address is fitted into what is left.
+	//
+	// AND THE TWO CLAUSES THAT ARE NOT FACTS ABOUT THE CHECKOUT ARE RESERVED
+	// RATHER THAN RANKED. `folder gone` is the statement that there is no
+	// checkout, and `here` / `open in another window` is what the key under this
+	// person's finger will do — neither is something the address may spend, so a
+	// path too long for the card is cut around them instead of silencing them.
+	sep := ansi.StringWidth(rowSep)
+	keep := 0
+	if missing {
+		keep += sep + ansi.StringWidth(state)
+	}
+	if door != "" {
+		keep += sep + ansi.StringWidth(door)
+	}
+	line := fitLeft(where, width-keep)
+	switch {
+	case missing:
+		line += rowSep + state
+	case state != "" && width-ansi.StringWidth(line)-keep >= sep+ansi.StringWidth(state):
+		line += rowSep + state
+	}
+	if door != "" {
+		line += rowSep + door
 	}
 	// THE WHOLE LINE IS A DOOR (pathlink.go), and the anchor covers all of it
 	// rather than the path half: the address and what is true about it are one
 	// reading, and a link that stopped at the first clause would be a target a
 	// narrow card had already cut off.
-	return []string{pal.dim(a.pathLink(where, fitLeft(strings.Join(parts, " · "), width)))}
+	return []string{pal.dim(a.pathLink(where, line))}
 }
 
 // homeCardAnswer is the band that ACTS: what this conversation is stopped on,
@@ -695,7 +755,10 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 		// tick with a price on it would be the screen calling every outcome the
 		// same outcome.
 		if homeTaskWord(entry, row) != doneWord {
-			body = append(body, homeWorkUnder(entry, row, ctx.width, pal)...)
+			// AND THE MONEY IS SAID ONCE. The name row above right-aligned it a
+			// line ago; the under-block is told so rather than asked to guess
+			// (homeband_work.go's [homeWorkUnderSaid]).
+			body = append(body, homeWorkUnderSaid(entry, row, ctx.width, pal, cost != "")...)
 		}
 		drawn = append(drawn, body)
 		named = append(named, entry)
@@ -883,6 +946,16 @@ func (placeHome) close(a *app)        { a.dropHome() }
 // the hit is a [homeMark] rather than a line number.
 func (placeHome) body(a *app, width, room int) []placeRow {
 	left, right := homeColumns(width)
+	// THE HEIGHT REACHES THE READING HERE AND NOWHERE ELSE. It is the same law
+	// the width is settled under one layer up (home.go's [app.homeFrame]: the
+	// shape of the column is decided before the column is drawn), and the same
+	// shape — one number, compared, and the lines made again only when it moved,
+	// because a rebuild on every frame would re-rank the world sixty times a
+	// second for a list that had not changed.
+	if room != a.home.room {
+		a.home.room = room
+		a.home.rebuild()
+	}
 	a.homeWindow(room)
 	body := a.homeBody(left, right, room, a.pal)
 	rows := make([]placeRow, 0, len(body))

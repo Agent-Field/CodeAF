@@ -304,8 +304,11 @@ func runDevices(args []string) error {
 	if len(args) > 0 && args[0] == "revoke" {
 		return revokeDevice(book, args[1:])
 	}
+	if askedForHelp(args) {
+		return commandHelp("devices")
+	}
 	if len(args) > 0 {
-		return fmt.Errorf("usage: aforge devices [revoke <name>]")
+		return fmt.Errorf("usage: aforge devices [revoke <name> [--all]]")
 	}
 
 	paired, err := book.Devices()
@@ -321,23 +324,42 @@ func runDevices(args []string) error {
 	return nil
 }
 
+// revokeDevice stops one device, or every device answering to one name.
+//
+// --ALL IS A FLAG LIKE EVERY OTHER FLAG IN THIS BINARY. It used to be read by
+// hand, and only when it was the FIRST word after `revoke`, so `aforge devices
+// revoke laptop --all` was refused — with a usage line that did not mention
+// `--all` at all. A person taking back access to their own machine was told the
+// wrong grammar for the gesture they had just typed correctly. Through
+// [commandFlags] and [reorder] it is now accepted in either position, printed
+// by `aforge devices revoke --help`, and named in the one usage table.
 func revokeDevice(book *pair.Book, args []string) error {
-	all := false
-	if len(args) > 0 && args[0] == "--all" {
-		all, args = true, args[1:]
+	flags := commandFlags("devices revoke")
+	all := flags.Bool("all", false, "stop every device answering to that name, not just the one")
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
+		return err
 	}
-	if len(args) != 1 {
-		return errors.New("usage: aforge devices revoke <name> — `aforge devices` lists the names")
+	if flags.NArg() != 1 {
+		return errors.New("usage: aforge devices revoke <name> [--all] — `aforge devices` lists the names")
 	}
-	if all {
-		count, err := book.RevokeAll(args[0])
+	name := flags.Arg(0)
+	if *all {
+		count, err := book.RevokeAll(name)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%d devices called %s have been stopped — each will need a new pairing code to come back.\n", count, args[0])
+		// ONE DEVICE STOPPED IS ONE DEVICE STOPPED, whichever flag was typed:
+		// `--all` over a name only one device answers to reads as the plain
+		// form, in the plain form's own sentence, rather than as a second kind
+		// of event with a count in front of it.
+		if count == 1 {
+			fmt.Println(pair.RevokedLine(name))
+			return nil
+		}
+		fmt.Printf("%d devices called %s have been stopped — each needs a new pairing code to come back.\n", count, name)
 		return nil
 	}
-	gone, err := book.Revoke(args[0])
+	gone, err := book.Revoke(name)
 	if err != nil {
 		return err
 	}

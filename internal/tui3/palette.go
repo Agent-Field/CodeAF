@@ -739,6 +739,46 @@ func overlayNoteRoom(label string, width int) int {
 	return room - floor - rowGutter
 }
 
+// overlayMeasure is HOW WIDE A LABEL/TAIL PAIR IS LAID OUT, however wide the
+// frame is. It is a reading measure the way [teachMeasure] is one for prose, and
+// it is wider because a row carries structure a paragraph does not.
+//
+// A pair is read by jumping the eye from the name on the left to the value
+// right-aligned against it, and past about a hundred cells that jump stops
+// landing: at a hundred and sixty columns the settings row `ssh reuse` put a
+// hundred and fifty blank cells in front of `300s`, and a person scanning the
+// column read the wrong value against the wrong row. So the tail stops
+// travelling right at the measure and the rest of the frame is simply left
+// empty, which is what every other wide-frame surface here already does.
+const overlayMeasure = 100
+
+// overlayPairRoom is THE ROOM A ROW'S PAIR IS LAID OUT IN — the cells the tail
+// is right-aligned inside — and it is ONE function because both of this row's
+// faults were the same expression judged at two widths. `width - 2` with a
+// one-cell floor under the gap ran `300s` out to the frame's edge a hundred and
+// fifty cells from `ssh reuse` at a hundred and sixty, and butted `per task`
+// against its own value with a single word space at eighty. The measure answers
+// the first; [rowGutter] answers the second.
+//
+// TWO ROWS KEEP THE WHOLE FRAME, and both are law 1 (rowfit.go): a row with NO
+// TAIL, because the measure is about the gap between two things and a name alone
+// has nothing to be far from; and a pair that does not FIT the measure, because
+// pulling the tail in on that row would cut the identity to buy a margin.
+func overlayPairRoom(label, note string, width int) int {
+	room := width - 2
+	if note == "" {
+		return room
+	}
+	need := ansi.StringWidth(label) + rowGutter + ansi.StringWidth(note)
+	if need < overlayMeasure {
+		need = overlayMeasure
+	}
+	if need < room {
+		room = need
+	}
+	return room
+}
+
 func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(oncursor, hovered, pal)
 	// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
@@ -746,7 +786,7 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	// note longer than the terminal used to be appended WHOLE to an empty label —
 	// the row ran past the edge by however long the note was, and no amount of
 	// squeezing the label could pull it back. What it may take is everything but
-	// the lead and that one cell of gap. Settings' `tool exceptions` is the row
+	// the lead and the gutter. Settings' `tool exceptions` is the row
 	// that found it: a value naming ten tools is 141 cells against a 60-cell
 	// terminal, which is LAW 1 (a place takes exactly the frame) broken by a
 	// value a person chose.
@@ -803,7 +843,9 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	}
 	line := lead + painted
 	if note != "" {
-		gap := width - 2 - ansi.StringWidth(label) - ansi.StringWidth(note)
+		// THE TAIL IS RIGHT-ALIGNED INSIDE THE MEASURE AND NOT INSIDE THE FRAME
+		// ([overlayPairRoom]).
+		gap := overlayPairRoom(label, note, width) - ansi.StringWidth(label) - ansi.StringWidth(note)
 		if gap < rowGutter {
 			gap = rowGutter
 		}
@@ -1752,7 +1794,22 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 // see to that — so this is a switch and not a sum.
 func (a *app) overlayHeight() int {
 	width, height := a.size()
+	// WHICH LIST IS OPEN IS ASKED BEFORE THE ROOM IS MEASURED, and the order is a
+	// performance law and not a preference. The measurement below is seven calls
+	// deep and [app.inputHeight] alone composes the whole draft block to find out
+	// how tall it is — twenty-five allocations of work that a frame with NO list
+	// open has no use for, which is nearly every frame there is. Measuring it
+	// above this switch put that cost on every scroll notch and broke the
+	// one-screen scroll ceiling in PERF.md by twenty percent.
+	//
+	// So the command list, which is the only list that wants to be told the size
+	// ([menu.height] shows as many commands as the frame can hold and says how
+	// many are left over), is answered AFTER the room is known rather than inside
+	// the switch. Every other list still answers with its own figure and meets the
+	// same clamp at the foot of this function — the number is one number either
+	// way, and it is still written once.
 	var want int
+	commands := false
 	switch {
 	case a.pick.open:
 		want = a.pick.height(width)
@@ -1777,7 +1834,7 @@ func (a *app) overlayHeight() int {
 	case a.subPage.open:
 		want = a.subPage.height(width)
 	case a.menu.open:
-		want = a.menu.height(width)
+		commands = true
 	case a.comp.open:
 		want = a.comp.height(width)
 	default:
@@ -1789,8 +1846,12 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
-	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight(); want > room {
+	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
+		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+	if commands {
+		want = a.menu.height(width, room)
+	}
+	if want > room {
 		want = room
 	}
 	if want < 0 {

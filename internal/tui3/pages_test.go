@@ -269,7 +269,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
-	if last := after[len(after)-1]; !strings.Contains(last, "→ verbs") {
+	if last := after[len(after)-1]; !strings.Contains(last, placeMapVerbWords) {
 		t.Fatalf("the map did not become the hint line: %q", last)
 	}
 	// AND THE NEXT KEY PUTS IT AWAY.

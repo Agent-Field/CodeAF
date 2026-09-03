@@ -315,24 +315,20 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	out = append(out, r.railsRow(width, pal))
 	out = append(out, r.windowHeaderRow(width, pal))
 
-	if spark := r.sparkline(); spark != "" {
-		out = append(out, pal.data(fit(spark, width)))
-		left := ""
-		if len(r.days) > 0 {
-			left = r.days[0].Label
-		}
-		right := ""
-		for _, day := range r.days {
-			if sameSpendBucket(r.now, day.At, r.window.Grain) && day.USD > 0 {
-				right = "today " + spendMoneyWord(day.USD)
-				break
-			}
-		}
-		if left != "" || right != "" {
-			out = append(out, spendSides(width, left, right, pal.dim, placeMoneyInk(pal)))
+	if spark := r.sparkline(width); spark != "" {
+		out = append(out, pal.data(spark))
+		if axis := r.sparkAxis(ansi.StringWidth(spark), pal); axis != "" {
+			out = append(out, axis)
 		}
 	}
-	if loud := r.loudestRow(width, pal); loud != "" {
+	if loud, subject, door := r.loudestRow(width, pal); loud != "" {
+		// AND THE LOUDEST DAY IS A DOOR, because the row names a thing money was
+		// spent on exactly as the rows under `what it was for` do — and the word
+		// on its right now says `enter opens it`, which is a key drawn and
+		// therefore a key that has to work.
+		if door {
+			doors[len(out)] = subject
+		}
 		out = append(out, loud)
 	}
 
@@ -458,35 +454,97 @@ func spendDayTotal(lines []session.UsageLine, now time.Time) float64 {
 // A FRAME TOO NARROW FOR THE CONTROL DRAWS THE FIGURES ALONE, and the arrows do
 // nothing there — one predicate answers the paint and the keys.
 func (r spendReading) windowHeaderRow(width int, pal palette) string {
-	return placeHeadRow(width, spendHeadWords(r.totals), r.paintedHead(pal), r.window, pal)
+	return placeHeadRow(width, r.headWords(width), r.paintedHead(width, pal), r.window, pal)
 }
 
-// spendHeadWords is the head line's LEFT FIELD — what the window came to — as
-// plain text, and [spendReading.paintedHead] is the same list in its own inks.
-// They are built from one sequence so the measured line and the drawn line
-// cannot come apart on a narrow frame.
+// headWords is the head line's LEFT FIELD — what the window came to — as plain
+// text, and [spendReading.paintedHead] is the same list in its own inks. They
+// are built from one sequence so the measured line and the drawn line cannot
+// come apart on a narrow frame.
 //
-// THE SPAN IS NOT IN IT. It used to lead this field — `aug 12 – aug 25 · $5.94 ·
-// 1.1M tokens` — while the right of the row named the four keys without saying
-// what they were moving, so the label a person moves and the label they read
-// were two different runs of one line. SCREEN 3d settles it: "the label between
-// the arrows is the control and the reading at once".
-func spendHeadWords(totals session.DaySpend) string {
-	var parts []string
-	if totals.USD > 0 {
-		parts = append(parts, spendMoneyWord(totals.USD))
-	}
-	if totals.Tokens > 0 {
-		parts = append(parts, tokenWord(totals.Tokens)+" tokens")
-	}
-	if len(parts) == 0 {
+// IT SAYS WHICH TOTAL THIS IS, AND IT DID NOT. The page stacked two dollar
+// figures — `today $0.13 of $500` and, under it, `$2.05 · 326.5k tokens` — and
+// the only thing tying the second to a fortnight was a date span the control
+// draws at the OTHER END of the same line: a hundred and forty-five cells away
+// at 160 columns, which is not a label. So the field leads with the span in
+// words — `14 days came to $2.05 · 326.5k tokens` — and the two money figures on
+// this page now each carry the period they are the total of, in one grammar.
+//
+// THE DATES THEMSELVES ARE STILL NOT IN IT. They are the control's, and SCREEN
+// 3d settles that: "the label between the arrows is the control and the reading
+// at once". `14 days` is how MANY, which the control does not say and which is
+// what makes the figure beside it readable.
+//
+// IT IS SIZED WITH THE CONTROL'S CELLS ALREADY SPENT, because the head's own
+// width is what decides whether the arrows are drawn at all
+// ([placeWindowFits]). A lead added without that reservation would have bought
+// this sentence at 60 columns by taking the window keys away.
+func (r spendReading) headWords(width int) string {
+	fields := r.headFields()
+	if len(fields) == 0 {
 		// A WINDOW THAT CAME TO NOTHING SAYS SO IN WORDS AND NOT AS A ZERO, which
 		// is the same edge the tasks place's own head line has: `$0.00` is exactly
 		// the figure the emptiness law forbids, and the control beside this
 		// sentence already names the fortnight it is about.
 		return spendNothingWord
 	}
-	return strings.Join(parts, " · ")
+	room := width - ansi.StringWidth(placeWindowWords(r.window)) - placeHeadGap
+	if room < 1 {
+		room = width
+	}
+	if words := rowTail(fields, room); words != "" {
+		return words
+	}
+	// A FRAME WITH ROOM FOR NOTHING STILL SAYS THE MONEY. The fitter answers ""
+	// when even the shortest spelling is over the room, and a head row with no
+	// head on it would leave the control floating against an empty line.
+	return spendMoneyWord(r.totals.USD)
+}
+
+// headFields is the head's ranked facts: what the window came to, then how many
+// tokens it took. The lead spelling carries the span in words and the shorter
+// ones give it up before the figure it labels ever goes.
+func (r spendReading) headFields() []rowField {
+	if r.totals.USD <= 0 && r.totals.Tokens <= 0 {
+		return nil
+	}
+	fields := make([]rowField, 0, 2)
+	if r.totals.USD > 0 {
+		money := spendMoneyWord(r.totals.USD)
+		if span := spendSpanWord(r.window); span != "" {
+			fields = append(fields, rowSay(span+" came to "+money, span+" · "+money, money))
+		} else {
+			fields = append(fields, rowSay(money))
+		}
+	}
+	if r.totals.Tokens > 0 {
+		fields = append(fields, rowSay(tokenWord(r.totals.Tokens)+" tokens", tokenWord(r.totals.Tokens)))
+	}
+	return fields
+}
+
+// spendSpanWord is HOW MUCH TIME the head's figure is the total of, in the
+// grain's own noun: `14 days`, `8 weeks`, `6 months`.
+//
+// IT COUNTS BUCKETS AND NOT DAYS, so the word says the same thing the chart
+// under it draws — one bar per bucket — and a window zoomed to months does not
+// go on calling itself a number of days.
+func spendSpanWord(win session.UsageWindow) string {
+	buckets := win.Buckets()
+	if buckets < 1 {
+		return ""
+	}
+	word := "day"
+	switch win.Normalized().Grain {
+	case session.GrainMonth:
+		word = "month"
+	case session.GrainWeek:
+		word = "week"
+	}
+	if buckets != 1 {
+		word += "s"
+	}
+	return groupedInt(buckets) + " " + word
 }
 
 // spendNothingWord is the head line over a window nothing was spent in. It is
@@ -495,55 +553,150 @@ func spendHeadWords(totals session.DaySpend) string {
 // wants the control that pages it back (place_spend.go's [spendPage.held]).
 const spendNothingWord = "nothing spent"
 
-func (r spendReading) paintedHead(pal palette) string {
-	if r.totals.USD <= 0 && r.totals.Tokens <= 0 {
-		return pal.dim(spendNothingWord)
+// paintedHead is [spendReading.headWords] in its own inks — the money in the
+// money hue, the token count in the reading tier, and the words that say what
+// they are dim.
+//
+// IT PAINTS THE LINE THE FITTER ACTUALLY CHOSE rather than building a second
+// one. The head has three spellings and the frame decides which, so a painted
+// twin assembled from the longest would measure differently from the string the
+// row was laid out against — which is the exact way a right-aligned control ends
+// up off the edge.
+func (r spendReading) paintedHead(width int, pal palette) string {
+	plain := r.headWords(width)
+	if plain == spendNothingWord {
+		return pal.dim(plain)
 	}
-	var left strings.Builder
-	if r.totals.USD > 0 {
-		left.WriteString(placeMoneyInk(pal)(spendMoneyWord(r.totals.USD)))
-	}
-	if r.totals.Tokens > 0 {
-		if left.Len() > 0 {
-			left.WriteString(pal.dim(" · "))
+	money, toks := spendMoneyWord(r.totals.USD), tokenWord(r.totals.Tokens)
+	parts := strings.Split(plain, rowSep)
+	for at, part := range parts {
+		switch {
+		case r.totals.USD > 0 && money != "" && strings.HasSuffix(part, money):
+			parts[at] = pal.dim(strings.TrimSuffix(part, money)) + placeMoneyInk(pal)(money)
+		case r.totals.Tokens > 0 && toks != "" && strings.HasPrefix(part, toks):
+			parts[at] = pal.data(toks) + pal.dim(strings.TrimPrefix(part, toks))
+		default:
+			parts[at] = pal.dim(part)
 		}
-		left.WriteString(pal.data(tokenWord(r.totals.Tokens)))
-		left.WriteString(pal.dim(" tokens"))
 	}
-	return left.String()
+	return strings.Join(parts, pal.dim(rowSep))
 }
 
-func (r spendReading) sparkline() string {
+// spendSparkCells is the WIDEST one bucket may be drawn. A day given more cells
+// than this stops reading as a bar in a line and starts reading as a block of
+// colour, and the axis words under either end are six or seven cells themselves
+// — so the chart takes the frame's room up to this and leaves the rest as air.
+const spendSparkCells = 8
+
+// sparkline is the window's buckets as one chart, SIZED TO THE FRAME IT IS DRAWN
+// ON.
+//
+// IT USED TO BE ONE CELL PER DAY AT EVERY WIDTH — fourteen cells of braille at
+// the far left of a hundred-and-sixty-cell line, 9% of the row, out of which
+// nobody can read a fortnight's rhythm. The buckets are what the window says
+// they are; how many CELLS each of them gets is the frame's answer, and this is
+// where it is given.
+func (r spendReading) sparkline(width int) string {
 	peak := 0.0
 	for _, day := range r.days {
 		if day.USD > peak {
 			peak = day.USD
 		}
 	}
-	if peak <= 0 {
+	if peak <= 0 || width < 1 || len(r.days) == 0 {
 		return ""
+	}
+	cells := width / len(r.days)
+	if cells > spendSparkCells {
+		cells = spendSparkCells
+	}
+	if cells < 1 {
+		cells = 1
 	}
 	var b strings.Builder
 	for _, day := range r.days {
-		b.WriteString(tokens.Sparkline(day.USD / peak))
+		b.WriteString(strings.Repeat(tokens.Sparkline(day.USD/peak), cells))
 	}
-	return b.String()
+	return fit(b.String(), width)
 }
 
-func (r spendReading) loudestRow(width int, pal palette) string {
-	if r.loudest.USD <= 0 {
+// sparkAxis is the two ends of the chart above it, AND BOTH OF THEM ARE DATES.
+//
+// The left was a date and the right was a figure — `aug 20` … `today $0.13` —
+// so the axis's two ends were not the same kind of thing and the shape between
+// them had no scale; the money on the right was also the figure the pointer line
+// two rows above had already given, which is one-source-of-truth broken in the
+// smallest way available. The money belongs to the rails row that owns it, and
+// what an axis owes a chart is where it starts and where it stops.
+//
+// IT IS AS WIDE AS THE CHART AND NOT AS THE FRAME, so the right-hand date sits
+// under the last bucket rather than out at the edge of a line the chart does not
+// reach.
+func (r spendReading) sparkAxis(width int, pal palette) string {
+	if width < 1 || len(r.days) == 0 {
 		return ""
+	}
+	left := r.days[0].Label
+	right := ""
+	if last := r.days[len(r.days)-1]; len(r.days) > 1 {
+		right = last.Label
+		// AND THE LAST BUCKET IS CALLED `today` WHEN IT IS TODAY, which is the
+		// word the rest of this surface calls it ([spendTodayWord]) and the one
+		// fact a person reads the right end of this chart for.
+		if sameSpendBucket(r.now, last.At, r.window.Grain) {
+			right = spendTodayWord
+		}
+	}
+	if left == "" && right == "" {
+		return ""
+	}
+	return spendSides(width, left, right, pal.dim, pal.dim)
+}
+
+// loudestRow is the day that cost the most, what it was mostly spent on, and —
+// where the sentence leaves room for it — the door onto that thing.
+//
+// THE DOOR IS SAID THE WAY THIS SURFACE SAYS A DOOR. It was the bare noun
+// `tasks`, right-aligned with nothing joining it to the sentence, which reads as
+// a fourth fact about the day: a person cannot tell whether `tasks` is a count, a
+// category or a place. It names the key now — and because it names the key, the
+// row is a stop, so `enter` on it does what the word says.
+//
+// AND IT IS THE FIRST THING OFF THE ROW. rowfit's law 1: the sentence is the
+// identity, the door is a fact about it, so a frame that cannot hold both keeps
+// the sentence whole and draws no door at all — never `rebuild-the-frame… tasks`,
+// which was the reading at 60 columns.
+func (r spendReading) loudestRow(width int, pal palette) (string, session.SubjectSpend, bool) {
+	if r.loudest.USD <= 0 {
+		return "", session.SubjectSpend{}, false
 	}
 	name := r.name(r.loudFor)
 	left := r.loudest.Label + " was the loudest day — " + spendMoneyWord(r.loudest.USD)
 	if name != "" {
 		left += ", " + name
 	}
-	door := ""
-	if r.loudFor.Kind == session.SubjectTask {
-		door = "tasks"
+	door, opens := "", false
+	if word := spendDoorWord(r.loudFor); word.known() && strings.TrimSpace(r.loudFor.ID) != "" {
+		door = rowTail([]rowField{word}, width-ansi.StringWidth(left)-rowGutter-1)
+		opens = door != ""
 	}
-	return spendSides(width, left, door, pal.dim, pal.dim)
+	return spendSides(width, left, door, pal.dim, pal.dim), r.loudFor, opens
+}
+
+// spendDoorWord is where `enter` on a row goes, in the words of the place it
+// opens ([app.openSpendRow] is the same three-way switch). A subject of a kind
+// this build has no door for says nothing at all rather than naming a key that
+// would do nothing.
+func spendDoorWord(subject session.SubjectSpend) rowField {
+	switch subject.Kind {
+	case session.SubjectTask:
+		return rowSay("enter opens it in tasks", "in tasks")
+	case session.SubjectStanding:
+		return rowSay("enter opens it in standing", "in standing")
+	case session.SubjectConversation:
+		return rowSay("enter opens it on home", "on home")
+	}
+	return rowSay()
 }
 
 // spendModelsWord is the models table's caption, and it is SCREEN 2c's own. The
