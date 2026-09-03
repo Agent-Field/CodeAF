@@ -548,12 +548,73 @@ func withinDir(dir, path string) bool {
 	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
+// scratchDirs are the machine's scratch roots: THE PLACES A PROGRAM IS HANDED
+// TO PUT WORK DOWN IN, never places work is about. This is the list [scratchPath]
+// has always read, unchanged, and it is deliberately NOT the list the ground law
+// reads — see [tempRoots] for why the two are separate.
+func scratchDirs() []string {
+	dirs := make([]string, 0, 5)
+	for _, dir := range []string{
+		os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders",
+	} {
+		if strings.TrimSpace(dir) != "" {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+// tempRoots is [scratchDirs] WITH GOTMPDIR AHEAD OF IT, and it exists because
+// THE TWO LISTS ARE READ IN OPPOSITE DIRECTIONS. That is the whole reason they
+// are not one list: [scratchPath] reads its list to EXEMPT a write — a name on
+// it is somewhere a task standing elsewhere is allowed to write, so a name added
+// there LOOSENS a guard — while [climbsOutOfScratch] reads this one to REFUSE a
+// ground, where a name added TIGHTENS one. One list would have meant every entry
+// doing both, and the entry below doing exactly the wrong one.
+//
+// GOTMPDIR belongs on the tightening side alone. It is set almost only by a
+// developer, and almost always at a directory inside their own checkout: exactly
+// the boundary a ground may not climb out of, and exactly the tree a write
+// should still have to answer for. Go roots t.TempDir() at GOTMPDIR when it is
+// set and TMPDIR after that, so a test run's whole scratch tree can sit wherever
+// those two point — including inside somebody's work.
+func tempRoots() []string {
+	roots := scratchDirs()
+	if gotmp := strings.TrimSpace(os.Getenv("GOTMPDIR")); gotmp != "" {
+		roots = append([]string{gotmp}, roots...)
+	}
+	// AND EVERY BOUNDARY IS MADE ABSOLUTE HERE, because a relative one is not a
+	// boundary that fails safe — it is a comparison that cannot answer at all.
+	// GOTMPDIR and TMPDIR are whatever somebody exported, os.TempDir hands a
+	// relative TMPDIR straight back, and `git rev-parse --show-toplevel` is
+	// always absolute; [withinDir] asks filepath.Rel, which ERRORS across that
+	// mismatch, and the error reads as "not inside" — so the boundary is skipped
+	// and the climb allowed, in exactly the configuration the law exists for.
+	// filepath.Abs resolves against the process's own working directory, which
+	// is precisely what the OS does with a relative temp root when it makes a
+	// file there, so this is the resolution and not a guess.
+	for i, root := range roots {
+		roots[i] = absolutePath(root)
+	}
+	return roots
+}
+
+// absolutePath is filepath.Abs with the error read as "leave it alone": the one
+// way it fails is a working directory that can no longer be read, and a path
+// left as it was spelled is a better answer there than an empty one.
+func absolutePath(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
+}
+
 // scratchPath reports whether a path is the machine's scratch rather than
 // anybody's work.
 func scratchPath(path string) bool {
 	clean := filepath.Clean(path)
-	for _, dir := range []string{os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"} {
-		if strings.TrimSpace(dir) != "" && withinDir(dir, clean) {
+	for _, dir := range scratchDirs() {
+		if withinDir(dir, clean) {
 			return true
 		}
 	}
