@@ -133,6 +133,12 @@ func TestTheShippedRouterPaysNoExtraRequestToLearnThatItCarriesAPreference(t *te
 	if !LaneSheetCertain("https://openrouter.ai/api/v1") {
 		t.Fatal("the shipped router's own address is not read as certain to serve a sheet")
 	}
+	// AND THE FORWARDING IS PINNED TOO: wiring makes no request, so the shipped
+	// address can be wired for real and the sheet asked what it was handed.
+	WireLaneSheet("https://openrouter.ai/api/v1", "test-key")
+	if !lanes.SheetServes("https://openrouter.ai/api/v1") || !lanes.PrefsProven("https://openrouter.ai/api/v1") {
+		t.Fatal("WireLaneSheet does not hand the sheet `known` for the shipped router")
+	}
 	lanes.WireSheet(server.URL(), "test-key", sheetFetcher{}, true)
 	pinned(t, LanePin{Lane: "Harbor"})
 
