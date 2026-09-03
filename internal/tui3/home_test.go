@@ -811,9 +811,28 @@ func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 		t.Fatalf("the matches are not above the action row (match %d, action %d):\n%s",
 			match, action, strings.Join(rows, "\n"))
 	}
-	// The hint under the box names the arrow that is actually true of the screen.
-	if !strings.Contains(rows[len(rows)-1], "↑ pick a match") {
-		t.Fatalf("the hint names the wrong arrow:\n%s", rows[len(rows)-1])
+	// The hint under the box names the arrow that is actually true of the screen —
+	// ↑, because the matches rise ABOVE the action row the caret sits against.
+	//
+	// IT IS ASKED OF THE SENTENCE AND NOT OF THE DRAWN ROW, and that is not a
+	// weaker question. The foot is a hundred and fourteen cells with the router's
+	// keys on it and this frame is a hundred wide, so [hintFit] drops the clause
+	// nearest the way out to make it fit — by design, and the ladder it drops down
+	// is pinned by [TestAHintDropsWholeClausesAndKeepsTheWayOut]. Asked of the
+	// drawn row this assertion was really asking how wide the lab happens to be,
+	// and it passed for a year only because the old fitter sliced the tail off
+	// mid-word instead — the foot on this very screen read `… · tab next …`. The
+	// law it was written for is about the arrow, so the arrow is where it looks.
+	if hint := a.homeHintWords(); !strings.Contains(hint, "↑ pick a match") {
+		t.Fatalf("the hint names the wrong arrow: %s", hint)
+	}
+	// AND THE FOOT THAT IS DRAWN IS STILL WHOLE CLAUSES OF THAT SENTENCE, never a
+	// word with its end sliced off.
+	for _, clause := range strings.Split(strings.TrimSpace(rows[len(rows)-1]), railSep) {
+		if !strings.Contains(placeTailed(a.homeHintWords()), clause) {
+			t.Fatalf("the foot drew %q, which is not a clause of the hint:\n%s",
+				clause, rows[len(rows)-1])
+		}
 	}
 }
 

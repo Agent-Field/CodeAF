@@ -760,10 +760,18 @@ type homeView struct {
 	// instead of the door.
 	cardHover string
 	repos     map[string]homeRepoReading
-	// machine is what this machine has to say about ITSELF — the reading the
-	// pulse line at the top of the screen draws from, taken at most once per
-	// [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt when
-	// it was taken.
+	// machine is the MEMO of what this machine has to say about ITSELF — the
+	// reading the pulse line at the top of every place draws, taken at most once
+	// per [homeEvery] (homemachine.go's [app.machineFactsAt]) — and machineAt
+	// when it was taken.
+	//
+	// IT IS A MEMO AND NOT A SOURCE, and the difference is the whole of issue
+	// #525. Every figure in it is read from the MACHINE — the usage ledger, the
+	// person's own daily row — so closing home costs the next place one more
+	// reading and never a different answer. It used to be read from what this
+	// screen was holding, which made the day's spend on the top line a function
+	// of which rooms you had walked through: `$1.85` on home, `$0.37` on tasks.
+	// A memo may die with the screen; a fact about the machine may not.
 	machine   machineFacts
 	machineAt time.Time
 	// week is what the standing ledger says about the last seven days, by item
@@ -4762,11 +4770,17 @@ func homeGlyph(row session.SessionRow, ascii bool) string {
 	return homeIdleGlyph
 }
 
-// homeName is what a conversation is CALLED, through the one ladder this
-// surface has for the question ([humanName], resume.go): the title it gave
-// itself, the first words somebody said, then the file it lives in.
+// homeName is what a conversation is CALLED on this surface's lists, through
+// [listName]: the title it gave itself, then the folder it lives in when that
+// folder reads as words, and then — rather than the id it usually is — the
+// plain word for a conversation nothing has named yet.
+//
+// IT NEVER HAD THE PICKER'S MIDDLE RUNG. [humanName] can fall back to the first
+// thing the person said because the resume picker has read the transcript; a
+// [session.SessionRow] carries no opening line, so this call passed a title and
+// a path and got a title-cased hex id whenever the title was empty.
 func homeName(row session.SessionRow) string {
-	return humanName(Session{Title: row.Title, File: row.Transcript})
+	return listName(row.Title, row.Transcript)
 }
 
 // homeDetail is the right column, and it is a PREVIEW CARD rather than a second
@@ -5128,6 +5142,14 @@ func (a *app) homeHintWords() string {
 		// promising a conversation the key will not start. `ask here` is still
 		// true of a "/" line — the words can be asked about as words — so the
 		// clause that changes is the one that stopped being true.
+		//
+		// AND THE ORDER IS THE DROP ORDER. This sentence is a hundred and fourteen
+		// cells with the router's two keys on it, so a hundred-column frame cannot
+		// hold all of it and [hintFit] drops the clause nearest the way out —
+		// `↑ pick a match` — first. That is the right one to lose: ↑↓ walking a
+		// list is the key the resting foot already names (`↑↓ pick`) and the map
+		// names again, while `ctrl+enter` is a chord no other surface spells. A
+		// wide frame still says all three.
 		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
 			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
 		}
