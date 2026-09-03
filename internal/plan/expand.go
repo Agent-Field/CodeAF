@@ -588,6 +588,11 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	// discard a division that has already been paid for.
 	sizeUsage, _ := SizeNodes(ctx, client, sub)
 	usage.merge(sizeUsage)
+	// AND EVERY CHILD IS MINTED INSIDE ITS PARENT'S SPEC. It is the last thing
+	// done here, below every pass that adds a node, so a branch that mints
+	// children another way still passes through it. See Graph.mintedInside for
+	// what each field of the spec inherits and why.
+	sub.mintedInside(node.Spec)
 	sub.Goal = node.Title
 	return expansion{nodeID: nodeID, sub: sub, usage: usage}
 }

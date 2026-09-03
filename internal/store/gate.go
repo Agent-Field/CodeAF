@@ -251,6 +251,19 @@ type DeliveryGate struct {
 	// Empty on a claim-subject gate, where there is no such list, and on every
 	// gate journaled before this existed.
 	HeldPoint string `json:"held_point,omitempty"`
+
+	// Constraint is the rules the person SET that this work broke, one entry
+	// per rule: their own words, then the files the run changed in spite of
+	// them. It is the finding of a gate law rather than of a review — the words
+	// are the person's by construction, so there is no citation to weigh — and
+	// it is a list of its own for the reason Unexercised is one: a finding that
+	// travels as prose inside somebody else's gap is journaled by nothing and
+	// reachable by nothing.
+	//
+	// A delivery carrying one is not whole, and no round is bought to close it:
+	// the work did the thing it was told not to do, and more work is not the
+	// answer to that. See revision.HoldConstraints and revision.ExtendForGap.
+	Constraint []string `json:"constraint,omitempty"`
 }
 
 // ExercisedPoint is one row of that mapping: a behaviour the request stated and
@@ -358,6 +371,16 @@ func (g DeliveryGate) Whole() bool {
 	// binding in the tree. It empties the one way a measurement empties — a
 	// later reading of the finished tree finds the name bound.
 	if len(g.Unbound) > 0 {
+		return false
+	}
+	// AND A RULE THE PERSON SET THAT THE WORK BROKE IS THE ONE FINDING NOTHING
+	// CAN ARGUE WITH AT ALL. The others are measurements of a repository; this
+	// is the person's own sentence held against the files the run changed, so
+	// there is nothing here for an acquittal to be about — a pass on the
+	// deliverable's substance says only that the work was good at doing what it
+	// was forbidden to do. It empties the one way it can: the run does not do
+	// it. See revision.HoldConstraints.
+	if len(g.Constraint) > 0 {
 		return false
 	}
 	return g.Pass || g.PolishClosed || g.Overturned

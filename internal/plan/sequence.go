@@ -200,6 +200,12 @@ func expandAsStages(ctx context.Context, client Completer, sub *Graph, node *Nod
 		sizeUsage, _ := SizeNodes(ctx, client, sub)
 		usage.merge(sizeUsage)
 	}
+	// AND EVERY LINK IS MINTED INSIDE ITS PARENT'S SPEC, exactly as a fanned-out
+	// child is at the foot of expandScoped. This branch returns before that
+	// seam, and a chain of stages is the one division a job under "change no
+	// files" is most likely to be given, so the rule is applied here as well
+	// rather than trusting a later pass to catch it. See Graph.mintedInside.
+	sub.mintedInside(node.Spec)
 	sub.Goal = node.Title
 	return expansion{nodeID: node.ID, sub: sub, usage: usage}
 }

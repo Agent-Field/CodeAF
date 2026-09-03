@@ -1439,7 +1439,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// And which measurement raised it, so a reader comparing
 					// this round against the last one compares a kind and a
 					// list of names rather than two sentences.
-					Finding: gate.Finding}
+					// And the rules the person set that this work broke, which
+					// is the one finding on this record that no round may be
+					// bought against and no acquittal may cover. See
+					// store.DeliveryGate.Whole.
+					Constraint: gate.Constraint,
+					Finding:    gate.Finding}
 				if gate.Pass {
 					outcome.Verdict = revision.GateVerdict(gate)
 					// Quorum: two cheap validators independently verify the pass.
@@ -1484,6 +1489,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 								}
 								if len(absolute) > 0 {
 									text += summaryFileList + strings.Join(absolute, "\n")
+								}
+								// A REPAIR ACCEPTED WITHOUT A SECOND GATE IS STILL
+								// UNDER THE RULES THE PERSON SET. This is the one
+								// repair in this file whose result is taken on
+								// trust — the quorum round commits unconditionally
+								// and no re-judgement runs behind it — so a round
+								// bought to satisfy two validators could write the
+								// file the person forbade and ship over a pass.
+								// The one finding no judge could talk its way out
+								// of is therefore re-taken here by hand, over what
+								// this round actually left behind, and the verdict
+								// it produces rejoins the ordinary failed path
+								// below: no repair, no remainder, the rule on the
+								// record. See revision.ConstraintsHeld.
+								if held, broke := revision.ConstraintsHeld(gateEvidence(node, task.Spec,
+									outcome, jobArtifacts(opts.produced, absolute), true, jobDir)); broke {
+									gate = held
+									evidence.Pass, evidence.Gap = false, held.Gaps
+									evidence.Quote, evidence.Quotes = held.Quote, held.Citations
+									evidence.Mechanical, evidence.Finding = true, held.Finding
+									evidence.Constraint = held.Constraint
+									outcome.Verdict = provider.VerdictSemanticFailure
 								}
 							}
 							log.Printf("quorum: revised after reject")
@@ -1601,6 +1628,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// shared working tree's lease to land, which every sibling
 					// view's landing waits on; a composition takes neither.
 					composedOnly := revision.Composable(worker, outcome)
+					// A BROKEN RULE BUYS NOTHING, AND A REPAIR ROUND IS THE
+					// FIRST THING IT DOES NOT BUY. The work did the one thing
+					// the person forbade; a second worker sent at the same
+					// finding is a second worker inside the same workspace, and
+					// #427's files were written by exactly that round. The
+					// delivery ships failed with the rule on it, which is what
+					// the person can act on. See revision.HoldConstraints and
+					// revision.ExtendForGap, which refuses the remainder for the
+					// same reason one line further on.
+					brokeARule := len(gate.Constraint) > 0
 					// THE WORLD AS THE FINDING FOUND IT. A repair round is
 					// allowed to close a finding about the tree or about a
 					// check only if it could have changed one, and whether it
@@ -1614,7 +1651,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					foundWorldAs := revision.TreeStamp(jobArtifacts(opts.produced, absolute))
 					var polished *exec.Outcome
 					polishModel := workerModel
-					if composedOnly {
+					if composedOnly && !brokeARule {
 						composition := revision.Compose(ctx, settings, workingClient, node, task.Contract,
 							gate.Gaps, outcome, outcome.Account.Final, workerModel,
 							revision.WithContextTokens(planWindow(settings, planClient)))
@@ -1644,16 +1681,25 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							polishModel = workerModel
 						}
 					}
-					if !composedOnly {
+					if !composedOnly && !brokeARule {
 						// repair is the one revision round a failed gate buys: the
 						// same task, plus the critique and the draft it is aimed at.
 						repair := task
 						repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
 							Title:     "a review of your own first draft",
 							Artifacts: append([]string(nil), absolute...),
-							Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
-								"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
-								"\n\n" + revision.GateRevisionContract,
+							// THE RULES THE PERSON SET COME ABOVE THE REVIEWER'S
+							// GAP, AND THE HEADING SAYS WHICH OF THE TWO WINS.
+							// This round is the one place in the system where a
+							// worker is handed an order by the machinery itself,
+							// and #427 is what that costs when the person's own
+							// rule is not in front of it: the reviewer's "Write
+							// the check for each, and make it pass" was obeyed
+							// over a request that said change no files.
+							Result: plan.RulesOutranking(task.Spec.Constraints,
+								"A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n"+gate.Gaps+
+									"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n"+text+
+									"\n\n"+revision.GateRevisionContract),
 						})
 						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 						retryCtx = armTranscript(retryCtx, graph, node.ID, build.model)
@@ -1733,6 +1779,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// the job is still working on something it has
 							// moved on from. See store.DeliveryGate.Finding.
 							evidence.Finding = closed.Finding
+							// AND A RULE THE REPAIR ITSELF BROKE IS RECORDED
+							// HERE OR NOWHERE. The first reading found none —
+							// that is why a round was bought at all — so this is
+							// the only seam where a repair that wrote a
+							// forbidden file lands on the record.
+							evidence.Constraint = closed.Constraint
 						}
 					} else {
 						outcome.Verdict = provider.VerdictSemanticFailure
@@ -2117,6 +2169,20 @@ func planNodeContract(node *plan.Node) string {
 // verified, and where to stop. It is written at splice time and handed over
 // here, once, to the leaf it was written for.
 func leafContract(plans *jobPlans, planNode *plan.Node, node store.Node) string {
+	// THE RULES THE PERSON SET ARE THE FIRST THING THIS LEAF READS. The method
+	// is the first block of the worker's brief (exec.Linear.brief), so it is the
+	// one slot in the whole message where a law can arrive ahead of the
+	// assignment it governs — and a rule read after the assignment is a rule the
+	// assignment has already argued with. plan.Spec.Render puts them first for
+	// the same reason; this is that ordering applied to the leaf's own text,
+	// where the spec is not rendered.
+	return plan.RulesAbove(leafSpec(plans, planNode, node).Constraints,
+		leafMethod(plans, planNode, node))
+}
+
+// leafMethod is the working method itself, read from the freshest place that
+// holds one.
+func leafMethod(plans *jobPlans, planNode *plan.Node, node store.Node) string {
 	if contract := planNodeContract(planNode); contract != "" {
 		return contract
 	}
@@ -2683,6 +2749,12 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// predecessor was. It is read here and nowhere else, and the worker was
 		// never shown it — see plan/accept.go.
 		Accept: spec.Accept,
+		// And the rules the person set, which ride on the spec for the same
+		// reason the checklist does and land on every node rather than only on
+		// the one that delivers — the person said it about the RUN. The gate
+		// holds the mechanical ones against this record's own file list before
+		// it buys a judge. See revision.HoldConstraints.
+		Constraints: spec.Constraints,
 		// And where the work happened, so the gate can take its own reading of
 		// the tree it is judging when the worker left one untaken.
 		Workspace: workspace,
@@ -4712,6 +4784,13 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 				// holding a contributing worker to the whole request's
 				// behaviours would be judging it for work that was never its.
 				document.Nodes[0].Spec.Accept = compiled.Accept
+				// And the rules the person set, which land on EVERY node of a
+				// job and so land on the only node this one has. They are not
+				// the checklist's kind of thing: the checklist is what the work
+				// must produce and belongs to whoever hands it over, and a
+				// constraint is what the run may not do, which is true of
+				// whoever is running. See plan.Graph.SetConstraints.
+				document.Nodes[0].Spec.Constraints = compiled.Constraints
 				leaf = document.Nodes[0].Spec
 				plans.put(prefix, document, prefix, "", nil)
 			}
@@ -4763,6 +4842,12 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			// acceptance checklist, journaled no `acceptance` event at all, and
 			// its gates weighed nothing but wording.
 			leaf.Accept = compiled.Accept
+			// AND THE RULES TRAVEL DOWN THIS PATH TOO, for the same reason and
+			// with more at stake: this is the leaf a job gets when the planner
+			// could not draw a plan, so it is one worker on the whole goal and
+			// the only thing standing between it and the workspace is what the
+			// person said it may not do.
+			leaf.Constraints = compiled.Constraints
 			return singleLeafPlan(prefix, compiled.Goal, leaf), nil
 		}
 		// Structuring runs on the plan slot; the retained snapshot is the work
@@ -4863,6 +4948,12 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// thing over. See plan.Graph.SetAcceptance for why it goes there and
 		// nowhere else.
 		graph.SetAcceptance(compiled.Accept)
+		// And the rules the person set, on every node rather than on the one
+		// that delivers. A constraint is a property of the JOB — the person said
+		// it about the run, not about its last worker — so every leaf the plan
+		// draws is under it, and so is every node a repair or a remainder
+		// splices later. See plan.Graph.SetConstraints.
+		graph.SetConstraints(compiled.Constraints)
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
 		// The same run context the spine and briefs were built with: the contract
@@ -5181,6 +5272,15 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			log.Printf("note: the remainder for %s was drawn with faults (%v); running it as drawn", prefix, err)
 		}
 		gatePlanDivision(graph, goal)
+		// AND THE JOB'S OWN RULES ARE STAMPED ON THE REMAINDER BEFORE ANY OF IT
+		// IS ENCODED. This is the exact seam #427 went through: the leaf that was
+		// told "Change no files" did exactly that, and the nodes spliced behind it
+		// to close a reviewer's finding were planned from a goal and a terrain and
+		// carried nothing whatever of what the person had forbidden — so they wrote
+		// the file the first leaf had refused to write. A constraint is a property
+		// of the JOB, so it is read off the node this remainder is continuing and
+		// put on every node of the continuation.
+		graph.SetConstraints(jobConstraints(history, anchor))
 		contractUsage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 		if err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
@@ -5193,6 +5293,30 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		return subtree, nil
 	}
+}
+
+// jobConstraints reads the rules the person set off the node a remainder is
+// continuing.
+//
+// It goes through the store rather than through the callback's signature
+// because OverrunPlanFunc is (goal, prefix) and nothing else, deliberately, so
+// that every caller planning a remainder plans from the same two things — and
+// the anchor the journal already carries names the node being continued. Every
+// node of a job carries the rules by the time one of them is exhausted, so the
+// anchored node is a complete answer and no walk to the job root is needed.
+//
+// Nothing here is an error. An anchor nobody set, a node the store cannot read
+// and a node with no spec all answer nil, which is the answer for the
+// overwhelming majority of jobs: their request stated no rule.
+func jobConstraints(history *store.Store, anchor resident.PlanAnchor) []plan.Constraint {
+	if history == nil || strings.TrimSpace(anchor.NodeID) == "" {
+		return nil
+	}
+	node, ok, err := history.Node(anchor.NodeID)
+	if err != nil || !ok {
+		return nil
+	}
+	return resident.DecodeSpec(node.Spec).Constraints
 }
 
 func subtreePrefix() (string, error) {

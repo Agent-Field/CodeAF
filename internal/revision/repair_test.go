@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
@@ -144,5 +145,35 @@ func TestAnUnmovedRepairClosesOnlyWhatWritingCanClose(t *testing.T) {
 		if RepairClosed(rejudged, Judgment{Gaps: account}, Evidence{}, false) {
 			t.Errorf("a repair closed its gate on a re-judgement that did not happen: %+v", rejudged)
 		}
+	}
+}
+
+// A PROMISED FILE STILL NEEDS THE DISK TO MOVE, WHATEVER THE PERSON FORBADE.
+//
+// "The run was told to change nothing" makes an unmoved repair neutral about
+// findings a repair could only close by working — that is the rule a run under
+// `no_writes` needs, and #427's stream is what it is written against. It must
+// not become a blanket amnesty. A MECHANICAL gap is a file the plan or the
+// person PROMISED and the disk does not hold, and no rule about what a run may
+// not write makes an absent deliverable appear: without the guard, one rule on
+// the record would let a repair that moved nothing close every world-grounded
+// finding a second judge happened to pass, which is §8 switched off by a
+// sentence about something else.
+func TestAPromisedFileStillNeedsTheDiskToMoveUnderNoWrites(t *testing.T) {
+	toldNothing := Evidence{Observed: true,
+		Constraints: []plan.Constraint{{Text: "Change no files.", Kind: plan.ConstraintNoWrites}}}
+	rejudged := Judgment{Pass: true, Checked: true}
+
+	promised := Judgment{Pass: false, Checked: true, Mechanical: true,
+		Gaps: "the plan promised report.md and the disk does not hold it"}
+	if RepairClosed(rejudged, promised, toldNothing, true) {
+		t.Fatal("a repair that moved nothing closed a finding about a file that is not on disk")
+	}
+	// And the finding the neutrality exists for is still neutral: a reading of
+	// the work, on a run whose contract was to change nothing.
+	reading := Judgment{Pass: false, Checked: true, Sourced: true,
+		Gaps: "the final line reported is not the one the command printed"}
+	if !RepairClosed(rejudged, reading, toldNothing, true) {
+		t.Fatal("a run keeping the rule it was given was read as a repair that did nothing")
 	}
 }
