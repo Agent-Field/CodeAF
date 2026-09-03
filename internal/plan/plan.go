@@ -279,6 +279,15 @@ type Options struct {
 	// snapshot taken at build start and frozen for the build.
 	Terrain string
 
+	// Workspace is the directory the terrain above was drawn from. It is what
+	// makes the terrain measurable rather than only readable: the words of the
+	// goal and of every node name files, and this is where they are looked up.
+	// See reach.go.
+	//
+	// Empty measures nothing and changes no verdict — a caller with no
+	// workspace plans exactly as it always did.
+	Workspace string
+
 	// Asked are the separable requests the caller's reading of the ask found in
 	// it, in the person's own words. Fewer than two is the ordinary ask and
 	// changes no prompt byte anywhere.
@@ -420,6 +429,12 @@ type Options struct {
 	Journal BriefJournal
 }
 
+// reach is what one worker holds, and where the names in this goal are weighed.
+// It is derived rather than stored so that the window and the workspace have
+// exactly one reading between the build and the passes that run off the
+// document afterwards. See reach.go.
+func (o Options) reach() Reach { return ReachFor(o.Workspace, o.ContextTokens) }
+
 // buildLevels is how many expansion levels this build runs. It never exceeds
 // MaxDepth, because MaxDepth is the ceiling on the shape and BuildDepth is only
 // a statement about who decides it and when.
@@ -461,7 +476,11 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		// reason: sizing, expansion and the panel decision must all weigh a
 		// division against one set of numbers rather than three snapshots taken
 		// as leaves landed underneath them.
-		Invoice: options.Invoice}
+		Invoice: options.Invoice,
+		// The workspace rides on for the same reason the window does: the pass
+		// that checks a size verdict against the material a node names is
+		// reached through the document and not through these options.
+		Workspace: strings.TrimSpace(options.Workspace)}
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal and the workspace it

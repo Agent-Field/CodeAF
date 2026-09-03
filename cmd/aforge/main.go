@@ -661,7 +661,11 @@ func runPlanNew(name string, args []string) error {
 		// Rendered here rather than inside the build, and rendered once: the
 		// snapshot is frozen for the whole build, and an unset -w renders the
 		// empty string, which leaves every prompt exactly as it was.
-		Terrain:      plan.RenderTerrain(*workspace, goal),
+		Terrain: plan.RenderTerrain(*workspace, goal),
+		// The directory that terrain was drawn from, so the material the goal
+		// and its nodes name is measured rather than guessed at. See
+		// plan/reach.go.
+		Workspace:    *workspace,
 		SpineSamples: settings.SpineSamples,
 		// The window this document is planned through, so a later revision of
 		// it is sized from the same fact.

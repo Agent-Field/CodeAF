@@ -341,6 +341,16 @@ type Graph struct {
 	// the measurement has since changed.
 	Invoice string `json:"-"`
 
+	// Workspace is the directory the terrain above was drawn from, and it is
+	// here so that the material a node names can be weighed. See reach.go: the
+	// sizing pass runs against the document rather than against the options, so
+	// a graph that lost the directory would have no way to check a verdict
+	// against the material the node it sized actually names.
+	//
+	// Empty is a run with no workspace, which measures nothing and changes no
+	// verdict anywhere.
+	Workspace string `json:"workspace,omitempty"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
@@ -1022,6 +1032,15 @@ func (g *Graph) addSynthesis() {
 		Needs:   sinks,
 		Kind:    KindSynthesis,
 	})
+}
+
+// reach is what one worker holds beside the workspace this graph's names are
+// weighed in. A graph with neither measures nothing. See reach.go.
+func (g *Graph) reach() Reach {
+	if g == nil {
+		return Reach{}
+	}
+	return ReachFor(g.Workspace, g.ContextTokens)
 }
 
 // catalog renders every node the same way for every call that needs the whole

@@ -295,6 +295,14 @@ const (
 	// division that gave back the node in different words, or in the same size.
 	RefusalOnePiece  = "the division gave back one piece, which is the node again"
 	RefusalNoSmaller = "its pieces came back no smaller than it is"
+	// RefusalBeyondReach is the measurement, and it is the only one of these
+	// that is not a judgment at all. The node names material larger than one
+	// worker's window, so it cannot be brought to an end in one sitting — and
+	// nobody could name two pieces to divide it into, so it is being handed over
+	// whole anyway. It is journaled because a leaf in that state is the exact
+	// shape a run fails in, and a person reading the plan afterwards is owed the
+	// sentence rather than the symptom.
+	RefusalBeyondReach = "its named material exceeds what one worker holds"
 	// RefusalNotPaying is the EV-lookahead's verdict: the node could divide,
 	// but the measured history says its parts do not buy back the fixed cost a
 	// second worker pays before it produces. It is a measured refusal, not a
@@ -367,14 +375,35 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	// of what admitsEnumeratedPieces adds to the reading: a remainder's list is
 	// one worker's assignment, so a remainder is admitted on the ruler's size
 	// and on nothing else.
+	// The measurement, taken before any of the judgments below are weighed. The
+	// node names the material it must touch; where that material has been
+	// weighed and is larger than what one worker holds, the null hypothesis is
+	// discharged by arithmetic rather than by opinion — it is not a claim that
+	// dividing would be nicer, it is the observation that not dividing cannot
+	// work. What is weighed is the material the node will READ: a source that
+	// scopes a region of a file contributes that region and not the file, so a
+	// lane over one block of a big register is not refused here for the size of
+	// the register. Nothing measurable leaves every branch below byte for byte
+	// as it was. See reach.go.
+	beyondReach := options.reach().Measure(node.Sources...).Exceeds()
 	enumerated := admitsEnumeratedPieces(node, options)
 	if len(node.Parts) < 2 && node.Size != SizeOversized && !enumerated {
+		// Still whole, and now for the more serious of the two reasons: nobody
+		// could name pieces for a node that measurement says one worker cannot
+		// hold. The refusal says which, because the two call for different
+		// repairs from whoever reads the plan.
+		if beyondReach {
+			return SplitVerdict{Reason: RefusalBeyondReach}
+		}
 		return SplitVerdict{Reason: RefusalUnnamed}
 	}
 	switch node.Size {
 	case SizeOversized, SizeBorderline:
 		return SplitVerdict{Divide: true}
 	case SizeAtomic:
+		if beyondReach {
+			return SplitVerdict{Divide: true}
+		}
 		// The atomic verdict is the ruler's reading of a title and a summary,
 		// and where those same words enumerate their own pieces the two
 		// readings disagree. The disagreement is not settled here — this
