@@ -495,7 +495,7 @@ begins `INCOMPLETE: the node's final reply was cut off at the output limit after
 continuation attempts.` The planner reads that warning with the fragment, so it can treat
 the node as unfinished rather than mistaking the prose for a completed deliverable.
 
-## When a run's worker says it wrote a file and did not
+## When a run's worker says it wrote a file and did not — the run said it wrote a file but there is nothing there
 
 A node that was given a write scope and **changed no file** does not land as done, however
 its last sentence reads. Models end turns on lines like "Now I have both files. Let me
