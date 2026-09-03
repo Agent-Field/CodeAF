@@ -42,9 +42,18 @@ harness round loop under internal/ …"*. Turn 1 is therefore
 The contract is composed by the planner at runtime and is not in the tree; this is the
 only record of it.
 
-## Do not delete
+## The store is released
 
-`/home/santosh/.aforge/runs/aforge-do-1923110067` is **pinned** at the request of
-aforge-v2-10, which is verifying the refusal defect against it before filing. It stays
-until that session says the issues are filed. The three files in this directory are the
-durable copies, so the store can be reaped afterwards without losing the evidence.
+`/home/santosh/.aforge/runs/aforge-do-1923110067` was pinned while aforge-v2-10 verified
+the refusal defect against it. That session filed on 2026-09-03 and released it, so the
+store may be reaped by whoever cleans up; the three files here are the durable copies and
+this branch is pushed, so nothing is lost when it goes. Nobody needs to delete it on
+purpose.
+
+The issues it produced: **#537** (the gate's file of record comes from the request text,
+stat'd on disk, never from the diff — which is why a file the run only read was named as
+one it changed), **#538** (the contract names a `read` tool the leaf does not have),
+**#539** (a refused run does not say where the work went), **#540** (no pacing against the
+wall), **#541** (budget overrun: billing before the check, plus unbounded landing turns),
+**#542** (`--json` drops `exit_code`; the field is unexported), **#543** (the settle line
+hides hedge waste).
