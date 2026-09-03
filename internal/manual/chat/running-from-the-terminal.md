@@ -277,8 +277,9 @@ Summarise the changelog        $0.0042  nothing
   column says `nothing`, and work that became *less* predictable adds `surprise up N%`
   after it.
 
-**A day with no receipts prints the `TRIED  COST  LEARNED` header and no rows.** That is
-the command working, not failing.
+**A day with nothing on it says `nothing was tried on its own account today.`** It used to
+print the `TRIED  COST  LEARNED` header with no rows under it, which reads as a table whose
+rows failed to arrive rather than as a quiet day.
 
 ## What has it learned — reading and retracting beliefs with aforge notebook
 
@@ -347,8 +348,9 @@ up, what is watched for health, and where its log is.
 dev-server	running	2h	port:5173	/tmp/dev.log
 ```
 
-**With nothing running it prints absolutely nothing and exits 0.** A blank answer here is a
-healthy machine, not a broken command.
+**With nothing running it says `nothing is being kept running.`** It used to print
+absolutely nothing and exit 0, which is indistinguishable from a command that broke — so it
+answers in a sentence now, the way `aforge cache` always has.
 
 To stop one, name it:
 
@@ -396,6 +398,40 @@ a resident is running (pid 41207) — close it before rebuilding
 
 Conversations, settings and credentials are not derived tables and are not touched.
 
+## What goes to stdout and what goes to stderr — piping a headless command
+
+**stdout is the answer. Everything else is on stderr.**
+
+The answer is the thing you would capture: the deliverable, the `--json` object, the rows of
+`aforge logs`, the plan `aforge plan show` prints. Everything a person reads *about* the
+run is on stderr: the `goal:` and `models:` preamble, the progress lines, warnings, the
+path a record was kept at, the receipt saying a file was written, and any question the
+command asks you.
+
+So these do what you would expect, and nothing has to be filtered out of them:
+
+```
+aforge do "summarise CHANGELOG.md" --json | jq -r .answer
+aforge plan new "ship the endpoint" --json > plan.json
+aforge plan run plan.json > result.txt          # the preamble stays on your terminal
+aforge logs --tail 20 | wc -l                   # 20, not 21
+aforge cache clean | tee clean.log              # you can still see the question
+```
+
+Three of those used to be wrong. `aforge plan new` and `aforge plan run` printed their
+`goal:`/`workspace:`/`models:` preamble into the stream; `aforge logs` printed the log's
+path as a first line, so every count was one too many; and `aforge cache clean` printed its
+**question** to stdout, which put the question in the file and left you looking at a blank
+terminal waiting for a word you could not see.
+
+`2>/dev/null` silences the commentary and keeps the answer. To keep both separately, redirect
+them separately: `aforge do "…" >answer.txt 2>notes.txt`.
+
+**A command with nothing to show says so in one short sentence, and never prints a column
+header with no row under it.** `the cache is empty · <path>`, `nothing is being kept
+running.`, `nothing was tried on its own account today.` Silence and a bare header both read
+as a command that broke.
+
 ## Which of these cost money, and which need no API key
 
 **These read, need no key and spend nothing**: `why`, `notebook`, `competence`, `services`
@@ -415,8 +451,8 @@ export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
 
 **These change state without spending**: `cache clean`, `rebuild`, `notebook
 retract|restore`, `services stop` and `devices revoke`. The two that destroy something ask
-first — `cache clean` wants the word `clean` typed out, `rebuild` wants `y` — and `--yes`
-skips the question on both. The other three act at once, and all three can be undone: a
+first — `cache clean` wants the word `now` typed out, the same word `/cache clean now`
+wants in the chat, and `rebuild` wants `y` — and `--yes` skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.
 
 ## Reading a plan by hand — aforge plan new, show, revise and run
@@ -553,5 +589,6 @@ Two things that account does not cover:
 - **`help env` is the environment table.** It moved off `--help` when that page was 127
   lines and more than half of them were this table, so the last thing on the screen after
   asking what the commands are was `AFORGE_CALL_LOG_BODIES`.
-- **`aforge manual --help` answers differently on purpose.** It prints the list of pages,
-  because the list is what that command can be asked for.
+- **`aforge manual --help` prints its usage, then the list of pages.** The list is what
+  that command can be asked for, so it is still there; it used to be *all* that was there,
+  which made one verb in the binary answer `--help` differently from the other twenty-two.

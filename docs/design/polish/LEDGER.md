@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 06:13Z_
+_2026-09-03 06:37Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -22,12 +22,12 @@ _2026-09-03 06:13Z_
 - `K9`    med  CLOSED This surface's own notices are indistinguishable from a bullet list the model wrote
 - `K10`   med  CLOSED Below seventy columns the legend is a bare rule with nothing written on it
 - `K11`   med  open   Lines inside a code fence are truncated with `…` and there is no way to see the rest
-- `K12`   low  CLOSED The wrapped rows of a person's message run flush into the sidebar rail with no gutter
-- `K13`   low  CLOSED A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
+- `K12`   low  open   The wrapped rows of a person's message run flush into the sidebar rail with no gutter
+- `K13`   low  open   A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
 - `K14`   low  open   One turn counts its tool calls in two words six rows apart
 - `K15`   low  open   A blockquote's gutter bar is the same glyph as the conversation's own right-hand divider
-- `K16`   low  CLOSED The money segment changes width mid-turn and shoves the whole right cluster sideways
-- `K17`   low  CLOSED A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
+- `K16`   low  open   The money segment changes width mid-turn and shoves the whole right cluster sideways
+- `K17`   low  open   A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
 
 ## cli — [audit-cli.md](audit-cli.md)
 
@@ -37,57 +37,57 @@ _2026-09-03 06:13Z_
 - `C4`    high CLOSED `exec --json` carries no reason for a failure
 - `C5`    high CLOSED The `aforge do` footer breaks the emptiness law twice on the last line of every headless run
 - `C6`    high CLOSED `aforge exec` has a six-value exit ladder that is documented nowhere a user can reach
-- `C7`    med  CLOSED `aforge --help` hard-wraps mid-word on an 80-column terminal
+- `C7`    med  open   `aforge --help` hard-wraps mid-word on an 80-column terminal
 - `C8`    med  CLOSED A misspelled subcommand suggests nothing and dumps the whole 127-line usage
 - `C9`    med  CLOSED A missing positional argument dumps the same 127 lines
 - `C10`   med  CLOSED Three commands parse no flags at all and read a flag as a positional
 - `C11`   med  CLOSED A bad flag prints its own message twice
-- `C12`   med  CLOSED Filesystem failures reach the person as Go wrapped chains over raw syscall text
+- `C12`   med  open   Filesystem failures reach the person as Go wrapped chains over raw syscall text
 - `C13`   med  CLOSED The missing-key sentence is right in one command and bare in four
-- `C14`   med  CLOSED `aforge doctor` says nothing about a missing key
+- `C14`   med  open   `aforge doctor` says nothing about a missing key
 - `C15`   med  CLOSED `doctor` and `notebook` print money and counts that are zero
 - `C16`   med  CLOSED `record kept at <path>` is printed for runs that never started
-- `C17`   med  CLOSED A bad subharness name is reported as an empty input
+- `C17`   med  open   A bad subharness name is reported as an empty input
 - `C18`   med  CLOSED `--debug` is absent from `aforge --help`
-- `C19`   med  CLOSED `aforge rebuild` uses machinery vocabulary and runs its prompt into its error
-- `C20`   med  CLOSED `logs --tail notanumber` answers `parse error`
-- `C21`   low  CLOSED Two commands print a column header over no rows
-- `C22`   low  CLOSED `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields
+- `C19`   med  open   `aforge rebuild` uses machinery vocabulary and runs its prompt into its error
+- `C20`   med  open   `logs --tail notanumber` answers `parse error`
+- `C21`   low  open   Two commands print a column header over no rows
+- `C22`   low  open   `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields
 - `C23`   low  CLOSED The two help surfaces spell the same flags differently
-- `C24`   low  CLOSED The `--json` object is described only in a repository design document
-- `C25`   low  CLOSED Two query commands report a miss as a success
+- `C24`   low  open   The `--json` object is described only in a repository design document
+- `C25`   low  open   Two query commands report a miss as a success
 
 ## commands — [audit-commands.md](audit-commands.md)
 
 - `M1`    high open   `--help` opens by calling the product "build and revise task graphs"
 - `M2`    high CLOSED `aforge run --help` says "leaf" or "leaves" six times
 - `M3`    high CLOSED `aforge why <node-id>` help says "show what one leaf actually did"
-- `M4`    high CLOSED `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
-- `M5`    high CLOSED Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
-- `M6`    high CLOSED Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
+- `M4`    high open   `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
+- `M5`    high open   Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
+- `M6`    high open   Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
 - `M7`    high CLOSED `--budget` means tokens while "budget" means dollars everywhere else in the product
 - `M8`    high CLOSED `--timeout` is a duration on `do` and an integer of seconds on `exec`
 - `M9`    high CLOSED `run` names two unrelated commands and help needs a special case to tell them apart
-- `M10`   high CLOSED The word `seat` reaches a person on stderr on four headless doors
+- `M10`   high open   The word `seat` reaches a person on stderr on four headless doors
 - `M11`   med  CLOSED `-w`, `-o` and `-j` have no long spelling at all (extends cli-23: the fix is new names, not a print change)
 - `M12`   med  CLOSED `exec --plan-model` is accepted and documented as doing nothing
-- `M13`   med  open   Nothing-to-show is answered three different ways, and there is no rule (extends cli-21 and cli-22)
+- `M13`   med  CLOSED Nothing-to-show is answered three different ways, and there is no rule (extends cli-21 and cli-22)
 - `M14`   med  open   `graph plan` and `graph run` print their preamble to stdout; `do` prints the same thing to stderr
-- `M15`   med  open   `run` reimplements the models line instead of calling the one helper
+- `M15`   med  CLOSED `run` reimplements the models line instead of calling the one helper
 - `M16`   med  CLOSED `--yes-spend` is documented as two different things on two commands
 - `M17`   med  CLOSED `--ensemble` is a tri-state integer with two magic values
 - `M18`   med  CLOSED `--contracts` and `--brief` are one concept under two machinery names
 - `M19`   med  CLOSED `--context-fill` and `--completion-reserve` document themselves by the environment variable they set
-- `M20`   med  open   `devices revoke --all` is hand-parsed, position-sensitive, and missing from the usage sentence
-- `M21`   med  open   The two surfaces use different words to confirm the same deletion
+- `M20`   med  CLOSED `devices revoke --all` is hand-parsed, position-sensitive, and missing from the usage sentence
+- `M21`   med  CLOSED The two surfaces use different words to confirm the same deletion
 - `M22`   med  CLOSED `brain` is the word `doctor` uses for the store, in output and in `--help`
 - `M23`   med  open   `--help` has no examples
 - `M24`   med  open   `--help` is 127 lines and more than half is the environment table (cli-7 covers its wrapping, not its size)
 - `M25`   med  open   The commands in `--help` are one flat list in no stated order, and `run`'s two forms are separated by `exec`
-- `M26`   low  open   `aforge manual --help` prints the page list instead of the command's usage
-- `M27`   low  open   `logs` prints its path header on stdout
+- `M26`   low  CLOSED `aforge manual --help` prints the page list instead of the command's usage
+- `M27`   low  CLOSED `logs` prints its path header on stdout
 - `M28`   low  open   `cache clean` writes its confirmation prompt to stdout
-- `M29`   low  open   `aforge version` prints only `aforge dev`
+- `M29`   low  CLOSED `aforge version` prints only `aforge dev`
 
 ## help — [audit-help.md](audit-help.md)
 
@@ -107,9 +107,9 @@ _2026-09-03 06:13Z_
 - `P14`   med  open   The map promises `→ verbs on this row` on places that have none
 - `P15`   med  CLOSED The first-run block and the greeting that replaces it are centred by two different rules, so the wordmark jumps when setup ends
 - `P16`   med  open   The first-run screen's refusal line is whatever Go error the writer produced, printed raw
-- `P17`   low  CLOSED The wordmark's last glyph has no right stroke and reads as a clipped letter
+- `P17`   low  open   The wordmark's last glyph has no right stroke and reads as a clipped letter
 - `P18`   low  open   A search that finds nothing reports the emptiness and nothing else
-- `P19`   low  CLOSED Three more places' hint lines promise row verbs over a body that has no rows
+- `P19`   low  open   Three more places' hint lines promise row verbs over a body that has no rows
 - `P20`   low  open   The entry note dumps the absolute transcript path over four wrapped lines
 - `P21`   low  open   `ctrl+r` appears twice on the key sheet with two different meanings
 - `P22`   low  open   The unknown-command refusal is written in machinery register
@@ -119,36 +119,36 @@ _2026-09-03 06:13Z_
 
 - `H1`    high CLOSED The first screen of a fresh install brands the product `openaf`, while every screen after it says `aforge`
 - `H2`    high CLOSED **H1.** The list stops at eight rows whatever the terminal's height, so a 40-row window draws 14 rows of content and 22 of nothing while the list is still folded
-- `H3`    high CLOSED **H2.** The right-hand card needs 160 columns and is absent at every ordinary window
+- `H3`    high open   **H2.** The right-hand card needs 160 columns and is absent at every ordinary window
 - `H4`    high CLOSED A long note on a list row clips the conversation's **name** to eight cells before a single fact is dropped
 - `H5`    high CLOSED **H3a.** The card's place line is cut from the left, so the project identity is the first thing spent
 - `H6`    high CLOSED **H3b.** Card rows clip the label to keep the tail, so a deliverable's name is spent on a price
 - `H7`    high CLOSED First run on a short terminal loses its input box, its keys and its way out
-- `H8`    high CLOSED `esc not now` ends first run for good, and two of its three questions are never asked again
+- `H8`    high open   `esc not now` ends first run for good, and two of its three questions are never asked again
 - `H9`    high CLOSED A standing item that needs a person is drawn twice on the phone, against that file's own stated law
-- `H10`   med  open   **H4.** At 60 columns the tab strip collapses from seven places to one, with nothing saying the other six exist
-- `H11`   med  open   **H5.** The hint line is sliced mid-word instead of dropping a whole hint
-- `H12`   med  open   The pulse line is all-or-nothing: it drops every fact rather than the cheapest one
-- `H13`   med  open   A conversation with no title yet is drawn as a title-cased hex id
+- `H10`   med  CLOSED **H4.** At 60 columns the tab strip collapses from seven places to one, with nothing saying the other six exist
+- `H11`   med  CLOSED **H5.** The hint line is sliced mid-word instead of dropping a whole hint
+- `H12`   med  CLOSED The pulse line is all-or-nothing: it drops every fact rather than the cheapest one
+- `H13`   med  CLOSED A conversation with no title yet is drawn as a title-cased hex id
 - `H14`   med  open   An opened fold still says how many rows it is hiding, and the two folds on this surface disagree about the words
 - `H15`   med  open   The standing-item hint reads as one key bound to two verbs
 - `H16`   med  open   The scope chip says where your typing lands as a path on one row and as a bare name on the next
-- `H17`   low  open   The resting foot promises `tab next place` on a frame drawing one place
-- `H18`   low  CLOSED The card's four readings are separated by blank rows that a short card pays for twice
+- `H17`   low  CLOSED The resting foot promises `tab next place` on a frame drawing one place
+- `H18`   low  open   The card's four readings are separated by blank rows that a short card pays for twice
 
 ## jobs — [audit-jobs.md](audit-jobs.md)
 
 - `J1`    high CLOSED A conversation reopened draws none of the background jobs it ran, because the surface has no case for them on the lane the engine replays them on
 - `J2`    high CLOSED A task restored from a checkpoint is dated by when the WINDOW opened plus how long the work ran, which is a landing time in the future
 - `J3`    high CLOSED Work parked on a person's decision is filed under `running` and dated `now`
-- `J4`    high CLOSED A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
-- `J5`    med  CLOSED The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
+- `J4`    high open   A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
+- `J5`    med  open   The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
 - `J6`    med  CLOSED The word on a landed card for when the work began is `spawned`
 - `J7`    med  open   A task's price is drawn twice on the same home card, four cells apart, in two different inks
 - `J8`    med  open   A conversation whose name carries a combining accent is drawn with the accent silently removed
 - `J9`    med  CLOSED The room's kin line names a child's state with a word that is neither true nor in the vocabulary
-- `J10`   low  CLOSED At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
-- `J11`   med  CLOSED The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
+- `J10`   low  open   At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
+- `J11`   med  open   The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
 - `J12`   low  open   The status line under a room wraps onto two lines and leaves a hole under the left half
 
 ## narrow — [audit-narrow.md](audit-narrow.md)
@@ -156,21 +156,21 @@ _2026-09-03 06:13Z_
 - `N1`    high CLOSED At sixty columns the place bar collapses to the word `home` and nothing says the other six exist
 - `N2`    high CLOSED Home's foot is sliced mid-word, so it names a key and then eats it
 - `N3`    med  CLOSED A conversation with no title draws a title-cased hex id as its name
-- `N4`    med  open   The job page's key row is still painted through a plain `fit` and is cut mid-word
-- `N5`    med  open   The task record's key row is cut the same way
+- `N4`    med  CLOSED The job page's key row is still painted through a plain `fit` and is cut mid-word
+- `N5`    med  CLOSED The task record's key row is cut the same way
 - `N6`    med  CLOSED The pulse line is all-or-nothing, so navigation is outranked by a clock
 - `N7`    low  CLOSED Five more person-facing foot lines are cut by character rather than by clause
-- `N8`    low  open   The resting foot promises `tab next place` on a frame that used to draw one place
+- `N8`    low  CLOSED The resting foot promises `tab next place` on a frame that used to draw one place
 
 ## settings — [audit-settings.md](audit-settings.md)
 
-- `S10`   med  CLOSED The spend place draws no hint line of its own, so its foot advertises the conversation's keys
-- `S11`   med  CLOSED The daily rail is spelled two ways on one frame
+- `S10`   med  open   The spend place draws no hint line of its own, so its foot advertises the conversation's keys
+- `S11`   med  open   The daily rail is spelled two ways on one frame
 - `S12`   med  open   `dollars` renders a positive cost under a hundredth of a cent as `$0.0000`
 - `S13`   med  CLOSED At the widths where the memory type legend fits but the line is tight, the section's IDENTITY is truncated to keep a secondary legend whole: at 80 cells the heading reads `shelves · …` beside `fact 7 · preference 2 · decision 2 · correction 1 · project state 1`
 - `S14`   med  CLOSED The four ssh rows sit under `Session`, while a tab literally named `Connections` sits four tabs to the right holding Amplitude, PostHog and Braintree
-- `S15`   low  CLOSED A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
-- `S16`   low  CLOSED On a wide frame a settings row puts 150 blank cells between a label and a three-character value
+- `S15`   low  open   A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
+- `S16`   low  open   On a wide frame a settings row puts 150 blank cells between a label and a three-character value
 - `S17`   low  CLOSED The `loudest day` line right-aligns a bare noun with no verb and nothing joining it to the sentence: `aug 23 was the loudest day
 
 ## tasks — [audit-tasks.md](audit-tasks.md)
@@ -179,17 +179,17 @@ _2026-09-03 06:13Z_
 - `T2`    high CLOSED Sections named by time hold rows in no time order
 - `T3`    high CLOSED A filter that matches nothing makes the page state a falsehood about the machine
 - `T4`    high CLOSED Every fact on a task row is joined to the next by a bare space, so the tail reads as one run-on phrase
-- `T5`    high CLOSED 24 blank rows under the list and 30 under the task page, with the rule pinned to the frame bottom
+- `T5`    high open   24 blank rows under the list and 30 under the task page, with the rule pinned to the frame bottom
 - `T6`    med  CLOSED The header says `work aforge ran on its own. 10, $2.21 of it.`
 - `T7`    med  CLOSED A task the record still calls running, with nobody behind it, is dated `now` forever
 - `T8`    med  CLOSED One task wears two different state words on two surfaces one keypress apart
 - `T9`    med  CLOSED Work that failed is reported as having `landed`
 - `T10`   med  CLOSED A task's own page never says which conversation or project it came out of
-- `T11`   med  CLOSED The job page prints the engine's raw state enum, and spells the exit code differently from the column that opened it
+- `T11`   med  open   The job page prints the engine's raw state enum, and spells the exit code differently from the column that opened it
 - `T12`   med  CLOSED Every child of an opened family repeats its parent's conversation title, on the rows where names are already being cut
-- `T13`   med  CLOSED The foot counts seven pieces of work under "done today" and the section shows four rows
+- `T13`   med  open   The foot counts seven pieces of work under "done today" and the section shows four rows
 - `T14`   low  CLOSED Row order changes between launches for reasons that have nothing to do with the work
 - `T15`   low  open   `esc back` is named twice on every frame of the task page
-- `T16`   low  CLOSED The jobs section's overflow line wears a fold mark on something that does not fold
+- `T16`   low  open   The jobs section's overflow line wears a fold mark on something that does not fold
 - `T17`   low  open   The clock changes grain between the row and the page it opens
 

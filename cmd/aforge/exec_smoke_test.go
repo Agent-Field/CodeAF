@@ -219,8 +219,11 @@ func TestExecBinaryReportsTheStampedVersion(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("aforge %s exited %d\nstderr:\n%s", spelling, code, stderr)
 		}
-		if strings.TrimSpace(stdout) != "aforge abcdef01" {
-			t.Fatalf("aforge %s printed %q, want %q", spelling, stdout, "aforge abcdef01")
+		// The stamped revision is the FIRST thing on the line, and the
+		// toolchain and platform follow it: a defect report needs the commit
+		// and the machine, and an installer reads the prefix.
+		if !strings.HasPrefix(strings.TrimSpace(stdout), "aforge abcdef01") {
+			t.Fatalf("aforge %s printed %q, want it to open %q", spelling, stdout, "aforge abcdef01")
 		}
 	}
 }
@@ -236,8 +239,8 @@ func TestExecBinaryVersionNeedsNoAPIKey(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d with no key set, want 0\nstderr:\n%s", code, stderr)
 	}
-	if strings.TrimSpace(stdout) != "aforge v0.0.0-smoke" {
-		t.Fatalf("printed %q, want %q", stdout, "aforge v0.0.0-smoke")
+	if !strings.HasPrefix(strings.TrimSpace(stdout), "aforge v0.0.0-smoke") {
+		t.Fatalf("printed %q, want it to open %q", stdout, "aforge v0.0.0-smoke")
 	}
 }
 

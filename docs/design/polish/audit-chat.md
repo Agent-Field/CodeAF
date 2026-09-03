@@ -161,5 +161,5 @@ test: `TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct` (`internal/tui3/chat
 - **14 (`1 tool call` vs `1 tool`)** — `internal/tui3/workfold.go` and
   `internal/tui3/timestamps.go`.
 - **15 (the blockquote bar is the dock's glyph)** — `internal/tui2/tokens/code.go`.
-- **12, 13, 16, 17** — `sev: low`, and this lane stopped at the med rows. 16 is
+- **Rows twelve, thirteen, sixteen and seventeen** — `sev: low`, and this lane stopped at the med rows. 16 is
   `internal/tui3/app.go:7617` and is a one-line change for whoever takes it.

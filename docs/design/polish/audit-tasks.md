@@ -171,12 +171,16 @@ frames: `task-page-done.120x40.txt` → `task-page-done-after.120x40.txt`, `task
 
 ### Not fixed here, and why
 
-- **Row 5** (the blank rows under the list and the page) — the shared filler is
+The numbers below are SPELLED AS WORDS on purpose: `scripts/ledger.py`
+reads `Row <digit>` anywhere under `## fixed` as a closure, and every row in
+this list is one that is NOT closed.
+
+- **Row five** (the blank rows under the list and the page) — the shared filler is
   `pages.go`, held by another lane.
-- **Row 11** (`jobPageEnding` prints the engine's enum) and **row 16** (the jobs
+- **Row eleven** (`jobPageEnding` prints the engine's enum) and **row sixteen** (the jobs
   overflow line wears a fold mark) — `jobsview.go`/`jobpage.go`, not this lane's
   files.
-- **Row 13** (the shut fold's count moves to the LEFT of the mark) — **half
+- **Row thirteen** (the shut fold's count moves to the LEFT of the mark) — **half
   done**. The count is now a sentence and leads the tail, so the mark and the
   count read as one claim about the row rather than as a fact among the facts.
   Drawing it *inside* the family column (`▸ 3 ✓ Count the tabs…`) was left alone:

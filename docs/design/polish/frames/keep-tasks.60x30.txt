@@ -1,0 +1,30 @@
+ aforge                         $123.45 / $500 · thu 2:17am
+  home  tasks  standing  memory  spend  search  settings
+────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 10 pieces of work since aug 21.
+
+earlier
+›   · Rotate the wildcard certificate             incomplete
+    ✓ Port the picker onto the new list           3h · $0.31
+  ▸ ✓ Count the tabs the bar draws holds 3 more · 5h · $0.42
+    ✓ Write the morning sweep down                8h · $0.14
+    ✓ Put the annual toggle on the pricing page   8h · $0.27
+    ✓ Take the backup window down to twenty minutes       2d
+    ✕ Rebuild the frame budget report             8d · $0.18
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ 10 earlier
+ › say what you want done                  here ~/aforge-v2
+ enter go inside it · type to filter · tab next place

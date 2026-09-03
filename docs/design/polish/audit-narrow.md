@@ -195,6 +195,34 @@ worth keeping is the undo at the END, so it wants `hintFit` — the key-sheet fi
 NOT `noteFit`, however much it looks like a note. One character, and the pair above says
 how to choose.
 
+**Row 4 and row 5 — the job page's and the record card's key rows drop whole clauses.**
+Closed by the JOBS lane, not by this one, and recorded here because that lane wrote the
+change down without the numbers these rows carry. `jobpage.go:391` and
+`taskrecord.go:464` both paint through `hintFit` now, and the way out moved to the END of
+both feet, because that fitter keeps its last clause to the last cell there is — `esc
+back` at the head of a foot was the way out being spent FIRST. The ledger row 4 named,
+`hintsStillCutByCharacter` in `internal/tui3/narrow_test.go`, is EMPTY, so the structural
+law reaches both files with nothing excused; its second half fails if a fixed file is left
+named in it. Files: `internal/tui3/jobpage.go`, `internal/tui3/taskrecord.go`,
+`internal/tui3/narrow_test.go`. Tests:
+`TestTheJobPageAndTheRecordCardKeepTheWayOutOnANarrowFoot`,
+`TestARunningJobsFootKeepsStopLongestOfItsFourKeys` (`internal/tui3/hintwhole_test.go`).
+Frames: `jobpage-hint-after.60x30.txt` (line 30, `↑↓ scroll · c copy path · esc back`) and
+`jobpage-hint-after.120x40.txt` (all four keys); the card re-captured this pass from the
+current binary — `keep-taskpage.60x30.txt` (line 30,
+`↑↓ scroll · m puts it in your message · esc back`, whole, way out last) beside
+`taskcard-hint-after.40x24.txt` (the phone lane's bar).
+
+**Row 8 — the resting foot names places that are on the frame.**
+Recorded closed rather than fixed, which is what this row's own text asked for. Frames
+captured this pass from `bin/aforge`: `keep-home.60x30.txt` — line 2
+`  home  tasks  standing  memory  spend  search  settings`, line 30
+`type to search or start something new · tab next place`, whole — against
+`narrow-home.60x30.txt` (line 2, ` home`, under the same foot); and `keep-home.50x24.txt`
+and `keep-home.44x24.txt`, where the phone tier draws its own head (` home … esc close`)
+and a foot of ` enter open`, so the clause is not on the frame at all. This is `H17` in
+audit-home, closed there in the same terms.
+
 ### what other lanes should know
 
 - **`tabBarAt` takes two more arguments** — the air between chips, and how many places are

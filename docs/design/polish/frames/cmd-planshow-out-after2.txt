@@ -1,0 +1,16 @@
+
+── nodes ───────────────────────────────────────────────────────────
+   #  node                     size        waits for    context received
+   1  write the handler                    —            goal only
+   2  write the test                       1            goal + 1 output
+
+── schedule ────────────────────────────────────────────────────────
+  by data flow            2 waves
+    0  1·write the handler
+    1  2·write the test
+
+  1 of 2 nodes start immediately
+  1 edge across 2 nodes, critical path 2 (0 doing real work)
+  0 leafs to execute, decomposed 1 level deep
+
+0 calls  |  0 in (0 cached) / 0 out tokens  |  $0.000000

@@ -1,0 +1,48 @@
+  aforge manual                 every page of aforge's own manual, one per line
+  aforge manual <page>          print that page as it is written
+  aforge manual "<question>"    the sections that answer it, each labelled with the
+                                page and heading it came from. No key, no model call,
+                                nothing spent — the same pages the chat reads, whole.
+
+run `aforge --help` for every command, `aforge help env` for the environment table.
+accounts                           Connected accounts
+adaptive-runs                      Adaptive runs
+asking-from-home                   Asking from home — reminders and watches without opening a conversation
+attaching-files                    Attaching files
+choosing-a-folder                  Choosing a folder
+commands                           Commands
+compacting-over-and-over           Compacting over and over
+debug-record                       The debug record
+empty-screen                       The empty screen — nothing on it, the screen is blank
+forking-and-syncing-a-workspace    Forking and syncing a workspace
+getting-started                    Getting started — the first-time setup
+hints-and-tips                     Hints and tips
+home                               Home — one list of everything on this machine
+how-tasks-run                      How work on its own actually runs
+keeping-an-eye                     Keeping an eye on things — reminders, watches, rules, overnight work, and checking on it later
+keys                               Keys, typing, and the mouse — what all the keys do
+lanes                              Lanes — which machine answers, and the question a slow lane asks
+making-pictures-audio-and-video    Making pictures, audio and video
+models-and-cost                    Models, context, and what it costs
+opening-files-from-that-machine    Opening files from that machine
+permissions                        What runs without asking, and who can see your files
+places                             Places
+reaching-this-machine-without-ssh  Reaching a machine with a pairing code
+reading-a-task-page                Reading a task's page — what is on this task page, what folds, and a page that looks stuck
+running-from-the-terminal          Commands you type in a terminal
+running-on-another-machine         Running on another machine
+saved-programs                     Saved programs
+saved-shapes-of-work               Saved shapes of work — saving a way of working and reusing it
+screen                             What is on the screen
+sessions-and-rewind                Conversations, and taking a message back — undoing something you said
+standing-orders                    Standing orders — rules that stay true after this conversation
+starting-aforge                    What aforge is, and how you start it
+staying-on-that-machine            Staying on that machine
+subharnesses                       Subharnesses
+task-rooms-after-restart           A task's room after a restart
+tasks                              Work that runs on its own — tasks, and finding out what one actually did
+what-i-can-do                      What aforge can do for you
+what-i-remember                    What I remember
+when-the-connection-drops          When the connection drops
+
+read one with `aforge manual <page>`, or ask in your own words: aforge manual "who can see my files"

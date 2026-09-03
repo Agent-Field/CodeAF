@@ -56,6 +56,15 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// A COLUMN HEADER IS NEVER PRINTED WITHOUT A ROW UNDER IT. `TRIED COST
+	// LEARNED` over nothing is a table claiming rows that are not there, and a
+	// person reads it as a reader that failed rather than as a day with no
+	// self-spend on it. One short sentence instead, which is what `aforge
+	// cache` answers over the same emptiness.
+	if len(receipts) == 0 {
+		_, err := fmt.Fprintln(output, "nothing was tried on its own account today.")
+		return err
+	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(table, "TRIED\tCOST\tLEARNED")
 	for _, receipt := range receipts {

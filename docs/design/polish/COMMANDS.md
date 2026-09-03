@@ -235,6 +235,11 @@ An interactive question — `cache clean`'s typed confirmation — is written to
 stdout today. A prompt is not an answer; it goes to stderr, so that
 `aforge cache clean | tee log` still shows you the question.
 
+A written-down consequence, so nobody has to rediscover it: **a receipt for a
+file is commentary, not the answer.** `written to plan.json` is about the run;
+the plan is the answer. Both `plan new -o` and `plan run -o` print it, and it
+goes with the preamble.
+
 ### Exit codes
 
 **One table, for every headless verb.**
@@ -355,6 +360,27 @@ listing with nothing in it has **three different answers today**:
 a column header is never printed without a row under it.** Silence and a bare
 header both read as a command that broke, which is exactly the failure the law
 exists to prevent. `cache` has it right.
+
+This is a **different question from the emptiness law** and needs its own answer.
+The emptiness law is about FIGURES: an unknown or zero number renders as nothing,
+never `$0.00`, never `0 tok`. This is about the SENTENCE a command says when it
+has no rows at all — and there the answer is the opposite, because a person who
+typed a question and got a blank terminal cannot tell a quiet day from a reader
+that failed. So: the figure is absent, the sentence is present.
+
+The sentence is short, lower-case, in the person's own words, and says what is
+empty rather than that something is empty:
+
+- `the cache is empty · <path>`
+- `nothing is being kept running.`
+- `nothing was tried on its own account today.`
+
+A filter that matched nothing is the one exception already written down and kept:
+`aforge logs --tag nosuch` prints nothing, because the filter *is* the question
+and an empty search is its honest answer; an id somebody pasted earns a sentence
+(`no call deadbeef in this log`) because a typo and an absence are different
+facts. And `--json` never gets a sentence in any of these: a program parsing rows
+must not find English on the end of them.
 
 ## 6. The map between the terminal and the chat
 

@@ -222,19 +222,21 @@ func runGraph(name string, args []string) error {
 
 	// The scratch home is printed because it is now the only place the flight
 	// recorders are, and a debugger who cannot find them has no run to read.
-	fmt.Printf("goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
+	//
+	// ALL OF IT IS AN ASIDE. This is what a person reads about the run and not
+	// the run's answer, so it goes where `do` has always put the same lines
+	// (streams.go); `aforge plan run p.json > result.txt` keeps the result and
+	// nothing else.
+	fmt.Fprintf(aside, "goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
 	// Both seats, on every run rather than only on a split one, and each with
-	// the rung that chose it: a run whose models came from the profile's crew
-	// used to print nothing at all about them.
-	fmt.Printf("models:    %s\n", seats.Sentence())
-	// And, once, the reason a seat is not the row the person wrote — this door
-	// has a label column of its own, so the line sits under the models it is
-	// about rather than in front of them.
-	if notice := seats.Notice(); notice != "" {
-		fmt.Printf("           %s\n", notice)
-	}
+	// the rung that chose it, AND THE SENTENCE COMES FROM THE ONE PLACE THAT
+	// OWNS IT. This door used to spell the models line itself — its own label,
+	// its own padding, its own placement for the inheritance notice — which is
+	// the failure Seats.Report exists to prevent: the next field added to the
+	// report would have been missing here and nowhere else.
+	fmt.Fprintln(aside, seats.Report())
 	if len(settings.Panel.Models) > 0 {
-		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
+		fmt.Fprintf(aside, "panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
 	}
 
 	// A graph planned without --brief has nothing for an agent to read, so the
@@ -273,7 +275,7 @@ func runGraph(name string, args []string) error {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			}
 		}
-		fmt.Printf("prepared:  %s in %s\n", plural(len(graph.Leaves()), "leaf"), time.Since(start).Round(10*time.Millisecond))
+		fmt.Fprintf(aside, "prepared:  %s in %s\n", plural(len(graph.Leaves()), "step"), time.Since(start).Round(10*time.Millisecond))
 	}
 	if preparedUsage.Calls > 0 {
 		if err := railStore.RecordUsage(store.NodeUsage{
@@ -398,10 +400,10 @@ func runGraph(name string, args []string) error {
 		if event.Detail != "" {
 			line += "  " + event.Detail
 		}
-		fmt.Println(line)
+		fmt.Fprintln(aside, line)
 	}
 
-	fmt.Printf("\n── executing ───────────────────────────────────────────────────────\n")
+	fmt.Fprintf(aside, "\n── executing ───────────────────────────────────────────────────────\n")
 	start := time.Now()
 	// An interrupt must land the run, not vanish it: a Go process dies on
 	// Ctrl+C with nothing written, which is indistinguishable from a crash.
@@ -439,7 +441,7 @@ func runGraph(name string, args []string) error {
 	graph.Usage.Cost += runUsage.Cost
 	clock.sample()
 	if report := recordAndCalibrate(ctx, planner, settings, settings.Model, graph); report != "" {
-		fmt.Printf("\n%s\n", report)
+		fmt.Fprintf(aside, "\n%s\n", report)
 	}
 	renderRunSummary(graph, space, runUsage, time.Since(start), clock, summaryErr)
 	if *output != "" {
@@ -450,7 +452,7 @@ func runGraph(name string, args []string) error {
 		if err := os.WriteFile(*output, encoded, 0o644); err != nil {
 			return err
 		}
-		fmt.Printf("\nwritten to %s\n", *output)
+		fmt.Fprintf(aside, "\nwritten to %s\n", *output)
 	}
 	if railDeclined {
 		return nil

@@ -256,10 +256,13 @@ way `placeeveryone_test.go`'s `spendPlaceLab` already did.
 
 ### not fixed, and why
 
+The numbers below are SPELLED AS WORDS where the row is NOT closed:
+`scripts/ledger.py` reads `Row <digit>` anywhere under `## fixed` as a closure.
+
 - **Rows 2, 12** — the pulse's navigation-dependent reading, and `dollars` rendering a
   sub-cent as `$0.0000`. `internal/tui3/pulse.go`, `homemachine.go` and `app.go`, held by
   another lane.
-- **Row 11 (still open) — the daily rail is spelled two ways, and the half that is wrong is
+- **Row eleven (still open) — the daily rail is spelled two ways, and the half that is wrong is
   not in these files.** `railFigure` is this lane's and every reading that goes through it is
   right: `of $500` on the spend place, `$500 · $0.14 today` on the tab, `$5 a firing` on the
   standing row. The top line still says `$500.00`, from `dollars(facts.ceiling)` at
@@ -268,7 +271,7 @@ way `placeeveryone_test.go`'s `spendPlaceLab` already did.
   because that half is a measurement.
 - **Row 10** — closed already, as audit-help's row 2: `placeSpend.hint` names `enter`, `→` and
   the window keys.
-- **Row 15** (sev: low) — `rowGutter` is `internal/tui3/rowfit.go`, not this lane's.
-- **Row 16** (sev: low) — the 150 blank cells at 160 columns are `overlayLines` in
+- **Row fifteen** (sev: low) — `rowGutter` is `internal/tui3/rowfit.go`, not this lane's.
+- **Row sixteen** (sev: low) — the 150 blank cells at 160 columns are `overlayLines` in
   `internal/tui3/palette.go`, not this lane's. The units from row 3 do give those rows
   something to sit on, but the measure cap is still uncapped.

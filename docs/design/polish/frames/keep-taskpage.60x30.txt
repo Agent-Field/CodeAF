@@ -1,0 +1,30 @@
+ Port the picker onto the new list                 esc back
+
+────────────────────────────────────────────────────────────
+ done · landed 3h ago · ran 6m 0s
+
+ The picker walks the list's rows and keeps its own cursor;
+ the keys are unchanged.
+
+ out of Porting the Picker
+ anthropic/claude-sonnet-4 · $0.31 · 38.4k tok
+ 2 files changed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ ↑↓ scroll · m puts it in your message · esc back

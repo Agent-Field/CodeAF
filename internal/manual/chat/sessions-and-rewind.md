@@ -77,8 +77,9 @@ shows `search · lex.go`, and adds ` · nothing matches` when the search has emp
 row a search kept can be picked, whether it is a message, a reply or a call.
 
 **What a turn cost.** A turn that used tools carries a dim tally after its words, like
-`4 tools · 2 files`. `files` counts the distinct paths that turn's `write` and `edit` calls
-named. A turn that called nothing says nothing at all — not `0 tools`. There are no
+`4 tool calls · 2 files`. `files` counts the distinct paths that turn's `write` and `edit`
+calls named, and `tool calls` counts the CALLS — a turn that ran `bash` four times made four
+of them. A turn that called nothing says nothing at all — not `0 tool calls`. There are no
 timestamps and no costs on these rows, because the transcript this page is built from does
 not keep them, and aforge will not invent them.
 

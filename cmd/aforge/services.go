@@ -31,6 +31,15 @@ func runServices(args []string) error {
 		if err != nil {
 			return err
 		}
+		// A LISTING WITH NOTHING IN IT SAYS SO. Silence and exit 0 is what this
+		// door used to answer on a healthy machine, and silence is
+		// indistinguishable from a command that broke — which is the one
+		// reading the emptiness law exists to prevent. `aforge cache` has had
+		// the sentence all along and is the model for it.
+		if len(services) == 0 {
+			_, err := fmt.Println("nothing is being kept running.")
+			return err
+		}
 		now := time.Now()
 		for _, service := range services {
 			fmt.Printf("%s\t%s\t%s\t%s\t%s\n", service.Name, service.Status,

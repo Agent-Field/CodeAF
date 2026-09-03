@@ -1,0 +1,24 @@
+
+[38;5;146m› [38;5;110mlist the files in this directory with the list tool, then in one sentence say[39m
+  [38;5;110mwhat this project is[39m
+
+  [38;5;243m▸ worked · 1 tool call · ctrl+e[39m
+
+[38;5;252mThis project appears to be a development workspace for an application called[39m
+[38;5;252m"aforge-v2", which is a terminal-based user interface (TUI) tool. The directory[39m
+[38;5;252mstructure and files suggest it is an internal project that is being actively[39m
+[38;5;252mdeveloped, with ongoing work being done to port various components like the[39m
+[38;5;252mpicker, lexer, and tests to a new version of the TUI library.[39m
+
+  [38;5;243m· [38;5;116m3[38;5;243m standing orders here — [38;5;146m[48;5;237m/standing[39m[49m
+  [38;5;243m· resumed · aforge-v2 tui porting[39m
+  [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits[39m
+
+
+
+[38;5;243m─ master* ────────────────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116mctrl+k[38;5;243m switch · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243maforge-v2 tui porting · deepseek-v4-flash-latest[39m
+                [38;5;243mcrew balanced · ◦ keeping an eye on 3 · $0.01 · 5.5k/1.3M · idle

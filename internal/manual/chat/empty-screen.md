@@ -129,8 +129,8 @@ screen (`/home`, or space twice on an empty box) and in `/resume`.
 
 ## The line about esc and ctrl+c — when does "esc interrupts · ctrl+c twice quits" appear
 
-The empty screen carries no line about leaving. `esc interrupts · ctrl+c twice quits`
-lands as the first dim line of the conversation the moment the greeting goes — your
+The empty screen carries no line about leaving. `esc interrupts · ctrl+c twice quits · ?
+for help` lands as the first dim line of the conversation the moment the greeting goes — your
 first keystroke — where it sits directly above the box you have just started typing
 into. A conversation that opens on a transcript, such as a resumed one, has it on its
 first frame as before. The keys themselves work at every moment either way: `esc`

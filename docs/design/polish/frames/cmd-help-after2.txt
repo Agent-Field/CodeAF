@@ -1,0 +1,108 @@
+aforge — an agent you talk to, and hand work to when you walk away
+
+Talk to it — a surface you sit in front of
+  aforge                 open the conversation this directory was last having
+  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
+              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
+              [--no-host] [--debug]
+                         --no-host opens the conversation in this process instead of attaching
+                         to this workspace's session host; --debug keeps the whole record of the
+                         run — call bodies, tool calls, the choices made — under the state root
+                         --session names a transcript FILE to resume, not an id and not
+                         the word "new": a path that does not exist yet is a new
+                         conversation written there, and no --session at all resumes
+                         this directory's most recent
+  aforge resume          pick an earlier conversation by name and open it
+                         the same list is /resume inside the chat
+
+Hand it work — nobody is watching, the answer is on stdout
+  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m] [--json] [--yes-spend]
+                       [--model slug] [--plan-model slug] [--context-fill 60]
+                       [--completion-reserve 65536] [--debug]
+                         do one task and exit — the same living agent the chat runs, with nobody watching
+                         the task is run verbatim: what you type is the goal, and what it has to assume it declares
+                         exit 0 done · 1 could not be run at all · 2 ran and did not finish · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N] [--token-budget N]
+                         [--timeout 15m] [--model slug] [--context-fill N]
+                         [--completion-reserve N] [--json] [--out file] [--debug]
+                         run one worker for one pass, with no planning at all
+                         exit 0 done · 1 could not be run at all · 2 ran and did not finish · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+                         why it stopped is in --json's stop field; AFORGE_EXIT_CODES=legacy restores
+                         exec's old 2/3/4/5/6 for one release
+  aforge run  <program> --input <file.json|-> [--dir dir] [--model slug] [--journal path]
+                       [--json]
+                         run one saved program, with nobody watching: typed input in,
+                         its account and its typed output on stdout, everything else on stderr
+                         a question it was not told how to answer stops it rather than being guessed
+                         exit 0 done · 1 could not be run at all · 2 ran and did not finish · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+                         the three differ by how much thinking happens before the work starts:
+                         do plans and may split the job, exec does not plan, run follows a
+                         plan somebody already saved
+
+Look at what happened — read-only, no key, nothing spent
+  aforge why self [--db path]   show today's self-spend receipts
+  aforge why <task-id> [--db path]  show what one piece of work actually did: its turns, the
+                                tools it called with what arguments, what came back,
+                                and how it ended
+  aforge logs [--tail 40] [--follow] [--path] [--json]
+              [--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]
+                                every model call aforge made — what was asked, which lane
+                                answered, what came back, and which ones are still in
+                                flight. The filters are exact and combine; --json prints
+                                the rows as they are on disk; --body prints one call's
+                                recorded request and reply. Prompts are not in the line.
+                                AFORGE_CALL_LOG=off turns it off, or names a file.
+  aforge models                 the models this machine will use, and what each has been measured at
+  aforge doctor [--db path]     is this install healthy, and where does it keep things
+  aforge manual                 every page of aforge's own manual, one per line
+  aforge manual <page>          print that page as it is written
+  aforge manual "<question>"    the sections that answer it, each labelled with the
+                                page and heading it came from. No key, no model call,
+                                nothing spent — the same pages the chat reads, whole.
+  aforge version                print the build this binary was cut from
+                                (--version and -v say the same thing)
+
+Housekeeping — changes state on disk or on the network
+  aforge cache                  what the shared build cache holds, and how big it is
+  aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
+                                path, then asks you to type "now" — --yes skips the
+                                question for scripts. Conversations are never touched.
+  aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
+  aforge serve [--workspace path] [--relay url]
+                                be reachable from your other devices without ssh: this machine
+                                dials out, prints the name it answers to, and shows a pairing
+                                code for a new device
+  aforge devices                list the devices paired with this machine
+  aforge devices revoke <name> [--all]
+                                stop one device from opening a conversation here — or, with
+                                --all, every device answering to that name. It needs a new
+                                pairing code to come back.
+  aforge notebook [--db path]   what it has learned, and what it has been corrected on
+  aforge notebook retract|restore <seq> [--db path]
+  aforge competence [--db path] [--model slug]   what it has been measured as good at
+  aforge services [--db path]   long-running processes it was asked to keep
+  aforge services stop <name> [--db path]
+  aforge wake [--db path] [--timeout 2m]   run one full background pass by hand and exit
+  aforge help env               the environment table: every variable and its default
+
+Plan work by hand — a plan you can read, edit and diff
+  aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json] [--instructions]
+                       [--passes auto|off|N] [--model slug] [--plan-model slug]
+  aforge plan show <plan.json>
+  aforge plan revise <plan.json> "<what happened>" [--done 1,2,3] [--out plan.json]
+                       [--model slug] [--plan-model slug]
+  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]
+                       [--model slug] [--plan-model slug]
+                         the by-hand pipeline: a plan written to a file, then executed
+                         exactly as written. It is not what most people want — nothing
+                         it learns mid-flight can change a plan that is already frozen.
+
+Examples:
+    aforge                                open the conversation you were having
+    aforge do "add a health endpoint and a test for it"
+    aforge do "summarise CHANGELOG.md" --json | jq -r .answer
+    aforge logs --tail 20 --model anthropic/claude-opus-4
+    aforge chat --host devbox:~/src/api   the chat here, the work over there
+
+Every command answers `aforge <command> --help` with its own line and its flags.
+The environment table — every AFORGE_ variable and its default — is `aforge help env`.

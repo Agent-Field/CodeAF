@@ -13,7 +13,8 @@ below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a lin
 
 `cmd+enter` while a turn is running **holds** what you have typed for the answer
 after this one. It is the secondary choice for when you do not want to change the
-work already under way. At rest it does nothing at all.
+work already under way. At rest it does nothing at all. **On Linux and Windows that key
+is called `super+enter`** — see "What cmd+enter is called on your keyboard" below.
 
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
@@ -177,6 +178,53 @@ stop clause that works in the current state.
 
 **What works everywhere instead.** `ctrl+q` queues a new turn after the current one.
 
+## What cmd+enter is called on your keyboard — super+enter off a Mac
+
+It is one keystroke with two names, and aforge spells it for the keyboard you are on.
+
+| Where you are | What `/help` and this page's key sheet draw | What the terminal sends |
+| --- | --- | --- |
+| macOS | `⌘enter` | `super+enter` or `meta+enter` |
+| Linux, Windows, WSL | `super+enter` | `super+enter` or `meta+enter` |
+
+`super` is the key with the diamond, the Windows logo, or the command symbol on it,
+depending on whose keyboard it is. aforge binds **both** names the terminals send, because
+which one arrives is a fact about the road the bytes took rather than about your hand.
+
+This page writes it `cmd+enter` throughout, which is the name it was chosen under; the key
+sheet substitutes the spelling for your platform at the moment it draws, exactly as it
+does for `alt+`/`⌥`.
+
+## ctrl+r means two things, and each says where it acts
+
+`ctrl+r` appears twice on the `/help` sheet, and the two are not the same key doing two
+jobs at random — each is scoped, and each row says its scope:
+
+- `ctrl+r` **over a draft** spells the draft out: aforge says back what it takes the
+  sentence to mean, and `enter` adds that to what you are saying. It is offered only while
+  the hint slot says `ctrl+r spell it out`, and it does nothing at all otherwise.
+- `ctrl+r` **in `/files`** reveals the folder a landed file is in, with `ctrl+y` beside it
+  to copy the file somewhere.
+
+`/files` is a full-screen list with its own keyboard, so the two never contend for one
+keystroke on one screen.
+
+## ? — the key that opens the key sheet
+
+`?` **over an empty box** opens `/help`: every command and every chord, written into the
+transcript where you can scroll it.
+
+**On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
+map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
+was already using. One meaning, two screens: show me the keys for where I am standing.
+
+**It never eats a question mark you are typing.** The binding wants the box EMPTY. With
+anything at all in the draft the key is an ordinary `?` and goes into your sentence; and
+every overlay, filter box, picker, panel and question on this surface takes the keyboard
+before this binding is read, so a `?` typed into one of those reaches it and nothing else.
+
+`/?` is an alias of `/help` as well, for fingers that arrived from elsewhere.
+
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
 `shift+enter` while a turn is running **stops the answer and sends what is in the box**,
@@ -295,7 +343,7 @@ typed something and this terminal can deliver `shift+enter`. A foreground comman
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c twice quits`.
+`esc interrupts · ctrl+c twice quits · ? for help`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
 see "Interrupt and say something new in one key" above. `esc` on its own stops without
@@ -708,7 +756,8 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where aforge names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits` — the
+on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits · ? for
+help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
 never have to be told apart. See "Why is one word in a line brighter than the rest" on

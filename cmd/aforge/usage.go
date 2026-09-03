@@ -185,7 +185,11 @@ func wrapAt(text string, width int) []string {
 // cache clean` are one noun with two verbs on it, not one word meaning two
 // things, and without this entry `aforge cache --help` would print the
 // destructive command's line under the harmless one's name.
-var longerCommands = []string{"cache clean"}
+// `devices revoke` is the same shape as `cache clean` and is here for the same
+// reason: one noun, a harmless reading verb and a destructive one, and without
+// the entry `aforge devices --help` would print the revoking line under the
+// listing's name.
+var longerCommands = []string{"cache clean", "devices revoke"}
 
 // usageForCommand lifts one command's lines out of [usageText].
 //

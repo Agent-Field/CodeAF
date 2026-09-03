@@ -359,6 +359,14 @@ Press `alt+.` and the whole key map appears **in the cells you were already read
 - the tab bar's words grow their numbers — `1 home`, `2 tasks`, `3 standing`, …
 - the hint line becomes the chord list
 
+`?` over an empty box draws the same map, which is what that key means on a place — show me
+the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
+
+**The chord list is built from the place you are on.** It reads
+`alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close`
+— and the `→` clause is left out on a place whose rows have no verbs, such as search, rather
+than naming a key that would open nothing there.
+
 Nothing moves, nothing pops up, and the next key you press takes it away and then does what
 it was always going to do. `esc` just takes it away.
 
@@ -497,7 +505,19 @@ came from. Twelve conversations are shown and the rest fold into one line.
 takes no argument: the place is a box, and typing in it searches.
 
 With nothing typed the place says what it is for, and the last of its four lines says what
-to type: `type words you remember — "the docker error", a person's name, a filename`.
+to type: `type words you remember — "the docker error", a person's name, a filename`. Those
+sentences **wrap** at a reading measure like every other place's — none of them is cut short
+with an ellipsis on a narrow window.
+
+**A search that finds nothing says what to do about it**:
+`nothing on this machine says "amber rail" · try fewer words, or a name`.
+
+**And a window with no index behind it says so** rather than reporting an empty result:
+`there is no index of this machine's conversations behind this window, so nothing can be
+searched from here.` — which is a different sentence from "nobody has said that", and the
+difference matters. Over `--host` the sentence names the machine instead: the index is the
+one this machine's conversations were written into, and the conversation you are in was
+written on the other one.
 
 Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,

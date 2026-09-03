@@ -72,15 +72,15 @@ func TestLogsRendersTheLastCallsOnePerLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	// The path first, then the calls: a person who has to be told where to look
-	// should not have to run a second command to find out.
-	if len(lines) != 3 {
-		t.Fatalf("--tail 2 should print the path and two calls; got %d lines:\n%s", len(lines), out.String())
+	// The calls and NOTHING ELSE. Where the log is is commentary and goes to
+	// the aside (streams.go); stdout is the rows a script counts.
+	if len(lines) != 2 {
+		t.Fatalf("--tail 2 should print two calls and nothing else; got %d lines:\n%s", len(lines), out.String())
 	}
-	if !strings.HasSuffix(lines[0], "calls.jsonl") {
-		t.Errorf("the first line should be the path: %q", lines[0])
+	if strings.HasSuffix(lines[0], "calls.jsonl") {
+		t.Errorf("the path is back on stdout, in front of the rows: %q", lines[0])
 	}
-	answered, inFlight := lines[1], lines[2]
+	answered, inFlight := lines[0], lines[1]
 	for _, want := range []string{"21:12:53", "compile", "z-ai/glm-5.3-flash", "low", "max 10240",
 		"→ 200", "12.7s", "stop", "1204 in", "466 out", "1024 cached", "$0.0003"} {
 		if !strings.Contains(answered, want) {
@@ -135,14 +135,18 @@ func TestLogsSaysSoWhenTheLogIsSwitchedOff(t *testing.T) {
 	}
 }
 
-func TestLogsOnAMachineThatHasNeverCalledAModelPrintsThePathAndNothingElse(t *testing.T) {
+func TestLogsOnAMachineThatHasNeverCalledAModelDrawsNothingAndSaysWhereTheLogWouldBe(t *testing.T) {
+	commentary := captureAside(t)
 	var out strings.Builder
 	absent := filepath.Join(t.TempDir(), "logs", "calls.jsonl")
 	if err := runLogsWith(nil, &out, absent, stoppedClock(t)); err != nil {
 		t.Fatalf("a missing log is not an error: %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); got != absent {
+	if got := strings.TrimSpace(out.String()); got != "" {
 		t.Fatalf("nothing has been logged, so there is nothing to draw: %q", got)
+	}
+	if got := strings.TrimSpace(commentary.String()); got != absent {
+		t.Fatalf("the aside should still say where the log would be, got %q", got)
 	}
 }
 
@@ -157,10 +161,10 @@ func TestLogsShowsTheWholeRowAndNotHalfOfIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 4 {
-		t.Fatalf("the path and three calls; got %d lines:\n%s", len(lines), out.String())
+	if len(lines) != 3 {
+		t.Fatalf("three calls and nothing else; got %d lines:\n%s", len(lines), out.String())
 	}
-	refused, answered, inFlight := lines[1], lines[2], lines[3]
+	refused, answered, inFlight := lines[0], lines[1], lines[2]
 	// The router overrode the preference on the call that landed, and that
 	// difference is the single most useful thing on the line.
 	for _, want := range []string{"auto→coreweave", "first token 0.4s", "deadline 8.0s",
@@ -225,16 +229,16 @@ func TestLogsByCallIDShowsBothRowsOfThatAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("the path and both rows of one attempt; got %d:\n%s", len(lines), out.String())
+	if len(lines) != 2 {
+		t.Fatalf("both rows of one attempt and nothing else; got %d:\n%s", len(lines), out.String())
 	}
 	// The row that went out, and NOT called still in flight when its answer is
 	// on the line underneath it.
-	if !strings.Contains(lines[1], "sent") || strings.Contains(lines[1], "in flight") {
-		t.Errorf("the first row is the one that went out: %q", lines[1])
+	if !strings.Contains(lines[0], "sent") || strings.Contains(lines[0], "in flight") {
+		t.Errorf("the first row is the one that went out: %q", lines[0])
 	}
-	if !strings.Contains(lines[2], "→ 400") {
-		t.Errorf("the second row is the one that came back: %q", lines[2])
+	if !strings.Contains(lines[1], "→ 400") {
+		t.Errorf("the second row is the one that came back: %q", lines[1])
 	}
 }
 
@@ -248,8 +252,8 @@ func TestLogsFiltersByRunAndSaysNothingForARowThatHasNoRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(kept.String()), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("the path and that run's two answered calls; got %d:\n%s", len(lines), kept.String())
+	if len(lines) != 2 {
+		t.Fatalf("that run's two answered calls and nothing else; got %d:\n%s", len(lines), kept.String())
 	}
 	// The leaf call carries no run at all, so it is not this run's.
 	if strings.Contains(kept.String(), "#build") {
@@ -259,7 +263,7 @@ func TestLogsFiltersByRunAndSaysNothingForARowThatHasNoRun(t *testing.T) {
 	if err := runLogsWith([]string{"--run", "r-none"}, &missing, path, stoppedClock(t)); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(missing.String()); got != path+"\nno calls for run r-none" {
+	if got := strings.TrimSpace(missing.String()); got != "no calls for run r-none" {
 		t.Errorf("a run nothing belongs to says so: %q", got)
 	}
 }
@@ -315,8 +319,8 @@ func TestLogsTellsAnEmptySearchApartFromAQuestionItCannotAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-			if len(lines) != 2 || lines[1] != probe.want {
-				t.Fatalf("%v printed:\n%s\nwant the path and %q", probe.flags, out.String(), probe.want)
+			if len(lines) != 1 || lines[0] != probe.want {
+				t.Fatalf("%v printed:\n%s\nwant %q and nothing else", probe.flags, out.String(), probe.want)
 			}
 		})
 	}
@@ -355,8 +359,8 @@ func TestLogsLeavesAnEmptySearchBlankWhereTheBlankIsTheAnswer(t *testing.T) {
 		if err := runLogsWith(flags, &out, path, stoppedClock(t)); err != nil {
 			t.Fatal(err)
 		}
-		if got := strings.TrimSpace(out.String()); got != path {
-			t.Errorf("%v should print the path and nothing else, got %q", flags, got)
+		if got := strings.TrimSpace(out.String()); got != "" {
+			t.Errorf("%v matched nothing, so stdout should be empty; got %q", flags, got)
 		}
 	}
 }
@@ -434,7 +438,7 @@ func TestLogsTailCountsWhatSurvivedTheFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 2 || !strings.Contains(lines[1], "→ 200") {
+	if len(lines) != 1 || !strings.Contains(lines[0], "→ 200") {
 		t.Fatalf("the newest compile call and nothing else:\n%s", out.String())
 	}
 }
@@ -459,7 +463,7 @@ func TestLogsShowsBothTokenCountsBesideTheCost(t *testing.T) {
 	if err := runLogsWith([]string{"--tail", "2"}, &out, fixtureLog(t), stoppedClock(t)); err != nil {
 		t.Fatal(err)
 	}
-	answered := strings.Split(strings.TrimSpace(out.String()), "\n")[1]
+	answered := strings.Split(strings.TrimSpace(out.String()), "\n")[0]
 	if !strings.Contains(answered, "$0.0003") {
 		t.Fatalf("the fixture's answered call should carry a cost: %q", answered)
 	}
@@ -490,7 +494,7 @@ func TestLogsShowsNeitherCostNorTokensForAReplyWithNoUsage(t *testing.T) {
 	if err := runLogsWith([]string{"--tail", "1"}, &out, path, stoppedClock(t)); err != nil {
 		t.Fatal(err)
 	}
-	row := strings.Split(strings.TrimSpace(out.String()), "\n")[1]
+	row := strings.Split(strings.TrimSpace(out.String()), "\n")[0]
 	for _, unwanted := range []string{"$", " in", " out", "0 cached"} {
 		if strings.Contains(row, unwanted) {
 			t.Errorf("an unmeasured call invented %q: %q", unwanted, row)

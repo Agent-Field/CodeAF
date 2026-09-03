@@ -102,14 +102,13 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 		_, err := fmt.Fprintln(output, path)
 		return err
 	}
-	// --json is a passthrough and not a rendering, so it prints the rows and
-	// nothing else — no path header in front of them. The whole point of the
-	// flag is that another program reads what comes out.
-	if !*asJSON {
-		if _, err := fmt.Fprintln(output, path); err != nil {
-			return err
-		}
-	}
+	// WHERE THE LOG IS IS COMMENTARY, NOT THE ANSWER, so it is written to the
+	// aside in both modes (streams.go). It used to be the first line on stdout
+	// with `--json` special-cased out of it — which was the right instinct
+	// reached by the wrong road: `aforge logs | grep -c .` counted one call too
+	// many, and `--path` exists precisely because that line is not the rows.
+	// With the line where it belongs the special case disappears.
+	fmt.Fprintln(aside, path)
 	calls, err := readCallLog(path)
 	if err != nil {
 		return err

@@ -288,7 +288,7 @@ every retired flag spelling.
   passes'. Row 4's gate landed earlier in this wave
   (`internal/manual/terminalverbs_test.go`) and the new `aforge plan`
   subcommands are on its page.
-- **Row 10 (`seat` on stderr)** lives in `internal/config/seats.go`, which is
+- **Row ten (`seat` on stderr)** lives in `internal/config/seats.go`, which is
   outside this lane's files.
 - **Row 5 and row 6** are the sibling lane's and were already landed.
 
@@ -311,3 +311,162 @@ and would have been read as this lane's breakage:
 `.github/known-red.txt` is unchanged: `TestTickWalksTheItemsAndWritesAWakeLine`
 and `TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch` are the only reds
 left in `./cmd/aforge/` and both are on it.
+
+---
+
+## fixed — the streams and the small doors
+
+A second lane, on the rows the rename lane left. Everything below is closed in
+`cmd/aforge/` and in `internal/manual/chat/`, each with a named test that was
+watched to fail with the fix reverted. The two-stream captures are the evidence
+for rows 14, 27 and 28 and nothing else is: they are the same command's `>out`
+and `2>err` written to separate files.
+
+**The rule, stated once, and it is now written in three places** — `COMMANDS.md`
+§5, `cmd/aforge/streams.go`, and `internal/manual/chat/running-from-the-terminal.md`:
+
+> **stdout is the ANSWER** — the deliverable, the `--json` object, the rows, the
+> table, the thing a script captures — **and everything a person reads ABOUT the
+> run goes to stderr**: the preamble, the progress, the warning, the receipt
+> saying a file was written, the path a record was kept at, and any question the
+> command asks. A prompt on stdout is the worst of them, because a script that
+> captured the output got a question in its data and the person got a blank
+> terminal waiting for a word they could not see.
+
+**Rows 14, 27, 28 — three doors printing their chatter into the answer.**
+Files: `cmd/aforge/streams.go` (new — the `aside` writer and the rule),
+`cmd/aforge/run.go` (`runGraph`'s preamble, the per-step progress feed, the
+`── executing ──` rule, the calibration report, the `written to` receipt),
+`cmd/aforge/main.go` (`runPlanNew`, `runRevise`, `runShow`, `emit`),
+`cmd/aforge/logs.go`, `cmd/aforge/cache.go`.
+`logs`'s `--json` special case disappeared with the move, which is what row 27
+predicted: the flag stopped needing to know about a line that was never the
+answer.
+Test: `TestNoDoorPrintsItsCommentaryToStdout` — **the structural one**. It reads
+every non-test file in the package with `go/ast`, finds every write to stdout
+(bare `fmt.Print*`, or an `Fprint*` whose writer is `os.Stdout` or one of the
+package's answer writers), and fails naming the file, the line and the string
+when what is written has the shape of commentary: a **prompt** (ends on a colon
+or a question mark with no newline — nothing that is an answer stops mid-line
+waiting) or a **label column** (`goal:      `, `models:    ` — a lower-case
+label, a colon, and padding that aligns a value). It reads string literals out
+of the syntax tree and never the source text, so a comment quoting the old shape
+cannot satisfy or fail it, **and it follows `+` concatenation**: the first
+version of it went green against the very defect it was written for, because
+`cache clean`'s prompt was built out of three operands and only the first was
+read.
+Also: `TestTheLogsPathHeaderIsAnAsideAndNotTheFirstRow`,
+`TestTheCacheQuestionIsAskedOffTheAnswerStream`,
+`TestThePlanDoorsKeepTheirPreambleBesideTheAnswerAndNotInIt`.
+Capture: `frames/cmd-logs-out-after2.txt` / `cmd-logs-err-after2.txt`,
+`frames/cmd-cacheclean-out-after2.txt` / `cmd-cacheclean-err-after2.txt` (and
+`cmd-cacheclean-piped-after2.txt`, which is what a person sees when they pipe
+it), `frames/cmd-planshow-out-after2.txt` / `cmd-planshow-err-after2.txt`.
+
+**Row 13 — nothing-to-show answered three ways, with no rule.**
+Files: `cmd/aforge/services.go`, `cmd/aforge/why.go`; the rule is written in
+`COMMANDS.md` §5 and on the manual's terminal page.
+The rule: **a listing with nothing in it prints one short sentence saying so, and
+a column header is never printed without a row under it.** It is a DIFFERENT
+question from the emptiness law and needed its own answer — the emptiness law is
+about figures, where zero draws nothing; this is about the sentence, where
+nothing is exactly what must not be drawn, because a person who typed a question
+and got a blank terminal cannot tell a quiet day from a reader that failed. So:
+the figure is absent, the sentence is present.
+`aforge services` → `nothing is being kept running.`
+`aforge why self` → `nothing was tried on its own account today.`
+`aforge cache` had it right all along and is the model. `aforge logs` keeps its
+existing arrangement, which the rule now names as the one exception: a filter
+that matched nothing prints nothing, because the filter IS the question, while an
+id somebody pasted earns a sentence — and `--json` never gets one.
+Test: `TestNothingBeingKeptRunningIsASentenceAndNotSilence`,
+`TestASelfSpendDayWithNothingOnItSaysSoInsteadOfPrintingAHeader`.
+Capture: `frames/cmd-services-out-after2.txt`, `frames/cmd-whyself-out-after2.txt`.
+
+**Row 20 — `devices revoke --all` hand-parsed, position-sensitive, unnamed.**
+Files: `cmd/aforge/chatv3_at.go`, `cmd/aforge/main.go` (`usageText`),
+`cmd/aforge/usage.go` (`longerCommands`).
+`--all` goes through `commandFlags`/`parseCommandFlags`/`reorder` like every other
+flag, so both `revoke --all laptop` and `revoke laptop --all` work. `aforge
+devices` and `aforge devices revoke <name> [--all]` are now two rows in the one
+table — the `cache` / `cache clean` shape — so `devices revoke` joined
+`longerCommands` and `aforge devices revoke --help` lifts its own line. `aforge
+devices --help` answers instead of refusing with exit 1.
+Stopping one device with `--all` answers in `pair.RevokedLine`'s ordinary
+sentence rather than a count of one.
+Test: `TestDevicesRevokeReadsAllInEitherPositionAndSaysSoInTheUsage`.
+Capture: `frames/cmd-devices-revoke-help-after2.txt`.
+
+**Row 21 — two surfaces, two words for the same deletion.**
+Files: `cmd/aforge/cache.go` (`cacheCleanWord`), `cmd/aforge/main.go`,
+`internal/manual/chat/running-from-the-terminal.md`.
+One word, **`now`**, in both, because the chat cannot pass a flag and has always
+wanted `/cache clean now`. `--yes` stays as the script's spelling. The word is a
+constant and `--help` interpolates it, so the prompt and the page cannot drift.
+Test: `TestBothSurfacesConfirmTheCacheDeletionWithTheSameWord` — it checks the
+constant against the chat's own manual page, against `usageText`, and that the
+OLD word no longer deletes anything.
+Capture: `frames/cmd-cacheclean-err-after2.txt`.
+
+**Row 15 — `run` reimplemented the models line.**
+File: `cmd/aforge/run.go`. It calls `seats.Report()`, which is the sentence and
+the inheritance notice under it, in the one place that owns them. The door's own
+label column went with it.
+Test: `TestEveryDoorPrintsTheModelsLineThroughTheOneReport` — structural, reading
+the package with `go/ast`: any `seats.Sentence()` or `seats.Line()` in `cmd/aforge`
+is a door spelling its own version, and the test names the file and line. It also
+refuses to pass if nothing calls `Report` at all, so it cannot go quiet.
+
+**Row 29 — `aforge version` printed only `aforge dev`.**
+Files: `cmd/aforge/version.go`, `internal/manual/chat/screen.md`.
+One line, and it carries everything a defect report is asked for: the revision
+and the moment `make build` stamps, then the Go toolchain and the platform from
+the runtime. It stays ONE line because an external harness reads it to decide
+whether aforge is installed at all.
+And a binary that cannot name its source says so rather than wearing the bare
+word `dev` like a release name: `aforge dev (no revision stamped — built without
+`make build`) · go1.26.5 linux/arm64`. **`debug.ReadBuildInfo` was not the
+fallback row 29 assumed it was** — the tree here embeds no `vcs.revision` at all
+under a plain `go build`, and there is no `vcs.time` read anywhere, so the
+linker stamp is the only real source and the honest thing to do about its
+absence is name it.
+Test: `TestVersionNamesTheBuildAndTheMachineItWasBuiltFor`. Two smoke tests that
+asserted the whole line by equality now assert the stamped revision is its
+prefix.
+Capture: `frames/cmd-version-after2.txt`.
+
+**Row 26 — `aforge manual --help` printed the page list instead of a usage.**
+Files: `cmd/aforge/manual.go`, `internal/manual/chat/running-from-the-terminal.md`.
+The usage goes on top, lifted out of the one table like every other door's, and
+the list stays under it — nothing is lost and `--help` means one thing on all
+twenty-three verbs. The BARE form is still the listing, which is the good half of
+the old argument.
+Test: `TestManualHelpPrintsTheCommandsUsageAboveThePageList` (both `-h` and
+`--help`, and it checks the ORDER, not just that both are present).
+Capture: `frames/cmd-manual-help-after2.txt`.
+
+### Rows 1, 23, 25 — already closed before this lane started
+
+`--help`'s opening sentence, its five worked examples and its five headed groups
+were landed by the rename lane and are recorded in the section above. Verified
+against a fresh build rather than assumed: `frames/cmd-help-after2.txt` opens
+`aforge — an agent you talk to, and hand work to when you walk away`, carries the
+five groups and the `Examples:` block, and is 108 lines with no environment
+variable on it.
+
+### Manual pages changed in the same change
+
+- `running-from-the-terminal.md` — a new `## What goes to stdout and what goes to
+  stderr — piping a headless command` section carrying the rule, five copyable
+  lines, the three doors that used to break it, and the nothing-to-show sentence
+  rule; the `services` and `why self` emptiness sentences; the cache word;
+  `aforge manual --help`.
+- `reaching-this-machine-without-ssh.md` — `--all` in both positions, both
+  sentences it can answer with, and why the old grammar was wrong.
+- `screen.md` — what `aforge version` prints, stamped and unstamped.
+
+### Left open, and why
+
+- **Row 10 (`seat` on stderr)** is in `internal/config/seats.go`, outside this
+  lane's files.
+- **Rows 4, 5, 6** were closed earlier in the wave by other lanes.

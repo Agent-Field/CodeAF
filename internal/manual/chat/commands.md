@@ -162,10 +162,12 @@ equal a canonical name or another alias; that is checked when aforge starts.
 A word that is in no list is passed through as typed and gets this answer:
 
 ```
-unknown command: /<word> · try /help
+there is no command called /<word> · / lists them
 ```
 
-It says the word back as you wrote it, not what it resolved to.
+It says the word back as you wrote it, not what it resolved to. It points at `/` — one
+keystroke, the list itself — rather than at a second command to type. `?` over an empty
+box opens the `/help` sheet in one key.
 
 If nothing in the list matches what you typed and you press enter, the list closes and
 the line is submitted as an ordinary message. So `/nonsense` still gets an answer.
@@ -259,7 +261,26 @@ On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the
 drawing, and the words are the same.
 
 The last line of `/help` is `session · <path>`, and it appears **only when the session
-has a file**. Over `--host` the path is written `machine:/path`.
+has a file**. The path is written against your home — `~/.aforge/v3/…` — so that it fits
+on one row and still pastes into a shell; `/status` prints it in full. Over `--host` the
+path is written `machine:/path`.
+
+## The ? key — the one-key way to the key sheet
+
+`?` **over an empty box** opens `/help` — the whole key sheet, in the transcript.
+
+**On a place it draws the map instead** (the same thing `alt+.` draws): that place's own
+keys, in the cells the foot was already using. The key means one thing — show me the keys
+for where I am standing — and the two screens have two answers to it.
+
+**With anything typed in the box, `?` is just a question mark** and goes into your
+sentence, which is where a question mark nearly always belongs. The same is true inside
+any filter box, picker or panel: those have the keyboard first, so the key never reaches
+this binding.
+
+The key is named on the first row of `/help` itself, and on the line every session opens
+with — `esc interrupts · ctrl+c twice quits · ? for help`. `/?` is also an alias of
+`/help`, and has been all along.
 
 `/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
 it is typed out on purpose, so it is not asked twice. Your draft is written to disk

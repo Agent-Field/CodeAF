@@ -182,7 +182,7 @@ flag, and the emptiness law covers only the genuinely undated.
   `homeband_work.go`, `home.go`, `render.go` / `phase.go` — files other lanes hold.
 - **Row 10** needs `tasksettle.go` (`roomSettleHint`, the answers row) as well as
   the room's foot, and half of it would be worse than none.
-- **Row 11** is left. The foot is ALREADY conditional on the selected row
+- **Row eleven** is left. The foot is ALREADY conditional on the selected row
   (`place_tasks.go`'s `hint` and `verbs`): `enter open its room` is drawn only for a
   node in this window's graph, and `stop it` only where `stopTaskTarget` and
   `stopDoors` both answer — and cancelling a queued node is a real door the engine
@@ -308,5 +308,5 @@ After: `docs/design/polish/frames/jobpage-hint-after.60x30.txt`
 
 - **Rows 7, 8 and 12** need `place_home.go` / `homeband_work.go`, `home.go`, and
   `render.go` / `phase.go` — files other lanes hold.
-- **Row 11** is left for the reason the section above already gives: what it asks
+- **Row eleven** is left for the reason the section above already gives: what it asks
   for is a verb that UNPARKS, and there is no seam behind one.

@@ -31,6 +31,14 @@ PREFIX = {
 }
 
 ROW = re.compile(r"^(\d+)\. (.*)$")
+# A `## fixed` SECTION IS NOT ALL CLOSURES. Every lane writes its own account of
+# what it did NOT do under a sub-heading — `### skipped, and why`, `### Not fixed
+# here`, `### Not done by this lane` — and those paragraphs name row numbers too.
+# Reading them as closures counted twenty-eight rows as done that their own audit
+# says are open, in a ledger whose whole purpose is to be believable. So the
+# closures are the sub-blocks that are not disclaimers, and a heading has to earn
+# its rows rather than merely stand under the right `##`.
+NOT_A_CLOSURE = re.compile(r"\b(skip|not\s+(?:fixed|done)|left|remain|still\s+open|what\s+other\s+lanes)", re.I)
 SEV = re.compile(r"sev: (high|med|low)")
 # How a lane says "this row is done", in the three shapes they write.
 CLOSED = [
@@ -48,6 +56,17 @@ CLOSED = [
 # gathered from every audit's fixed section, not only from the one the row lives
 # in, and a bare number still means a row of the file it was written in.
 BY_ID = re.compile(r"\b([HTCPKSMJN])(\d+)\b")
+
+
+def closures_only(fixed: str) -> str:
+    """The part of a `## fixed` section that actually claims work was done."""
+    kept, taking = [], True
+    for line in fixed.splitlines():
+        if line.startswith("###"):
+            taking = not NOT_A_CLOSURE.search(line)
+        if taking:
+            kept.append(line)
+    return "\n".join(kept)
 
 
 def closed_rows(text: str) -> set[str]:
@@ -82,13 +101,13 @@ def main() -> int:
     for path in D.glob("audit-*.md"):
         _, _, fixed = path.read_text().partition("\n## fixed")
         if fixed:
-            elsewhere |= closed_ids(fixed)
+            elsewhere |= closed_ids(closures_only(fixed))
     for path in sorted(D.glob("audit-*.md")):
         surface = path.stem[len("audit-"):]
         p = PREFIX.get(surface, surface[:1].upper())
         body = path.read_text()
         head, _, fixed = body.partition("\n## fixed")
-        done = closed_rows(fixed) if fixed else set()
+        done = closed_rows(closures_only(fixed)) if fixed else set()
 
         out += [f"## {surface} — [{path.name}]({path.name})", ""]
         for line in head.splitlines():

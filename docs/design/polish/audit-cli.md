@@ -99,23 +99,27 @@ record, and that `exec --json` carries `error` alongside its six-rung exit ladde
 
 ### skipped, and why
 
-- **7** (`aforge --help` wraps mid-word at 80 columns) — re-laying the whole 127-line block
+The numbers below are SPELLED AS WORDS on purpose: `scripts/ledger.py`
+reads `Row <digit>` or a bold bare digit anywhere under `## fixed` as a closure,
+and every row in this list is one that is NOT closed.
+
+- **Row seven** (`aforge --help` wraps mid-word at 80 columns) — re-laying the whole 127-line block
   is a typographic pass over text this wave is also editing; it wants doing on its own so
   the diff is readable.
-- **12** (filesystem failures reach the person as wrapped syscall text) — `plainWords` now
+- **Row twelve** (filesystem failures reach the person as wrapped syscall text) — `plainWords` now
   keeps the actionable half of those chains, but the row asks for the message to name *which
   flag* was wrong (`-w names /nope/dir, which does not exist`). That needs a per-site
   decision at six doors about which flag owns which path, which is a design call this lane
   cannot make from the audit.
-- **14** (doctor says nothing about a missing key) — needs a new reading in `internal/config`
+- **Row fourteen** (doctor says nothing about a missing key) — needs a new reading in `internal/config`
   that reports whether a key is configured *and where it came from* (environment, profile
   file). Designing that seam is not something the audit settles.
-- **17** (a bad subharness name reported as an empty input) — the comment at
+- **Row seventeen** (a bad subharness name reported as an empty input) — the comment at
   `subharness_run.go:70` says the ordering is deliberate; changing it is a call for whoever
   owns that ordering.
-- **19** (`rebuild`'s storage vocabulary and its prompt) — needs somebody to decide what
+- **Row nineteen** (`rebuild`'s storage vocabulary and its prompt) — needs somebody to decide what
   `aforge rebuild` discards *in plain words*, which is a product sentence, not a mechanical
   fix.
-- **20** (`--tail notanumber` says `parse error`) — wants a `flag.Value` with a sentence on
+- **Row twenty** (`--tail notanumber` says `parse error`) — wants a `flag.Value` with a sentence on
   each numeric flag across `logs` and `exec`; worth doing, but it is its own small pass.
-- **21, 22, 24, 25** — all `sev: low`, and outside the brief for this lane.
+- **Rows twenty-one, twenty-two, twenty-four and twenty-five** — all `sev: low`, and outside the brief for this lane.

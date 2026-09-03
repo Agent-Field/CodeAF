@@ -374,7 +374,7 @@ What steps up, in the lines you will see it in:
 | the legend's hint slot | the key, never the verb beside it |
 | `/help` | the key at the head of each row, never its explanation |
 | `/status` and `/cost` | the figure in the second column, never its label |
-| the opening `esc interrupts · ctrl+c twice quits` | the two keys |
+| the opening `esc interrupts · ctrl+c twice quits · ? for help` | the three keys |
 
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
@@ -620,6 +620,13 @@ Other honest silences: the context percentage is dropped below 1% rather than sh
 `0%`; the cache cash half appears only when there is a published price pair, never
 "saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
 fraction of a cent is not rounded away to nothing.
+
+**A real amount is never drawn as zeros.** Every price on this screen is written to cents
+above a cent (`$1.63`), to four decimals under one (`$0.0052`), and as `<$0.0001` under a
+hundredth of a cent — because `$0.0000` is four zeros on a screen that has taught you a
+zero means nothing happened, and a turn that spent six millionths of a dollar spent
+something. The limits on the Spending tab are written by the same rule, with whole dollars
+where the figure a person typed was whole (`$500`).
 
 ## The state word: idle, working, stopping, waiting
 
@@ -895,7 +902,11 @@ build  1265feda (dirty) built 2026-08-27 13:28
 ```
 
 `aforge --version`, `aforge version` and `aforge -v` print the same identity without
-opening a conversation. On a session opened with `--host`, `/status` names the build on
+opening a conversation, on one line, with the Go toolchain and the platform after it —
+`aforge 1265feda (dirty) built 2026-08-27 13:28 · go1.26.5 darwin/arm64` — which is what a
+defect report needs. A binary built with a bare `go build` rather than `make build` carries
+no revision at all, and says so: `aforge dev (no revision stamped — built without `make
+build`) · go1.26.5 darwin/arm64`. On a session opened with `--host`, `/status` names the build on
 the machine holding the conversation, not the surface machine's build.
 
 If the `aforge` file is rebuilt while this process is still open, aforge writes one quiet
@@ -931,7 +942,9 @@ another. What is supported:
   **backticks come back** rather than ordinary code reading as prose.
 - **Fenced and indented code blocks** — syntax-highlighted at 256 colours and above,
   ordinary text below. Drawn at the full width, because a figure is looked at, not read
-  along.
+  along. **A line too long for the frame wraps rather than being cut**, at every width:
+  there is no horizontal scroll anywhere on this screen, so a cut line was a line that
+  could not be read, copied or trusted. See "Long lines inside a fence" below.
 - **Lists** — bullets and ordered. Wrapped items hang under their own first word, never
   under the marker. An ordered list sizes its column to its widest number, so `9.` and
   `10.` share a right edge. Tight lists get no gaps between items.
@@ -1164,20 +1177,30 @@ What happens to it:
 While something is waiting, the hint slot in the legend ends with
 `esc stops and drops` instead of `esc interrupt`.
 
+## Long lines inside a fence — code cut off at the edge, the tail of a line missing, `↳`
+
+**A code line longer than the frame wraps, at every width.** It is rendered two cells
+narrower than the column, and those two cells hold a dim `↳ ` on every row that continues
+a source line. The marker sits outside the code plane, so it can never be mistaken for
+something the code said. Breaks prefer a space in the back half of the row and go
+mid-token when there is none — a 40-cell URL in a 30-cell column has no break in it.
+
+Copying takes the block whole: `a` in copy mode selects the run of code rows around the
+cursor, wrapped rows included, and the paste carries neither the hairline nor the `↳`.
+
+This used to be true only under 60 columns. Above it a long line was **cut** — with an
+ellipsis at some widths and with nothing at all at others — so the same answer was whole
+in one window and truncated in the next. There is no key that pans a block sideways and
+never was, so the cut simply lost the bytes.
+
 ## Markdown at phone width
 
-Phone width (under 60 columns) is the one tier where markdown is not the prose
-renderer's byte-for-byte output. Every tier above it renders exactly as it always has.
+Phone width (under 60 columns) is the tier where a **table** is not the prose renderer's
+byte-for-byte output. Every tier above it renders one as it always has.
 
 The document is scanned for two shapes, **at column zero only** — a top-level fenced
-code block and a top-level GFM table. Those two are rendered differently; everything
-else goes straight to the ordinary renderer.
-
-- **Fenced code wraps instead of truncating.** It is rendered two cells narrower than
-  the column, and those two cells hold a dim `↳ ` on every row that continues a source
-  line. The marker sits outside the code plane, so it can never be mistaken for
-  something the code said. Breaks prefer a space in the back half of the row and go
-  mid-token when there is none — a 40-cell URL in a 30-cell column has no break in it.
+code block and a top-level GFM table. The fence is re-laid-out at every width (above);
+the table only here; everything else goes straight to the ordinary renderer.
 - **Tables stack** as one `key: value` line per cell, with one blank row between
   records. The header travels with each cell rather than standing once at the top. Empty
   cells are dropped. The key is bolded unless the header already carries markup. Each
@@ -1185,8 +1208,8 @@ else goes straight to the ordinary renderer.
   and their links.
 
 Limits: a fence indented inside a list item or a blockquote is **not** pulled out. It
-stays in its prose segment and is cut, exactly as at every other width. This is a
-deliberate gap. Below 8 content cells the wrap is abandoned and the fence is rendered
+stays in its prose segment and is cut. This is a deliberate gap, and it is the one place a
+code line is still truncated. Below 8 content cells the wrap is abandoned and the fence is rendered
 whole. Cells past the header's width are dropped, as GFM does. A header with no rows
 under it renders as the list of column names.
 
@@ -2441,7 +2464,12 @@ layer holding the wire, never guessed by the screen:
 | `trying again` | the same question is being asked again with one field dropped from it |
 | `switching` | a second machine is being asked the same question while the first is still live |
 
-They read like this, with a clock counting up from the moment that phase began:
+They read like this, with a clock counting up from the moment **the wait** began — not
+from the moment the phase changed. A handshake, the queue before the first word, a pacing
+wait, a retry, a rescue and a fallback model are one wait wearing different words, and the
+number goes on climbing across all of them. It never counts backwards. A stage of WORK —
+`thinking`, `writing`, `running go test`, `checking`, `tidying` — keeps a clock of its own,
+because that number answers a different question: how long that stage has been going.
 
 ```
   ··· connecting · 1.2s
@@ -2458,9 +2486,12 @@ measured rate, no rate. The two waiting words, `connecting` and `first word`, ar
 tenths, because the difference between 1.2s and 3.1s is the whole of what those seconds
 tell you; everything else is read in whole seconds.
 
-The same words also ride the status line beside your model, where they take the place of
-`via <machine>` for as long as the turn is running (see *Models, context, and what it
-costs*).
+**The phase is on exactly one row at a time, and never on two.** While the working line is
+drawn it owns the words; the moment it goes — an answer is streaming, a call is spinning,
+the turn has ended — the status line beside your model takes them up, where they stand in
+place of `via <machine>` (see *Models, context, and what it costs*). Before this the same
+sentence was drawn twice on one screen, verbatim, two rows apart, and the second copy was
+spending the cells the bill, the context meter and the watch count needed.
 
 **A turn also has waits of its own, between requests**, and they use the same line and the
 same clock:
@@ -2811,7 +2842,7 @@ nothing new is drawn after the stop — which is what stop means everywhere in a
 Under each finished turn there is a dim right-aligned receipt:
 
 ```
-· 14:02 · 2m12s · 3 tools · $0.04 ·
+· 14:02 · 2m12s · 3 tool calls · $0.04 ·
 ```
 
 Every field but the clock is dropped when its figure is zero. The receipt is frozen when

@@ -328,15 +328,18 @@ Look at what happened — read-only, no key, nothing spent
 Housekeeping — changes state on disk or on the network
   aforge cache                  what the shared build cache holds, and how big it is
   aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
-                                path, then asks you to type "clean" — --yes skips the
+                                path, then asks you to type "` + cacheCleanWord + `" — --yes skips the
                                 question for scripts. Conversations are never touched.
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge serve [--workspace path] [--relay url]
                                 be reachable from your other devices without ssh: this machine
                                 dials out, prints the name it answers to, and shows a pairing
                                 code for a new device
-  aforge devices [revoke [--all] <name>]
-                                list the devices paired with this machine, and stop one
+  aforge devices                list the devices paired with this machine
+  aforge devices revoke <name> [--all]
+                                stop one device from opening a conversation here — or, with
+                                --all, every device answering to that name. It needs a new
+                                pairing code to come back.
   aforge notebook [--db path]   what it has learned, and what it has been corrected on
   aforge notebook retract|restore <seq> [--db path]
   aforge competence [--db path] [--model slug]   what it has been measured as good at
@@ -571,24 +574,27 @@ func runPlanNew(name string, args []string) error {
 	store := installMeasuredRulers(settings, settings.Model)
 
 	if !*asJSON {
-		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
-		fmt.Println(seats.Report())
+		// Every line of it is an aside: the answer this door gives is the PLAN,
+		// and a preamble in front of it is what broke `aforge plan new "x"
+		// --json | jq` (streams.go).
+		fmt.Fprintf(aside, "goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
+		fmt.Fprintln(aside, seats.Report())
 		if settings.PlanSplit() {
-			fmt.Printf("sized for: %s (the work model this ruler measures)\n", settings.Model)
+			fmt.Fprintf(aside, "sized for: %s (the work model this ruler measures)\n", settings.Model)
 		}
 		if spread := store.Measure(); spread.Samples > 0 {
 			calibrated := "built-in"
 			if strings.TrimSpace(store.Anchors) != "" {
 				calibrated = "calibrated"
 			}
-			fmt.Printf("ruler:  %s, from %d measured tasks (%d-%d turns, median %d)\n",
+			fmt.Fprintf(aside, "ruler:  %s, from %d measured tasks (%d-%d turns, median %d)\n",
 				calibrated, spread.Samples, spread.MinTurns, spread.MaxTurns, spread.Median)
 		}
-		fmt.Println()
+		fmt.Fprintln(aside)
 	}
 	report := func(pass string, elapsed time.Duration, detail string) {
 		if !*asJSON {
-			fmt.Printf("  %-8s %-22s %s\n", pass, detail, elapsed.Round(10*time.Millisecond))
+			fmt.Fprintf(aside, "  %-8s %-22s %s\n", pass, detail, elapsed.Round(10*time.Millisecond))
 		}
 	}
 	history := openDefaultHistory()
@@ -617,7 +623,7 @@ func runPlanNew(name string, args []string) error {
 		Progress:   headlessPlanProgress(os.Stderr),
 		OnReady: func(node plan.Node, elapsed time.Duration) {
 			if !*asJSON {
-				fmt.Printf("    ready   %-22s %s\n", clip(node.Title, 22), elapsed.Round(10*time.Millisecond))
+				fmt.Fprintf(aside, "    ready   %-22s %s\n", clip(node.Title, 22), elapsed.Round(10*time.Millisecond))
 			}
 		},
 	})
@@ -691,8 +697,8 @@ func runRevise(name string, args []string) error {
 	ctx := settings.Context(context.Background(), graph.Goal)
 
 	if !*asJSON {
-		fmt.Printf("goal:   %s\nevent:  %s\n", graph.Goal, event)
-		fmt.Printf("%s\n\n", seats.Report())
+		fmt.Fprintf(aside, "goal:   %s\nevent:  %s\n", graph.Goal, event)
+		fmt.Fprintf(aside, "%s\n\n", seats.Report())
 	}
 	start := time.Now()
 	operations, usage, err := plan.Revise(ctx, client, graph, event)
@@ -703,7 +709,7 @@ func runRevise(name string, args []string) error {
 	graph.Usage.Cost += usage.Cost
 
 	if !*asJSON {
-		fmt.Printf("  revise   %-22s %s\n\n", plural(len(operations), "operation"), time.Since(start).Round(10*time.Millisecond))
+		fmt.Fprintf(aside, "  revise   %-22s %s\n\n", plural(len(operations), "operation"), time.Since(start).Round(10*time.Millisecond))
 		renderOperations(operations)
 	}
 	return emit(graph, *output, *asJSON)
@@ -724,7 +730,7 @@ func runShow(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("goal:   %s\n", graph.Goal)
+	fmt.Fprintf(aside, "goal:   %s\n", graph.Goal)
 	return emit(graph, "", false)
 }
 
@@ -744,7 +750,10 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 	}
 	render(graph)
 	if output != "" {
-		fmt.Printf("\nwritten to %s\n", output)
+		// The receipt for a file is not the plan, so it is an aside: a person
+		// who redirected the table wants the table in the file and the sentence
+		// about it on their terminal.
+		fmt.Fprintf(aside, "\nwritten to %s\n", output)
 	}
 	return nil
 }

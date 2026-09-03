@@ -156,26 +156,101 @@ Test: `TestAPhoneInboxDrawsAStandingItemOnlyOnce`
 against 8-9) → `home-phone-after.50x30.txt` — the duplicate is gone and two
 conversations came back into the project block with the rows it freed.
 
+**Row 10 (H4) — at sixty columns the strip carries all seven places.**
+Closed by the NARROW lane's FIRST row, not by this one, and recorded here because a row
+closes in the audit that wrote it down. `placeTabBar`'s ladder gained a middle rung
+that redraws the same seven words with the air between the chips given up (57 cells
+against sixty), and under that `barWordsAt` fills in the bar's own order and ends the
+row with `barMoreWord`'s `+2 more`. Files: `internal/tui3/pages.go`. Tests:
+`TestTheNarrowBarStillSaysWhereElseYouCanGo`,
+`TestABarTooNarrowForEveryWordSaysHowManyItDropped` (`internal/tui3/narrow_test.go`).
+Frames: `home-idle.60x30.txt` (line 2, `  home` and 54 empty cells) →
+`keep-home.60x30.txt` (line 2,
+`  home  tasks  standing  memory  spend  search  settings`), captured this pass from
+`bin/aforge`; the rung under it on `narrow-tasks-after.48x24.txt` (`… spend  +2 more`)
+and `narrow-tasks-after.56x24.txt` (`… search  +1 more`), and the wide tier unmoved on
+`keep-home.{80x24,120x40,160x50}.txt`.
+
+**Row 11 (H5) — the foot drops whole hints and never slices one.**
+Closed by the narrow lane's SECOND row. `hintFit` keeps a ranked `·` ladder and grows a
+second one under it for a foot that is a SENTENCE, dropping the bracketed gloss first
+and the ` — ` elaboration second; `placeMsgLine` and the phone's four foot sites go
+through it, and the law is pinned structurally — `paintHint` may not be handed a bare
+`fit` call, read off the tree with `go/parser`. Files: `internal/tui3/pages.go`,
+`internal/tui3/homephone.go`. Tests: `TestTheNarrowFootDropsWholeHintsAndNeverSlicesOne`,
+`TestEveryHintIsFittedByDroppingClausesNotByCuttingCharacters`
+(`internal/tui3/narrow_test.go`). Frames: `home-idle.60x30.txt` (line 30,
+`type to search or start something new · ↑↓ pick · enter o…`, a key named and then
+eaten) → `keep-home.60x30.txt` (line 30,
+`type to search or start something new · tab next place` — `↑↓ pick` and `enter open`
+dropped WHOLE), with every clause still on `keep-home.120x40.txt` (line 40).
+
+**Row 12 — the pulse gives way one segment at a time, and the clock goes first.**
+Closed by the pulse lane (audit-narrow's SIXTH row). `pulseLine` was
+`gap := width - name - tail - 1; if gap < 1 { return name }` — everything, or the name
+alone. It walks `app.pulseRungs` now, widest rung first, so what a narrow frame shows is
+a SUBSET of what a wide one shows; the rank is `clock → allowance → spend → moving →
+want you`, and the allowance is dropped by RESPELLING the money clause rather than by
+printing a figure the line had given up on, so no rung can draw `$0.00`.
+Files: `internal/tui3/pulse.go`. Frames: `home-idle.60x30.txt` (line 1, the joined
+string that fits whole or vanishes whole) → this pass's ladder, captured at four widths
+from the real binary: `keep-pulse-40.40x24.txt` (line 1,
+` aforge     $123.45 / $500 · thu 2:20am`) → `keep-pulse-34.34x24.txt` (line 1,
+` aforge            $123.45 / $500` — the clock alone has gone, the money is still
+there) → `keep-pulse-28.28x24.txt` (the same money clause at 28 cells). The old line
+would have drawn ` aforge` and nothing else at 34.
+
+**Row 13 — a conversation nobody has named is called `new conversation`.**
+Closed by the narrow lane's THIRD row. `listName` (`internal/tui3/names.go`) is home's own
+ladder — the title it settled on, then the folder's name only where `idShaped` says it
+reads as words, then the plain word this surface already uses for the fact — and
+`homeName` is one call to it, so home, the card, the phone's inbox, the switcher and
+home's filter all say the same thing. `idShaped` is `readableName`'s own guard asked as
+a question, so the two can never disagree about whether a string is a name or an id.
+Files: `internal/tui3/names.go`, `internal/tui3/home.go`. Test:
+`TestAConversationWithNoTitleIsNamedInWordsNotHex` (`internal/tui3/narrow_test.go`).
+Frames: `home-open.120x40.txt` (line 18, `○ 273Ecd8c7da60bc8   aforge-v2 here`) and
+`narrow-home.60x30.txt` (line 24, `○ 927D303242f9d00e`) → `narrow-home-after.60x30.txt`
+(line 24, `○ new conversation     aforge-v2 here`); and no title-cased hex on any frame
+captured this pass — `keep-home.{60x30,80x24,120x40,160x50}.txt`.
+
+**Row 17 — the resting foot names places that are on the frame.**
+Recorded closed rather than fixed, which is what this row asked for: `homeRestHint`
+(`home.go:256`) is still the constant `… · tab next place`, and after row 10 there is no
+width at which that clause names rooms the frame is hiding. At sixty columns the bar
+carries all seven words and the foot names the key that walks them; under sixty home is
+the phone tier, which draws its own head and no place bar and no such clause. Frames:
+`home-idle.60x30.txt` (lines 2 and 30, one place named and the foot promising seven) →
+`keep-home.60x30.txt` (line 2 all seven, line 30 `… · tab next place` whole), with
+`keep-home.50x24.txt` and `keep-home.44x24.txt` showing the phone tier's own head
+(` home … esc close`) and a foot of ` enter open` — no place clause on either. This is
+`N8` in audit-narrow, closed there in the same terms.
+
 ### skipped, and why
 
-- **Row 3 (H2)** — moving `homeSwitchFull` from 120 to ~96 so the card arrives
+The numbers below are SPELLED AS WORDS on purpose: `scripts/ledger.py`
+reads `Row <digit>` anywhere under `## fixed` as a closure, and every row in
+this list is one that is NOT closed.
+
+- **Row three (H2)** — moving `homeSwitchFull` from 120 to ~96 so the card arrives
   near 136 columns. The arithmetic is a layout call the audit's fix shape
   proposes but does not settle: it moves a tier boundary the whole home is laid
   out against (`homebridge_test.go` pins that ladder width by width), and it is
   entangled with row 4 — the note now gives way to the name, so how many cells a
   row still wants at 120 has changed under the audit's measurement. It wants its
   own pass, with frames at 130, 136 and 140.
-- **Row 8** (`esc not now` ends first run for good) — the audit itself offers two
+- **Row eight** (`esc not now` ends first run for good) — the audit itself offers two
   fixes with different meanings: rename the key, or stop writing `setup_seen_at`
   until the last step. Which one is right is a product decision about whether the
   crew and budget questions are ever asked again, and neither the audit nor the
   code settles it. Note that `setupKeysWord` already says `esc skips setup` on
   four of its six branches, so whoever takes this row is reconciling two
   spellings as well as the behaviour.
-- **Rows 10, 11, 12** — `pages.go` and `pulse.go`'s segment ladder, held by the
-  hint-line lane this wave.
+- **Rows 10, 11 and 12** were skipped by this lane — `pages.go` and `pulse.go`'s
+  segment ladder, held by the hint-line and narrow lanes this wave. They have
+  since landed and are recorded above.
 - **Rows 13 through 18** — sev: med and low, and outside this pass's brief. Row
-  18 (the card and the list ending at different heights) should be re-read now
+  eighteen (the card and the list ending at different heights) should be re-read now
   that row 2 has landed: the two columns end together on the `-after` frames.
 
 ### what other lanes should know

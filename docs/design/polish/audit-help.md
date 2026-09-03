@@ -191,7 +191,7 @@ this lane's files.
 
 **Row 2's foot, checked rather than changed.** `placeSpend.hint` already names
 `enter opens what spent it · → the limits · shift+←→ move the days`, and after this lane's
-row 17 the `enter` it promises is true on the loudest-day row as well as on the rows under
+row seventeen of `audit-settings.md` the `enter` it promises is true on the loudest-day row as well as on the rows under
 *what it was for*.
 
 ### Not this lane
@@ -199,7 +199,7 @@ row 17 the `enter` it promises is true on the loudest-day row as well as on the 
 Rows 7, 13, 14, 16, 17, 18, 19, 20, 21, 22 and 23 are untouched; 11 and 12 are half done
 (memory's half is above, search's is not this lane's). Two of them are worth a note for whoever takes them:
 
-- **Row 19** is now half done. Memory's teaching-state foot is fixed here (row 9's other
+- **Row nineteen** is now half done. Memory's teaching-state foot is fixed here (row 9's other
   half); tasks' and standing's are not, and both live in files this lane was told not to
   edit.
 - **Row 3's fitter is general.** `hintFit` is the one door every foot on a place goes

@@ -42,6 +42,26 @@ The address is also written on the waiting screen. If the browser cannot be open
 or click that address yourself. `esc` while waiting cancels the return listener and leaves
 you on the OpenRouter step; another `enter` tries again.
 
+## What the setup screen says when something goes wrong
+
+Every refusal on this screen is a sentence about what happened and what to do — never a
+programmer's error text. There are four of them, and the settings row's own words for
+anything you typed:
+
+| What failed | What the line under the box says |
+| --- | --- |
+| the browser sign-in never started | `could not reach openrouter to start the sign-in — check the network, or paste a key instead` |
+| your browser would not open | `could not open your browser · open the link above` |
+| the sign-in started and never came back | `the browser sign-in did not finish — enter tries again, or paste a key instead` |
+| the answer could not be written down | `could not save that — the folder aforge keeps your settings in is not writable` |
+
+Anything you typed that a setting refuses keeps that setting's own wording — `that's not a
+dollar amount — a number, or none for no limit` on the rails step, or
+`not the shape of an openrouter key — they start with sk-or-` on the key step — because
+those are written for you to read. What is never shown is the operating system's version of
+a failure: a path inside aforge's own storage with an errno after it tells you nothing you
+can act on.
+
 ## Paste an existing OpenRouter API key instead of connecting in the browser
 
 Already have a key? Paste it on the same first screen instead of pressing `enter` on an
