@@ -1613,6 +1613,12 @@ work that was interrupted comes back saying so on its card — and the `jobs` se
 redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
 terminal closes; the column is rebuilt, not carried.
 
+The rebuilt row reads its start and landing times from that same record. Work that landed
+in a previous session therefore keeps the time it actually landed instead of taking the
+time you reopened the conversation. A record made before those times were kept still
+reopens; its row leaves the age absent and its completion card omits the entire
+`started 14:02` segment.
+
 **Only this window's own work comes back.** Everything else stays behind the
 `ctrl+. earlier` door, exactly as the section above says, and a task is never drawn
 twice — a row on the column is not also an `earlier` row.
@@ -1736,7 +1742,7 @@ cell or the root's `▸ +N` badge to toggle the family; click its title to open 
 A click that hits no task still belongs to the column and does nothing. A click moves the
 cursor but does not hand the roster the keyboard.
 
-## What did we do last week — seeing every task: task history, old and past tasks, work from other sessions
+## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
 
 `/history`, or `ctrl+.`, opens the machine-wide **tasks** place holding work from every project
 run** — this conversation's and every conversation's before it. It is the answer the roster
@@ -1802,6 +1808,17 @@ says `incomplete` and **carries no age at all** — nobody judged the work, the 
 went, and nothing in the record dates a row that never landed. Work that failed says the
 same word its own page says, with the reason after it: `failed · the package manager
 refused the archive`.
+
+**How long ago a settled row landed is what that row's own record says.** Work reopened
+from a previous session is dated when it LANDED, not when you sat down and reopened it. It
+therefore stays in the time window it belongs to instead of being filed in the future and
+going missing from the page, and it does not say `now` merely because this is your first
+look at it today.
+
+A row whose older record never recorded a landing time **carries no age at all**. The row
+is still on the tasks page: for deciding whether to include it, the page files that undated
+row at the moment of the reading. For the words you see, it draws nothing where the age
+would go. It never turns an unknown time into `now`.
 
 **The sections are in time order, newest first**, and a family stays whole: the root is
 placed by its own stamp and the workers stand under it in theirs.
@@ -3776,7 +3793,9 @@ The **tasks** place is the machine-wide history of work aforge ran, grouped by w
 next: `needs your look`, `running`, `parked`, `done today`, then `earlier` — where
 `parked` is admitted work nothing is doing, drawn with no age on it. Each task row can include
 its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
-cost, and age. Zero or unknown cost is left blank. A section with nothing in it is absent.
+cost, and age from the landing time its own record carries. Zero or unknown cost is left
+blank, and so is an age whose older record never carried that landing time. A section with
+nothing in it is absent.
 
 **Nothing is folded.** Every row the time window holds has a line of its own and the list
 scrolls — there is no `▸ N more` and no fold to open. The window's own edge is said once, in
