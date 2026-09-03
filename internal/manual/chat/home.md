@@ -1452,7 +1452,7 @@ could not see what it hides would be a search lying about the machine.
 
 A fold you open by hand stays open while home is up, including across a refresh.
 
-## How do I get back to the dashboard — press space twice
+## How do I get back to the dashboard or the home screen from any page — press space twice
 
 **From inside any conversation, press the space bar twice with an empty message box.**
 That is the way back to home.
