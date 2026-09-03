@@ -601,7 +601,8 @@ The top line of home is the program's name and, right-aligned, what is true of t
   the in-flight colour. It shows from **one** — one hand working is worth knowing — and
   disappears entirely at nothing, never `0 moving`.
 - `$0.55 / $500.00` — what the machine has spent **since midnight** against what it is
-  allowed to spend today: the tasks that ran and the standing things that fired, then your
+  allowed to spend today: **every model call written down since midnight** — the chat in
+  front of you, work running behind it, a standing order that fired at six — then your
   daily allowance. It is drawn in **green**, which is the money colour and is never spent
   on anything else. A machine with no allowance set draws the figure alone.
 - `tue 1:11pm` — the day and the time.
@@ -611,8 +612,17 @@ no `want you` at all — never `0 want you` — and a day that has cost nothing 
 about money. The clock always draws. A quiet morning on an idle machine really is just
 `aforge` and the time.
 
-The counts on this line and the rows on the machine's card are **one reading**, taken once
-every three seconds: the top line cannot say `4 moving` over a list showing three.
+The counts on this line are **one reading**, taken once every three seconds.
+
+**The money on this line is the money on the spend place**, to the cent — one reading of
+one file, not two that happen to agree. Press `alt+5` and the pointer line there reads
+`today $0.55 of $500` over the same total, and Settings→Spending's `today` row says it
+a third time. It is also the same figure **wherever you are standing**: home, tasks,
+standing, memory, spend, search and settings all draw the day the machine actually had.
+For a while they did not — the top line summed the finished tasks it could see and the
+standing firings, so it read `$1.85` on home and `$0.37` on tasks over a spend place
+saying `$0.13`, and which of the three you were shown depended on the rooms you had walked
+through.
 
 The allowance used to live on a card home drew when the cursor was on no row at all, and
 this line used to say `$1.10 today` and change colour as the bound came close. It says the
