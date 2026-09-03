@@ -37,6 +37,15 @@ each has a `.ans` twin beside it carrying the colour.
 | `home-idle` | 120x40 | [before](frames/home-idle.120x40.txt) | [after](frames/home-idle-after.120x40.txt) |
 | `home-idle` | 80x24 | [before](frames/home-idle.80x24.txt) | [after](frames/home-idle-after.80x24.txt) |
 | `home-idle` | 60x30 | [before](frames/home-idle.60x30.txt) | [after](frames/home-idle-after.60x30.txt) |
+| `home2-before` | 160x50 | [before](frames/home2-before.160x50.txt) | [after](frames/home2-after.160x50.txt) |
+| `home2-before` | 120x40 | [before](frames/home2-before.120x40.txt) | [after](frames/home2-after.120x40.txt) |
+| `home2-before` | 80x24 | [before](frames/home2-before.80x24.txt) | [after](frames/home2-after.80x24.txt) |
+| `home2-before` | 60x30 | [before](frames/home2-before.60x30.txt) | [after](frames/home2-after.60x30.txt) |
+| `money-before-home` | 120x40 | [before](frames/money-before-home.120x40.txt) | [after](frames/money-after-home.120x40.txt) |
+| `money-before-memory` | 120x40 | [before](frames/money-before-memory.120x40.txt) | [after](frames/money-after-memory.120x40.txt) |
+| `money-before-spend` | 120x40 | [before](frames/money-before-spend.120x40.txt) | [after](frames/money-after-spend.120x40.txt) |
+| `money-before-standing` | 120x40 | [before](frames/money-before-standing.120x40.txt) | [after](frames/money-after-standing.120x40.txt) |
+| `money-before-tasks` | 120x40 | [before](frames/money-before-tasks.120x40.txt) | [after](frames/money-after-tasks.120x40.txt) |
 | `narrow-home` | 60x30 | [before](frames/narrow-home.60x30.txt) | [after](frames/narrow-home-after.60x30.txt) |
 | `set-connections` | 120x40 | [before](frames/set-connections.120x40.txt) | [after](frames/set-connections-after.120x40.txt) |
 | `set-context` | 120x40 | [before](frames/set-context.120x40.txt) | [after](frames/set-context-after.120x40.txt) |
@@ -72,6 +81,18 @@ each has a `.ans` twin beside it carrying the colour.
 | `spendmem-tab-empty` | 120x40 | [before](frames/spendmem-tab-empty.120x40.txt) | [after](frames/spendmem-tab-empty-after.120x40.txt) |
 | `spendmem-tab-empty` | 80x24 | [before](frames/spendmem-tab-empty.80x24.txt) | [after](frames/spendmem-tab-empty-after.80x24.txt) |
 | `spendmem-tab-empty` | 60x30 | [before](frames/spendmem-tab-empty.60x30.txt) | [after](frames/spendmem-tab-empty-after.60x30.txt) |
+| `t5-jobpage-before` | 160x50 | [before](frames/t5-jobpage-before.160x50.txt) | [after](frames/t5-jobpage-after.160x50.txt) |
+| `t5-jobpage-before` | 120x40 | [before](frames/t5-jobpage-before.120x40.txt) | [after](frames/t5-jobpage-after.120x40.txt) |
+| `t5-jobpage-before` | 80x24 | [before](frames/t5-jobpage-before.80x24.txt) | [after](frames/t5-jobpage-after.80x24.txt) |
+| `t5-jobpage-before` | 60x30 | [before](frames/t5-jobpage-before.60x30.txt) | [after](frames/t5-jobpage-after.60x30.txt) |
+| `t5-tasklist-before` | 160x50 | [before](frames/t5-tasklist-before.160x50.txt) | [after](frames/t5-tasklist-after.160x50.txt) |
+| `t5-tasklist-before` | 120x40 | [before](frames/t5-tasklist-before.120x40.txt) | [after](frames/t5-tasklist-after.120x40.txt) |
+| `t5-tasklist-before` | 80x24 | [before](frames/t5-tasklist-before.80x24.txt) | [after](frames/t5-tasklist-after.80x24.txt) |
+| `t5-tasklist-before` | 60x30 | [before](frames/t5-tasklist-before.60x30.txt) | [after](frames/t5-tasklist-after.60x30.txt) |
+| `t5-taskpage-before` | 160x50 | [before](frames/t5-taskpage-before.160x50.txt) | [after](frames/t5-taskpage-after.160x50.txt) |
+| `t5-taskpage-before` | 120x40 | [before](frames/t5-taskpage-before.120x40.txt) | [after](frames/t5-taskpage-after.120x40.txt) |
+| `t5-taskpage-before` | 80x24 | [before](frames/t5-taskpage-before.80x24.txt) | [after](frames/t5-taskpage-after.80x24.txt) |
+| `t5-taskpage-before` | 60x30 | [before](frames/t5-taskpage-before.60x30.txt) | [after](frames/t5-taskpage-after.60x30.txt) |
 | `task-filter-none` | 120x40 | [before](frames/task-filter-none.120x40.txt) | [after](frames/task-filter-none-after.120x40.txt) |
 | `task-fold-open` | 160x50 | [before](frames/task-fold-open.160x50.txt) | [after](frames/task-fold-open-after.160x50.txt) |
 | `task-list` | 160x50 | [before](frames/task-list.160x50.txt) | [after](frames/task-list-after.160x50.txt) |
@@ -82,9 +103,13 @@ each has a `.ans` twin beside it carrying the colour.
 | `task-page-incomplete` | 120x40 | [before](frames/task-page-incomplete.120x40.txt) | [after](frames/task-page-incomplete-after.120x40.txt) |
 | `task-page-refused` | 120x40 | [before](frames/task-page-refused.120x40.txt) | [after](frames/task-page-refused-after.120x40.txt) |
 
-## captured, not yet changed
+## captured once
 
-Either a surface no lane has reached, or one the audit found already right.
+These are single captures rather than gaps. Most are the exploratory
+frames an audit was WRITTEN from — a turn-by-turn stream, a resize
+walked one step at a time, a probe of one key — and a surface only
+earns a row above when a lane re-captured it to close something. The
+rest are surfaces the audit found already right.
 
 - `chat-boot` — [120x40](frames/chat-boot.120x40.txt)
 - `chat-draft` — [120x40](frames/chat-draft.120x40.txt)
@@ -168,6 +193,9 @@ Either a surface no lane has reached, or one the audit found already right.
 - `home-firstrun-esc` — [120x40](frames/home-firstrun-esc.120x40.txt)
 - `home-grouped` — [120x40](frames/home-grouped.120x40.txt)
 - `home-open` — [120x40](frames/home-open.120x40.txt)
+- `home2-bar` — no standard size
+- `home2-narrow` — no standard size
+- `home2-short` — no standard size
 - `jobs-home` — [120x40](frames/jobs-home.120x40.txt)
 - `keep-fold-open` — [80x24](frames/keep-fold-open.80x24.txt)
 - `keep-fold-open2` — [80x24](frames/keep-fold-open2.80x24.txt)
@@ -194,22 +222,12 @@ Either a surface no lane has reached, or one the audit found already right.
 - `keep-unknown` — [80x24](frames/keep-unknown.80x24.txt)
 - `main-home` — [120x40](frames/main-home.120x40.txt) · [60x30](frames/main-home.60x30.txt)
 - `memory` — [120x40](frames/memory.120x40.txt)
-- `money-after-home` — [120x40](frames/money-after-home.120x40.txt)
-- `money-after-memory` — [120x40](frames/money-after-memory.120x40.txt)
 - `money-after-rev-home` — [120x40](frames/money-after-rev-home.120x40.txt)
 - `money-after-rev-spend` — [120x40](frames/money-after-rev-spend.120x40.txt)
 - `money-after-rev-tasks` — [120x40](frames/money-after-rev-tasks.120x40.txt)
 - `money-after-search` — [120x40](frames/money-after-search.120x40.txt)
 - `money-after-settings` — [120x40](frames/money-after-settings.120x40.txt)
-- `money-after-spend` — [120x40](frames/money-after-spend.120x40.txt)
 - `money-after-spend-open` — [120x40](frames/money-after-spend-open.120x40.txt)
-- `money-after-standing` — [120x40](frames/money-after-standing.120x40.txt)
-- `money-after-tasks` — [120x40](frames/money-after-tasks.120x40.txt)
-- `money-before-home` — [120x40](frames/money-before-home.120x40.txt)
-- `money-before-memory` — [120x40](frames/money-before-memory.120x40.txt)
-- `money-before-spend` — [120x40](frames/money-before-spend.120x40.txt)
-- `money-before-standing` — [120x40](frames/money-before-standing.120x40.txt)
-- `money-before-tasks` — [120x40](frames/money-before-tasks.120x40.txt)
 - `search` — [120x40](frames/search.120x40.txt)
 - `seed-home` — [160x50](frames/seed-home.160x50.txt) · [120x40](frames/seed-home.120x40.txt) · [60x30](frames/seed-home.60x30.txt)
 - `seed-room` — [160x50](frames/seed-room.160x50.txt) · [120x40](frames/seed-room.120x40.txt) · [80x24](frames/seed-room.80x24.txt) · [60x30](frames/seed-room.60x30.txt)

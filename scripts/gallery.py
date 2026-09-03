@@ -39,20 +39,68 @@ def main() -> int:
         "each has a `.ans` twin beside it carrying the colour.",
         "",
     ]
-    fixed, only = [], []
+    # THREE CONVENTIONS, BECAUSE TWELVE LANES WROTE THESE AND NONE OF THEM READ
+    # THE OTHERS — which is the same thing that put four spellings of `esc` on
+    # one help sheet. This pairer knew only the first, so it reported 38 pairs
+    # against 160 loose frames and made a wave that HAD closed its rows on
+    # captures look as though it had not.
+    #
+    #   1. `<name>` and `<name>-after`      — the original, an audit baseline
+    #                                         and the frame that closed it.
+    #   2. `<name>-before` and `<name>-after` — self-paired, and the BEST of the
+    #                                         three: a lane that captures both
+    #                                         does not depend on an older file
+    #                                         still being there.
+    #   3. `<family>` and `<family>2`       — a lane that re-captured a whole
+    #                                         surface under a new family name.
+    #
+    # Convention 2 is what `README.md` now asks for. The other two are read
+    # rather than renamed, because renaming a checked-in frame breaks the link
+    # in a ledger row that already cites it.
+    def after_of(name: str) -> str | None:
+        for candidate in (name + "-after", name.replace("-before", "-after", 1)):
+            if candidate != name and candidate in pairs:
+                return candidate
+        return None
+
+    def before_of(name: str) -> str | None:
+        """Convention 3, resolved from the `-after` side: `chat2-md` came from
+        `chat-md`, `home2` from `home`. Only a family whose digit is the whole
+        difference counts, so `tui2` never matches `tui`."""
+        head, _, tail = name.partition("-")
+        if head[-1:].isdigit() and head[:-1] and (head[:-1] + "-" + tail if tail else head[:-1]) in pairs:
+            return head[:-1] + "-" + tail if tail else head[:-1]
+        return None
+
+    # TWO PASSES, because a name can be somebody else's `after`. `money-after-home`
+    # does not END in `-after`, so a single pass listed it as an unpaired baseline
+    # at the same time as pairing it — the frame appeared twice, once as evidence
+    # and once as a gap.
+    fixed: list[tuple[str, str]] = []
+    claimed: set[str] = set()
     for name in sorted(pairs):
         if name.endswith("-after"):
+            claimed.add(name)
             continue
-        after = pairs.get(name + "-after")
-        (fixed if after else only).append(name)
+        if after := after_of(name):
+            fixed.append((name, after))
+            claimed.update((name, after))
+    for name in sorted(pairs):
+        if name in claimed:
+            continue
+        if (before := before_of(name)) and before not in claimed:
+            fixed.append((before, name))
+            claimed.update((before, name))
+    fixed.sort()
+    only = [n for n in sorted(pairs) if n not in claimed]
 
     out += ["## before and after", ""]
     if fixed:
         out += ["| surface | size | before | after |", "| --- | --- | --- | --- |"]
-        for name in fixed:
+        for name, aftername in fixed:
             for size in ORDER:
                 b = pairs[name].get(size)
-                a = pairs[name + "-after"].get(size)
+                a = pairs[aftername].get(size)
                 if not (b and a):
                     continue
                 out.append(
@@ -62,8 +110,12 @@ def main() -> int:
     else:
         out.append("Nothing has closed on a pair yet.")
 
-    out += ["", "## captured, not yet changed", "",
-            "Either a surface no lane has reached, or one the audit found already right.",
+    out += ["", "## captured once", "",
+            "These are single captures rather than gaps. Most are the exploratory",
+            "frames an audit was WRITTEN from — a turn-by-turn stream, a resize",
+            "walked one step at a time, a probe of one key — and a surface only",
+            "earns a row above when a lane re-captured it to close something. The",
+            "rest are surfaces the audit found already right.",
             ""]
     for name in only:
         sizes = " · ".join(f"[{w}x{h}](frames/{pairs[name][(w, h)].name})"
