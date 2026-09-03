@@ -534,7 +534,17 @@ func plainLines(lines []string) []string {
 // keeps as the row's outcome, and that line belongs to what the work found —
 // not to the command somebody ran to check it (task_run.go's workTaskNode).
 func (v auditVerdict) doneOutcome() string {
-	return strings.Join(plainLines(v.evidence), "\n")
+	return v.withAlreadyRed(strings.Join(plainLines(v.evidence), "\n"))
+}
+
+// withAlreadyRed puts the repository's own old red under the checker's
+// evidence on a finished landing. It calls the session's sentence rather than
+// giving a task a second spelling of the same fact.
+func (v auditVerdict) withAlreadyRed(report string) string {
+	if len(v.alreadyRed) == 0 {
+		return report
+	}
+	return withReport(report, alreadyRedSentence(v.alreadyRed))
 }
 
 // gapsOutcome is what a node that ran out of repair rounds says: "incomplete —"
@@ -607,9 +617,9 @@ func takenAsItStands(v auditVerdict) string {
 	if len(lines) == 0 {
 		// A non-answer with nothing behind it says what is true and invents no
 		// reason for it — the emptiness law, on the one field there is.
-		return takenAsItStandsLead + "nobody could check it" + takenAsItStandsTail
+		return v.withAlreadyRed(takenAsItStandsLead + "nobody could check it" + takenAsItStandsTail)
 	}
-	return withReport(takenAsItStandsLead+lines[0]+takenAsItStandsTail, strings.Join(lines[1:], "\n"))
+	return v.withAlreadyRed(withReport(takenAsItStandsLead+lines[0]+takenAsItStandsTail, strings.Join(lines[1:], "\n")))
 }
 
 // auditVerdict is one audit's answer: the word, and what it is standing on.
@@ -630,6 +640,10 @@ type auditVerdict struct {
 	answered bool
 	word     string
 	evidence []string
+	// alreadyRed is the repository's own red that still stood when this answer
+	// was reached. Only finished roads render it; a finding or a request for a
+	// person's look keeps its attention on what is missing.
+	alreadyRed []string
 }
 
 // report is how the verdict rides the node's Report: the word, an em dash, and
@@ -929,6 +943,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
 	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
+	checks := a.checkGroundFor(ctx, tree, ground, door, log)
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
 	// landing quotes is the figure the checking actually had.
@@ -942,7 +957,8 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the other half of the law: a claim is a finding, or it holds, or it is said
 	// out loud — never silently passed ([withOpenClaims]).
 	open := checklist.open()
-	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)
+	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, log)
+	verdict.alreadyRed = checks.alreadyRed()
 	switch {
 	case verdict.answered, !again:
 		return withOpenClaims(verdict, open)
@@ -961,7 +977,8 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, log)
+	retried.alreadyRed = checks.alreadyRed()
 	if retried.answered {
 		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
 		// not produce is the same verdict — nothing about the work is different —
@@ -986,7 +1003,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // ([auditPace]) and the check is asked again inside what is left — where before
 // it, one hung call spent the whole five minutes and the node landed on a
 // sentence claiming nobody could check it (#513).
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(ground.dir, node, door)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
@@ -1023,7 +1040,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, files, claim, open))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, checks, files, claim, open))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -1430,7 +1447,7 @@ func alsoChanged(changed, more []string) []string {
 // those are — or says plainly that there are none and that reading is the whole
 // of the job. A model that has not been told where the door is spends its
 // window looking for one, which is exactly what was measured.
-func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding) string {
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
@@ -1489,6 +1506,7 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	if manifest := groundManifest(ground.dir); manifest != "" {
 		out.WriteString("\n" + manifest)
 	}
+	out.WriteString(checkGroundBlock(checks))
 	out.WriteString("\n" + door.line())
 	if len(door.checks) == 0 {
 		out.WriteString("\nRead the change. Then give your verdict.")
@@ -1747,19 +1765,14 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 		return auditGround{}, "a fresh checkout could not be made: " + err.Error()
 	}
 	dir := filepath.Join(holder, "check")
+	drop, problem := detachedWorktree(tree.place, root, root, dir, "HEAD")
 	remove := func() {
-		unlock := lockGitRoot(tree.place, root)
-		_, _ = git(root, "worktree", "remove", "--force", dir)
-		_, _ = git(root, "worktree", "prune")
-		unlock()
+		drop()
 		_ = os.RemoveAll(holder)
 	}
-	unlock := lockGitRoot(tree.place, root)
-	out, err := git(root, "worktree", "add", "--detach", dir, "HEAD")
-	unlock()
-	if err != nil {
+	if problem != "" {
 		_ = os.RemoveAll(holder)
-		return auditGround{}, "a fresh checkout could not be made: " + firstLine(out)
+		return auditGround{}, "a fresh checkout could not be made: " + problem
 	}
 	if problem := layWork(tree.dir, dir, wrote); problem != "" {
 		remove()
@@ -1814,25 +1827,9 @@ func restoreFromFolder(tree taskTree, wrote []string) (auditGround, string) {
 func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	dir := tree.dir + "-check"
 	holder := tree.branchHolder()
-	remove := func() {
-		unlock := lockGitRoot(tree.place, tree.root)
-		defer unlock()
-		_, _ = git(holder, "worktree", "remove", "--force", dir)
-		_, _ = git(holder, "worktree", "prune")
-		_ = os.RemoveAll(dir)
-	}
-	// A restore left behind by a process that died is cleared before this one is
-	// made, on the same argument [prepareTaskTree] clears its own: the path
-	// carries the node's own directory name, so the only thing that can be sitting
-	// at it is an earlier restore of this same node.
-	remove()
-
-	unlock := lockGitRoot(tree.place, tree.root)
-	out, err := git(holder, "worktree", "add", "--detach", dir, tree.branch)
-	unlock()
-	if err != nil {
-		_ = os.RemoveAll(dir)
-		return auditGround{}, "a fresh checkout could not be made: " + firstLine(out)
+	remove, problem := detachedWorktree(tree.place, tree.root, holder, dir, tree.branch)
+	if problem != "" {
+		return auditGround{}, "a fresh checkout could not be made: " + problem
 	}
 	if problem := layWork(tree.dir, dir, wrote); problem != "" {
 		remove()
