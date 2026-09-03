@@ -170,6 +170,7 @@ who learned `--dir` on `do` must be able to type it on `exec` without checking.
 | how many steps at once | `--parallel <n>` | `graph run` | 32 |
 | do not ask before deleting | `--yes` | `cache clean`, `rebuild` | off |
 | do not ask before spending more | `--yes-spend` | `do`, `graph run` | off |
+| carry a task on from where it ended | `--continue <id>` | `do` | off: a bare `do` is new work. The id is the one `aforge tasks` lists, because §3 makes *a task* the noun and `aforge tasks <id>` its address; `--db` says which store to look it up in. |
 | the store to work in | `--db <path>` | `doctor`, `notebook`, `services`, `tasks`, `spend`, `rebuild`, `wake`, `competence`, `do` | this machine's chat store |
 | keep the whole record of the run | `--debug` | `chat`, `do`, `exec` | off |
 | run it on another machine | `--host <host[:path]>` over ssh, `--at <name[:path]>` over the relay | `chat` | here |
