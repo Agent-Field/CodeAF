@@ -40,6 +40,8 @@ func TestTheExitLadderIsOneTable(t *testing.T) {
 			meaning: "it could not be run at all — no key, bad arguments, the store would not open"},
 		{code: 2, stop: stopIncomplete, condition: "it ran and part of the work does not stand",
 			meaning: "it ran and did not finish: part of the work does not stand"},
+		{code: 2, stop: stopUnchecked, condition: "it ran and nothing judged what it delivered",
+			meaning: "it ran and did not finish: part of the work does not stand"},
 		{code: 3, stop: stopBudget, condition: "the token budget ran out",
 			meaning: "a limit you set stopped it — the wall, the token budget, the turn cap, the price"},
 		{code: 3, stop: stopTurnCap, condition: "the turn cap ran out",
@@ -65,7 +67,8 @@ func TestTheExitLadderIsOneTable(t *testing.T) {
 	// added without a rung would otherwise fall through to exitIncomplete and
 	// nobody would find out.
 	for _, stop := range []stopReason{
-		stopDone, stopError, stopIncomplete, stopBudget, stopTurnCap, stopDeadline, stopPrice, stopQuestion,
+		stopDone, stopError, stopIncomplete, stopUnchecked,
+		stopBudget, stopTurnCap, stopDeadline, stopPrice, stopQuestion,
 	} {
 		named := false
 		for _, rung := range exitLadder {
@@ -91,6 +94,7 @@ func TestTheExitLadderIsOneTable(t *testing.T) {
 			{what: "the deliverable stands", stop: stopDone, want: exitDone},
 			{what: "the store would not open", stop: stopError, want: exitCannotRun},
 			{what: "a part of the job failed", stop: stopIncomplete, want: exitIncomplete},
+			{what: "nothing judged what it delivered", stop: stopUnchecked, want: exitIncomplete},
 			{what: "the plan crossed the consent threshold", stop: stopPrice, want: exitLimit},
 			{what: "the wall arrived", stop: stopDeadline, want: exitLimit},
 			{what: "it stopped to ask", stop: stopQuestion, want: exitUnanswered},

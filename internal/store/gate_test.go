@@ -533,3 +533,60 @@ func TestTheReceiptAndWhatIsMissingReachTheJournal(t *testing.T) {
 		t.Errorf("what the request still wanted did not survive the journal: %q", gate.Missing)
 	}
 }
+
+// A DELIVERY NOBODY READ IS NOT WHOLE, AND THE ROW THAT SAYS SO IS KEPT.
+//
+// reef-145's repair leaf finished its work, both of the gate's calls were
+// refused, and the store held no gate row for the delivered leaf at all — so the
+// door ended `ok` at exit 0 and the rig read an unchecked delivery as a clean
+// pass (2026-09-02, aforge-v2-14 anchor 1; #514). The row below is what that run
+// should have written: the reason, that nothing closed it, and that nobody was
+// ever answered by. All three are journaled and read back, because a field the
+// store drops is a field the exit code cannot turn on.
+func TestADeliveryNothingJudgedIsNeverWholeAndTheRowSurvives(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "job", Brief: "ship the complete answer", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1", Intent: "answer every part"}); err != nil {
+		t.Fatal(err)
+	}
+	unjudged := DeliveryGate{
+		Refused:  "the gate could not be reached · asked twice · API error (404): no endpoints found",
+		Unclosed: true, Unjudged: true,
+	}
+	if unjudged.Whole() {
+		t.Fatal("a delivery nothing judged answered whole")
+	}
+	// AND IT ANSWERS THE SAME WAY WHATEVER ELSE THE ROW CARRIES. Whole is what
+	// the exit code reads, and a row that claimed a pass beside this field would
+	// be the exact indistinguishability the field exists to end.
+	claiming := unjudged
+	claiming.Pass, claiming.PolishClosed, claiming.Overturned = true, true, true
+	if claiming.Whole() {
+		t.Fatal("an unjudged row talked its way back to whole")
+	}
+	if err := graph.RecordDeliveryGate("job", unjudged); err != nil {
+		t.Fatalf("the store would not keep the row an unchecked delivery leaves: %v", err)
+	}
+	kept, found, err := graph.DeliveryGateFor("job")
+	if err != nil || !found {
+		t.Fatalf("delivery gate for job: found %t, err %v", found, err)
+	}
+	if !kept.Unjudged || !kept.Unclosed || kept.Pass || kept.Refused != unjudged.Refused {
+		t.Fatalf("the row came back saying something else: %+v", kept)
+	}
+	if kept.Whole() {
+		t.Fatal("the row read back off the journal answered whole")
+	}
+	// A row that claims both is a caller with a bug, and it is refused rather
+	// than quietly corrected — a silent fix leaves the caller running.
+	if err := graph.RecordDeliveryGate("job", DeliveryGate{
+		Pass: true, Unjudged: true, Refused: "the gate could not be reached", Unclosed: true,
+	}); err == nil {
+		t.Fatal("the store kept a delivery that was both unjudged and a pass")
+	}
+}

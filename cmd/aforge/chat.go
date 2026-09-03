@@ -1428,6 +1428,25 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 				notes = append(notes, revision.GateFaultHandover(gate.Fault))
 			}
+			if gate.Unjudged != "" {
+				// AND A GATE THAT WAS NEVER REACHED LEAVES A ROW OF ITS OWN
+				// KIND, NOT NO ROW.
+				//
+				// This is the delivery the fail-open pass ships: the work is
+				// fine, nothing read it, and for as long as that was journaled
+				// by a line in the log alone, every later surface saw a run that
+				// had passed its check. reef-145 delivered twice that way — the
+				// node ✓, the door `ok`, exit 0, and not one delivery_gate row
+				// for the delivered leaf — and the rig compared both against
+				// runs that had actually been judged (#514).
+				//
+				// The row is built by the same function the judged path uses, so
+				// there is no second idea of what an unjudged delivery looks
+				// like; what it carries is Unjudged, which store.DeliveryGate.
+				// Whole spends, so the settlement ends the run unchecked with
+				// the reason on the door.
+				_ = graph.RecordDeliveryGate(node.ID, deliveryGateOf(gate))
+			}
 			if gate.Checked {
 				// One row, built one way. See deliveryGateOf: the other reader of
 				// this record is the settlement that runs when a leaf's last call
@@ -2791,6 +2810,15 @@ func requestSettled(ctx context.Context, settings config.Config, client *pool.Cl
 // which is the exact shape of every settlement defect this record exists to
 // close. ONE ROW, BUILT ONE WAY.
 func deliveryGateOf(gate revision.Judgment) store.DeliveryGate {
+	if note := strings.TrimSpace(gate.Unjudged); note != "" {
+		// A DELIVERY NOTHING READ CARRIES NOTHING A READING PRODUCED. The
+		// judgement's Pass is the fail-open ship rather than a verdict, and every
+		// other field on it is empty by construction — so the row says the one
+		// thing that is true about this delivery and says it in three fields the
+		// exit code and a battery already spend: the reason, that nothing closed
+		// it, and that nobody was ever asked to. See store.DeliveryGate.Unjudged.
+		return store.DeliveryGate{Refused: note, Unclosed: true, Unjudged: true}
+	}
 	return store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
 		Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical,
 		// The acceptance mapping as the gate settled it. It is the evidence

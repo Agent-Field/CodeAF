@@ -56,6 +56,23 @@ set cut it off, so raising `--timeout`, `--token-budget` or `--max-turns` and ru
 again is the remedy. 2 says it got to the end and part of it does not stand, so what came
 back is worth reading before anything is re-run.
 
+**A delivery nothing checked is exit 2 too, and it says so.** `aforge do` puts what a run
+delivered to a final check; when that check cannot be reached — a dead route, a refused
+account, a service that is down — the work still ships (holding a finished deliverable
+hostage to the weather helps nobody), and the run ends `unchecked` rather than `ok`. The
+gate is asked once more first, inside the wall, unless there is no time left for a call or
+the refusal was about the request itself and every endpoint would say the same. The last
+line on stderr is
+
+```
+delivered without a check: the gate could not be reached
+```
+
+with how it was asked and the provider's own sentence after a `·`. `$?` is 2, `stop` is
+`unchecked`, `ok` is false, and `--json` carries the whole reason in `unjudged`. **Read the
+answer — it may be perfectly good — but nothing has vouched for it.** Two graded runs
+ended `ok` at exit 0 over exactly this before the ending had a name.
+
 **Exit 1 means nothing ran, and only that.** It is the rung for a refusal *before* the work
 starts — no key, a flag it could not parse, a store that would not open, a saved program by
 that name that does not exist. Nothing was attempted, so nothing was spent and there is
@@ -100,7 +117,7 @@ stdout, always parseable, printed even when the run failed**:
 | field | what it holds |
 | --- | --- |
 | `ok` | the work stands. True on exactly the runs that exit 0 |
-| `stop` | why it ended: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question` |
+| `stop` | why it ended: `done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`, `deadline`, `price`, `question` |
 | `answer` | what was produced, in prose. Empty when nothing was |
 | `files` | the paths it wrote. Never null — a run that wrote nothing carries `[]` |
 | `error` | why it could not be run at all, in the same words stderr carried. Empty on every run that started, however it ended — a limit that cut a run short and a provider that failed mid-run both say why under `incomplete` |
@@ -155,7 +172,8 @@ record every refusal as a success.
 Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
 be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. `aforge run` carries `output`, which is the typed answer whole,
+`subharness`. It also carries `unjudged` on the runs nothing checked — why the delivery
+went out unread — and on no others, so a script may read the key's presence as the answer. `aforge run` carries `output`, which is the typed answer whole,
 and `report`.
 
 `incomplete` is on `aforge run` and `aforge exec` both, and it is why it did not finish, in
