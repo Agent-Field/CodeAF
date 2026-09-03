@@ -478,7 +478,7 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 // a process on this machine whoever asked for it. Folding it here — at the
 // instant the wire says the call closed — is what makes the header instrument
 // and the Σ segment one set of numbers instead of two clocks, and it is the one
-// place a room can drop a cache the conversation owns ([app.foldNodeStat]).
+// place a room can drop a cache the conversation owns ([app.tallyNode]).
 //
 // IT CLOSES OVER THE PAGE AND NOT OVER [app.room], because the page is built
 // before it is the one on screen, and a reducer pointed at whatever room happens

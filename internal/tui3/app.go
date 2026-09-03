@@ -7353,7 +7353,7 @@ func callClosed(e *entry) bool {
 // between entries. It is a type rather than a loop body because TWO CALLERS FOLD
 // THE SAME ARITHMETIC: the conversation walks its whole list on demand
 // ([app.computeStats]), and a node's page folds one call at a time as its
-// reducer closes it ([app.foldNodeStat]) — and two spellings of "what a finished
+// reducer closes it ([app.tallyNode]) — and two spellings of "what a finished
 // call adds to the counts" is two spellings that drift.
 type statWalk struct {
 	out hudStats
