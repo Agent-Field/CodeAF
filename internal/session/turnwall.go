@@ -112,6 +112,11 @@ const checkpointDecisionRanLong = "ran long"
 // AND IT IS THE STEWARD'S CLOCK. The wall is measured on it ([Steward.Budget]),
 // so the share is read off it too: two clocks over one law are two answers to the
 // question of how much is left.
+//
+// THE LAW IS EXCEEDS, SO THE BOUNDARY ITSELF STAYS INLINE. A turn standing
+// exactly on the share has not passed it, and the comparison says so rather than
+// leaving the one moment the two readings are equal to whichever way an operator
+// happened to be typed.
 func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) bool {
 	if meter == nil || meter.shareSpent {
 		return false
@@ -121,7 +126,7 @@ func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) boo
 		return false
 	}
 	share := steward.Budget().Wall / turnWallShare
-	if share <= 0 || steward.since(started) < share {
+	if share <= 0 || steward.since(started) <= share {
 		return false
 	}
 	meter.shareSpent = true

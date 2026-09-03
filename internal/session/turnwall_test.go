@@ -32,12 +32,13 @@ import (
 // gone into this one answer — and what the person reads is this seam's own line.
 func TestATurnPastTheShareOfTheWallHandsOver(t *testing.T) {
 	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps(), nil)
-	// A THIRD OF THE WALL AND A LITTLE, ON THE STEWARD'S OWN CLOCK. It is the
-	// clock the wall itself is measured on ([Steward.since]), so moving it moves
-	// both readings together — and it is moved by minutes rather than hours so
-	// that the budget is a long way from exhausted and the run is not stopped
-	// instead of moved.
-	moveTheStewardsClock(t, agent, 25*time.Minute)
+	// A MINUTE PAST THE SHARE, ON THE STEWARD'S OWN CLOCK. It is the clock the
+	// wall itself is measured on ([Steward.since]), so moving it moves both
+	// readings together; and the moment is DERIVED from the session's wall and
+	// [turnWallShare] rather than written down, so a run of this file at another
+	// share measures the same three moments rather than three durations somebody
+	// worked out once by hand ([moveTheStewardsClock]).
+	moveTheStewardsClock(t, agent, time.Minute)
 	// AND SOMETHING OF THE SESSION'S IS RUNNING, which is what makes the ending a
 	// carry-on rather than a done that seals: a goal owner shown a session with
 	// nothing landed and nothing left calls the ask finished and no road below it
@@ -81,15 +82,19 @@ func TestATurnPastTheShareOfTheWallHandsOver(t *testing.T) {
 	}
 }
 
-// AND UNDER THE SHARE NOTHING HAPPENS AND NOTHING IS SAID.
+// AND SHORT OF THE SHARE — OR EXACTLY ON IT — NOTHING HAPPENS AND NOTHING IS
+// SAID.
 //
-// The same session, the same script, the same wall — with the turn a quarter of
-// the way through the share instead of past it. The seam is silent, and the
-// ladder is the governor it always was: this turn is moved at its first mark, by
-// the sketch, on the mark's own line.
+// The same session, the same script, the same wall, with the turn a minute short
+// of the share instead of a minute past it. The seam is silent, and the ladder is
+// the governor it always was: this turn is moved at its first mark, by the
+// sketch, on the mark's own line.
+//
+// AND THE BOUNDARY ITSELF IS INLINE, which is the law's own word: a turn EXCEEDS
+// the share, so standing exactly on it is not past it.
 func TestATurnUnderTheShareOfTheWallIsLeftAlone(t *testing.T) {
 	agent, _ := stewardCheckpointAgent(t, splitSketchSteps(), nil)
-	moveTheStewardsClock(t, agent, 5*time.Minute)
+	moveTheStewardsClock(t, agent, -time.Minute)
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	started := make(chan uint64, 4)
@@ -105,10 +110,24 @@ func TestATurnUnderTheShareOfTheWallIsLeftAlone(t *testing.T) {
 
 	said := noticeTexts(collected)
 	if saidSomething(said, turnWallShareNote) {
-		t.Fatalf("a turn a quarter of the way through the share was moved by the wall; notices were %q", said)
+		t.Fatalf("a turn a minute short of the share was moved by the wall; notices were %q", said)
 	}
 	if !saidSomething(said, checkpointSplitNote) {
 		t.Fatalf("the mark ladder stopped governing the turn the wall left alone; notices were %q", said)
+	}
+
+	// AND THE BOUNDARY, ASSERTED ON THE READING ITSELF. It is the one moment the
+	// two sides of the comparison are equal, and a clock built off [time.Now] is
+	// already microseconds past whatever it was set to by the time a turn reaches
+	// a step boundary — so it is named exactly here rather than approached by a
+	// turn that can only ever land near it.
+	share := shareOfTheWall(t, agent)
+	at := holdTheStewardsClock(t, agent)
+	if agent.pastTurnWallShare(&checkpointMeter{}, at.Add(-share)) {
+		t.Fatal("a turn standing exactly on the share was moved; the law is EXCEEDS, so the boundary stays inline")
+	}
+	if !agent.pastTurnWallShare(&checkpointMeter{}, at.Add(-share-time.Nanosecond)) {
+		t.Fatal("a turn one nanosecond past the share was left inline")
 	}
 }
 
@@ -155,7 +174,8 @@ func TestAPersonsTurnIsNeverBoundedByTheWall(t *testing.T) {
 // ([writeMeter.pastAllowance]), so this is the whole of the proof.
 func TestTheShareOfTheWallOpensItsDoorOnceInATurn(t *testing.T) {
 	agent, _ := stewardCheckpointAgent(t, splitSketchSteps(), nil)
-	moveTheStewardsClock(t, agent, 25*time.Minute)
+	share := shareOfTheWall(t, agent)
+	moveTheStewardsClock(t, agent, time.Minute)
 	meter := &checkpointMeter{}
 	if !agent.pastTurnWallShare(meter, time.Now()) {
 		t.Fatal("a turn past the share of its wall did not open the door")
@@ -165,9 +185,10 @@ func TestTheShareOfTheWallOpensItsDoorOnceInATurn(t *testing.T) {
 			t.Fatalf("the share opened its door a second time, at boundary %d", boundary)
 		}
 	}
-	// AND A TURN THAT NEVER REACHES THE SHARE NEVER OPENS IT.
-	if agent.pastTurnWallShare(&checkpointMeter{}, time.Now().Add(20*time.Minute)) {
-		t.Fatal("a turn a few minutes old was moved by a share of an hour")
+	// AND A TURN THAT NEVER REACHES THE SHARE NEVER OPENS IT. This one began a
+	// share ago on a clock that is a minute past one, so it is a minute old.
+	if agent.pastTurnWallShare(&checkpointMeter{}, time.Now().Add(share)) {
+		t.Fatal("a turn a minute old was moved by a share it was nowhere near")
 	}
 }
 
@@ -180,7 +201,7 @@ func TestAMoneyCeilingWithNoWallNeverMovesATurn(t *testing.T) {
 	agent, _ := stewardCheckpointAgent(t, splitSketchSteps(), func(config *Config) {
 		config.Budget = Budget{USD: 5}
 	})
-	moveTheStewardsClock(t, agent, 25*time.Minute)
+	moveTheStewardsClock(t, agent, time.Minute)
 	if agent.pastTurnWallShare(&checkpointMeter{}, time.Now()) {
 		t.Fatal("a session with money left and no wall was moved by a share of a wall it never had")
 	}
@@ -221,18 +242,58 @@ func TestTheShareNoteAndTheConstantSayTheSameFraction(t *testing.T) {
 	}
 }
 
-// moveTheStewardsClock puts the session's goal owner however far into its run the
-// caller asks for. It is the ONE clock this law reads ([Steward.since]), so a
-// test that moves it moves the share and the wall together.
-func moveTheStewardsClock(t *testing.T, agent *Agent, on time.Duration) {
+// moveTheStewardsClock puts the session's goal owner THAT FAR PAST ITS OWN
+// SHARE — a negative offset is that far short of it — and it is the ONE clock
+// this law reads ([Steward.since]), so moving it moves the share and the wall
+// together.
+//
+// THE OFFSET IS RELATIVE TO THE SHARE AND THE SHARE IS READ OFF THE SESSION,
+// which is this file's whole answer to one source of truth. A fixture that said
+// "25 minutes" would be [turnWallShare] worked out by hand against a wall stated
+// somewhere else, and it would go quietly red — not wrong, RED — the moment
+// somebody measured a different share. Here only the constant and the word in
+// [turnWallShareNote] differ between arms, and
+// [TestTheShareNoteAndTheConstantSayTheSameFraction] pins those two to each
+// other.
+func moveTheStewardsClock(t *testing.T, agent *Agent, past time.Duration) {
+	t.Helper()
+	on := shareOfTheWall(t, agent) + past
+	steward := agent.steward()
+	steward.mu.Lock()
+	defer steward.mu.Unlock()
+	steward.now = func() time.Time { return time.Now().Add(on) }
+}
+
+// holdTheStewardsClock STOPS the session's goal owner at one instant and hands
+// that instant back, for the assertions that have to name both sides of the
+// comparison exactly. A clock that runs cannot say "exactly on the share": by the
+// time anything reads it, it is past.
+func holdTheStewardsClock(t *testing.T, agent *Agent) time.Time {
+	t.Helper()
+	steward := agentWithGoalOwner(t, agent)
+	at := time.Now()
+	steward.mu.Lock()
+	defer steward.mu.Unlock()
+	steward.now = func() time.Time { return at }
+	return at
+}
+
+// shareOfTheWall is what this session's own ceiling allows one turn, read off the
+// session so that nothing in this file restates either the wall or the fraction.
+func shareOfTheWall(t *testing.T, agent *Agent) time.Duration {
+	t.Helper()
+	return agentWithGoalOwner(t, agent).Budget().Wall / turnWallShare
+}
+
+// agentWithGoalOwner is the one place this file insists there is a steward to
+// move a clock on, so the helpers above say it once between them.
+func agentWithGoalOwner(t *testing.T, agent *Agent) *Steward {
 	t.Helper()
 	steward := agent.steward()
 	if steward == nil {
 		t.Fatal("the fixture built a session with no goal owner behind it")
 	}
-	steward.mu.Lock()
-	defer steward.mu.Unlock()
-	steward.now = func() time.Time { return time.Now().Add(on) }
+	return steward
 }
 
 // timesSaid counts the notices carrying a line, because "said once" is a
