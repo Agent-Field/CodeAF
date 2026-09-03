@@ -37,6 +37,7 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 		word   string
 	}{
 		{session.TaskEndingWire, endingWordWire},
+		{session.TaskEndingUpstream, endingWordUpstream},
 		{session.TaskEndingCircling, endingWordCircling},
 		{session.TaskEndingBlocked, endingWordBlocked},
 		{session.TaskEndingSteps, endingWordSteps},

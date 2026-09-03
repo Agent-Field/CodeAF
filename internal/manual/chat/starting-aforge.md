@@ -133,6 +133,124 @@ With a budget, four things change, and only with a budget:
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
 
+## Why did it stop at a task that was finished · it ended without starting more work · why did it not hand the work over
+
+With a budget, **every** way a turn ends is read, not just the ones where the model stops
+talking. A long turn can also end by having its work moved onto a task — when a second
+reader says the work has parts, when the turn has changed enough files, or when it has run
+past its own price. Each of those seals the turn, and until this they sealed it without
+asking anything: the run then had no way back at all, because the only thing that could end
+it was a landing waking a turn that moved its work onto another task, and so on until the
+hours ran out. Three measured runs finished their work, went green, and still ran to the
+wall that way.
+
+So before the work moves, the same reading a stopped turn gets is taken:
+
+- **Something of yours is still running** — the work moves onto a task exactly as it always
+  did, and you read the same line about it.
+- **Nothing is left and nothing is running** — the run ends there, on the line
+  `finishing here · what was asked is done`, and **no task is started**. It used to hand the
+  work over anyway, on the grounds that the reply had not yet read its last results; measured,
+  that started two tasks nineteen seconds after the run had already read the tree, the checks
+  and the second reader and said the ask was met, and both ran to the wall. Being finished is
+  read from those, not from the reply's own words, so nothing a further reply said could change
+  it. If a piece of work is still running when that happens, it is not ended there: the work
+  moves onto a task as usual and the same answer is read again at the next ending.
+- **The same thing is left as last time** — it stops for good with the reason, on the same
+  `stopping here · ` line every other stop uses. If a piece of work is still running when
+  that happens, it does **not** stop there: the work moves onto a task as usual and the same
+  stop is said again at the next ending, once nothing is in flight.
+- **The hours or the money ran out** — this is the one stop that does not wait for anything.
+  Waiting is more of exactly what ran out, so it ends the turn even with work still going,
+  and says so on the end of its own line: `· work was still going and was left where it was`.
+  Nothing is killed and nothing is thrown away; what was running is where you left it.
+
+**And a handover it asked for is never dropped.** A long turn can normally talk its own
+handover out of happening: if the model says nothing is left AND the second reader's sketch
+says the same, the work stays where it is and the turn finishes. On a run with a budget that
+only holds while the run's own owner agrees — and when it has just read the ending and said
+the ask is **not** finished, the work moves anyway, on its account of what is left rather
+than on your bare sentence. A run measured before this said "not yet confirmed" at its
+write seam and again at its ceiling, had both handovers thrown away by the two readers, and
+ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
+
+None of this applies to a session you are sitting in front of: your turn's work moves onto a
+task exactly as it always has, nothing is decided for you, and the two readers agreeing
+still leaves your answer where it is.
+
+## What counts as still left · a task that died on the wire · it kept working after everything was finished · it says nothing has been finished yet when it did the work itself
+
+**What is left is read from the tree, not from a task's death.** A run with a budget looks
+at every piece of work at the end of each reply and asks what stands between it and
+finished. Two kinds of dead task do **not** count:
+
+- **One that died on the connection or was refused by the model provider.** A dropped
+  stream, an API error, a model that is not there: nothing was found out about the job, so
+  it is not evidence that anything is unfinished. Every other ending still counts — a check
+  that found gaps, a loop that went round, a step limit, a working copy that could not be
+  made, one you stopped yourself.
+- **One whose files somebody else wrote and brought home.** If every file a dead task was
+  going to change has since been changed by a task that finished **and** merged, the thing
+  it was for is on your branch already, and asking for it again would rewrite a file that is
+  already written. It has to be every file and the other task has to have merged; half of
+  somebody's work is still work.
+
+Measured before this: a task died on an API 404 an hour before its parent wrote the very
+file it was for, went green and merged. The run read the dead sibling as a gap in the ask
+and carried on over a finished tree until its wall ran out.
+
+**And work aforge did itself counts as finished work.** The question is not only "did a
+task come home": a session that made the change and wrote the tests **inline**, with no
+task at all, has finished something — as long as the second reader agrees nothing is left.
+That includes a fix that is one edit to a file the project already had, which is the
+commonest fix there is: it used to count only files the session created, so a one-line change
+to an existing file read as nothing finished until the run stopped itself over green work.
+Before this, a run that did the whole job in the conversation read `nothing has been
+finished yet` at the end of every reply over a tree it had just written, said the same
+thing twice, and stopped itself for going round in circles one second after tidying up. If
+that reader names a gap instead, the run carries on into it, and being finished is settled
+by running your checks over the tree either way.
+
+## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
+
+**A check is yours only if your run turned it red.** On a run with a budget, aforge runs
+the checks its acceptance names once at the start — before it has touched anything — and
+writes down which were already failing. Only the acceptance it wrote for the work and each
+task's own brief supply checks; a command pasted into your ask (the steps you took to see a
+bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
+longer is. At the end it runs them again, and only a check that was
+**green before and red after** counts as work still to do.
+
+That first reading runs **in the background**, so nothing waits for it: your first turn
+starts straight away. It gets one window for the whole set rather than one per check, and
+two things are deliberately not read — a check that **changed the tree** (a build, a
+formatter, a migration: that would be aforge making the first edit, not looking) and a
+check the shell **could not run at all**. Writing a cache or a coverage file is not
+changing the tree: in a git repository the question is asked against what the project
+itself keeps, so anything your `.gitignore` covers is invisible here and a test runner's
+`.pytest_cache/` costs you nothing.
+
+**A check the reading could not take is never counted against you — or for you.** Nobody
+knows whose red it is, so it is left out of the arithmetic in both directions rather than
+guessed at. Until the whole reading lands the same is true of every check, and the run says
+so in as many words. At the very end it waits for the reading before deciding, so a run is
+never called finished over red nobody could account for.
+
+That matters because of the sentence people naturally write: *"the existing test suite
+passes"*. Over a project whose suite already has one failing test, that can never become
+true, and a run that reads its own failure in the project's will spend its whole ceiling on
+somebody else's bug. One measured run did exactly that.
+
+What was already broken is not hidden from the work either — the brief it carries on with
+says so plainly, so nothing goes off to fix it by accident:
+
+```
+1 check was already failing before this work and is not counted: tox -e py
+```
+
+A session you are sitting in front of runs none of this: your tree is in front of you, and
+nothing is checked or decided on your behalf.
+
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
 An unattended run with a budget looks at the work at the end of every reply: which

@@ -439,7 +439,7 @@ Pressing **accept** on the card does not change this. Accepting says the work is
 it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
 leaves the task needing your look with the same sentence.
 
-## My task could not save what it wrote — nothing merged, the file is still there
+## My task could not save what it wrote — nothing merged, the file is still there, it says it could not be brought home
 
 A landing that cannot put the work away **does not merge, does not tidy anything up, and
 does not say done**. The work stays on disk in the task's own folder, which is then the only
@@ -463,9 +463,33 @@ says so:
 `finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
 
 The task's copy is kept, so everything the family made is still in the folder that sentence
-names. Pressing **accept** later does not change any of this: an accept over a folder that
-still cannot take the work leaves the task needing your look with the same sentence, exactly
-as a conflicting merge does.
+names.
+
+**Pressing accept settles it where it stands, and you are not asked twice.** The tree
+refusing the work is not a question anybody can answer differently the second time: the
+folder has no repository in it, or the disk is full, or a file of your own is where a
+directory has to go, and accepting again runs the same command into the same refusal. So one
+accept ends it. The task settles as done with the lead
+`taken as it stands, and it could not be brought home, so the work stays where it is — `
+over the sentence naming the folder, nothing is merged and nothing is deleted, and a second
+answer on the same task is told
+`task 7 is done, and only a task that needs a look is waiting on somebody to decide`.
+
+**A merge conflict is the other thing and still comes back to you.** Two versions of one
+file is a decision only you can make, so an accept whose merge conflicts leaves the task
+needing your look with the same sentence, and you can accept it again once you have sorted
+the file out. The difference is which failure it was: the tree would not take the work at
+all, or the work and your own copy disagree. Before this, both went back to the card, and a
+measured run accepted the same task three times and got the same refusal three times.
+
+**Which one it was is settled by trying the folder, never by reading the message.** Git says
+"Permission denied" when it cannot lock a branch's ref in a folder you can write to
+perfectly well, and a hook of yours can print anything it likes. So when a commit is
+refused, aforge writes a scratch file into the repository and removes it again: if that
+works the refusal is about the **work**, the task comes back for your look, and accepting it
+after you have cleared whatever was in the way is worth doing. Only a folder that will not
+take that write — a read-only mount, a permission, a full disk, a quota — settles the task
+where it stands.
 
 ## What a task can do while it runs
 
@@ -1055,7 +1079,7 @@ saying the answer is already in the transcript. Fresh information or a successfu
 resets that streak. The task-level no-progress counter above remains the rule that stops an
 entire task run.
 
-Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
+Being stopped as stuck says **nothing** about the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with
 the `stopped:` line gone. The section below is that whole rule.
 
@@ -1283,7 +1307,7 @@ and the task lands needing your look, which is exactly what was measured. Seeing
 already happened tells it which command the check even is.
 
 It is **not** a shortcut to a pass. The checker is told where those results came from: in a
-restore they came from the task's own copy — the one a verdict may not rest on — so they can
+restore they came from the task's own copy — the one an answer may not rest on — so they can
 settle a refusal outright (a check that failed, or a check nobody ever ran, needs no second
 run to be believed) while anything that could pass there and fail in the restore has to be
 settled in the restore. A task that never ran a tool leaves this out of the packet entirely.
@@ -1471,7 +1495,8 @@ read them.
 yours, and the report leads with the task's own account of the work, with what it was
 checked on under it — no lead word at all.
 
-**Halted.** `task 7 lost the connection: <title>`, `task 7 went in circles: <title>`,
+**Halted.** `task 7 lost the connection: <title>`,
+`task 7 the model provider refused it: <title>`, `task 7 went in circles: <title>`,
 `task 7 was blocked by another task: <title>`, `task 7 ran out of steps: <title>`,
 `task 7 would not write its notes down: <title>`. Nothing was found wrong with the work; the
 branch is kept and the task can be run again from it. The rail draws these with `!` (see the
@@ -1498,8 +1523,11 @@ is kept, and that anything waiting on it waits until somebody decides.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
-`nobody could check it in 5m0s`, `the checker answered neither way`. The time
-in that third one is the window **the check** had — `5m0s` when it had a command to
+`one call ran 2m30s without answering and was abandoned`,
+`nobody could check it in 5m0s`, `the checker answered neither way`. A call that was
+asked and hung is always named as that — the sentence about nobody being able to check
+is kept for the case it is true of, where the window was too small for a call to be made
+at all. The time in it is the window **the check** had — `5m0s` when it had a command to
 run, `1m0s` when the work named no check and there was nothing for it to run. It is not
 your window and there is nothing you missed: **a question to you is never on a timer.**
 That sentence used to read `no answer in 5m0s, so nothing was accepted`, which said two
@@ -1507,6 +1535,7 @@ things a clock is not entitled to say — that you had five minutes, and that a 
 been made. Nothing is accepted or refused by a window running out; the work waits for you,
 for as long as that takes. When two tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
+
 
 The last line of that landing is the only thing the `task.settle` setting changes. With it
 on `ask` — the default — the note says the task waits until somebody decides and offers
@@ -1524,6 +1553,62 @@ session takes the same road your own `[d] decide these for me` takes: aforge rea
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
 row you set, and a blank row still means aforge asks you.
+
+**And a run you left going with a budget goes one step further, for the case where nobody
+could check the work at all.** On `--yolo` with `--max-hours` or `--max-cost`, a landing
+nobody could say anything about is not put to anybody: the check has already been run twice,
+there is nobody to ask, and the work is taken as it stands. The landing says so and says
+why, under the task's own account of what it did:
+
+```
+taken as it stands: one call ran 2m30s without answering and was abandoned · the window closed before a second, and the run is unattended
+```
+
+The first part of that is the checker's own account of what became of it, whatever it was —
+a call that hung and was cut, a checker that would not start, a reply that said neither way
+— so the sentence names what actually happened rather than asserting nobody could check the
+work.
+
+The task then reads `finished` and its branch merges like any other. This happens only on a
+run with a budget — a `--yolo` run without one, a headless `--once`, and a task inside
+another task in a session you are watching all keep the old road, where the landing goes to
+whoever holds the decision and they settle it.
+
+## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
+
+**No single call may spend the whole checking window.** The check is asked at most twice —
+one checker, then a fresh one with the same evidence — so one call may hold at most half the
+window, and a stream that answers nothing is abandoned at that point and the check asked
+again inside what is left. You may see this on the card:
+
+```
+one call ran 2m30s without answering and was abandoned
+```
+
+When the second call does answer, the landing is an ordinary finished landing with one line
+at the end of its evidence saying which try it was:
+
+```
+checked on the second try
+```
+
+That is a fact about the evening and not about the work: the check's answer is the same
+answer, reached on the same tree, and nothing about the task is different for having taken
+two goes.
+
+Sometimes there is no time for a second call: closing one checker and building another
+takes some of the window too, and a call that would get less than a tenth of it is not made
+at all — a bound that small guarantees the non-answer it would then be blamed for. The card
+keeps the first call's account and says why there was no second:
+
+```
+one call ran 2m30s without answering and was abandoned · the window closed before a second
+```
+
+**Why the bound exists.** Without it, one hung stream could eat the whole five minutes on
+its own — measured at 183 seconds on one call, with no refusal and no error — and the check
+was then never asked a second time at all, while the task landed saying nobody could check
+it in five minutes.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
@@ -2037,7 +2122,7 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
-## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, not accepted, blocked by another task, would not write its notes down
+## What the words and the ! exclamation mark under a stopped task mean — lost the connection, the model provider refused it, went in circles, out of steps, why does it say not accepted under my task, blocked by another task, would not write its notes down
 
 A task that did not finish keeps its branch, and the row under its name on the rail says
 **why** it stopped. The same words lead the task's card. They are three kinds of news:
@@ -2049,6 +2134,13 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.
+  - `the model provider refused it — branch kept`: the provider could not **serve** the
+    request at all — the service was down, the route had no provider left, a rate limit was
+    still refusing after the retries, or the account could not be served. Nothing was found
+    out about the work, and on a run with a budget this does **not** count as part of what
+    is still left to do. A model that read the request and **refused** it, and a rejection
+    of what the request itself contained, are the provider *answering* — those read
+    `ended with an error` and do still count.
   - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
     ended the turn (its last words are `this turn is going in circles · stopping here
     with anything remaining left undone`). Repetition is the whole of it: the same call
@@ -2065,7 +2157,7 @@ A task that did not finish keeps its branch, and the row under its name on the r
     is on the branch; the thinking behind it was never written anywhere, which is why the
     run stopped rather than carried on.
 - `✗` and one of these — **something was found**, and the report says what:
-  - `not accepted — branch kept`: the check named gaps, or you refuted it on its card.
+  - `not accepted — branch kept`: the check named gaps, or you said it was not right on its card.
   - `ended with an error — branch kept`: a working copy could not be made, the worker would
     not start, or an error nobody classified.
 
@@ -2110,7 +2202,8 @@ Endings are checked in a fixed order, and the first match wins:
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
 | 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
 | 6 | The connection to the model dropped — a reset, a closed socket — after the call's own retries and one more worker on the same model | `lost the connection to the model: <err>` |
-| 6b | The run errored | `it ended with an error: <err>` |
+| 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
+| 6c | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |
 | 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |
@@ -2144,7 +2237,7 @@ openai/gpt-5 stopped answering, so this ran again on openai/gpt-5-mini
 
 Three things it deliberately does not do. It never moves for a **tool** that failed — a
 failed call is a result the worker reads and goes on from, and it never ends a task. It
-never moves for work that is merely **incomplete** — that is the check's verdict, and
+never moves for work that is merely **incomplete** — that is what the check said, and
 re-rolling a model on it would be guessing at the answer. And it never moves for a reply
 that kept **going quiet**, because that turn already moved to another model on its own (see
 *Models, context, and what it costs*) and doing it again would spend a whole second worker

@@ -2,12 +2,14 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -130,6 +132,9 @@ func TestAnUnmetCheckCarriesTheRunOnEvenWhenTheReaderIsSilent(t *testing.T) {
 		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "port the parser", State: TaskDone}},
 		Checks:     []CheckRun{{Command: "go build ./...", Passed: false, Tail: "undefined: parseHeader"}},
+		// The baseline landed and the tree was clean, so this red is this run's
+		// own ([Remains.BaselineRead]).
+		BaselineRead: true,
 	})
 	if decision.Verb != DecideCarryOn {
 		t.Fatalf("a tree that does not build was called finished: %+v", decision)
@@ -160,6 +165,633 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 	}
 	if !strings.Contains(decision.Brief, "wire the handlers did not finish") {
 		t.Fatalf("the brief does not name the unfinished work:\n%s", decision.Brief)
+	}
+}
+
+// ── a session that changed the deliverable has finished something (#513) ────
+
+// WORK THIS SESSION DID WITH ITS OWN HANDS IS FINISHED WORK, WITH THE READER
+// AGREEING.
+//
+// The reef cell did the whole fix inline — the change, a 196-line test file, 43
+// tests green — and never started a task. [Remains.Landed] is a reading of the
+// task graph, so it stayed false over that tree, "nothing has been finished yet"
+// was the first line of both briefs, and the standstill compared two identical
+// briefs and stopped the run over green work one second after tidying up.
+//
+// THE READER IS THE WITNESS AND IT IS REQUIRED. A session's own files are not
+// evidence about themselves; what makes inline work count is somebody who did
+// not write them saying nothing is left.
+func TestInlineWorkWithTheReaderAgreeingIsFinishedWork(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Said:           "The scheme parsing is fixed and the tests pass.",
+		Acceptance:     "the bearer scheme is case-insensitive and the suite passes",
+		Made:           true,
+		ReaderSaysDone: true,
+	})
+	if decision.Verb != DecideDone {
+		t.Fatalf("a session that wrote the whole fix itself was told it had finished nothing: %+v", decision)
+	}
+
+	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked, and one
+	// whose call failed, both answer the same silence, and silence is not
+	// agreement.
+	alone := steward.Decide(Remains{
+		Said:       "The scheme parsing is fixed and the tests pass.",
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Made:       true,
+	})
+	if alone.Verb != DecideCarryOn {
+		t.Fatalf("a session graded its own inline work with nobody agreeing: %+v", alone)
+	}
+	if !strings.Contains(alone.Brief, "nothing has been finished yet") {
+		t.Fatalf("the brief does not say what is missing:\n%s", alone.Brief)
+	}
+}
+
+// AND A READER NAMING A GAP IN A SESSION WITH NOTHING ON THE RAIL IS A GAP.
+//
+// #468's law — a settled landing outranks a reading of the transcript — stands
+// where there IS a landing. With none, the reader is the only account of the work
+// anybody has, so what it says is left is left.
+func TestAReaderNamingAGapWithNoTasksCarriesTheRunOn(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Said:       "I have fixed the parsing.",
+		Reader:     "the scopes are still parsed case-sensitively",
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Made:       true,
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a gap the reader named was passed over: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") {
+		t.Fatalf("the brief does not carry the reader's own words:\n%s", decision.Brief)
+	}
+}
+
+// AND A SESSION THAT MADE NOTHING IS STILL A SESSION THAT HAS FINISHED NOTHING.
+//
+// The control, and the sentence people actually read: no task, no files, nothing
+// to point at. Whatever the transcript sounds like, the answer is the one it
+// always was.
+func TestASessionWithNothingMadeAndNothingLandedHasFinishedNothing(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Said:           "That completes the port. Everything is wired up.",
+		Acceptance:     "the parser handles every fixture",
+		ReaderSaysDone: true,
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a session that finished nothing was called finished: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "nothing has been finished yet") {
+		t.Fatalf("the brief does not say what is missing:\n%s", decision.Brief)
+	}
+}
+
+// ── what is left is read from the tree, not from a sibling's death (#513) ───
+
+// A UNIT THAT DIED ON THE WIRE FOUND NOTHING OUT, SO IT IS NOT WORK THAT IS
+// LEFT.
+//
+// The reef cell: the parent wrote `tests/reef_service/test_auth.py` itself, went
+// green on its own check and merged home. Its child — the unit that was to write
+// that very file — had died an hour earlier on an API 404, which is a fact about
+// who served the request and about nothing else. It was read as "Add focused
+// tests … did not finish", and the run carried on over a finished tree until its
+// wall.
+func TestASiblingThatDiedOnTheWireIsNotWorkThatIsLeft(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Landed:     true,
+		Landings: []Landing{
+			{
+				ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true, Checked: true,
+				Files: []string{"tests/reef_service/test_auth.py", "reef/service/auth.py"},
+			},
+			{
+				ID: 3, Title: "Add focused tests for case-insensitive bearer scheme",
+				State: TaskFailed, Ending: TaskEndingUpstream,
+				Report: "it ended with an error: API error (404): All providers have been ignored",
+				Files:  []string{"tests/reef_service/test_auth.py"},
+			},
+		},
+		Checks:       []CheckRun{{Command: "pytest", Passed: true, Ran: true}},
+		BaselineRead: true,
+	})
+	if decision.Verb != DecideDone {
+		t.Fatalf("a run was carried on over a sibling the provider could not serve: %+v", decision)
+	}
+
+	// AND THE CONNECTION ITSELF IS THE OTHER HALF OF THE SAME LAW, with nothing
+	// of the failed unit's work done by anybody: a dropped stream found nothing
+	// out either, so it is not a gap in the ask on its own account.
+	dropped := steward.Decide(Remains{
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Landed:     true,
+		Landings: []Landing{
+			{ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true, Checked: true},
+			{
+				ID: 3, Title: "Add focused tests for case-insensitive bearer scheme",
+				State: TaskFailed, Ending: TaskEndingWire,
+				Report: "lost the connection to the model: read: connection reset by peer",
+			},
+		},
+		Checks:       []CheckRun{{Command: "pytest", Passed: true, Ran: true}},
+		BaselineRead: true,
+	})
+	if dropped.Verb != DecideDone {
+		t.Fatalf("a run was carried on over a sibling whose connection dropped: %+v", dropped)
+	}
+}
+
+// AND THE CLASS IS READ OFF THE ERROR'S OWN TYPE, WHICH IS WHY IT NEEDED A WORD
+// OF ITS OWN.
+//
+// A provider refusing the request is not a dropped connection: it is terminal,
+// so [diedOnTheWire] answers false for it and the node used to end as
+// [TaskEndingError] — the same word as a working copy that could not be made.
+// [terminalProviderFailure] is the typed reading that tells them apart, on the
+// error's Go type and never on its sentence.
+func TestAProviderRefusalIsToldFromAnErrorAndFromTheWire(t *testing.T) {
+	// THE SERVICE FAILING TO SERVE: no route left, a limit still refusing after
+	// the retries, an account that could not be served, the service itself down.
+	for _, err := range []error{
+		&provider.APIError{Status: 404, Message: "All providers have been ignored"},
+		&provider.APIError{Status: 503, Message: "service unavailable"},
+		&provider.APIError{Status: 429, Message: "rate limit"},
+		&provider.APIError{Status: 401, Message: "no key"},
+		&provider.APIError{Status: 403, Message: "not permitted"},
+	} {
+		if !providerCouldNotServe(err) {
+			t.Fatalf("%v was not read as the provider failing to serve", err)
+		}
+		if diedOnTheWire(err) {
+			t.Fatalf("%v was read as a dropped connection", err)
+		}
+	}
+	// AND THE PROVIDER ANSWERING IS THE WORK, whatever the answer was: a model
+	// that read the request and refused it, and a 4xx about what the request
+	// itself held. Both leave the job undone, so both stay counted.
+	for _, err := range []error{
+		&provider.RefusalError{
+			Model:    "a-model",
+			Attempts: 3,
+			Refusal:  &provider.APIError{Status: 404, Message: "no endpoint can serve it"},
+		},
+		&provider.APIError{Status: 400, Message: "invalid request body"},
+		&provider.APIError{Status: 413, Message: "payload too large"},
+		&provider.APIError{Status: 422, Message: "unprocessable"},
+	} {
+		if providerCouldNotServe(err) {
+			t.Fatalf("%v was read as the service failing rather than as an answer", err)
+		}
+	}
+	// AND AN ORDINARY FAILURE IS NEITHER, so it keeps the ending it had and stays
+	// a finding about the work.
+	ours := errors.New("mkdir /nowhere/tree: read-only file system")
+	if providerCouldNotServe(ours) {
+		t.Fatal("a working copy that could not be made was blamed on the provider")
+	}
+	if !(Landing{State: TaskFailed, Ending: TaskEndingError}).aboutTheWork() {
+		t.Fatal("an ordinary failure stopped being a finding about the work")
+	}
+	for _, ending := range []TaskEnding{TaskEndingWire, TaskEndingUpstream} {
+		if (Landing{State: TaskFailed, Ending: ending}).aboutTheWork() {
+			t.Fatalf("a node that ended %q was read as a finding about the work", ending)
+		}
+	}
+}
+
+// AND A UNIT THAT FAILED AT THE WORK IS STILL WORK THAT IS LEFT.
+//
+// This is the control, and it is the whole risk of the clause above: a check
+// that found gaps, a loop guard, a threshold, a working copy that could not be
+// made are all findings ABOUT THE JOB, and nothing about them is answered by
+// somebody else's afternoon.
+func TestAUnitThatFailedAtTheWorkIsStillLeft(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Landed:     true,
+		Landings: []Landing{
+			{ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true},
+			{
+				ID: 3, Title: "Add focused tests for case-insensitive bearer scheme",
+				State: TaskFailed, Ending: TaskEndingRefused,
+				Files: []string{"tests/reef_service/test_auth.py"},
+			},
+		},
+		Checks: []CheckRun{{Command: "pytest", Passed: true}},
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a unit the check refused was called finished: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "Add focused tests for case-insensitive bearer scheme did not finish") {
+		t.Fatalf("the brief does not name the unfinished work:\n%s", decision.Brief)
+	}
+}
+
+// AND A UNIT WHOSE WORK SOMEBODY ELSE BROUGHT HOME IS ABSORBED, AND THE FILE
+// SAYS BY WHOM.
+//
+// The failed unit's only file is on the person's branch, put there by a unit
+// that finished and merged. Naming it as unfinished sends the run back to write
+// a file that is already written. What the reading may not do is close a gap
+// silently, so the absorption is a line of its own.
+func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
+	remains := Remains{
+		Landed: true,
+		Landings: []Landing{
+			{
+				ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true, Checked: true,
+				Files: []string{"tests/reef_service/test_auth.py", "reef/service/auth.py"},
+			},
+			{
+				ID: 3, Title: "Add focused tests", State: TaskFailed, Ending: TaskEndingSteps,
+				Files: []string{"tests/reef_service/test_auth.py"},
+			},
+		},
+	}
+	if left := remains.unmet(); len(left) != 0 {
+		t.Fatalf("work already on the person's branch is still being asked for: %q", left)
+	}
+	said := remains.absorbed()
+	if len(said) != 1 || !strings.Contains(said[0], "Add focused tests was absorbed by bearer case sensitivity") {
+		t.Fatalf("the absorption is not said whole: %q", said)
+	}
+
+	// AND THE FOUR WAYS IT IS REFUSED. A unit that changed nothing cannot be
+	// shown to be done; a landing that finished and could not come home is not
+	// the tree holding anything; a landing NOBODY JUDGED is not evidence about
+	// anybody's job, least of all somebody else's; and half of somebody's work is
+	// not their work.
+	nothingChanged := remains
+	nothingChanged.Landings[1].Files = nil
+	if left := nothingChanged.unmet(); len(left) != 1 {
+		t.Fatalf("a unit that changed nothing was absorbed anyway: %q", left)
+	}
+	nothingChanged.Landings[1].Files = []string{"tests/reef_service/test_auth.py"}
+
+	neverCameHome := remains
+	neverCameHome.Landings[0].Merged = false
+	if left := neverCameHome.unmet(); len(left) != 1 {
+		t.Fatalf("a landing that never came home absorbed another: %q", left)
+	}
+	neverCameHome.Landings[0].Merged = true
+
+	nobodyJudged := remains
+	nobodyJudged.Landings[0].Checked = false
+	if left := nobodyJudged.unmet(); len(left) != 1 {
+		t.Fatalf("a landing nobody checked spoke for somebody else's work: %q", left)
+	}
+	if said := nobodyJudged.absorbed(); len(said) != 0 {
+		t.Fatalf("an absorption nobody judged was written down: %q", said)
+	}
+	nobodyJudged.Landings[0].Checked = true
+
+	halfDone := remains
+	halfDone.Landings[1].Files = []string{"tests/reef_service/test_auth.py", "reef/service/scopes.py"}
+	if left := halfDone.unmet(); len(left) != 1 {
+		t.Fatalf("a unit half of whose work was done was absorbed: %q", left)
+	}
+}
+
+// ── the checks are read against the baseline (#513) ─────────────────────────
+
+// A CHECK THAT WAS ALREADY RED BEFORE THE WORK IS THE PROJECT'S, NOT THE RUN'S.
+//
+// The attrs cell's acceptance was "the existing test suite passes (run
+// `tox -e py`)" over a suite that had one failing test before anybody touched
+// anything. The sentence could never come true, so the goal owner read somebody
+// else's bug as work still to do and carried the run into it until the wall.
+//
+// Three arms, and they are the whole of the arithmetic: red before and green
+// after is somebody fixing something and is not left; red before and red after
+// is the project's and is not left; green before and red after is ours and is.
+func TestOnlyTheRedThisWorkTurnedRedIsWhatIsLeft(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		before []string
+		after  []CheckRun
+		done   bool
+	}{
+		{
+			name:   "red before and green after",
+			before: []string{"tox -e py"},
+			after:  []CheckRun{{Command: "tox -e py", Passed: true}},
+			done:   true,
+		},
+		{
+			name:   "red before and red after",
+			before: []string{"tox -e py"},
+			after:  []CheckRun{{Command: "tox -e py", Passed: false, Tail: "1 failed"}},
+			done:   true,
+		},
+		{
+			name:   "green before and red after",
+			before: nil,
+			after:  []CheckRun{{Command: "tox -e py", Passed: false, Tail: "1 failed"}},
+			done:   false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			steward := budgetLeft(t)
+			decision := steward.Decide(Remains{
+				Acceptance:   "the existing test suite passes (run `tox -e py`)",
+				Landed:       true,
+				Landings:     []Landing{{ID: 1, Title: "fix the subclass init", State: TaskDone, Merged: true}},
+				Checks:       tc.after,
+				WasFailing:   tc.before,
+				BaselineRead: true,
+			})
+			if tc.done && decision.Verb != DecideDone {
+				t.Fatalf("a run was carried on into red that was not its own: %+v", decision)
+			}
+			if !tc.done && decision.Verb != DecideCarryOn {
+				t.Fatalf("a check this work turned red was not counted: %+v", decision)
+			}
+			if !tc.done && !strings.Contains(decision.Brief, "tox -e py does not pass") {
+				t.Fatalf("the brief does not name the check this work broke:\n%s", decision.Brief)
+			}
+		})
+	}
+}
+
+// AND A CHECK THE BASELINE COULD NOT RUN KEEPS THE MEANING IT ALWAYS HAD.
+//
+// A command that would not start, or that the window closed over, taught nobody
+// anything about the tree. Recording it as already-red would SILENCE a real
+// failure on it later, which is this law pointing the wrong way — so only a
+// check that ran to an answer and answered red is baseline-red.
+func TestACheckTheBaselineCouldNotRunIsNotAlreadyRed(t *testing.T) {
+	steward := budgetLeft(t)
+	// COULD NOT RUN, AND RED NOW: it is left.
+	left := steward.Decide(Remains{
+		Acceptance:   "the suite passes",
+		Landed:       true,
+		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
+		Checks:       []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
+		WasFailing:   nil,
+		BaselineRead: true,
+	})
+	if left.Verb != DecideCarryOn {
+		t.Fatalf("a check nobody read before the work was treated as already broken: %+v", left)
+	}
+	if !strings.Contains(left.Brief, "tox -e py does not pass") {
+		t.Fatalf("the brief does not name the check:\n%s", left.Brief)
+	}
+	// RAN RED, AND RED NOW: it is the project's and is not left.
+	done := steward.Decide(Remains{
+		Acceptance:   "the suite passes",
+		Landed:       true,
+		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
+		Checks:       []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
+		WasFailing:   []string{"tox -e py"},
+		BaselineRead: true,
+	})
+	if done.Verb != DecideDone {
+		t.Fatalf("a run was carried on into red the baseline had already seen: %+v", done)
+	}
+}
+
+// AND THE READING ITSELF: ONE WINDOW, NO MUTATION, AND A CHECK NOBODY COULD RUN
+// IS NOT RED.
+//
+// The baseline runs an arbitrary shell command, so all three of these are about
+// not trusting it too far: two checks share the window rather than getting one
+// each, a check that WROTE is a first edit and not a photograph, and a command
+// the shell could not run answered nothing.
+func TestTheBaselineSharesOneWindowAndRefusesAMutatingCheck(t *testing.T) {
+	tree := t.TempDir()
+	writeFile(t, filepath.Join(tree, "keep.txt"), "before\n")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = tree
+		config.Unattended = true
+		config.Budget = Budget{Wall: time.Hour}
+	})
+
+	// A check that writes into the tree, one that simply fails, and one that is
+	// not a command at all.
+	agent.readBaseline(context.Background(), []string{
+		"printf after > keep.txt",
+		"exit 1",
+		"aforge-no-such-command-anywhere",
+	})
+
+	red, unread, read := agent.baselineRedChecks()
+	if !read {
+		t.Fatal("the reading never landed")
+	}
+	if len(red) != 1 || red[0] != "exit 1" {
+		t.Fatalf("the baseline is %q, want only the check that actually ran and failed", red)
+	}
+	// AND BOTH OF THE OTHERS SAY THEY WERE NOT READ rather than passing for
+	// green: the one that wrote into the tree and the one nobody could run.
+	if len(unread) != 2 {
+		t.Fatalf("the unread list is %q, want the writing check and the one nobody could run", unread)
+	}
+
+	// AND ONE WINDOW ACROSS THE SET, not one each: a window already closed reads
+	// nothing at all, however many checks are named.
+	closed, stop := context.WithCancel(context.Background())
+	stop()
+	second, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.Unattended = true
+		config.Budget = Budget{Wall: time.Hour}
+	})
+	second.readBaseline(closed, []string{"exit 1", "exit 1"})
+	if red, unread, read := second.baselineRedChecks(); !read || len(red) != 0 || len(unread) != 2 {
+		t.Fatalf("a closed window read red=%q unread=%q, want nothing red and both unread", red, unread)
+	}
+}
+
+// AND A READING ASSEMBLED BEFORE THE BASELINE LANDS COUNTS NOTHING.
+//
+// The reading runs in the background so the first turn is not held behind
+// somebody's suite, which means the first few readings have no baseline at all.
+// With none, no check is this run's own red — naming one before anybody knows
+// what was already failing is the same mistake in a hurry — and the brief says
+// the reading is still going, so silence is never read as "they pass".
+func TestWithNoBaselineYetNoCheckIsCountedAsNewRed(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the suite passes",
+		Landed:     true,
+		Landings: []Landing{
+			{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true},
+			{ID: 2, Title: "write the repro", State: TaskFailed, Ending: TaskEndingRefused},
+		},
+		Checks: []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a unit the check refused was called finished: %+v", decision)
+	}
+	if strings.Contains(decision.Brief, "tox -e py does not pass") {
+		t.Fatalf("a check was counted before anybody knew what was already red:\n%s", decision.Brief)
+	}
+	if !strings.Contains(decision.Brief, baselineStillReading) {
+		t.Fatalf("the brief never says the reading is still going:\n%s", decision.Brief)
+	}
+	// AND WITH NOTHING ELSE LEFT IT IS STILL NOT DONE OVER AN UNREAD CHECK —
+	// the red is not counted as ours, and it is not counted as the project's
+	// either, so what the checks say simply is not part of this answer yet.
+	if quiet := steward.Decide(Remains{
+		Acceptance: "the suite passes",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
+		Checks:     []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
+	}); quiet.Verb != DecideDone {
+		t.Fatalf("an unread check was counted against the ask: %+v", quiet)
+	}
+}
+
+// AND A CHECK THAT WRITES ONLY WHAT THE REPOSITORY IGNORES IS STILL READ.
+//
+// The attrs cell's only declared check was `python -m pytest tests/`. pytest
+// writes `.pytest_cache/` and `.hypothesis/`, both in the project's own
+// `.gitignore`, so the reading was thrown away — and with the only check
+// discarded the baseline came back empty, which reads as a clean tree, over a
+// project with 85 pre-existing failures.
+//
+// THE REPOSITORY'S OWN ANSWER IS THE ONE THAT COUNTS: the person already wrote
+// down what is not theirs.
+func TestABaselineCheckThatWritesOnlyIgnoredPathsIsStillRead(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, ".gitignore"), ".pytest_cache/\n.hypothesis/\n")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.Unattended = true
+		config.Budget = Budget{Wall: time.Hour}
+	})
+
+	// A check that writes exactly what pytest writes, and fails the way the
+	// project's suite already fails.
+	agent.readBaseline(context.Background(),
+		[]string{"mkdir -p .pytest_cache .hypothesis && touch .pytest_cache/v && exit 1"})
+
+	red, unread, read := agent.baselineRedChecks()
+	if !read {
+		t.Fatal("the reading never landed")
+	}
+	if len(unread) != 0 {
+		t.Fatalf("a check that wrote only ignored paths was thrown away: %q", unread)
+	}
+	if len(red) != 1 {
+		t.Fatalf("the baseline is %q, want the check that was already failing", red)
+	}
+}
+
+// AND A CHECK WHOSE READING WAS THROWN AWAY IS NEVER COUNTED EITHER WAY.
+//
+// The reading could not be taken, so nobody knows whose red it is — and an empty
+// WasFailing is a clean tree only when nothing was unread. Counting it would send
+// a finished run into somebody else's suite; calling it the project's would let
+// this run break it in silence. It is left out of the arithmetic entirely.
+func TestARedCheckWhoseBaselineWasUnreadIsNotCounted(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance:   "the suite passes",
+		Landed:       true,
+		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
+		Checks:       []CheckRun{{Command: "python -m pytest tests/", Passed: false, Ran: true}},
+		BaselineRead: true,
+		Unread:       []string{"python -m pytest tests/"},
+	})
+	if decision.Verb != DecideDone {
+		t.Fatalf("a red check nobody could attribute was counted against the run: %+v", decision)
+	}
+	// AND THE SAME RED WITH A READING BEHIND IT IS THIS RUN'S OWN.
+	ours := steward.Decide(Remains{
+		Acceptance:   "the suite passes",
+		Landed:       true,
+		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
+		Checks:       []CheckRun{{Command: "python -m pytest tests/", Passed: false, Ran: true}},
+		BaselineRead: true,
+	})
+	if ours.Verb != DecideCarryOn {
+		t.Fatalf("a check this work turned red was not counted: %+v", ours)
+	}
+}
+
+// AND THE SENTENCES ABOUT THE CHECKS RIDE A READER'S BRIEF TOO.
+//
+// Where the mark reader supplied the brief, this package's own two sentences
+// used to be skipped — so a worker was handed a line about the work with no word
+// about which red was already there, and went and fixed somebody else's bug. A
+// reader's line is about the WORK and cannot know that.
+func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Reader:       "the scopes are still parsed case-sensitively",
+		Acceptance:   "the suite passes",
+		Landed:       true,
+		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskFailed, Ending: TaskEndingRefused}},
+		Checks:       []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
+		WasFailing:   []string{"tox -e py"},
+		BaselineRead: true,
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a unit the check refused was called finished: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") {
+		t.Fatalf("the brief is not the reader's own line:\n%s", decision.Brief)
+	}
+	if !strings.Contains(decision.Brief,
+		"1 check was already failing before this work and is not counted: tox -e py") {
+		t.Fatalf("a reader's brief never says what was already broken:\n%s", decision.Brief)
+	}
+
+	// AND THE STILL-READING SENTENCE TOO, on the same road.
+	early := steward.Decide(Remains{
+		Reader:     "the scopes are still parsed case-sensitively",
+		Acceptance: "the suite passes",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "fix it", State: TaskFailed, Ending: TaskEndingRefused}},
+		Checks:     []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
+	})
+	if !strings.Contains(early.Brief, baselineStillReading) {
+		t.Fatalf("a reader's brief never says the reading is still going:\n%s", early.Brief)
+	}
+}
+
+// AND WHAT WAS ALREADY BROKEN IS SAID OUT LOUD RATHER THAN SILENTLY DROPPED.
+//
+// A worker handed a brief that does not mention red it can plainly see will go
+// and fix it, which is the same failure wearing the other coat. The sentence
+// names how many and which, in a person's words.
+func TestTheBriefSaysWhatWasAlreadyFailingBeforeTheWork(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the suite passes and the repro prints without error",
+		Landed:     true,
+		Landings: []Landing{
+			{ID: 1, Title: "fix the subclass init", State: TaskDone, Merged: true},
+			{ID: 2, Title: "write the repro", State: TaskFailed, Ending: TaskEndingRefused},
+		},
+		Checks: []CheckRun{
+			{Command: "tox -e py", Passed: false, Tail: "1 failed", Ran: true},
+			{Command: "go build ./...", Passed: false, Ran: true},
+		},
+		WasFailing:   []string{"tox -e py"},
+		BaselineRead: true,
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a unit the check refused was called finished: %+v", decision)
+	}
+	if strings.Contains(decision.Brief, "tox -e py does not pass") {
+		t.Fatalf("the brief asks for red that was there before the work:\n%s", decision.Brief)
+	}
+	if !strings.Contains(decision.Brief, "go build ./... does not pass") {
+		t.Fatalf("the brief does not name the check this work broke:\n%s", decision.Brief)
+	}
+	if !strings.Contains(decision.Brief,
+		"1 check was already failing before this work and is not counted: tox -e py") {
+		t.Fatalf("the brief never says what was already broken:\n%s", decision.Brief)
 	}
 }
 
@@ -498,6 +1130,9 @@ func TestALandingThatCoversTheAskOutranksTheReadersLine(t *testing.T) {
 		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "merge the ledger home", State: TaskDone}},
 		Checks:     []CheckRun{{Command: "go test ./ledger", Passed: true}},
+		// A green suite is a suite whose before-reading has landed; without it the
+		// brief would truthfully add that the checks are still being read.
+		BaselineRead: true,
 	}
 	if got := budgetLeft(t).Decide(settled); got.Verb != DecideDone {
 		t.Fatalf("a landed, checked ask was carried on over a reader's line: %+v", got)

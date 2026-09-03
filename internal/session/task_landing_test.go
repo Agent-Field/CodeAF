@@ -48,7 +48,7 @@ func TestALandingBringsHomeOnlyWhatTheWorkerWrote(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, ".pytest_cache", "CACHEDIR.TAG"), "cache\n")
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py", "parser_test.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py", "parser_test.py"})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -87,7 +87,7 @@ func TestAnIgnoredPathTheWorkerWroteDoesNotCostItTheRest(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 	writeFile(t, filepath.Join(tree.dir, "run.log"), "noise\n")
 
-	saved, problem := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"})
+	saved, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"})
 	if problem != "" {
 		// THE REST OF THE LEDGER WENT IN, so the one path git refused is not a
 		// failure of the landing (task_land_unsaved.go's [unstagedWork]).
@@ -190,7 +190,7 @@ func TestAConflictedMergeLeavesHomeCleanAndNamesTheFile(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
-	merge, detail := tree.comeHome("edit the shared file", []string{"shared.txt"})
+	merge, detail, _ := tree.comeHome("edit the shared file", []string{"shared.txt"})
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want conflicted", merge, detail)
 	}

@@ -1768,6 +1768,29 @@ type Agent struct {
 	// the node so the graph's own struct stays what it is — the person's work —
 	// and so a node that nothing classified simply has no entry.
 	tallies map[uint64]*taxonomy.Tally
+
+	// baselineRed is the declared checks that were already failing before this
+	// session did any work, and baselineTaken says the reading has happened —
+	// which is not the same as the list being non-empty, because a clean tree
+	// reads as no red at all ([Agent.openBaseline]).
+	baselineRed   []string
+	baselineTaken bool
+	// baselineRead says the reading has LANDED, which is not the same as it
+	// having been started ([Agent.openBaseline] runs it in the background) and
+	// not the same as the list being non-empty (a clean tree reads as no red).
+	baselineRead bool
+	// baselineUnread is the checks the reading could not read at all — one that
+	// changed the tree, one the shell could not run, one the window never
+	// reached ([Remains.Unread]).
+	baselineUnread []string
+	// baselineDone is closed when the reading lands, so the one moment that has
+	// to have it can wait ([Agent.awaitBaseline]).
+	baselineDone chan struct{}
+
+	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
+	// so one unit of work whose job somebody else did is said once rather than
+	// at the end of every reply for the rest of the run.
+	absorbed map[string]bool
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string
@@ -2124,6 +2147,13 @@ type Agent struct {
 	// before the call" — because that ledger is dropped at the end of every turn
 	// and the question this answers is asked once, at the end of the session.
 	createdFiles []fileChange
+	// changedFiles is EVERY FILE THIS SESSION MODIFIED THAT WAS THERE BEFORE, in
+	// first-touch order (principal_audit.go). It is kept apart from createdFiles
+	// on purpose: that ledger is what the tidy may remove, and nothing in this
+	// build may remove a file the session did not make. This one is only ever
+	// READ, to answer whether the session put work on the deliverable with its
+	// own hands ([Remains.Made]).
+	changedFiles []fileChange
 	// writes is THE RUNNING TURN'S account of what it has changed under the
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a
