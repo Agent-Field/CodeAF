@@ -68,7 +68,9 @@ import (
 //     CANNOT produce: a proxy, a static host, a mistyped path and a plain nginx
 //     all answer in HTML or bare text, and none of them has an envelope to
 //     answer in;
-//   - the request went to a router at all ([Client.isOpenRouter]), because this
+//   - the request went to a base that has SHOWN it serves several endpoints
+//     behind a model ([Client.baseServesLanes] — the endpoints page it
+//     answered, never its hostname), because this
 //     whole ladder is about which of several endpoints may serve one model, and
 //     a single endpoint has no endpoint set that can be emptied;
 //   - the model is one the CATALOG KNOWS ([Client.catalogKnowsModel]), which is
@@ -247,7 +249,15 @@ func (c *Client) routingRefusal(model string, status int, payload []byte) bool {
 	if endpointRefusalPhrase(payload) {
 		return true
 	}
-	if !c.isOpenRouter() {
+	// A SHEET SITE (#433), and it is the sheet's answer rather than the
+	// preference one on purpose. What this clause asks is "does this base have
+	// a SET of endpoints behind a model that could be emptied" — a single
+	// endpoint has none — and the base that has shown one is exactly the base
+	// that served an endpoints page. Keyed on the preference answer instead it
+	// would read a plain endpoint's very first 404 as a routing layer with
+	// nothing left to try and strip four fields off the person's request to
+	// find out otherwise.
+	if !c.baseServesLanes() {
 		return false
 	}
 	upstream, ok := routerErrorEnvelope(payload)
@@ -548,8 +558,75 @@ func (c *Client) recoverFromRefusal(
 	return nil, c.refusalError(request, knobs, model, stripped, tried, attempt+1, last)
 }
 
+// widenPastTheUncarriedPreference is the ONE retry that finds out whether a
+// base's 400 was about the `provider` field at all — and it is the ANSWER to
+// that question rather than a recovery from it.
+//
+// THE RETRY IS THE TEST, AND IT IS THE TEST BECAUSE NO READING OF THE WORDS IS
+// ONE. `Unrecognized request argument supplied: provider` and `invalid provider
+// name` are both 400s that name the field and they mean opposite things, so a
+// phrase list here would mark a base as refusing preferences for good over one
+// bad lane name (prefcarry.go's [prefRefused] states the whole of that
+// argument). Sending the identical request with the object taken off settles it
+// structurally: if that lands, the object was the difference; if it fails too,
+// the object was not.
+//
+// AND A FAILURE TEACHES NOTHING, WHICH IS THE HALF THAT MATTERS. The base's
+// answer stays unasked, so the next request carries the preference again and the
+// person is told nothing — because nothing was established. What they get back
+// is the second refusal, whole, which is the honest thing to hand a caller whose
+// request could not be served either way.
+//
+// THE OBJECT COMES OFF ENTIRELY and not by the ladder's first rung: that rung
+// takes off what can EXCLUDE an endpoint and leaves the sort word, which would
+// ask the same question again ([callKnobs.noProvider]).
+func (c *Client) widenPastTheUncarriedPreference(
+	ctx context.Context,
+	request *ai.Request,
+	knobs callKnobs,
+	stream bool,
+	began time.Time,
+	status int,
+	first []byte,
+) (*http.Response, error) {
+	// THE REFUSED CALL GETS ITS OWN ROW BEFORE THE WIDER ONE GOES OUT, for
+	// [Client.widenPastTheRetiredPin]'s reason word for word: a start row left
+	// with nothing under it is the one state the model-call log exists to make
+	// impossible, and this is the row a person counts to check the 400 was paid
+	// once.
+	c.record(recordFacts{
+		ctx: ctx, request: request, knobs: knobs, stream: stream,
+		attempt: c.attemptsSoFar(knobs), began: began,
+		status: status, err: apiError(status, first),
+		responseBody: first,
+	})
+	widened := knobs
+	widened.noProvider = true
+	// IT IS [Client.sendRepaired] AND NOT THE LADDER. The ladder exists to find
+	// out WHICH field of a request could not be served; this retry is asking one
+	// named question and its answer is yes or no, so climbing on to strip the
+	// reasoning knob and the tools would take things the person cares about
+	// having sent in order to answer something nobody asked.
+	response, err := c.sendRepaired(ctx, request, widened, stream)
+	if err != nil || response == nil || response.StatusCode >= 400 {
+		return response, err
+	}
+	// IT LANDED, SO THE FIELD WAS THE DIFFERENCE. The base is filed as one that
+	// will not carry a preference, and the person is told once — after which
+	// every later request goes out bare rather than paying this pair again.
+	c.prefsWereRefused(ctx)
+	return response, nil
+}
+
 // widenPastTheRetiredPin is the ONE retry a request earns for having just cost
-// somebody their pin.
+// somebody their preference.
+//
+// TWO CALLERS AND ONE RULE (client.go's [Client.sendRecovered]). A pin the
+// router says it cannot serve for this model is retired (issue #456), and a
+// BASE that says it will not carry a `provider` object at all is filed as such
+// (issue #433). Both are the same shape of fact learned at the same instant —
+// the demand that was on this request will not be on any later one — and both
+// owe the request in hand the same answer: send it again, once, without it.
 //
 // It is rung one of the ladder and nothing else: the whole `provider` object
 // comes off ([relaxedPreferences]), so what goes out is the request `auto`

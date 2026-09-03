@@ -31,12 +31,21 @@
 //
 // ── TWO THINGS TO KNOW BEFORE WRITING A TEST ────────────────────────────────
 //
-// FIRST, the transport only sends a routing preference to something it believes
-// is a router, and it decides that from the base URL or the configured model
-// (`internal/provider/client.go`, isOpenRouter). A loopback address is neither,
-// so a test that wants to see `provider.order` on the wire configures its
-// client with a model spelled `openrouter/…` — the per-request model stays
-// whatever the test is really about.
+// FIRST, THIS STUB IS A ROUTER BECAUSE OF WHAT IT ANSWERS AND NOT BECAUSE OF
+// WHERE IT LIVES, and a test writes nothing to make that true. It serves an
+// endpoints page, and a base that serves one carries a routing preference by
+// the router's own contract (issue #419 for the sheet, #433 for the
+// preference), so a client pointed at the plain [Server.URL] gets a sheet, a
+// frontier, and `provider.order` or `provider.only` on the wire — which is what
+// [Server.Preference] is here to read back.
+//
+// That was not true until those two landed. The transport decided both
+// questions from the base URL for `openrouter.ai` or from a model spelled
+// `openrouter/…`, a loopback address is neither, and so every test that wanted
+// to see a preference on the wire had to dress itself up as the shipped router.
+// A test written that way today is testing the DRESS. Point it at
+// [Server.URL], and if a preference does not arrive, that is the product
+// answering.
 //
 // SECOND, the fast clock is ONE TIMELINE. Its Wait returns at once and advances
 // a shared offset, which is exactly right for a scripted single stream and
@@ -289,6 +298,25 @@ type Server struct {
 	// as distinct from "this router does not publish that model", which the
 	// route answers on its own for an unknown model.
 	sheetless bool
+	// anonymous takes the `provider` field OFF every answer, which is what a
+	// plain OpenAI-compatible endpoint looks like: it serves the completion and
+	// says nothing about which machine did it. It is the state issue #433's
+	// honest limit is about — an answer with no lane information cannot be told
+	// apart from a routing preference silently ignored — so it is what a test
+	// stages to assert that this build takes the safe reading and SAYS so.
+	anonymous bool
+	// refusesPrefs makes this base answer 400 to any request carrying a
+	// `provider` object, in the sentence OpenAI's own API answers with. It is
+	// the other half of #433: a base that refuses the field outright rather
+	// than ignoring it, whose refusal must cost the request in hand nothing
+	// more than one widened retry.
+	refusesPrefs bool
+	// refusesAll makes this base answer 400 to EVERY request, whether or not it
+	// carries a `provider` object. It stages the case that proves #433's retry
+	// really is the test: a base whose refusal was never about the field must
+	// teach nothing at all, so the widened retry fails too and the question
+	// stays open.
+	refusesAll bool
 }
 
 // New starts a router serving one model over the given lanes, in the order they
@@ -304,14 +332,12 @@ func New(model string, lanes ...Lane) *Server {
 	}
 	server.Model(model, lanes...)
 	mux := http.NewServeMux()
-	// THE SAME ROUTER, MOUNTED TWICE. The second mount is what [Server.RouterURL]
-	// hands out, and it exists because two gates in this build ask whether the
-	// thing on the other end IS a router by looking at the base URL for
-	// `openrouter.ai` (internal/provider's isOpenRouter and LaneSheetAvailable).
-	// A loopback address is not one, so a run pointed at this stub through
-	// AFORGE_BASE_URL correctly gets no endpoints page and no lane sheet at all
-	// — which makes the whole frontier untestable end to end, and the frontier
-	// is where issue #266's refusal came from.
+	// THE SAME ROUTER, MOUNTED TWICE, AND THE SECOND MOUNT IS NOW ONLY FOR THE
+	// SHIPPED ROUTER'S OWN FAST PATH. [Server.RouterURL] hands out the dressed
+	// spelling, and what it still buys is stated where it is defined: the two
+	// hints that remain hostname-shaped, which are the ones that really are
+	// about that one machine. Nothing about lanes or preferences needs it any
+	// more — [Server.URL] gets both from what this stub answers.
 	for _, prefix := range []string{"", routerPathPrefix} {
 		mux.HandleFunc("GET "+prefix+"/api/v1/models/{author}/{slug}/endpoints", server.serveSheet)
 		mux.HandleFunc("GET "+prefix+"/api/v1/models", server.serveCatalog)
@@ -376,6 +402,38 @@ func (s *Server) Sheetless() {
 	s.sheetless = true
 }
 
+// Anonymous makes this router answer without naming the lane that served, the
+// way a plain OpenAI-compatible endpoint does. The lanes still take their turns
+// and [Server.Served] still records who answered — what changes is only what
+// the WIRE says, which is what the build under test can see. It is set before
+// any request is made.
+func (s *Server) Anonymous() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.anonymous = true
+}
+
+// RefusesPreference makes this base answer 400 to any request that carries a
+// `provider` object, in OpenAI's own words for an argument it does not know.
+// The request is still recorded in [Server.Asks] before the refusal, so a test
+// can see both the ask that was refused and the widened one that followed. It
+// is set before any request is made.
+func (s *Server) RefusesPreference() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refusesPrefs = true
+}
+
+// RefusesEverything makes this base answer 400 to every request, in a sentence
+// that is about nothing in particular. It is what a base whose 400 was never
+// about the routing preference looks like from outside, and it is set before
+// any request is made.
+func (s *Server) RefusesEverything() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refusesAll = true
+}
+
 // SetClock replaces the clock. It is set before any request is made.
 func (s *Server) SetClock(clock Clock) {
 	s.mu.Lock()
@@ -391,26 +449,33 @@ func (s *Server) SetClock(clock Clock) {
 // differently for the stub.
 func (s *Server) URL() string { return s.http.URL + "/api/v1" }
 
-// routerPathPrefix is the path segment that makes [Server.RouterURL] read as a
-// router to the two gates that decide by hostname.
+// routerPathPrefix is the path segment that makes [Server.RouterURL] read as
+// THE SHIPPED ROUTER to the two hints that are still hostname-shaped.
 const routerPathPrefix = "/openrouter.ai"
 
-// RouterURL is [Server.URL] spelled so that this build RECOGNISES the stub as a
-// router rather than as some OpenAI-compatible endpoint.
+// RouterURL is [Server.URL] spelled so that this build reads the stub as THE
+// SHIPPED ROUTER — the specific machine — rather than as a router in general.
 //
-// WHY IT HAS TO EXIST. Two gates in internal/provider answer "is this a router"
-// by looking for `openrouter.ai` in the base URL — isOpenRouter, which decides
-// whether a routing preference is sent at all, and LaneSheetAvailable, which
-// decides whether the endpoints page is ever fetched. A test that configures a
-// client can dodge the first by spelling its MODEL `openrouter/…`, and there is
-// no such dodge for the second: a whole binary driven through AFORGE_BASE_URL
-// at a loopback stub gets no sheet, so its frontier stays empty, so it never
-// ranks a lane and never demands one. Issue #266's refusal is a refusal of a
-// DEMAND, so without this there was no way to reproduce it end to end.
+// IT IS NO LONGER HOW A TEST GETS LANES, AND USING IT FOR THAT IS A BUG IN THE
+// TEST. Lanes, a sheet and a routing preference all now come from what a base
+// ANSWERS: #419 made the endpoints page the probe, and #433 made the
+// preference the base's own answer, so [Server.URL] gets the whole of the lane
+// behaviour and a test that dresses up to obtain it is asserting against the
+// dress. A test on the plain URL is the one that would notice a regression.
+//
+// WHAT IT IS STILL HONEST FOR is the fast path itself, and only that: the
+// shipped router skips the asking ([provider.LaneSheetCertain] passes `known`
+// to the sheet, which files the preference answer with it), so a test that
+// wants to prove the shipped path pays NO EXTRA REQUEST has to be talking to
+// something this build reads as that machine. The two remaining hostname
+// readings in internal/provider — the attribution headers OpenRouter's ranking
+// page reads, and the choice of this adapter's own transport over the SDK's —
+// are the other things it stages, and neither is a claim about lanes.
 //
 // It is a URL and not a flag on purpose: the seam being staged is the one the
-// product really reads, so a build that stopped recognising routers by hostname
-// would stop recognising this too, which is the honest way for a stub to fail.
+// product really reads, so a build that stopped recognising the shipped router
+// by hostname would stop recognising this too, which is the honest way for a
+// stub to fail.
 func (s *Server) RouterURL() string { return s.http.URL + routerPathPrefix + "/api/v1" }
 
 // Close shuts the router down.
@@ -652,6 +717,19 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.asks = append(s.asks, record)
+	if s.refusesAll {
+		s.mu.Unlock()
+		writeError(w, http.StatusBadRequest, "this base is having an afternoon", "")
+		return
+	}
+	if s.refusesPrefs && ask.Provider != nil {
+		s.mu.Unlock()
+		// THE ASK IS ON THE RECORD AND NO LANE IS CHARGED FOR IT. Nothing
+		// served this request, so counting it against a lane would be a
+		// measurement of a machine that never saw it.
+		writeError(w, http.StatusBadRequest, "Unrecognized request argument supplied: provider", "")
+		return
+	}
 	// A floating id is resolved here and nowhere else: the sheet handler does
 	// not consult the aliases, because the router publishes no endpoints page
 	// for one. See [Server.Alias].
@@ -693,6 +771,13 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	s.served = append(s.served, lane.Name)
 	s.next++
 	id := fmt.Sprintf("gen-%d", s.next)
+	// WHAT THE WIRE SAYS AND WHAT REALLY HAPPENED ARE TWO THINGS HERE. The lane
+	// answered and the ledger above records that it did; `named` is only what
+	// the ANSWER admits to, which [Server.Anonymous] empties.
+	named := lane.Name
+	if s.anonymous {
+		named = ""
+	}
 	s.mu.Unlock()
 
 	if lane.FailWith != 0 {
@@ -700,10 +785,10 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ask.Stream {
-		s.serveWhole(w, r, clock, id, ask, lane, record)
+		s.serveWhole(w, r, clock, id, named, ask, lane, record)
 		return
 	}
-	s.serveStream(w, r, clock, id, ask, lane, record)
+	s.serveStream(w, r, clock, id, named, ask, lane, record)
 }
 
 // pick is the preference honoured: `only` is a demand, `ignore` is a veto, and
@@ -802,7 +887,7 @@ func equalName(a, b string) bool {
 // serveStream writes the answer as the router does: comment lines while nothing
 // has happened yet, one chunk per token with the serving lane named on every
 // one of them, a usage frame, and the sentinel.
-func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock, id string, ask wireAsk, lane Lane, record Ask) {
+func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock, id, named string, ask wireAsk, lane Lane, record Ask) {
 	ctx := r.Context()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -889,7 +974,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			return
 		}
 		text := fmt.Sprintf("r%d ", thought)
-		frame := reasoningJSON(id, ask.Model, lane.Name, text)
+		frame := reasoningJSON(id, ask.Model, named, text)
 		if lane.Fenced {
 			// The whole run inside one pair of tags: opened on the first delta
 			// and closed on the last, which is how a gateway that does not strip
@@ -900,7 +985,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			if thought == lane.Reasoning-1 {
 				text += "</think>"
 			}
-			frame = chunkJSON(id, ask.Model, lane.Name, text)
+			frame = chunkJSON(id, ask.Model, named, text)
 		}
 		if !write("data: " + frame + "\n\n") {
 			s.cancelled(lane.Name)
@@ -912,17 +997,17 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			s.cancelled(lane.Name)
 			return
 		}
-		if !write("data: " + chunkJSON(id, ask.Model, lane.Name, fmt.Sprintf("t%d ", token)) + "\n\n") {
+		if !write("data: " + chunkJSON(id, ask.Model, named, fmt.Sprintf("t%d ", token)) + "\n\n") {
 			s.cancelled(lane.Name)
 			return
 		}
 	}
-	if !write("data: " + finishJSON(id, ask.Model, lane.Name) + "\n\n") {
+	if !write("data: " + finishJSON(id, ask.Model, named) + "\n\n") {
 		s.cancelled(lane.Name)
 		return
 	}
 	cost := lane.PriceIn*float64(record.PromptTokens) + lane.PriceOut*float64(total)
-	if !write("data: " + usageJSON(id, ask.Model, lane.Name, record.PromptTokens, total, cost) + "\n\n") {
+	if !write("data: " + usageJSON(id, ask.Model, named, record.PromptTokens, total, cost) + "\n\n") {
 		s.cancelled(lane.Name)
 		return
 	}
@@ -932,7 +1017,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 // serveWhole answers a request that did not ask to stream. It exists so that
 // nothing in this stub has to be special-cased by a caller that streams
 // sometimes; the timings are honoured the same way.
-func (s *Server) serveWhole(w http.ResponseWriter, r *http.Request, clock Clock, id string, ask wireAsk, lane Lane, record Ask) {
+func (s *Server) serveWhole(w http.ResponseWriter, r *http.Request, clock Clock, id, named string, ask wireAsk, lane Lane, record Ask) {
 	total := lane.Tokens
 	if total <= 0 {
 		total = DefaultTokens
@@ -955,7 +1040,7 @@ func (s *Server) serveWhole(w http.ResponseWriter, r *http.Request, clock Clock,
 		"object":   "chat.completion",
 		"created":  clock.Now().Unix(),
 		"model":    ask.Model,
-		"provider": lane.Name,
+		"provider": named,
 		"choices": []any{map[string]any{
 			"index":         0,
 			"message":       map[string]any{"role": "assistant", "content": answer.String()},
