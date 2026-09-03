@@ -1,0 +1,2330 @@
+turn 0 · the harness
+    contract:
+    Read CLAUDE.md first; then locate the leaf harness round loop under internal/ (search for where tool timeout errors are handled and where existing stop reasons like the wall are declared — the new reason must live beside them as a typed value, not a string match). Write the acceptance test first, in the scripted-brain test file, driving a brain whose tool times out on one fixed command: assert the round's stop reason is the new kind, that it carries the command text and count, and that the tool was called exactly three times. Run it and watch it fail. Then implement: a counter keyed on (command text, timeout) reset per round, one exported constant MaxIdenticalTimeouts = 3, and the new stop-reason kind with the constant interpolated via fmt into its text. Run the test green. Grep for any second literal 3 in what you wrote. Add the changelog entry — check the Makefile for changelog-new, else copy an existing file in docs/changes/unreleased/. The stop reason is person-facing (the person-facing stream says it), so find the manual page section on how rounds end and add one line there, interpolating the same threshold wording. Finally run `go build ./...` plus `go test` on each touched package in one pass; report test names and the exact command.
+turn 1 · read ←
+    {"path": "CLAUDE.md"}
+turn 1 · read → 0ms · error
+    no tool named "read". Available: sh, job, write, edit, web, recall, capabilities (loads: media, documents)
+turn 1 · sh ←
+    {"cmd": "find internal/ -type d | head -60"}
+turn 1 · sh → 0ms
+    internal/
+    internal/router
+    internal/e2e
+    internal/wirelog
+    internal/thread
+    internal/consent
+    internal/profile
+    internal/lease
+    internal/tui
+    internal/tui/charmbubbles
+    internal/tui/charmbubbles/textinput
+    internal/tui/charmbubbles/viewport
+    internal/history
+    internal/jsrun
+    internal/enginehost
+    internal/video
+    internal/filelock
+    internal/subharness
+    internal/subharness/prompts
+    internal/cachedir
+    internal/rtk
+    internal/rtk/testdata
+    internal/splitgate
+    internal/store
+    internal/furrowbin
+    internal/furrowbin/cmd
+    internal/furrowbin/cmd/fetch
+    internal/furrowbin/cache
+    internal/craft
+    internal/orchestrate
+    internal/taxonomy
+    internal/gate
+    internal/session
+    internal/session/testdata
+    internal/session/prompts
+    internal/provider
+    internal/provider/testdata
+    internal/provider/pool
+    internal/pdfx
+    internal/search
+    internal/orientation
+    internal/remote
+    internal/manual
+    internal/manual/chat
+    internal/manual/asked
+    internal/manual/pages
+    internal/ci
+    internal/connect
+    internal/connect/ampcatalog
+    internal/connect/ampcatalog/gen
+    internal/trace
+    internal/redact
+    internal/shaped
+    internal/resident
+    internal/pair
+    internal/pair/cpace
+    internal/catalog
+    internal/catalog/testdata
+    internal/openrouterauth
+    internal/voice
+turn 2 · sh ←
+    {"cmd": "cat CLAUDE.md"}
+turn 2 · sh → 0ms
+    # Working in this repo
+    
+    ## Which surface is which
+    
+    Three chat surfaces live here. Getting this wrong wastes a whole recon pass, so check
+    before you read.
+    
+    | Path | What it is |
+    | --- | --- |
+    | `internal/tui3` | **v3 — the live surface.** Entry `cmd/aforge/chatv3.go`. Bare `aforge` and `aforge chat` both open it. |
+    | `internal/session` | **the v3 engine** — the agent, the turn loop, the toolbelt, tasks. |
+    | `internal/tui2` | REMOVED as a surface on 2026-08-31. What remains (`tokens`, `blocks`, `prose`, `modelui`, `reltime`) is the shared component library v3 draws with. |
+    | `internal/tui` | v1, and the visual north star: restrained, dim telemetry, no borders. |
+    | `internal/head`, `internal/resident` | the v1 **resident** — a different product in the same binary. |
+    
+    v3 is a **session you sit in front of**. The resident is an employee that keeps working
+    while the terminal is closed. They share a repository and almost nothing else — do not
+    carry vocabulary or assumptions between them.
+    
+    ## Branches — where work goes
+    
+    `dev` is the trunk and the default branch. Five rules, and they are here rather
+    than only in `docs/rules/` because they are the ones that must never be looked up:
+    
+    - **Branch off `dev`, and open the pull request against `dev`.** Never against
+      `main`, which is parked fifteen hundred commits back at the released v0.1.0.
+    - **Never push directly to `dev`, `staging` or `main`, and never force-push any
+      of the three.**
+    - **`staging` moves by fast-forward onto a commit that is already on `dev`** —
+      `git push origin <sha>:staging`, never a merge. `main` is not in the pipeline
+      yet and nothing promotes to it.
+    - **Nothing publishes by itself.** A release is a semver tag on a commit that is
+      on `staging`, cut by a person; the workflow refuses a tag that is anywhere else.
+    - **Every pull request carries a change entry** in `docs/changes/unreleased/` —
+      `make changelog-new PR=<n> KIND=<kind> SLUG=<slug>`, and the `check` job
+      demands it.
+    
+    The pull-request gate into `dev` is deliberately light — build, vet, the packed
+    corpora, the change entry, the manual law, a few minutes. The whole suite runs on the way into
+    `staging` and nightly against `dev`. So **`dev` is where things are allowed to be
+    briefly wrong**, which is the trade that keeps it fast, and the reason a commit
+    soaks on `dev` for a couple of days before anyone promotes it.
+    
+    **AND IF YOUR MEMORY OF THIS REPOSITORY IS OLDER THAN A FEW DAYS, READ
+    `docs/changes/unreleased/` BEFORE ACTING ON IT.** That is what those entries are
+    for, and it is the one thing `git log` cannot tell you. They do not say what
+    shipped; they say what somebody now believes **wrongly** — the branch that
+    stopped existi
+    … 12358 bytes elided …
+    me — `-run 'TestTUIE2E/<name>'` — rather than
+    paying for the whole thing, and capture the output to a file: the screens it logs
+    are far too wide to read through a pipe.
+    
+    Its needles all come out of one table, `internal/e2e/tuiwords_test.go`, which an
+    **untagged** test in the same package reads back against `internal/tui3`'s own
+    sources — so `go test ./internal/e2e/` (no tag, no model, under a second) fails
+    the moment the surface stops spelling a sentence the suite waits for. That gate
+    exists because the suite silently rotted for a week after the home redesign
+    (#184); if you respell a person-facing string, expect it to name you.
+    
+    **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
+    
+    ```sh
+    go test ./internal/remote/ ./internal/enginehost/ ./internal/pair/... ./internal/relay/ ./internal/furrow/
+    make test-remote          # three containers, no API key, ~50s; SKIPS GREEN with no docker
+    ```
+    
+    `make test-remote` builds its container binaries for **this machine's** architecture; an
+    `Exec format error` from `modelstub` means that pin was reintroduced. With no second
+    machine, `--host localhost` is a real connection over a real ssh pipe and exercises
+    everything except the shared-disk law — `docs/remote-access-testing.md` §3.0 has the tmux
+    recipe for driving the surface and killing the link on purpose.
+turn 2 · sh ←
+    {"cmd": "grep -r \"leaf\" internal/ --include=\"*.go\" -l | head -30"}
+turn 2 · sh → 0ms
+    internal/router/events.go
+    internal/router/ledger.go
+    internal/router/router.go
+    internal/router/ledger_test.go
+    internal/router/router_test.go
+    internal/router/events_test.go
+    internal/consent/consent_test.go
+    internal/consent/consent.go
+    internal/profile/identity_test.go
+    internal/profile/profile.go
+    internal/tui/vocabulary_test.go
+    internal/tui/choice_receipt_test.go
+    internal/tui/model_test.go
+    internal/tui/self_drill.go
+    internal/subharness/exec_model_test.go
+    internal/subharness/exec_model.go
+    internal/subharness/source.go
+    internal/rtk/rtk.go
+    internal/store/practice_test.go
+    internal/store/issuer_test.go
+    internal/store/surgery.go
+    internal/store/planjournal.go
+    internal/store/query.go
+    internal/store/store_test.go
+    internal/store/node_model.go
+    internal/store/lifecycle_silent_test.go
+    internal/store/thread.go
+    internal/store/usage_turns.go
+    internal/store/plan_model_test.go
+    internal/store/receipts_test.go
+turn 2 · sh ←
+    {"cmd": "grep -r \"stop reason\\|StopReason\\|stopReason\\|tool.*timeout\\|timeout.*tool\" internal/ --include=\"*.go\" -l | head -30"}
+turn 2 · sh → 0ms
+    internal/profile/profile.go
+    internal/store/leafrun.go
+    internal/session/agent.go
+    internal/session/loop.go
+    internal/trace/trace.go
+    internal/resident/ranoutwords.go
+    internal/resident/ranout_test.go
+    internal/resident/runner.go
+    internal/exec/linear.go
+    internal/exec/schedule_test.go
+    internal/exec/tools.go
+    internal/exec/ranoutwords.go
+    internal/exec/jobs_test.go
+    internal/exec/schedule.go
+    internal/exec/executor.go
+    internal/exec/bare/tools_test.go
+    internal/exec/inks9_test.go
+    internal/exec/noprogress.go
+    internal/tui3/toolview.go
+    internal/tui3/bundle_test.go
+    internal/tui3/app.go
+    internal/command/verbs.go
+turn 3 · sh ←
+    {"cmd": "cat internal/store/leafrun.go"}
+turn 3 · sh → 0ms
+    package store
+    
+    import (
+    	"database/sql"
+    	"encoding/json"
+    	"errors"
+    	"fmt"
+    	"strings"
+    )
+    
+    // What one ATTEMPT at a leaf did with the room it was given, and what the next
+    // one was handed.
+    //
+    // THE DEFECT THESE ANSWER. On the ink run of 2026-08-29 a single node started
+    // five times and its store says only that: five claims, five starts, five
+    // releases, no reason on any of them. Reading it afterwards, four different
+    // things are indistinguishable — a worker that hung, a worker whose deadline
+    // legitimately expired, a claim taken back by the reaper, and a leaf that was
+    // handed its predecessor's work and chose to start over anyway. They cost the
+    // run nothing, one attempt, one attempt, and the entire ninety-minute wall
+    // respectively, and every one of them left the same silence.
+    //
+    // FAILSAFE.md's rule about absence applies exactly: a fact about the run is
+    // written down with its reason and its price, because an absence in the record
+    // is never a diagnosis, it is the diagnoses nobody can now tell apart. So the
+    // two facts that were missing are journaled here — an attempt that ran out of
+    // its own room, and a claim that picked up work already recorded — and the
+    // headless stream reads both (cmd/aforge's narrateOne).
+    //
+    // Neither has a materialized view. Nothing about a node's status changes because
+    // an attempt was exhausted — the scheduler decides that, and it usually decides
+    // to retry — and rebuild's default arm deliberately ignores kinds like these, so
+    // the rows are durable, replayable and inert.
+    
+    const (
+    	// EventLeafExhausted is one attempt ending because it ran out of the room
+    	// it was granted, rather than because it finished or failed.
+    	//
+    	// IT IS NOT A FAILURE AND IT IS NOT A RESTART. The growth governor already
+    	// weighs exhaustion when it decides whether more room is worth buying; what
+    	// it could not do was tell a person, or a later reader, that this is what
+    	// happened. A leaf that was still working when the clock ran out looks
+    	// exactly like a leaf that hung, and the two want opposite responses.
+    	EventLeafExhausted EventKind = "leaf_exhausted"
+    	// EventLeafResumed is a claim taking over work that is already recorded,
+    	// with the size of the record it was handed. It is the receipt for the
+    	// promise in resident.Bank — that a restarted leaf does not start over —
+    	// and until it existed nothing anywhere said whether the promise was kept.
+    	EventLeafResumed EventKind = "leaf_resumed"
+    	// EventLeafStopped is the worker behind a claim reporting that it is gone,
+    	// naming the token it held.
+    	//
+    	// IT IS THE ORDERING PROOF AND THAT IS ITS WHOLE JOB. A claim taken back
+    	// while its worker is still running does not fr
+    … 8792 bytes elided …
+    om the leaf's final turn count is what says how much one cost.
+    	Turns int `json:"turns,omitempty"`
+    	// Closed says the leaf was actually held back and asked. False is the floor
+    	// arm and is journaled just as loudly: the finding stands, the leaf lands
+    	// with it, and the gate weighs it exactly as it did before — because the
+    	// leaf had already closed this kind once, or because its meter was spent.
+    	Closed bool `json:"closed"`
+    	// Why is the one sentence saying which of those it was, for a person and
+    	// for an autopsy. Empty on the arm that closed.
+    	Why string `json:"why,omitempty"`
+    }
+    
+    // RecordLeafSelfClose appends one leaf's reading of its own work. A row naming
+    // no finding is refused: this record exists to say what the leaf found against
+    // itself, and "it found nothing" is what the surface, unbound and verification
+    // rows beside it already say.
+    func (s *Store) RecordLeafSelfClose(nodeID string, record LeafSelfClose) error {
+    	nodeID = strings.TrimSpace(nodeID)
+    	if nodeID == "" {
+    		return fmt.Errorf("record leaf self-close: %w: empty node id", ErrInvalid)
+    	}
+    	if len(record.Kinds) == 0 {
+    		return fmt.Errorf("record leaf self-close: %w: no finding to close", ErrInvalid)
+    	}
+    	record.Why = bounded(strings.TrimSpace(record.Why), MaxDigestBytes)
+    	return s.appendLeafRun(nodeID, EventLeafSelfClose, record, "record leaf self-close")
+    }
+turn 3 · sh ←
+    {"cmd": "cat internal/session/loop.go"}
+turn 3 · sh → 0ms
+    [Showing lines 3435-3706 of 3706, the last 13163 of 177436 bytes. Whole output: /home/santosh/.aforge/runs/aforge-do-1923110067/graph-scratch/.obs/task-2-2.txt — read the start with sh: sed -n '1,2000p' /home/santosh/.aforge/runs/aforge-do-1923110067/graph-scratch/.obs/task-2-2.txt]
+    // a dead one. The original lines stay above the compaction marker in that
+    // file; the path is the recovery floor.
+    //
+    //	[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]
+    //	[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl]
+    //	[folded 31 messages · full record in the store]
+    //	[folded 31 messages · full record in the session journal]
+    //
+    // THE PATH IS ITS OWN WORD, with the lines said after it in prose, because a
+    // `path:12..40` token is what neither `read` nor `grep` takes: one wants the
+    // file and an offset, the other wants the file. A pointer that has to be
+    // edited before it can be followed is most of the way back to no pointer.
+    //
+    // A session with no journal file names no path rather than inventing one: it
+    // says the store where the store is confirmed to hold the run, and the weaker
+    // true thing where nothing is confirmed at all.
+    func foldMarker(count int, journal string, from, to int, inStore bool) string {
+    	where := "full record in the session journal"
+    	switch {
+    	case journal != "":
+    		where = "grep or read " + journal + foldLineSpan(from, to)
+    	case inStore:
+    		// No file to name, and the store is holding this run. Saying the
+    		// journal here would send the model to a path that is not there.
+    		where = "full record in the store"
+    	}
+    	return fmt.Sprintf("%s%d message%s · %s]", foldMarkerPrefix, count, plural(count), where)
+    }
+    
+    // foldLineSpan is what a fold marker says after its path when the journal can
+    // name the lines the folded run sits on, and nothing when it cannot — the path
+    // alone is still a file to grep, and a made-up line number is not.
+    //
+    // BOTH ENDS OR NEITHER. One end on its own would print as the location of the
+    // whole run, sending the model to read a line where a hundred of them went;
+    // the file without a span costs it one wider grep and tells it no lies.
+    func foldLineSpan(from, to int) string {
+    	switch {
+    	case from > 0 && to > 0 && from != to:
+    		return fmt.Sprintf(", lines %d..%d", from, to)
+    	case from > 0 && from == to:
+    		return fmt.Sprintf(", line %d", from)
+    	}
+    	return ""
+    }
+    
+    // cutPointLocked walks back from the tail until the keep-recent budget is
+    // spent and returns the index the kept tail starts at.
+    func (a *Agent) cutPointLocked() int {
+    	budget := a.keepRecentTokens() * bytesPerToken
+    	cut := len(a.messages)
+    	// index 0 is the system message; it is never summarized and never cut
+    … 9380 bytes elided …
+    ) {
+    	a.addUsageAs(response, model, calls, role, true, false)
+    }
+    
+    // addUsageAs is the body both auxiliary doors share, with one bit of difference:
+    // whether this tally is a CALL THIS AGENT MADE — and therefore a line in the
+    // machine's ledger — or a fold of work that already wrote its own
+    // ([Agent.addFoldedUsage]).
+    func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool) {
+    	if response == nil || response.Usage == nil {
+    		return
+    	}
+    	usage := response.Usage
+    	aux := Usage{
+    		Input:      usage.PromptTokens,
+    		Output:     usage.CompletionTokens,
+    		CacheRead:  usage.CacheReadTokens(),
+    		CacheWrite: usage.CacheCreationTokens(),
+    		Calls:      calls,
+    	}
+    	if usage.Cost != nil {
+    		aux.CostUSD = *usage.Cost
+    	}
+    	if emptyReflex {
+    		aux.EmptyReflex = calls
+    	}
+    	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
+    	// watches the turn's own stream — and the turn's figures on this row would be
+    	// a measurement of one request filed against another.
+    	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger})
+    	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
+    	// file has its own, and holding the agent's across a disk write would put
+    	// every reader of the session's totals behind it.
+    	a.file.appendUsage(aux, model, true, role)
+    }
+turn 3 · sh ←
+    {"cmd": "cat internal/exec/executor.go"}
+turn 3 · sh → 0ms
+    [Showing lines 586-874 of 874, the last 13203 of 43049 bytes. Whole output: /home/santosh/.aforge/runs/aforge-do-1923110067/graph-scratch/.obs/task-2-1.txt — read the start with sh: sed -n '1,585p' /home/santosh/.aforge/runs/aforge-do-1923110067/graph-scratch/.obs/task-2-1.txt]
+    	// be run again properly, which is an escalation and not a division.
+    	// StopBudget and StopOverrun say a resource ran out, and nothing did — the
+    	// grant was untouched and the leaf gave it back.
+    	//
+    	// It deliberately does NOT make Outcome.Overran true. Overran is the
+    	// question "was there work left when the resources ran out", and the
+    	// continuation subsystem it gates exists to replan a remainder from an
+    	// exhaustion. A cooperative split has its own path with its own reason in
+    	// the growth journal, and letting both fire on one settlement would spend
+    	// two rounds on one decision.
+    	StopSplit StopReason = "split"
+    )
+    
+    // OutOfRoom reports that this ending is a leaf THAT WAS STILL WORKING when
+    // something it could not argue with stopped it: its tokens, its turns, or its
+    // clock.
+    //
+    // It is a method on the reason rather than a rule at each reader because the
+    // answer travels: the settlement asks it of an Outcome, and the scheduler asks
+    // it of an ExecResult that holds nothing but this string. Two spellings of one
+    // question is how a leaf came to be judged done on one side of a seam and cut
+    // off on the other.
+    //
+    // The empty reason answers false, and every caller that carries this across a
+    // seam says separately whether an ending was recorded at all — a StopReason is
+    // a string, and its zero value must never be readable as "it finished fine".
+    func (s StopReason) OutOfRoom() bool {
+    	switch s {
+    	case StopBudget, StopTurnCap, StopOverrun, StopDeadline:
+    		return true
+    	}
+    	return false
+    }
+    
+    // Abandoned is the node watchdog's own ending: the executor was still inside a
+    // worker that had already run past every limit it was given, and the runner
+    // stopped waiting for it.
+    //
+    // It is a type rather than fmt.Errorf so that the fact it carries — the clock
+    // ran out, nothing about the work refused — survives the trip to whoever decides
+    // what happens next. A retry reading this by matching on the words "abandoned"
+    // would be a second, private answer to a question the ending already answers,
+    // and the first thing to go wrong with a second answer is that it disagrees.
+    // The message is unchanged from the sentence this replaced.
+    type Abandoned struct {
+    	// After is the watchdog it outlived.
+    	After time.Duration
+    }
+    
+    func (a *Abandoned) Error() string {
+    	if a == nil {
+    		return ""
+    	}
+    	return fmt.Sprintf("executor did not return within %s; abandoned", a.After.Round(time.Second))
+    }
+    
+    … 9415 bytes elided …
+    re worth printing (a
+    	// structural detector rather than a ceiling).
+    	Reached int `json:"reached,omitempty"`
+    	Allowed int `json:"allowed,omitempty"`
+    	// Unit is what those numbers count, so a line can be composed without the
+    	// reader having to know which bound spells its allowance in what: "tokens",
+    	// "turns", "prompt tokens sent".
+    	Unit string `json:"unit,omitempty"`
+    }
+    
+    // The bounds the loop writes down, spelled once.
+    //
+    // MeterCost and MeterDeadline are LIVE: both are read when the landing reserve
+    // is granted and both keep moving while the landing turns run, so what they
+    // held at the grant is not what the leaf actually reached. They are re-read at
+    // land time. MeterTurns and MeterNoProgress are counts of the loop itself and
+    // are already final at the moment they are written.
+    const (
+    	MeterCost       = "cost"
+    	MeterDeadline   = "deadline"
+    	MeterTurns      = "turns"
+    	MeterNoProgress = "no-progress"
+    )
+    
+    // Named reports that a bound actually said something.
+    func (m Meter) Named() bool { return strings.TrimSpace(m.Name) != "" }
+    
+    // Words is the bound in a person's own sentence, with its figures.
+    func (m Meter) Words() string {
+    	if !m.Named() {
+    		return ""
+    	}
+    	if m.Allowed <= 0 {
+    		return m.Name
+    	}
+    	unit := m.Unit
+    	if unit == "" {
+    		unit = "tokens"
+    	}
+    	return fmt.Sprintf("%s: %d of %d %s", m.Name, m.Reached, m.Allowed, unit)
+    }
+turn 4 · sh ←
+    {"cmd": "grep -rn \"StopReason\\|stopReason\\|stop_reason\" internal/exec/ --include=\"*.go\" | head -30"}
+turn 4 · sh → 0ms
+    internal/exec/linear.go:739:	landingStop := StopReason("")
+    internal/exec/schedule_test.go:48:// TestCancelledRunLandsWithOutcomesAndStopReason is the "never die silently"
+    internal/exec/schedule_test.go:53:func TestCancelledRunLandsWithOutcomesAndStopReason(t *testing.T) {
+    internal/exec/ranoutwords.go:6:// It lives beside [StopReason.OutOfRoom] and for the same reason: the answer
+    internal/exec/ranoutwords.go:17:func RanOutSubject(stop StopReason) string {
+    internal/exec/executor.go:267:	Stop  StopReason
+    internal/exec/executor.go:278:	Exhausted StopReason
+    internal/exec/executor.go:549:// StopReason says how the loop ended. It is recorded rather than inferred
+    internal/exec/executor.go:552:type StopReason string
+    internal/exec/executor.go:555:	StopDone      StopReason = "done"      // the model stopped asking for tools
+    internal/exec/executor.go:556:	StopTurnCap   StopReason = "turn-cap"  // ran out of iterations; a runaway backstop
+    internal/exec/executor.go:557:	StopBudget    StopReason = "budget"    // ran out of tokens; the leaf was too expensive
+    internal/exec/executor.go:558:	StopDeadline  StopReason = "deadline"  // ran out of wall clock
+    internal/exec/executor.go:559:	StopError     StopReason = "error"     // the provider failed in a way we could not absorb
+    internal/exec/executor.go:560:	StopPromote   StopReason = "promote"   // a reflex discovered that it is a job
+    internal/exec/executor.go:561:	StopPaused    StopReason = "paused"    // user hold observed between turns
+    internal/exec/executor.go:562:	StopCancelled StopReason = "cancelled" // user cancellation observed between turns
+    internal/exec/executor.go:569:	StopEmpty StopReason = "empty"
+    internal/exec/executor.go:577:	StopOverrun StopReason = "overrun"
+    internal/exec/executor.go:596:	StopSplit StopReason = "split"
+    internal/exec/executor.go:610:// seam says separately whether an ending was recorded at all — a StopReason is
+    internal/exec/executor.go:612:func (s StopReason) OutOfRoom() bool {
+    internal/exec/inks9_test.go:87:// AND THE BOUND THAT FIRES NAMES ITSELF. Three ceilings shared one StopReason,
+    internal/exec/noprogress.go:70:const StopNoProgress StopReason = "no-progress"
+turn 4 · sh ←
+    {"cmd": "grep -rn \"tool.*timeout\\|timeout.*tool\\|timed out\\|Timeout.*tool\\|toolTimeout\" internal/ --include=\"*.go\" | head -30"}
+turn 4 · sh → 0ms
+    internal/orchestrate/amend_test.go:214:	run.absorb(context.Background(), thought{err: errors.New("the model timed out")})
+    internal/orchestrate/amend.go:414:// timed out, the model that answered with its own instruction, the run with no
+    internal/orchestrate/run_test.go:61:		t.Fatalf("timed out waiting for %s", why)
+    internal/session/standing_run.go:331:		seen += fmt.Sprintf("\n(the look timed out after %s)", standingProbeWindow)
+    internal/session/promote_test.go:258:	if !isError || !strings.Contains(answer, "Command timed out after") {
+    internal/session/harness_task.go:657:	// person's screen and a person is not a step that can be timed out.
+    internal/session/jobs_test.go:69:	t.Fatalf("timed out waiting for %s", what)
+    internal/session/tools_watch.go:678:		return output, fmt.Sprintf("(the tick timed out after %s)", timeout)
+    internal/session/promote.go:7:// process group, the call answered `Command timed out after N seconds`, and the
+    internal/session/task_divide_sketch.go:256:// moment a mastermind timed out, and a part with no done-condition is a part
+    internal/session/task_divide_test.go:719:// work — but a reader that timed out has read nothing, and a live cell showed
+    internal/session/cancel_test.go:357:		t.Fatalf("timed out waiting for %s", why)
+    internal/session/tools_video.go:254:		return "video generation timed out (" + model + "); no video was saved"
+    internal/session/checkpoint_test.go:890:		t.Errorf("a read that timed out was recorded as asked=%v failed=%v", read.asked, read.failed)
+    internal/session/why.go:228:			strings.HasPrefix(line, "Command timed out after") ||
+    internal/session/jobname_test.go:227:			t.Fatal("timed out waiting for a second EventJobUpdate carrying the name")
+    internal/session/tools_music.go:229:// "timed out" are sentences about what happened. The timeout is the media
+    internal/session/tools_music.go:237:		return "music generation timed out (" + model + "); no music was saved"
+    internal/session/jobrow_test.go:60:			t.Fatalf("timed out waiting for a %s job", want)
+    internal/session/taskpresence_test.go:526:// actually written rather than "it timed out".
+    internal/session/fixstore.go:185:	"command timed out after",
+    internal/session/harness_build_test.go:339:// room. Reading a card is not a step that can be timed out.
+    internal/session/tools_video_test.go:244:		{"it timed out", &scriptedMedia{videoErr: provider.ErrVideoTimeout}, "video generation timed out (film/model)"},
+    internal/session/tools_media_test.go:377:		{"it timed out", fmt.Errorf("execute media request: %w", context.DeadlineExceeded), "music generation timed out (compose/model); no music was saved"},
+    internal/session/loop.go:1786:// THIS PROCESS BOUNDS ITS OWN WAITING — the shell tools by their timeout
+    internal/session/taskpresence.go:519:// would be a card whose window had already timed out of somebody's glance.
+    internal/session/fixstore_test.go:118:		"Command timed out after 120 seconds",
+    internal/provider/media.go:28:var ErrVideoTimeout = errors.New("video generation timed out")
+    internal/remote/redial_test.go:212:	t.Fatalf("timed out waiting for %s", what)
+    internal/remote/tasklane.go:342:// call that timed out or a link that died would retire a question that is still
+turn 4 · sh ←
+    {"cmd": "find internal/exec/ -name \"*.go\" | head -40"}
+turn 4 · sh → 0ms
+    internal/exec/capped.go
+    internal/exec/selfclose.go
+    internal/exec/capped_test.go
+    internal/exec/attachments.go
+    internal/exec/photograph.go
+    internal/exec/liveness.go
+    internal/exec/linear.go
+    internal/exec/schedule_test.go
+    internal/exec/account.go
+    internal/exec/preamble_test.go
+    internal/exec/trace_test.go
+    internal/exec/produced_test.go
+    internal/exec/suggestpath_test.go
+    internal/exec/hintpath_test.go
+    internal/exec/worker_law_test.go
+    internal/exec/tools.go
+    internal/exec/governor_test.go
+    internal/exec/media_test.go
+    internal/exec/manifest_test.go
+    internal/exec/attribution_test.go
+    internal/exec/subharness.go
+    internal/exec/evidence_test.go
+    internal/exec/verdict_test.go
+    internal/exec/ranoutwords.go
+    internal/exec/rtk_test.go
+    internal/exec/jobs_test.go
+    internal/exec/context_test.go
+    internal/exec/fold_test.go
+    internal/exec/document.go
+    internal/exec/manifest.go
+    internal/exec/schedule.go
+    internal/exec/layout_test.go
+    internal/exec/transcript.go
+    internal/exec/subharness_test.go
+    internal/exec/trace.go
+    internal/exec/linear_test.go
+    internal/exec/exec_test.go
+    internal/exec/meter.go
+    internal/exec/selfclose_test.go
+    internal/exec/meter_test.go
+turn 5 · sh ←
+    {"cmd": "grep -rn \"Command timed out\\|timed out after\\|toolCall\\|runTool\\|execTool\\|callTool\" internal/session/loop.go | head -30"}
+turn 5 · sh → 0ms
+    851:		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+    1544:// still accounted for by runTools, which consults this and runs whatever is not
+    1661:	// runTools seeds its slots: a tool that panics would otherwise leave the zero
+    1663:	// true. The wording is runTools' own, so a panic reads the same to the model
+    1743:// runTools executes one batch with nothing started early. It is the whole of
+    1752:func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
+    1753:	return a.runToolsWarm(ctx, a.newEpisode(), calls, hub, nil)
+    1756:// runToolsWarm executes one batch concurrently and reports it in call order,
+    1791:func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+    1934:// (runToolsWarm), and so does the early start that begins a read while the
+    1938:// nothing would say so — and a gate in runToolsWarm alone would leave the early
+    1947:// call and the three must carry identical bytes (runToolsWarm says why). A call
+turn 5 · sh ←
+    {"cmd": "grep -rn \"StopReason\\|stop.*reason\\|round.*end\\|end.*round\\|roundEnd\\|round.*stop\" internal/session/loop.go | head -40"}
+turn 5 · sh → 0ms
+    266:	// message with four independent pieces of work in it was still ground out
+    1882:	// there is no way to stop them, which is the entire reason this exists. They
+    1978:		// sends a foreground bash call to the background has to find the process
+turn 5 · sh ←
+    {"cmd": "grep -n \"func.*loop\\|func.*round\\|func.*turn\\|func.*run\\|func.*tool\" internal/session/loop.go | head -50"}
+turn 5 · sh → 0ms
+    215:func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+    1058:func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
+    1095:func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+    1099:func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+    1462:func (e *cutGaveUp) Error() string { return e.said }
+    1464:func (e *cutGaveUp) Unwrap() error { return e.cut }
+    1752:func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
+    1791:func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+    1849:			go func(idx int, running *warmCall) {
+    1933:// function every execution passes through: the batch runs its calls through it
+    1955:func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+    2070:func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
+    2176:	return strings.Map(func(r rune) rune {
+    2184:func control(r rune) bool { return r < ' ' || r == 0x7f }
+    2381:func capOutput(text string) string { return capBytes(text, outputLimit) }
+    2440:func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
+    2538:func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts) {
+    2837:func TrustedWindow(window int) int { return TrustedWindowFor("", window) }
+    2880:func CompactThreshold(window int) int { return CompactThresholdFor("", window) }
+    2899:func ContextFillPinned() (int, bool) { return ctxbudget.PinnedFillPercent() }
+    3130:func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
+turn 6 · sh ←
+    {"cmd": "sed -n '1740,2100p' internal/session/loop.go"}
+turn 6 · sh → 0ms
+    	return false
+    }
+    
+    // runTools executes one batch with nothing started early. It is the whole of
+    // what this was before the streamed sighting existed, and the shape every
+    // caller outside the turn uses.
+    //
+    // It builds a control plane of its own (hooks.go) rather than taking one,
+    // because a batch run outside a turn is still a batch: the calls in it must
+    // still pass the approval gate, and an episode is the only thing that carries
+    // it. What that episode's per-turn state remembers dies with the call, which is
+    // correct — there is no turn here to be stuck in.
+    func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
+    	return a.runToolsWarm(ctx, a.newEpisode(), calls, hub, nil)
+    }
+    
+    // runToolsWarm executes one batch concurrently and reports it in call order,
+    // adopting whatever the stream already started (warm may be nil).
+    //
+    // The begins are emitted for the whole batch before the first goroutine
+    // starts, and the ends after the last one finishes, both in call order. The
+    // alternative — emitting from inside each goroutine — would put the person's
+    // transcript in scheduler order, which differs run to run for the same work.
+    // AN EARLY START CHANGES NEITHER: a call that is already running is waited for
+    // here, in its slot, and its begin is emitted with the rest of the batch. The
+    // person watches the same turn they always did.
+    //
+    // ── A TOOL CALL THAT STARTS ALWAYS ENDS JOURNALED ──
+    //
+    // One way (a result) or another (an error), because the alternative is not a
+    // failure the person can read: runTurn records one tool message per call after
+    // this returns, so a call that never comes back leaves the assistant's
+    // instruction on the record with nothing answering it, and the surface draws
+    // that — honestly — as a row still running, for the rest of the session
+    // (internal/tui3's room.go).
+    //
+    // Three things hold the law here, and each of them is load-bearing. Every slot
+    // is SEEDED with a panic result before the goroutine that fills it, so a fault
+    // cannot leave the zero value, which reads as an empty success. Every goroutine
+    // carries guard.Recover, so a panicking tool unwinds into its seeded slot
+    // instead of the process. And wg.Done is deferred OUTERMOST, so a faulted tool
+    // still releases the batch.
+    //
+    // What none of them can hold is a tool that simply never returns: this function
+    // waits for its batch, and it must, because the transcript's next step cannot
+    // be assembled with a hole in it. SO EVERY TOOL THAT WAITS ON SOMETHING OUTSIDE
+    // THIS PROCESS BOUNDS ITS OWN WAITING — the shell tools by their timeout
+    // argument (tools_jobs.go), a watch tick by watchMaxTickTimeout
+    // (tools_watch.g
+    … 14598 bytes elided …
+    oolResult) toolResult {
+    	result.text = redact.Secrets(result.text)
+    	return a.withJobState(ep.noteToolOutcome(call, result))
+    }
+    
+    // glossField names the argument that says what a call is DOING, per tool. A
+    // gloss is what the person reads instead of the raw arguments.
+    var glossField = map[string]string{
+    	"read":  "path",
+    	"edit":  "path",
+    	"write": "path",
+    	"ls":    "path",
+    	// find searches BY glob (bare/tools.go: pattern is its required argument;
+    	// path is the optional directory), so the pattern is what says what the
+    	// call is doing.
+    	"find": "pattern",
+    	"bash": "command",
+    	"grep": "pattern",
+    	// jobs says what it is doing in its action word — list, output, kill —
+    	// which is the whole of what a person needs to read beside the name.
+    	"jobs": "action",
+    	// A task proposal is its title: the one-line name of the work is what the
+    	// person is being asked about, and the row should say it.
+    	"propose_task": "title",
+    	// The two web hands read as what they went looking for: the sentence that
+    	// was searched, the page that was opened. Not the count, and not the
+    	// scheme — a person watching wants to know what their agent is reading.
+    	"web_search": "query",
+    	"web_fetch":  "url",
+    	// And the accounts, which read the same way: the account being picked up,
+    	// the mailbox search, the message opened (tools_connect.go). calendar_list
+turn 6 · sh ←
+    {"cmd": "sed -n '1,100p' internal/session/loop.go"}
+turn 6 · sh → 0ms
+    package session
+    
+    import (
+    	"bytes"
+    	"context"
+    	"encoding/json"
+    	"errors"
+    	"fmt"
+    	"regexp"
+    	"strconv"
+    	"strings"
+    	"sync"
+    	"time"
+    
+    	"github.com/Agent-Field/aforge-v2/internal/approval"
+    	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+    	"github.com/Agent-Field/aforge-v2/internal/effort"
+    	"github.com/Agent-Field/aforge-v2/internal/guard"
+    	"github.com/Agent-Field/aforge-v2/internal/provider"
+    	"github.com/Agent-Field/aforge-v2/internal/redact"
+    	"github.com/Agent-Field/aforge-v2/internal/roles"
+    	"github.com/Agent-Field/aforge-v2/internal/store"
+    	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+    	"github.com/Agent-Field/agentfield/sdk/go/ai"
+    )
+    
+    // ── retry constants (pi spec §4, verbatim from internal/exec/bare) ──────────
+    
+    // retryBaseDelay is the first wait of the retry ladder; each attempt doubles it,
+    // so 2s, 4s, 8s — pi's schedule, which is what this loop has always walked.
+    //
+    // IT IS INTERPOLATED AND NOT TYPED OUT, and so is the attempt count that used to
+    // sit beside it as `maxRetries = 3`. The ladder a request actually walks is now
+    // the response boundary's, resolved from the person's settings
+    // (taxonomy_boundary.go's [Agent.failureLimits]); a second spelling of either
+    // number here would be the version that drifts, and a shipped install with no
+    // profile behind it walks exactly the ladder it always did because the
+    // boundary's own defaults ARE these two.
+    const retryBaseDelay = taxonomy.DefaultTransportBackoff
+    
+    // truncationContinuations gives a cut-off answer two chances to finish in
+    // smaller pieces. The bound matters because a model that ignores the note can
+    // otherwise turn one bad output ceiling into an unbounded, silent spend.
+    const truncationContinuations = 2
+    
+    // ── what a cut stream is worth asking again ─────────────────────────────────
+    //
+    // A stream the guard cut (internal/provider's streamguard.go) is a different
+    // kind of failure from a torn connection, and it gets its own budget rather than
+    // spending the transport one above: the request never failed, so there is
+    // nothing here to back off from, and the same three attempts that make sense for
+    // a socket would keep a model that has lost the thread going four times over a
+    // context that is only getting worse.
+    //
+    // SILENCE IS WORTH ASKING TWICE. The endpoint is very often simply a bad draw
+    // out of a router's pool, and the second try lands on a different one.
+    //
+    // DEGENERATION IS WORTH ASKING ONCE. If the same transcript produces soup twice,
+    // the transcript is the problem and asking a third time spends the whole prompt
+    // to be told so again — which is the point at which the per
+    … 208 bytes elided …
+    ont of it, so the step stops asking sooner and moves
+    // to another model instead. The whole rule is stated at [cutBudget].
+    const (
+    	silentRetries = 2
+    	babbleRetries = 1
+    	blindRetries  = 1
+    )
+    
+    const truncationContinuationNote = "Your last reply was cut off at the output limit. " +
+    	"Continue the work in smaller parts. Use tool calls to save any large deliverable " +
+    	"when writing is in scope — a long file is written in parts, a first write and then " +
+    	"write calls with append:true — and keep the final report short."
+    
+    // ── retry classification (pi-ai compat, verbatim from internal/exec/bare) ───
+    
+    // nonRetryablePattern matches provider errors that are permanent (quota,
+    // billing, account limits). pi's NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.
+    var nonRetryablePattern = regexp.MustCompile(
+    	`(?i)` + strings.Join([]string{
+    		"GoUsageLimitError",
+    		"FreeUsageLimitError",
+    		"Monthly usage limit reached",
+    		"available balance",
+    		"insufficient_quota",
+    		"out of budget",
+    		"quota exceeded",
+    		"billing",
+    	}, "|"))
+    
+    // retryablePattern matches transient provider errors. pi's
+    // RETRYABLE_PROVIDER_ERROR_PATTERN. A message is retryable when it matches
+    // this AND does not match nonRetryablePattern.
+    var retryablePattern = regexp.MustCompile(
+    	`(?i)` + strings.Join([]string{
+    		"overloaded",
+    		`rate.?limit`,
+    		"too many requests",
+turn 6 · sh ←
+    {"cmd": "grep -rn \"MaxIdentical\\|identical.*timeout\\|three.*timeout\\|timeout.*three\\|same.*command.*timeout\\|timeout.*same.*command\" internal/ --include=\"*.go\" | head -20"}
+turn 6 · sh → 0ms
+    internal/exec/bare/tools_test.go:453:	// One second of timeout, three of WaitDelay, and the rest is slack for a
+turn 7 · sh ←
+    {"cmd": "grep -rn \"scripted.*brain\\|ScriptedBrain\\|scriptedBrain\\|harness_build\\|HarnessBuild\\|harness.*test\\|test.*harness\" internal/session/ --include=\"*.go\" -l | head -20"}
+turn 7 · sh → 0ms
+    internal/session/subharness_run.go
+    internal/session/effortguard_test.go
+    internal/session/task_divide_sketch_test.go
+    internal/session/task_store.go
+    internal/session/harnessrequest_test.go
+    internal/session/route_judge.go
+    internal/session/subharness_contract.go
+    internal/session/task_store_test.go
+    internal/session/harness_model_test.go
+    internal/session/harness_task.go
+    internal/session/tools_harness.go
+    internal/session/tools_settings.go
+    internal/session/harness_build_law_test.go
+    internal/session/session.go
+    internal/session/harness_revise_test.go
+    internal/session/harness_test.go
+    internal/session/subharness_doors_test.go
+    internal/session/checkpoint_test.go
+    internal/session/orchestrate.go
+    internal/session/subharness_pages_test.go
+turn 7 · sh ←
+    {"cmd": "grep -n \"func.*runRound\\|func.*round\\|roundLoop\\|runLoop\\|func.*Run\\b\" internal/session/agent.go | head -30"}
+turn 7 · sh → 0ms
+    (no output)
+turn 7 · sh ←
+    {"cmd": "grep -rn \"StopReason\\|stopReason\\|stop.*reason\\|round.*end\\|wall\\|the wall\" internal/session/ --include=\"*.go\" | head -40"}
+turn 7 · sh → 0ms
+    internal/session/standingtree_test.go:265:// an error to swallow silently — somebody typed /land expecting something.
+    internal/session/task_note_test.go:53:		what: "a landing that stopped for another reason",
+    internal/session/groundladder.go:15:// turned back by their checkers. About $14 and an hour of wall time were spent
+    internal/session/chatlog.go:206:// What did not land is SAID rather than swallowed. It goes to the log and not to
+    internal/session/task_room_test.go:414:// worker's queue, because a queued line is the swallow, not a lesser form of it.
+    internal/session/withdrawn_test.go:97:// the wall by a policy. It is marked at the one chokepoint every veto passes
+    internal/session/withdrawn_test.go:186:// of the wall, so which request is the landing one is not knowable in advance,
+    internal/session/consentfloor_test.go:17:// of them swallowed them whole — one approved `git status` bought silence for
+    internal/session/taxonomy_boundary.go:284:		// decided — the caller may still have no round left to spend, and a tally
+    internal/session/route_judge.go:725:// boundary instead of after ten rounds of tool calls. Everything that can end the
+    internal/session/sessionfile.go:306:	WallMS     int64    `json:"wallMs,omitempty"`
+    internal/session/served_test.go:331:		t.Errorf("a name that matches nothing was swallowed: %q", reply)
+    internal/session/usage_percall_test.go:262:func TestALedgerWriteThatFailsIsCountedRatherThanSwallowed(t *testing.T) {
+    internal/session/tools.go:213:	// get the verb — which is the same wall that already keeps a node from
+    internal/session/task_claims_test.go:196:	// swallowed an unexamined obligation is the failure this whole lane is for.
+    internal/session/agent_test.go:318:// ── (b) a tool round executes and its result is appended ────────────────────
+    internal/session/agent_test.go:351:	// The second request must carry the whole round: append-only transcript.
+    internal/session/agent_test.go:1417:// TestToolBatchRunsInParallel is the wall-clock contract for the batch
+    internal/session/agent_test.go:2334:// The whole round through a real turn: the model calls web_search, the back end
+    internal/session/agent_test.go:2408:	// something the model works around, not something that ends the turn.
+    internal/session/task_room.go:482:// [runTaskChild]), because the swallow lived in the gap between the two.
+    internal/session/task_room.go:494:// takes the same lock, so the two cannot interleave into a swallow: either this
+    internal/session/proportion_test.go:53:// same evidence for three times the wall clock. The law lives in Tool Policy's
+    internal/session/task_audit.go:645:	// rounds; the phase is what tells those apart
+    … 967 bytes elided …
+    t line ride at the foot of every tool result — so never sleep, tail or poll to wait for one. list: this session's jobs (id, kind, command, status, elapsed). output: the tail of one job's last " +
+    internal/session/toolhint_test.go:18:// on wall time: a test that slept a tenth of a second per fragment would be
+    internal/session/toolhint_test.go:58:		t.Fatal("a closing field was swallowed by the throttle")
+    internal/session/toolhint_test.go:132:// swallowed, because those are exactly the moments worth interrupting for.
+    internal/session/toolhint_test.go:133:func TestFormingIsThrottledButNeverSwallowsAChange(t *testing.T) {
+    internal/session/toolhint_test.go:140:	// Fragment 2, immediately after, no name and no close: swallowed.
+    internal/session/toolhint_test.go:149:		t.Fatal("the name landing was swallowed")
+    internal/session/toolhint_test.go:173:		t.Fatal("a closing field was swallowed")
+    internal/session/toolhint_test.go:190:		t.Fatal("call 1's first sighting was swallowed by call 0's throttle")
+    internal/session/toolhint_test.go:211:		t.Fatal("the retry's first fragment was swallowed by the dead attempt's throttle")
+    internal/session/tools_write.go:4:// got its background flag by (tools_jobs.go). Without append the call is
+    internal/session/harness_task.go:156:// so forwarding those deltas filled the room with a wall of braces scrolling past
+turn 8 · sh ←
+    {"cmd": "grep -rn \"scriptedBrain\\|ScriptedBrain\\|ScriptedModel\\|scriptedModel\\|scripted.*model\\|scripted.*brain\" internal/ --include=\"*.go\" -l | head -20"}
+turn 8 · sh → 0ms
+    internal/e2e/stopbound_e2e_test.go
+    internal/e2e/tmux_test.go
+    internal/e2e/remote_test.go
+    internal/e2e/roomfeed_e2e_test.go
+    internal/session/vision_slot_test.go
+    internal/session/agent_test.go
+    internal/session/lanenews_test.go
+    internal/session/tools_speak_test.go
+    internal/session/standing_nothing_test.go
+    internal/session/looped_test.go
+    internal/session/harness_revise_test.go
+    internal/session/checkpoint_test.go
+    internal/session/tools_image_test.go
+    internal/session/standing_test.go
+    internal/session/tools_video_test.go
+    internal/provider/lanes_test.go
+    internal/shaped/shaped_test.go
+    internal/revision/budget_test.go
+    internal/exec/linear_test.go
+    internal/lane/frontier_test.go
+turn 8 · sh ←
+    {"cmd": "grep -rn \"harness.*round\\|round.*harness\\|runHarnessRound\\|harnessRound\\|harness.*loop\\|loop.*harness\" internal/ --include=\"*.go\" | head -30"}
+turn 8 · sh → 0ms
+    internal/subharness/kinds.go:18:// are rungs a harness declares when its agent.loop nodes rewrite their own
+    internal/orchestrate/prompt_test.go:10:// teach: Kind selects a subharness node kind, empty is the agent loop, and a
+    internal/orchestrate/orchestrate.go:59:	Kind  string   `json:"kind,omitempty"`  // subharness node kind; empty is agent.loop
+    internal/session/effortguard_test.go:46:	"harness_build.go":  "a design round's role call, from the designer tier's own suffix",
+    internal/session/writeseam.go:31:// rounds of a turn, and the ceiling is where the harness stops paying to look.
+    internal/session/harness_model_test.go:115:	events, err := agent.Submit(context.Background(), harnessTurn+" with opus")
+    internal/session/harness_build_live_test.go:92:	ctx, cancel := context.WithTimeout(context.Background(), harnessDesignWindow)
+    internal/session/harness_task.go:581:	// [harnessWord]), and a change goes round again with the standing page in
+    internal/session/harness_task.go:811:// harnessWriteFailed is the report a round that never reached a card settles
+    internal/session/tools_harness.go:42:// a harness plans around that ability for the rest of the conversation, long
+    internal/session/tools_harness_test.go:27:// a harness plans around that for the rest of the conversation, so a build with
+    internal/session/looped_test.go:385:			t.Fatalf("the harness's own answer nudged at round %d", round+1)
+    internal/session/harness_test.go:83:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:138:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:204:			events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:286:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:313:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:373:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:437:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:479:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/harness_test.go:531:	events, err := agent.Submit(context.Background(), harnessTurn)
+    internal/session/task_divide_wip.go:263:	if dir == "" || !harnessOwnsThisTree(dir, ground) {
+    internal/session/task_divide_wip.go:302:// the ground is a copy the harness made — a worktree of the person's repository,
+    internal/session/task_divide_wip.go:310:func harnessOwnsThisTree(dir, ground string) bool {
+    internal/session/subharness_doors_test.go:182:	if _, _, err := agent.SubharnessRun(context.Background(), "flake-triage", nil); !errors.Is(err, errSubharnessUnwired) {
+    internal/session/subharness_doors_test.go:239:	id, title, err := agent.SubharnessRun(context.Background(), "flake-triage", json.RawMessage(`{"test":"TestFoo"}`))
+    internal/session/subharness_doors_test.go:273:	id, _, err := agent.SubharnessRun(context.Background(), "flake-triage", json.RawMessage(`{"test":"TestFoo"}`))
+    internal/session/subharness_doors_test.go:308:	id, _, err := agent.SubharnessRun(context.Background(), "flake-triage", json.RawMessage(`{"test":"TestFoo"}`))
+    internal/session/subharness_doors_test.go:353:	id, _, err := agent.SubharnessRun(context.Background(), "flake-triage", json.RawMessage(`{"test":"TestFoo"}`))
+    internal/session/subharness_doors_test.go:382:	id, _, err := agent.SubharnessRun(context.Background(), "flake-triage", input)
+turn 8 · sh ←
+    {"cmd": "cat internal/session/harness_task.go | head -100"}
+turn 8 · sh → 0ms
+    package session
+    
+    // A HARNESS BEING DESIGNED IS A TASK, AND A TASK IS A PLACE.
+    //
+    // harness_build.go is the design itself — the meta-guide, the review pass, the
+    // validator, the card nobody may skip — and none of that changed. What changed
+    // is where it happens. A design used to be a goroutine with a note in front of
+    // it: one dim line said a harness was being written, a minute or two passed
+    // with nothing on screen, and a card arrived. From the outside that is
+    // indistinguishable from a program that did nothing, and there was nothing to
+    // walk into, nothing to say to it, and no number to refer to it by afterwards.
+    //
+    // So a design is admitted to the WORK GRAPH (task_run.go) as a node of its own.
+    // It costs nothing to say and it buys everything the tasker already has:
+    //
+    //	a row on the roster        with a live phase and an id a person can say
+    //	a room                     enter it, watch the page being written, esc out
+    //	a journal                  the design thread, on disk, permanently
+    //	a stop                     the same ✕ and the same `Cancel("task:4")`
+    //	a settle card              naming the harness and the version it saved as
+    //
+    // ── IT IS ADMITTED, NOT PROPOSED ──
+    //
+    // [Agent.proposeTask] asks the person before the work starts, on a countdown.
+    // This does not, and the reason is that THE QUESTION ALREADY EXISTS one step
+    // later: nothing is written to the registry until somebody answers the design
+    // card, which is the whole bargain harness_build.go makes. A countdown in front
+    // of it would be two questions about one decision — "may I write a page?" and
+    // then "may I keep the page?" — and the first of those is a question about
+    // spending a minute, which is what the ✕ on the row is for.
+    //
+    // ── THE PHASES ARE THE POINT OF THE ROW ──
+    //
+    // A node of this kind moves through three named moments and says so on the wire
+    // ([TaskNotice.Doing]): it is DESIGNING while the page is being written, it is
+    // AWAITING YOUR LOOK while the card is up, and then it lands — saved, declined,
+    // or failed with the reason. The state under all of that is plain `running`
+    // until it settles, because it is running; the phase is the same fact in the
+    // vocabulary of the work rather than of the graph.
+    //
+    // ── AND THE ROOM IS A CONVERSATION, WHICH IS WHY IT HAS AN AGENT ──
+    //
+    // An ordinary node's room holds the worker, and the person's words reach it
+    // because it is always mid-turn. A design has no worker — it is two model calls
+    // and a wait — so the room would have been empty and steering it would have
+    // been refused. What stands in it instead is a THREAD AGENT: a child session
+    // whose transcript is the design's own 
+    … 1789 bytes elided …
+    ] states the whole mechanism, and
+    // [harnessPageContext] is what rides on it).
+    //
+    // AND THE THREAD CAN CHANGE THE PAGE, WHICH IS WHY THE ROOM IS WORTH STANDING
+    // IN. It used to be able only to talk about one: asked to "change it to also run
+    // the linter" it said, correctly and uselessly, that a revision was a new design
+    // and pointed at the door. A person looking at a draft, in the draft's own room,
+    // told to leave and start over — and the key on the card that offered to help
+    // silently dropped the page first.
+    //
+    // It has one verb for that now (tools_harness.go's revise_design), and the verb
+    // hands the person's own words to the design loop parked on the card
+    // ([TaskNode.reviseDoor]). The card comes down, the designer writes the page
+    // again with the change in it, the same milestones are journaled for the rework,
+    // and a new card goes up. It goes round as many times as it takes.
+    //
+    // WHAT IT STILL CANNOT DO IS SAVE. Nothing in this thread reaches the registry:
+    // only the person's approval of a card does, and that has not moved. Which is
+    // also why the card is no longer the only door — the room draws an approval row
+    // of its own while one is waiting (internal/tui3's roomapproval.go), so the
+    // three things a person can do about a page can all be done where they are
+    // standing.
+    
+    import (
+    	"context"
+    	"errors"
+    	"fmt"
+turn 8 · the harness
+    prefix rewritten — 4 observation(s) retired, 0 turn(s) folded; this turn re-reads cold
+turn 9 · sh ←
+    {"cmd": "grep -rn \"runTurn\\|round\\|turn\\|loop\\|stop.*round\\|end.*round\\|StopReason\\|MaxIdentical\" internal/session/loop.go | head -60"}
+turn 9 · sh → 0ms
+    30:// so 2s, 4s, 8s — pi's schedule, which is what this loop has always walked.
+    43:// otherwise turn one bad output ceiling into an unbounded, silent spend.
+    110:		`provider.?returned.?error`,
+    161:		return false
+    163:	return retryablePattern.MatchString(errMsg)
+    167:// error. These are NOT retried — the turn compacts and tries again.
+    169:	return contextOverflowPattern.MatchString(errMsg)
+    200:// ── the turn ────────────────────────────────────────────────────────────────
+    202:// runTurn executes one Submit: provider requests interleaved with tool
+    206:// It mirrors internal/exec/bare's loop — same message assembly, same stop
+    211:// It reports whether the turn COMPLETED: the model answered without a tool
+    213:// a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
+    215:func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+    217:	var turn Usage
+    219:	// NOTHING MAY LEAVE A CLOCK RUNNING. This turn posts phases of its own
+    222:	// told the work is over. There are a dozen ways out of the loop below,
+    234:	// the first turn — before the work has had a chance to argue for a definition
+    239:	// there is nothing to write, and the cost is one nil check per turn.
+    242:	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
+    244:	// so the turn itself is how one is reached: a strong match against the
+    248:	// It is not a routing: the no is free and leaves the ordinary turn below
+    255:		return completed
+    261:	// one yet — and a both-yes converts this turn into a task at the next step
+    265:	// mid-turn escalation and the belt carries propose_task, and a measured chat
+    266:	// message with four independent pieces of work in it was still ground out
+    267:	// inline over ninety tool rounds, twice: a model deep in tool momentum does
+    272:	// this line and the one above it. It used to hold the turn against a deadline
+    274:	// every message the wait; now it RACES the turn and the loop simply carries the
+    275:	// handle. A no is free because nobody ever waits for it, and the turn below
+    279:	// is a verdict nobody may spend — the post-turn judge has already read that
+    280:	// turn, and a task starting on top of a finished answer is the surprise this
+    281:	// whole road is built to avoid — so the end of the turn, by any of its exits,
+    285:	// AND THOSE TWO ARE THE ONLY QUESTIONS ASKED HERE. A turn used to be able to
+    290:	// turn: the model answers it, and if it reads as work the route judge starts
+    309:	// a.mu held, and everything about it fails open — an empty block is a turn
+    317:	// empty bloc
+    … 449 bytes elided …
+    s window (looped.go), the
+    341:	// ledger of what this turn changed (recovery.go). It belongs to the turn and
+    343:	// is: both of those are facts about ONE turn's work, and a detector that
+    349:	// turn reaches them below.
+    353:	// toolCtx is the turn's context WITHOUT the observer installed below. EVERY
+    355:	// tool must run under the turn's cancellation and nothing else. Giving an
+    357:	// be a loop, and reading the reassigned ctx from inside the closure would be
+    358:	// a second reader of a variable the loop writes.
+    371:	turnObserver := func(event provider.StreamEvent) {
+    378:			a.turnLane.token(time.Now())
+    388:			a.turnLane.token(time.Now())
+    420:	ctx = provider.WithStreamObserver(ctx, turnObserver)
+    421:	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
+    433:	// WHO IS WAITING ON THIS TURN. A conversation's turn is a person watching an
+    435:	// for. A TASK NODE's turn is the same machinery with nobody in front of it —
+    445:	// a second of it may cost. A turn is worth a person's attention; it is said
+    450:	// It was, on every task turn this build ever ran, and the simulator priced
+    464:	// to be background for every node whatever was on the screen, on the grounds
+    468:	// now: the turn names its ROLE and internal/lane's table answers both, so an
+    482:		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
+turn 9 · sh ←
+    {"cmd": "grep -n \"func.*runTurn\\|func.*loop\\|func.*round\\|func.*turn\\|func.*submit\\|func.*Run\\|type.*loop\\|type.*round\\|type.*turn\\|type.*Agent\" internal/session/agent.go | head -40"}
+turn 9 · sh → 0ms
+    84:	provider.InstallLaneProber(client, func(string) bool { return someoneIsWatching() })
+    546:// person types mid-turn changes the model the turn in flight is talking to.
+    727:func (a *Agent) reasoningLocked(model string) effort.Rung {
+    756:func parseReasoning(level string) (effort.Rung, bool) { return effort.Parse(level) }
+    809:func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event, error) {
+    1196:// the person typed into work that was already moving — spliced into this turn
+    1225:func (u userMessage) text() string { return messageContentText(u.message) }
+    1230:// that was typed while the last turn was still running.
+    1340:			// Whatever is still queued was typed at this turn and belongs to
+    1416:		// somebody typed against a turn they did not start.
+    1906:func (a *Agent) turnTruncated() bool {
+    2151:		// and it is what keeps a sentence typed in the last seconds of a turn
+    2817:func newEventHub() *eventHub { return &eventHub{} }
+    3255:	// Steer marks a user entry that was typed INTO the turn it sits inside
+turn 9 · sh ←
+    {"cmd": "grep -rn \"Command timed out after\\|tool.*timeout\\|timeout.*tool\\|called.*timeout\\|identical\\|same.*command\\|command.*same\" internal/session/ --include=\"*.go\" | head -40"}
+turn 9 · sh → 0ms
+    internal/session/standing_run.go:858:// that was never armed is byte-identical to what it was before this existed —
+    internal/session/subharness_run.go:26:// headless command (cmd/aforge) run the same program through the same runner
+    internal/session/principal_audit.go:123:// [approval.Vouchable]'s, reached through the same [commandLike] reading
+    internal/session/principal_audit.go:358:// that was checked and a session that was taken at its word read identically in
+    internal/session/principal_audit.go:376:// deleting eleven files read identically in the journal before this line
+    internal/session/task_contract.go:466:	// transcript that draws the person's `›` line identically whether the words
+    internal/session/jobrow.go:12:// session that had quietly given up looked identical.
+    internal/session/task_escalation_test.go:50:	// principle is meant to hold there identically.
+    internal/session/served.go:543:// arrived, in an order that does not change between two identical calls.
+    internal/session/withdrawn_test.go:34:// gets the old answer. The two failures look identical to the belt — one lookup
+    internal/session/withdrawn_test.go:204:		return toolResponse("build", "bash", `{"command":"echo the same answer every time"}`), nil
+    internal/session/promote_test.go:258:	if !isError || !strings.Contains(answer, "Command timed out after") {
+    internal/session/effects_test.go:6:// handed a file to fix and rewrote it twenty-odd times in near-identical
+    internal/session/effects_test.go:67:	// Forty identical writes are far past anything this test expects to happen,
+    internal/session/effects_test.go:157:	if want := "the last 3 write calls produced byte-identical content"; !strings.Contains(evidence, want) {
+    internal/session/effects_test.go:180:	// identical calls are a loop by that rule as well. What is under test here is
+    internal/session/effects_test.go:294:// leave identical bytes can answer differently. The bytes are what the brief is
+    internal/session/effects_test.go:308:		t.Fatalf("two hands leaving identical bytes fingerprinted %d and %d, want one effect", first, second)
+    internal/session/state.go:694:// deciding about — commit and recall carried the identical sentence and paid for
+    internal/session/route_judge.go:477:// second INDEPENDENT reading of the same turn. So it is the identical question,
+    internal/session/sessionfile.go:317:// tools and one that never had to are otherwise identical in this file, so
+    internal/session/sessionfile.go:742:// from the file. Unchanged file, matching digest — the real image, byte-identical
+    internal/session/task_settle_test.go:85:	// decides, not about what happened, so the facts a person reads are identical
+    internal/session/tools.go:171:	// narrow 
+    … 507 bytes elided …
+    identical
+    internal/session/novelty.go:219:// is a fact about a state that did not exist a step ago; an identical reading
+    internal/session/task_audit.go:2516:	// Whitespace is normalized so "make  check" is the same command as
+    internal/session/task_checks.go:92:// and the derived command is put through the same two questions the raw one was —
+    internal/session/task_checks.go:323:		// An option is not a program, which is the same reading [commandLike]
+    internal/session/task_checks.go:528:// file or it is a command and that is the same division the door itself is built
+    internal/session/task_checks.go:578:// simple command" — the same question a standing approval has to ask before it
+    internal/session/task_checks.go:618:// may type, which is the same single uncomposed command it always was.
+    internal/session/taskdelta.go:42:// moved is not rebuilt — the bytes in message[0] stay identical, so the prompt
+    internal/session/lanenews_test.go:83:// REFUSED the model outright used to arrive here identical, because the
+    internal/session/principal.go:9:// all. The two look identical from inside the engine, and that is exactly the
+    internal/session/hermetic_test.go:60:	// same moment: a node commits as well as journals, and a git command with no
+    internal/session/fixrecall.go:212:		// is still the same broken lane — a command that fails twice, once
+turn 10 · sh ←
+    {"cmd": "grep -rn \"StopReason\\|stop.*reason\\|Exhausted\\|Stop \" internal/exec/executor.go | head -40"}
+turn 10 · sh → 0ms
+    257:	// cumulative bound on prompt sent — and all three set Exhausted to
+    267:	Stop  StopReason
+    268:	// Exhausted is what ran out, when something did. It is separate from Stop
+    274:	// finished deliverable. Stop stays the honest answer to "how did the loop
+    275:	// end"; Exhausted answers "was it still working when it was told to stop",
+    278:	Exhausted StopReason
+    304:	// Verdict is the same ending seen from the other side. Stop is written for a
+    549:// StopReason says how the loop ended. It is recorded rather than inferred
+    552:type StopReason string
+    555:	StopDone      StopReason = "done"      // the model stopped asking for tools
+    556:	StopTurnCap   StopReason = "turn-cap"  // ran out of iterations; a runaway backstop
+    557:	StopBudget    StopReason = "budget"    // ran out of tokens; the leaf was too expensive
+    558:	StopDeadline  StopReason = "deadline"  // ran out of wall clock
+    559:	StopError     StopReason = "error"     // the provider failed in a way we could not absorb
+    560:	StopPromote   StopReason = "promote"   // a reflex discovered that it is a job
+    561:	StopPaused    StopReason = "paused"    // user hold observed between turns
+    562:	StopCancelled StopReason = "cancelled" // user cancellation observed between turns
+    569:	StopEmpty StopReason = "empty"
+    577:	StopOverrun StopReason = "overrun"
+    596:	StopSplit StopReason = "split"
+    610:// seam says separately whether an ending was recorded at all — a StopReason is
+    612:func (s StopReason) OutOfRoom() bool {
+    752:// told to land and complying (Exhausted). Only the resource endings count; a
+    762:	return o.Stop == StopBudget || o.Stop == StopTurnCap || o.Stop == StopOverrun ||
+    763:		o.Exhausted == StopBudget || o.Exhausted == StopOverrun
+turn 10 · sh ←
+    {"cmd": "sed -n '540,620p' internal/exec/executor.go"}
+turn 10 · sh → 0ms
+    	if failed {
+    		line += "  → error"
+    	}
+    	o.Ran = append(o.Ran, line)
+    	if len(o.Ran) > ranLimit {
+    		o.Ran = o.Ran[len(o.Ran)-ranLimit:]
+    	}
+    }
+    
+    // StopReason says how the loop ended. It is recorded rather than inferred
+    // because "the model finished" and "we cut it off" produce identical-looking
+    // output and mean opposite things about whether the result can be trusted.
+    type StopReason string
+    
+    const (
+    	StopDone      StopReason = "done"      // the model stopped asking for tools
+    	StopTurnCap   StopReason = "turn-cap"  // ran out of iterations; a runaway backstop
+    	StopBudget    StopReason = "budget"    // ran out of tokens; the leaf was too expensive
+    	StopDeadline  StopReason = "deadline"  // ran out of wall clock
+    	StopError     StopReason = "error"     // the provider failed in a way we could not absorb
+    	StopPromote   StopReason = "promote"   // a reflex discovered that it is a job
+    	StopPaused    StopReason = "paused"    // user hold observed between turns
+    	StopCancelled StopReason = "cancelled" // user cancellation observed between turns
+    
+    	// StopEmpty is the runaway-reasoning circuit breaker: a turn that spent most
+    	// of what the leaf had left and returned no visible text at all. It is
+    	// separate from StopError because nothing failed — the call succeeded and
+    	// was paid for in full — and separate from StopDone because nothing was
+    	// produced.
+    	StopEmpty StopReason = "empty"
+    
+    	// StopOverrun is a leaf that was landed for running far past what work of
+    	// its kind has ever cost on this machine. Nothing writes it any more; it is
+    	// kept because a leaf run recorded before it was retired still carries the
+    	// word on disk (internal/store/leafrun.go), and a reason a reader cannot
+    	// name is worse than one nothing produces. It is separate from StopBudget
+    	// because nothing ran out, and from StopError because nothing failed.
+    	StopOverrun StopReason = "overrun"
+    
+    	// StopSplit is the cooperative ending: the leaf found mid-work that it was
+    	// holding several agents' jobs, said what they were, and stopped so they
+    	// could run instead of it.
+    	//
+    	// It is its own reason rather than one of the endings above because every
+    	// one of those would misreport it. StopDone says the work is finished and
+    	// it is not. StopPromote says the shape was wrong and the same work should
+    	// be run again properly, which is an escalation and not a division.
+    	// StopBudget and StopOverrun say a resource ran out, and nothing did — the
+    	// grant was untouched and the leaf gave it back.
+    	//
+    	// It deliberately does NOT make Outcome.Overran true. Overran is the
+    	// question "was there work left when the resources ran out", and the
+    	// continuation subsystem it gates exists to replan a remainder from an
+    	// exhaustion. A cooperative split has its own path with its own reason in
+    	// the growth journal, and letting both fire on one settlement would spend
+    	// two rounds on one decision.
+    	StopSplit StopReason = "split"
+    )
+    
+    // OutOfRoom reports that this ending is a leaf THAT WAS STILL WORKING when
+    // something it could not argue with stopped it: its tokens, its turns, or its
+    // clock.
+    //
+    // It is a method on the reason rather than a rule at each reader because the
+    // answer travels: the settlement asks it of an Outcome, and the scheduler asks
+    // it of an ExecResult that holds nothing but this string. Two spellings of one
+    // question is how a leaf came to be judged done on one side of a seam and cut
+    // off on the other.
+    //
+    // The empty reason answers false, and every caller that carries this across a
+    // seam says separately whether an ending was recorded at all — a StopReason is
+    // a string, and its zero value must never be readable as "it finished fine".
+    func (s StopReason) OutOfRoom() bool {
+    	switch s {
+    	case StopBudget, StopTurnCap, StopOverrun, StopDeadline:
+    		return true
+    	}
+    	return false
+    }
+    
+    // Abandoned is the node watchdog's own ending: the executor was still inside a
+turn 10 · sh ←
+    {"cmd": "grep -rn \"StopReason\\|Exhausted\\|stop.*reason\" internal/exec/schedule.go | head -30"}
+turn 10 · sh → 0ms
+    36:	// nodes are marked, and Run reports the stop reason.
+    413:// finish annotates whatever never ran and turns the stop reason into the run's
+turn 11 · sh ←
+    {"cmd": "sed -n '200,540p' internal/session/loop.go"}
+turn 11 · sh → 0ms
+    // ── the turn ────────────────────────────────────────────────────────────────
+    
+    // runTurn executes one Submit: provider requests interleaved with tool
+    // execution until the assistant answers without a tool call, the person
+    // interrupts, or the provider fails permanently.
+    //
+    // It mirrors internal/exec/bare's loop — same message assembly, same stop
+    // condition, same retry schedule, same per-batch tool parallelism with results
+    // appended in call order — with the two interactive differences: steering
+    // drains at each step boundary, and cancellation keeps the partial reply.
+    //
+    // It reports whether the turn COMPLETED: the model answered without a tool
+    // call, and nobody interrupted and nothing failed. Only that outcome may drain
+    // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
+    // that starts the next one.
+    func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+    	started := time.Now()
+    	var turn Usage
+    
+    	// NOTHING MAY LEAVE A CLOCK RUNNING. This turn posts phases of its own
+    	// between requests — a tool batch, a gate reading the answer, a tidying
+    	// pass (phasenews.go) — and a surface draws every one of them until it is
+    	// told the work is over. There are a dozen ways out of the loop below,
+    	// including an interrupt and a permanent failure mid-stream, and a stale
+    	// phase left on the screen after any of them is exactly the defect the
+    	// phase clock exists for. So the end is DEFERRED rather than written at
+    	// each exit: a way out added later cannot forget it, and neither can a
+    	// panic.
+    	defer a.endPhase()
+    
+    	// BEFORE ANY OF IT: WHAT IS THIS SESSION WORKING TOWARDS? On an unattended
+    	// session with a budget the goal owner is a [Steward] (principal.go), and a
+    	// Steward that carries work on has to be carrying it on towards something.
+    	// The done-condition for the WHOLE ask is written here, once, at the start of
+    	// the first turn — before the work has had a chance to argue for a definition
+    	// of done that suits it — and frozen for the life of the session
+    	// (principal_acceptance.go).
+    	//
+    	// EVERY OTHER SESSION PASSES STRAIGHT THROUGH IT. There is no Steward, so
+    	// there is nothing to write, and the cost is one nil check per turn.
+    	a.openAcceptance(ctx, hub)
+    
+    	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
+    	// build already knows how to do properly? A sub-harness has no slash command,
+    	// so the turn itself is how one is reached: a strong match against the
+    	// registry raises one line asking whether that is what was meant
+    	
+    … 15626 bytes elided …
+    k, or on the install reaches this turn through the
+    	// same call the dialled level does, which is what makes one resolver true.
+    	model := a.Model()
+    	rung := a.effortFor(model)
+    	// AND THE SURFACE HEARS ABOUT A RESCUE WHILE IT IS STILL OUT, under the
+    	// latched model for the latch's own reason (lanenews.go). The report is read
+    	// AFTER the answer; this is the one state of a hedge that is over before the
+    	// answer exists, and it is the only place this build says the word "slow" —
+    	// while something is already being done about it.
+    	a.watchLaneRescue(model, hedge)
+    
+    	// usedTools says this turn touched the belt at all. It is the one fact the
+    	// route judge cannot see from outside the loop (route_judge.go): a turn that
+    	// called tools was already work of some size, and asking whether work should
+    	// have been work is a question with no useful answer.
+    	usedTools := false
+    
+    	// overflowCompacted bounds the compact-and-retry answer to a context
+    	// overflow at one pass per turn. A second overflow after a successful
+    	// compaction is not a context problem this loop can fix by shrinking
+    	// further, and retrying it forever would burn a summary call per attempt.
+    	overflowCompacted := false
+    
+    	// A text-only answer normally closes the turn. A length stop is not an
+    	// answer, though: it is the provider saying that the answer did not fit, so
+turn 11 · sh ←
+    {"cmd": "grep -rn \"scriptedBrain\\|scripted.*brain\\|fakeTool\\|fake.*tool\\|mockTool\\|mock.*tool\\|testTool\\|TestTool\" internal/session/ --include=\"*.go\" -l | head -15"}
+turn 11 · sh → 0ms
+    internal/session/connectcaps_test.go
+    internal/session/task_progress_test.go
+    internal/session/agent_test.go
+    internal/session/session.go
+    internal/session/connect_test.go
+    internal/session/reasoning_replay_test.go
+turn 11 · sh ←
+    {"cmd": "grep -rn \"harness_build_law\\|harness_law\\|HarnessLaw\\|harness.*law\" internal/session/ --include=\"*.go\" | head -20"}
+turn 11 · sh → 0ms
+    internal/session/route_judge.go:358:	// session spending money on its own sentence (harness.go keeps the same law).
+    internal/session/route_judge.go:766:		// on its own sentence (harness.go keeps the same law).
+    internal/session/harness_task.go:280:// harnessRefusedNote is an attempt the law turned down, as one line in the story
+    internal/session/tools_harness.go:222:			// (harness_task.go states the law).
+    internal/session/subharness_doors_test.go:809:		// The pair travels together, by [Agent.subharnessTools]' own law: a
+    internal/session/checkpoint.go:1545:// one-liner this harness writes is held to (CLAUDE.md's vocabulary law). The
+    internal/session/harness_build.go:490:// harnessAccepted is a page that passed the whole law, with the two things a
+    internal/session/harness_build.go:597:		"Reply with the WHOLE ENVELOPE again — one JSON object with the keys cues, justification, derivation, harness — because what you send back REPLACES the page above rather than patching it, and it is held to exactly the same law."
+    internal/session/harness_room_test.go:309:// that way (harness_build_law_test.go) — so the seat's own methods have to be
+turn 12 · sh ←
+    {"cmd": "sed -n '530,800p' internal/session/loop.go"}
+turn 12 · sh → 0ms
+    	// have been work is a question with no useful answer.
+    	usedTools := false
+    
+    	// overflowCompacted bounds the compact-and-retry answer to a context
+    	// overflow at one pass per turn. A second overflow after a successful
+    	// compaction is not a context problem this loop can fix by shrinking
+    	// further, and retrying it forever would burn a summary call per attempt.
+    	overflowCompacted := false
+    
+    	// A text-only answer normally closes the turn. A length stop is not an
+    	// answer, though: it is the provider saying that the answer did not fit, so
+    	// this count keeps that exceptional continuation both useful and bounded.
+    	truncations := 0
+    
+    	// And the same stop can fall mid-TOOL-CALL, which is dearer: the arguments
+    	// that did stream are already paid for. This counts the writes the salvage
+    	// yard (salvage.go) lands from such cuts, bounded on its own budget there.
+    	salvages := 0
+    
+    	// emptyReplies is how many times this turn has been answered with an HTTP 200
+    	// carrying nothing at all. It is counted for the turn rather than for the
+    	// step because that is the shape the measured failure had — three of them in
+    	// fifteen seconds — and because the ladder it is walked against is the
+    	// transport ladder, which is a budget for a piece of work and not for a line.
+    	emptyReplies := 0
+    
+    	// meter is what this turn has COST, in finished tool rounds, priced against
+    	// what handing it over would cost (checkpoint.go). It belongs to the turn for
+    	// the reason the loop window and the change ledger do: it is a fact about one
+    	// answer, and a meter that remembered yesterday's rounds would move work out
+    	// of a conversation on the strength of a conversation that already ended.
+    	meter := &checkpointMeter{}
+    
+    	for {
+    		// The cancel check comes BEFORE the drain: steering typed in the
+    		// instant before an interrupt must not be spliced into a transcript
+    		// this turn is abandoning unanswered. Nothing is lost — the turn's end
+    		// drains the queue under the same lock that clears running (agent.go),
+    		// so a leftover lands ahead of the next Submit's message.
+    		if ctx.Err() != nil {
+    			a.keepPartial(partial, hub)
+    			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+    			return false
+    		}
+    
+    		// Steering lands here, between batches: the transcript tail is a tool
+    		// result or an assistant answer, both legal places for a user message.
+    		a.drainSteering(hub)
+    		if tags := a.takeReplyTags(); len(tags) > 0 {
+    			hub.send(Event{Kind: EventTaskReplyTags, TaskReplyTags: tags})
+    		}
+    
+    		// NOTHING TOO BIG TO FIT IS SENT AND HOPED OVER. The last thing before
+    		// the wire, after steering has landed, because steering is part of the
+    		// request being measured.
+    		a.guar
+    … 10338 bytes elided …
+    F THE TURN, asked only of a turn that answered
+    			// in words alone: should that have been WORK? It is the same judge the
+    			// front of this function asked about the request, reading what the
+    			// request alone could not have told it. A second small model reads
+    			// what was asked and the shape of what came back, and a yes STARTS it as
+    			// a task and says so on the transcript (route_judge.go). It is silent
+    			// when it cannot work, it is rate-limited to one start every few turns,
+    			// and it is asked before the turn is sealed so that the work it starts is
+    			// on the rail by the time the person reads the answer.
+    			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
+    			a.routeJudge(ctx, hub, user, usedTools, response.Text())
+    			a.endPhase()
+    			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+    			// The name comes after the turn is done and before the hub closes:
+    			// the person is not kept waiting on a title, and the event still has
+    			// a stream to land on (title.go).
+    			a.maybeTitle(ctx, hub)
+    			// AND THE EXCHANGE IS READ FOR ANYTHING WORTH KEEPING, off this
+    			// goroutine entirely and on the session's own lifetime rather than
+    			// the turn's (memory.go). Nobody is waiting for it, nothing it finds
+    			// reaches this turn, and it says nothing whatever happens to it.
+turn 12 · sh ←
+    {"cmd": "sed -n '800,1100p' internal/session/loop.go"}
+turn 12 · sh → 0ms
+    			// reaches this turn, and it says nothing whatever happens to it.
+    			a.learnFromTurn(user.text(), response.Text())
+    			return true
+    		}
+    
+    		// A CALL THE LIMIT CUT IN HALF IS SALVAGED BEFORE IT IS RECORDED
+    		// (salvage.go): a severed write gets its arguments repaired to what
+    		// verifiably arrived and runs like any other call — gate, events,
+    		// transcript all see the repaired bytes — and its result is reshaped
+    		// below into the way to continue. Everything else severed keeps its
+    		// refusal, reworded from a parser's shrug into cause and remedy.
+    		severed := a.considerSeverance(calls, store.ClassifyEnd(provider.FinishReason(response), true), &salvages)
+    
+    		assistant := ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls}
+    		a.recordAssistant(assistant, reasoning.snapshot())
+    		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
+    		partial.reset()
+    		usedTools = true
+    
+    		// ── THE ENFORCED RUNG OF A PROCESS RULE (processrule.go) ──
+    		//
+    		// THIS IS THE ONE BOUNDARY WHERE BOTH FACTS ARE IN HAND: the batch the
+    		// model wants run, and whether it wrote anything visible beside it. The
+    		// assistant message is already in the transcript and nothing has reached
+    		// the world yet, so a rule that has been advised and ignored can answer
+    		// the submission with its demand INSTEAD of executing it — which is the
+    		// difference between a rule and a suggestion, and the thing the second
+    		// silent note had been promising in words it could not keep.
+    		//
+    		// A COMPLYING MODEL NEVER REACHES THE CALL. Every rule passes a
+    		// submission that meets it, and the write-your-notes rule only holds
+    		// anything after its advisory has been said twice into an unbroken
+    		// silence — so this is a map lookup on the ordinary path.
+    		//
+    		// IT IS A LINE HERE RATHER THAN A PRE-ACTION HOOK for [Agent.checkpointRound]'s
+    		// reason: it may STOP something, and hooks.go's law reserves that for the
+    		// loop that owns the turn's usage, request and meter.
+    		if hold, held := episode.holdSubmission(submission{calls: calls, visibleText: visibleText}); held {
+    			if hold.stop {
+    				return a.stopForProcessRule(ctx, hub, calls, hold, &turn, started, model)
+    			}
+    			a.withholdSubmission(hub, calls, hold)
+    			// The reads this response started early are dropped exactly as a
+    			// provider retry drops them, and for the same reason the early-start
+    			// law admits read-only calls only: a discarded read costs the work and
+    			// nothing else, and the model must not be handed the answer to a call
+    			// the harness has just refused to run.
+    			warm.reset()
+    			continue
+    		}
+    
+    		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+    		// AND A 
+    … 10807 bytes elided …
+    ion, and a level they asked for their conversation to be
+    // thought about would be an odd thing to spend on naming it.
+    //
+    // The stamp is [provider.WithConfiguredReasoningEffort] — the OPERATOR-explicit
+    // setter — because this level is exactly that: a person turned a knob. The other
+    // setter, WithReasoningEffort, is for harness defaults, and the adapter drops
+    // those unless a catalog can vouch for the model (provider's requestedEffort).
+    // This session's client is built without that catalog seam, so a harness-default
+    // stamp here would be dropped every time and the knob would do nothing. Nothing
+    // is stamped when no level is set: an unstamped context is the one shape that
+    // leaves the request byte-for-byte what it was.
+    func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+    	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reasoningBuffer{}, warm, forming)
+    }
+    
+    func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+    	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in
+turn 12 · the harness
+    prefix rewritten — 21 observation(s) retired, 0 turn(s) folded; this turn re-reads cold
+turn 13 · sh ←
+    {"cmd": "grep -n \"runToolsWarm\\|runTool\\|execTool\\|toolCtx\\|tool.*result\\|result.*tool\\|timed out\\|timeout\" internal/session/loop.go | head -40"}
+turn 13 · sh → 0ms
+    137:		"timeout",
+    182:// internal/tui3) — the tool's own result is one sentence saying it worked, so
+    207:// condition, same retry schedule, same per-batch tool parallelism with results
+    353:	// toolCtx is the turn's context WITHOUT the observer installed below. EVERY
+    366:	// its answer, which is a tool result and not the room's reply, was typed
+    369:	toolCtx := ctx
+    417:			warm.consider(toolCtx, a, episode, hub, event.Delta)
+    851:		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+    1544:// still accounted for by runTools, which consults this and runs whatever is not
+    1616:	result toolResult
+    1661:	// runTools seeds its slots: a tool that panics would otherwise leave the zero
+    1663:	// true. The wording is runTools' own, so a panic reads the same to the model
+    1668:		result: toolResult{
+    1669:			text:    "tool panicked: " + call.Function.Name + " did not return a result",
+    1743:// runTools executes one batch with nothing started early. It is the whole of
+    1752:func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
+    1753:	return a.runToolsWarm(ctx, a.newEpisode(), calls, hub, nil)
+    1756:// runToolsWarm executes one batch concurrently and reports it in call order,
+    1786:// THIS PROCESS BOUNDS ITS OWN WAITING — the shell tools by their timeout
+    1791:func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+    1913:		// A successful tool's hint is empty: the result belongs to the model,
+    1934:// (runToolsWarm), and so does the early start that begins a read while the
+    1938:// nothing would say so — and a gate in runToolsWarm alone would leave the early
+    1947:// call and the three must carry identical bytes (runToolsWarm says why). A call
+    2070:func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
+    2294:	// spelled them. Decoded into a bare any they become float64 and a timeout of
+    2377:// capOutput bounds a tool result for Event.Output, marking the cut with the
+    2690:	// reserving less than one long tool result plus one reply.
+    3140://  1. THE STUB PASS. A tool result the model has already used is a pointer to
+    3160:// the mid-batch race the old pass had to repair — a tool result landing after
+    3276://	compacted · stubbed 14 tool results · folded 31 messages · nothing lost — full record in the store
+    3286:		clauses = append(clauses, fmt.Sprintf("stubbed %d tool result%s", pass.stubbed, plural(pass.stubbed)))
+    3314:// An assistant message and the tool results answering it go TOGETHER, always. A
+    3315:// tool result whose call was folded away is an orphan every provider rejects
+    3495:	// A tool result whose assistant tool_calls message was summarized away is
+turn 13 · sh ←
+    {"cmd": "grep -n \"func.*runTool\" internal/session/loop.go"}
+turn 13 · sh → 0ms
+    1752:func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
+    1791:func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+turn 13 · sh ←
+    {"cmd": "find internal/session/ -name \"*.go\" -exec grep -l \"runToolsWarm\\|runTool\\|timeout\" {} \\;"}
+turn 13 · sh → 0ms
+    internal/session/editvideo_frame_end_test.go
+    internal/session/standingtree_test.go
+    internal/session/taskname.go
+    internal/session/tasklook.go
+    internal/session/promote_test.go
+    internal/session/task_close_test.go
+    internal/session/route_judge.go
+    internal/session/tools_pdf_test.go
+    internal/session/editvideo_mutation_test.go
+    internal/session/chatlog_test.go
+    internal/session/agent_test.go
+    internal/session/task_audit.go
+    internal/session/tools_jobs.go
+    internal/session/toolargs_test.go
+    internal/session/toolhint_test.go
+    internal/session/jobname.go
+    internal/session/tools_speak_test.go
+    internal/session/guardian.go
+    internal/session/fixrecall.go
+    internal/session/jobs_test.go
+    internal/session/fork_test.go
+    internal/session/tools_watch.go
+    internal/session/tools_harness_test.go
+    internal/session/promote.go
+    internal/session/state_test.go
+    internal/session/fixrecall_test.go
+    internal/session/abandon.go
+    internal/session/session.go
+    internal/session/harness_revise_test.go
+    internal/session/tools_video.go
+    internal/session/tools_tasks_test.go
+    internal/session/task_divide.go
+    internal/session/subharness_doors_test.go
+    internal/session/checkpoint_test.go
+    internal/session/route_judge_test.go
+    internal/session/jobstream_test.go
+    internal/session/tools_image_test.go
+    internal/session/task_shape.go
+    internal/session/task_claims.go
+    internal/session/attach_test.go
+    internal/session/tools_watch_test.go
+    internal/session/checkpoint.go
+    internal/session/tools_music.go
+    internal/session/jobrow_test.go
+    internal/session/harness_build.go
+    internal/session/tools_jobs_test.go
+    internal/session/landing_test.go
+    internal/session/tools_subharness.go
+    internal/session/fixstore.go
+    internal/session/looped_arguments_test.go
+    internal/session/spellout.go
+    internal/session/harness_build_test.go
+    internal/session/argscap_test.go
+    internal/session/tools_editvideo_test.go
+    internal/session/tools_video_test.go
+    internal/session/tools_media_test.go
+    internal/session/loop.go
+    internal/session/tools_doc_test.go
+turn 14 · sh ←
+    {"cmd": "sed -n '1791,1970p' internal/session/loop.go"}
+turn 14 · sh → 0ms
+    func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+    	// THE TURN RIDES INTO EVERY TOOL FROM HERE (tasklook.go). A hand that wants
+    	// to know what THIS turn has already been told — `tasks`, which answers the
+    	// same list to a model polling for work it will be woken about — has nowhere
+    	// else to read it: the episode is a fact about one turn and is deliberately
+    	// not held on the Agent, and the context is the one thing already threaded
+    	// from the turn down into every Execute.
+    	ctx = withEpisode(ctx, ep)
+    
+    	// THE ARGUMENTS ARE RENDERED ONCE PER CALL, HERE, and the string is carried
+    	// to every event this batch sends about that call — the begin it sends here,
+    	// the end or the failure below, and the finished event the execution sends
+    	// (see [Agent.executeTool]). [argsText] is not free on the calls that matter:
+    	// a write or an edit past the cap is brought under it by a bisection that
+    	// decodes and re-encodes the whole payload at every step, so rendering the
+    	// same 20k write three times is three of those searches for one identical
+    	// string. The three events must carry IDENTICAL bytes anyway — a surface
+    	// pairs a finished row with the row it has been drawing — so one rendering is
+    	// not an optimization of three, it is the honest spelling of them.
+    	rendered := make([]string, len(calls))
+    	for index, call := range calls {
+    		rendered[index] = argsText(call)
+    		hub.send(Event{
+    			Kind: EventToolBegin,
+    			Tool: call.Function.Name,
+    			Hint: a.gloss(call),
+    			Args: rendered[index],
+    		})
+    	}
+    
+    	// AND THE CLOCK MOVES WITH THE BATCH. A tool round is the longest wait in
+    	// this package by a wide margin — a `go test` runs for minutes where a
+    	// request runs for seconds — and until this line the phase clock went quiet
+    	// the moment the stream ended, so the surface counted a request that was
+    	// already over while a build ran underneath it (phasenews.go).
+    	//
+    	// A BATCH IS ONE STORY AND IS NAMED ONCE. Several calls run at once here,
+    	// they finish in scheduler order, and a clock that renamed itself as each
+    	// one landed would be two stories about one wait — so the batch takes the
+    	// name of the FIRST call, which is the one the person watched arrive first
+    	// and the one the transcript already puts at the top of the round. The name
+    	// is the tool's own, spelled exactly as the begin event above spells it,
+    	// because a surface that had to translate it would translate it differently
+    	// from the next one.
+    	if len(calls) > 0 {
+    		a.tellPhase(provider.PhaseRunning, calls[0].Function.Name, time.Now())
+    		defer a.endPhase()
+    	}
+    
+    	slots := newBatchSlots(calls)
+    	var wg sync.Wai
+    … 4746 bytes elided …
+    all, HANDED IN RATHER THAN COMPUTED,
+    // because the caller has already rendered it for the events it sends about the
+    // call and the three must carry identical bytes (runToolsWarm says why). A call
+    // site with nothing in hand renders it itself; there is no path that may pass
+    // something else.
+    //
+    // It sits INSIDE the dispatch loop rather than above it, after the belt has
+    // been found to carry the tool: a call for a tool that does not exist is
+    // answered "Unknown tool", never asked about. A question about a tool nobody
+    // has is a question with no right answer.
+    func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+    	for _, tool := range a.beltTools() {
+    		if tool.Name != call.Function.Name {
+    			continue
+    		}
+    		running, refused, allowed := ep.preAction(ctx, hub, call)
+    		if !allowed {
+    			// A REFUSED DOOR IS THE HARNESS'S OWN ANSWER. The tool never ran, the
+    			// world never saw the call, and what came back was written here — by a
+    			// policy, a scope, a capability that is off, a person saying no. Marked
+    			// at the ONE place every veto passes through rather than inside each
+    			// citizen, so a pre-action hook added next month cannot forget to say
+    			// so and have its refusals counted against the model as spinning.
+    			refused.harness = true
+    			return refused
+    		}
+turn 14 · sh ←
+    {"cmd": "sed -n '1610,1760p' internal/session/loop.go"}
+turn 14 · sh → 0ms
+    
+    // warmCall is one early execution: the call it was started for, and a channel
+    // closed when the result lands.
+    type warmCall struct {
+    	call   ai.ToolCall
+    	done   chan struct{}
+    	result toolResult
+    }
+    
+    // consider takes one provider.StreamToolCallReady payload and starts the call if
+    // the law allows it. Everything it declines — a payload that will not parse, a
+    // nameless call, a mutating call, a call already started — is a silent no-op,
+    // because declining costs nothing: the batch runs it in a moment anyway.
+    //
+    // It is called from the provider's read loop, which must not work, so the parse
+    // is one small unmarshal and the execution is somebody else's goroutine.
+    func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *eventHub, payload string) {
+    	var call ai.ToolCall
+    	if err := json.Unmarshal([]byte(payload), &call); err != nil {
+    		return
+    	}
+    	if call.ID == "" || !earlyTools[call.Function.Name] {
+    		return
+    	}
+    	// A tool the belt does not have would only produce the dispatcher's miss —
+    	// "Unknown tool", or a withdrawal for a hand that was taken (withdrawn.go) —
+    	// early instead of late; refusing here keeps a warm result from ever being an
+    	// answer the live belt would not have given.
+    	if !a.hasTool(call.Function.Name) {
+    		return
+    	}
+    	// A CALL THAT MUST ASK DOES NOT START EARLY. This is not a second gate —
+    	// executeTool still decides, with the same policy, and a call allowed here
+    	// is allowed there — it is the early-start law meeting the consent one: the
+    	// question would be about an instruction the model has not finished
+    	// sending, and a retry (which throws every warm result away) would ask it a
+    	// second time about a call that never ran. Anything but allow waits for the
+    	// batch, where it is asked exactly once.
+    	if decision, governed := a.decide(call); governed && decision.Action != approval.ActionAllow {
+    		return
+    	}
+    
+    	b.mu.Lock()
+    	if b.started == nil {
+    		b.started = make(map[string]*warmCall, 2)
+    	}
+    	if _, running := b.started[call.ID]; running {
+    		b.mu.Unlock()
+    		return
+    	}
+    	// The result is seeded BEFORE the goroutine that fills it, for the reason
+    	// runTools seeds its slots: a tool that panics would otherwise leave the zero
+    	// value, and an empty SUCCESS is the one story about the fault that is not
+    	// true. The wording is runTools' own, so a panic reads the same to the model
+    	// whether the call started early or in the batch.
+    	warm := &warmCall{
+    		call: call,
+    		done: make(chan struct{}),
+    		result: toolResult{
+    			text:    "tool panicked: " + call.Function.Name + " did not return a result",
+    			isError: true,
+    		},
+    	}
+    	b.started[call.ID] = warm
+    	b.mu.Unlock()
+    
+    	go func() {
+    		defer close(warm.done)
+    		defer guard.Recove
+    … 1528 bytes elided …
+    l.Function.Name != call.Function.Name ||
+    		warm.call.Function.Arguments != call.Function.Arguments {
+    		return nil
+    	}
+    	return warm
+    }
+    
+    // hasTool reports whether the belt carries a tool by this name.
+    func (a *Agent) hasTool(name string) bool {
+    	for _, tool := range a.beltTools() {
+    		if tool.Name == name {
+    			return true
+    		}
+    	}
+    	return false
+    }
+    
+    // runTools executes one batch with nothing started early. It is the whole of
+    // what this was before the streamed sighting existed, and the shape every
+    // caller outside the turn uses.
+    //
+    // It builds a control plane of its own (hooks.go) rather than taking one,
+    // because a batch run outside a turn is still a batch: the calls in it must
+    // still pass the approval gate, and an episode is the only thing that carries
+    // it. What that episode's per-turn state remembers dies with the call, which is
+    // correct — there is no turn here to be stuck in.
+    func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
+    	return a.runToolsWarm(ctx, a.newEpisode(), calls, hub, nil)
+    }
+    
+    // runToolsWarm executes one batch concurrently and reports it in call order,
+    // adopting whatever the stream already started (warm may be nil).
+    //
+    // The begins are emitted for the whole batch before the first goroutine
+    // starts, and the ends after the last one finishes, both in call order. The
+turn 15 · sh ←
+    {"cmd": "grep -rn \"timeout\\|timed out\\|tool\\|Tool\\|cmd\\|Cmd\\|shell\\|Shell\" internal/exec/schedule.go | head -50"}
+turn 15 · sh → 0ms
+    177:				// but a leaf's shell can pin every core, and `--concurrency 8`
+    211:				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.NodeTimeout}
+    255:				if flight.timeout > 0 && now.Sub(flight.started) > flight.timeout {
+    263:					var abandoned error = &Abandoned{After: flight.timeout}
+    298:	// timeout is this leaf's own watchdog, shaped to its worker. A flat
+    303:	timeout time.Duration
+    434:// timeout the tick only feeds the stall heartbeat.
+    618:// share everywhere the window is known. See toolBudgets, which does the same
+    637:		Share(maxInputBytes, toolBudgetReference, maxInputBytes)
+    642:// fact about a model, and a specialised worker that shells out to somebody
+turn 15 · sh ←
+    {"cmd": "grep -rn \"round\\|Round\\|roundLoop\\|runRound\\|loop\\|Loop\" internal/exec/ --include=\"*.go\" | head -50"}
+turn 15 · sh → 0ms
+    internal/exec/capped.go:38:	round bool
+    internal/exec/capped.go:218:		c.next, c.round = 0, true
+    internal/exec/capped.go:224:		c.next, c.round = len(b)-n, true
+    internal/exec/capped.go:228:		c.next, c.round = 0, true
+    internal/exec/capped.go:298:	if !c.round {
+    internal/exec/selfclose.go:9:// landed, a gate weighed it, and the growth governor bought a repair round. That
+    internal/exec/selfclose.go:10:// round is a COLD SPLICE. It is a new leaf, with a fresh brief, in a new
+    internal/exec/selfclose.go:13:// photographed clean twice (`surface task-2 lost=0`). Then a growth round bought
+    internal/exec/photograph.go:7:// That made the measurement a property of one loop instead of a property of a
+    internal/exec/photograph.go:20:// never changes what a loop does, and every way it can go wrong leaves the
+    internal/exec/photograph.go:44:// A repair round is a new leaf, in a new workspace object, standing in a tree
+    internal/exec/photograph.go:46:// the broken tree as its baseline, so every check an earlier round turned red
+    internal/exec/photograph.go:48:// twenty project checks down to one across four rounds and raised nothing. So
+    internal/exec/photograph.go:83:		// the project or the wall, and none of those move between rounds. That
+    internal/exec/photograph.go:85:		// the pace that sizes it properly — so this round reads again over what
+    internal/exec/photograph.go:87:		// one reading on forty files, was cut naming nothing, and every round
+    internal/exec/photograph.go:123:// the request is what every round of the job shares, so the scope it decides is
+    internal/exec/photograph.go:124:// the scope every round inherits, which is exactly what the comparison rule
+    internal/exec/photograph.go:126:// because the files an earlier round left behind are the same job's own record
+    internal/exec/photograph.go:141:// inherited says an earlier round of the same job already did. Either is reason
+    internal/exec/photograph.go:143:// account still hands over a tree an earlier round may have broken, and the
+    internal/exec/photograph.go:169:	// outcome to a gate that would buy a round to fix something that is already
+    internal/exec/photograph.go:267:			"killed at its ceiling of " + reading.Budget.Round(time.Second).String() +
+    internal/exec/photograph.go:516:			Name: one.Name, Where: one.Where(), Ground: one.Ground})
+    internal/exec/linear.go:21:// Without it a loop ends with "I've completed the analysis" and the graph
+    internal/exec/linear.go:89:this job. Do not go looking around the wider machine for related work or ready
+    internal/exec/linear.go:93:Work efficiently. Every turn is a slow round-trip, so pack each one: chain
+    internal/exec/linear.go:109:limitation only after two genuinely different routes around 
+    … 962 bytes elided …
+    
+    internal/exec/linear.go:429:// calibrated for. The audited runs show exactly what a loop does with that —
+    internal/exec/linear.go:446:// default: whatever a caller asks for, this loop will not run more than this.
+    internal/exec/linear.go:465:// job. Four hundred is not a target; it is the point past which a loop is
+    internal/exec/linear.go:470:// ModeFold is what Outcome.Mode says when the loop ran a task as a fold.
+    internal/exec/linear.go:485:// which the loop already refuses to accept as a deliverable. Either is a turn
+    internal/exec/linear.go:487:// second call exists for exactly those two endings, and after it the loop stops:
+    internal/exec/linear.go:490:// retry and judging paths above this loop already know how to handle.
+    internal/exec/linear.go:493:// NewLinear builds the loop. maxTokens is the limit that actually binds; maxTurns
+    internal/exec/linear.go:496:// Counting turns was the wrong meter. Turns are not what a loop spends — one
+    internal/exec/linear.go:501:// cannot see: a loop whose turns have become cheap enough that no token bound
+    internal/exec/linear.go:512:		// floor, asked for rather than written out again: this loop IS the
+    internal/exec/linear.go:525:// generated instead, which is what keeps the loop generic.
+    internal/exec/linear.go:647:			note := fmt.Sprintf("%d background jobs terminated at leaf end", terminated)
+turn 15 · the harness
+    budget exhausted — landing reserve granted
+turn 16 · sh ←
+    {"cmd": "sed -n '170,320p' internal/exec/schedule.go"}
+turn 16 · sh → 0ms
+    		if stop == "" {
+    			for _, id := range s.ready(graph) {
+    				if len(inFlight) >= s.concurrency {
+    					break
+    				}
+    				// The host-load gate, which the concurrency ceiling cannot
+    				// stand in for: workers are network-bound and park on sockets,
+    				// but a leaf's shell can pin every core, and `--concurrency 8`
+    				// on a machine already at 10.0 load makes eight leaves that all
+    				// run slower rather than eight leaves that run. A refusal is
+    				// not a hold — nothing in flight is delayed and nothing is
+    				// cancelled; the loop simply stops launching and the next tick
+    				// asks the machine again. With nothing in flight the governor
+    				// always admits, so back-pressure can never leave the run
+    				// doing nothing at all.
+    				if !s.governor.Admit(len(inFlight)) {
+    					break
+    				}
+    				if s.BeforeLaunch != nil {
+    					if err := s.BeforeLaunch(ctx); err != nil {
+    						stop, stopCause = err.Error(), err
+    						break
+    					}
+    				}
+    				node := graph.Node(id)
+    				node.State = plan.StateRunning
+    				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
+    				task := s.taskFor(graph, node)
+    				// Within-node progress on the surface that has no thread to
+    				// post to: the run's own event stream, which is already how a
+    				// headless run learns that anything is happening at all. A leaf
+    				// that says nothing for forty minutes is indistinguishable from
+    				// a wedged one, and the stall reporter below can only say which
+    				// node it is still waiting on, never what that node is doing.
+    				task.Progress = func(phase string, done, total int, latest string) {
+    					s.emit(Event{NodeID: node.ID, Title: node.Title, State: plan.StateRunning,
+    						Detail: progressDetail(phase, done, total, latest), Elapsed: time.Since(started)})
+    				}
+    				leafCtx, cancel := context.WithCancel(ctx)
+    				control := &leafControl{}
+    				task.control = control
+    				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.NodeTimeout}
+    				go s.work(leafCtx, id, task, retries[id], leafShape(node), done)
+    			}
+    		}
+    
+    		// Nothing running and nothing newly runnable means everything that can
+    		// be done has been — or that the run was told to stop and the last
+    		// in-flight node has landed. A cancellation that emptied the in-flight
+    		// set through the nodes' own child contexts still counts as a stop:
+    		// the race between a node landing cancelled and the scheduler seeing
+    		// ctx.Done must not decide whether the reason gets reported.
+    		if len(inFlight) == 0 {
+    			if stop == "" && ctx.Err() != nil {
+    				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
+    			}
+    			return s.finish(graph, stop, stopCause)
+    		}
+    
+    		select
+    … 2625 bytes elided …
+    c
+    	control *leafControl
+    	// timeout is this leaf's own watchdog, shaped to its worker. A flat
+    	// NodeTimeout sized for the generalist abandoned a coding pipeline at
+    	// seventeen minutes with a verification pass already in hand — and a leaf
+    	// killed from outside lands no terminal event, so its spend vanishes with
+    	// it. Zero disables, exactly as it does on the Scheduler field.
+    	timeout time.Duration
+    }
+    
+    // work runs one node and always reports back, even when the executor panics —
+    // a panic that unwinds a worker silently would strand the scheduler waiting on
+    // a completion that can never come.
+    func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, shape string, done chan<- completion) {
+    	defer func() {
+    		if recovered := recover(); recovered != nil {
+    			// The wording the scheduler already reports is kept; what is new is
+    			// that the stack reaches the log and the fault itself reaches the
+    			// journal, so a person watching the run learns that the work was
+    			// interrupted rather than inferring it from a silence. See
+    			// Task.Fault.
+    			task.Faulted(guard.Note("exec/scheduler leaf", recovered))
+    			failure := fmt.Sprintf("executor panicked: %v", recovered)
+    			if terminated := task.control.terminate(); terminated > 0 {
+    				failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+turn 16 · sh ←
+    {"cmd": "sed -n '540,620p' internal/exec/executor.go"}
+turn 16 · sh → 0ms
+    	if failed {
+    		line += "  → error"
+    	}
+    	o.Ran = append(o.Ran, line)
+    	if len(o.Ran) > ranLimit {
+    		o.Ran = o.Ran[len(o.Ran)-ranLimit:]
+    	}
+    }
+    
+    // StopReason says how the loop ended. It is recorded rather than inferred
+    // because "the model finished" and "we cut it off" produce identical-looking
+    // output and mean opposite things about whether the result can be trusted.
+    type StopReason string
+    
+    const (
+    	StopDone      StopReason = "done"      // the model stopped asking for tools
+    	StopTurnCap   StopReason = "turn-cap"  // ran out of iterations; a runaway backstop
+    	StopBudget    StopReason = "budget"    // ran out of tokens; the leaf was too expensive
+    	StopDeadline  StopReason = "deadline"  // ran out of wall clock
+    	StopError     StopReason = "error"     // the provider failed in a way we could not absorb
+    	StopPromote   StopReason = "promote"   // a reflex discovered that it is a job
+    	StopPaused    StopReason = "paused"    // user hold observed between turns
+    	StopCancelled StopReason = "cancelled" // user cancellation observed between turns
+    
+    	// StopEmpty is the runaway-reasoning circuit breaker: a turn that spent most
+    	// of what the leaf had left and returned no visible text at all. It is
+    	// separate from StopError because nothing failed — the call succeeded and
+    	// was paid for in full — and separate from StopDone because nothing was
+    	// produced.
+    	StopEmpty StopReason = "empty"
+    
+    	// StopOverrun is a leaf that was landed for running far past what work of
+    	// its kind has ever cost on this machine. Nothing writes it any more; it is
+    	// kept because a leaf run recorded before it was retired still carries the
+    	// word on disk (internal/store/leafrun.go), and a reason a reader cannot
+    	// name is worse than one nothing produces. It is separate from StopBudget
+    	// because nothing ran out, and from StopError because nothing failed.
+    	StopOverrun StopReason = "overrun"
+    
+    	// StopSplit is the cooperative ending: the leaf found mid-work that it was
+    	// holding several agents' jobs, said what they were, and stopped so they
+    	// could run instead of it.
+    	//
+    	// It is its own reason rather than one of the endings above because every
+    	// one of those would misreport it. StopDone says the work is finished and
+    	// it is not. StopPromote says the shape was wrong and the same work should
+    	// be run again properly, which is an escalation and not a division.
+    	// StopBudget and StopOverrun say a resource ran out, and nothing did — the
+    	// grant was untouched and the leaf gave it back.
+    	//
+    	// It deliberately does NOT make Outcome.Overran true. Overran is the
+    	// question "was there work left when the resources ran out", and the
+    	// continuation subsystem it gates exists to replan a remainder from an
+    	// exhaustion. A cooperative split has its own path with its own reason in
+    	// the growth journal, and letting both fire on one settlement would spend
+    	// two rounds on one decision.
+    	StopSplit StopReason = "split"
+    )
+    
+    // OutOfRoom reports that this ending is a leaf THAT WAS STILL WORKING when
+    // something it could not argue with stopped it: its tokens, its turns, or its
+    // clock.
+    //
+    // It is a method on the reason rather than a rule at each reader because the
+    // answer travels: the settlement asks it of an Outcome, and the scheduler asks
+    // it of an ExecResult that holds nothing but this string. Two spellings of one
+    // question is how a leaf came to be judged done on one side of a seam and cut
+    // off on the other.
+    //
+    // The empty reason answers false, and every caller that carries this across a
+    // seam says separately whether an ending was recorded at all — a StopReason is
+    // a string, and its zero value must never be readable as "it finished fine".
+    func (s StopReason) OutOfRoom() bool {
+    	switch s {
+    	case StopBudget, StopTurnCap, StopOverrun, StopDeadline:
+    		return true
+    	}
+    	return false
+    }
+    
+    // Abandoned is the node watchdog's own ending: the executor was still inside a
+turn 16 · sh ←
+    {"cmd": "grep -rn \"StopIdentical\\|identical.*timeout\\|toolTimedOut\\|tool.*timed\\|timeout.*counter\\|timeout.*count\\|timeoutCount\" internal/exec/ --include=\"*.go\" | head -20"}
+turn 16 · sh → 0ms
+    (no output)
+turn 17 · sh ←
+    {"cmd": "grep -rn \"scripted.*brain\\|ScriptedBrain\\|scriptedBrain\\|harness_build\\|test.*brain.*tool.*timeout\\|tool.*timeout.*test\" internal/ --include=\"*_test.go\" -l | head -20"}
+turn 17 · sh → 0ms
+    internal/e2e/roomfeed_e2e_test.go
+    internal/session/effortguard_test.go
+    internal/session/harness_build_law_test.go
+    internal/session/harness_test.go
+    internal/session/harness_room_test.go
+turn 17 · sh ←
+    {"cmd": "grep -rn \"harness_build_test\\|scriptedBrain\\|ScriptedBrain\" internal/session/harness_build_test.go | head -30"}
+turn 17 · sh → 0ms
+    (no output)
+turn 17 · sh ←
+    {"cmd": "grep -rn \"linear_test\\|looped_test\\|stopbound\" internal/exec/linear_test.go internal/session/looped_test.go internal/e2e/stopbound_e2e_test.go 2>/dev/null | head -40"}
+turn 17 · sh → 0ms
+    (no output)
+turn 18 · sh ←
+    {"cmd": "find internal/exec/ -type d"}
+turn 18 · sh → 0ms
+    bare
+    testdata
+turn 18 · sh ←
+    {"cmd": "find internal/exec/bare/ -name \"*.go\" 2>/dev/null | head -20"}
+turn 18 · sh → 0ms
+    internal/exec/bare/grepfindls.go
+    internal/exec/bare/tools.go
+    internal/exec/bare/truncate.go
+    internal/exec/bare/cancelwait_test.go
+    internal/exec/bare/tools_test.go
+    internal/exec/bare/grepfallback_test.go
+    internal/exec/bare/promote.go
+    internal/exec/bare/streaming.go
+    internal/exec/bare/editdiff.go
+turn 18 · sh ←
+    {"cmd": "grep -rn \"stop.*reason\\|StopReason\\|Exhausted\\|stop.*round\\|round.*stop\\|timeout\\|timed out\" internal/exec/linear.go | head -40"}
+turn 18 · sh → 0ms
+    739:	landingStop := StopReason("")
+    806:			outcome.Exhausted = StopDeadline
+    1173:			outcome.Exhausted = StopBudget
+    1237:				outcome.Exhausted = StopNoProgress
+    1356:// A timeout is a provider fact rather than an ability one, so a deadline stop
+    1402:	if outcome.Exhausted == StopBudget || outcome.Exhausted == StopOverrun || outcome.Exhausted == StopNoProgress {
+turn 19 · sh ←
+    {"cmd": "sed -n '700,830p' internal/exec/linear.go"}
+turn 19 · sh → 0ms
+    	userContent := text(l.brief(task))
+    	workingModel := ""
+    	if l.media != nil {
+    		workingModel = l.media.WorkingModel
+    	}
+    	if len(task.ImagePaths) > 0 {
+    		sees := l.media != nil && l.media.Catalog != nil &&
+    			l.media.Catalog.Supports(workingModel, "input", "image")
+    		if sees {
+    			userContent = append(userContent, imageParts(task.ImagePaths)...)
+    		} else if note := attachedImageNote(l.workspaceNames(task.ImagePaths), l.visionProxy()); note != "" {
+    			// An attached image used to vanish here when the working model had
+    			// no eyes: no content part, no fallback, and nobody told. The image
+    			// is in the workspace now, so the leaf is told what it has and who
+    			// can look — and when nothing can, that it must say so.
+    			userContent = append(userContent, text(note)...)
+    		}
+    	}
+    	messages := []ai.Message{
+    		{Role: "system", Content: text(system)},
+    		{Role: "user", Content: userContent},
+    	}
+    
+    	outcome := &Outcome{Stop: StopDone}
+    	// What each tool result was, so a faded one can still be recognised.
+    	labels := map[string]string{}
+    	// fade shortens old observations losslessly: before a result is stubbed
+    	// its bytes go to a spill file the agent can re-read with sh. The decayer
+    	// carries the once-per-result bookkeeping across turns.
+    	fade := newDecayer(labels, tools.decaySpill)
+    	// Material the leaf has already been shown is carried once and pointed at
+    	// afterwards. This is keyed on the bytes rather than on the call, so every
+    	// route to the same content collapses and nothing is ever answered from a
+    	// stale copy; see observations.
+    	carried := newObservations(fade)
+    	warned := false
+    	// landing counts the reserved turns left after the node has been told to
+    	// finish; zero means no landing has begun yet.
+    	landing := 0
+    	landingStop := StopReason("")
+    	// The no-progress guard catches a leaf that is spending turns without
+    	// advancing: repeating the same tool call, going many turns without
+    	// writing anything or learning anything new, or simply running past any
+    	// honest leaf's measured need. It fires into a conclude directive — the
+    	// same landing shape the budget and deadline reserves take — so the
+    	// workspace is left consistent and the partial goes out whole. See
+    	// noprogress.go for the signals and thresholds.
+    	progress := newProgressGuard()
+    	// The leaf's own closing. It is armed here, beside the other once-only
+    	// questions above, because it is one of them: a finding this leaf's own
+    	// after-photograph raises against this leaf's own work is put to it once
+    	// per kind, and the gate is the floor under whatever is still red the
+    	// second time. See selfclose.go.
+    	closer := NewSelfCloser(l.history, task)
+    
+    	// The observation window is sized from what the mo
+    … 2498 bytes elided …
+    e.note("deadline close — landing reserve started")
+    			messages = append(messages, ai.Message{Role: "user", Content: text(
+    				"The wall-clock deadline for this task is close. Use the remaining time only to " +
+    					"land the work safely. In order: make whatever you were changing consistent " +
+    					"again; run the single quickest check that would catch breakage; fix only what " +
+    					"it reveals. Do not start anything new. Then give your final answer.")})
+    		}
+    		outcome.Steered += readSteering(task, &messages, trace)
+    		// Called every turn, but mutating on few of them: decay only fires once
+    		// the window crosses the budget, and then clears to a low-water mark so
+    		// the turns that follow can resend a byte-identical prefix and be billed
+    		// at the cached rate.
+    		retired := fade.decay(messages, obsBudget)
+    		outcome.Decayed += retired
+    		// And, only when retiring spent raw material was not enough to bring the
+    		// whole live body back inside the working set, the leaf's own aged
+    		// reasoning folds the same way. It does nothing on the ordinary leaf; see
+    		// decayer.fold for the order and what protects the live edge.
+    		folded := fade.fold(messages, obsBudget)
+    		outcome.Folded += folded
+    		// A rewrite anywhere in the transcript invalidates the prefix from that
+    		// point on, so THIS is the turn whose hit= will read near zero however
+turn 19 · sh ←
+    {"cmd": "sed -n '1140,1270p' internal/exec/linear.go"}
+turn 19 · sh → 0ms
+    		// courtesy the deadline and budget reserves already extend, for the same
+    		// reason and in the same place.
+    		if task.Fold && turn+2 >= turnCap {
+    			messages = append(messages, ai.Message{Role: "user", Content: text(
+    				"That was the one round of tool calls this step has. Your next reply is the " +
+    					"result: state it in full, in the body of the message.")})
+    		}
+    
+    		// The budget ends work in two stages, and the staging is what protects
+    		// the workspace. A hard stop at the limit truncated runs mid-edit —
+    		// twice it left files syntactically broken with the model's final,
+    		// already-emitted repairs discarded unexecuted. So the emitted calls of
+    		// every turn always execute (they are paid for), and exhaustion buys a
+    		// short landing instead of a guillotine: a few reserved turns whose only
+    		// job is to leave the workspace consistent, checked, and answered.
+    		//
+    		// Either bound ends work the same way. The cost ceiling says the leaf
+    		// has spent its money; the raw ceiling says it has stopped converging on
+    		// a warm prefix, which the cost ceiling cannot see. Both buy the same
+    		// landing, and both record the same StopBudget, because from the leaf's
+    		// side and from the reconciler's they are one fact: this node was still
+    		// working when its allowance ran out.
+    		// WHAT LANDS A LEAF IS WHAT ITS WORK COSTS, AND NOTHING ELSE COUNTS
+    		// TEXT. The two cumulative prompt bounds that used to land it here are
+    		// kept as pressure on the wrap-up warning above (see budgetUsed) and
+    		// journaled as evidence, but they no longer stop anything. See
+    		// contextPressure and reuseCeiling in meter.go for the measurement that
+    		// retired them.
+    		if exhausted(outcome, l.maxTokens) && landing == 0 {
+    			landing = landingTurns
+    			landingStop = StopBudget
+    			// Same reason as the deadline reserve above: the budget is spent
+    			// here, whether or not the landing later has to be cut short.
+    			outcome.Exhausted = StopBudget
+    			// The bound names itself, with its own two numbers, so the journal
+    			// and the line a person reads are composed from one fact rather
+    			// than from two guesses. See Outcome.Meter.
+    			outcome.Meter = Meter{
+    				Name: MeterCost, Reached: spent(outcome), Allowed: l.maxTokens,
+    				Unit: "tokens of billed work",
+    			}
+    			reached := "budget exhausted — landing reserve granted"
+    			trace.note(reached)
+    			messages = append(messages, ai.Message{Role: "user", Content: text(
+    				"The budget for this task is spent. You have a few final tool calls to land the " +
+    					"work safely, and nothing more. In order: make whatever you were changing " +
+    					"consistent again; run the single quickest check that would catch breakage; fix " +
+    					"only what it
+    … 2791 bytes elided …
+    race.note(progress.noProgressReason() + " — leaf terminated")
+    				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+    			}
+    		}
+    	}
+    
+    	// The cap is a backstop, not a budget. A leaf sized for one agent should
+    	// finish in well under it, so reaching it is evidence the sizing anchors put
+    	// too much into one node — which is worth reporting rather than hiding.
+    	outcome.Stop = StopTurnCap
+    	outcome.Meter = Meter{Name: MeterTurns, Reached: outcome.Turns, Allowed: l.maxTurns, Unit: "turns"}
+    	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
+    	return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+    }
+    
+    // readSteering drains the mailbox into the transcript and reports how many of
+    // the user's lines landed there. It is one function rather than two copies
+    // because it is called at both ends of a turn — before the model speaks and
+    // before its answer is accepted — and the two must deliver identically.
+    func readSteering(task Task, messages *[]ai.Message, trace *tracer) int {
+    	// The job board drains first, so when the user's guidance and a sibling's
+    	// discovery arrive in the same window, the person's words are the last
+    	// thing read before the model speaks.
+    	if task.Board != nil {
+    		for _, note := range task.Board() {
+    			note = strings.TrimSpace(note)
+    			if note == "" {
+    				continue
+turn 19 · sh ←
+    {"cmd": "sed -n '1340,1420p' internal/exec/linear.go"}
+turn 19 · sh → 0ms
+    		outcome.Meter.Reached = int(time.Since(started).Seconds())
+    	}
+    	outcome.Verdict = verdictFor(outcome)
+    	provider.Report(ctx, outcome.Verdict)
+    	return outcome
+    }
+    
+    // verdictFor reads the leaf's own accounting.
+    //
+    // A leaf that stopped under its own power is an *unverified* success, never a
+    // verified one: this is the general loop, and the general loop has no test
+    // suite it can assume. That is the honest reading and it is also the one the
+    // probe lab argues for — where you cannot check an outcome, do not claim to
+    // have. A specialised executor that does own a verifier can say more, by
+    // setting the verdict itself before landing.
+    //
+    // A timeout is a provider fact rather than an ability one, so a deadline stop
+    // grades nothing. Everything else is a way of not finishing inside what the
+    // leaf was given, and that is precisely what a rating measures.
+    func verdictFor(outcome *Outcome) provider.Verdict {
+    	if outcome.Verdict != "" {
+    		return outcome.Verdict
+    	}
+    	switch outcome.Stop {
+    	case StopBudget:
+    		return provider.VerdictBudgetStop
+    	case StopTurnCap:
+    		return provider.VerdictTurnCap
+    	case StopPromote:
+    		return provider.VerdictUnverifiedSuccess
+    	case StopSplit:
+    		// A leaf that handed its budget back because it had found several jobs
+    		// inside one did not fail to converge — it declined to converge on the
+    		// wrong thing. Grading it as a budget stop would teach the ruler that
+    		// this worker could not do the work, from the one run where it read the
+    		// work correctly.
+    		return provider.VerdictUnverifiedSuccess
+    	case StopPaused, StopCancelled:
+    		// User-directed stops say nothing about model capability.
+    		return provider.VerdictUnverifiedSuccess
+    	case StopEmpty:
+    		return provider.VerdictEmptyResponse
+    	case StopOverrun:
+    		// Graded exactly as a budget stop, because it is the same finding
+    		// arriving earlier: this worker did not converge inside what work of
+    		// this kind takes here. Reading it any other way would leave the one
+    		// leaf that most needed to teach the ruler something teaching it
+    		// nothing — and the ruler is rewritten from precisely this evidence.
+    	case StopNoProgress:
+    		// The leaf had money and turns left and was not advancing. Graded
+    		// as a budget stop — the same finding the ruler recalibrates from —
+    		// because the mechanism is a tail-risk bound on a runaway, not a
+    		// judgment that the work was wrong.
+    		return provider.VerdictBudgetStop
+    	case StopError, StopDeadline:
+    		return provider.VerdictProviderFailure
+    	}
+    	// A landing the leaf was ordered into is not the ending it chose. Stop says
+    	// it finished cleanly, which is true — it complied with the order — but the
+    	// work was not finished when the order came, and that is precisely what a
+    	// rating measures. Only the budget grades: a deadline is a fact about the
+    	// clock rather than about ability, exactly as the StopDeadline arm above.
+    	if outcome.Exhausted == StopBudget || outcome.Exhausted == StopOverrun || outcome.Exhausted == StopNoProgress {
+    		return provider.VerdictBudgetStop
+    	}
+    	if strings.TrimSpace(outcome.Text) == "" {
+    		return provider.VerdictEmptyResponse
+    	}
+    	return provider.VerdictUnverifiedSuccess
+    }
+    
+    const (
+    	nodeCallAttempts = 3
+    	nodeCallBackoff  = 500 * time.Millisecond
+    )
+    
+    // complete absorbs failures that escape the provider's transport retries. It
+    // stops immediately when the node context is done because no later attempt can
+    // outlive that decision.
+    func (l *Linear) complete(ctx context.Context, messages []ai.Message, definitions []ai.ToolDefinition) (*ai.Response, error) {
+    	var lastErr error
