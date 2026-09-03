@@ -1409,7 +1409,15 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		maxRows = 1
 	}
 	if len(e.value) == 0 && hint != "" {
-		return []string{lead + pal.dim(prompt) + pal.dim(fit(hint, room))}, head, 0
+		// AND THE PLACEHOLDER DROPS WHOLE CLAUSES. Every one of these is a key
+		// sheet in the surface's own idiom — `filter · ↑↓ · enter connect · esc
+		// close` — drawn in the one row an overlay has instead of a legend, and a
+		// character ruler ended it `· esc cl…` at sixty columns: a box that named
+		// the way out and then ate it. [hintFit] drops the clause nearest the way
+		// out and keeps the way out itself, which is the same ladder the foot of
+		// every place is fitted by; on a hint with nothing to drop it is exactly
+		// [fit], so the boxes whose placeholder is a plain phrase lose nothing.
+		return []string{lead + pal.dim(prompt) + pal.dim(hintFit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the

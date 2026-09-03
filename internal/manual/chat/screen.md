@@ -765,6 +765,42 @@ On top of those eight: preview blocks under a pending call are capped at 4 rows 
 12; there is no task rail column (that already went at 100); and the legend has already
 dropped its hint slot and its branch (that went at 70).
 
+## What the top line of home drops when it is narrow — the clock goes first
+
+Home's top line is the program's name on the left and the machine's vital signs on the
+right:
+
+```
+ aforge          2 want you · 4 moving · $0.55 / $20.00 · thu 1:11pm
+```
+
+When there is not room for all of it, the segments give way **one at a time, in a fixed
+order**, exactly the way the status line's do:
+
+```
+clock → the allowance ($20.00) → the day's spend → moving → want you
+```
+
+So the clock is the first thing off the line and `2 want you` is the last. The reason is
+one sentence: the terminal's own bar, the window and the wall clock all say what time it
+is, and nothing anywhere else says that two things have stopped and will not move until
+you look — a cell that could carry either carries the one you can only get here. Within
+that, `want you` outranks `moving` because a stopped thing needs you and a moving one does
+not, and the day's spend outranks the allowance because a figure is a fact and a fraction
+is that fact plus a bound.
+
+**The allowance goes by respelling, not by slicing.** `$0.55 / $20.00` becomes `$0.55` —
+never `$0.55 /` and never a bound with nothing in front of it. And when the money segment
+goes entirely there is **no `$` left on the line at all**: a narrow top line never says
+`$0.00`, because that would be the line reporting a figure it had actually given up on.
+(The one `$0.00` on the whole surface is the live status line of a conversation, so its
+segments do not jump sideways as the first money arrives. It is a different line.)
+
+**The name never gives way.** A window too narrow even for `2 want you` beside it draws
+` aforge` alone. This used to be all-or-nothing — everything, or the name by itself — so a
+sixty-column window spent twelve cells on `thu 12:01am` and then, one segment later, said
+nothing about the machine whatsoever.
+
 ## Other width thresholds worth knowing
 
 Beyond the four tiers, these are the exact points where parts of the screen give way:

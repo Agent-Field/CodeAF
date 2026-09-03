@@ -328,6 +328,30 @@ terminal is left with is the statement, `open in another window`. It used to rea
 `open in another window — enter again to move it here (it …`, which named a key and then ate
 it.
 
+**A clause that begins `or` goes first, because it is an alternative and not a way out.**
+The gate card in an adaptive run says
+`↑ ↓ pick · enter answers · or keep typing to steer the planner`, and the last clause there
+is not the escape hatch the rule above protects — it offers a *second* route to something
+the clause in front of it already offers a first route to. So it is the first thing off the
+line, and a narrow gate card keeps `↑ ↓ pick · enter answers`, which is the pair the card
+exists to be answered with.
+
+## Why the note above the composer drops its *end* while the key line drops its middle
+
+They are two different kinds of line and they are fitted by two different rules.
+
+- **A key line** — the foot, a filter box's placeholder, a gate card's gestures — has the
+  way out at the **end**, so the end is protected and the clause nearest it is what goes.
+- **A note** — the dim line under the rule that says what just happened — has the answer at
+  the **front**, so the front is protected and the line gives up its later clauses. Settings
+  says `saved to your profile · a project's own .aforge-v3/config.json is a hand edit`; at
+  sixty columns that becomes `saved to your profile`, which is the half you asked for. The
+  macOS chord note behaves the same way: `your terminal sends ⌥ as a letter — turn on "use
+  option as meta" in Terminal: Profiles › Keyboard` shortens to
+  `your terminal sends ⌥ as a letter`.
+
+Neither of them ever ends in `…`, and neither ever cuts inside a word.
+
 ## alt+. — see all the keyboard shortcuts at once, on the page you are on
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:

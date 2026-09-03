@@ -317,7 +317,15 @@ func (a *app) chordNote(width int) string {
 	if !a.chordLost || a.chords.meta != chordMetaWord || width < 4 {
 		return ""
 	}
-	return " " + a.pal.dim(fit(a.chords.chordOptionWords(), width-2))
+	// AND IT DROPS ITS REMEDY WHOLE RATHER THAN SLICING IT. The sentence is a
+	// diagnosis with the fix hung off a dash — `your terminal sends alt as a
+	// letter — turn on "use option as meta" in Terminal: Profiles → Keyboard` —
+	// and a character ruler took sixty columns straight through the middle of the
+	// quoted menu item, so the line named a setting and then ate it. [noteFit] is
+	// the statement fitter — this row is a note and not a key sheet — and it takes
+	// the dash clause whole, leaving the diagnosis, which is the half that tells a
+	// person the chords are not broken rather than the terminal misconfigured.
+	return " " + a.pal.dim(noteFit(a.chords.chordOptionWords(), width-2))
 }
 
 // chordSetupWords is what the first-run setup leaves behind on a Mac, and it is

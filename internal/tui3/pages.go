@@ -1521,6 +1521,26 @@ func hintFit(hint string, room int) string {
 			break
 		}
 	}
+	// A CLAUSE THAT BEGINS `or` IS AN ALTERNATIVE, NOT A WAY OUT, AND IT GOES
+	// FIRST. The ladder above protects the LAST clause because on a key sheet
+	// that is where `esc close` lives — but a trailing `· or keep typing to steer
+	// the planner` is not a way out at all: by construction it offers a SECOND
+	// route to something the clause in front of it already offers a first route
+	// to, which makes it the lowest-value clause on the line for exactly the
+	// reason a bracketed gloss is ([hintDropClause]). Protecting it would have
+	// spent a gate card's narrow row on the alternative and dropped `enter
+	// answers`, which is the key the card exists to be answered with.
+	//
+	// It applies only where there is no `tab next place` on the line, because a
+	// place's foot has a real way out and the clauses behind it are the router's,
+	// not an author's sentence.
+	if !strings.Contains(hint, placeHintTail) {
+		for len(parts) > 1 && ansi.StringWidth(strings.Join(parts, railSep)) > room &&
+			strings.HasPrefix(strings.TrimSpace(parts[len(parts)-1]), "or ") {
+			parts = parts[:len(parts)-1]
+			keep = len(parts) - 1
+		}
+	}
 	for keep > 0 && ansi.StringWidth(strings.Join(parts, railSep)) > room {
 		parts = append(parts[:keep-1], parts[keep:]...)
 		keep--
@@ -1549,6 +1569,48 @@ func hintFit(hint string, room int) string {
 	}
 	// A FRAME TOO NARROW FOR THE WAY OUT ALONE is the one case left, and there is
 	// nothing to drop that would help: the tail is cut, exactly as it always was.
+	return fit(line, room)
+}
+
+// noteFit is [hintFit]'s twin FOR A STATEMENT INSTEAD OF A KEY SHEET, and the
+// one thing that differs is which end of the line is protected.
+//
+// WHY THERE ARE TWO. [hintFit] keeps the LAST clause because on a key sheet the
+// last clause is the way out — `esc close` — and the way out is the one thing a
+// narrow frame may never take. A note is the other way round: it is a sentence
+// whose FIRST clause is what happened and whose later clauses elaborate on it.
+// The settings foot is the worked example — `saved to your profile · a project's
+// own .aforge-v3/config.json is a hand edit` — where the first clause answers
+// the question a person asked ("where did that go?") and the second is an aside
+// about a file most people will never open. A character ruler took sixty columns
+// through the middle of that path; [hintFit] would have kept the aside and
+// dropped the answer. So a note drops from the END, whole clause at a time, and
+// then falls through to the same sentence ladder ([hintDropClause]) for the
+// dash elaborations and bracketed glosses that have no middle dot to split on.
+//
+// It is pure and deterministic and it never cuts inside a word, which is the
+// whole point of both of them.
+func noteFit(note string, room int) string {
+	if room <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(note) <= room {
+		return note
+	}
+	parts := strings.Split(note, railSep)
+	for len(parts) > 1 && ansi.StringWidth(strings.Join(parts, railSep)) > room {
+		parts = parts[:len(parts)-1]
+	}
+	line := strings.Join(parts, railSep)
+	for ansi.StringWidth(line) > room {
+		shorter, ok := hintDropClause(line)
+		if !ok {
+			break
+		}
+		line = shorter
+	}
+	// A NOTE TOO LONG EVEN AS ONE CLAUSE is cut, because there is nothing left to
+	// drop that would help — the same last resort [hintFit] ends on.
 	return fit(line, room)
 }
 
