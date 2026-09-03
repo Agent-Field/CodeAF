@@ -50,12 +50,66 @@ Wall time is recorded but is not a tiebreak — a run that ends early because it
 gave up is not a better run — and `files` is recorded because the failure this
 seam exists to prevent shows up there as changed files with nothing landed.
 
+## What the first pass found: the rig gave the run no wall
+
+The first pass of both arms produced no `ran long` row in any cell, and reading
+the cells' launch lines said why. The canary's chat driver starts
+`aforge chat -yolo -one-model -model … -max-cost <cap>` and passes no
+`-max-hours`, so `Budget().Wall` was zero in every chat cell and the share seam,
+which is asked only under a wall, never fired. Every "wall" the canary had recorded
+for a chat cell so far was the tmux clock killing the pane from outside, never the
+run's own wall — which also means the tox-4031 stretch that opened #546 was
+measured against a clock the run could not see.
+
+The pass was rerun through a wrapper binary that appends `-max-hours 0.25` when
+the first argument is `chat` (a 900 s wall, matching the table above), with the
+rig itself untouched. Those are the rows below. The first, wall-less pass is kept
+beside them on the rig as the control: with no wall, both arms are the shipped
+seam with the share switched off.
+
 ## Results
 
-Filled from the rig by this lane's coordinator; the constant moves only if arm B
-wins on the method above, and a change to it is a change to this table in the same
-commit.
+Both arms, three cells each, chat door under `--yolo`, a 900 s wall (2026-09-03,
+runs `20260903T204602Z-b07c3dd51-doe546-wall-share3` and
+`20260903T211119Z-15a2b6ef2-doe546-wall-share2` on the canary rig, tables posted
+on #407). `seam` says which door moved the work out of the turn, if any.
 
-| share | cell | ends done before wall | wall s | cost | files |
-| --- | --- | --- | --- | --- | --- |
-| | | | | | |
+| share | cell | ends done before wall | wall s | cost | files | seam |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3 | reef | no | 903 | $0.085 | 2 | split at 230 s; task back at 589 s; **share at 894 s** on a turn begun at 593 s |
+| 3 | attrs | no | 903 | $0.130 | 0 | parts at 239 s, three tasks; one still running at the wall |
+| 3 | tox | no | 902 | $0.096 | 2 | split at 199 s; task done 462 s later; its check still running at the wall |
+| 2 | reef | yes | 249 | $0.012 | 1 | none; inline, done at 202 s |
+| 2 | attrs | no | 903 | $0.091 | 1 | split at 287 s; task done 360 s later; its second check cut by the wall |
+| 2 | tox | yes | 202 | $0.010 | 1 | none; inline, done at 181 s |
+
+The control pass with no wall (same binaries, same cells, the rig as it stands):
+arm A ended 0 of 3 before the tmux clock, arm B 1 of 3 (reef, 114 s), and the
+share seam fired in none of the six.
+
+## The read: the number was not what this run measured
+
+Counted by the method, arm B wins 2–0 on ends-done-before-wall. But neither of
+those two cells reached EITHER arm's share: they ended inline at 181 s and 202 s,
+under the 300 s that arm A allows, and the difference between the arms is the
+running model's variance on a cell, not the constant. **`turnWallShare` stays at
+3.** The run is a null result on the number and a measured result on three other
+things:
+
+1. **The split seam gets there first.** Every cell that ran long moved its work at
+   199–287 s through writeseam.go's door, before a third of a 900 s wall. On a
+   short wall the share is close to unreachable; the wall it was written for is
+   the long one, where a turn can read and run tests for an hour without crossing
+   the write seam's file count, and this rig cannot measure that.
+2. **The share is taken off the whole wall from the turn's own start, so a turn
+   that begins late gets a third the wall no longer has.** The one firing in six
+   cells was reef: a turn that began with 310 s left ran its full 300 s and handed
+   over at 894 s, six seconds before the wall — the exact shape #546 opened with.
+   The bound wants to be the smaller of the share and what is left less the setup
+   and check a task needs. That is a change to the law, not to the number, and it
+   is not in this pull request.
+3. **What actually ran to the wall was the task's check.** In three of the six
+   wall cells the task had finished and the check that reads it — the full suite,
+   run once by the task and again by each check, 150 s a time on these projects —
+   was still running when the wall came down. The share buys a task time to be
+   checked; on a 900 s wall the check itself is what there is not time for.
