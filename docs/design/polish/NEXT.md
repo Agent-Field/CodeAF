@@ -85,12 +85,23 @@ identical timed-out tool calls — and 4 more · no files changed · 41m17s
 ### Six specimens, and what they settle
 
 The trial went looking for more rather than letting one line stand for the
-class. **Provenance is not uniform and the row must not pretend it is**: `C`,
-`D` and the twice-refused pair below have exact `file:line` and were read in
-context; `A`, `B` and `E` are verbatim text recovered by a `grep -rh` across
-several trees and their paths are still being searched. **Do not cite A, B or E
-by location until those land.** They are recorded here for their SHAPE, which is
-what this row needs them for, and the shape is not in doubt.
+class. **Provenance is not uniform and the row must not pretend it is.** `C`, `D` and
+the twice-refused pair have exact `file:line` and were read in context. `A`, `B`
+and `E` are verbatim text recovered by a `grep -rh` across several trees, and
+**they have no location and never will**: two later passes over a SUPERSET of
+the scope that first matched them found nothing. They were on this disk when
+they were read and were gone about thirty minutes later — almost certainly a
+transient run store that got reaped underneath them.
+
+So they are **SHAPE ONLY, permanently** — not "until the paths land". The text
+is verbatim and stands; nobody can go back and read the stream around it, so it
+cannot carry a citation and must not be asked to.
+
+**AND THAT IS THE LESSON, not a footnote to it.** The same thing would have
+happened to the `CLAUDE.md` specimen if it had been described rather than copied
+out, and the reason the engine halves could be filed at all is that somebody
+pinned a store. Evidence that lives only in a run store is evidence with a
+half-life. Copy it out and commit it the moment you read it.
 
 **THE BRANCH THE FIRST SPECIMEN GOT WRONG — a file genuinely was written:**
 
@@ -156,16 +167,43 @@ sentence.
 `engine:` whether a refused run ought to leave something on the tree at all.
 — sev: high
 
-**N4 — the leaf contract says "Read CLAUDE.md first" and the leaf has no read
-tool.**
-`shows:` **I could not find that sentence anywhere in the tree**, which matters
-for whoever takes this: it is not a fixed string to go and edit. It is written
-into a leaf's brief at RUNTIME, so the row is about a brief that tells a worker
-to use a capability it was not given — and this repository's own law is that a
-capability which cannot work is ABSENT, not broken, so the belt and the brief
-have to be built from one list. The surface half is only whether a person is ever
-shown that a leaf was told to do something it could not.
-`engine:` the brief and the belt disagreeing.
+**N4 — the leaf contract tells the worker to read a file, and the worker has no
+read tool.**
+
+**VERIFIED, verbatim, and the exchange is the whole row.** The contract is
+composed at RUNTIME and exists in the tree nowhere — I looked, and there is no
+such string in `internal/` or `cmd/` — so this is preserved only because the
+trial copied it out: `bench/worker-trial/captures/` on `trial/aforge-as-worker`,
+**pushed to origin at `a4500aadf`**, which is why it survives its store when `A`,
+`B` and `E` did not.
+
+The brief handed to node `task-2` at turn 0 opens:
+
+```
+Read CLAUDE.md first; then locate the leaf harness round loop under internal/
+(search for where tool timeout errors are handled and where existing stop
+reasons like the wall are declared …
+```
+
+and the first thing that worker did with it:
+
+```
+turn 1 · read ←  {"path": "CLAUDE.md"}
+turn 1 · read →  no tool named "read". Available: sh, job, write, edit, web,
+                 recall, capabilities (loads: media, documents)
+```
+
+`shows:` **the refusal itself is well built** — it names what is missing and
+then lists what there is, which is more than most of this product's refusals
+manage, and it is the shape the rest of them should copy. What is wrong is
+upstream of it: a brief written from one list and a belt built from another,
+when this repository's own law is that a capability which cannot work is ABSENT
+rather than broken. The surface half is whether a person watching the stream is
+ever shown that a worker was told to do something it had no way of doing — a
+person reading this run saw a `✓`, not this.
+
+`engine:` the brief and the belt disagreeing — **filed as #538**, so do not
+re-file it.
 — sev: med
 
 **N5 — a token-budget overrun of 1.7x goes unnoticed until the settle line.**
@@ -198,17 +236,47 @@ rather than one of its files.
 `engine:` none.
 — sev: med
 
-**N8 — a node reported success having written nothing, and a refusal
+**N8 — a node reported success having written nothing, and the gate
 contradicted it twenty-eight minutes later.**
-`shows:` `✓ Timeout stop reason (linear) 13m43s` in the stream, from a leaf whose
-own record shows nineteen turns, fifty-two `sh` calls and ZERO writes; the gate
-then refused the same work. A `✓` is the strongest thing this surface can say
-and a person who reads one stops watching. Two marks about one piece of work
-disagreeing, half an hour apart, is worse than either being wrong alone. The
-surface half is what a `✓` is allowed to mean and whether this one had the
-standing to claim it.
+
+**ATTRIBUTION VERIFIED rather than assumed** — the trial went back and checked
+which node the tick belonged to instead of trusting its own summary:
+
+```
+run-510.log:46   ✓ Timeout stop reason          (linear) 13m43s
+run-510.log:47   ▶ Implement fix 510            (linear) 13m43s
+```
+
+The `✓` is node `task-2`, whose record is nineteen turns, fifty-two `sh` calls,
+one failed `read`, **zero `write`, zero `edit`**, and no `cat >`, `tee`, `>>`,
+heredoc, `sed -i` or `patch` in any of the fifty-two commands. The gate refused
+the same work at 41m17s. Both nodes in that run wrote nothing, so the row would
+hold either way — but the figures now attach to the ticked node and not to its
+sibling.
+
+**And the `✓` was not the planner believing the work was done.** The sibling
+node started at 13m43s — the same instant — with a contract that CORRECTS the
+first one, naming the file, the function and the constant the first was left to
+find:
+
+```
+Start in internal/exec/linear.go: read the runTools/executeTool path and the
+StopReason definitions near StopDeadline/StopCancelled, then write the change
+there first, before any test …
+```
+
+So at the moment the surface drew a `✓`, the layer above it was visibly acting
+on the opposite conclusion.
+
+`shows:` a `✓` is the strongest thing this surface can say, and a person who
+reads one stops watching. Two marks about one piece of work disagreeing half an
+hour apart is worse than either being wrong on its own. The row is what a `✓` is
+ALLOWED to mean — whether it may be drawn for a node that produced nothing, and
+whether it should survive being contradicted rather than sitting in the
+scrollback as the last word a skimmer saw.
+
 `engine:` why the node reported success.
-*Frame:* `run-510.log:46` in the trial's captures.
+*Frame:* `bench/worker-trial/captures/` on `trial/aforge-as-worker` @`a4500aadf`.
 — sev: high
 
 ---
@@ -225,3 +293,10 @@ standing to claim it.
 - **A cold user is worth more than an audit.** Seven findings in one afternoon,
   four of them real, none of which twelve audits had found — because everybody
   else already knew what the program meant to do. Run the trial BEFORE the wave.
+- **Copy the evidence out the moment you read it, and commit it.** Three of the
+  six refusal specimens in this file have no location and never will: they were
+  on this disk when they were read and gone half an hour later, because they
+  lived in a run store that got reaped. The ones that survived did so because
+  somebody pinned them to a branch and pushed it. A description of a frame is
+  not a frame, and a path into a run store is not a citation — it is a citation
+  with a half-life.
