@@ -7,20 +7,20 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 04:35Z_
+_2026-09-03 04:55Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
-- `K1`    high open   A person's own message longer than three rendered rows is cut off mid-sentence, with no ellipsis, no door and no key that opens it
-- `K2`    high open   The live status line prints `0 tok/s`
-- `K3`    high open   The rate on the status line contradicts the pulse two rows above it: `5 tok/s` and `30 tok/s` stand beside "nothing has come back yet"
-- `K4`    high open   Every resumed conversation opens by printing its absolute transcript path across four to six rows of the transcript
-- `K5`    high open   A wrapped notice loses characters where its rows join
+- `K1`    high CLOSED A person's own message longer than three rendered rows is cut off mid-sentence, with no ellipsis, no door and no key that opens it
+- `K2`    high CLOSED The live status line prints `0 tok/s`
+- `K3`    high CLOSED The rate on the status line contradicts the pulse two rows above it: `5 tok/s` and `30 tok/s` stand beside "nothing has come back yet"
+- `K4`    high CLOSED Every resumed conversation opens by printing its absolute transcript path across four to six rows of the transcript
+- `K5`    high CLOSED A wrapped notice loses characters where its rows join
 - `K6`    med  CLOSED The status line's right-hand segments are pushed off by the phase narration on its left, so cost, context and the watch count disappear and come back mid-turn
 - `K7`    med  open   The phase words are drawn twice on the same frame, verbatim, two rows apart
 - `K8`    med  open   The clock in the phase line runs backwards
-- `K9`    med  open   This surface's own notices are indistinguishable from a bullet list the model wrote
-- `K10`   med  open   Below seventy columns the legend is a bare rule with nothing written on it
+- `K9`    med  CLOSED This surface's own notices are indistinguishable from a bullet list the model wrote
+- `K10`   med  CLOSED Below seventy columns the legend is a bare rule with nothing written on it
 - `K11`   med  open   Lines inside a code fence are truncated with `…` and there is no way to see the rest
 - `K12`   low  CLOSED The wrapped rows of a person's message run flush into the sidebar rail with no gutter
 - `K13`   low  CLOSED A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left

@@ -34,9 +34,10 @@ ROW = re.compile(r"^(\d+)\. (.*)$")
 SEV = re.compile(r"sev: (high|med|low)")
 # How a lane says "this row is done", in the three shapes they write.
 CLOSED = [
-    re.compile(r"^\|\s*(\d+)\s*\|", re.M),          # a table row
-    re.compile(r"[Rr]ow\s+(\d+)\b"),                 # "Row 7 — …"
-    re.compile(r"\*\*([\d,\s]+)\*\*"),               # "**1, 2, 11, 23**"
+    re.compile(r"^\|\s*(\d+)\s*\|", re.M),               # a table row
+    re.compile(r"[Rr]ow\s+(\d+)\b"),                      # "Row 7 — …"
+    re.compile(r"\*\*([\d,\s]+)\*\*"),                    # "**1, 2, 11, 23**"
+    re.compile(r"^\*\*(\d+)\s*[—-]", re.M),               # "**1 — a person's own message…"
 ]
 
 
