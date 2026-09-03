@@ -522,7 +522,13 @@ type journalFailure struct {
 // it fired, which together say whether the ladder is landing where the policy
 // says it does. Sketch is THE SHAPE LINE ALONE — the legend is a sentence for a
 // worker and not evidence for a reader of the file — and Decision is what the
-// harness took off it: `split` when the turn was handed over on account of the
+// harness took off it. Kept is the part of that drawing THAT DID NOT TRAVEL — the
+// parts about work the conversation was still holding, which stay with it
+// (checkpoint.go's [checkpointRead] and checkpoint_custody.go). It is absent on
+// every mark that withheld nothing, which is nearly all of them, and it is what
+// tells a reader of the file that a worker opened on less than was drawn and
+// exactly how much less. Decision is what the harness took off the drawing:
+// `split` when the turn was handed over on account of the
 // parts, `continue` when nothing happened, `failed` when no reading came back at
 // all. The ceiling's own read is a `continue` too: it decides nothing, and the
 // ceiling line that follows it says what actually happened.
@@ -532,28 +538,37 @@ type journalMark struct {
 	Model      string  `json:"model,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
 	Sketch     string  `json:"sketch,omitempty"`
+	Kept       string  `json:"kept,omitempty"`
 	Decision   string  `json:"decision,omitempty"`
 	DurationMS int64   `json:"durationMs,omitempty"`
 }
 
-// journalCeiling is what the LAST mark did with the turn: moved the remaining
-// work onto the one road, or dropped the handover and left the turn to finish.
+// journalCeiling is what a HANDOVER did with the turn: moved the remaining work
+// onto the one road, or ended it where it stood.
+//
+// IT IS WRITTEN ONCE PER HANDOVER ROAD AND NOT ONLY AT THE CEILING. Every door
+// into checkpoint.go's [Agent.handOverRunningTurn] writes one — a mark whose
+// drawing had parts in it, a turn past its write allowance, and the ceiling that
+// gave this record its name — because the ending is decided there and nowhere
+// else. Seam below says which door it was.
 //
 // It is a line of its own rather than a field on the mark above it because the
 // two are different facts about different moments — the mark is a reading and
-// this is an act — and because the ceiling can fire with no reading behind it at
+// this is an act — and because a handover can fire with no reading behind it at
 // all (a sidecar nobody could reach still meets the ceiling).
 //
 // Decision is `moved`, `dropped:nothing-left` — the running model declared the
-// work finished AND the mark's own reader agreed nothing remained — or
-// `dropped:no-brief`, which is the one other way a ceiling ends with no task:
-// nothing could be written down for anybody. On a run with a goal owner two more
-// are possible, and both mean the turn was sealed at the handover with no task
-// started: `dropped:stopped`, the owner read the ending and stopped the run with
-// a reason, and `dropped:done`, the owner read it and said the ask was met
-// (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID names the node when one
-// was admitted, and is absent otherwise by the emptiness law the rest of the
-// line keeps.
+// work finished AND the mark's own reader agreed nothing remained — or one of the
+// two ways a handover ends with no task of its own: `dropped:no-brief`, when
+// nothing could be written down for anybody, and `dropped:work-already-out`, when
+// everything there was to write down was about pieces this conversation is still
+// holding and therefore nobody else's to take (checkpoint.go's custody road). On a
+// run with a goal owner two more are possible, and both mean the turn was sealed
+// at the handover with no task started: `dropped:stopped`, the owner read the
+// ending and stopped the run with a reason, and `dropped:done`, the owner read it
+// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID
+// names the node when one was admitted, and is absent otherwise by the emptiness
+// law the rest of the line keeps.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.
@@ -562,9 +577,33 @@ type journalMark struct {
 // on the person's bare sentence — and until this field the file could not tell
 // them apart. The [journalCarry] lines directly above say WHY it was that rung;
 // this is the one-word answer a bench can count.
+//
+// ── AND SEAM IS WHICH DOOR TOOK THE ENDING ──
+//
+// THE NAME OF THIS RECORD IS OLDER THAN WHAT IT RECORDS. It was the CEILING's
+// line, because the ceiling was the only door that wrote one — so a handover the
+// MARK road or the WRITE SEAM declined left no decision word in the file at all,
+// and the real-model runs behind #567 all ended with an empty list of these while
+// the refusal had plainly happened. The row now belongs to the ending rather than
+// to the clock that noticed, and Seam says which of the three it was: `mark` for a
+// drawing with parts in it, `write` for a turn past its write allowance, `ceiling`
+// for the last rung of the ladder.
+//
+// A ROW WITH NO SEAM ON IT WAS WRITTEN BEFORE THIS EXISTED, and it is a ceiling by
+// construction, because the ceiling was the only writer. An old file still reads.
+//
+// Reason is the reason WHERE THERE IS ONE and is empty everywhere else, which is
+// the emptiness law and is most of the time: `dropped:no-brief` has the whole
+// [journalCarry] ladder above it saying why each rung produced nothing, and
+// `dropped:nothing-left` has no reason to give — two minds agreed the work was
+// done. `dropped:work-already-out` carries one, because the decision word alone
+// does not say what was already out, and an autopsy grepping the word should get
+// the why in the same line (checkpoint.go's carryHeldWork).
 type journalCeiling struct {
 	Rounds   int    `json:"rounds,omitempty"`
+	Seam     string `json:"seam,omitempty"`
 	Decision string `json:"decision,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 	TaskID   uint64 `json:"taskId,omitempty"`
 	Carry    string `json:"carry,omitempty"`
 }

@@ -485,6 +485,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// from that world, frozen once at the split. Asked the three ways a
 		// person meets it — the artefacts, the freeze, and the commit they find
 		// in the history.
+		// A reply moved to a task while pieces the conversation handed out are
+		// still running: the coordinating half stays here (#567). Asked the three
+		// ways somebody meets it — the line they read, the block left in the
+		// transcript, and the worker that could not see what it was told to wait
+		// for.
+		{"it said the rest stays here for when the pieces already out land", "tasks"},
+		{"what does what stays here for when the pieces already out land mean", "tasks"},
+		{"my task was told to wait for my other tasks and could not see them", "tasks"},
+		{"it said this is all about the pieces already out", "tasks"},
 		{"do the parts see the parent's unfinished work", "tasks"},
 		{"when is the parent's work frozen for its parts", "tasks"},
 		{"what is the wip commit before a split", "tasks"},
