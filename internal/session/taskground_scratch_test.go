@@ -77,7 +77,7 @@ func TestATaskInScratchNeverBranchesTheEnclosingRepository(t *testing.T) {
 	if tree.merge != mergeInPlace || tree.branch != "" {
 		t.Fatalf("tree = %+v, want inplace with no branch", tree)
 	}
-	if merge, _ := tree.comeHome("do the thing", nil); merge != mergeInPlace {
+	if merge, _, _ := tree.comeHome("do the thing", nil); merge != mergeInPlace {
 		t.Fatalf("comeHome = %q, want inplace", merge)
 	}
 
