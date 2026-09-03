@@ -77,11 +77,13 @@ const (
 // sessionChecks are the commands this session's work names, in the order a
 // person would read them.
 //
-// THE SESSION'S OWN DOCUMENTS ARE THE FIRST SOURCE. The ask in the person's own
-// words and the acceptance written for the whole of it are what a session has
-// instead of a node's brief, and they are read with [declaredChecks] — the same
-// reading a unit of work's own document gets, so the two can never disagree
-// about what a check is.
+// NOTHING HARVESTED FROM THE ASK IS EXECUTED AGAINST THE TREE. The acceptance
+// the session composed is the whole work's own document, while the ask is the
+// person's account of what they saw; a pasted reproduction is evidence about
+// the bug, not a promise that repeating it proves the work. In one measured tox
+// session the baseline check harvested and ran `chmod 000 tox.ini` from the
+// pasted issue. Only the acceptance is read with [declaredChecks]; the nodes'
+// own doors are gathered below.
 //
 // AND EVERY UNIT OF WORK THAT LANDED CONTRIBUTES ITS OWN DOOR, which is BOTH of
 // task_checks.go's sources at once ([auditDoorFor]): the checks that node's
@@ -105,7 +107,7 @@ func (a *Agent) sessionChecks() []string {
 	// of these, so it is the directory a declared check has to be runnable in —
 	// the same tree, asked the same question, as the one the checks are run in.
 	tree := a.deliverableTree()
-	checks := invocableChecks(tree, declaredChecks(principal.Ask()+"\n"+principal.Acceptance(), tree))
+	checks := invocableChecks(tree, declaredChecks(principal.Acceptance(), tree))
 	graph := a.tasker()
 	if graph == nil {
 		return trimChecks(checks)

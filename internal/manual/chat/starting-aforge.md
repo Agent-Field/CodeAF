@@ -207,8 +207,11 @@ by running your checks over the tree either way.
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
 **A check is yours only if your run turned it red.** On a run with a budget, aforge runs
-the checks your ask names once at the start — before it has touched anything — and writes
-down which were already failing. At the end it runs them again, and only a check that was
+the checks its acceptance names once at the start — before it has touched anything — and
+writes down which were already failing. Only the acceptance it wrote for the work and each
+task's own brief supply checks; a command pasted into your ask (the steps you took to see a
+bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
+longer is. At the end it runs them again, and only a check that was
 **green before and red after** counts as work still to do.
 
 That first reading runs **in the background**, so nothing waits for it: your first turn

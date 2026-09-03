@@ -11,11 +11,11 @@ import (
 
 // THE CHECKS ARE THE ONES THE WORK NAMED, AND THEY ARE RUN IN A FRESH PROCESS.
 //
-// A session declares its checks the same way a unit of work does — in prose, in
-// backticks or after a shell prompt (task_checks.go's [declaredChecks]) — and
-// the two must never disagree about what a check is, which is why the same
-// reading answers both.
-func TestTheSessionsChecksComeOffItsOwnAskAndAcceptance(t *testing.T) {
+// A session declares its checks from the acceptance the work composed — in
+// prose, in backticks or after a shell prompt (task_checks.go's
+// [declaredChecks]) — and a unit of work uses the same reading, so the two can
+// never disagree about what a check is.
+func TestTheSessionsChecksComeOffItsOwnAcceptance(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
@@ -25,7 +25,7 @@ func TestTheSessionsChecksComeOffItsOwnAskAndAcceptance(t *testing.T) {
 	steward.setAcceptance("every fixture parses and `go test ./parser` passes")
 
 	checks := agent.sessionChecks()
-	want := map[string]bool{"go build ./...": false, "go test ./parser": false}
+	want := map[string]bool{"go test ./parser": false}
 	for _, check := range checks {
 		if _, named := want[check]; named {
 			want[check] = true
@@ -35,6 +35,44 @@ func TestTheSessionsChecksComeOffItsOwnAskAndAcceptance(t *testing.T) {
 		if !found {
 			t.Fatalf("the session does not check what its own words name: %q is missing from %v", check, checks)
 		}
+	}
+	if containsWord(checks, "go build ./...") {
+		t.Fatalf("a command the ask mentions is not the work's own promise, yet it became a session check: %v", checks)
+	}
+}
+
+// NOTHING HARVESTED FROM THE ASK IS EXECUTED AGAINST THE TREE. A pasted
+// reproduction says how the person saw the bug, while the acceptance is the
+// work's own promise about what proves it.
+func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
+		t.Fatalf("writing tox.ini: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("the pasted reproduction ends with:\n$ chmod 000 tox.ini")
+	steward.setAcceptance("the tox configuration remains readable")
+
+	if checks := agent.sessionChecks(); containsWord(checks, "chmod 000 tox.ini") {
+		t.Fatalf("a step out of the pasted reproduction became a session check: %v", checks)
+	}
+
+	// THE ACCEPTANCE IS IMMUTABLE FOR THE SESSION, so the other half of the law
+	// is read off a second session whose acceptance names the same step.
+	promised, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	promised.steward().hear("the pasted reproduction ends with:\n$ chmod 000 tox.ini")
+	promised.steward().setAcceptance("the fix passes:\n$ chmod 000 tox.ini")
+	if checks := promised.sessionChecks(); !containsWord(checks, "chmod 000 tox.ini") {
+		t.Fatalf("the same step declared by the acceptance is not a session check: %v", checks)
 	}
 }
 

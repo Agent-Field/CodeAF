@@ -1130,6 +1130,9 @@ func TestALandingThatCoversTheAskOutranksTheReadersLine(t *testing.T) {
 		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "merge the ledger home", State: TaskDone}},
 		Checks:     []CheckRun{{Command: "go test ./ledger", Passed: true}},
+		// A green suite is a suite whose before-reading has landed; without it the
+		// brief would truthfully add that the checks are still being read.
+		BaselineRead: true,
 	}
 	if got := budgetLeft(t).Decide(settled); got.Verb != DecideDone {
 		t.Fatalf("a landed, checked ask was carried on over a reader's line: %+v", got)
