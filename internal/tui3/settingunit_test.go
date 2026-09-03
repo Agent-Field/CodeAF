@@ -262,3 +262,105 @@ func TestOpeningAValueSaysWhatThatRowTakes(t *testing.T) {
 		t.Fatalf("a plain text row grew a sentence about itself: %q", got)
 	}
 }
+
+// sheetRowDrawn is ONE settings row as a reader sees it, with its escape codes
+// off and its trailing blanks kept — the gutter and the column this test is
+// about are made of exactly those blanks, so [sheetRowsDrawn]'s TrimSpace would
+// take the evidence away with the noise.
+func sheetRowDrawn(t *testing.T, a *app, label string, width int) (string, string) {
+	t.Helper()
+	was := a.sheet.tab
+	defer func() {
+		a.sheet.tab = was
+		a.sheet.cursor, a.sheet.top = 0, 0
+		a.sheet.build()
+	}()
+	for tab := range settingTabs {
+		a.sheet.tab = tab
+		a.sheet.cursor, a.sheet.top = 0, 0
+		a.sheet.build()
+		for _, item := range a.sheet.items {
+			// A READING IS A ROW TOO — `per task` is one, and it is the row this
+			// test's eighty-cell half is named after (settingspend.go).
+			name := item.meta.label
+			if item.read != nil {
+				name = item.read.name
+			}
+			if name != label {
+				continue
+			}
+			lines := a.sheet.rowLines(item, false, false, width, a.pal)
+			if len(lines) == 0 {
+				t.Fatalf("the %q row drew nothing at %d cells", label, width)
+			}
+			return strings.TrimRight(plain(lines[0]), " "), name
+		}
+	}
+	t.Fatalf("no settings row is labelled %q", label)
+	return "", ""
+}
+
+// A ROW'S VALUE SITS IN A COLUMN, AND NEVER BUTTS THE NAME IN FRONT OF IT.
+//
+// Both of these were one expression judged at two widths — the gap between a
+// label and the tail right-aligned against it, taken from the whole frame with a
+// single cell of floor under it ([overlayPairRoom] now answers both):
+//
+//   - at eighty, the Spending tab drew `per task no limit of its own · it spends
+//     against the day and this conversation` — a label and a tail that exactly
+//     filled the frame with one word space between them, so two facts read as one
+//     sentence and `per task` stopped being findable as a row;
+//   - at a hundred and sixty, `ssh reuse` put a hundred and fifty blank cells in
+//     front of `300s`, and the eye crossing that gap landed on the wrong row.
+func TestASettingsValueSitsInAColumnAndNeverButtsItsLabel(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+
+	// EIGHTY: the row that exactly filled the frame. What must give way is the
+	// tail's last FACT, not the gutter — rowfit drops whole clauses.
+	row, label := sheetRowDrawn(t, a, "per task", 80)
+	at := strings.Index(row, label)
+	if at < 0 {
+		t.Fatalf("the 80-cell row does not carry its own label %q: %q", label, row)
+	}
+	tail := row[at+len(label):]
+	if tail == "" {
+		t.Fatalf("the %q row lost its value whole at 80 cells: %q", label, row)
+	}
+	// TWO IS WRITTEN OUT HERE ON PURPOSE. Asserting against [rowGutter] would be
+	// a test that moves with the constant it is meant to hold — the first draft of
+	// this one passed with the gutter back at one, because one cell is always at
+	// least one cell. The law is the number.
+	const wantGutter = 2
+	if gutter := len(tail) - len(strings.TrimLeft(tail, " ")); gutter < wantGutter {
+		t.Fatalf("at 80 cells the row reads\n  %q\n— %d cell(s) between %q and %q, want at least %d, "+
+			"so the two facts read as one sentence", row, gutter, label, strings.TrimSpace(tail), wantGutter)
+	}
+	// AND THE VALUE IS STILL A WHOLE CLAUSE. A gutter bought by cutting the tail
+	// in half would be this row's other law broken to keep this one.
+	if strings.HasSuffix(row, glyphMore) {
+		t.Fatalf("at 80 cells the row bought its gutter with an ellipsis: %q", row)
+	}
+	if rowGutter < wantGutter {
+		t.Fatalf("rowGutter is %d — a single cell between a label and its tail is a word space, not a gutter", rowGutter)
+	}
+
+	// A HUNDRED AND SIXTY: the same function, the other end. The tail stops at
+	// the measure and the rest of the frame is left empty.
+	wide, _ := sheetRowDrawn(t, a, "ssh reuse", 160)
+	if got := ansi.StringWidth(wide); got > 102 {
+		t.Fatalf("at 160 cells the row is %d cells wide and reads\n  %q\n— the value is right-aligned to the frame "+
+			"rather than to the %d-cell measure", got, wide, overlayMeasure)
+	}
+	if !strings.Contains(wide, "ssh reuse") || !strings.Contains(wide, "300s") {
+		t.Fatalf("the 160-cell row is no longer the pair this test is about: %q", wide)
+	}
+
+	// AND THE MEASURE NEVER CUTS AN IDENTITY (rowfit.go's law 1): a pair too wide
+	// for the measure keeps the frame instead of losing its name to a margin.
+	long := strings.Repeat("x", 130)
+	drawn := strings.TrimRight(plain(overlayRow(long, "300s", false, false, false, 160, a.pal)), " ")
+	if !strings.Contains(drawn, long) {
+		t.Fatalf("a 130-cell label with a 4-cell tail was cut to fit the measure at 160 cells: %q", drawn)
+	}
+}

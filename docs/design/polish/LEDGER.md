@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 07:47Z_
+_2026-09-03 08:20Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -37,7 +37,7 @@ _2026-09-03 07:47Z_
 - `C4`    high CLOSED `exec --json` carries no reason for a failure
 - `C5`    high CLOSED The `aforge do` footer breaks the emptiness law twice on the last line of every headless run
 - `C6`    high CLOSED `aforge exec` has a six-value exit ladder that is documented nowhere a user can reach
-- `C7`    med  open   `aforge --help` hard-wraps mid-word on an 80-column terminal
+- `C7`    med  CLOSED `aforge --help` hard-wraps mid-word on an 80-column terminal
 - `C8`    med  CLOSED A misspelled subcommand suggests nothing and dumps the whole 127-line usage
 - `C9`    med  CLOSED A missing positional argument dumps the same 127 lines
 - `C10`   med  CLOSED Three commands parse no flags at all and read a flag as a positional
@@ -54,12 +54,12 @@ _2026-09-03 07:47Z_
 - `C21`   low  open   Two commands print a column header over no rows
 - `C22`   low  open   `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields
 - `C23`   low  CLOSED The two help surfaces spell the same flags differently
-- `C24`   low  open   The `--json` object is described only in a repository design document
+- `C24`   low  CLOSED The `--json` object is described only in a repository design document
 - `C25`   low  open   Two query commands report a miss as a success
 
 ## commands — [audit-commands.md](audit-commands.md)
 
-- `M1`    high open   `--help` opens by calling the product "build and revise task graphs"
+- `M1`    high CLOSED `--help` opens by calling the product "build and revise task graphs"
 - `M2`    high CLOSED `aforge run --help` says "leaf" or "leaves" six times
 - `M3`    high CLOSED `aforge why <node-id>` help says "show what one leaf actually did"
 - `M4`    high open   `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
@@ -72,7 +72,7 @@ _2026-09-03 07:47Z_
 - `M11`   med  CLOSED `-w`, `-o` and `-j` have no long spelling at all (extends cli-23: the fix is new names, not a print change)
 - `M12`   med  CLOSED `exec --plan-model` is accepted and documented as doing nothing
 - `M13`   med  CLOSED Nothing-to-show is answered three different ways, and there is no rule (extends cli-21 and cli-22)
-- `M14`   med  open   `graph plan` and `graph run` print their preamble to stdout; `do` prints the same thing to stderr
+- `M14`   med  CLOSED `graph plan` and `graph run` print their preamble to stdout; `do` prints the same thing to stderr
 - `M15`   med  CLOSED `run` reimplements the models line instead of calling the one helper
 - `M16`   med  CLOSED `--yes-spend` is documented as two different things on two commands
 - `M17`   med  CLOSED `--ensemble` is a tri-state integer with two magic values
@@ -81,12 +81,12 @@ _2026-09-03 07:47Z_
 - `M20`   med  CLOSED `devices revoke --all` is hand-parsed, position-sensitive, and missing from the usage sentence
 - `M21`   med  CLOSED The two surfaces use different words to confirm the same deletion
 - `M22`   med  CLOSED `brain` is the word `doctor` uses for the store, in output and in `--help`
-- `M23`   med  open   `--help` has no examples
-- `M24`   med  open   `--help` is 127 lines and more than half is the environment table (cli-7 covers its wrapping, not its size)
-- `M25`   med  open   The commands in `--help` are one flat list in no stated order, and `run`'s two forms are separated by `exec`
+- `M23`   med  CLOSED `--help` has no examples
+- `M24`   med  CLOSED `--help` is 127 lines and more than half is the environment table (cli-7 covers its wrapping, not its size)
+- `M25`   med  CLOSED The commands in `--help` are one flat list in no stated order, and `run`'s two forms are separated by `exec`
 - `M26`   low  CLOSED `aforge manual --help` prints the page list instead of the command's usage
 - `M27`   low  CLOSED `logs` prints its path header on stdout
-- `M28`   low  open   `cache clean` writes its confirmation prompt to stdout
+- `M28`   low  CLOSED `cache clean` writes its confirmation prompt to stdout
 - `M29`   low  CLOSED `aforge version` prints only `aforge dev`
 
 ## eyes — [audit-eyes.md](audit-eyes.md)
@@ -109,17 +109,17 @@ _2026-09-03 07:47Z_
 - `P8`    med  CLOSED The command palette draws a fixed eight of fifty-two rows and never says the other forty-four exist
 - `P9`    med  CLOSED The memory place's empty state says what memory is and never what to do, and its hint promises shelf verbs on a page with no shelves
 - `P10`   med  CLOSED The spend place's empty state never says that nothing has been spent, and names no next act
-- `P11`   med  open   Memory's and search's teaching prose is truncated with an ellipsis rather than wrapped, so a sentence is unreadable on a narrow frame
-- `P12`   med  open   Memory's and search's body rows sit one cell left of every other place's
-- `P13`   med  open   `/help` spells one chord for macOS on every platform
+- `P11`   med  CLOSED Memory's and search's teaching prose is truncated with an ellipsis rather than wrapped, so a sentence is unreadable on a narrow frame
+- `P12`   med  CLOSED Memory's and search's body rows sit one cell left of every other place's
+- `P13`   med  CLOSED `/help` spells one chord for macOS on every platform
 - `P14`   med  CLOSED The map promises `→ verbs on this row` on places that have none
 - `P15`   med  CLOSED The first-run block and the greeting that replaces it are centred by two different rules, so the wordmark jumps when setup ends
 - `P16`   med  CLOSED The first-run screen's refusal line is whatever Go error the writer produced, printed raw
-- `P17`   low  open   The wordmark's last glyph has no right stroke and reads as a clipped letter
-- `P18`   low  open   A search that finds nothing reports the emptiness and nothing else
-- `P19`   low  open   Three more places' hint lines promise row verbs over a body that has no rows
+- `P17`   low  CLOSED The wordmark's last glyph has no right stroke and reads as a clipped letter
+- `P18`   low  CLOSED A search that finds nothing reports the emptiness and nothing else
+- `P19`   low  CLOSED Three more places' hint lines promise row verbs over a body that has no rows
 - `P20`   low  CLOSED The entry note dumps the absolute transcript path over four wrapped lines
-- `P21`   low  open   `ctrl+r` appears twice on the key sheet with two different meanings
+- `P21`   low  CLOSED `ctrl+r` appears twice on the key sheet with two different meanings
 - `P22`   low  CLOSED The unknown-command refusal is written in machinery register
 - `P23`   low  CLOSED `?` is bound to nothing and is advertised nowhere; help is reachable only by typing a slash command
 
@@ -172,13 +172,13 @@ _2026-09-03 07:47Z_
 
 ## settings — [audit-settings.md](audit-settings.md)
 
-- `S10`   med  open   The spend place draws no hint line of its own, so its foot advertises the conversation's keys
-- `S11`   med  open   The daily rail is spelled two ways on one frame
+- `S10`   med  CLOSED The spend place draws no hint line of its own, so its foot advertises the conversation's keys
+- `S11`   med  CLOSED The daily rail is spelled two ways on one frame
 - `S12`   med  CLOSED `dollars` renders a positive cost under a hundredth of a cent as `$0.0000`
 - `S13`   med  CLOSED At the widths where the memory type legend fits but the line is tight, the section's IDENTITY is truncated to keep a secondary legend whole: at 80 cells the heading reads `shelves · …` beside `fact 7 · preference 2 · decision 2 · correction 1 · project state 1`
 - `S14`   med  CLOSED The four ssh rows sit under `Session`, while a tab literally named `Connections` sits four tabs to the right holding Amplitude, PostHog and Braintree
-- `S15`   low  open   A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
-- `S16`   low  open   On a wide frame a settings row puts 150 blank cells between a label and a three-character value
+- `S15`   low  CLOSED A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
+- `S16`   low  CLOSED On a wide frame a settings row puts 150 blank cells between a label and a three-character value
 - `S17`   low  CLOSED The `loudest day` line right-aligns a bare noun with no verb and nothing joining it to the sentence: `aug 23 was the loudest day
 
 ## tasks — [audit-tasks.md](audit-tasks.md)

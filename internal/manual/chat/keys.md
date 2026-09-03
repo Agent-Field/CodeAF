@@ -1256,7 +1256,9 @@ cursor — `enter open its room · → verbs: stop it · type to filter` over a 
 running, `enter go inside it` on a task another conversation ran, which has no room to open,
 no `enter` clause at all where the row under the cursor has no door — which is a page
 holding only work running in other aforge windows — and `esc clear the filter` in place of
-`type to filter` while you are typing one. Clicking a row acts on the first press; the wheel
+`type to filter` while you are typing one. On a machine that has run **nothing at all**,
+where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
+there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
 walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
@@ -1590,7 +1592,10 @@ place key that does: `tab` belongs to the composer's path completion while you a
 and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
 is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
 number opens its room whatever is in it: a place with nothing of its own to draw spends the
-frame saying what it is for, and none of the seven is ever a key that does nothing.
+frame saying what it is for, and none of the seven is ever a key that does nothing. **On
+such a page the line under the box names only the way out** — `tab next place · esc` — on
+tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
+filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
 taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is

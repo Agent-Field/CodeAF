@@ -3,6 +3,9 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // EVERY CLAUSE ON A FOOT IS ONE KEY AND WHAT IT DOES.
@@ -57,5 +60,60 @@ func TestAFootNamesTheStripInTheCardsOwnGrammar(t *testing.T) {
 	// drawing a lead over an empty list.
 	if got := homeStripWord(); got != "" {
 		t.Fatalf("a row with no verbs drew %q, want nothing", got)
+	}
+}
+
+// AND A FOOT NEVER OFFERS A VERB OVER A BODY WITH NO ROWS.
+//
+// The same law from the other end. The test above catches a clause whose KEY is
+// only reachable through the `→` strip; this one catches a clause whose key IS
+// bound and has nothing to act on — which reads exactly the same way to the
+// person who presses it and gets no answer.
+//
+// On a machine that has run nothing, kept nothing true and remembered nothing,
+// the three teaching pages drew:
+//
+//	tasks     type to filter          (with no rows to filter)
+//	standing  enter open where it was asked  (with nothing to open)
+//	memory    enter open a shelf · alt+s walk the shelves  (with no shelves)
+//
+// while the body above each of them was spending the whole frame teaching what
+// the place is. What is true on a teaching page is the way out, and
+// [placeTailed] puts `tab next place` in front of it.
+func TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows(t *testing.T) {
+	// The whole foot a bare place may draw: the router's clause and the way out,
+	// and nothing that acts on a row.
+	wayOut := placeHintTail + " · esc"
+	for _, page := range []struct {
+		what string
+		foot func(a *app) string
+		// bad is the clauses this page used to promise over nothing.
+		bad []string
+	}{
+		{"tasks", func(a *app) string { return (placeTasks{}).hint(a) },
+			[]string{tasksTypeWord, tasksEnterRoomWord, tasksEnterInsideWord, tasksClearFilterWord}},
+		{"standing", func(a *app) string { return (placeStanding{}).hint(a) },
+			[]string{homeItemEnterWord, homeItemPauseWord, homeItemStopWord, standNotHereWord}},
+		{"memory", func(a *app) string { return (placeMemory{}).hint(a) },
+			[]string{"open a shelf", "walk the shelves", "type to filter"}},
+	} {
+		a := newTestApp(nil)
+		a.width, a.height = 120, 40
+		// A machine with nothing on it: no record, no orders, no memories. Each
+		// of the three places reads its own zero value here, which is the state a
+		// fresh install is in.
+		a.mem.reading = readMemory(store.MemoryShelves{}, nil, "", time.Time{})
+
+		foot := placeTailed(page.foot(a))
+		for _, clause := range page.bad {
+			if strings.Contains(foot, clause) {
+				t.Errorf("the %s foot on a teaching page reads %q, which offers %q over a body with no rows — want %q",
+					page.what, foot, clause, wayOut)
+			}
+		}
+		if foot != wayOut {
+			t.Errorf("the %s foot on a teaching page reads %q, want %q — the way out is all that is true there",
+				page.what, foot, wayOut)
+		}
 	}
 }

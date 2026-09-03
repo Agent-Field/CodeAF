@@ -303,22 +303,20 @@ Hand it work — nobody is watching, the answer is on stdout
               [--context-fill 60] [--completion-reserve 65536] [--debug]
       do one task and exit — the same living agent the chat runs, with nobody
       watching. What you type is the goal, and it is run verbatim
-      ` + exitLadderHelp + `
   aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
               [--token-budget N] [--timeout 15m] [--model slug]
               [--context-fill N] [--completion-reserve N] [--json]
               [--out file] [--debug]
       run one worker for one pass, with no planning at all
-      ` + exitLadderHelp + `
-      why it stopped is in --json's stop field; AFORGE_EXIT_CODES=legacy
-      restores exec's old 2/3/4/5/6 for one release
   aforge run  <program> --input <file.json|-> [--dir dir] [--model slug]
               [--journal path] [--json]
       run one saved program: typed input in, its typed output on stdout. A
       question it was not told how to answer stops it rather than being guessed
-      ` + exitLadderHelp + `
-      the three differ by how much thinking happens first: do plans and may
-      split the job, exec does not plan, run follows a plan somebody saved
+  the three differ by how much thinking happens first: do plans and may split
+  the job, exec does not plan, run follows a plan somebody saved. All three
+  end the same way, and why is in --json's stop field:
+  ` + foldedExitLadder(2, helpWidth) + `
+  AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release
 
 Look at what happened — read-only, no key, nothing spent
   aforge why self [--db path]

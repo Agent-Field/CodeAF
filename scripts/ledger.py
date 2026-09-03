@@ -67,7 +67,11 @@ SEV = re.compile(r"sev: (high|med|low)")
 # How a lane says "this row is done", in the three shapes they write.
 CLOSED = [
     re.compile(r"^\|\s*(\d+)\s*\|", re.M),               # a table row
-    re.compile(r"[Rr]ow\s+(\d+)\b"),                      # "Row 7 — …"
+    # "Row 7 — …", and "Rows 15 and 16", which is how a lane writes a fix that
+    # closes two rows at once. The plural cost this ledger a fourth undercount:
+    # `Row\s` cannot match `Rows 15`, so a lane that had done the work was told
+    # to reword its prose to suit a regex. The generator reads what lanes write.
+    re.compile(r"[Rr]ows?\s+(\d+(?:\s*(?:,|and)\s*\d+)*)\b"),
     re.compile(r"\*\*([\d,\s]+)\*\*"),                    # "**1, 2, 11, 23**"
     re.compile(r"^\*\*(\d+)\s*[—-]", re.M),               # "**1 — a person's own message…"
 ]
@@ -125,6 +129,8 @@ def closed_ids(text: str) -> set[str]:
 SELFTEST = [
     # (a `## fixed` section, the row numbers it truly claims)
     ("\n**Row 1 — the bar keeps every word.** Done at every width.\n", {"1"}),
+    # The plural, and a list, which is how a lane closes two rows in one entry.
+    ("\n**Rows 15 and 16 — one function, one fix.** Landed.\n", {"15", "16"}),
     ("\n**Row 12 — the line wraps.** NOT FIXED, and here is why it was not.\n", set()),
     ("\n### Not done by this lane\n**Row 4 — the tail was cut.** Somebody else's.\n", set()),
     # A second pass under a first pass's closing disclaimer: the whole reason the

@@ -79,3 +79,45 @@ func drawnWordmark(t *testing.T) string {
 	t.Helper()
 	return strings.Join(wordmarkRows(false), "\n")
 }
+
+// TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes is the letterform's own
+// gate, and it is about the RIGHT EDGE OF THE WHOLE WORD.
+//
+// The last glyph of [product] is drawn at the right edge of the first block
+// anybody sees, and `e` used to be `┌─┐ / ├─  / └─┘`: a blank cell with the
+// bowl's `┐` directly above it and its `┘` directly below. A hole punched
+// through the edge of a block of box-drawing, with ink on both sides of it, does
+// not read as an open letterform — it reads as a word the terminal cut off, and
+// the wave that found this filed it as a truncation and went looking for a
+// layout bug that was not there.
+//
+// An edge cell that is blank because the letter simply STOPS there is fine and
+// is what an `r` or an `f` looks like; the defect is only the hole BETWEEN two
+// strokes, which is what this asserts and nothing more.
+func TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes(t *testing.T) {
+	rows := wordmarkRows(false)
+	if len(rows) < 3 {
+		t.Fatalf("the wordmark is %d rows, want at least 3", len(rows))
+	}
+	edge := make([]rune, len(rows))
+	for i, row := range rows {
+		runes := []rune(row)
+		if len(runes) == 0 {
+			t.Fatalf("wordmark row %d is empty:\n%s", i, strings.Join(rows, "\n"))
+		}
+		edge[i] = runes[len(runes)-1]
+	}
+	for r := 1; r < len(edge)-1; r++ {
+		if edge[r] == ' ' && edge[r-1] != ' ' && edge[r+1] != ' ' {
+			t.Fatalf("the wordmark's last letter has a hole in its right edge on row %d — %q above, a blank, %q below — "+
+				"so the word reads as one the terminal cut off:\n%s\nclose that cell with a stroke",
+				r, string(edge[r-1]), string(edge[r+1]), strings.Join(rows, "\n"))
+		}
+	}
+	// AND THE EDGE IS STILL A LETTER AND NOT A BOX. `a` closes its crossbar with
+	// `┤` and `e` must not, or the two letters of this name that differ in one
+	// cell stop differing at all.
+	if wordmarkGlyphs['e'] == wordmarkGlyphs['a'] {
+		t.Fatalf("`e` and `a` are now the same letterform %v — the name would read `aforga`", wordmarkGlyphs['e'])
+	}
+}

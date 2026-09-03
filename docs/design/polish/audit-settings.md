@@ -275,3 +275,87 @@ The numbers below are SPELLED AS WORDS where the row is NOT closed:
 - **Row sixteen** (sev: low) — the 150 blank cells at 160 columns are `overlayLines` in
   `internal/tui3/palette.go`, not this lane's. The units from row 3 do give those rows
   something to sit on, but the measure cap is still uncapped.
+
+---
+
+## fixed — the third pass (the row's own two halves)
+
+Same wave, later lane, on `ui/polish-v0`. Frames prefixed `ps-`, captured through a private
+tmux socket (`polish-ps`) on the demo home.
+
+**Row 15 and Row 16 — a row's value sits in a column, and never butts its label.**
+They are ONE function judged at two widths, which is why they are one entry: the gap
+between a label and the tail right-aligned against it was `width - 2 - label - note` with a
+one-cell floor under it (`internal/tui3/palette.go`, `overlayRowTinted`). At 160 that ran
+`300s` out to the frame's edge a hundred and fifty cells from `ssh reuse`; at 80 it butted
+`per task` against its own value with a single word space. Fixing either alone leaves the
+other, and fixing them in two places would put two answers in the tree for one question.
+
+- `overlayPairRoom(label, note, width)` is the room the pair is laid out in — the frame less
+  the lead, pulled in to `overlayMeasure` (100 cells, a reading measure for rows the way
+  `teachMeasure` is one for prose). **Two rows keep the whole frame**, both under rowfit's
+  law 1: a row with NO tail, because a name alone has nothing to be far from; and a pair
+  that does not FIT the measure, because pulling its tail in would cut the identity to buy a
+  margin. A 130-cell label with a four-cell value at 160 still draws whole — asserted.
+- `rowGutter` (`internal/tui3/rowfit.go`) is **2** and not 1. It is the surface's one
+  written-down answer to "the least space between a name and its facts", so raising it is
+  what makes a tail that cannot leave two cells drop its last FACT (law 3) instead of eating
+  the gutter. A second gutter constant in `palette.go` would have been the drift the law is
+  about.
+
+Files: `internal/tui3/palette.go`, `internal/tui3/rowfit.go`; `internal/tui3/rowfit_test.go`
+re-pinned, since it pins the picker row cell for cell.
+Test: `TestASettingsValueSitsInAColumnAndNeverButtsItsLabel`
+(`internal/tui3/settingunit_test.go`).
+Frames: `frames/ps-spending-after.80x24.txt` — `  per task                   no limit of its
+own · against the day and this chat` against `set-set-spending.80x24.txt`'s
+`  per task no limit of its own · it spends against the day and this conversation`; and
+`frames/ps-workspace-after.160x50.txt` — `ssh reuse` … `300s` ending at column 102 —
+against `set-settings.160x50.txt` line 11, where it ended at 160.
+
+**THE TEST'S FIRST DRAFT DID NOT DISCRIMINATE AND IS RECORDED HERE BECAUSE IT IS THE TRAP.**
+It asserted the drawn gap against `rowGutter` itself, so reverting the constant moved the
+goalposts with the code and the test went on passing against the very row it names — one
+cell is always at least one cell. It asserts the literal `2` now, with the reason written
+beside it. Both halves were then reverted separately and watched to fail: the gutter half
+printing `per task no limit of its own · it spends against the day and this conversation` —
+1 cell(s), want at least 2; the measure half printing the 160-cell `ssh reuse … 300s`.
+
+**What it cost, and why that is the right trade.** One cell off every ranked row moves the
+picker's price one rung down its own ladder at exactly 60 columns — `$0.18/M` becomes
+`$0.18`, a spelling the row authored — and from about 102 cells up every list on this
+surface stops growing sideways. Both are recorded in `rowfit_test.go`'s pinned table.
+
+**Row 11 — checked rather than changed, and now closed.** `internal/tui3/pulse.go` draws
+`figure + pulseAllowanceGap + railFigure(facts.ceiling)`: the numerator keeps `dollars`
+because it is a measurement and the denominator goes through `railFigure` because it is a
+figure somebody typed. The lane that held `pulse.go` landed it after this audit's second
+pass was written. `TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt`
+(`pulsemoney_test.go`) and `narrow_test.go` both read it back.
+
+**Row 10 — checked rather than changed, and the hole is closed at the compiler.**
+`placeSpend.hint` exists (`internal/tui3/place_spend.go:671`) and names
+`enter opens what spent it · → the limits · shift+←→ move the days`, dropping each clause
+where the key is not bound.
+
+**How the spend place slipped the rule in the first place**, since the row asks: `placeBase`
+USED TO ANSWER `hint` — `func (placeBase) hint(a *app) string { return placeHintWords }` —
+so a place that never wrote a foot inherited the CONVERSATION's composer line and compiled
+perfectly. That is the whole of it: the rule "a place without its own keys should not
+compile" did not exist, because the default was what made it compile. It was deleted, and
+`hint` now joins `id`, `word` and `cursorAt` as a method `placeBase` does not carry
+(`internal/tui3/pages.go`, under the heading `THERE IS NO DEFAULT hint, AND THAT IS THE
+WHOLE POINT`). All seven places answer for themselves, and
+`TestEveryPlaceSaysItsOwnKeys` (`placehint_test.go:102`) reads the file back with `go/ast`
+and fails BY NAME if a `hint` is declared on `placeBase` again — because a restored default
+would make every other check in that test pass while the frame drew the router's line over
+a room that never wrote one.
+
+### not fixed, and why
+
+- **Row two and row twelve** — the pulse's navigation-dependent reading, and `dollars`
+  rendering a sub-cent as `$0.0000`. They live in `homemachine.go` and `app.go`'s money
+  speller, which another lane holds. (The numbers are spelled as words because
+  `scripts/ledger.py` reads `Row <digit>` under a `## fixed` heading as a closure.)
+- **Row fourteen's other half** — the word `Connections` doing two jobs. Unchanged: that tab
+  builds from `connectcaps.go`, which is not this lane's.

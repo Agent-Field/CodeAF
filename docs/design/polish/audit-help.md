@@ -337,3 +337,104 @@ writes a line here.`). Nothing to do.
 could be bound at all — a key cannot be bound from the file that describes it — and
 `internal/tui3/app.go` took three one-line changes (the opening line, `/help`'s path, the
 unknown-command call site). None of the three is a file another lane was named as holding.
+
+---
+
+## fixed — the third pass (the wordmark, the last two teaching feet)
+
+Same wave, later lane, on `ui/polish-v0`. Frames are prefixed `ps-`; the `-before`
+reading of each is the frame the row it closes already names.
+
+**Row 17 — the wordmark's last letter closes its own right edge** ·
+`internal/tui3/welcome.go` (`wordmarkGlyphs['e']`) · test
+`TestTheWordmarksRightEdgeIsNeverAHoleBetweenTwoStrokes`
+(`internal/tui3/productname_test.go`) · before `help-firstrun.{160x50,120x40,80x24,60x30}.txt`
+→ after `ps-wordmark-after.{160x50,120x40,80x24,60x30}.txt`
+
+**The row named the wrong glyph, and the defect is real.** Row 17 quotes
+`'f': {"┌─ ", "├─ ", "│  "}` and says the mark draws `┌─┐ … ┌─`, which is what it would
+draw if [product] were `openaf`. It is `aforge` (`styles.go`), so the last glyph is `e`
+and the rendered mark was:
+
+```
+┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
+├─┤ ├─  │ │ │   └─┤ ├─
+└─┘ │   └─┘ │   └─┘ └─┘
+```
+
+— a blank in the last column with the bowl's `┐` directly above it and its `┘` directly
+below. THE SYMPTOM THE ROW DESCRIBES IS EXACTLY THAT: a hole punched through the right edge
+of a block of box-drawing, between two strokes, reads as a word the terminal cut off. `f`,
+two letters earlier, is open on the right too and reads as an `f`, because it is inside the
+word and nothing else ends there. This is why the row said to look at it rendered.
+
+**The fix is one cell**: `├─╴`, a half-stroke terminal on the crossbar, which is where a
+lowercase `e`'s aperture actually is. It could not simply be closed with `┤` — `a` is
+`┌─┐ / ├─┤ / └─┘` and the two letters of this name would have become one letterform, which
+the test also holds. Identical at 60, 80, 120 and 160.
+
+The test asserts the drawn rows, not the map: no cell of the last glyph's right column may
+be blank with ink above AND below it. **An edge cell blank because the letter STOPS there
+is left alone** — that is what `r` and `f` look like — so the law is the hole between two
+strokes and nothing wider. Reverted the glyph and watched it fail, printing the mark:
+`the wordmark's last letter has a hole in its right edge on row 1 — "┐" above, a blank, "┘"
+below`.
+
+**Row 19, the other two thirds — the tasks and standing feet on a teaching page** ·
+`internal/tui3/place_tasks.go` (`tasksPlace.hint`, one arm on `held == 0`),
+`internal/tui3/place_standing.go` (`standingPlace.hint`, one arm on `choice()`) ·
+`internal/manual/chat/keys.md` · test
+`TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows` (`internal/tui3/stripword_test.go`)
+· before `help-empty-tasks.160x50.txt` (`type to filter · tab next place`) and
+`help-empty-standing.160x50.txt` (`enter open where it was asked · tab next place · esc`)
+→ after `ps-tasks-empty-after.120x40.txt`, `ps-standing-empty-after.120x40.txt`, both
+`tab next place · esc`.
+
+Memory's third was closed by the sibling lane above (`memoryBareHint`), and the new law
+covers all three so the shape cannot come back on any of them.
+
+**IT EXTENDS THE SIBLING LANE'S LAW RATHER THAN WRITING A SECOND ONE.**
+`TestAnItemsFootNeverOffersAVerbWithNoKey` in the same file catches a clause whose KEY is
+only reachable through the `→` strip; this one catches a clause whose key IS bound and has
+nothing to act on. They are the same sentence from two ends — *every clause on a foot is one
+key and something it does* — so they live together. Reverted both arms and watched it fail,
+naming each page and quoting the foot it drew.
+
+**The tasks arm is scoped to `held == 0` on purpose.** `internal/manual/chat/tasks.md`
+already documents a DIFFERENT empty foot — a page whose only rows are another window's,
+where `type to filter` is correct because there are rows to filter — and that account stays
+true. What changed is the page on a machine that has run nothing at all, where the body is
+spending the frame on `tasksTeach`.
+
+### Checked against the source, and closed by the passes above
+
+Five rows this lane was handed were already done. Each was re-read in the code before
+anything was touched, and each is recorded here in the closing form the ledger reads,
+because the ledger had them open.
+
+**Row 11 — the teaching prose wraps on both places.** Memory goes through
+`memoryReading.wrapped` at `teachMeasure` (`memoryplace.go`) and search through
+`placeTeachProse` (`searchplace.go:135,147,152`). Neither calls `fit` on a sentence any
+more; nothing ends in an ellipsis at 60.
+
+**Row 12 — both bodies hang from the surface's own column.** `searchHung`
+(`searchplace.go:173`) puts the one-cell lead on every row search builds, and memory's
+prose and footer take it too.
+
+**Row 13 — the send chord is spelled for the keyboard reading it.** `chords.go`'s
+`chordSpelling.cmdWord` draws `⌘enter` on a Mac and `super+enter` everywhere else
+(`chordCmdWord`, `chordCmdGlyph`, `chordSuperWord`), and `commands.go:1028` draws the park
+row through `chords.say`. The machinery the row told this lane to look for is exactly the
+one that answered it — `alt+`'s door, widened rather than duplicated.
+
+**Row 18 — a search that finds nothing says what to do.** `searchNothingSaid`
+(`searchplace.go:188`) ends `· try fewer words, or a name`, and `searchNoIndexWord`
+(`searchplace.go:195`) tells a window with no store behind it from an empty result.
+
+**Row 21 — TRUE of the code, not a stale row.** Two bindings in two files:
+`spellOutKey = "ctrl+r"` (`internal/tui3/spellout.go:66`, consumed at `spellout.go:279`)
+and `filesRevealKey = "ctrl+r"` (`internal/tui3/deliverables.go:89`, consumed at
+`deliverables.go:499`). They never collided in the code; they collided on the sheet, and
+both rows say their scope now — `internal/tui3/commands.go:1014` reads
+`over a draft: spell it out · …` and `commands.go:1055` reads
+`in /files: reveal the folder it is in · …`.

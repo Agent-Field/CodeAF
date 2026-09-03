@@ -1030,6 +1030,15 @@ func taskSheetFilterLine(needle string, kept int) string {
 // this row can actually be asked for, and the filter — replaced, while one is
 // on, by the one key whose meaning just moved.
 func (p *tasksPlace) hint(a *app) string {
+	// A TEACHING PAGE PROMISES NO ROW KEYS. On a machine that has run nothing the
+	// body spends the whole frame saying what tasks ARE ([tasksTeach], gated on
+	// this same `held == 0`), and the foot under it went on offering `type to
+	// filter` over a page with no rows to filter, no fold to open and no verb to
+	// press. What is true there is the way out, and [placeTailed] puts `tab next
+	// place` in front of it.
+	if !p.detailOn && a.tasksFiltered().held == 0 {
+		return "esc"
+	}
 	var parts []string
 	item, ok := a.taskSheetCurrent()
 	switch {

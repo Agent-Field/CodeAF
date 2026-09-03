@@ -420,7 +420,16 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 var wordmarkGlyphs = map[rune][3]string{
 	'o': {"┌─┐", "│ │", "└─┘"},
 	'p': {"┌─┐", "├─┘", "│  "},
-	'e': {"┌─┐", "├─ ", "└─┘"},
+	// THE CROSSBAR ENDS IN A TERMINAL AND NOT IN A BLANK. `e` is the last letter
+	// of [product], so its right column is the right edge of the first thing
+	// anybody sees — and it used to be `├─ `, a blank cell with the bowl's `┐`
+	// directly above it and its `┘` directly below. A hole punched in the edge of
+	// a block of box-drawing between two inked cells does not read as an open
+	// letterform; it reads as a word the terminal cut off, which is what the wave
+	// that found this filed it as. The half-stroke closes the edge while keeping
+	// the aperture a lowercase `e` has and `a` (`├─┤`) has not — the one cell
+	// that tells those two letters apart here.
+	'e': {"┌─┐", "├─╴", "└─┘"},
 	'n': {"┌─┐", "│ │", "│ │"},
 	'a': {"┌─┐", "├─┤", "└─┘"},
 	'f': {"┌─ ", "├─ ", "│  "},

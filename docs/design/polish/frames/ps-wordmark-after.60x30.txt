@@ -1,0 +1,30 @@
+
+
+
+
+
+
+
+
+  ┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
+  ├─┤ ├─  │ │ │   └─┤ ├─╴
+  └─┘ │   └─┘ │   └─┘ └─┘
+  ~deepseek/deepseek-v4-flash-latest · balanced crew
+
+  ›
+  /task <brief> starts work · / shows commands
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+aforge · deepseek-v4-flash-latest       crew balanced · idle
