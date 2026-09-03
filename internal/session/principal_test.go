@@ -314,6 +314,101 @@ func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
 	}
 }
 
+// ── the checks are read against the baseline (#513) ─────────────────────────
+
+// A CHECK THAT WAS ALREADY RED BEFORE THE WORK IS THE PROJECT'S, NOT THE RUN'S.
+//
+// The attrs cell's acceptance was "the existing test suite passes (run
+// `tox -e py`)" over a suite that had one failing test before anybody touched
+// anything. The sentence could never come true, so the goal owner read somebody
+// else's bug as work still to do and carried the run into it until the wall.
+//
+// Three arms, and they are the whole of the arithmetic: red before and green
+// after is somebody fixing something and is not left; red before and red after
+// is the project's and is not left; green before and red after is ours and is.
+func TestOnlyTheRedThisWorkTurnedRedIsWhatIsLeft(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		before []string
+		after  []CheckRun
+		done   bool
+	}{
+		{
+			name:   "red before and green after",
+			before: []string{"tox -e py"},
+			after:  []CheckRun{{Command: "tox -e py", Passed: true}},
+			done:   true,
+		},
+		{
+			name:   "red before and red after",
+			before: []string{"tox -e py"},
+			after:  []CheckRun{{Command: "tox -e py", Passed: false, Tail: "1 failed"}},
+			done:   true,
+		},
+		{
+			name:   "green before and red after",
+			before: nil,
+			after:  []CheckRun{{Command: "tox -e py", Passed: false, Tail: "1 failed"}},
+			done:   false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			steward := budgetLeft(t)
+			decision := steward.Decide(Remains{
+				Acceptance: "the existing test suite passes (run `tox -e py`)",
+				Landed:     true,
+				Landings:   []Landing{{ID: 1, Title: "fix the subclass init", State: TaskDone, Merged: true}},
+				Checks:     tc.after,
+				WasFailing: tc.before,
+			})
+			if tc.done && decision.Verb != DecideDone {
+				t.Fatalf("a run was carried on into red that was not its own: %+v", decision)
+			}
+			if !tc.done && decision.Verb != DecideCarryOn {
+				t.Fatalf("a check this work turned red was not counted: %+v", decision)
+			}
+			if !tc.done && !strings.Contains(decision.Brief, "tox -e py does not pass") {
+				t.Fatalf("the brief does not name the check this work broke:\n%s", decision.Brief)
+			}
+		})
+	}
+}
+
+// AND WHAT WAS ALREADY BROKEN IS SAID OUT LOUD RATHER THAN SILENTLY DROPPED.
+//
+// A worker handed a brief that does not mention red it can plainly see will go
+// and fix it, which is the same failure wearing the other coat. The sentence
+// names how many and which, in a person's words.
+func TestTheBriefSaysWhatWasAlreadyFailingBeforeTheWork(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the suite passes and the repro prints without error",
+		Landed:     true,
+		Landings: []Landing{
+			{ID: 1, Title: "fix the subclass init", State: TaskDone, Merged: true},
+			{ID: 2, Title: "write the repro", State: TaskFailed, Ending: TaskEndingRefused},
+		},
+		Checks: []CheckRun{
+			{Command: "tox -e py", Passed: false, Tail: "1 failed"},
+			{Command: "go build ./...", Passed: false},
+		},
+		WasFailing: []string{"tox -e py"},
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a unit the check refused was called finished: %+v", decision)
+	}
+	if strings.Contains(decision.Brief, "tox -e py does not pass") {
+		t.Fatalf("the brief asks for red that was there before the work:\n%s", decision.Brief)
+	}
+	if !strings.Contains(decision.Brief, "go build ./... does not pass") {
+		t.Fatalf("the brief does not name the check this work broke:\n%s", decision.Brief)
+	}
+	if !strings.Contains(decision.Brief,
+		"1 check was already failing before this work and is not counted: tox -e py") {
+		t.Fatalf("the brief never says what was already broken:\n%s", decision.Brief)
+	}
+}
+
 // (d) EVERYTHING MET IS THE ONE ANSWER THAT ENDS THE RUN.
 func TestAcceptanceMetWithEveryCheckPassingIsDone(t *testing.T) {
 	steward := budgetLeft(t)

@@ -449,6 +449,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it said nothing was left but the work was not finished", "starting-aforge"},
 		{"it kept working after everything was finished", "starting-aforge"},
 		{"a task died on the wire and the run would not stop", "starting-aforge"},
+		{"it keeps saying the tests fail but they were already failing", "starting-aforge"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},

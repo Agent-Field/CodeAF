@@ -1759,6 +1759,13 @@ type Agent struct {
 	// and so a node that nothing classified simply has no entry.
 	tallies map[uint64]*taxonomy.Tally
 
+	// baselineRed is the declared checks that were already failing before this
+	// session did any work, and baselineTaken says the reading has happened —
+	// which is not the same as the list being non-empty, because a clean tree
+	// reads as no red at all ([Agent.openBaseline]).
+	baselineRed   []string
+	baselineTaken bool
+
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than
 	// at the end of every reply for the rest of the run.

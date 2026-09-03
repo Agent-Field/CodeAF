@@ -195,6 +195,29 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
+## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
+
+**A check is yours only if your run turned it red.** On a run with a budget, aforge runs
+the checks your ask names once at the start — before it has touched anything — and writes
+down which were already failing. At the end it runs them again, and only a check that was
+**green before and red after** counts as work still to do.
+
+That matters because of the sentence people naturally write: *"the existing test suite
+passes"*. Over a project whose suite already has one failing test, that can never become
+true, and a run that reads its own failure in the project's will spend its whole ceiling on
+somebody else's bug. One measured run did exactly that.
+
+What was already broken is not hidden from the work either — the brief it carries on with
+says so plainly, so nothing goes off to fix it by accident:
+
+```
+1 check was already failing before this work and is not counted: tox -e py
+```
+
+A session you are sitting in front of runs none of this: your tree is in front of you, and
+nothing is checked or decided on your behalf. And if the first reading could not be taken —
+no runnable check in your ask — every check is read the way it always was.
+
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
 An unattended run with a budget looks at the work at the end of every reply: which

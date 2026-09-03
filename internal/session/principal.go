@@ -56,6 +56,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 )
 
 // Principal is the addressee of every "ask the person" path in this package.
@@ -283,6 +285,22 @@ type Remains struct {
 	// waiting on something that is not coming is a gap in the ask exactly as a
 	// failed one is — and it is never a reason to keep carrying on.
 	Blocked []string
+
+	// WasFailing is the checks that were ALREADY RED before this session did any
+	// work, by the same command names Checks carries.
+	//
+	// A CHECK IS OURS ONLY IF WE TURNED IT RED. An acceptance that says "the
+	// existing test suite passes" is written over whatever the project's suite
+	// does today, and where one test was red before anybody touched anything
+	// that sentence can never be true: the run reads its own failure in the
+	// project's, carries on into it, and spends its whole ceiling on somebody
+	// else's bug. Measured (#513): the attrs cell's acceptance was `tox -e py`
+	// passes over a suite with one pre-existing failure, and it never stopped.
+	//
+	// EMPTY MEANS NOTHING WAS READ, not that everything was green. A baseline is
+	// taken once, at the start of an unattended run, and a session that never had
+	// one behaves exactly as it did before this field existed.
+	WasFailing []string
 }
 
 // unmet lists, in a person's words, what stands between this and finished. An
@@ -317,13 +335,35 @@ func (r Remains) unmet() []string {
 		}
 		out = append(out, fmt.Sprintf("unit %d did not finish", landing.ID))
 	}
-	for _, check := range r.Checks {
-		if check.Passed {
-			continue
-		}
-		out = append(out, check.Command+" does not pass")
+	// AND ONLY THE RED THIS WORK TURNED RED IS LEFT. What was already failing
+	// before anybody touched the tree is the project's and not this session's,
+	// and naming it sends a run that has finished back into somebody else's bug
+	// for the rest of its ceiling. It is the same subtraction the task harness
+	// makes over its own before-and-after ([verify.NewFailures]), on the check
+	// commands rather than on test names, because a session's declared check is
+	// a whole command and its answer is whether that command passed.
+	for _, command := range verify.NewFailures(r.WasFailing, r.redChecks()) {
+		out = append(out, command+" does not pass")
 	}
 	return out
+}
+
+// redChecks is every declared check that is failing NOW, in the order they ran.
+func (r Remains) redChecks() []string {
+	var out []string
+	for _, check := range r.Checks {
+		if !check.Passed {
+			out = append(out, check.Command)
+		}
+	}
+	return out
+}
+
+// alreadyRed is what this reading found failing that was failing before the work
+// began — the checks [Remains.unmet] deliberately did not name.
+func (r Remains) alreadyRed() []string {
+	red := r.redChecks()
+	return verify.Subtract(red, verify.NewFailures(r.WasFailing, red))
 }
 
 // absorbedBy names the landing that already did this one's work, and "" when
@@ -858,5 +898,24 @@ func stewardBrief(r Remains, unmet []string) string {
 	out.WriteString("it is not finished yet — ")
 	out.WriteString(strings.Join(unmet, "; "))
 	out.WriteString(".")
+	// AND WHAT WAS ALREADY BROKEN IS SAID OUT LOUD RATHER THAN SILENTLY DROPPED.
+	// A worker handed a brief that does not mention the red it can plainly see
+	// will go and fix it, which is the whole failure in its other form; told
+	// that it was red before the work and is not being counted, it can leave it
+	// alone or say so.
+	if already := r.alreadyRed(); len(already) > 0 {
+		out.WriteString("\n\n")
+		out.WriteString(alreadyRedSentence(already))
+	}
 	return out.String()
+}
+
+// alreadyRedSentence says what the tree was already failing before this work, in
+// a person's words and with the commands named so nobody has to guess which.
+func alreadyRedSentence(already []string) string {
+	was := "1 check was"
+	if len(already) > 1 {
+		was = fmt.Sprintf("%d checks were", len(already))
+	}
+	return was + " already failing before this work and is not counted: " + strings.Join(already, ", ")
 }

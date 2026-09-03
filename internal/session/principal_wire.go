@@ -395,6 +395,12 @@ func (a *Agent) remainsFor(said, reader string) Remains {
 		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
+		// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before
+		// any decision — rather than beside the checks themselves: the checks are
+		// run once, after a principal has said the ask is met, and a baseline
+		// attached at that moment would be a baseline of a tree this session has
+		// already changed ([Agent.openBaseline]).
+		WasFailing: a.baselineRedChecks(),
 	}
 }
 

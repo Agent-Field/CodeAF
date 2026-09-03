@@ -361,6 +361,82 @@ func sweepScratch(found reconciliation) reconciliation {
 // sweep on every stopped turn would be this feature deleting the run's own
 // working material halfway through, which is a worse failure than the one it
 // was built to fix.
+// openBaseline reads WHAT WAS ALREADY RED before this session did any work, once,
+// at the start of an unattended run.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// The attrs cell's acceptance was "the existing test suite passes (run
+// `tox -e py`)" over a suite that had one failing test before anybody touched
+// anything. That sentence could never come true, so the goal owner read the
+// project's own red as work still to do and carried the run on into it until the
+// wall. A run cannot be asked to finish something that was not started.
+//
+// ── WHY HERE, AND NOT AT THE FIRST WRITE ────────────────────────────────────
+//
+// The first write is the other candidate and it is the wrong one: the write seam
+// learns that a call wrote at POST-FEEDBACK, which is after the file changed, and
+// a reading taken then already holds this session's own work. What a baseline
+// has to be is the tree BEFORE, and the only moment that is certainly before is
+// the one this shares with [Agent.openAcceptance] — the start of the first turn,
+// where the session's declared checks are already knowable from the ask.
+//
+// ── AND IT IS PAID FOR ONLY WHERE IT IS READ ────────────────────────────────
+//
+// A [Person] never reads a check this way — they look at their own tree — so a
+// watched session runs nothing here and costs nothing. An unattended run pays for
+// it once, and it is bounded exactly as the terminal reading is: one window per
+// check ([sessionCheckWindow]), and a check that could not be run inside it is
+// simply not baseline-red, which is the safe side — an unread check keeps its
+// old meaning and is named if it fails later.
+func (a *Agent) openBaseline(ctx context.Context) {
+	if a.steward() == nil {
+		return
+	}
+	a.mu.Lock()
+	taken := a.baselineTaken
+	a.baselineTaken = true
+	a.mu.Unlock()
+	if taken {
+		return
+	}
+	checks := a.sessionChecks()
+	if len(checks) == 0 {
+		return
+	}
+	var red []string
+	for _, run := range a.runSessionChecks(ctx, checks) {
+		if !run.Passed {
+			red = append(red, run.Command)
+		}
+	}
+	a.mu.Lock()
+	a.baselineRed = red
+	a.mu.Unlock()
+	a.journalBaseline(red)
+}
+
+// baselineRedChecks is what this session found already failing before it worked,
+// for the reading that decides what is left ([Remains.WasFailing]).
+func (a *Agent) baselineRedChecks() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.baselineRed...)
+}
+
+// journalBaseline writes the baseline down, INCLUDING WHEN IT WAS ALL GREEN.
+//
+// A run that carried on into somebody else's red and a run whose tree was clean
+// read identically in the file before this, so the one fact that explains a
+// whole evening was the one fact nowhere on disk. The row is written whichever
+// way it came out — an empty `failed` on a green tree is the reading having
+// happened, not the reading being missing.
+func (a *Agent) journalBaseline(red []string) {
+	a.journalFile().appendPrincipal(journalPrincipal{
+		Who: principalWord(a.who()), Event: "baseline", Failed: red,
+	})
+}
+
 func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation) {
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
 	found := reconcile(a.createdList(), a.deliverableTree())

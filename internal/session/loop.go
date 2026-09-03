@@ -238,6 +238,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// EVERY OTHER SESSION PASSES STRAIGHT THROUGH IT. There is no Steward, so
 	// there is nothing to write, and the cost is one nil check per turn.
 	a.openAcceptance(ctx, hub)
+	// AND WHAT THE TREE WAS ALREADY FAILING, read at the same moment and for the
+	// same reason: this is the last instant that is certainly BEFORE the session's
+	// own work, and a check that was red before anybody touched anything is the
+	// project's and not this run's (principal_audit.go's [Agent.openBaseline]).
+	// A watched session passes straight through it too.
+	a.openBaseline(ctx)
 
 	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
 	// build already knows how to do properly? A sub-harness has no slash command,
