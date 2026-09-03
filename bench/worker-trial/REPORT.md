@@ -26,6 +26,41 @@ in the table is reconstructed from `~/.aforge/logs/calls.jsonl` over the run's t
 window — a log shared with every other session on this box, whose `start` rows carry no
 run id. Each row says which method it used; all of them, so far, say *window*.
 
+### The `-timeout` flag never reached the leaf — and I reported the wall wrongly because of it
+
+**#549**, filed from this trial's #515 run, finds that a leaf's room is
+`context.WithTimeout(900s)` from the subharness fifteen-minute floor and never reads the
+errand's `-timeout`. So `-timeout 45m` bought **no leaf more than fifteen minutes**. The
+"45m to the wall" runs in this table were the door cycling leaves, each with a fifteen-minute
+room; the flag I set governed only how long the door kept starting new ones.
+
+Measured against my own call log, per leaf, first call to last:
+
+| run | leaf | span | what ended it |
+| --- | --- | --- | --- |
+| #510 run 1 | task-2 | 176.0s | finished |
+| #510 run 1 | task-2-x1 | 1876.9s across a resume | the wall |
+| #510 run 2 | task-2 / x1 / x2 | 610.9s / 603.1s / 154.7s | the wall |
+| #510 run 3 | **task-2-n1** | **900.0s** | **the leaf's room** |
+| #510 run 3 | task-2-n4 / n2 | 487.3s / 121.0s | the wall |
+| #515 run 1 | task-2 / x1 / x2 | 758.7s / 838.3s / 177.5s | the wall |
+| #515 run 2 | **task-2** | **900.0s** | **the leaf's room** |
+| #515 run 3 | task-2 / x1 | 1179.2s across a resume / 888.6s | the wall |
+
+No single leaf room ever exceeded 900.0s. The two spans above it belong to nodes the stream
+shows being resumed, so they held more than one room.
+
+**Five of the six runs ended on the wall. One ended on a leaf's room — #515 run 2, the run
+that broke the build.** Its single leaf ran exactly 900.0s, reported `context deadline
+exceeded`, and left `internal/shaped/shaped.go` with a call site whose function was never
+written. That failure is not the wall I chose; it is a fifteen-minute room I could not see
+and could not change from the command line.
+
+This also revises something I claimed earlier in this file. I recorded "45m wall" as though
+each hand-off had forty-five minutes of working room. It did not. The only lever I actually
+had over a leaf's chances was the prompt — which is why "start editing in your first few
+turns" moved the results and the timeout flag never could have.
+
 ### A figure I got wrong, corrected
 
 An earlier reading of this trial said "roughly 12% of each run's spend is retry and hedge
