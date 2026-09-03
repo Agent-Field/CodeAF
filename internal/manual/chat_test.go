@@ -1256,6 +1256,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// themselves, which is the one they name when they want it to stop.
 		{"how often does my watch check", "keeping-an-eye"},
 		{"stop the thing that runs every hour", "keeping-an-eye"},
+		// Asked by somebody who has not set a key yet and wants to know whether
+		// the standing side is doing anything at all in the meantime. The answer
+		// is half yes — the walk happens, the judgments do not — and it has to
+		// come from the page rather than be guessed at.
+		{"does the background check run before I set an API key?", "keeping-an-eye"},
 		// The eleventh wave: the ambient side arriving on home. Each of these is
 		// asked by somebody LOOKING at a row they did not expect — a glyph they
 		// have not met, a segment at the foot of the frame, a card that appeared

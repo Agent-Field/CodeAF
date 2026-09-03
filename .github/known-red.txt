@@ -20,9 +20,3 @@
 
 # Fail on a clean tree.
 TestEveryLockInTheGuardedTreeUnlocksFromADefer
-
-# Fail on the Linux CI runner and PASS on a clean macOS tree (each re-run
-# locally on 2026-08-31 to confirm). Environment-shaped: whoever picks one up
-# should reproduce on Linux first.
-TestTickWalksTheItemsAndWritesAWakeLine
-TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch
