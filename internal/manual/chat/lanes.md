@@ -188,6 +188,36 @@ left standing: the row reads `parasail refused`, which is what actually
 happened. A row still saying `trying …` about a request that has already failed
 is the one thing it will not do.
 
+## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
+
+Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
+`AFORGE_BASE_URL` — a proxy in front of the router, a mirror, a router of your
+own, or the router reached by its IP address — and it **asks that base whether
+it publishes an endpoints page**: the first fetch of a model's sheet, made in the
+background, is the question. A base that answers with a page has lanes exactly
+as the built-in endpoint does, with the same auto ranking, pins, hedges and
+status line. Nothing about the address is inspected; a router is recognised by
+what it answers, not by where it lives.
+
+A base that **has no endpoints page at all** — it answers the ask with a
+not-found page rather than the router's own error message, the way a plain
+proxy or a mirror of the completions route does — is remembered as having none
+for five minutes. aforge then sends every request with no lane opinion, as it
+would to any single endpoint, and it does not keep asking: that base is asked
+again once every five minutes, in the background, and never in front of a
+request. A router that has the page but simply **does not publish that one
+model** — it answers not found in its own words, about the model — is not
+treated that way: the model has no sheet this round, nothing is remembered
+about the base, and the next model is fetched at once. An error that is not a
+not-found — a 500, a timeout, a rate limit — is a bad afternoon and not an
+answer, so the base is simply asked again on the next beat.
+
+Two things worth knowing. The check costs nothing extra: it is the sheet fetch
+aforge was going to make anyway, so the built-in endpoint pays no additional
+request. And a base that has said it has no page at all is believed for those
+five minutes even if you ask about a different model — that answer is about the
+address, not the model. Only the answer about one model is about the model.
+
 ## Turning lane routing off
 
 Set routing off (`/settings`, or the `routing` row) and aforge sends every

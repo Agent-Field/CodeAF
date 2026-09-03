@@ -24,6 +24,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		// Lanes behind a base of the person's own: the question the hostname gate
+		// (issue #373) used to answer wrongly, in the three ways it gets asked.
+		{"do lanes work with a custom base url", "lanes"},
+		{"AFORGE_BASE_URL proxy no lanes", "lanes"},
+		{"self-hosted router endpoints page", "lanes"},
 		// The model-call log: the file every outbound call writes a line to.
 		// Both spellings people actually use — one asks for the file, the other
 		// asks what was on the wire.
