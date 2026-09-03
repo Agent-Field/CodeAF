@@ -572,6 +572,42 @@ lets a patch that deleted an attribute the repository already had ship as whole
 going red; both are read off a run, which is why the numbers are written down
 here.
 
+## What the change set's own text costs
+
+The leaf's account of what it changed carries a PATCH — the change's own text,
+written to a file under the harness's own directory and handed on as a path
+(`Account.Patch`, filled by `AccountFor` in `internal/exec/accountfor.go`). It is
+what nothing downstream ever had: a judge asked whether a deliverable's account
+of the change is true can read the change, and a method writer handed the goal of
+describing it can read it instead of inferring it.
+
+It is derived on the landing seam, from git, on the leaf's own context: `git diff`
+over the committed range, `git diff HEAD` for what nobody committed, and one
+`git diff --no-index` per untracked file the leaf created. Every one of them runs
+with **`--no-ext-diff`**, which is a law and not a flag: a repository may
+configure an external diff driver per-repository or per-path, and a helper this
+program never named is not a helper that cancelling a context reliably reaps — a
+measurement taken from a defer on the landing path must not be able to outlive the
+leaf.
+
+| budget | value | what it bounds |
+| --- | --- | --- |
+| `accountPatchBytes` | **1 MiB** | the whole patch file. Past it the text is cut at a line boundary and the file SAYS where it was cut — a clipped patch that reads whole is a false account of the change set rather than a smaller one. |
+| `accountPathspecBytes` | **96 KiB** | the paths one `git diff` is handed at once. `git diff` reads no pathspec from a file the way `git add` does (git 2.43), so a change set large enough to pass the kernel's argv limit is sent in runs; they concatenate to exactly the patch one invocation would have written, because the paths are disjoint. |
+
+The paths ARE the bound that matters, and they are the account's own: the diffs
+are read over the shared tree, where a sibling leaf that landed in between is in
+the same history, and a patch that swept that up would hand every reader another
+node's work as this node's.
+
+**A source that could not be read abandons the patch entirely.** git's exit 0 and
+1 are answers — a diff exits 1 having found something — and anything from 2 up is
+git refusing the command; a refusal read as an empty diff is how an oversized
+argv came back as "this leaf changed nothing". A patch missing its untracked half
+is not a smaller patch, it is one that is silent about the files the leaf
+created, so the account claims none. `TestAPatchTooLargeToWriteOutSaysWhereItWasCut`
+pins the clip and its sentence.
+
 ## What the symbol-level photograph costs
 
 The check-level reading answers *what does this project's suite say*. It cannot
