@@ -543,12 +543,18 @@ type journalMark struct {
 	DurationMS int64   `json:"durationMs,omitempty"`
 }
 
-// journalCeiling is what the LAST mark did with the turn: moved the remaining
-// work onto the one road, or dropped the handover and left the turn to finish.
+// journalCeiling is what a HANDOVER did with the turn: moved the remaining work
+// onto the one road, or ended it where it stood.
+//
+// IT IS WRITTEN ONCE PER HANDOVER ROAD AND NOT ONLY AT THE CEILING. Every door
+// into checkpoint.go's [Agent.handOverRunningTurn] writes one — a mark whose
+// drawing had parts in it, a turn past its write allowance, and the ceiling that
+// gave this record its name — because the ending is decided there and nowhere
+// else. Seam below says which door it was.
 //
 // It is a line of its own rather than a field on the mark above it because the
 // two are different facts about different moments — the mark is a reading and
-// this is an act — and because the ceiling can fire with no reading behind it at
+// this is an act — and because a handover can fire with no reading behind it at
 // all (a sidecar nobody could reach still meets the ceiling).
 //
 // Decision is `moved`, `dropped:nothing-left` — the running model declared the
