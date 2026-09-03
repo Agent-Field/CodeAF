@@ -37,7 +37,14 @@ the first of these that answers wins:
    is a question, never a guess:** you are asked which one, and nothing starts until you
    answer.
 3. **Where you are standing**, when that is a repository — what tasks have always used. A
-   conversation opened inside its own project still gets exactly it.
+   conversation opened inside its own project still gets exactly it. **But a ground never
+   climbs out of the machine's scratch:** a folder inside the temporary directory
+   (`TMPDIR`, `GOTMPDIR`, `/tmp`, `/private/tmp`, `/var/folders`) never reaches a repository
+   sitting *above* that temporary directory, because scratch is where work is put down and
+   never what work is about. So a task in a folder under `/tmp` stands on a repository that
+   is itself inside the scratch, or on no repository at all — in which case it runs in
+   place and gets no branch of its own, exactly as any other non-repository folder does.
+   Nothing is refused and nothing extra is printed.
 4. **Nothing** — the conversation's own folder, when there is no repository anywhere.
 
 So a conversation opened in your home directory that has spent an hour reading

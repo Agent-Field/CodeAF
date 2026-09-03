@@ -276,6 +276,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I opened aforge in my home folder where will the task work", "how-tasks-run"},
 		{"can a task work in a different repo", "how-tasks-run"},
 		{"my task worked in the wrong project", "how-tasks-run"},
+		// AND THE ONE PLACE THE GROUND STOPS CLIMBING. `git rev-parse` walks up
+		// and out of the folder it is handed, so a workspace made inside the
+		// machine's temporary directory used to reach whatever repository
+		// happened to be above it; it does not any more, and a task there runs
+		// in place instead. These are the words of somebody who noticed the
+		// missing branch (#578).
+		{"my task under /tmp ran in place instead of getting its own branch", "how-tasks-run"},
 		// AND WHAT THE CARD CALLS THAT PLACE. The settled card used to label the
 		// directory `worktree`; it says `a branch of your repository` or `its own
 		// copy of the folder` now, from the rung that made the world (#194), and
@@ -1925,6 +1932,22 @@ func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
 		}
 	}
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
+}
+
+// #578: a ground never climbs out of the machine's scratch, so a workspace under
+// the temporary directory runs in place instead of cutting a branch off whatever
+// repository happens to sit above it. The page-level probe above cannot hold
+// that on its own — how-tasks-run wins every question with the words "task" and
+// "branch" in it, edit or no edit — so this pins the sentence to the section the
+// person who noticed the missing branch is actually handed.
+func TestTheGroundPageSaysAWorkspaceInScratchDoesNotClimbOutOfIt(t *testing.T) {
+	const said = "climbs out of the machine's scratch"
+	for _, section := range Chat().Search("my task under /tmp ran in place instead of getting its own branch", DefaultResults) {
+		if section.Page == "how-tasks-run" && strings.Contains(section.Body, said) {
+			return
+		}
+	}
+	t.Fatalf("the question does not reach a section that says %q; somebody whose task got no branch is left with the ladder alone, which reads as though rung 3 had answered", said)
 }
 
 func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {

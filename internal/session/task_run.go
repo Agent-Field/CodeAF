@@ -6864,7 +6864,47 @@ func repositoryRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
+	if climbsOutOfScratch(dir, root) {
+		return "", false
+	}
 	return canonicalPath(root), true
+}
+
+// climbsOutOfScratch is THE LAW: A GROUND NEVER CLIMBS OUT OF A SCRATCH
+// DIRECTORY ITS PATH LIVES IN.
+//
+// `git rev-parse --show-toplevel` walks UP, and it does not stop at the
+// directory it was handed. So a scratch directory that happens to have been
+// made inside a checkout answers with THAT CHECKOUT — and the ground ladder
+// then cuts a real task/* branch off a person's own HEAD, commits "task: Paint"
+// onto it and merges it home, over work they were in the middle of. That is not
+// a theory either: Go roots t.TempDir() at GOTMPDIR (then TMPDIR), so one
+// `go test ./internal/session/` run with either pointed inside a checkout moved
+// the developer's HEAD. The machine's scratch is where work is PUT DOWN, never
+// what work is ABOUT, and a repository that merely CONTAINS the machine's temp
+// directory is a repository this task was never given.
+//
+// The reading is PER BOUNDARY, never in aggregate: for each temp root the
+// directory lives in, the answer must live in that same root. Asking instead
+// whether the root is scratch AT ALL would let the whole bug through, because
+// /tmp is itself a temp root and a checkout at /tmp/somewhere is inside it —
+// while GOTMPDIR=/tmp/somewhere/.gotmp is the boundary that was actually
+// climbed out of.
+//
+// The list is [tempRoots] and NOT [scratchPath]'s [scratchDirs], which reads the
+// other way round: there a name EXEMPTS a write, here a name REFUSES a ground.
+// A path is made ABSOLUTE BEFORE its symlinks are resolved, and the reason is in
+// [tempRoots]: a relative spelling on either side of the comparison is one
+// filepath.Rel cannot answer, and its error reads as "not inside".
+func climbsOutOfScratch(dir, root string) bool {
+	realDir, realRoot := resolveSymlinks(absolutePath(dir)), resolveSymlinks(absolutePath(root))
+	for _, scratch := range tempRoots() {
+		scratch = resolveSymlinks(scratch)
+		if withinDir(scratch, realDir) && !withinDir(scratch, realRoot) {
+			return true
+		}
+	}
+	return false
 }
 
 // git runs one command in a directory and returns its combined output. There is
