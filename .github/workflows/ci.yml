@@ -223,7 +223,9 @@ jobs:
             # A module change reaches every package; the tree is the touched set.
             pkgs="./..."
           else
-            dirs="$(printf '%s\n' "$changed" | grep '\.go$' | xargs -r -n1 dirname | sort -u)"
+            # `|| true`: a change with no Go file makes this grep exit 1, and
+            # under pipefail that would turn a docs pull request red.
+            dirs="$(printf '%s\n' "$changed" | { grep '\.go$' || true; } | xargs -r -n1 dirname | sort -u)"
             pkgs=""
             for dir in $dirs; do
               # A directory the change emptied has no package left to test.
