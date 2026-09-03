@@ -94,13 +94,35 @@ func (s SubharnessInfo) Deadline(budgetTokens int) time.Duration {
 	return floor
 }
 
+// DeadlineWithin widens one leaf's token-sized room to use the wall it runs
+// under, while leaving the watchdog's landing pad inside that wall.
+//
+// A forty-five-minute errand handed its only leaf the generalist's fifteen-
+// minute floor, with no path by which the leaf could learn that another thirty
+// minutes were going unused. THE WALL IS A CEILING AND THE TOKEN GRANT IS A
+// FLOOR: this method only widens. A short wall never takes away room the token
+// grant already bought, and no wall leaves the shape byte-for-byte unchanged.
+func (s SubharnessInfo) DeadlineWithin(budgetTokens int, remaining time.Duration) time.Duration {
+	room := s.Deadline(budgetTokens)
+	if remaining <= 0 {
+		return room
+	}
+	usable := remaining - watchdogPad
+	if usable > room {
+		return usable
+	}
+	return room
+}
+
 // watchdogPad is how far above a leaf's own deadline the node watchdog sits.
 //
 // It is the room a leaf told to land needs to notice and finish: one more model
 // call and one more transcript flush. Two minutes, unchanged from the figure
 // every surface wrote out for itself, and it lives beside the deadline it is
-// added to because the two are one bound in two parts — the worker's own clock,
-// and the backstop that must never fire below it.
+// added to because the deadline landing reserve and this watchdog pad are one
+// bound in two parts — the reserve is what the landing is granted, and the pad
+// is where the watchdog sits so that landing fits underneath it. Neither half
+// moves alone.
 const watchdogPad = 2 * time.Minute
 
 // WatchdogAbove is the node watchdog over a deadline that has already been
