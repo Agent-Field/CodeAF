@@ -333,6 +333,88 @@ func TestTheGroundLadderClimbsInOrder(t *testing.T) {
 	})
 }
 
+// A GUESSED `where` MUST NOT SKIP THE TREE. Both doors that fill the field are
+// models, and either one used to stand the worker in the conversation
+// checkout — `in place`, `.`, `here`, or the workspace path itself. Isolation
+// is the default; the person opts out by saying `in place` or naming a folder.
+func TestAGuessedWhereDoesNotStandTheWorkInPlace(t *testing.T) {
+	repo := newTestRepo(t)
+	request := "fix the crash"
+	for _, where := range []string{"in place", ".", "./", "here", "directly", repo} {
+		t.Run(where, func(t *testing.T) {
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.Workspace = repo
+			})
+			stand := agent.resolveTaskGround(taskSpec{
+				request:     request,
+				where:       where,
+				deliverable: "the fix",
+				acceptance:  "it is fixed",
+			})
+			if stand.mode != TaskModeWorktree {
+				t.Fatalf("mode = %q, want worktree (a guessed where must not skip the tree)", stand.mode)
+			}
+			if stand.dir != canonicalPath(repo) {
+				t.Fatalf("dir = %q, want the repository so the worker is cut a worktree", stand.dir)
+			}
+			if stand.rung == taskGroundHere || stand.rung == taskGroundNamed {
+				t.Fatalf("rung = %q, want the ladder, not a guessed placement", stand.rung)
+			}
+		})
+	}
+}
+
+func TestInPlaceStandsOnlyWhenThePersonSaidInPlace(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+	})
+	stand := agent.resolveTaskGround(taskSpec{
+		request:     "please do this in place",
+		where:       "in place",
+		deliverable: "the note",
+		acceptance:  "it is written",
+	})
+	if stand.mode != TaskModeInPlace || stand.dir != canonicalPath(repo) || stand.rung != taskGroundHere {
+		t.Fatalf("stand = %+v, want in-place in the conversation workspace", stand)
+	}
+}
+
+func TestANamedFolderStandsWhenThePersonNamedIt(t *testing.T) {
+	repo := newTestRepo(t)
+	dest := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+	})
+	stand := agent.resolveTaskGround(taskSpec{
+		request:     "do the experiment in " + dest,
+		where:       dest,
+		deliverable: "the notes",
+		acceptance:  "they are there",
+	})
+	if stand.mode != TaskModeInPlace || stand.dir != canonicalPath(dest) || stand.rung != taskGroundNamed {
+		t.Fatalf("stand = %+v, want in-place at the folder the person named", stand)
+	}
+}
+
+// The word "here" in ordinary English is not an opt-out. Treating it as one
+// used to skip the tree for "look here" and "the crash is here".
+func TestHereInTheRequestIsNotAnOptOut(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+	})
+	stand := agent.resolveTaskGround(taskSpec{
+		request:     "the crash is here, please fix it",
+		where:       "in place",
+		deliverable: "the fix",
+		acceptance:  "it is fixed",
+	})
+	if stand.mode != TaskModeWorktree {
+		t.Fatalf("mode = %q, want worktree: 'here' in prose is not the person opting out", stand.mode)
+	}
+}
+
 // readCallMessage is one assistant turn that read one path: the shape the
 // touched rung reads the conversation for.
 func readCallMessage(id, path string) ai.Message {

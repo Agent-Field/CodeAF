@@ -256,8 +256,9 @@ type taskSpec struct {
 	brief       string
 	deliverable string
 	// where is empty for the default task-folder worktree, "in place" when the
-	// request is deliberately non-code work in this conversation's directory,
-	// or the exact path the person named. A worker never infers it from prose.
+	// PERSON said those words, or the exact path they named. A model that fills
+	// this to skip the tree is guessing; [placementThePersonAskedFor] drops the
+	// guess so the ladder still cuts a copy of its own.
 	where string
 	// ground is the repository or folder THE WORK IS ABOUT, absolute, and mode is
 	// how the task stands on it (taskstands.go resolves both, and [TaskMode]
@@ -524,6 +525,10 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// so a nested worker still finds the person's turn, not its parent's
 	// journal.
 	spec.origin = a.taskOriginRef()
+	// A GUESSED `where` IS DROPPED HERE, before the card is built, so the
+	// notice a person reads does not claim they named a folder they did not.
+	// The resolver filters its own copy too; this is the write that sticks.
+	a.dropGuessedWhere(&spec)
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.

@@ -124,10 +124,12 @@ that task's own journal too, on the line beginning `its world is`.
 
 Two limits:
 
-- An explicitly named folder, or a task shaped as non-code work with `where: in place`,
-  runs **in place** in that directory and says so:
+- An explicitly named folder — a path you wrote in the request, or the words `in place`
+  if you said them — runs **in place** in that directory and says so:
   `it worked directly in the workspace: there was no repository to branch`.
-  While that task runs, **the chat cannot write in that directory** — see *A task working
+  A shaper or a proposal that invents `in place` for "non-code work" does not skip the
+  tree: the work still gets a copy of its own. While a task that really is in place
+  runs, **the chat cannot write in that directory** — see *A task working
   in place holds the directory* below.
 - A failed `git worktree add` fails the task with
   `could not prepare a working copy: git worktree add: <first line of git output>`
@@ -308,6 +310,14 @@ What held is not listed, so the lines that matter are the only lines there.
 **What it cannot check** is anything that is not in the folder — a URL that must answer, an
 account that must still be logged in. Those belong in the brief itself, where they
 already went.
+
+## in place — a task shaped as non-code work, where: in place, non-code work in this conversation's workspace
+
+A task runs **in place** only when you named a folder or said `in place`. The shaper used
+to invent `where: in place` for work it judged "not code work", and that skipped the
+worktree and wrote in this conversation's workspace. It does not invent that now. A
+proposal that fills `in place` without you saying so is dropped, and the task still gets
+a copy of its own under the session folder. The one way to opt out is your own words.
 
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 

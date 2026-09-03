@@ -38,7 +38,20 @@ func isShapeCall(messages []ai.Message) bool {
 // being taken away underneath them.
 func shapeAgent(t *testing.T, client Completer) (*Agent, <-chan uint64) {
 	t.Helper()
-	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = shaperSettings() })
+	return shapeAgentOn(t, client, "")
+}
+
+// shapeAgentOn is [shapeAgent] standing in a chosen workspace. Isolation
+// tests need a git repository here: a plain temp directory falls out as
+// folder mode, which is the honest un-isolation when there is no tree to cut.
+func shapeAgentOn(t *testing.T, client Completer, workspace string) (*Agent, <-chan uint64) {
+	t.Helper()
+	agent, _ := newTestAgent(t, client, func(c *Config) {
+		c.RolesSource = shaperSettings()
+		if workspace != "" {
+			c.Workspace = workspace
+		}
+	})
 	ran := make(chan uint64, 4)
 	stubbedGraph(agent, func(node *TaskNode) {
 		node.graph.complete(node, TaskDone)
@@ -140,6 +153,34 @@ func TestTheShaperCarriesThePlaceNamedInTheRequest(t *testing.T) {
 	settled(t, ran)
 	if got := agent.graph().node(id).spec.where; got != named {
 		t.Fatalf("shaped where = %q, want the named directory %q", got, named)
+	}
+}
+
+// THE SHAPER MAY NOT INVENT ISOLATION AWAY. It used to be told to set
+// `where: in place` for "non-code work", and that stood the worker in the
+// conversation checkout. A guessed value is dropped; the node still gets a
+// worktree when the conversation is standing in a repository.
+func TestTheShaperCannotInventInPlace(t *testing.T) {
+	repo := newTestRepo(t)
+	answer := `{"title":"crash fix","brief":"Fix the crash.","acceptance":"The crash is gone.","where":"in place"}`
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, ran := shapeAgentOn(t, client, repo)
+	id, _, _, err := agent.StartTask(t.Context(), "fix the crash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled(t, ran)
+	node := agent.graph().node(id)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	if node.spec.where != "" {
+		t.Fatalf("where = %q, want empty: the shaper invented in place and it must not stick", node.spec.where)
+	}
+	if node.spec.mode != TaskModeWorktree {
+		t.Fatalf("mode = %q, want worktree", node.spec.mode)
 	}
 }
 

@@ -122,6 +122,10 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 		summary: firstLine(brief), request: brief, origin: a.taskOriginRef(), brief: work,
 		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
 	}
+	// A SHAPER THAT INVENTED `in place` DOES NOT SKIP THE TREE. The field is
+	// honored only when the person's own sentence named a folder or said
+	// those words (taskstands.go's [placementThePersonAskedFor]).
+	a.dropGuessedWhere(&spec)
 	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
 	// ladder a proposal gets, because a person who opened aforge in their home
 	// directory and typed `/task fix the crash` is in exactly the position issue
