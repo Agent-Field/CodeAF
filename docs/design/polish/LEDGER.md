@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 06:52Z_
+_2026-09-03 06:54Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -17,14 +17,14 @@ _2026-09-03 06:52Z_
 - `K4`    high CLOSED Every resumed conversation opens by printing its absolute transcript path across four to six rows of the transcript
 - `K5`    high CLOSED A wrapped notice loses characters where its rows join
 - `K6`    med  CLOSED The status line's right-hand segments are pushed off by the phase narration on its left, so cost, context and the watch count disappear and come back mid-turn
-- `K7`    med  open   The phase words are drawn twice on the same frame, verbatim, two rows apart
-- `K8`    med  open   The clock in the phase line runs backwards
+- `K7`    med  CLOSED The phase words are drawn twice on the same frame, verbatim, two rows apart
+- `K8`    med  CLOSED The clock in the phase line runs backwards
 - `K9`    med  CLOSED This surface's own notices are indistinguishable from a bullet list the model wrote
 - `K10`   med  CLOSED Below seventy columns the legend is a bare rule with nothing written on it
-- `K11`   med  open   Lines inside a code fence are truncated with `…` and there is no way to see the rest
+- `K11`   med  CLOSED Lines inside a code fence are truncated with `…` and there is no way to see the rest
 - `K12`   low  open   The wrapped rows of a person's message run flush into the sidebar rail with no gutter
 - `K13`   low  open   A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
-- `K14`   low  open   One turn counts its tool calls in two words six rows apart
+- `K14`   low  CLOSED One turn counts its tool calls in two words six rows apart
 - `K15`   low  open   A blockquote's gutter bar is the same glyph as the conversation's own right-hand divider
 - `K16`   low  open   The money segment changes width mid-turn and shoves the whole right cluster sideways
 - `K17`   low  open   A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
@@ -144,7 +144,7 @@ _2026-09-03 06:52Z_
 - `J4`    high open   A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
 - `J5`    med  open   The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
 - `J6`    med  CLOSED The word on a landed card for when the work began is `spawned`
-- `J7`    med  open   A task's price is drawn twice on the same home card, four cells apart, in two different inks
+- `J7`    med  CLOSED A task's price is drawn twice on the same home card, four cells apart, in two different inks
 - `J8`    med  open   A conversation whose name carries a combining accent is drawn with the accent silently removed
 - `J9`    med  CLOSED The room's kin line names a child's state with a word that is neither true nor in the vocabulary
 - `J10`   low  open   At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
@@ -166,7 +166,7 @@ _2026-09-03 06:52Z_
 
 - `S10`   med  open   The spend place draws no hint line of its own, so its foot advertises the conversation's keys
 - `S11`   med  open   The daily rail is spelled two ways on one frame
-- `S12`   med  open   `dollars` renders a positive cost under a hundredth of a cent as `$0.0000`
+- `S12`   med  CLOSED `dollars` renders a positive cost under a hundredth of a cent as `$0.0000`
 - `S13`   med  CLOSED At the widths where the memory type legend fits but the line is tight, the section's IDENTITY is truncated to keep a secondary legend whole: at 80 cells the heading reads `shelves · …` beside `fact 7 · preference 2 · decision 2 · correction 1 · project state 1`
 - `S14`   med  CLOSED The four ssh rows sit under `Session`, while a tab literally named `Connections` sits four tabs to the right holding Amplitude, PostHog and Braintree
 - `S15`   low  open   A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells

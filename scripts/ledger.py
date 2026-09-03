@@ -39,6 +39,24 @@ ROW = re.compile(r"^(\d+)\. (.*)$")
 # closures are the sub-blocks that are not disclaimers, and a heading has to earn
 # its rows rather than merely stand under the right `##`.
 NOT_A_CLOSURE = re.compile(r"\b(skip|not\s+(?:fixed|done)|left|remain|still\s+open|what\s+other\s+lanes)", re.I)
+# AND A DISCLAIMER IS NOT ALWAYS A SUB-HEADING. A lane that fixed four rows and
+# declined two writes all six as bold leads in one list, and says so in the lead
+# itself — `**Row 12 — the status line wraps.** NOT FIXED, and here is why`. The
+# heading gate above never sees that, so the row counted as done in a ledger that
+# says on its own first page it closes on a before/after pair. This gate reads the
+# LEAD LINE ONLY, deliberately: the vocabulary below is loose enough to catch a
+# refusal and would fire on half the prose in the body of a genuine closure.
+# AND IT IS NARROW ON PURPOSE. `could not` was in this list for one revision and
+# read `the narrow bar keeps every word, and says how many it could not` — a lane
+# DESCRIBING ITS FIX — as a refusal. A phrase that appears in ordinary prose about
+# what a frame could not fit does not belong here; only the handful below, which
+# a lane writes when and only when it is declining a row.
+NOT_DONE_LEAD = re.compile(
+    r"\b(not\s+(?:fixed|done|closed|ours|aforge|this\s+lane|for\s+this\s+lane)"
+    r"|left\s+open|still\s+open|skipped|deferred|declined|handed\s+back"
+    r"|no\s+fix|out\s+of\s+scope)\b",
+    re.I,
+)
 SEV = re.compile(r"sev: (high|med|low)")
 # How a lane says "this row is done", in the three shapes they write.
 CLOSED = [
@@ -59,12 +77,29 @@ BY_ID = re.compile(r"\b([HTCPKSMJN])(\d+)\b")
 
 
 def closures_only(fixed: str) -> str:
-    """The part of a `## fixed` section that actually claims work was done."""
-    kept, taking = [], True
+    """The part of a `## fixed` section that actually claims work was done.
+
+    Two gates, because lanes disclaim at two scales: a whole sub-heading of rows
+    they did not get to, and a single bold lead inside a list of rows they did.
+    A block runs from one heading or bold lead to the next, and it is kept only
+    if BOTH the heading it sits under and its own lead claim work was done.
+    """
+    kept, section, lead = [], True, True
     for line in fixed.splitlines():
-        if line.startswith("###"):
-            taking = not NOT_A_CLOSURE.search(line)
-        if taking:
+        # A `##` OPENS A NEW SECTION AND CLEARS BOTH GATES. A lane that comes back
+        # for a second pass writes `## fixed — the second pass` under the first
+        # pass's closing `### Not done by this lane`, and a gate that only ever
+        # reset on `###` swallowed the entire second pass — four rows of real work
+        # read as nothing at all. A ledger errs in both directions or it is not a
+        # ledger, so this is checked the same way the generous direction is.
+        if line.startswith("## "):
+            section, lead = True, True
+        elif line.startswith("###"):
+            section = not NOT_A_CLOSURE.search(line)
+            lead = True
+        elif line.startswith("**"):
+            lead = not NOT_DONE_LEAD.search(line)
+        if section and lead:
             kept.append(line)
     return "\n".join(kept)
 
@@ -79,6 +114,31 @@ def closed_rows(text: str) -> set[str]:
 
 def closed_ids(text: str) -> set[str]:
     return {p + n for p, n in BY_ID.findall(text)}
+
+
+SELFTEST = [
+    # (a `## fixed` section, the row numbers it truly claims)
+    ("\n**Row 1 — the bar keeps every word.** Done at every width.\n", {"1"}),
+    ("\n**Row 12 — the line wraps.** NOT FIXED, and here is why it was not.\n", set()),
+    ("\n### Not done by this lane\n**Row 4 — the tail was cut.** Somebody else's.\n", set()),
+    # A second pass under a first pass's closing disclaimer: the whole reason the
+    # `##` reset exists. Four rows of real work were read as nothing without it.
+    ("\n### Not done by this lane\n**Row 4 — theirs.**\n"
+     "\n## fixed — the second pass\n**Row 7 — the price is drawn once.** Done.\n", {"7"}),
+    # A closure whose own prose says what the frame could not hold. Not a refusal.
+    ("\n**Row 1 — the bar says how many words it could not keep.** Landed.\n", {"1"}),
+]
+
+
+def selftest() -> int:
+    bad = 0
+    for text, want in SELFTEST:
+        got = closed_rows(closures_only(text))
+        if got != want:
+            bad += 1
+            print(f"closures_only misread {text!r}\n  wanted {sorted(want)}, got {sorted(got)}")
+    print("ledger.py self-check: " + ("ok" if not bad else f"{bad} FAILED"))
+    return 1 if bad else 0
 
 
 def main() -> int:
@@ -128,4 +188,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(selftest() if "--selftest" in sys.argv else main())
