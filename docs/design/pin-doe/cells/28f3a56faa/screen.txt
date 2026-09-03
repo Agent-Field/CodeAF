@@ -1,0 +1,45 @@
+                                                                                                              │ + /task
+  · carrying its own work on: $1                                                                              │
+  · esc interrupts · ctrl+c twice quits                                                                       │ + /standing
+                                                                                                              │
+› [paste 1 · 46 lines]                                                                                        │
+                                                                                                              │
+  · done when · DONE WHEN the change catches OSError (including PermissionError) in all three source-loading  │
+  paths of tox.config.source.discover and raises HandledError instead; the existing test suite passes without │
+  modifying or deleting any test; and new tests exist that reproduce the bug for automatic discovery, -c      │
+  <directory>, and -c <file> with an unreadable config file.                                                  │
+  · error: API error (404): No allowed providers are available for the selected model. Providers serving      │
+  deepseek/deepseek-v4-flash-20260423: digitalocean, baidu, streamlake, deepinfra, but your request's         │
+  provider.only preference permits only: anthropic.                                                           │
+                                                                                    · 17:54 · 5.5s · $0.0001 ·│
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │ Σ $0.0001 · 1.4k tok
+                                                                                                              │ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+work · deepseek-v4-flash · via baidu                                       crew custom · $0.0001 · 5.7k/1M · 1% · ⟲ 54% cached · YOLO · idle

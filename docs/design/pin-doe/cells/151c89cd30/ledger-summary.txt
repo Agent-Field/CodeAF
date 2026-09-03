@@ -1,0 +1,108 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+16:07:25.514 976d2bae start -     anthropic      -    -       
+16:07:25.615 976d2bae end   -     anthropic      404  101     API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:07:25.615 61cc5569 start -     DigitalOcean   -    -      hedged arms=2 
+16:07:25.895 61cc5569 end   -     DigitalOcean   429  279    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+16:07:26.740 2ea5e767 start -     DigitalOcean   -    -      hedged arms=2 
+16:08:10.745 2ea5e767 end   -     DigitalOcean   200  45129  hedged arms=2 
+16:08:10.747 43cd3b53 start turn  CoreWeave      -    -       
+16:08:13.342 43cd3b53 end   turn  CoreWeave      200  2595    
+16:08:13.344 09a7fec8 start turn  CoreWeave      -    -       
+16:08:17.548 09a7fec8 end   turn  CoreWeave      200  4205    
+16:08:17.555 2a45b233 start turn  CoreWeave      -    -       
+16:08:21.914 2a45b233 end   turn  CoreWeave      200  4359    
+16:08:21.922 7a8d9dbc start turn  CoreWeave      -    -       
+16:08:24.951 7a8d9dbc end   turn  CoreWeave      200  3029    
+16:08:24.958 532aea6c start turn  CoreWeave      -    -       
+16:08:31.935 532aea6c end   turn  CoreWeave      200  6976    
+16:08:31.937 896a4e6c start turn  CoreWeave      -    -       
+16:08:36.343 896a4e6c end   turn  CoreWeave      200  4406    
+16:08:36.353 371c169e start turn  CoreWeave      -    -       
+16:08:51.657 371c169e end   turn  CoreWeave      200  15304   
+16:08:51.660 47c198b8 start turn  CoreWeave      -    -       
+16:08:55.283 47c198b8 end   turn  CoreWeave      200  3624    
+16:08:55.287 02132359 start turn  CoreWeave      -    -       
+16:09:00.595 06006a4e start turn  CoreWeave      -    -       
+16:09:05.920 5a212407 start turn  CoreWeave      -    -       
+16:09:10.540 684e8954 start turn  CoreWeave      -    -       
+16:09:14.646 3f8c0d13 start turn  CoreWeave      -    -       
+16:09:21.146 b3103d54 start turn  CoreWeave      -    -       
+16:09:24.986 227fab8a start turn  CoreWeave      -    -       
+16:09:31.515 5b993725 start turn  CoreWeave      -    -       
+16:09:38.394 98b1acbe start turn  CoreWeave      -    -       
+16:09:47.535 7f370b17 start turn  CoreWeave      -    -       
+16:09:52.736 8d05b19a start turn  CoreWeave      -    -       
+16:09:58.312 f802952b start turn  CoreWeave      -    -       
+16:10:01.569 8721c062 start turn  CoreWeave      -    -       
+16:10:06.972 99c572d8 start turn  CoreWeave      -    -       
+16:10:16.161 5fd8f8d3 start turn  CoreWeave      -    -       
+16:10:23.806 5fd8f8d3 end   turn  CoreWeave      200  7645    the reply was the model's own internal markup instead of an answer and was cut
+16:10:23.808 80e1d7a5 start turn  CoreWeave      -    -       
+16:10:27.828 80e1d7a5 end   turn  CoreWeave      200  4021    
+16:10:27.859 28a671e6 start turn  CoreWeave      -    -       
+16:10:31.076 28a671e6 end   turn  CoreWeave      200  3219    
+16:10:31.085 d9910348 start turn  CoreWeave      -    -       
+16:10:33.521 d9910348 end   turn  CoreWeave      200  2438    
+16:10:33.526 84fb1694 start turn  CoreWeave      -    -       
+16:10:37.826 84fb1694 end   turn  CoreWeave      200  4300    
+16:10:38.497 cd222352 start turn  CoreWeave      -    -       
+16:10:42.255 52ac18ff start turn  CoreWeave      -    -       
+16:10:49.750 6e213a3f start turn  CoreWeave      -    -       
+16:10:53.079 a1d2d73c start turn  CoreWeave      -    -       
+16:10:56.421 a77acce3 start turn  CoreWeave      -    -       
+16:11:01.004 21b7dcf7 start turn  CoreWeave      -    -       
+16:11:04.818 7bdfcb61 start turn  CoreWeave      -    -       
+16:11:09.452 e5159e09 start turn  CoreWeave      -    -       
+16:11:14.399 68ebee9c start turn  CoreWeave      -    -       
+16:11:18.773 7e2e3e3d start turn  CoreWeave      -    -       
+16:11:22.050 d715e101 start turn  CoreWeave      -    -       
+16:11:27.282 834b9bb8 start turn  CoreWeave      -    -       
+16:11:34.994 b33c1073 start turn  CoreWeave      -    -       
+16:11:39.792 ff48924d start turn  CoreWeave      -    -       
+16:11:44.535 b78885fa start turn  CoreWeave      -    -       
+16:11:49.455 b03fc3fb start -     StreamLake     -    -       
+16:11:49.456 06bace74 start -     Baidu          -    -       
+16:11:50.621 b03fc3fb end   -     StreamLake     200  1165    
+16:11:50.622 34f574c8 start -     StreamLake     -    -       
+16:11:54.212 34f574c8 end   -     StreamLake     200  3589    
+16:11:58.080 06bace74 end   -     Baidu          200  8625    
+16:11:58.097 290a3e10 start -     Baidu          -    -       
+16:12:01.519 290a3e10 end   -     Baidu          200  3422    
+16:12:59.202 d45f28d5 start task  anthropic      -    -       
+16:12:59.357 d45f28d5 end   task  anthropic      404  156     API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:12:59.357 a121a353 start task  CoreWeave      -    -      hedged arms=2 
+16:12:59.424 a121a353 end   task  CoreWeave      404  66     hedged arms=2 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:12:59.425 dbfcc26d start task  Phala          -    -      hedged arms=3 
+16:12:59.545 dbfcc26d end   task  Phala          404  120    hedged arms=3 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:12:59.598 5d586cee start turn  Azure          -    -       
+16:13:02.654 5d586cee end   turn  Azure          200  3060    
+16:13:02.661 8ee6a2ce start turn  Azure          -    -       
+16:13:06.006 8ee6a2ce end   turn  Azure          200  3348    
+16:13:06.536 0b78baef start turn  NextBit        -    -       
+16:13:14.974 af5f0791 start turn  Azure          -    -       
+16:13:24.915 f1f356d7 start turn  Azure          -    -       
+16:13:27.827 f1f356d7 end   turn  Azure          200  2915    
+16:13:27.832 084c5ec9 start turn  Azure          -    -       
+16:13:38.409 84729c0c start turn  NextBit        -    -       
+16:13:41.247 84729c0c end   turn  NextBit        200  2840    
+16:13:41.255 f4d1d718 start turn  Azure          -    -       
+16:13:44.138 6dad7d98 start turn  Azure          -    -       
+16:13:47.217 0b65bba6 start turn  NextBit        -    -       
+16:13:51.378 0b65bba6 end   turn  NextBit        200  4164    
+16:13:51.399 bb5a92f5 start turn  Azure          -    -       
+16:13:55.303 bb5a92f5 end   turn  Azure          200  3907    
+16:13:55.325 38ab0318 start turn  Azure          -    -       
+16:13:58.797 147c9949 start turn  Azure          -    -       
+16:14:02.333 30a05342 start turn  NextBit        -    -       
+16:14:10.057 d41f0e25 start turn  Azure          -    -       
+16:14:13.581 8af6d8bc start turn  Azure          -    -       
+16:14:16.366 8af6d8bc end   turn  Azure          200  2789    
+16:14:16.374 f147d2e3 start turn  Azure          -    -       
+16:14:19.950 53ab67d6 start turn  Azure          -    -       
+16:14:23.474 be8bd0e7 start turn  Azure          -    -       
+16:14:26.021 be8bd0e7 end   turn  Azure          200  2550    
+16:14:26.055 16583bef start turn  Azure          -    -       
+16:14:29.410 e7d176a5 start turn  NextBit        -    -       
+16:14:31.147 e7d176a5 end   turn  NextBit        200  1741    
+16:14:31.152 93cc76aa start reflex StreamLake     -    -       
+16:14:35.375 93cc76aa end   reflex StreamLake     200  4223    

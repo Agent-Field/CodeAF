@@ -1,0 +1,21 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:09:02.475 200df3c2 start -     anthropic      -    -       
+17:09:02.528 200df3c2 end   -     anthropic      404  53      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:09:02.528 d7e7a406 start -     DigitalOcean   -    -      hedged arms=2 
+17:09:02.799 d7e7a406 end   -     DigitalOcean   429  270    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+17:09:03.654 5af3cab4 start -     DigitalOcean   -    -      hedged arms=2 
+17:09:43.873 5af3cab4 end   -     DigitalOcean   200  41344  hedged arms=2 
+17:09:43.874 a14ec5b6 start turn  CoreWeave      -    -       
+17:09:48.603 a14ec5b6 end   turn  CoreWeave      200  4729    
+17:09:48.607 80ed73d1 start turn  CoreWeave      -    -       
+17:09:56.678 80ed73d1 end   turn  CoreWeave      200  8071    
+17:09:56.679 89ac7c23 start turn  CoreWeave      -    -       
+17:10:00.231 89ac7c23 end   turn  CoreWeave      200  3551    
+17:10:02.576 948785f7 start turn  CoreWeave      -    -       
+17:10:09.786 948785f7 end   turn  CoreWeave      200  7210    the reply was the model's own internal markup instead of an answer and was cut
+17:10:09.787 270d5e4f start turn  CoreWeave      -    -       
+17:10:13.214 270d5e4f end   turn  CoreWeave      200  3427    
+17:10:13.215 46ae72bf start -     Alibaba        -    -       
+17:10:16.570 46ae72bf end   -     Alibaba        200  3354    
+17:10:16.571 5aa1c6a0 start reflex Baidu          -    -       
+17:10:18.606 5aa1c6a0 end   reflex Baidu          200  2035    

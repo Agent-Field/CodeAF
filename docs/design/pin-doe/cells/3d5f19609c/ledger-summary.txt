@@ -1,0 +1,23 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:10:58.055 e98161ee start -     DigitalOcean   -    -       
+17:11:09.486 e98161ee end   -     DigitalOcean   200  11431   
+17:11:09.488 f821f16a start turn  CoreWeave      -    -       
+17:11:13.267 f821f16a end   turn  CoreWeave      200  3780    
+17:11:13.269 9b063283 start turn  CoreWeave      -    -       
+17:11:15.539 9b063283 end   turn  CoreWeave      200  2270    
+17:11:15.542 28426f3e start turn  CoreWeave      -    -       
+17:11:17.944 28426f3e end   turn  CoreWeave      200  2402    
+17:11:17.945 850076bd start turn  CoreWeave      -    -       
+17:11:20.220 850076bd end   turn  CoreWeave      200  2275    
+17:11:20.222 af8c20c5 start turn  CoreWeave      -    -       
+17:11:26.767 af8c20c5 end   turn  CoreWeave      200  6545    
+17:11:26.771 8ace2b64 start turn  CoreWeave      -    -       
+17:11:30.204 8ace2b64 end   turn  CoreWeave      200  3434    
+17:11:30.219 12eda0d6 start turn  CoreWeave      -    -       
+17:11:33.965 12eda0d6 end   turn  CoreWeave      200  3746    
+17:11:36.305 b99dc255 start turn  CoreWeave      -    -       
+17:11:39.903 b99dc255 end   turn  CoreWeave      200  3598    
+17:11:39.904 f4e6aaf4 start -     Alibaba        -    -       
+17:11:43.809 f4e6aaf4 end   -     Alibaba        200  3905    
+17:11:43.810 2cf00ff6 start reflex StreamLake     -    -       
+17:11:47.169 2cf00ff6 end   reflex StreamLake     200  3358    

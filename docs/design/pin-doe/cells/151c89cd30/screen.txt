@@ -1,0 +1,45 @@
+                                                                                                              │ tasks
+› [paste 1 · 83 lines]                                                                                        │ ✗ ◇ bearer case-insensit… #1
+                                                                                                              │   ended with an error —
+  ▸ worked 4m33s · thought 57s · 43 tool calls · ctrl+e                                                       │   branch kept ·
+                                                                                                              │ + /task
+All 34 tests pass. Here's the summary:                                                                        │
+                                                                                                              │ + /standing
+Change: reef/service/auth.py — _authorized() now parses the Authorization header with                         │
+partition(" ") and compares the scheme case-insensitively via scheme.lower() !=                               │
+"bearer", matching the issue's proposed implementation.                                                       │
+                                                                                                              │
+Verification:                                                                                                 │
+                                                                                                              │
+· test_healthz_answers_without_token_while_other_routes_require_it — pass                                     │
+· test_any_accepted_token_authenticates_and_rotation_keeps_scenarios_reachable — pass                         │
+· All 34 tests in test_reef_contracts.py — pass                                                               │
+· Bearer secret, bearer secret, BEARER secret, BeArEr secret all authenticate the token                       │
+· Wrong tokens, wrong schemes, missing headers, empty credentials all return 401                              │
+  · the ask is not finished · carrying on rather than stopping here                                           │
+  ⠿ thought for 2s · 255 tok · ctrl+e                                                                         │
+                                                                                                              │
+  ╰─▶ grep Authorization|_authorized|authenticate|401                                               20 matches│
+                                                                                                              │
+  · this is running long · moving it to a task that is watched and can split                                  │
+  · this looked like work, so task 1 started: bearer case-insensitive                                         │
+  · 1 file · auth.py +6 −3                                                                                    │
+  · ⟲ 1.1M cached · saved $0.0750                                                                             │
+                                                                                                              │
+✗ ◇ bearer case-inse… · failed 1m01s · ended with an error — branch kept · task/bearer-case-insensitive-f29dbe│
+  "it ended with an error: API error (404): No allowed providers are availab…" · spawned 16:11 · ctrl+o output│
+                                                                                                              │
+  ▸ worked 1m32s · thought 11s · 19 tool calls · ctrl+e                                                       │
+                                                                          · 16:11 · 4m33s · 44 tools · $0.04 ·│
+                                                                                                              │
+Done. Merged to main at commit 84c996e. All 34 tests pass, Bearer/bearer/BEARER secret                        │
+all authenticate, reject cases all 401.                                                                       │
+  · carried on 3 times and it is still not finished · stopping here rather than carrying on again             │ Σ $0.07 · 2.3M tok
+  · ⟲ 710.4k cached · saved $0.0469                                                                           │ 1 needs you
+                                                                          · 16:14 · 1m32s · 19 tools · $0.03 ·│ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+running tests for bearer auth case · deepseek-v4-flash · via baidu · 1.2s                             $0.07 · 45.5k/1M · 4% ▁▁ · YOLO · idle

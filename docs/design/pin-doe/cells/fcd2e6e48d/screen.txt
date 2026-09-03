@@ -1,0 +1,45 @@
+                                                                                                              │ tasks
+  · this is changing more than a quick edit · moving it to a task that is watched and can split · carrying the│ ✗ ◇ paste 1               #1
+  ask only — the brief could not be written: the second model could not be reached                            │   ended with an error —
+  · this looked like work, so task 1 started: paste 1:                                                        │   branch kept ·
+  · 2 files · auth.py +5 −2 · test_auth.py +197 −0                                                            │ + /task
+  · ⟲ 691.2k cached · saved $0.0456                                                                           │
+                                                                                                              │ + /standing
+✗ ◇ paste 1 · failed 1m24s · ended with an error — branch kept · task/paste-1-535b8c                          │
+  "it ended with an error: API error (404): No allowed providers are availab…" · spawned 16:02 · ctrl+o output│
+                                                                                                              │
+  ▸ worked 3m08s · thought 31s · 14 tool calls · ctrl+e                                                       │
+                                                                          · 16:02 · 4m38s · 27 tools · $0.03 ·│
+                                                                                                              │
+Everything is committed and passing. The work is done:                                                        │
+                                                                                                              │
+1. reef/service/auth.py — one edit replacing case-sensitive startswith("Bearer ") /                           │
+   removeprefix("Bearer ") with partition(" ") + scheme.lower() != "bearer", per the bug                      │
+   report's proposed implementation.                                                                          │
+                                                                                                              │
+2. tests/reef_service/test_auth.py — 5 focused tests.                                                         │
+                                                                                                              │
+3. Commit 75e0785 on main, dead branch task/paste-1-535b8c deleted.                                           │
+                                                                                                              │
+4. All acceptance checks pass:                                                                                │
+                                                                                                              │
+   · Bearer secret → 200                                                                                      │
+   · bearer secret → 200                                                                                      │
+   · BEARER secret → 200                                                                                      │
+   · Wrong token → 401                                                                                        │
+   · Missing header → 401                                                                                     │
+   · Empty credential → 401                                                                                   │
+   · Wrong schemes → 401                                                                                      │
+   · healthz → 200                                                                                            │
+                                                                                                              │
+And 39 tests pass (5 new + 34 existing), 1092 pass in the broader collectible suite. No                       │
+tests modified or deleted.                                                                                    │ Σ $0.04 · 1.6M tok
+  · carried on 3 times and it is still not finished · stopping here rather than carrying on again             │ 1 needs you
+  · ⟲ 591.9k cached · saved $0.0390                                                                           │ ctrl+. earlier
+                                                                          · 16:06 · 3m08s · 14 tools · $0.02 ·│ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+case-insensitive bearer auth fix · deepseek-v4-flash · via streamlake · 2.1s                          $0.04 · 41.6k/1M · 4% ▁▁ · YOLO · idle

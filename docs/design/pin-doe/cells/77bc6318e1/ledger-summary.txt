@@ -1,0 +1,102 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:01:49.536 2b47da32 start -     DigitalOcean   -    -       
+17:02:12.627 2b47da32 end   -     DigitalOcean   200  23091   
+17:02:12.630 9c9be461 start turn  CoreWeave      -    -       
+17:03:14.775 9c9be461 end   turn  CoreWeave      200  62146   
+17:03:14.776 4f9aa8ad start turn  CoreWeave      -    -       
+17:03:19.610 4f9aa8ad end   turn  CoreWeave      200  4834    
+17:03:19.617 137727bd start turn  CoreWeave      -    -       
+17:03:24.243 137727bd end   turn  CoreWeave      200  4626    
+17:03:24.254 9beb4199 start turn  CoreWeave      -    -       
+17:03:29.921 9beb4199 end   turn  CoreWeave      200  5668    
+17:03:29.925 fb605077 start turn  CoreWeave      -    -       
+17:03:34.078 fb605077 end   turn  CoreWeave      200  4153    
+17:03:34.086 8849f30e start turn  CoreWeave      -    -       
+17:04:04.158 8849f30e end   turn  CoreWeave      200  30073   
+17:04:04.196 c50df843 start turn  CoreWeave      -    -       
+17:04:10.729 c50df843 end   turn  CoreWeave      200  6535    
+17:04:10.762 c89d7953 start turn  CoreWeave      -    -       
+17:04:16.919 c89d7953 end   turn  CoreWeave      200  6157    
+17:04:16.963 cd1114f1 start turn  CoreWeave      -    -       
+17:04:38.093 e5c174f4 start turn  CoreWeave      -    -       
+17:04:45.536 f0b4d173 start turn  CoreWeave      -    -       
+17:04:50.132 ad39d5bf start turn  CoreWeave      -    -       
+17:04:58.088 fd084ee9 start turn  CoreWeave      -    -       
+17:05:11.421 2dc142eb start turn  CoreWeave      -    -       
+17:05:22.018 74047c3d start turn  CoreWeave      -    -       
+17:05:31.425 017e0ee8 start turn  CoreWeave      -    -       
+17:05:36.193 81731a66 start turn  CoreWeave      -    -       
+17:05:44.957 50298ba7 start turn  CoreWeave      -    -       
+17:05:51.495 0fbd2354 start turn  CoreWeave      -    -       
+17:05:57.086 c4d773b8 start -     StreamLake     -    -       
+17:05:57.086 d5cca7d6 start -     Alibaba        -    -       
+17:05:58.749 c4d773b8 end   -     StreamLake     200  1663    
+17:05:58.750 4288e2f1 start -     StreamLake     -    -       
+17:06:06.568 d5cca7d6 end   -     Alibaba        200  9482    
+17:06:06.580 5d5d7176 start -     StreamLake     -    -       
+17:06:09.355 4288e2f1 end   -     StreamLake     200  10604   
+17:06:13.068 5d5d7176 end   -     StreamLake     200  6488    
+17:07:09.931 c58e2edf start task  CoreWeave      -    -       
+17:07:11.912 ee90199c start task  NextBit        -    -      hedged arms=2 
+17:07:11.940 03176f3e start task  NextBit        -    -      hedged arms=2 
+17:07:16.687 03176f3e end   task  NextBit        200  4775   hedged arms=2 decode stream: context canceled
+17:07:16.688 98a4c541 start task  CoreWeave      -    -       
+17:07:20.964 3a87953a start task  CoreWeave      -    -       
+17:07:26.490 f2df0c1e start task  CoreWeave      -    -       
+17:07:32.020 6d7c948a start task  CoreWeave      -    -       
+17:07:37.613 ced4d62d start task  CoreWeave      -    -       
+17:07:42.653 d0931dcb start task  CoreWeave      -    -       
+17:07:47.722 034584a1 start task  CoreWeave      -    -       
+17:07:52.353 d582b2d6 start task  CoreWeave      -    -       
+17:07:57.565 9b7ffbf0 start task  CoreWeave      -    -       
+17:08:04.799 5ceccd00 start task  CoreWeave      -    -       
+17:08:10.063 6ab6009c start task  CoreWeave      -    -       
+17:08:16.732 6f4db03a start task  CoreWeave      -    -       
+17:08:20.915 f83cb1e1 start task  CoreWeave      -    -       
+17:08:25.046 11453379 start task  CoreWeave      -    -       
+17:08:29.699 a6d4e6ff start task  CoreWeave      -    -       
+17:08:32.349 b6f11887 start task  CoreWeave      -    -       
+17:08:36.812 45e589e3 start task  CoreWeave      -    -       
+17:09:09.704 b24bc54d start task  CoreWeave      -    -       
+17:09:12.600 1062592a start task  CoreWeave      -    -       
+17:09:36.613 611a565a start task  CoreWeave      -    -       
+17:09:42.560 6fb14cc2 start task  CoreWeave      -    -       
+17:10:14.778 342ec87c start task  CoreWeave      -    -       
+17:10:33.229 d79f4ebb start task  CoreWeave      -    -       
+17:10:44.929 47335f68 start task  CoreWeave      -    -       
+17:10:56.188 9912ff69 start task  CoreWeave      -    -       
+17:11:13.103 5e4e2781 start task  CoreWeave      -    -       
+17:11:57.843 844612e0 start task  CoreWeave      -    -       
+17:12:01.281 fc5673c5 start task  NextBit        -    -      hedged arms=3 
+17:12:01.283 d42d07dc start task  DigitalOcean   -    -      hedged arms=3 
+17:12:08.601 fc5673c5 end   task  NextBit        200  7325   hedged arms=3 
+17:12:08.602 d42d07dc end   task  DigitalOcean   200  7323   hedged arms=3 decode stream: context canceled
+17:12:08.635 d4a2fa75 start task  CoreWeave      -    -       
+17:13:01.819 a1434eef start task  CoreWeave      -    -       
+17:13:28.099 a1434eef end   task  CoreWeave      200  26287   
+17:13:28.134 e392e0a2 start task  Azure          -    -       
+17:13:38.620 e392e0a2 end   task  Azure          200  10491   
+17:13:38.642 dfd25b99 start task  NextBit        -    -       
+17:13:49.898 8ed1484b start task  Azure          -    -       
+17:13:54.155 01b4cf9d start task  CoreWeave      -    -       
+17:14:31.224 01b4cf9d end   task  CoreWeave      200  37072   
+17:14:31.273 85b6c9f6 start task  CoreWeave      -    -       
+17:14:47.367 c8fc6f41 start task  Azure          -    -       
+17:14:52.713 018e1e1c start task  CoreWeave      -    -       
+17:14:57.633 feb1236e start task  Azure          -    -       
+17:15:13.174 6e64f7b6 start -     NextBit        -    -       
+17:15:13.635 6e64f7b6 end   -     NextBit        200  460     
+17:15:13.724 f9bfcd0d start turn  CoreWeave      -    -       
+17:15:25.198 e9e1bdc5 start turn  CoreWeave      -    -       
+17:15:32.224 7391a08c start turn  CoreWeave      -    -       
+17:15:48.638 638dd3e3 start turn  CoreWeave      -    -       
+17:15:52.568 141da48e start turn  CoreWeave      -    -       
+17:16:06.539 141da48e end   turn  CoreWeave      200  13971   
+17:16:06.544 15b0ccf3 start turn  CoreWeave      -    -       
+17:16:23.579 fe55a2d7 start turn  CoreWeave      -    -       
+17:16:26.423 eb2d2895 start turn  CoreWeave      -    -       
+17:16:29.915 ca015734 start turn  CoreWeave      -    -       
+17:16:33.633 837d5937 start turn  CoreWeave      -    -       
+17:16:36.824 517b65c6 start turn  CoreWeave      -    -       
+17:16:48.298 87cf1682 start turn  CoreWeave      -    -       
+17:16:50.894 87cf1682 end   turn  CoreWeave      200  2598    decode stream: context canceled
