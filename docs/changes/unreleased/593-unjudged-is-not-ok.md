@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A delivery the gate could not judge is never ok — it is its own ending, said in words
-pr: 514
+pr: 593
 surface: [engine, docs]
 invalidates:
   - "A headless run whose delivery gate could not be reached ended `ok` at exit 0 with NO gate row in the store at all. The gate is fail-open — a judge that cannot answer must not hold a finished deliverable hostage — and for as long as that shipping was journaled by a line in the log alone, a delivery nobody had read was indistinguishable at every later surface from one that had been read and found whole. `revision.Judgment.Unjudged` existed and had no reader anywhere. Two graded runs on aforge-v2-14's rig (reef-145, the `aforge do` door) delivered that way on 2026-09-02: the repair leaf finished its work, the gate's calls came back 404, do.err carried `the gate could not be reached; delivering unjudged`, the node showed `✓`, the door said `ok`, and the rig compared both against runs that had actually been judged. NOW: the delivery still ships, and it gets a gate row of its own kind — `store.DeliveryGate.Unjudged`, which `Whole()` spends — the run ends `unchecked` at exit 2 rather than `ok` at 0, the last line on the door reads `delivered without a check: the gate could not be reached` with the reason after a `·`, and `aforge do --json` carries the whole reason in a new `unjudged` field. The store refuses a row that claims both a pass and no judgement."
