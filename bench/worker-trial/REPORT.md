@@ -15,7 +15,7 @@ plan `moonshotai/kimi-k3:high`. One scratch worktree per item, cut from `origin/
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | #510 | **M** — 4 files across two seams (`tools.go` result type, `linear.go` round loop, `executor.go` reason table, `docs/HEADLESS.md`), a scripted-brain test that must drive a real timeout, and a house convention (`outcome.Meter`) not discoverable from the issue | work `deepseek-v4-pro` · plan `kimi-k3:high` | **not mergeable** after 2 steering prompts — one blocking gap left | **$4.5297** (runs: 1.9783 / 1.3738 / 1.1776) | **135m** — 3 × 45m00s, every run to the wall | **291 calls** (104 / 105 / 82), leaf 73 / 58 / 59; 5.60M prompt, 248k completion; *window* attribution | run 1 not captured · run 2 **2** · run 3 **2** | set `outcome.Meter` so the command and count reach the gate and the stream; swap `landing = 1` for `landingTurns`. ~10 min | 13 new | **≈$4.30** for a mergeable PR in one pass |
 | #515 | **M** — one package, 3 files, but the seam needs a typed rule identity that does not exist: the refusal reaches `repair` as a plain `error` and `why()` flattens it to a sentence, so every attempt landed on a string match | work `deepseek-v4-pro` · plan `kimi-k3:high` | **not mergeable** after 2 steering prompts — green, and band-aided at the seam | **$4.3903** (runs: 1.8774 / 0.1961 / 2.3168) | **110.9m** — 45m00s, **20m54s** (died on an internal context deadline), 45m00s | **220 calls** (92 / 26 / 102), leaf 57 / 14 / 67; 3.79M prompt, 353k completion; *window*, and all three windows match the JSON exactly | 2 · **1** · 2 | replace the prose substring match with a typed refusal at the caller's contract (~30-60 min, wider than the issue scoped); delete the comment citing `quoteDestination`, which does not exist; drop a stray `//` | 6 new | **≈$2.75** for a mergeable PR in one pass |
-| #520 | — | — | — | — | — | — | — | — | — | — |
+| #520 | **L** — two packages and a shared seam, four authorities that must agree, and the acceptance test lives in `internal/tui3`, whose suite is 458s | work `deepseek-v4-pro` · plan `kimi-k3:high` | **not mergeable** after 2 steering prompts — everything green, one requirement quietly unmet | **$4.8651** (runs: 1.8297 / 1.9946 / 1.0408) | **128.8m** — 45m00s, 38m47s, 45m00s | **288 calls** (96 / 98 / 94), leaf 52 / 71 / 68; 4.69M prompt, 200k completion; *window*, all three match the JSON exactly | 2 · 2 · 2 | sort the assembled items within each section by the `Work()` key so `mine` and `away` obey it too, and widen the test fixture so a `mine` entry sits among two or more file entries in one section. ~20-30 min | 5 new | **≈$5.10** for a mergeable PR in one pass |
 
 ### How rounds and calls are counted
 
@@ -436,6 +436,217 @@ DONE MEANS ALL FOUR
 4. Nothing outside `internal/shaped/` and `docs/changes/unreleased/` is touched. Never `git add -A`. Do not commit or push.
 
 RUN `go build ./...` AND `go test ./internal/shaped/` YOURSELF BEFORE YOU SAY YOU ARE DONE. The previous two runs each ended with a claim of progress over a tree that did not pass — once a failing test, once a failing build. Build first, early, and often; the package is small and `go test ./internal/shaped/` takes under a second.
+
+Your tools are `sh`, `job`, `write`, `edit`, `web`, `recall`, `capabilities` — there is no `read` tool; use `sh` with `sed -n`. Everything above is verified. Start editing in your first turn.
+```
+
+---
+
+## 2026-09-03 · #520 — the tasks list is ordered by the work's own facts
+
+Three hand-offs, 128.8 minutes, $4.8651, 288 model calls. **Not mergeable**, and this is
+the closest of the three: everything is green and one requirement is quietly unmet.
+
+**Where it ended.** `go build ./...` clean. `go test ./internal/tui3/` green in **458.2s**,
+the whole package. `go test ./internal/session/` green in 112.1s. `bash scripts/laws.sh`
+green across 13 packages. A change entry with a real `invalidates`. The seam is right:
+
+```go
+func (w World) Work() []WorkEntry     // {Entry, Row}, ordered by task facts
+```
+
+```go
+for _, we := range world.Work() {
+	put(tasksKeyOf(we.Entry), tasksItem{entry: we.Entry, row: we.Row, runs: we.Row.Runs(we.Entry)})
+}
+```
+
+The issue proposed `Work() []TaskIndexEntry`; carrying the `SessionRow` alongside is a
+deviation from the proposal and a better one — it is what stops the page losing a row.
+
+**The blocking gap.** The issue is explicit that the order must hold across all four
+authorities: *"the `mine` and `away` authorities are appended after the world pass … so
+whatever order is chosen has to hold across all four authorities, not just the file one —
+otherwise this window's own unlanded work stays pinned to the bottom of its section."*
+It does not hold. `grep -c 'sort\.' internal/tui3/tasksplace.go` is still **0**; `put` records
+first-arrival order, file entries are put first, `mine` and `away` after, and the sections are
+assembled in arrival order. A `mine` entry is still drawn below every file entry in its
+section regardless of its own facts.
+
+**And the test that looks like it covers this cannot detect it.** The second half of
+`TestTasksOrderedByWorkFactsNotConversationRecency` adds one `mine` row at `at(25,11)` —
+`now` — so it lands in `done today` beside a single file entry, and one `away` row whose
+only assertion is which section it is filed under. It then re-checks the `earlier` section,
+which contains no `mine` or `away` entry at all. Every assertion passes with the defect
+present. This is the one requirement I repeated verbatim in the prompt.
+
+### Run 1 — plain prompt. $1.8297, 2700.04s, 96 calls, exit 2. The right piece, unconnected.
+
+`World.Work()` written and correct, two session tests passing — and `grep -rn '\.Work()'`
+found no caller. `tasksplace.go` was untouched, so `/history` ordered exactly as before and
+the defect was untouched. Its own tui3 test failed, partly on a fixture bug of its own: it
+labels a task "newest landed" at 2h, which lands in `done today`, while asserting four
+items in `earlier`. No change entry. **22.5% of the run's spend was waste** ($0.4123, 23
+errors, 18 of them 429s) and it made **22 `recalibrate` calls** against 1-3 in every other
+run of the trial.
+
+Prompt, verbatim:
+
+```
+Fix issue #520 in this repository (Agent-Field/aforge-v2): "tasks: the list is ordered by which conversation was touched last, not by the work's own facts".
+
+THE LAW
+Work is ordered by the work's own facts (state, age, need), never by which conversation was touched last.
+
+THE MECHANISM (this is measured, not guessed)
+The tasks page (`/history`, `ctrl+.`) breaks the law. Inside a section, the row order is a fact about conversations, not about the work. Three sorts stack and none of them is about a task:
+1. Projects are sorted by the newest conversation in them — internal/session/world.go:507, `sort.SliceStable(world.Projects, ...)` on `Project.At()`, which is the newest `SessionRow.At` in the bucket, and `SessionRow.At` is `meta.LastUserAt` — when a person last spoke. That ordering is correct for the home page, whose sections are projects and whose rows are conversations. It is wrong for tasks.
+2. Conversations inside a project are sorted by triage then recency — `sortSessions`, world.go:709. Also a conversation fact.
+3. Nothing at all sorts the work itself. `rollUp` keeps the index rows in file-append order (world.go:632).
+internal/tui3/tasksplace.go:153 then consumes that nesting verbatim, files each item into one of four sections and keeps arrival order within each (tasksplace.go:227-236). `grep -c 'sort\.' internal/tui3/tasksplace.go internal/tui3/place_tasks.go` is 0.
+Observable: `earlier` puts work that ended 8d ago above work that ended 2d ago, because one project's newest conversation is two minutes old and the other's is twenty. Touch one conversation — the same `lastUserAt` write an ordinary user message makes — and the oldest row in a section jumps to the top, with no task fact having changed.
+
+WHERE THE FIX BELONGS
+internal/tui3 is not the only surface that will ask this question, so put the shared reading in one place instead of two. Add `func (w World) Work() []TaskIndexEntry` in internal/session/world.go, beside the existing `func (w World) Sessions() []SessionRow` (world.go:130) and written the same way: flatten every project's index rows and order them by the work's own facts — needs a person, then running, then by `EndedAt`/`StartedAt` newest first — with `(SessionID, ID)` as the identity. `readTasks` then seeds its pass from `world.Work()` rather than the `Projects → Sessions → Tasks.Rows` nesting, and keeps its four sections and its family grouping, which are already task facts.
+Note: the `mine` and `away` authorities are appended after the world pass (tasksplace.go:175-190), so the chosen order has to hold across all four authorities, not just the file one — otherwise this window's own unlanded work stays pinned to the bottom of its section.
+
+ACCEPTANCE — named tests
+1. A test on `World.Work()`: rows come back ordered by the work's own facts, and touching a conversation's `LastUserAt` does not change the order.
+2. A test on the tasks page: with two projects whose conversations were last spoken to in one order and whose tasks ended in another, the rows within a section are in the tasks' order, and the order holds for rows from the `mine` and `away` authorities too.
+
+LAWS IN FORCE FOR THIS CHANGE
+- Fix it generally, at the seam: the shared reading goes in internal/session, not a sort bolted onto the page.
+- Do not change the home page's ordering. Its sections are projects and its rows are conversations, and recency is correct there.
+- Low complexity: the smallest change that makes the law true. Do not refactor beyond it.
+- The named tests must fail before the change and pass after.
+- Write a change entry under docs/changes/unreleased/. Use `make changelog-new PR=520 KIND=fix SLUG=<slug>` if that target works; otherwise copy the shape of an existing file in that directory. It must say what was true before and what is true now.
+- Do NOT edit internal/manual/chat/ or internal/manual/pages/ unless a string a person actually reads changes.
+- Read CLAUDE.md at the repository root before you start; its rules bind you. Note in particular that `go test ./internal/tui3/` is slow — give it `-timeout 15m` and run only the tests you need while iterating.
+- Do not touch unrelated files. Do not run `git add -A`. Do not commit or push; leave the change in the working tree.
+- When you are done, run `go build ./...` and the tests of every package you touched, and say in your deliverable which test names you added and the exact command that runs them.
+```
+
+### Run 2 — steering 1. $1.9946, 2326.6s, 98 calls, exit 2. Wired, and it broke two tests.
+
+It wired `readTasks` to `world.Work()` correctly and **reported all five of my acceptance
+items green, itemised**. Running the full `tui3` package — which it had not run — showed two
+pre-existing tests failing:
+
+```
+--- FAIL: TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse
+    tasksplace_test.go:196: the fixture drew 3 section words, want 4
+--- FAIL: TestTheTasksCursorOnlyOpensTaskRows
+    tasksplace_test.go:222: row 3 lost its entry or its conversation: {entry:{… SessionID:} row:{ID: Dir: …}}
+```
+
+Verified as genuine regressions rather than assumed: stashed the change, both went green,
+restored, dropped the stash entry. Neither is in `.github/known-red.txt`. The cause was the
+one line it changed — the old triple loop held the `SessionRow` as its loop variable, and
+the new version re-derived it through `tasksRowFor`, which falls back to a zero
+`SessionRow` when the entry's `SessionID` does not match.
+
+It also wrote `internal/enginehost/host.log` into the source tree. Gitignored, so harmless.
+
+Prompt, verbatim:
+
+```
+Finish issue #520. The working tree holds your work. You built the right thing and then did not connect it, so the defect the issue is about is still there.
+
+FAULT 1 — NOTHING CALLS `World.Work()`. This is the whole fix, and it is missing.
+
+    $ grep -rn '\.Work()' --include='*.go' .
+
+returns only pre-existing hits on a DIFFERENT method (`place.Work()` in cmd/aforge). Your `World.Work()` in internal/session/world.go has no caller anywhere. `git status --short` shows `internal/tui3/tasksplace.go` is UNMODIFIED. So the tasks page still reads the `Projects → Sessions → Tasks.Rows` nesting, still inherits project-by-conversation-recency, and `/history` orders exactly as it did before your change. A reviewer running the page sees no difference at all.
+
+Where to connect it, verified line facts in `internal/tui3/tasksplace.go`:
+- Line 151: `func readTasks(world session.World, mine tasksMine, win session.UsageWindow, seen, now time.Time) tasksReading`.
+- Lines 165-167 are the nesting to replace:
+      for _, project := range world.Projects {
+          for _, row := range project.Sessions {
+              for _, entry := range row.Tasks.Rows {
+  Seed the pass from `world.Work()` instead. Keep `tasksRowFor(world, mine, entry)` (line 244) to recover the `SessionRow` each entry needs, since `Work()` returns entries and the item still wants its row.
+- Line 175 (`for _, row := range mine.rows`) and line 180 (`for _, task := range mine.away`) append the `mine` and `away` authorities AFTER the world pass. The issue is explicit that the chosen order has to hold across all four authorities, not just the file one — otherwise this window's own unlanded work stays pinned to the bottom of its section. Your own test asserts this in its second half.
+- Keep the four sections and the family grouping. They are already task facts.
+
+FAULT 2 — YOUR OWN ACCEPTANCE TEST FAILS, and its fixture is part of why.
+
+    $ go test ./internal/tui3/ -run TestTasksOrderedByWorkFactsNotConversationRecency -count=1 -timeout 15m
+    tasksplace_order_test.go:70: earlier section has 3 items, want 4. Page:
+        done today
+          ✓ newest landed        slow chat 2h
+        earlier
+          ✓ old task             fast chat 3d
+          ✓ slightly newer       fast chat 2d
+          ✓ mid landed           slow chat 1d
+    --- FAIL
+
+Two things are wrong and you must fix both. The ordering is wrong because of fault 1. But the fixture is also wrong on its own terms: the task you label "newest landed" is 2h old, so it lands in `done today`, not in `earlier` — yet the assertion wants all four labels in `earlier`. Age the fixture so every task the assertion names falls in the section the assertion reads, or read the sections the fixture actually produces. Do not weaken the assertion to match the broken order.
+
+FAULT 3 — NO CHANGE ENTRY. `docs/changes/unreleased/` has no file for 520. Write one — `make changelog-new PR=520 KIND=fix SLUG=<slug>`, or copy the shape of an existing file there. It says what was true before and what is true now, and `invalidates:` must not be empty.
+
+KEEP EVERYTHING THAT IS RIGHT. `World.Work()` is well-shaped and correctly commented, and both `TestWorkOrdersByTaskFactsNotConversationRecency` and `TestWorkTiebreakIsSessionIDThenID` PASS. Do not rewrite them. Do not change the home page's ordering — its sections are projects and its rows are conversations, and recency is correct there.
+
+DONE MEANS ALL FIVE
+1. `readTasks` seeds its pass from `world.Work()`, and `grep -rn 'world.Work()' internal/tui3/` finds it.
+2. `go test ./internal/tui3/ -run TestTasksOrderedByWorkFactsNotConversationRecency -count=1 -timeout 15m` PASSES.
+3. `go test ./internal/session/ -count=1` stays green.
+4. `go build ./...` passes.
+5. A change entry exists under `docs/changes/unreleased/`.
+
+`go test ./internal/tui3/` takes about 150s on a quiet box and much longer on a loaded one — ALWAYS give it `-timeout 15m`, never the default, and while iterating run only your own test with `-run`. Never `git add -A`. Do not commit or push.
+
+Your tools are `sh`, `job`, `write`, `edit`, `web`, `recall`, `capabilities` — there is no `read` tool; use `sh` with `sed -n`. Everything above is verified: start editing in your first turn, and run the tests yourself before you say you are done.
+```
+
+### Run 3 — steering 2. $1.0408, 2700.05s, 94 calls, exit 2. Green, and one gap.
+
+Fixed the regression at the seam exactly as asked, by carrying the row with the entry
+rather than teaching `tasksRowFor` to guess better.
+
+Prompt, verbatim:
+
+```
+Finish issue #520. The wiring is now correct and it BROKE TWO EXISTING TESTS. Fix the regression; do not undo the wiring.
+
+WHAT IS RIGHT — KEEP ALL OF IT
+`World.Work()` in `internal/session/world.go` is good and its two tests pass. `readTasks` now seeds from `world.Work()` at `internal/tui3/tasksplace.go:165`, which is the fix the issue asked for. `TestTasksOrderedByWorkFactsNotConversationRecency` passes. `go build ./...` is clean, `go test ./internal/session/` is green in 111s, and the change entry `docs/changes/unreleased/520-tasks-order-by-work.md` is written and good. None of that needs touching.
+
+THE REGRESSION — two tests that pass on a clean tree now fail. I verified this by stashing your change and re-running them; both were green without it, and neither is in `.github/known-red.txt`.
+
+    $ go test ./internal/tui3/ -count=1 -timeout 15m
+    --- FAIL: TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse
+        tasksplace_test.go:196: the fixture drew 3 section words, want 4
+    --- FAIL: TestTheTasksCursorOnlyOpensTaskRows
+        tasksplace_test.go:222: row 3 lost its entry or its conversation:
+            {entry:{ID:1 ... Label:verify the pro model's pricing Status:unverified ... SessionID:}
+             row:{ID: Dir: Transcript: Project: ... Tasks:{Rows:[] ...}}}
+
+THE CAUSE, and it is the one line you changed
+The old loop had the `SessionRow` IN HAND — it was the loop variable:
+
+    for _, project := range world.Projects {
+        for _, row := range project.Sessions {
+            for _, entry := range row.Tasks.Rows {
+                put(tasksKeyOf(entry), tasksItem{entry: entry, row: row, runs: row.Runs(entry)})
+
+Your version throws that away and looks the row up again by identity:
+
+    for _, entry := range world.Work() {
+        row := tasksRowFor(world, mine, entry)
+
+`tasksRowFor` (tasksplace.go:244) searches `world.Projects` for a matching row and, when it finds none, `return mine.row`. So any entry whose `SessionID` is empty — or that names a session the search cannot match — comes back with a ZERO `SessionRow`. That is exactly what the dump above shows: every field of `row` empty. And because `runs: row.Runs(entry)` and `tasksSectionOf` (line 253) read `item.row.NeedsPerson()`, a lost row also mis-files the item into the wrong section, which is the second failure — a section word disappears because a section came out empty.
+
+WHAT TO DO
+Carry the row with the entry instead of re-deriving it. The row is a fact `Work()` already had in hand when it flattened the projects, and re-looking it up by an identity that may be empty is what lost it. Fix it at the seam — `internal/session/world.go` — so the page cannot lose a row again, rather than by patching `tasksRowFor` to guess better. Whatever shape you choose, `readTasks` must end up with the same `SessionRow` for a file-authority entry that the old triple loop gave it, and `TestWorkOrdersByTaskFactsNotConversationRecency` and `TestWorkTiebreakIsSessionIDThenID` must still pass.
+
+DONE MEANS ALL FIVE
+1. `go test ./internal/tui3/ -count=1 -timeout 15m` is GREEN — the whole package, including both tests named above, which you must NOT modify.
+2. `go test ./internal/session/ -count=1 -timeout 15m` stays green.
+3. `TestTasksOrderedByWorkFactsNotConversationRecency` still passes and `readTasks` still seeds from `world.Work()`.
+4. `go build ./...` passes.
+5. Nothing outside `internal/session/`, `internal/tui3/` and `docs/changes/unreleased/` is touched. Your last run left `internal/enginehost/host.log` in the tree — it is gitignored so it did no harm, but do not write logs into the source tree.
+
+`go test ./internal/tui3/` takes 150-460s depending on load — ALWAYS `-timeout 15m`, never the default, or it is cut off at the finish line and reports whichever test was running as a hang. While iterating use `-run` on the two failing tests; run the whole package once before you say you are done. Run it YOURSELF: the last run reported all five items green having never run the full package.
 
 Your tools are `sh`, `job`, `write`, `edit`, `web`, `recall`, `capabilities` — there is no `read` tool; use `sh` with `sed -n`. Everything above is verified. Start editing in your first turn.
 ```
