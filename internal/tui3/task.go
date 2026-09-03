@@ -209,8 +209,25 @@ type taskNode struct {
 	// began is the moment the node started, derived once from the update's own
 	// Elapsed so the clock is the frame's and not the event's. met is when this
 	// surface first heard of the node at all, which is the honest spawn time for
-	// a node that never reached running.
+	// a node that never reached running IN THIS WINDOW — see [taskNode.restored]
+	// for the case where it is not.
 	began, met time.Time
+	// restored is a node this window never watched: the first news it had of it
+	// was already settled, which is what a conversation reopened off a checkpoint
+	// replays (session's task_run.go rebuilds the roster from the graph).
+	//
+	// THE CLOCK ON ONE OF THESE BELONGS TO NOBODY. The checkpoint keeps how long
+	// the work RAN and never when it started (task_store.go writes elapsed_ms and
+	// no stamp), so met is the moment this terminal opened and not the moment the
+	// work began — and met plus elapsed, which is what the page used to date these
+	// rows by, is a landing time in the FUTURE. A window opened at 23:40 dated a
+	// twelve-minute node at 23:52 and the tasks place's own date filter then threw
+	// it off the page altogether.
+	//
+	// So a restored node has no start and no landing time, and the emptiness law
+	// draws neither ([taskNode.spawnedAt], [taskNodeEnded]): absence for want of a
+	// figure is silence, never a guess.
+	restored bool
 	// elapsed is the node's final age, as the update that ended it reported.
 	elapsed time.Duration
 	// cost is what this node's own agent has spent, as the engine last
@@ -405,12 +422,21 @@ func taskRenamesContext(notice *session.TaskNotice, node *taskNode) bool {
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
 // began running, or — for a node that failed before it ever ran — the moment
-// this surface first met it. It is what the completion card's "spawned 14:02"
-// says, and it is deliberately not the moment the proposal was made: a question
-// asked at 13:58 and answered at 14:02 spawned at 14:02.
+// this surface first met it. It is what the completion card's "14:02" says, and
+// it is deliberately not the moment the proposal was made: a question asked at
+// 13:58 and answered at 14:02 started at 14:02.
+//
+// A NODE THIS WINDOW NEVER WATCHED HAS NO START, and answers the zero time so
+// that the card draws no stamp at all. Meeting a settled node is meeting it
+// AFTER the fact — the terminal's open time is not the work's start, and a card
+// that stamped one with the other told a person the work happened at the moment
+// they sat down ([taskNode.restored] carries the whole reasoning).
 func (n *taskNode) spawnedAt() time.Time {
 	if !n.began.IsZero() {
 		return n.began
+	}
+	if n.restored {
+		return time.Time{}
 	}
 	return n.met
 }
@@ -729,6 +755,18 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		mentions = a.refreshTasks()
 	case session.EventTaskPhase:
 		a.taskPhaseMoved(ev)
+	case session.EventJobUpdate:
+		// A CONVERSATION REOPENED REDRAWS THE JOBS IT RAN, and this lane is the
+		// only one that can carry them: the engine replays every restored job
+		// row onto it when it wakes a checkpointed conversation (session's
+		// task_run.go), long after the turn that started them ended. Without
+		// this case the column beside a transcript full of jobs draws nothing,
+		// and because the section is the only door to a job's page there is no
+		// way left to read the log — which is the one thing a person coming
+		// back the next morning actually wants.
+		if ev.Job != nil && a.jobUpdate(*ev.Job) {
+			a.touch()
+		}
 	case session.EventStandingProposal:
 		a.proposeStanding(ev)
 	case session.EventTakeover:
@@ -5506,7 +5544,17 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if a.tasks == nil {
 			a.tasks = map[uint64]*taskNode{}
 		}
-		node = &taskNode{id: notice.ID, ident: identFor(notice.ID), met: a.now()}
+		// A NODE WHOSE FIRST NEWS IS ALREADY SETTLED WAS NEVER WATCHED HERE. Live
+		// work is announced from every state change it passes through, so a node
+		// this window saw at all was seen queued or running first; one that turns
+		// up done, failed or needing a look is a row replayed out of a checkpoint
+		// by a conversation being reopened. It is marked here, at the only moment
+		// the difference is visible, and [taskNode.restored] says what the mark
+		// costs a clock that is not there.
+		node = &taskNode{
+			id: notice.ID, ident: identFor(notice.ID), met: a.now(),
+			restored: notice.State != session.TaskRunning && notice.State != session.TaskQueued,
+		}
 		// THE CONTRACT IS COPIED OFF THE PROPOSAL, ONCE. The updates carry a state
 		// and a title and nothing about what the work was for; the card that lands
 		// minutes from now wants the brief, the acceptance and the sentence the

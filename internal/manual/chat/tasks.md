@@ -1500,7 +1500,7 @@ ctrl+. earlier
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   tasks place opens with every task this machine has run on it, grouped by what you do next
-  — `needs your look`, `running`, `done today`, `earlier`. `/history` is the same page.
+  — `needs your look`, `running`, `parked`, `done today`, `earlier`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
   `ctrl+. view more`. There is only ever one such line.
@@ -1699,8 +1699,12 @@ window the four shift-arrows move, so a page that replaced it with the teaching 
 would have swallowed the way back. The teaching prose is for a machine that has run
 nothing IN ANY WINDOW, which is a different screen.
 
-Under it, **four sections, in the order you act on them**: `needs your look`, `running`,
-`done today`, then `earlier`. Nothing is grouped by whose work it is — a task this
+Under it, **five sections, in the order you act on them**: `needs your look`, `running`,
+`parked`, `done today`, then `earlier`. `running` is work a worker is actually inside;
+`parked` is work that has been admitted and that nothing is doing — waiting behind the
+piece that needs a person, or behind a slot — and it is the word the column uses for the
+same nodes. A parked row **carries no age at all**: it has not started, so there is nothing
+to count from. Nothing is grouped by whose work it is — a task this
 conversation started sits beside one another window is running and one a session you closed
 last week finished, filed by what you would do about it next.
 
@@ -2496,17 +2500,18 @@ is nothing to say:
 ```
 ─ ⠙ main ▸ Write the tree · working · 2m 12s ────── esc/← main · ✕ ─
   part of: Ship the port
-  spawned: Cut the goldens — queued · Wire the seam — running
+  handed out: Cut the goldens — parked · Wire the seam — running
 ```
 
 - **`part of: <title>`** names the task that handed this work out — the parent. A task
-  nobody spawned draws no such line, so its absence means *this is a top-level task*. A
+  nobody handed out draws no such line, so its absence means *this is a top-level task*. A
   parent this session has had no update for is left unsaid rather than named as a bare id.
-- **`spawned: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
+- **`handed out: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
   the session met them. The state is the same word the roster uses: `queued`, `working`,
   `finishing`, `waiting`, `done`, `incomplete`, `failed`, `stopped`, `needs your look`. A piece that is
-  itself queued behind another piece says only `queued` here; open its own room to see what
-  it is behind.
+  itself held behind another piece says only `parked` here — the word the column uses for
+  it, and not `queued`, which would promise a scheduler that is not coming; open its own
+  room to see what it is behind.
 - **what this task waits on** is on the accent line itself, as its state word:
   `waits: <title>` names the prerequisites that have not finished. It is there rather than
   on a line of its own so the header never says the same thing twice.
@@ -3521,7 +3526,8 @@ Pressing `x` on a run that has already finished does nothing but say so.
 ## The tasks place — grouped work, folds, filtering and time-window keys
 
 The **tasks** place is the machine-wide history of work aforge ran, grouped by what you do
-next: `needs your look`, `running`, `done today`, then `earlier`. Each task row can include
+next: `needs your look`, `running`, `parked`, `done today`, then `earlier` — where
+`parked` is admitted work nothing is doing, drawn with no age on it. Each task row can include
 its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
 cost, and age. Zero or unknown cost is left blank. A section with nothing in it is absent.
 

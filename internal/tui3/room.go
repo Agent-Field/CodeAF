@@ -392,8 +392,13 @@ const (
 	// spells a family relation in — "waits: <title>", so "part of: <title>" and
 	// "spawned: <title>" (task.go's [app.railUnder]). A person who has read the
 	// roster's rows has already learned this punctuation.
-	roomKinUnderWord   = "part of: "
-	roomKinSpawnedWord = "spawned: "
+	roomKinUnderWord = "part of: "
+	// AND `spawned:` WAS THE MACHINERY'S OWN WORD. It is what a process does to
+	// another process, and this house bans it in anything a person reads — the
+	// same rule that took `worktree` off the completion card. What actually
+	// happened is that this piece of work handed some of itself out, which is the
+	// verb the rest of the surface already uses for it.
+	roomKinSpawnedWord = "handed out: "
 	// roomKinStateSep joins a child to its state word on the spawned line. It is
 	// the em dash the surface already uses to hang a condition off a name
 	// (task.go's [taskStoppedKept], "stopped — branch kept"), so the two levels
@@ -2265,19 +2270,26 @@ func (a *app) roomKinRows(width int) []string {
 	return out
 }
 
-// roomKinWord is a CHILD's state on the spawned line: [app.roomStateWord]'s
+// roomKinWord is a CHILD's state on the handed-out line: [app.roomStateWord]'s
 // answer about that child, except that one held behind a prerequisite says only
-// "queued".
+// the one word the column already says about it.
 //
 // THE DEPENDENCY SENTENCE BELONGS TO THE PAGE YOU WOULD OPEN TO ACT ON IT. A row
-// reading "spawned: draft — waits: fetch the RFCs · review — running" is one
+// reading "handed out: draft — waits: fetch the RFCs · review — running" is one
 // line carrying three tasks' business, and the task it is actually about is the
 // one it says least about. What this line owes a person is which pieces exist
 // and which of them are still moving; what a piece is behind is on its own row
 // in the roster and in its own header the moment they walk in.
+//
+// AND THAT ONE WORD IS `parked` AND NOT `queued`. "queued" says a scheduler will
+// get to this child, and nothing is coming: its prerequisite is the piece of work
+// whose room this is, sitting there waiting on the person reading this very page.
+// The column has called these children `parked` the whole time
+// ([railGroupWords], [railParked] — "admitted and BLOCKED"), so the word is read
+// out of the column's own table rather than spelled a second time here.
 func (a *app) roomKinWord(node *taskNode) string {
 	if node.state == session.TaskQueued && !node.stopped && a.railWaits(node) != "" {
-		return roomQueuedWord
+		return railGroupWords[railParked]
 	}
 	return a.roomStateWord(node)
 }

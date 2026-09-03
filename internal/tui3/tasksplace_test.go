@@ -192,8 +192,13 @@ func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 			t.Fatalf("the section word %q is preceded by two blank lines", line.text)
 		}
 	}
-	if words != 4 {
-		t.Fatalf("the fixture drew %d section words, want 4", words)
+	// FIVE, BECAUSE THE FIXTURE HAS SOMETHING IN EVERY SECTION. `render fight
+	// clip` is queued in a conversation that is open, which is work admitted and
+	// waiting rather than work a worker is in — the place files that under
+	// `parked` now, and the rhythm above has to hold across the extra heading.
+	if words != len(tasksSectionOrder) {
+		t.Fatalf("the fixture drew %d section words, want %d — one per section it has rows in",
+			words, len(tasksSectionOrder))
 	}
 }
 

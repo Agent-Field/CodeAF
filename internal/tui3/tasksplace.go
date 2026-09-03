@@ -41,9 +41,28 @@ type tasksSection int
 const (
 	tasksNeeds tasksSection = iota
 	tasksRunning
+	// tasksParked is work that has been admitted and that NOTHING IS DOING: a
+	// node waiting behind the piece that needs a person, or behind a slot.
+	//
+	// IT USED TO BE FILED UNDER `running` and counted with it, because the one
+	// liveness answer this place carries ([tasksItem.runs]) is true for a queued
+	// node as well as a working one. So a machine with nothing executing on it
+	// drew two rows under `running` and a foot that said `2 running`, and a
+	// developer read that as two workers burning tokens somewhere and went
+	// looking for the window they were in. The column one keypress away called
+	// the same two nodes `2 parked` the whole time — two surfaces, one fact, two
+	// words — and this is the word both of them say now ([railGroupWords]).
+	tasksParked
 	tasksToday
 	tasksEarlier
+	tasksSectionCount
 )
+
+// tasksSectionOrder is the one order the page is drawn in and counted in, and
+// there is exactly one of it: a heading list and a tally list that were spelled
+// out separately are two places a new section can be forgotten, and the foot
+// would then count a page it does not describe.
+var tasksSectionOrder = [...]tasksSection{tasksNeeds, tasksRunning, tasksParked, tasksToday, tasksEarlier}
 
 // tasksItem is one piece of work as this place files it: the row itself, the
 // conversation it came out of, and the two judgements the reading is not allowed
@@ -235,7 +254,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 			familySection[key] = item.section
 		}
 	}
-	sections := [4][]tasksItem{}
+	sections := [tasksSectionCount][]tasksItem{}
 	for _, item := range visible {
 		if section, found := familySection[tasksFamilyOf(item.entry)]; found {
 			item.section = section
@@ -313,12 +332,26 @@ func tasksSectionOf(item tasksItem, now time.Time) tasksSection {
 	switch {
 	case item.entry.Status == string(session.TaskUnverified) || (item.row.NeedsPerson() && item.runs):
 		return tasksNeeds
-	case item.runs:
+	case tasksWorking(item):
 		return tasksRunning
+	case item.runs:
+		return tasksParked
 	case tasksLandedToday(item.entry, now):
 		return tasksToday
 	}
 	return tasksEarlier
+}
+
+// tasksWorking reports whether a WORKER IS IN THIS ROW right now, which is the
+// narrower of the two questions [tasksItem.runs] used to be asked.
+//
+// runs answers "is this admitted and held by a live conversation", and it is
+// true of a queued node as much as of a working one — the whole of row 3's
+// defect. This asks the other half: the engine's own state word says a child
+// agent is in the worktree. Both are needed and neither is the other, so the
+// place asks each by name.
+func tasksWorking(item tasksItem) bool {
+	return item.runs && item.entry.Status == string(session.TaskRunning)
 }
 
 func tasksLandedToday(entry session.TaskIndexEntry, now time.Time) bool {
@@ -428,7 +461,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 	}
 	add(tasksLineWord, head)
 	phone := layoutTier(width) == tierPhone
-	for _, section := range []tasksSection{tasksNeeds, tasksRunning, tasksToday, tasksEarlier} {
+	for _, section := range tasksSectionOrder {
 		items := r.section(section)
 		// A SECTION WITH NOTHING IN IT IS NOT DRAWN AT ALL, filter or no filter.
 		// It is the emptiness law: a `running` word with a blank under it says
@@ -708,7 +741,7 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 // as zero — it is not mentioned — and the line is empty when the page is.
 func (r tasksReading) tally() string {
 	var segs []string
-	for _, section := range []tasksSection{tasksNeeds, tasksRunning, tasksToday, tasksEarlier} {
+	for _, section := range tasksSectionOrder {
 		if n := len(r.section(section)); n > 0 {
 			segs = append(segs, itoa(n)+" "+tasksSectionWord(section))
 		}
@@ -722,6 +755,12 @@ func tasksSectionWord(section tasksSection) string {
 		return "needs your look"
 	case tasksRunning:
 		return taskSheetNowHead
+	case tasksParked:
+		// ONE WORD FOR ONE FACT, AND IT IS THE COLUMN'S. The rail already calls
+		// these nodes `parked` in its heading and in its footer, so the word is
+		// read out of the rail's own vocabulary rather than spelled a second time
+		// here — a second spelling is how the two surfaces came to disagree.
+		return railGroupWords[railParked]
 	case tasksToday:
 		return "done today"
 	default:
@@ -902,11 +941,33 @@ func tasksPaintTail(tail string, facts []tasksFact, pal palette) string {
 // window that died could have left one. So the row says NOTHING about when,
 // which is the emptiness law's own answer, and the note beside it carries the
 // whole of what is known: `incomplete`.
+//
+// NOR IS A PARKED ROW DATED `now`. A node admitted and waiting behind the piece
+// that needs a person has not started, so there is no age to count from either
+// end of it, and `now` on that row said the work was happening this second.
 func tasksAgeField(item tasksItem, now time.Time) rowField {
-	if item.entry.Live() && !item.runs {
-		return rowSay()
+	return rowSay(sinceAt(tasksEntryStamp(item, now), now))
+}
+
+// tasksEntryStamp is the moment a row's work IS, for DRAWING AN AGE FROM, and
+// the zero time whenever nobody knows one — which [sinceAt] then draws as
+// nothing at all.
+//
+// IT IS NOT [tasksEntryAt], AND THE DIFFERENCE IS THE WHOLE POINT. That one
+// answers the time WINDOW, which cannot judge a row with no stamp on it and so
+// files an undated row at the moment of the reading rather than dropping it off
+// the page. This one answers a person, and a person told `now` about work that
+// nothing is doing has been told something false. The three silences here are a
+// node nothing has started, a row whose window died, and work replayed out of a
+// checkpoint that kept how long it ran and never when it began.
+func tasksEntryStamp(item tasksItem, now time.Time) time.Time {
+	if item.entry.Live() {
+		if tasksWorking(item) {
+			return now
+		}
+		return time.Time{}
 	}
-	return rowSay(sinceAt(tasksEntryAt(item.entry, now), now))
+	return item.entry.EndedAt
 }
 
 // tasksMiddleField is what came of the work, in two spellings: everything the

@@ -179,8 +179,15 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over this window's own work")
 	}
-	if note := plain(strings.Join(a.placeNote(a.width), "\n")); !strings.Contains(note, "4 "+taskSheetNowHead) {
-		t.Fatalf("the note does not count the rows the body drew: %q", note)
+	// TWO OF THE FOUR ARE RUNNING AND TWO ARE PARKED, and the note counts them
+	// apart: [railRun] starts two nodes and admits two behind them, and a foot
+	// that called all four `running` was the tasks place saying two workers were
+	// burning tokens on a machine where nothing was executing.
+	note := plain(strings.Join(a.placeNote(a.width), "\n"))
+	for _, want := range []string{"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked]} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
+		}
 	}
 	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
 		t.Fatalf("a place with rows on it taught what a task is:\n%s", text)
@@ -190,7 +197,7 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	// the words hid it. The note says so and the body stays blank rather than
 	// teaching somebody who did not ask.
 	drive(t, a, key("z"), key("z"))
-	note := plain(strings.Join(a.placeNote(a.width), "\n"))
+	note = plain(strings.Join(a.placeNote(a.width), "\n"))
 	if !strings.Contains(note, taskSheetFilterNone) {
 		t.Fatalf("a query that matched nothing said nothing: %q", note)
 	}
@@ -245,6 +252,11 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 // you do about them rather than by whose they are.
 func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing.T) {
 	a, _, _ := taskApp(t)
+	// FIVE HEADINGS NEED A FRAME THAT HOLDS FIVE. This fixture spends work across
+	// every section the place has — running, parked, done today and earlier — and
+	// a 24-row terminal cuts the last of them off the visible frame, which is the
+	// page paginating correctly and not the grouping being wrong.
+	a.height = 32
 	railRun(a)
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("4", "sweep-the-call-sites", "Sweep the call sites", 3*time.Hour),
@@ -301,7 +313,15 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	}
 	// And the note counts every section it drew, in the same words they are
 	// headed with, with none of them written as a zero.
-	for _, want := range []string{"4 " + taskSheetNowHead, "2 done today", "1 " + taskSheetPastHead} {
+	// `Read the law` is counted under `earlier` and not under `done today`: the
+	// fixture announces it already settled, which is how a node replayed out of a
+	// checkpoint arrives, and nothing anywhere records when work like that landed
+	// — so the place will not claim it landed TODAY (place_tasks.go's
+	// [taskNodeEnded] carries the whole reasoning).
+	for _, want := range []string{
+		"2 " + taskSheetNowHead, "2 " + railGroupWords[railParked],
+		"1 done today", "2 " + taskSheetPastHead,
+	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the note does not count what is on the page (%q):\n%s", want, text)
 		}

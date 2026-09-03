@@ -70,3 +70,123 @@ is where that already happens. It is not something `make demo-home` can hand you
 - **The room's header drops facts as it narrows** (`$0.52 · 7 tool calls · anthropic/claude-opus-4.1` at 160, nothing but `12m 0s` at 60). That is `roomHeadWord` on the fitter, doing exactly what `rowfit.go` says: identity whole, facts as a ranked prefix. It is the best-behaved header in the package and `audit-tasks.md` already calls it the worked example.
 - **The wide-character row loses its project name at 60 columns** (`○ 国際化とレイアウト幅 🌏 the Cafe Pricing Page  1h`, where every neighbour keeps `pricing-site`). The title is 46 cells of a 60-cell row; the name is whole and the lowest-ranked fact is what went. That is the law working. The accent is row 8; the width is not a row.
 - **The rail folds the family correctly** — `✓ Measure the frame` with `├─`/`└─` children three deep and `▸ +1` counting what it hid. Four levels of handing-out draw as a tree at every width down to 60.
+
+---
+
+## fixed
+
+Frames prefixed `jobs-` were captured after the change, against the same seeded
+demo home, with `scripts/frame.sh`. The `seed-` frames each row already names are
+the before.
+
+**Row 1 — a reopened conversation drew none of the jobs it ran.**
+Files: `internal/tui3/task.go` (`taskEvent` gains `case session.EventJobUpdate`).
+Tests: `TestAReopenedConversationStillShowsItsJobs`,
+`TestAJobReplayedOnTheStandingLaneOpensItsPage` (`internal/tui3/jobsreopen_test.go`).
+Before: `docs/design/polish/frames/seed-talk.120x40.txt` — the column draws `tasks`
+and `standing` and nothing else.
+After: `docs/design/polish/frames/jobs-talk-after.120x40.txt` — `▸ jobs · 3 ran`.
+And the two frames nobody in this wave had ever taken, because the section is the
+only door and it was not there:
+`docs/design/polish/frames/jobs-section-after.120x40.txt` (the section open, three
+jobs, `exited 0` / `done` / `stopped`) and
+`docs/design/polish/frames/jobs-page-after.120x40.txt` (a job page with a log long
+enough to scroll).
+
+**Row 2 — a restored task was dated in the future.** PARTIAL, and the rest of it
+is not the surface's to fix.
+Files: `internal/tui3/task.go` (`taskNode.restored`, set where a node's first news
+is already settled; `taskNode.spawnedAt` answers the zero time for one),
+`internal/tui3/place_tasks.go` (`taskNodeEnded` no longer falls back to `met`).
+Tests: `TestARestoredTaskIsNeverDatedInTheFuture`,
+`TestAWatchedTaskKeepsItsOwnLandingTime` (`internal/tui3/taskstamp_test.go`).
+Before: `docs/design/polish/frames/seed-tasks.120x40.txt` — the task that needs the
+person is missing from the page.
+After: `docs/design/polish/frames/jobs-tasks-after.120x40.txt` — it is the first row
+on the page, under `needs your look`, with no age on it.
+The surface now adds no arithmetic to a stamp it does not have: where the record
+kept no start, nothing is drawn. **It cannot yet draw the RIGHT time, because the
+record does not keep one** — see the section below.
+The same change takes the invented `spawned 23:48` off a landed card for a restored
+node (the card draws no stamp where `spawnedAt` is zero, `taskdone.go:459`). The
+WORD `spawned` is row 6 and is untouched.
+
+**Row 3 — work parked on a person was filed under `running` and counted `2 running`.**
+The word chosen is **`parked`**, read out of `railGroupWords[railParked]` rather
+than spelled a second time, so the column and the place cannot drift apart again.
+Files: `internal/tui3/tasksplace.go` (a fifth section `tasksParked`;
+`tasksSectionOrder` and `tasksSectionCount` so the headings and the tally are one
+list; `tasksWorking` splits "a worker is in it" out of `tasksItem.runs`;
+`tasksEntryStamp` splits the DRAWING's question off `tasksEntryAt`'s window
+question, so a parked row draws no age).
+Manual: `internal/manual/chat/tasks.md` — the place has five sections now, in three
+places that named four.
+Tests: `TestWorkParkedOnAPersonIsNotFiledUnderRunning`,
+`TestTheTasksPlaceAndTheColumnCallParkedWorkOneWord`
+(`internal/tui3/tasksparked_test.go`).
+Before: `docs/design/polish/frames/seed-tasks.120x40.txt` — `running`, two rows
+saying `now`, foot `2 running`.
+After: `docs/design/polish/frames/jobs-tasks-after.120x40.txt` and
+`jobs-tasks-after.60x30.txt` — a `parked` section, no age on either row, foot
+`1 needs your look · 2 parked · 13 earlier`.
+
+**Row 9 — the room's kin line said `spawned:` and called a blocked child `queued`.**
+Files: `internal/tui3/room.go` (`roomKinSpawnedWord = "handed out: "`;
+`roomKinWord` returns `railGroupWords[railParked]` for a child held behind a
+prerequisite).
+Manual: `internal/manual/chat/tasks.md` — the kin block's example and its two
+bullets.
+Test: `TestAHandedOutPieceWaitingOnAnotherSaysParkedInTheColumnsWord`
+(`internal/tui3/roomkin_test.go`, renamed from
+`TestASpawnedPieceWaitingOnAnotherSaysOnlyQueued`).
+Before: `docs/design/polish/frames/seed-room.120x40.txt` —
+`spawned: Fold the settled — queued`.
+After: `docs/design/polish/frames/jobs-room-after.120x40.txt` —
+`handed out: Fold the settled — parked`.
+
+### What row 2 still needs, and it is in `internal/session`
+
+The landing time a person reads has to be a fact of the RECORD carried across the
+restore. Today it is not, and here is exactly where it stops:
+
+- **`TaskNode.started`** (`internal/session/task_run.go:391`) is the only real
+  start, set at `task_run.go:1089` when the node actually begins running. It is
+  **not written to the checkpoint**: `taskRecord` (`task_store.go`, ~line 292)
+  carries `ElapsedMS` and no stamp, and the field's own comment says a rehydrated
+  node "has no started to measure from".
+- **`TaskNode.runStart()`** (`taskground.go:216`) already makes the same guess the
+  surface was making — `time.Now().Add(-n.elapsed)` — and refuses when both are
+  zero. It is used only for the ground-shift window.
+- **`TaskIndexEntry.EndedAt`** (`task_index.go:275`) IS the durable landing time,
+  and it survives a restart **only for a node whose row reached the project's index
+  FILE**. `taskIndexEntryOf` (`task_index.go:790`) stamps a rebuilt row
+  `entry.EndedAt = time.Now()` for any settled node, and its own comment concedes
+  the point: a row rebuilt later "keeps the file's row instead, which is where the
+  original stamp is". So a settled node restored into the graph with no file row
+  is dated the moment of the restore.
+- **`TaskNotice`** (`task_contract.go:335`) carries `Elapsed` and no stamp at all,
+  so the surface has nothing to READ even when the engine knows.
+- The demo home reproduces exactly this: `cmd/aforge-demo-home/seed_room.go` writes
+  the session's `tasks.json` with `elapsed_ms` and no index row, which is why all
+  four of that family's settled rows now draw with no age.
+
+What would have to be written: a stamp on `taskRecord` (start, landing, or both),
+restored onto the node; `taskIndexEntryOf` preferring the node's own landing stamp
+over `time.Now()`; and `EndedAt`/`StartedAt` on `TaskNotice` so the surface can read
+it. Then `taskNodeEnded` becomes a field read with no arithmetic and no `restored`
+flag, and the emptiness law covers only the genuinely undated.
+
+### Not done, and why
+
+- **Rows 4, 5, 6, 7, 8, 12** need `taskident.go`, `taskdone.go`, `place_home.go`,
+  `homeband_work.go`, `home.go`, `render.go` / `phase.go` — files other lanes hold.
+- **Row 10** needs `tasksettle.go` (`roomSettleHint`, the answers row) as well as
+  the room's foot, and half of it would be worse than none.
+- **Row 11** is left. The foot is ALREADY conditional on the selected row
+  (`place_tasks.go`'s `hint` and `verbs`): `enter open its room` is drawn only for a
+  node in this window's graph, and `stop it` only where `stopTaskTarget` and
+  `stopDoors` both answer — and cancelling a queued node is a real door the engine
+  has. The room of a parked node is not empty either; it opens on the guard line
+  `<title> is parked — `. What the row actually asks for is a verb that UNPARKS,
+  and there is no seam behind one: a capability that cannot work is absent, not
+  broken, so it is not invented here.
