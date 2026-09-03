@@ -470,7 +470,7 @@ func (a *app) spendWindowKey(key string) bool {
 	// no window at all, and one with room for the arrows but not for
 	// `shift+↑ coarser` beside them has no zoom.
 	width, _ := a.size()
-	arrows, grain := placeWindowFits(width, spendHeadWords(a.spend.reading.totals), a.spend.win)
+	arrows, grain := placeWindowFits(width, a.spend.reading.headWords(width), a.spend.win)
 	if !arrows {
 		return false
 	}
@@ -677,7 +677,7 @@ func (placeSpend) hint(a *app) string {
 		}
 	}
 	width, _ := a.size()
-	if arrows, _ := placeWindowFits(width, spendHeadWords(a.spend.reading.totals), a.spend.win); arrows {
+	if arrows, _ := placeWindowFits(width, a.spend.reading.headWords(width), a.spend.win); arrows {
 		parts = append(parts, spendWindowWord)
 	}
 	if len(parts) == 0 {

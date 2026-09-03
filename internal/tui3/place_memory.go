@@ -134,6 +134,11 @@ type memoryPlace struct {
 	// that opens it, which is one query for one door rather than one per row.
 	expanded string
 	origins  map[string]memoryOrigin
+	// width is the frame the reading was last laid out for. It is kept because
+	// the teaching prose is WRAPPED into the reading rather than cut on the way
+	// out ([memoryReading.wrapped]), so a resize is a re-lay and not only a
+	// re-measure.
+	width int
 	// edit is the wording being fixed, and editID the line it belongs to.
 	edit   *editor
 	editID string
@@ -178,8 +183,22 @@ func (p *memoryPlace) refresh(shelves store.MemoryShelves, now time.Time) {
 // `rank` because that is what the overlay's own re-filter was called and what
 // every paste path on this surface still asks for by name (app.go).
 func (p *memoryPlace) rank() {
-	p.reading = readMemory(p.shelves, p.shelfOpen, p.filter.String(), p.read)
+	p.reading = readMemory(p.shelves, p.shelfOpen, p.filter.String(), p.read).wrapped(p.width)
 	p.cursor = p.nearestStop(p.cursor)
+}
+
+// remeasure re-lays the reading for a frame of this width, keeping the cursor on
+// the THING it was standing on rather than on the line number it was standing at
+// — [memoryPlace.followStop]'s law, for the same reason: wrapping the prose to a
+// narrower frame moves every line under it down.
+func (p *memoryPlace) remeasure(width int) {
+	if width < 1 || p.width == width {
+		return
+	}
+	was, _ := p.reading.at(p.cursor)
+	p.width = width
+	p.rank()
+	p.followStop(was)
 }
 
 // followStop puts the cursor back on the thing it was standing on rather than
@@ -662,6 +681,7 @@ func (placeMemory) tick(a *app, now time.Time) bool {
 // words already decided rather than five hundred rows re-ranked.
 func (placeMemory) body(a *app, width, room int) []placeRow {
 	p := &a.mem
+	p.remeasure(width)
 	var body []string
 	switch {
 	case p.expanded != "":

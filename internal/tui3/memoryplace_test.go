@@ -58,7 +58,10 @@ func TestTheMemoryPlaceTeachesUntilThereIsEnoughToRead(t *testing.T) {
 		t.Fatalf("the small place omitted its footer:\n%s", text)
 	}
 	large := memoryPlaceText(readMemory(memoryPlaceFixture(now), nil, "", now), 200)
-	if strings.Contains(large, memoryTeaching[0]) || !strings.Contains(large, "8 held · 3 shelves · 2 let go") || !strings.Contains(large, "type to filter") {
+	// THE HEAD COUNTS THE TWO WAYS A MEMORY STOPS BEING HELD APART, in the same
+	// words the rows wear ([memoryLetGoWord], [memoryReplacedWord]): one was
+	// asked for, the other happened on its own.
+	if strings.Contains(large, memoryTeaching[0]) || !strings.Contains(large, "8 held · 3 shelves · 1 let go · 1 replaced") || !strings.Contains(large, "type to filter") {
 		t.Fatalf("the large place did not replace teaching with its header:\n%s", large)
 	}
 }
@@ -110,7 +113,11 @@ func TestMemoryHelpWordsSayWhatTheCountersKnow(t *testing.T) {
 		{store.Memory{Status: store.MemoryActive, MissCount: 2}, "bore on 2"},
 		{store.Memory{Status: store.MemoryActive, UpdatedAt: now.Add(-3 * time.Hour)}, "new, learned 3h"},
 		{store.Memory{Status: store.MemoryForgotten}, "let go"},
-		{store.Memory{Status: store.MemorySuperseded}, "let go"},
+		// A MEMORY THE MACHINE RETIRED ON ITS OWN IS NOT ONE SOMEBODY LET GO OF.
+		// Both said `let go` and the head added them together, so one phrase
+		// carried two facts on one screen; `replaced` is the manual's own word
+		// for this one ("Why did it say superseded?").
+		{store.Memory{Status: store.MemorySuperseded}, "replaced"},
 	}
 	for _, test := range tests {
 		if got := memoryHelp(test.memory, now); got != test.want {
@@ -131,7 +138,9 @@ func TestTypingNarrowsMemoryShelvesAndLinesByWords(t *testing.T) {
 func TestAFilteredMemoryWithNoMatchesDrawsOnlyItsNoMatchLine(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	text := memoryPlaceText(readMemory(memoryPlaceFixture(now), nil, "purple aardvark", now), 120)
-	if text != `nothing on a shelf says "purple aardvark"` || strings.Contains(text, "shelves") {
+	// The lead cell is the body's own column, which every place's prose hangs
+	// from (placebodies.go's [placeTeachRows]).
+	if text != ` nothing on a shelf says "purple aardvark"` || strings.Contains(text, "shelves") {
 		t.Fatalf("empty filtered memory drew %q", text)
 	}
 }
@@ -180,14 +189,18 @@ func TestMemoryStopsLandOnlyOnShelvesAndLines(t *testing.T) {
 func TestEveryMemoryRowFitsItsCellWidthAtEveryTier(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	r := readMemory(memoryPlaceFixture(now), map[string]bool{store.MemoryScopeUser: true}, "", now)
-	for _, width := range []int{60, 80, 120, 200} {
+	for _, width := range []int{40, 44, 60, 80, 120, 200} {
 		for i, row := range r.rows(width, newPalette(tokens.TrueColor, false)) {
 			if got := ansi.StringWidth(row); got > width {
 				t.Errorf("width %d line %d measures %d cells: %q", width, i, got, row)
 			}
 		}
 	}
-	narrow := memoryPlaceText(r, 60)
+	// THE FACTS DROP IN RANK ORDER AND NOT AT A TIER. The help clause used to be
+	// held back by a `width >= 80` written into the draw, which meant a wide row
+	// on a narrow frame kept it and a short row on an 79-cell frame lost it;
+	// rowfit drops whichever fact the room actually cannot hold, from the end.
+	narrow := memoryPlaceText(r, 44)
 	if strings.Contains(narrow, "helped") || !strings.Contains(narrow, store.MemoryPreference) {
 		t.Fatalf("the narrow reading did not drop help before type:\n%s", narrow)
 	}

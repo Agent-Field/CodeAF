@@ -343,26 +343,36 @@ func (s *sheet) cursorTo(key string) {
 // ZERO — it has not counted.
 func (a *app) spentTodayUSD() (float64, bool) { return a.dayCost, a.dayCosted }
 
-// readDayCost takes that reading.
+// readDayCost takes that reading, THROUGH THE SEAM THAT ANSWERS FOR THE MACHINE
+// THE WINDOW IS ABOUT — and through the one function that says what a day cost.
+//
+// IT DOES NOT OPEN [app.usageLedger] ITSELF, AND IT USED TO. Over a connection
+// the money belongs to the far machine and arrives through the cache the link
+// keeps warm ([app.usageSince] carries that seam's whole law), so a tab that
+// read this laptop's file drew THIS machine's `today` on a window about
+// somebody else's — the same defect, on the same figure, that the spend place
+// and the top line were both fixed for.
+//
+// AND THE ARITHMETIC IS [spendDayTotal]'S, which is the sum the pointer line on
+// the spend place and the pulse at the top of every place already answer from.
+// The walk that was here counted every row in the file, unpriced ones included,
+// so a day with a free-tier call on it read one way here and another way two
+// keystrokes away. There is one function, so there is one number.
 func (a *app) readDayCost() {
 	a.dayCost, a.dayCosted = 0, false
-	if strings.TrimSpace(a.usageLedger) == "" {
-		return
-	}
 	now := a.now()
 	if now.IsZero() {
 		now = time.Now()
 	}
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	lines, err := session.ReadUsage(a.usageLedger, day)
-	if err != nil {
+	day := machineDayStart(now)
+	if day.IsZero() {
 		return
 	}
-	total := 0.0
-	for _, line := range lines {
-		total += line.USD
+	lines, known := a.usageSince(day)
+	if !known {
+		return
 	}
-	a.dayCost, a.dayCosted = total, true
+	a.dayCost, a.dayCosted = spendDayTotal(lines, now), true
 }
 
 // spentThisSessionUSD is what the conversation in front of the person has spent,

@@ -141,15 +141,133 @@ Test: `TestTheSshRowsAreOnTheTabAboutReachingAnotherMachine`
 Frames: `frames/set-workspace-after.120x40.txt` and `set-session-after.120x40.txt` against
 `set-session.120x40.txt`.
 
+**Row 1, the last of it — Settings → Spending reads the day through the one seam.**
+The pulse and the spend place were made to answer from one function
+(`spendDayTotal`) in an earlier wave; `readDayCost` in `settingspend.go` was still opening
+`app.usageLedger` itself and summing every row in the file. Two faults in one walk: over a
+`--host` window the money belongs to the FAR machine and arrives through the cache the link
+keeps warm (`app.usageSince`), so the tab drew this laptop's `today` on a page about somebody
+else's; and the walk counted unpriced rows the other two readings leave out, so a day with a
+free-tier call on it read one way here and another two keystrokes away. `readDayCost` now
+goes `app.usageSince(machineDayStart(now))` → `spendDayTotal`, and the second path is gone
+rather than made to agree. `session.ReadUsage` is no longer called anywhere in `tui3` outside
+that seam.
+Files: `internal/tui3/settingspend.go`.
+Test: `TestSettingsSpendingReadsTheDayThroughTheOneLedgerSeam`
+(`internal/tui3/spendmemwords_test.go`) — a window with a local ledger of `$9.99` and a far
+seam of `$1.25 + one unpriced line` reads `1.25`, and a seam that has not answered is NOT
+counted as a day that cost nothing.
+
+**Row 7 — the memory rows are on rowfit, in the surface's one separator grammar.** A row is
+its IDENTITY (`▾ you · 7`, `· Ships on Fridays`) and then its facts as a ranked prefix joined
+by `rowSep`, with the age still right-aligned: `▾ you · 7 · mostly facts · 2 new today` and
+`· Ships on Fridays · fact · let go`. `memoryReadingLine` carries `facts []rowField` where it
+carried two pre-joined strings; `memoryThree` and the two hand-built two-space glues are
+deleted, and `memoryRow`/`memoryHalves` are `rowPlan.fit` with this page's own gutter. The
+`width >= 80` that used to gate the help clause is gone with them — a fact drops when the
+room cannot hold it, which is the law and not a tier.
+Files: `internal/tui3/memoryplace.go`.
+Tests: `TestTheMemoryRowsUseTheSurfacesOneSeparator` (`spendmemwords_test.go`),
+`TestEveryMemoryRowFitsItsCellWidthAtEveryTier` (widened to 40 and 44 cells, and its
+drop-order clause re-aimed at the width where the room actually bites).
+Frames: `frames/spendmem-memory-after.{160x50,120x40,80x24,60x30}.txt` against
+`spendmem-memory.*.txt` — `▾ you · 7  mostly facts` → `▾ you · 7 · mostly facts`.
+
+**Row 8 — the window's total says which total it is.** The head line's left field leads with
+the span in words: `14 days came to $2.06 · 377.1k tokens`, over `today $0.14 of $500` — so
+the two money figures on the page each carry the period they are the total of, in one
+grammar. It is counted in the grain's own noun (`14 days`, `4 weeks`, `6 months`,
+`spendSpanWord`) and NOT in dates, which stay between the arrows where SCREEN 3d put them.
+The field is fitted with the control's cells already reserved, because the head's own width is
+what decides whether the arrows are drawn at all — a lead added without that reservation
+would have bought the sentence at 60 columns by unbinding `shift+←/→`. It degrades
+`14 days came to $2.06 · 377.1k tokens` → `14 days · $2.06 · 377.1k` → `$2.06`, and
+`paintedHead` now paints the line the fitter actually chose rather than assembling a second
+one.
+Files: `internal/tui3/spendplace.go` (`headWords`, `headFields`, `spendSpanWord`,
+`paintedHead`), `internal/tui3/place_spend.go` (both `placeWindowFits` callers),
+`internal/manual/chat/models-and-cost.md`.
+Tests: `TestTheSpendPageSaysWhichTotalIsWhich`,
+`TestTheSpendHeadNamesTheSpanInTheGrainsOwnWord`,
+`TestTheSpendHeadDoesNotTakeTheWindowKeysToSayTheSpan` (`spendmemwords_test.go`).
+Frames: `frames/spendmem-spend-after.{160x50,120x40,80x24,60x30}.txt` against
+`spendmem-spend.*.txt`.
+
+**Row 9 — the chart uses the room it has and its axis is two dates.** `sparkline` takes the
+width: every bucket gets the same number of cells, up to `spendSparkCells` (8), so a fortnight
+is 112 cells at 160 and 56 at 60 rather than 14 everywhere. `sparkAxis` is a function of its
+own, as wide as the CHART and not as the frame, and both its ends are dates — `aug 21` …
+`today`, the last bucket's own label, called `today` when it is today (`spendTodayWord`, one
+source). The `today $0.14` that used to sit at the right end is gone: that figure is the
+pointer line's two rows above, and quoting it here was one-source-of-truth broken in the
+smallest way available.
+Files: `internal/tui3/spendplace.go`.
+Tests: `TestTheSpendChartUsesTheRoomItHasAndItsAxisIsTwoDates` (`spendmemwords_test.go`),
+`TestTheSpendSparklineKeepsEveryDayInTheWindow` (re-aimed: every bucket gets the same whole
+number of cells and the chart stays inside the frame).
+Frames: as row 8 — `⣦⣦⣿⣦⣷⣶⣷⣤⣶⣄⣶⣀⣦⣀` and `aug 21 … today $0.14` become a 112-cell chart under
+`aug 21 … today`.
+
+**Row 13 — the shelves heading is whole before its legend.** `memoryTypeLegend` answers
+`[]rowField` ranked biggest-first (the store's kind order breaks a tie, so the same counts
+draw in the same order), and the section row fits the legend into what the heading LEAVES
+rather than the other way round. At 80 the heading is `shelves · biggest first` with
+`fact 9 · preference 2 · decision 2 · correction 1`; at 60 it keeps three kinds where it used
+to drop the legend whole; `shelves · …` cannot happen.
+Files: `internal/tui3/memoryplace.go`.
+Test: `TestTheShelvesHeadingIsWholeBeforeItsLegend` (`spendmemwords_test.go`).
+Frames: `frames/spendmem-memory-after.80x24.txt` against `spendmem-memory.80x24.txt`.
+
+**Row 17 — the loudest day says where its door goes, and the door works.** The bare noun
+`tasks` is now `enter opens it in tasks` (`in tasks` where the frame is tighter, nothing at
+all where the sentence needs the whole row — rowfit's law 1, so `rebuild-the-frame… tasks`
+cannot happen). Because the row names a key it IS a stop: `spendReading.body` records the
+loudest day's subject as a door, so `enter` there opens the thing exactly as it does on the
+rows under `what it was for`, and the foot's `enter opens what spent it` is true standing on
+it. A subject of a kind with no door says nothing (`spendDoorWord`).
+Files: `internal/tui3/spendplace.go`, `internal/manual/chat/models-and-cost.md`.
+Tests: `TestTheLoudestDaySaysWhereItsDoorGoes` (`spendmemwords_test.go`),
+`TestTheSpendCursorStopsOnlyOnRowsThatNameSomething` (now expects the loudest day's door
+beside the three subjects).
+Frames: as row 8.
+
+**And the words for a memory that is no longer held.** `let go` was a count on the head AND
+the tag on a row — and worse, the tag was worn by two different states: a line somebody asked
+to be forgotten, and a line the machine retired on its own because something newer
+contradicted it. The head added the two together. **The choice: `let go` keeps its meaning —
+you let it go — and a memory the machine retired says `replaced`**, which is the manual's own
+word for it ("replaced by one that contradicts it"), and the head counts them apart:
+`14 held · 3 shelves · 1 let go · 1 replaced`. One phrase, one meaning, on the head and on the
+row. Zero of either still draws nothing.
+Files: `internal/tui3/memoryplace.go`, `internal/manual/chat/what-i-remember.md` (the count,
+the row, and the `superseded` heading now also says `replaced` so the question reaches it).
+Tests: `TestAMemoryLetGoAndOneReplacedAreNotTheSameWord` (`spendmemwords_test.go`),
+`TestMemoryHelpWordsSayWhatTheCountersKnow` and
+`TestTheMemoryPlaceTeachesUntilThereIsEnoughToRead` (both re-aimed).
+**Left for whoever holds home:** `home.go`'s `learned 2 things, let go of 1` still folds a
+replaced memory into `let go`. It is a different sentence on a different place and this lane
+does not hold that file.
+
+**A wall-clock test that had already aged out.** `spendLab` in `spendplace_test.go` built its
+app on the WALL clock over a fixture dated august, so on 2026-09-03 the fixture's loudest day
+fell out of the fourteen-day window and `TestTheSpendPlaceDrawsTheLedgerItWalkedInOn` went red
+on a date nobody chose — #526's defect, one lab further along. It pins `spendTestNow` now, the
+way `placeeveryone_test.go`'s `spendPlaceLab` already did.
+
 ### not fixed, and why
 
-- **Rows 1, 2, 11, 12** — the money figures and the pulse. Held by another lane and a
-  separate pull request against `dev`.
-- **Rows 7, 13** — memory rows and the shelves heading. `internal/tui3/memoryplace.go`,
-  held by another lane.
-- **Rows 8, 9, 10, 17** — the spend page's two totals, the sparkline, its hint line and the
-  `loudest day` door. `internal/tui3/spendplace.go` and `place_spend.go`, held by another
-  lane.
+- **Rows 2, 12** — the pulse's navigation-dependent reading, and `dollars` rendering a
+  sub-cent as `$0.0000`. `internal/tui3/pulse.go`, `homemachine.go` and `app.go`, held by
+  another lane.
+- **Row 11 (still open) — the daily rail is spelled two ways, and the half that is wrong is
+  not in these files.** `railFigure` is this lane's and every reading that goes through it is
+  right: `of $500` on the spend place, `$500 · $0.14 today` on the tab, `$5 a firing` on the
+  standing row. The top line still says `$500.00`, from `dollars(facts.ceiling)` at
+  `internal/tui3/pulse.go` — which another lane is inside as this is written. **The whole fix
+  is that one call becoming `railFigure(facts.ceiling)`**; the numerator stays `dollars`,
+  because that half is a measurement.
+- **Row 10** — closed already, as audit-help's row 2: `placeSpend.hint` names `enter`, `→` and
+  the window keys.
 - **Row 15** (sev: low) — `rowGutter` is `internal/tui3/rowfit.go`, not this lane's.
 - **Row 16** (sev: low) — the 150 blank cells at 160 columns are `overlayLines` in
   `internal/tui3/palette.go`, not this lane's. The units from row 3 do give those rows

@@ -54,13 +54,18 @@ type memoryStop struct {
 }
 
 type memoryReading struct {
-	held    int
-	letGo   int
-	total   int
-	shelves int
-	filter  string
-	teach   bool
-	lines   []memoryReadingLine
+	held int
+	// letGo and replaced are the two ways a memory stops being held, and they
+	// are counted apart because they are not the same event
+	// ([memoryHelp] says which word each row wears). One was asked for; the
+	// other happened to you.
+	letGo    int
+	replaced int
+	total    int
+	shelves  int
+	filter   string
+	teach    bool
+	lines    []memoryReadingLine
 }
 
 type memoryReadingKind uint8
@@ -77,11 +82,18 @@ const (
 )
 
 type memoryReadingLine struct {
-	kind   memoryReadingKind
-	shelf  string
-	label  string
-	note   string
-	help   string
+	kind  memoryReadingKind
+	shelf string
+	// label is the row's IDENTITY — the shelf's name and count, the memory's
+	// own title — and rowfit's law 1 is about this string: it is whole, or the
+	// row is pointless.
+	label string
+	// facts are what is known about that identity, highest first, joined by the
+	// one separator this surface joins facts with ([rowSep]). They used to be a
+	// pair of pre-joined strings pushed onto the label behind two spaces, so one
+	// row carried two separator grammars — `· Ships on Fridays  fact  let go` —
+	// and nothing on it said where the memory's own words stopped.
+	facts  []rowField
 	age    string
 	memory *store.Memory
 }
@@ -99,7 +111,7 @@ type rankedMemoryShelf struct {
 func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string, now time.Time) memoryReading {
 	query := strings.ToLower(strings.TrimSpace(filter))
 	r := memoryReading{
-		held: shelves.Held, letGo: shelves.LetGo + shelves.Superseded,
+		held: shelves.Held, letGo: shelves.LetGo, replaced: shelves.Superseded,
 		total: shelves.Total, shelves: len(shelves.Shelves), filter: query,
 		teach: shelves.Total < memoryTeachBelow,
 	}
@@ -153,7 +165,7 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		if len(r.lines) > 0 {
 			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingBlank})
 		}
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: "shelves · biggest first", note: memoryTypeLegend(ranked)})
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: memorySectionWord, facts: memoryTypeLegend(ranked)})
 	}
 	shownShelves := min(len(ranked), memoryShelvesShown)
 	for i := 0; i < shownShelves; i++ {
@@ -176,7 +188,7 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		r.lines = append(r.lines, memoryReadingLine{
 			kind: memoryReadingShelf, shelf: key,
 			label: mark + " " + memoryShelfName(shelf.shelf) + " · " + groupedInt(shelf.count),
-			note:  memoryShelfNote(shelf.shelf, newToday), age: sinceAt(newest, now),
+			facts: memoryShelfFacts(shelf.shelf, newToday), age: sinceAt(newest, now),
 		})
 		if !open[key] {
 			continue
@@ -188,7 +200,8 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 			r.lines = append(r.lines, memoryReadingLine{
 				kind: memoryReadingMemory, shelf: key, memory: &copy,
 				label: tokens.GlyphProseBullet + " " + memory.Title,
-				note:  memoryTypeWord(memory.Type), help: memoryHelp(memory, now), age: sinceAt(memory.UpdatedAt, now),
+				facts: []rowField{rowSay(memoryTypeWord(memory.Type)), rowSay(memoryHelp(memory, now))},
+				age:   sinceAt(memory.UpdatedAt, now),
 			})
 		}
 		if more := len(shelf.lines) - shown; more > 0 {
@@ -201,6 +214,43 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 	if r.teach {
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFooter})
 	}
+	return r
+}
+
+// wrapped is this reading with its TEACHING PROSE laid out for a frame of this
+// width: one line per drawn row, held to the same reading measure every other
+// place's teaching is held to ([teachMeasure], placebodies.go).
+//
+// THE PROSE USED TO BE CUT WITH AN ELLIPSIS AND NOT WRAPPED. At 80 columns the
+// second sentence drew `I put a line in here when it looked like it would matter
+// later, and I only carr…` and its other half was simply gone — while tasks,
+// standing and spend all wrap at 76 cells and never cut. A sentence about what
+// this place is FOR is the one thing on an empty page, and half of it is worse
+// than none.
+//
+// IT IS A STEP OF ITS OWN AND NOT PART OF [readMemory] because the reading is
+// what the store said and this is what the frame can hold: one line of the
+// reading stays one drawn row, which is the law the cursor, the hit map and the
+// scroll are all built on ([memoryReading.at]).
+func (r memoryReading) wrapped(width int) memoryReading {
+	measure := width - 2
+	if measure > teachMeasure {
+		measure = teachMeasure
+	}
+	if measure < 1 {
+		return r
+	}
+	out := make([]memoryReadingLine, 0, len(r.lines)+len(memoryTeaching))
+	for _, line := range r.lines {
+		if line.kind != memoryReadingProse {
+			out = append(out, line)
+			continue
+		}
+		for _, part := range wrap(line.label, measure) {
+			out = append(out, memoryReadingLine{kind: memoryReadingProse, label: part})
+		}
+	}
+	r.lines = out
 	return r
 }
 
@@ -226,26 +276,47 @@ func memoryShelfName(shelf store.MemoryShelf) string {
 	return shelf.Label
 }
 
-func memoryTypeLegend(shelves []rankedMemoryShelf) string {
+// memorySectionWord names the shelves, and it is the IDENTITY of that row: the
+// two words that say what everything under them is. It is never the half that
+// is cut.
+const memorySectionWord = "shelves · biggest first"
+
+// memoryTypeLegend is what the shelves are made of, as RANKED FACTS rather than
+// one joined string.
+//
+// THE HEADING WAS LOSING TO ITS OWN LEGEND. The row was laid out by reserving
+// every cell the legend asked for and fitting the heading into what was left, so
+// at 80 columns it read `shelves · …` beside `fact 7 · preference 2 · decision 2
+// · correction 1 · project state 1` — the identity spent to keep a count of
+// correction memories, which is rowfit's law 1 inverted. As fields the kinds
+// fall off the end one at a time, biggest first, and the heading never loses a
+// cell.
+func memoryTypeLegend(shelves []rankedMemoryShelf) []rowField {
 	counts := map[string]int{}
 	for _, shelf := range shelves {
 		for kind, count := range shelf.shelf.ByType {
 			counts[kind] += count
 		}
 	}
-	var parts []string
-	for _, kind := range []string{store.MemoryFact, store.MemoryPreference, store.MemoryDecision, store.MemoryCorrection, store.MemoryProjectState} {
+	kinds := []string{store.MemoryFact, store.MemoryPreference, store.MemoryDecision, store.MemoryCorrection, store.MemoryProjectState}
+	// BIGGEST FIRST, which is what the heading beside it promises. The kind
+	// order above is the store's own and breaks a tie, so two kinds with the
+	// same count are always drawn in the same order.
+	sort.SliceStable(kinds, func(i, j int) bool { return counts[kinds[i]] > counts[kinds[j]] })
+	fields := make([]rowField, 0, len(kinds))
+	for _, kind := range kinds {
 		if counts[kind] > 0 {
-			parts = append(parts, memoryTypeWord(kind)+" "+groupedInt(counts[kind]))
+			fields = append(fields, rowSay(memoryTypeWord(kind)+" "+groupedInt(counts[kind])))
 		}
 	}
-	return strings.Join(parts, " · ")
+	return fields
 }
 
-func memoryShelfNote(shelf store.MemoryShelf, newToday int) string {
-	kinds := store.MemoryShelfTypes(shelf)
-	parts := []string{}
-	if len(kinds) > 0 {
+// memoryShelfFacts is what is known about one shelf, ranked: what it is mostly
+// made of, and how much of it arrived today.
+func memoryShelfFacts(shelf store.MemoryShelf, newToday int) []rowField {
+	fields := make([]rowField, 0, 2)
+	if kinds := store.MemoryShelfTypes(shelf); len(kinds) > 0 {
 		kind := kinds[0]
 		for _, candidate := range kinds[1:] {
 			if shelf.ByType[candidate] > shelf.ByType[kind] {
@@ -255,12 +326,12 @@ func memoryShelfNote(shelf store.MemoryShelf, newToday int) string {
 		if shelf.ByType[kind] != 1 {
 			kind = memoryTypePlural(kind)
 		}
-		parts = append(parts, "mostly "+memoryTypeWord(kind))
+		fields = append(fields, rowSay("mostly "+memoryTypeWord(kind)))
 	}
 	if newToday > 0 {
-		parts = append(parts, groupedInt(newToday)+" new today")
+		fields = append(fields, rowSay(groupedInt(newToday)+" new today"))
 	}
-	return strings.Join(parts, " · ")
+	return fields
 }
 
 // memoryTypeWord is a memory's kind as a PERSON reads it. The store spells one
@@ -278,14 +349,24 @@ func memoryTypePlural(kind string) string {
 	return kind + "s"
 }
 
+// memoryHelp is HOW ONE MEMORY HAS DONE, in the words this page uses for it.
+//
+// `let go` AND `replaced` ARE TWO DIFFERENT THINGS AND SAID SO. Both statuses
+// answered `let go`, and the count on the head line added them together, so one
+// phrase carried two facts on one screen: a line somebody asked to be forgotten,
+// and a line the machine retired on its own because something newer contradicted
+// it. The second is the riskier of the two and the manual has a whole section
+// about it ("Why did it say superseded?" — a memory **replaced by one that
+// contradicts it**), which is where this word comes from. The head counts them
+// apart for the same reason ([memoryCounts]).
 func memoryHelp(memory store.Memory, now time.Time) string {
 	switch memory.Status {
 	case store.MemoryForgotten:
 		// The store keeps no reason or author for this transition, so "you
 		// corrected it" would turn an unknown origin into a person-facing fact.
-		return "let go"
+		return memoryLetGoWord
 	case store.MemorySuperseded:
-		return "let go"
+		return memoryReplacedWord
 	}
 	if memory.UseCount == 0 && memory.MissCount == 0 {
 		if age := sinceAt(memory.UpdatedAt, now); age != "" {
@@ -324,56 +405,69 @@ func (r memoryReading) rows(width int, pal palette) []string {
 	for _, line := range r.lines {
 		switch line.kind {
 		case memoryReadingProse:
-			rows = append(rows, pal.dim(fit(line.label, width)))
+			// THE PROSE HANGS FROM THE BODY'S OWN COLUMN, which is one cell in —
+			// where tasks, standing and spend all hang theirs (placebodies.go's
+			// [placeTeachRows]). This page started at column 1, so walking the bar
+			// left to right the body stepped sideways.
+			rows = append(rows, " "+pal.dim(fit(line.label, width-1)))
 		case memoryReadingBlank:
 			if len(rows) > 0 && rows[len(rows)-1] != "" {
 				rows = append(rows, "")
 			}
 		case memoryReadingHeader:
-			left := memoryCounts(r.held, r.shelves, r.letGo)
-			rows = append(rows, memoryJoin(pal.ink(left), pal.dim("type to filter"), "type to filter", width))
+			left := memoryCounts(r.held, r.shelves, r.letGo, r.replaced)
+			rows = append(rows, memoryJoin(pal.ink(left), pal.dim(memoryFilterWord), memoryFilterWord, width))
 		case memoryReadingSection:
-			rows = append(rows, memoryJoin(pal.muted(line.label), pal.dim(line.note), line.note, width))
+			// THE HEADING IS WHOLE AND THE LEGEND IS A PREFIX OF ITSELF. The
+			// legend is fitted to what the heading leaves rather than the other
+			// way round, so a kind falls off the end before the two words that
+			// say what the section is lose a cell (rowfit's law 1).
+			legend := rowTail(line.facts, width-ansi.StringWidth(line.label)-memoryGutter)
+			rows = append(rows, memoryJoin(pal.muted(line.label), pal.dim(legend), legend, width))
 		case memoryReadingShelf:
-			middle := line.note
-			if middle != "" {
-				middle = "  " + middle
-			}
-			rows = append(rows, memoryThree(pal.muted(line.label), pal.dim(middle), pal.dim(line.age), line.label, middle, line.age, width))
+			rows = append(rows, memoryRow(pal.muted, line, pal, width))
 		case memoryReadingMemory:
-			// THE KIND IS A SEPARATE COLUMN AND HAS TO LOOK LIKE ONE. It was
-			// concatenated straight onto the title, so a line read
-			// `not tabscorrection` — two facts run together into a word that is
-			// neither. The lead is the shelf row's own two cells, above.
-			note := line.note
-			if note != "" {
-				note = "  " + note
-			}
-			if width >= 80 && line.help != "" {
-				note += "  " + line.help
-			}
 			paintLabel := pal.ink
 			if line.memory != nil && line.memory.Status != store.MemoryActive {
 				// There is no strike paint in this palette, so history takes the
 				// documented fallback and recedes instead of borrowing a raw style.
 				paintLabel = pal.dim
 			}
-			rows = append(rows, memoryThree(paintLabel(line.label), pal.dim(note), pal.dim(line.age), line.label, note, line.age, width))
+			rows = append(rows, memoryRow(paintLabel, line, pal, width))
 		case memoryReadingFold:
 			rows = append(rows, pal.dim(fit(line.label, width)))
 		case memoryReadingFooter:
-			text := memoryCounts(r.held, 0, r.letGo)
+			text := memoryCounts(r.held, 0, r.letGo, r.replaced)
 			if text != "" {
 				text += " · "
 			}
 			text += "nothing here is a setting, all of it is editable"
-			rows = append(rows, pal.dim(fit(text, width)))
+			rows = append(rows, " "+pal.dim(fit(text, width-1)))
 		}
 	}
 	return rows
 }
 
-func memoryCounts(held, shelves, letGo int) string {
+// memoryFilterWord is the head row's right field, and it is a key rather than a
+// fact — the one thing typing on this page does.
+const memoryFilterWord = "type to filter"
+
+// memoryLetGoWord and memoryReplacedWord are the two words for a memory that is
+// no longer held, and they are constants because the COUNT on the head line and
+// the TAG on a row have to be the same word for the same thing. They were not:
+// the head added the two states together under `let go` while a row wore `let
+// go` for either of them, so one phrase meant two things on one screen.
+const (
+	memoryLetGoWord    = "let go"
+	memoryReplacedWord = "replaced"
+)
+
+// memoryGutter is the least air between a row's identity and the facts drawn at
+// the other end of it. It is two cells and not one, because this page draws its
+// pairs far apart and a single space between them reads as a sentence.
+const memoryGutter = 2
+
+func memoryCounts(held, shelves, letGo, replaced int) string {
 	var parts []string
 	if held > 0 {
 		parts = append(parts, groupedInt(held)+" held")
@@ -382,7 +476,10 @@ func memoryCounts(held, shelves, letGo int) string {
 		parts = append(parts, groupedInt(shelves)+" shelves")
 	}
 	if letGo > 0 {
-		parts = append(parts, groupedInt(letGo)+" let go")
+		parts = append(parts, groupedInt(letGo)+" "+memoryLetGoWord)
+	}
+	if replaced > 0 {
+		parts = append(parts, groupedInt(replaced)+" "+memoryReplacedWord)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -400,15 +497,51 @@ func memoryJoin(left, paintedRight, plainRight string, width int) string {
 	return left + strings.Repeat(" ", max(1, gap)) + paintedRight
 }
 
-func memoryThree(paintedLeft, paintedMiddle, paintedRight, plainLeft, plainMiddle, plainRight string, width int) string {
-	rightWidth := ansi.StringWidth(plainRight)
-	if rightWidth > 0 && rightWidth+2 < width {
-		bodyWidth := width - rightWidth - 2
-		body := fit(paintedLeft+paintedMiddle, bodyWidth)
-		gap := width - ansi.StringWidth(body) - rightWidth
-		return body + strings.Repeat(" ", max(1, gap)) + paintedRight
+// memoryRow is ONE LIST ROW of this place, laid out by rowfit's law rather than
+// by hand.
+//
+// WHAT IT REPLACES. The row was three fields glued together — the label, then
+// two spaces, then a joined note, then two more spaces, then the help — while
+// every clause built for those same rows joined with ` · `. So one line carried
+// two separator grammars and the only separator on it meant two different
+// things: reading `· Ships on Fridays  fact  let go`, nobody can tell where the
+// memory's own words stop and the machine's facts about it start. The two spaces
+// were themselves the fix for a worse run-together (`not tabscorrection`), so the
+// column idea was right and the grammar simply was not carried through.
+//
+// NOW IT IS THE IDENTITY WHOLE, then the facts as a ranked prefix joined by the
+// one separator, then the age at the right. A fact that will not fit is dropped
+// whole — which is also how the help clause stopped needing a `width >= 80` of
+// its own.
+func memoryRow(paintLabel func(string) string, line memoryReadingLine, pal palette, width int) string {
+	room := width
+	age := ansi.StringWidth(line.age)
+	if age > 0 {
+		room -= age + memoryGutter
 	}
-	return fit(paintedLeft+paintedMiddle, width)
+	name, tail := memoryHalves(line.label, line.facts, room)
+	painted, spent := paintLabel(name), ansi.StringWidth(name)
+	if tail != "" {
+		painted += pal.dim(rowSep + tail)
+		spent += ansi.StringWidth(rowSep) + ansi.StringWidth(tail)
+	}
+	if line.age == "" {
+		return painted
+	}
+	return painted + strings.Repeat(" ", max(1, width-spent-age)) + pal.dim(line.age)
+}
+
+// memoryHalves is [rowPlan.fit] with this page's own gutter: the identity, cut
+// only where the row cannot hold it alone, and then as many facts as the rest of
+// the room takes. A name that HAD to be cut takes the whole row, because a row
+// whose title is already an ellipsis has spent the one thing it was drawn to
+// say.
+func memoryHalves(label string, facts []rowField, room int) (string, string) {
+	name, cut := rowTrim(label, room, false)
+	if cut || len(facts) == 0 {
+		return name, ""
+	}
+	return name, rowTail(facts, room-ansi.StringWidth(name)-ansi.StringWidth(rowSep))
 }
 
 func (r memoryReading) at(i int) (memoryStop, bool) {

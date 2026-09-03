@@ -170,10 +170,34 @@ with the second rule it was the only user of) · test
 160x50) → after `help-firstrun-after.{160x50,120x40,80x24,60x30}.txt` (column 43, which is
 the greeting's)
 
+**Rows 11 and 12, memory's half — the teaching wraps, and it hangs from the body's own
+column.** Memory's three sentences went through `fit`, so at 80 columns the second one drew
+`…and I only carr…` and its other half was simply gone; and they started at column 1 where
+tasks, standing and spend all start at column 2. The prose is WRAPPED INTO THE READING now
+(`memoryReading.wrapped`, at the same `teachMeasure` every other place's teaching uses) rather
+than cut on the way out, so one line of the reading is still one drawn row — which is the law
+the cursor, the hit map and the scroll are built on — and `memoryPlace.remeasure` re-lays it
+when the frame changes, keeping the cursor on the thing it was standing on. Every prose row
+and the footer take the body's one-cell lead.
+Files: `internal/tui3/memoryplace.go`, `internal/tui3/place_memory.go`.
+Test: `TestTheMemoryTeachingWrapsAndHangsFromTheBodysColumn`
+(`internal/tui3/spendmemwords_test.go`) — at 60, 80, 120 and 160 no row is over the frame, no
+row ends in an ellipsis, every row hangs from column 2, and the longest sentence survives
+whole across the lines it took.
+Frames: `frames/spendmem-memory-empty-after.{160x50,120x40,80x24,60x30}.txt` against
+`spendmem-memory-empty.*.txt`.
+**Search's half of both rows is untouched** — `searchplace.go` and `place_search.go` are not
+this lane's files.
+
+**Row 2's foot, checked rather than changed.** `placeSpend.hint` already names
+`enter opens what spent it · → the limits · shift+←→ move the days`, and after this lane's
+row 17 the `enter` it promises is true on the loudest-day row as well as on the rows under
+*what it was for*.
+
 ### Not this lane
 
-Rows 7, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22 and 23 were outside the brief and are
-untouched. Two of them are worth a note for whoever takes them:
+Rows 7, 13, 14, 16, 17, 18, 19, 20, 21, 22 and 23 are untouched; 11 and 12 are half done
+(memory's half is above, search's is not this lane's). Two of them are worth a note for whoever takes them:
 
 - **Row 19** is now half done. Memory's teaching-state foot is fixed here (row 9's other
   half); tasks' and standing's are not, and both live in files this lane was told not to
