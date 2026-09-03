@@ -480,3 +480,56 @@ func TestADeliveryThatBrokeARuleThePersonSetIsNotWhole(t *testing.T) {
 		t.Fatal("an ordinary passing delivery stopped being whole")
 	}
 }
+
+// A RECEIPT SAYS WHY A RUN STOPPED AND NEVER WHETHER IT LANDED. It is the one
+// positive sentence a gate can write, and letting it decide Whole would make the
+// harness able to talk itself out of every finding it raises — the failure the
+// governor's own refusal was rewritten to avoid.
+func TestAReceiptDoesNotDecideWhetherADeliveryIsWhole(t *testing.T) {
+	// The two receipts, on a gate that is short in the two ways that matter.
+	for _, short := range []DeliveryGate{
+		{Pass: false, Gap: "the answer names no file", Receipt: "the request was met as stated"},
+		{Pass: true, Unreadable: true, Receipt: "checked by tests, coverage not measured"},
+		{Pass: true, Unexercised: []string{"RichLog honours expand=True"},
+			Receipt: "the request was met as stated"},
+	} {
+		if short.Whole() {
+			t.Errorf("a receipt talked a short delivery into whole: %#v", short)
+		}
+	}
+	// And it takes nothing away from a delivery that already was whole.
+	whole := DeliveryGate{Pass: true, Receipt: "the request was met as stated"}
+	if !whole.Whole() {
+		t.Error("a receipt cost a passing gate its own verdict")
+	}
+}
+
+// And both positive fields survive the journal, because a receipt nobody can
+// read is a receipt that was never issued.
+func TestTheReceiptAndWhatIsMissingReachTheJournal(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "job", Brief: "run the command and report the line", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1", Intent: "run it and report"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("job", DeliveryGate{Pass: true,
+		Receipt: "the request was met as stated",
+		Missing: "report the final line it prints"}); err != nil {
+		t.Fatal(err)
+	}
+	gate, ok, err := graph.DeliveryGateFor("job")
+	if err != nil || !ok {
+		t.Fatalf("read back: ok=%v err=%v", ok, err)
+	}
+	if gate.Receipt != "the request was met as stated" {
+		t.Errorf("the receipt did not survive the journal: %q", gate.Receipt)
+	}
+	if gate.Missing != "report the final line it prints" {
+		t.Errorf("what the request still wanted did not survive the journal: %q", gate.Missing)
+	}
+}

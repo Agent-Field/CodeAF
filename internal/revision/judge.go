@@ -428,6 +428,42 @@ type Judgment struct {
 	// names.
 	Finding string
 
+	// Receipt is the positive sentence this delivery earned, in the words the
+	// person reads: that the request was met exactly as it was stated, or that
+	// the work's own checks ran and settled while coverage could not be
+	// measured. Empty is the ordinary case and says nothing either way.
+	//
+	// IT IS THE ONE FIELD ON THIS VALUE THAT IS NOT A COMPLAINT. Everything
+	// else here names something wanting, and a run that ends because the thing
+	// asked for is in hand had no way to say so — so "the plan ran out" and
+	// "the request was met" reached the person as the same silence, and the
+	// silence was spelled `partial`. It is deliberately NOT read by
+	// store.DeliveryGate.Whole: a receipt says why the run stopped, and whether
+	// the delivery is whole is still settled by the pass, the repair and the
+	// world-doors exactly as it was.
+	Receipt string
+
+	// RequestAsked says the one question — is this request, as the person wrote
+	// it, satisfied by what is in hand — has already been put for this verdict.
+	//
+	// It travels because the question has two doors and one price. The gate's
+	// caller asks before it buys a repair round; the extension door asks before
+	// it buys a remainder; and a gate that asked and was told no must not pay
+	// for the same answer twice on the way to the same conclusion. See
+	// RequestMet, and satisfied.go for the whole of it.
+	RequestAsked bool
+
+	// Request is that question, carried as the ability to ask it.
+	//
+	// A FUNC ON A VALUE IS UNUSUAL HERE AND IT IS THE CHEAPER OF TWO EVILS. The
+	// question needs a model client and a settings object; the two doors are in
+	// two packages and only the gate's caller holds either; and the alternative
+	// was widening ExtendForGap's signature at every call site — including six
+	// in tests — for a door that today has exactly one caller. Nil is the
+	// ordinary case and means this verdict cannot ask, which is how every
+	// caller that never set it already behaves.
+	Request RequestQuestion
+
 	// Fallback says this verdict was reached under the CLAIM contract after the
 	// tree contract could not be answered — free text where there were enums —
 	// or that the mechanical gate settled it after no verdict could be read at
@@ -1279,8 +1315,8 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// And the other half of the same question, derived the same way and for the
 	// same reason: WHICH behaviour this verdict was held to, or that there was
 	// no list to hold it to. See heldPointWords.
-	judgment.HeldPoint = heldPointWords(evidence,
-		Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done},
+	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	judgment.HeldPoint = heldPointWords(evidence, grounds,
 		newBounds(options).budget(DeliverablePrompt), judgment)
 	// AND A REFUSAL THAT QUOTES A RULE THE PERSON SET IS A BROKEN RULE, WHOEVER
 	// REACHED IT. The mechanical door settles the two readings arithmetic can
@@ -1289,6 +1325,17 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// It is stamped here, at the one exit, above every reader that decides what a
 	// round may be bought for. See ConstraintQuoted.
 	judgment = ConstraintQuoted(judgment, evidence.Constraints)
+	// AND THE ONE QUESTION THIS VERDICT CAN STILL BE ASKED IS BOUND HERE, ONCE,
+	// FOR THE SAME REASON EVERYTHING ELSE ABOVE IS.
+	//
+	// The question needs a model client, and only this function's caller has
+	// one — so a field left for some later caller to fill in is a field nothing
+	// fills in, and `ExtendForGap`'s door was dead wiring on every caller that
+	// is not the chat surface. Bound at the one exit every verdict in this
+	// program leaves through, it is live for all of them and there is nothing
+	// left for a constructor to forget. Nil where there is no client, which is
+	// how a caller that cannot ask already behaves. See satisfied.go.
+	judgment.Request = requestQuestion(settings, client, node, grounds, deliverable, evidence)
 	return judgment
 }
 
@@ -1864,6 +1911,16 @@ func citationKey(text string) string { return strings.Join(strings.Fields(text),
 // would be told.
 type Extension struct {
 	Spliced int
+	// Met says the one question was put at this door and came back yes: the
+	// request, as the person wrote it, is satisfied by what is in hand, so no
+	// remainder was bought and none was owed. Refused then carries the receipt
+	// rather than a refusal, and Unclosed is false — the gap did not survive,
+	// it was answered.
+	//
+	// The gate's own caller asks the same question one door earlier and passes
+	// the delivery there, so it never sees this. It is here for the callers
+	// that reach the extension without going through that door.
+	Met bool
 	// Quote is the citations as one line, and Citations is the list the
 	// admission rule actually weighed. They travel together for the same reason
 	// they do on a Judgment: the ledger that bounds the next round reads the
@@ -2013,6 +2070,15 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// direction here is to try, because the alternative is the defect this whole
 	// change is about: eight runs that stopped at a tenth of their wall by
 	// choice. See PERF.md and docs/design/gate/SETTLEMENT.md §3.
+	// A REQUEST ALREADY SATISFIED BUYS NO ROUND. It is asked here, before the
+	// wall is weighed and before anything is planned, because a run that has
+	// done what was asked should end saying so rather than end saying it ran out
+	// of clock. See satisfied.go: it is one call, at the one moment a round
+	// would otherwise be bought, and never where the gate's own caller has
+	// already put it.
+	if settled, met := metExtension(ctx, extension, unmet); met {
+		return settled
+	}
 	if refusal := outOfWall(ctx, node); refusal != "" {
 		extension.Refused, extension.Unclosed = refusal, true
 		return extension

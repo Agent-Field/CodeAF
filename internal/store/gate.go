@@ -264,6 +264,31 @@ type DeliveryGate struct {
 	// the work did the thing it was told not to do, and more work is not the
 	// answer to that. See revision.HoldConstraints and revision.ExtendForGap.
 	Constraint []string `json:"constraint,omitempty"`
+
+	// Receipt is the positive sentence this delivery earned, in the words the
+	// person reads: that the request was met as stated, or that the work's own
+	// checks were green and coverage could not be measured.
+	//
+	// IT IS THE OPPOSITE OF EVERY OTHER FIELD ON THIS ROW, which is why it is
+	// one. Everything else here says what a gate found wanting; a run that ends
+	// because the thing that was asked for is in hand has a fact of its own to
+	// record, and without it a delivery that stopped for the right reason and
+	// one that stopped because the rounds ran out are the same event. It is
+	// deliberately NOT read by Whole below: a receipt is a statement about why
+	// the run ended, and whether the delivery is whole is still settled by the
+	// pass, the repair and the world-doors exactly as it was.
+	Receipt string `json:"receipt,omitempty"`
+
+	// Missing is what the request asked for that the request-met question found
+	// absent, in the request's own words, on a run where that question was put
+	// and answered no.
+	//
+	// It rides beside the gap rather than inside it. The gap is the judge's
+	// finding and a repair round is briefed with it verbatim; folding a second
+	// reader's sentence into that string would hand the round a requirement
+	// nobody weighed against the person's words, which is the laundering the
+	// admission rules exist to prevent.
+	Missing string `json:"missing,omitempty"`
 }
 
 // ExercisedPoint is one row of that mapping: a behaviour the request stated and
@@ -437,7 +462,11 @@ func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	}
 	gate.Gap = bounded(gate.Gap, MaxDigestBytes)
 	gate.Quote = bounded(strings.TrimSpace(gate.Quote), MaxDigestBytes)
-	gate.Refused = bounded(gate.Refused, MaxDigestBytes)
+	gate.Refused = bounded(strings.TrimSpace(gate.Refused), MaxDigestBytes)
+	// The two positive fields are bounded like every other sentence on this row:
+	// one event may not carry an unbounded string, whichever direction it points.
+	gate.Receipt = bounded(strings.TrimSpace(gate.Receipt), MaxDigestBytes)
+	gate.Missing = bounded(strings.TrimSpace(gate.Missing), MaxDigestBytes)
 	// Per citation, not on the list as a whole. The bound exists so one event
 	// cannot carry an unbounded string, and a citation clipped to a share of a
 	// budget it does not know the size of would be clipped mid-word — which is
@@ -601,8 +630,8 @@ func (s *Store) DeliveryGateLineage(baseID string) ([]DeliveryGate, error) {
 // (docs/design/failsafe/FAILSAFE.md clause 3).
 const EventAcceptance EventKind = "acceptance"
 
-// AcceptancePoint is one behaviour the request states, and the words of the
-// request it is a reading of.
+// AcceptancePoint is one thing the request states, the words of the request it
+// is a reading of, and which of the two kinds it is.
 //
 // The store learns no more about a point than that, and deliberately: Quote is
 // what the grounding rule weighs and Behaviour is what a person reads, and the
@@ -610,6 +639,13 @@ const EventAcceptance EventKind = "acceptance"
 type AcceptancePoint struct {
 	Behaviour string `json:"behaviour"`
 	Quote     string `json:"quote"`
+	// Kind is "behaviour" or "action" — whether this point is something the
+	// finished work must be, or something the RUN does on the way. It is the
+	// classification the settlement acts on, and it is journaled so an autopsy
+	// of a run whose coverage finding fired on nothing checkable can see which
+	// way each point was read. Empty on a row written before the reading
+	// existed, which every reader takes as behaviour.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Acceptance is the whole checklist for one piece of work.

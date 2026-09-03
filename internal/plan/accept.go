@@ -31,17 +31,68 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// Point is one behaviour the request states, and the words of the request it is
-// a reading of.
+// The two kinds a point can be, and the whole reason the field exists.
 //
-// Two fields because the two are used by different readers and neither can do
-// the other's job. Behaviour is what a repair round is aimed at and what a
-// person reads in the finding; Quote is what the grounding rule weighs, and a
-// point whose quote is not the person's own words is a requirement this system
-// invented for itself and may not hold anybody to.
+// A BEHAVIOUR IS OF THE FINISHED WORK; AN ACTION IS OF THE RUN. A check can be
+// written for the first and never for the second, and the gate's coverage
+// question — which check would fail if this were absent or wrong — is only
+// askable of something a check could exist for.
+//
+// The errand that measured this asked for one command to be run and its final
+// line reported, changing no files. Its two points came back as "the command …
+// is run in this workspace" and "the final line it prints is reported", and the
+// gate asked which repository test exercises them. None can, by construction.
+// The run spent more than 97% of its money and 82% of its wall answering a
+// question that had no answer (2026-09-02, deepseek-v4-flash, twice out of two).
+const (
+	PointBehaviour = "behaviour"
+	PointAction    = "action"
+)
+
+// Point is one thing the request states, the words of the request it is a
+// reading of, and which of the two kinds it is.
+//
+// Three fields because the three are used by different readers and none can do
+// another's job. Behaviour is what a repair round is aimed at and what a person
+// reads in the finding; Quote is what the grounding rule weighs, and a point
+// whose quote is not the person's own words is a requirement this system
+// invented for itself and may not hold anybody to; Kind is what decides whether
+// a check can be looked for at all.
 type Point struct {
 	Behaviour string `json:"behaviour"`
 	Quote     string `json:"quote"`
+	// Kind is PointBehaviour or PointAction. It is omitempty and normalised to
+	// PointBehaviour when it is neither, so a point written before this field
+	// existed — a rehydrated plan, a journal row, a caller in another package —
+	// is still mapped and still counted, which is the fail-safe direction: the
+	// cost of reading an action as a behaviour is one false finding, and the
+	// cost of reading a behaviour as an action is a stated requirement nothing
+	// ever checks.
+	Kind string `json:"kind,omitempty"`
+}
+
+// Action reports that this point is something the RUN does rather than
+// something the finished work is, so nothing should look for a check for it.
+func (p Point) Action() bool { return p.Kind == PointAction }
+
+// Behaviours is the half of a checklist a check could exist for, stated once
+// here because two readers in another package need the identical answer: the
+// settlement maps these and the score line counts them.
+//
+// The other half is not dropped from the checklist — the actions are the
+// person's own words and belong on the record with everything else they asked
+// for — it is only never mapped and never named as uncovered.
+func Behaviours(points []Point) []Point {
+	held := make([]Point, 0, len(points))
+	for _, point := range points {
+		if !point.Action() {
+			held = append(held, point)
+		}
+	}
+	if len(held) == 0 {
+		return nil
+	}
+	return held
 }
 
 // Empty reports that this point says nothing that could be checked or grounded.
@@ -63,6 +114,13 @@ A behaviour is something that must be observably true of the finished work: a
 rule it must follow, a case it must handle, a transition it must make, an input
 it must accept, an outcome it must produce. One point per behaviour the request
 states, in the request's own vocabulary, short enough to read in one breath.
+
+Some of what a request asks for is not a behaviour of the finished work at all
+but an ACTION of the run: a command to run, a report to make, a file to read, a
+step to take on the way. Write those down too, with kind "action"; write a
+behaviour of the finished work with kind "behaviour". The difference decides
+whether anything goes looking for a test of it, and nothing can test an action
+that happens once and leaves nothing behind.
 
 ONE POINT PER BEHAVIOUR, NOT PER SENTENCE. A sentence that names four defaults
 states four behaviours; a clause that lists three accepted inputs states three; a
@@ -86,7 +144,7 @@ about. Those are not behaviours and nothing can check them.
 
 Answer with one bare JSON object and nothing else — no code fence around it and
 no sentence before or after it:
-{"points": [{"behaviour": "<what must be observably true>", "quote": "<the request's own words>"}]}`
+{"points": [{"behaviour": "<what must be observably true>", "quote": "<the request's own words>", "kind": "behaviour"}]}`
 
 var acceptanceSchema = json.RawMessage(`{
   "type": "object",
@@ -97,9 +155,10 @@ var acceptanceSchema = json.RawMessage(`{
         "type": "object",
         "properties": {
           "behaviour": {"type": "string"},
-          "quote": {"type": "string"}
+          "quote": {"type": "string"},
+          "kind": {"type": "string", "enum": ["behaviour", "action"]}
         },
-        "required": ["behaviour", "quote"],
+        "required": ["behaviour", "quote", "kind"],
         "additionalProperties": false
       }
     }
@@ -178,6 +237,7 @@ func NormalizeAcceptance(request string, points []Point) []Point {
 		point = Point{
 			Behaviour: strings.TrimSpace(point.Behaviour),
 			Quote:     strings.TrimSpace(point.Quote),
+			Kind:      pointKind(point.Kind),
 		}
 		if point.Empty() {
 			continue
@@ -193,6 +253,23 @@ func NormalizeAcceptance(request string, points []Point) []Point {
 		return nil
 	}
 	return clean
+}
+
+// pointKind is the kind a point is kept under, and its default is the one that
+// cannot silently drop a requirement.
+//
+// AN UNKNOWN KIND IS A BEHAVIOUR. A model that answered with a word neither
+// enum spells, a plan rehydrated from before this field existed, a caller in
+// another package building a Point by hand — all of them read as behaviour, so
+// the point is still mapped and still counted. The two mistakes are not the
+// same size: reading an action as a behaviour costs one finding nobody can
+// close, and reading a behaviour as an action costs a stated requirement that
+// nothing in the project ever checks and nobody is ever told about.
+func pointKind(kind string) string {
+	if strings.EqualFold(strings.TrimSpace(kind), PointAction) {
+		return PointAction
+	}
+	return PointBehaviour
 }
 
 // statedClauses counts the clauses of a request that say anything. It is the

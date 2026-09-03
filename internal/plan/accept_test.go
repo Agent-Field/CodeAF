@@ -160,3 +160,68 @@ func TestOneLineMayStateSeveralBehaviours(t *testing.T) {
 		t.Errorf("a line of commas afforded %d points, want 1", got)
 	}
 }
+
+// A BEHAVIOUR IS OF THE FINISHED WORK; AN ACTION IS OF THE RUN. The kind is
+// what decides whether the gate goes looking for a check, and an errand that
+// states only actions has nothing for a check to be missing from — which is the
+// whole of the false positive that ran a satisfied request into its wall.
+func TestAnActionIsKeptOnTheChecklistAndFiltersOutOfTheBehaviours(t *testing.T) {
+	request := "Run the command 'go test ./x/' in this workspace and report the final line " +
+		"it prints. Change no files."
+	kept := NormalizeAcceptance(request, []Point{
+		{Behaviour: "the command is run in this workspace", Quote: "Run the command 'go test ./x/'",
+			Kind: PointAction},
+		{Behaviour: "no file in the workspace is changed", Quote: "Change no files.",
+			Kind: PointBehaviour},
+	})
+	if len(kept) != 2 {
+		t.Fatalf("kept %d points, want both — an action is still the person's words: %#v", len(kept), kept)
+	}
+	behaviours := Behaviours(kept)
+	if len(behaviours) != 1 || behaviours[0].Behaviour != "no file in the workspace is changed" {
+		t.Fatalf("the filter kept %#v, want only the behaviour of the finished work", behaviours)
+	}
+	if Behaviours([]Point{{Behaviour: "a", Quote: "a", Kind: PointAction}}) != nil {
+		t.Error("a checklist of nothing but actions offered something to map")
+	}
+}
+
+// AN UNKNOWN KIND IS A BEHAVIOUR. A point written before this field existed, or
+// answered with a word neither enum spells, is still mapped and still counted:
+// reading an action as a behaviour costs one finding, and reading a behaviour as
+// an action costs a stated requirement nothing ever checks.
+func TestAPointWithNoKindIsReadAsABehaviour(t *testing.T) {
+	request := strings.Repeat("a line\n", 4)
+	kept := NormalizeAcceptance(request, []Point{
+		{Behaviour: "opens after five failures", Quote: "threshold = 5"},
+		{Behaviour: "closes on a probe", Quote: "cooldown = 30000", Kind: "whatever"},
+		{Behaviour: "the suite is run", Quote: "run the suite", Kind: "ACTION"},
+	})
+	if len(kept) != 3 {
+		t.Fatalf("kept %d points, want 3: %#v", len(kept), kept)
+	}
+	if kept[0].Kind != PointBehaviour || kept[1].Kind != PointBehaviour {
+		t.Fatalf("an unknown kind was not read as a behaviour: %#v", kept)
+	}
+	if kept[2].Kind != PointAction {
+		t.Fatalf("a kind the model spelled loudly was not read as an action: %#v", kept[2])
+	}
+	if len(Behaviours(kept)) != 2 {
+		t.Fatalf("the filter kept %#v", Behaviours(kept))
+	}
+}
+
+// The schema is what the model is held to, so the enum has to be in it: a kind
+// the reply may spell freely is a kind that arrives as prose.
+func TestTheAcceptanceSchemaNamesBothKinds(t *testing.T) {
+	var schema map[string]any
+	if err := json.Unmarshal(acceptanceSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(acceptanceSchema), `"enum": ["behaviour", "action"]`) {
+		t.Fatalf("the schema does not bound the kind:\n%s", acceptanceSchema)
+	}
+	if !strings.Contains(acceptancePrompt, `kind "action"`) {
+		t.Fatal("the prompt never tells the model what an action is")
+	}
+}
