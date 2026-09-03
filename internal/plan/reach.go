@@ -138,6 +138,10 @@ type reading struct {
 	Name    string
 	Bytes   int
 	Weighed bool
+	// Scoped says the words named a PART of this file rather than the file. It
+	// is what lets one node's several mentions of one file be reconciled: see
+	// narrower.
+	Scoped bool
 }
 
 // namedScope is one file name as some words spell it, together with the words
@@ -145,6 +149,9 @@ type reading struct {
 type namedScope struct {
 	Name  string
 	Scope string
+	// Marked says which of the two ways this scope was written, and the two are
+	// not read the same way when they resolve to nothing. See namedScopes.
+	Marked bool
 }
 
 // scopingMark is what turns a file name into a scoped reference: the name, then
@@ -191,6 +198,9 @@ func namedScopes(text string) []namedScope {
 		starts = append(starts, start)
 		ends = append(ends, cursor)
 	}
+	// Where the words in front of a name begin: after the name before it, or at
+	// the start of the text.
+	at := 0
 	for index := range scopes {
 		if ends[index] < 0 {
 			continue
@@ -205,8 +215,30 @@ func namedScopes(text string) []namedScope {
 		rest := text[ends[index]:stop]
 		mark := scopingMark.FindString(rest)
 		if mark == "" {
+			// NO MARK, SO THE WORDS BEFORE THE NAME ARE ITS SCOPE. A source
+			// entry is a phrase and its name is often the last thing in it —
+			// "The 30 rewritten '## Chapter N — Title' headings in HANDBOOK.md"
+			// says exactly what it reads and says it all before the file it
+			// reads it from. Measured at the plan door: read as a bare name that
+			// lane was charged the whole 84.8 KB handbook for thirty heading
+			// lines.
+			//
+			// The asymmetry with a marked scope is the safety and is deliberate.
+			// A mark is somebody saying "here comes the part I mean", so a
+			// marked scope that resolves to nothing leaves the file unweighed.
+			// Words merely standing in front of a name say no such thing, so
+			// when nothing weighable is in them the name is just a name and the
+			// file is weighed whole — which is what keeps "rewrite corpus.txt in
+			// three lanes" a statement about all of corpus.txt, and the leaf of
+			// issue #384 corrected.
+			before := strings.TrimSpace(text[at:starts[index]])
+			if strings.ContainsFunc(before, isWordRune) {
+				scopes[index].Scope = before
+			}
+			at = ends[index]
 			continue
 		}
+		at = ends[index]
 		// A MARK WITH NO WORDS AFTER IT IS NOT A SCOPE. "large.txt:" at the end
 		// of a line, or "large.txt ()", says nothing at all about which part of
 		// the file is meant, so there is nothing here to resolve and the name is
@@ -219,7 +251,14 @@ func namedScopes(text string) []namedScope {
 		if !strings.ContainsFunc(scope, isWordRune) {
 			continue
 		}
-		scopes[index].Scope = scope
+		scopes[index].Scope, scopes[index].Marked = scope, true
+		// AND A MARKED SCOPE IS NOT ALSO THE WORDS IN FRONT OF THE NEXT NAME.
+		// This name has claimed the text between it and whatever comes next, so
+		// there is nothing left standing in front of the next name — without
+		// this, "small.md: lines 1-2; huge.md" read "lines 1-2" a second time as
+		// huge.md's scope and weighed a whole over-large file as two lines of
+		// somebody else's material.
+		at = stop
 	}
 	return scopes
 }
@@ -263,14 +302,12 @@ func (r Reach) weigh(readings []reading) Measurement {
 // reading at all; a scope that resolves to no share is a reading of a file that
 // nothing could weigh, which is not the same thing and is not the same zero.
 //
-// A FILE MENTIONED MORE THAN ONCE IS WEIGHED BY THE LARGEST OF ITS MENTIONS,
-// and the mention order does not matter. A node whose sources say `register.txt:
-// lines 2-40` and, three lines later, `register.txt`, will read the whole
-// register: keeping the first mention and dropping the second made the
-// measurement a statement about the order somebody happened to write their
-// sources in, and in one of the two orders it dropped a whole over-large file.
-// A bare mention is the file, which is the largest a mention of it can be, so
-// the rule needs no special case for it.
+// A FILE MENTIONED MORE THAN ONCE IN ONE NODE IS RECONCILED BY narrower, and
+// the mention order never matters. Two scoped mentions give the larger, because
+// the node reads both. A scoped mention beside a bare one gives the SCOPED one,
+// because a node that writes the file's name and then the parts of it it reads
+// has said what it reads — the bare name is the file being named, not a claim
+// to all of it.
 func (r Reach) readings(texts ...string) []reading {
 	if !r.known() {
 		return nil
@@ -295,7 +332,15 @@ func (r Reach) readings(texts ...string) []reading {
 			mention := reading{Name: named.Name, Bytes: int(info.Size()), Weighed: true}
 			if named.Scope != "" {
 				share, resolved := scopedShare(path, info.Size(), named.Scope)
-				mention = reading{Name: named.Name, Bytes: share, Weighed: resolved}
+				switch {
+				case resolved:
+					mention = reading{Name: named.Name, Bytes: share, Weighed: true, Scoped: true}
+				case named.Marked:
+					// A marked scope nobody could resolve leaves the file
+					// unweighed. Words merely standing in front of the name fall
+					// back to the bare reading above.
+					mention = reading{Name: named.Name}
+				}
 			}
 			index, mentioned := at[named.Name]
 			if !mentioned {
@@ -303,12 +348,49 @@ func (r Reach) readings(texts ...string) []reading {
 				readings = append(readings, mention)
 				continue
 			}
-			if standing := readings[index]; !standing.Weighed || (mention.Weighed && mention.Bytes > standing.Bytes) {
-				readings[index] = mention
-			}
+			readings[index] = narrower(readings[index], mention)
 		}
 	}
 	return readings
+}
+
+// narrower reconciles two mentions of one file inside one node.
+//
+// WITHIN ONE NODE, A SCOPED MENTION NARROWS A BARE MENTION OF THE SAME FILE.
+// Measured at the plan door: a lane sourced `HANDBOOK.md ; The line '#
+// Handbook' ; The 30 rewritten '## Chapter N — Title' headings in HANDBOOK.md`,
+// and taking the largest mention charged it the whole 84.8 KB for the bare
+// first one — a veto on a lane that reads one line and thirty headings. The
+// node had already said what it reads. So a weighable scoped mention is the
+// file's share, and a bare mention is the whole file only where the node has no
+// weighable scoped mention of it.
+//
+// It is one file at a time and says nothing about a node's other files: a node
+// sourcing a bare over-large `huge.txt` beside a scoped `shared.md: lines 1-10`
+// is still weighed the whole of huge.txt, because nothing in it narrowed THAT
+// name.
+func narrower(standing, mention reading) reading {
+	standingScoped := standing.Scoped && standing.Weighed
+	mentionScoped := mention.Scoped && mention.Weighed
+	switch {
+	case mentionScoped && standingScoped:
+		if mention.Bytes > standing.Bytes {
+			return mention
+		}
+		return standing
+	case mentionScoped:
+		return mention
+	case standingScoped:
+		return standing
+	case !standing.Weighed:
+		if mention.Weighed {
+			return mention
+		}
+		return standing
+	case mention.Weighed && mention.Bytes > standing.Bytes:
+		return mention
+	}
+	return standing
 }
 
 // insideWorkspace is the one thing this pass asks of a name that the shared
@@ -492,13 +574,28 @@ func headingLinesShare(lines []string, count, rank int) int {
 // pattern — the `##` of "`## chapter N: …`" — and zero when it spells none. It
 // is the pattern's literal marks and never an inference from its words.
 func headingRankIn(scope string) int {
-	for _, match := range backticked.FindAllStringSubmatch(scope, -1) {
-		pattern := strings.TrimSpace(match[1])
+	for _, pattern := range spelledPatterns(scope) {
 		if marks := len(pattern) - len(strings.TrimLeft(pattern, "#")); marks > 0 && marks <= 6 {
 			return marks
 		}
 	}
 	return 0
+}
+
+// spelledPatterns are the spans a scope writes a pattern or a heading out in.
+// Backticks are the convention a source list is usually written with and single
+// quotes are the one a model reaches for when it is writing prose — "the 30
+// rewritten '## Chapter N — Title' headings" — and reading only the first left
+// that scope with no rank, which charged the lane the file's `# Handbook` title
+// beside twenty-nine of the thirty headings it actually named.
+func spelledPatterns(scope string) []string {
+	var patterns []string
+	for _, span := range []*regexp.Regexp{backticked, singleQuoted} {
+		for _, match := range span.FindAllStringSubmatch(scope, -1) {
+			patterns = append(patterns, strings.TrimSpace(match[1]))
+		}
+	}
+	return patterns
 }
 
 // namedBlockShare finds the heading the scope spells and returns what the scope
@@ -540,8 +637,8 @@ func namedBlockShare(lines []string, size int, scope string) int {
 		was := labels[label]
 		labels[label] = mention{line: was.line || asLine, section: was.section || plain}
 	}
-	for _, match := range backticked.FindAllStringSubmatch(scope, -1) {
-		note(headingKey(match[1]))
+	for _, pattern := range spelledPatterns(scope) {
+		note(headingKey(pattern))
 	}
 	for _, match := range capitalised.FindAllString(scope, -1) {
 		note(headingKey(match))
@@ -667,9 +764,10 @@ var (
 	// The unit noun may sit a few words after the count — "1,160 North records",
 	// "all 30 `## chapter N: …` heading lines" — so a bounded, ungreedy run of
 	// words is allowed between them and the nearest unit wins.
-	lineCount    = regexp.MustCompile(`(?i)\b(\d[\d,]*)(?:\s+\S+){0,6}?\s+(?:records?|rows?|entries|entry|lines?|items?)\b`)
+	lineCount    = regexp.MustCompile(`(?i)\b(\d[\d,]*)(?:\s+\S+){0,6}?\s+(?:records?|rows?|entries|entry|lines?|items?|headings?)\b`)
 	headingCount = regexp.MustCompile(`(?i)\bheadings?\b`)
 	backticked   = regexp.MustCompile("`([^`]{1,80})`")
+	singleQuoted = regexp.MustCompile(`'([^']{1,80})'`)
 	capitalised  = regexp.MustCompile(`\b[A-Z][A-Za-z0-9'-]{2,}\b`)
 	bareLabel    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _'-]{0,60}$`)
 )

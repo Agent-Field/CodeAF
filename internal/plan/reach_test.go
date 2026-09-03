@@ -514,34 +514,114 @@ func TestThreeLanesNamingOneFileBareUnderAtomicSizingsAreNeverVetoed(t *testing.
 // order somebody wrote their sources in is not a measurement. Keeping the first
 // mention dropped a whole over-large file whenever a scoped line happened to be
 // written above a bare one.
+// TWO SCOPED MENTIONS OF ONE FILE GIVE THE LARGER, and the order somebody wrote
+// their sources in is not a measurement. The node reads both regions, so the
+// wider of them is the floor under what it will hold.
 func TestAFileMentionedTwiceIsWeighedByItsLargestMention(t *testing.T) {
 	dir, register := registerWorkspace(t)
 	reach := ReachFor(dir, 0)
+	wide := reach.Measure("register.txt: lines 2-1161").Bytes
+	narrow := reach.Measure("register.txt: lines 2-40").Bytes
+	if wide <= narrow || narrow == 0 {
+		t.Fatalf("the two ranges of a %d-byte register measured %d and %d", register, wide, narrow)
+	}
 	for _, sources := range [][]string{
-		{"register.txt: lines 2-40", "register.txt"},
-		{"register.txt", "register.txt: lines 2-40"},
+		{"register.txt: lines 2-40", "register.txt: lines 2-1161"},
+		{"register.txt: lines 2-1161", "register.txt: lines 2-40"},
 	} {
 		measurement := reach.Measure(sources...)
 		if measurement.Files != 1 {
 			t.Fatalf("%v measured %d files", sources, measurement.Files)
 		}
-		if measurement.Bytes != register {
-			t.Fatalf("%v measured %d bytes, want the whole %d-byte register",
-				sources, measurement.Bytes, register)
+		if measurement.Bytes != wide {
+			t.Fatalf("%v measured %d bytes, want the wider range's %d", sources, measurement.Bytes, wide)
 		}
 	}
-	// And a node whose whole-file mention sits under a scoped one is corrected
-	// exactly as one whose sources say nothing else.
-	graph := &Graph{Goal: "the register", NextID: 1, Workspace: dir}
-	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "The register",
-		Summary: "settle the register", Sources: []string{"register.txt: lines 2-40", "register.txt"}})
+}
+
+// WITHIN ONE NODE, A SCOPED MENTION NARROWS A BARE MENTION OF THE SAME FILE.
+// Measured at the plan door on the handbook brief: the lane that builds the
+// contents section wrote its sources as the file, then the line it inserts
+// under, then the headings it lists — and taking the largest mention charged it
+// the whole 84.8 KB for the bare first one, vetoing a lane that reads one line
+// and thirty headings. A node that writes the file's name and then the parts of
+// it it reads has said what it reads.
+func TestAScopedMentionNarrowsABareMentionOfTheSameFile(t *testing.T) {
+	dir, handbook := handbookWorkspace(t)
+	sources := []string{
+		"HANDBOOK.md",
+		"The line '# Handbook'",
+		"The 30 rewritten '## Chapter N — Title' headings in HANDBOOK.md",
+	}
+	measurement := ReachFor(dir, 0).Measure(sources...)
+	if !measurement.Taken() {
+		t.Fatalf("the lane measured nothing: %+v", measurement)
+	}
+	if measurement.Bytes >= handbook/8 || measurement.Exceeds() {
+		t.Fatalf("a lane over one line and thirty headings measured %d bytes of a %d-byte handbook",
+			measurement.Bytes, handbook)
+	}
+	// It is the thirty heading lines, read as lines: the second source names no
+	// file at all, so nothing is attributed to it.
+	headings := 0
+	for _, line := range strings.SplitAfter(readFile(t, dir, "HANDBOOK.md"), "\n") {
+		if strings.HasPrefix(line, "## chapter ") {
+			headings += len(line)
+		}
+	}
+	if measurement.Bytes != headings {
+		t.Fatalf("the lane measured %d bytes, want the %d its thirty headings weigh", measurement.Bytes, headings)
+	}
+
+	// And it is not corrected, whatever the ruler said about it — the correction
+	// has nothing to correct.
+	for _, sizing := range []string{"atomic", "borderline"} {
+		graph := &Graph{Goal: "the contents section", NextID: 1, Workspace: dir}
+		graph.Add(Node{Kind: KindWork, Stage: 1, Title: "Contents",
+			Summary: "insert the contents section", Sources: sources})
+		if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+			{Node: 1, Size: sizing},
+		}}}); err != nil {
+			t.Fatal(err)
+		}
+		if got := graph.Node(1); got.BeyondReach || got.Undivided == RefusalBeyondReach {
+			t.Fatalf("a %s contents lane came back %q/%q/%v", sizing, got.Size, got.Undivided, got.BeyondReach)
+		}
+	}
+
+	// The bare name on its own is untouched: it names the file and the file is
+	// what it weighs, which is the guarantee from issue #384.
+	if got := ReachFor(dir, 0).Measure("HANDBOOK.md"); got.Bytes != handbook {
+		t.Fatalf("the bare name measured %d bytes of a %d-byte file", got.Bytes, handbook)
+	}
+	// And narrowing is one file at a time: a bare over-large name beside a
+	// scoped mention of a DIFFERENT file is still the whole of that file — in
+	// two source entries, and in one, where the risk is that the first name's
+	// scope is read a second time as the words standing in front of the second.
+	register, whole := registerWorkspace(t)
+	beside := ReachFor(register, 0)
+	for _, sources := range [][]string{
+		{"register.txt", "CONVENTIONS.md: lines 2-4"},
+		{"CONVENTIONS.md: lines 2-4, then register.txt"},
+		{"CONVENTIONS.md: lines 2-4; register.txt"},
+	} {
+		measurement := beside.Measure(sources...)
+		if measurement.Bytes <= whole {
+			t.Fatalf("%v measured %d bytes, want more than the whole %d-byte register",
+				sources, measurement.Bytes, whole)
+		}
+	}
+	// And the node alone over it is corrected, which is what that leak cost.
+	graph := &Graph{Goal: "the register", NextID: 1, Workspace: register}
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "The register", Summary: "settle it",
+		Sources: []string{"CONVENTIONS.md: lines 2-4; register.txt"}})
 	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
 		{Node: 1, Size: "atomic"},
 	}}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := graph.Node(1); got.Size != SizeOversized || got.Undivided != RefusalBeyondReach {
-		t.Fatalf("a node reading the whole register was sized %q/%q", got.Size, got.Undivided)
+	if got := graph.Node(1); !got.BeyondReach || got.Undivided != RefusalBeyondReach {
+		t.Fatalf("a node alone over the register came back %q/%q/%v", got.Size, got.Undivided, got.BeyondReach)
 	}
 }
 

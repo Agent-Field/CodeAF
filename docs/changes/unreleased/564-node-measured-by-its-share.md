@@ -4,7 +4,7 @@ title: a node is measured by the material it will read, not the file its words m
 pr: 564
 surface: [engine]
 invalidates:
-  - "a node that names a file is measured by that whole file's size — no longer true. A bare file name still weighs the whole file, but a name followed by a scoping mark weighs only the material selected by a line range, heading count, record or line count, or named block or heading."
+  - "a node that names a file is measured by that whole file's size — no longer true. A bare file name weighs the whole file only where the node scopes that file nowhere; a name a source scopes — by a mark and the words after it, or by the words in front of it — weighs only the material selected by a line range, a heading count, a record or line count, or a named block, heading or heading line."
   - "the split judgment takes its own reading of what a node names — no longer true. `correctBeyondReach` computes the measurement and the division exemption once and stores the answer on `Node.BeyondReach`; `JudgeSplit` reads that field and never measures. A node that was never measured carries false and every branch answers as it did before the measurement existed."
   - "a correctly divided lane over a shared file can be corrected beyond reach because the file is larger than one worker's window — no longer true. `correctBeyondReach` never overrules an atomic node that names a file a sibling work node — one under the same parent — names too, whether the source scopes the file or names it bare; material no sibling names is still weighed on its own, so a node alone in naming a whole file past the window is still corrected and still journals `RefusalBeyondReach`."
   - "the planner's reach measurement exists only on #425's branch — no longer true. Its corrected core is on `dev`; #425 rebases on it and retains the spine, grounding, and prompt half."
@@ -35,9 +35,14 @@ rank-one title over lower-ranked sections) is not a share reading at all: it has
 said nothing narrower than the file, so it is left unmeasured rather than
 charged whole through a scope. A
 scoping mark with no words after it is not a scope, and the name stands bare. A
-file mentioned more than once is weighed by the largest of its mentions, so the
-order the sources were written in is not a measurement. Anything else is not
-measured, and a file nothing could weigh is still a file the node names.
+file mentioned more than once inside one node is reconciled rather than summed,
+and the order the sources were written in is never a measurement: two scoped
+mentions give the larger, and a scoped mention NARROWS a bare mention of the
+same file, because a node that writes a file's name and then the parts of it it
+reads has said what it reads. A bare name weighs the whole file where the node
+scopes it nowhere, which is one file at a time — a bare over-large name beside
+another file's scope is still weighed whole. Anything else is not measured, and
+a file nothing could weigh is still a file the node names.
 
 `correctBeyondReach` does not overrule an atomic node that is a lane of a
 division, and the signature of a division is that a sibling work node — one
