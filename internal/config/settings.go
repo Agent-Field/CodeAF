@@ -937,6 +937,22 @@ var OperatorEnvPins = []string{
 	// somebody should have to make on purpose, in a shell, for one run.
 	"AFORGE_CALL_LOG",
 	"AFORGE_CALL_LOG_BODIES",
+	// THE DEBUG RECORD'S SWITCH AND ITS TWO CEILINGS (internal/trace).
+	// AFORGE_DEBUG turns on the full record of a run — the bodies of its model
+	// calls, its tool calls and the choices it made, in one folder per run under
+	// the state root — and it is the same switch as `--debug` on chat, do and
+	// exec and as `/debug` inside a conversation. AFORGE_CALL_LOG_BODIES above
+	// means the same thing for one release, which is why it is written beside
+	// this one rather than anywhere else. AFORGE_TRACE_MAX_MB moves what one
+	// run's folder may hold and AFORGE_TRACE_KEEP how many run folders survive.
+	//
+	// All three are plumbing for exactly the reason the bodies pin is: what they
+	// record is the person's own prompts and files, and a sheet row offering to
+	// keep all of that is not a preference — it is a decision somebody should
+	// have to make on purpose, in a shell, for one run.
+	"AFORGE_DEBUG",
+	"AFORGE_TRACE_MAX_MB",
+	"AFORGE_TRACE_KEEP",
 	"AFORGE_MODELS",
 	"AFORGE_REASONING",
 	"AFORGE_EXEC_REASONING",

@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 // `aforge do` is one errand, start to finish, with nobody watching.
@@ -194,9 +195,22 @@ func runDo(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0,
 		"tokens every call keeps free for its answer and its reasoning (default 65536); "+
 			"sets AFORGE_COMPLETION_RESERVE for this run")
+	debug := flags.Bool("debug", false,
+		"keep the full record of this errand — call bodies, tool calls and the choices made — "+
+			"in a folder of its own under the state root (env AFORGE_DEBUG)")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
+	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
+	// can make a call, so that every record this errand leaves names the same
+	// run. The folder is announced on the way out and only when something was
+	// actually written into it: a path to an empty room is a door sending
+	// somebody to look at nothing.
+	if *debug {
+		trace.Enable()
+	}
+	ctx := openDebugRecord("do", *model, *workspace)
+	defer trace.Announce(ctx, os.Stderr)
 	task, err := readText(flags.Args())
 	if err != nil {
 		return err
