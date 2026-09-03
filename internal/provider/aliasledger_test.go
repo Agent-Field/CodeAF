@@ -369,3 +369,26 @@ func TestAPickerSpellingReachesTheBeatAsTheModelTheRouterServes(t *testing.T) {
 		}
 	}
 }
+
+// TestIsOpenRouterReadsTheAliasMarkerOffTheModel is issue #319: the Model half
+// of [Client.isOpenRouter] used to read `config.Model` raw, so a model spelled
+// with the alias marker — "~openrouter/…", the same marker normalizeModel strips
+// before every other decision in this package — failed the prefix check behind
+// a non-openrouter base and the lane path silently turned off. Both spellings
+// name the same model, so they must get the same answer; a model nobody serves
+// through OpenRouter stays false.
+func TestIsOpenRouterReadsTheAliasMarkerOffTheModel(t *testing.T) {
+	decision := func(model string) bool {
+		return (&Client{config: Config{BaseURL: "https://my-router.example/v1", Model: model}}).isOpenRouter()
+	}
+
+	if !decision("openrouter/anything") {
+		t.Fatal("the bare spelling stopped routing through OpenRouter")
+	}
+	if !decision("~openrouter/anything") {
+		t.Fatal("the alias-marked spelling answers differently from the bare one; the lane path turns off behind a non-openrouter base")
+	}
+	if decision("vendor/some-model") {
+		t.Fatal("a model nobody serves through OpenRouter answers true")
+	}
+}
