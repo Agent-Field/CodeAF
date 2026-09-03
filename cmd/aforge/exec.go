@@ -345,24 +345,49 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // --json, the object written to -o and the sentence printed on stderr cannot
 // drift apart — and so that a tool that reads `aforge do --json` reads this
 // without being rewritten.
+//
+// THE STOP IS DERIVED ONCE AND `error` FOLLOWS IT. `error` is documented in
+// envelope.go as "why the run did not produce an answer", and "empty on every
+// run that produced one" — so it may only be filled on the stop that means the
+// run could not be run at all. It used to be filled from `runErr`
+// unconditionally, while [execStop] deliberately KEEPS `budget`, `turn-cap` and
+// `deadline` when the executor hands back an outcome and an error together. A
+// budget stop that produced partial text therefore published an answer AND an
+// error at once, and a script following the written contract either threw the
+// partial answer away or reported a startup failure that never happened.
+//
+// The limit's own sentence is not lost: it goes to `incomplete`, which is
+// already the name `aforge run` publishes "the reason it did not finish" under
+// ([subharnessRun.sayEnvelope]), so the two verbs say one thing one way rather
+// than growing a second word for it.
 func buildExecEnvelope(outcome *exec.Outcome, runErr error, model string) resultEnvelope {
 	if outcome == nil {
 		outcome = &exec.Outcome{Stop: exec.StopError}
 	}
 	artifacts := make([]string, len(outcome.Artifacts))
 	copy(artifacts, outcome.Artifacts)
+	stop := execStop(outcome, runErr)
+	said := execFailureWords(runErr)
+	failure := ""
+	extra := legacyExecFields(outcome)
+	switch {
+	case stop == stopError:
+		failure = said
+	case said != "":
+		extra[envelopeIncomplete] = said
+	}
 	return buildResultEnvelope(runResult{
-		Stop:      execStop(outcome, runErr),
+		Stop:      stop,
 		Answer:    outcome.Text,
 		Files:     artifacts,
-		Error:     execFailureWords(runErr),
+		Error:     failure,
 		SpendUSD:  outcome.Usage.Cost,
 		TokensIn:  outcome.Usage.PromptTokens,
 		TokensOut: outcome.Usage.CompletionTokens,
 		Seconds:   outcome.Elapsed.Seconds(),
 		Model:     model,
 		Steps:     outcome.Turns,
-		Extra:     legacyExecFields(outcome),
+		Extra:     extra,
 	})
 }
 

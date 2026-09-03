@@ -37,32 +37,48 @@ import (
 // release:
 //
 //   - a leading `subharness` is the old spelling of this very command;
-//   - a first positional that NAMES A FILE ON DISK is the old spelling of
-//     `aforge plan run`, because a plan is a file and a program is a registry
-//     name. The positional is found through the union of both doors' flag sets
-//     ([namesAPlanFile]), so `--input in.json` cannot be mistaken for it;
+//   - a first positional SPELLED AS A PATH is the old spelling of `aforge plan
+//     run`, because a plan is a file a person points at and a program is a
+//     registry name. The positional is found through the union of both doors'
+//     flag sets ([namesAPlanPath]), so `--input in.json` cannot be mistaken
+//     for it;
 //   - anything else is a program name, which is what `run` means from here on.
 func runExecute(args []string) error {
 	if len(args) > 0 && args[0] == "subharness" {
 		return renamedTo("run subharness <name>", "run <name>", args[1:], runSubharnessCommand)
 	}
-	if namesAPlanFile(args) {
+	if namesAPlanPath(args) {
 		return renamedTo("run <plan.json>", "plan run <plan.json>", args,
 			func(args []string) error { return runGraph("plan run", args) })
 	}
 	return runSubharnessCommand(args)
 }
 
-// namesAPlanFile reports whether this invocation's first positional argument is
-// a file that exists — which is what tells the old `aforge run <plan.json>`
+// namesAPlanPath reports whether this invocation's first positional argument is
+// SPELLED AS A PATH — which is what tells the old `aforge run <plan.json>`
 // apart from the new `aforge run <program>`.
+//
+// IT IS A QUESTION ABOUT THE WORD AND NEVER ABOUT THE DISK. It used to be
+// os.Stat: a first positional that existed as a file took the old road. So a
+// saved program called `formatter` executed `./formatter` as a static plan
+// whenever a file of that name happened to be sitting in the working
+// directory, and WHICH WORKFLOW RAN DEPENDED ON WHERE THE CALLER WAS STANDING
+// — the same command, in two directories, meaning two different things. THE
+// CALLER'S DIRECTORY NEVER CHANGES WHAT A COMMAND MEANS, so the reading is the
+// shape of the token and nothing else ([looksLikeAPath]): a bare word is a
+// registry name, and only something a person wrote as a path is a file.
+//
+// AND THE PATH FORM WINS A TIE. `aforge run ./formatter` takes the old road
+// even where `formatter` is also a saved program, because the caller spelled a
+// path on purpose; `aforge run formatter` is the saved program whatever is on
+// disk beside it.
 //
 // The positional is found the way every other door finds one: by asking A FLAG
 // SET which tokens are flags and which of those consume the token after them
 // ([reorder]). The set here is the UNION of both doors' flags, so
 // `aforge run myprogram --input in.json` finds `myprogram` rather than the
-// input file that happens to be sitting on disk beside it.
-func namesAPlanFile(args []string) bool {
+// input file named after it.
+func namesAPlanPath(args []string) bool {
 	union := commandFlags("run")
 	union.String("dir", "", "")
 	union.String("w", "", "")
@@ -92,10 +108,36 @@ func namesAPlanFile(args []string) bool {
 		if index+1 >= len(ordered) {
 			return false
 		}
-		info, err := os.Stat(ordered[index+1])
-		return err == nil && info.Mode().IsRegular()
+		return looksLikeAPath(ordered[index+1])
 	}
 	return false
+}
+
+// looksLikeAPath reports whether a token is SPELLED as a path rather than as a
+// name: a separator anywhere in it, a `./`, `../` or `~` in front of it, or a
+// file extension on the end.
+//
+// Every one of those is something a person types on purpose to mean "this
+// file", and none of them can be answered differently in two directories,
+// which is the whole reason the test is written here and not against the disk.
+// A saved program's name is a bare word, so `formatter` is a program and
+// `formatter.json`, `./formatter` and `plans/formatter` are files.
+func looksLikeAPath(token string) bool {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false
+	}
+	if strings.ContainsRune(token, '/') || strings.ContainsRune(token, os.PathSeparator) {
+		return true
+	}
+	if strings.HasPrefix(token, "~") {
+		return true
+	}
+	// A dot in the last element is an extension, and `plan.json` is a file
+	// however it is reached. `filepath.Ext` is asked rather than a hand-rolled
+	// LastIndex, so this and the rest of the binary agree about what an
+	// extension is.
+	return filepath.Ext(token) != ""
 }
 
 // runGraph executes a plan file exactly as it is written: `aforge plan run`.

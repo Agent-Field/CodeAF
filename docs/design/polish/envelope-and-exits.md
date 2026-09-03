@@ -298,10 +298,13 @@ is not going away; that is the difference between `shorthandFlag` and `renamedFl
 `cmd/aforge/rename.go`.
 
 `aforge run <something>` tells its two old meanings apart by what was named: a first
-positional that is **a file which exists** is the pipeline spelling, and anything else is a
-program. The positional is found through the union of both doors' flag sets
-(`namesAPlanFile`), so `aforge run myprogram --input in.json` is not confused by the input
-file sitting on disk beside it.
+positional **spelled as a path** — a separator in it, a leading `./`, `../` or `~`, or a
+file extension — is the pipeline spelling, and a bare word is a program. It is the shape of
+the argument and never the contents of the working directory: reading it off `os.Stat` made
+`aforge run formatter` mean the saved program in one folder and `./formatter` as a static
+plan in the next. The positional is found through the union of both doors' flag sets
+(`namesAPlanPath`), so `aforge run myprogram --input in.json` is not confused by the input
+file named beside it.
 
 An old flag spelling **counts as typed**: `aforge exec --budget 9000` is a decision, and
 `AFORGE_EXEC_BUDGET` does not overrule it — which is the same law the environment

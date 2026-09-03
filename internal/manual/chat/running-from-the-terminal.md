@@ -89,7 +89,7 @@ stdout, always parseable, printed even when the run failed**:
 | `stop` | why it ended: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question` |
 | `answer` | what was produced, in prose. Empty when nothing was |
 | `files` | the paths it wrote. Never null — a run that wrote nothing carries `[]` |
-| `error` | why it could not be run at all, in the same words stderr carried. Empty otherwise |
+| `error` | why it could not be run at all, in the same words stderr carried. Empty on every run that produced an answer, limits included |
 | `spend_usd` | what it cost, whole, in dollars |
 | `tokens` | `{"in": …, "out": …}` |
 | `seconds` | wall clock |
@@ -127,7 +127,14 @@ Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
 be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
 `subharness`. `aforge run` carries `output`, which is the typed answer whole,
-and `report`, and `incomplete` when it did not finish.
+and `report`.
+
+`incomplete` is on `aforge run` and `aforge exec` both, and it is why it did not finish, in
+the same words stderr carried — a token budget that ran out with half an answer already
+written, a wall that arrived. It is **not** `error`: `error` means the run never produced an
+answer at all, and a run that got part of the way did. A limit that cut a run short leaves
+`error` empty, puts what it managed in `answer`, names the limit in `stop`, and says the
+sentence in `incomplete`.
 
 ## Keeping exec's old numbers for one release — the legacy switch
 
@@ -510,8 +517,15 @@ note: `aforge run subharness <name>` is now `aforge run <name>` — the old spel
 ```
 
 **That line is on stderr and never on stdout**, so `run <name> --json | jq` keeps parsing.
-The two are told apart by what you named: a first argument that is a file which exists is
-the old pipeline spelling, and anything else is a program.
+The two are told apart by the SHAPE of what you named, never by the directory you stand in:
+a first argument spelled as a path is the old pipeline spelling, and a bare word is a
+program. A separator anywhere in it, a leading `./`, `../` or `~`, or a file extension on
+the end: any of those is a path, and where both readings would work the path wins, because
+that is the one you spelled on purpose. `run formatter` is the saved program from every
+folder; `run ./formatter`, `run plans/formatter` and `run plan.json` are plan files from
+every folder; a saved program whose name carries a dot, `tidy.up`, is read as a file,
+because saved-program names are bare words. It used to be decided by whether the file
+existed, which made one command mean two things in two folders.
 
 ## Which flags moved — budget, turns, brief, contracts, ensemble
 

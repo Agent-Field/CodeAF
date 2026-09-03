@@ -229,7 +229,7 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | `stop` | Why it ended, in one word: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question`. **This is the field to read.** The exit code says how much is wrong; `stop` says what. |
 | `answer` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
-| `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started. |
+| `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
@@ -443,6 +443,8 @@ wrote two readers and the second one was written wrong.
 | `seconds` | Wall clock. This is what `elapsed_ms` was, in seconds. |
 | `files` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. This is what `artifacts` was. |
 | `tokens`, `spend_usd` | What `usage` carried, split into the two facts a campaign actually reports. |
+| `error` | Empty unless `stop` is `error`. A run cut off by `--token-budget`, `--max-turns` or `--timeout` that produced text is a run that produced an answer, so it publishes the answer and no `error`. |
+| `incomplete` | Present only when a limit cut the run short: the reason, in the same words stderr carried. The same field `aforge run` carries, with the same meaning. |
 
 **Every old name is still printed beside the new one for one release** — `text`,
 `turns`, `elapsed_ms`, `artifacts`, and the whole `usage` object — so nothing
@@ -453,6 +455,13 @@ that reads them breaks today. The full before-and-after is
 `"stop": "done"` for a run that finished having produced no text at all. It says
 `"stop": "incomplete"` now, because the old value said the work was done about a
 run with nothing to show.
+
+**And `error` stopped carrying limits.** A run stopped by its token budget, its
+turn cap or its wall used to publish the partial text in `answer` AND the
+limit's sentence in `error`, which contradicts what `error` is documented to
+mean and left a script written against the contract either discarding a usable
+answer or reporting a startup failure that never happened. The sentence is in
+`incomplete` now; `error` is filled on `stop: "error"` and on nothing else.
 
 `--out file` writes this same object whether or not `--json` was passed, so a
 caller can keep stdout for the prose and still get the machine record.
@@ -562,7 +571,7 @@ esac
 | `aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]` | Re-plan from what actually happened. |
 | `aforge plan show <plan.json>` | Print a plan. |
-| `aforge run <program> --input <file.json\|->` | Run one saved program on typed input. Section 1's exit ladder and envelope. This was `aforge run subharness <name>`. |
+| `aforge run <program> --input <file.json\|->` | Run one saved program on typed input. Section 1's exit ladder and envelope. This was `aforge run subharness <name>`. The program is a **bare word**; an argument spelled as a path — a separator in it, a leading `./`, `../` or `~`, or a file extension — is read as a plan file and takes the retired `aforge run <plan.json>` road. It is the shape of the argument and never what is in the working directory. |
 | `aforge exec ["<prompt>"] [--dir dir] [--max-turns N] [--token-budget N] [--timeout D] [--json] [--out file]` | One linear worker with no plan behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
 | `aforge version` | The build this binary was cut from. `--version` and `-v` say the same thing. Answers with no API key set, because probing for the binary must not be a configuration problem. |
 | `aforge wake [--timeout 2m]` | One full background pass — evaluate sentinels, fire what is due, journal it, exit. What the five-minute timer runs. |

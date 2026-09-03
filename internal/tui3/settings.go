@@ -2348,7 +2348,16 @@ const (
 )
 
 // tabChipCols is one chip's cells: its word and the air each side of it.
-func tabChipCols(title string) int { return len(title) + tabPadCols }
+//
+// THE WORD IS MEASURED IN CELLS. It was `len(title)`, a count of bytes, while
+// everything that reads this number — [tabWindow]'s fit, [tabSpans]'s
+// arithmetic, the band [sheetTabBar] paints — is laid out in terminal columns.
+// The two agree only while every tab title is ASCII: give one a wide rune and
+// the strip hides the wrong number of chips and a click lands on its
+// neighbour; give one a combining accent and it does the same in the other
+// direction. [ansi.StringWidth] is the one measure this surface uses for how
+// much room a string takes.
+func tabChipCols(title string) int { return ansi.StringWidth(title) + tabPadCols }
 
 // tabWindow is WHICH CHIPS THE STRIP SHOWS at this width, and it is the answer
 // to a bar that used to stop telling a person where they were standing.

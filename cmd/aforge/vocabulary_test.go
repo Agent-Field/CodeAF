@@ -3,11 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,22 +32,125 @@ import (
 //     itself rather than against a list somebody keeps by hand.
 
 // captureNotice runs a door with the rename notice pointed at a buffer, and
-// hands back what was said. The door's own error is deliberately dropped: most
-// of these commands go on to want a provider key, and what is under test is the
-// sentence that is printed BEFORE any of that.
-func captureNotice(t *testing.T, run func()) string {
+// hands back what was said AND WHAT THE DOOR RETURNED.
+//
+// THE ERROR USED TO BE DROPPED, and dropping it is what made this whole table
+// unable to fail for its own reason. An old spelling that printed its notice
+// and then died as an unknown flag, or that was refused its old value, or that
+// walked into a different command altogether, satisfied every assertion here:
+// the notice is written before any of that happens. A compatibility window
+// nobody can observe is not one, so the error comes back with the sentence.
+func captureNotice(t *testing.T, run func() error) (string, error) {
 	t.Helper()
 	var said bytes.Buffer
 	previous := renameNotice
 	renameNotice = &said
 	t.Cleanup(func() { renameNotice = previous })
-	run()
-	return said.String()
+	failed := run()
+	return said.String(), failed
+}
+
+// doorParse is what one door's parse actually produced: which door it was, the
+// positionals it was left holding, and every flag's value as the door will read
+// it. It is the fact a rename is a claim about — "the old spelling reaches the
+// same place with the same value" — and it is unreadable from outside, because
+// every door builds its flag set privately and then goes looking for a provider
+// key. [parseWatcher] is the seam that hands it over.
+type doorParse struct {
+	door       string
+	positional []string
+	values     map[string]string
+}
+
+// watchParses runs a door and records every clean parse it completed, along
+// with the rename notice and the door's own error.
+func watchParses(t *testing.T, run func() error) ([]doorParse, string, error) {
+	t.Helper()
+	var seen []doorParse
+	previous := parseWatcher
+	parseWatcher = func(flags *flag.FlagSet) {
+		snapshot := doorParse{
+			door:       flags.Name(),
+			positional: append([]string{}, flags.Args()...),
+			values:     map[string]string{},
+		}
+		// EVERY flag, hidden aliases included. An alias writes through to the
+		// printed flag's own value (rename.go), so the two spellings of one
+		// invocation must produce identical maps down to the last key.
+		flags.VisitAll(func(f *flag.Flag) { snapshot.values[f.Name] = f.Value.String() })
+		seen = append(seen, snapshot)
+	}
+	t.Cleanup(func() { parseWatcher = previous })
+	said, failed := captureNotice(t, run)
+	parseWatcher = previous
+	return seen, said, failed
+}
+
+// firstDifference says, in one clause, where two parses stopped agreeing — the
+// door, a positional, or a flag's value — so a failure names the fact that
+// moved instead of printing two structs and leaving the reading to a person.
+func firstDifference(old, now []doorParse) string {
+	if len(old) != len(now) {
+		return fmt.Sprintf("the old spelling parsed %d door(s) and the new one parsed %d", len(old), len(now))
+	}
+	for at := range old {
+		if old[at].door != now[at].door {
+			return fmt.Sprintf("it entered the door %q where the new spelling enters %q", old[at].door, now[at].door)
+		}
+		if !reflect.DeepEqual(old[at].positional, now[at].positional) {
+			return fmt.Sprintf("%s was left holding %v where the new spelling leaves %v",
+				old[at].door, old[at].positional, now[at].positional)
+		}
+		names := make([]string, 0, len(old[at].values))
+		for name := range old[at].values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			was, still := old[at].values[name], now[at].values[name]
+			if was != still {
+				return fmt.Sprintf("%s read --%s as %q where the new spelling reads %q",
+					old[at].door, name, was, still)
+			}
+		}
+		for name := range now[at].values {
+			if _, ok := old[at].values[name]; !ok {
+				return fmt.Sprintf("%s never declared --%s under the old spelling", old[at].door, name)
+			}
+		}
+	}
+	return ""
+}
+
+// wordsOf is an error as a string, and "" for none, so two doors' endings can be
+// compared as one value.
+func wordsOf(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// typed is a command line, run THROUGH THE BINARY'S OWN DISPATCH — the words
+// after `aforge`, read by the same switch on os.Args a person's shell fills in.
+//
+// It matters that the rename rows go through the switch rather than calling the
+// door they believe the old word reaches. Half of what a command rename can get
+// wrong is which door the old word lands in, and a row that calls the door
+// itself has assumed the answer to the question it is asking.
+func typed(words ...string) func() error {
+	return func() error {
+		previous := os.Args
+		os.Args = append([]string{"aforge"}, words...)
+		defer func() { os.Args = previous }()
+		return run()
+	}
 }
 
 // writeTestPlan puts a real, loadable plan file on disk, because two of the old
 // spellings are told apart from the new ones by whether their first positional
-// names a file (run.go's namesAPlanFile).
+// is spelled as a path (run.go's namesAPlanPath) — and a temp-directory path
+// always is.
 func writeTestPlan(t *testing.T) string {
 	t.Helper()
 	graph := &plan.Graph{Goal: "measure the old spellings"}
@@ -58,14 +165,27 @@ func writeTestPlan(t *testing.T) string {
 	return path
 }
 
-// EVERY OLD SPELLING STILL WORKS, IS ABSENT FROM `--help`, AND SAYS WHAT IT IS
-// CALLED NOW — once, in one line, on stderr.
+// EVERY OLD SPELLING STILL WORKS, REACHES THE SAME PLACE WITH THE SAME VALUE,
+// IS ABSENT FROM `--help`, AND SAYS WHAT IT IS CALLED NOW — once, in one line,
+// on stderr.
 //
-// The three parts are one test because they are one promise, and dropping any
-// of them turns a rename into one of the three failures it exists to avoid: a
-// script that stops working overnight, a `--help` page teaching two spellings
-// for one knob, or a person left to guess what happened to their command.
-func TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow(t *testing.T) {
+// The parts are one test because they are one promise, and dropping any of them
+// turns a rename into one of the failures it exists to avoid: a script that
+// stops working overnight, a `--help` page teaching two spellings for one knob,
+// or a person left to guess what happened to their command.
+//
+// EACH ROW IS THE SAME INVOCATION SPELLED TWICE, and the assertion is that the
+// two are the same run. It used to be the notice and nothing else, which could
+// not fail for its own reason: the notice is written BEFORE the parse can
+// refuse the old flag, before the old value can be rejected, and before the
+// door the old word dispatches into is known. So the row runs both spellings,
+// compares the door each entered, the positionals it was left holding and every
+// flag value it read ([watchParses]), and then compares what each door returned
+// — which is the same sentence, at the same pre-provider wall, or the test says
+// where the two parted. No row spends money: every one of them stops at a
+// missing key, a plan with no nodes, an input that was never named, or a store
+// that is not there.
+func TestAnOldSpellingReachesTheSamePlaceAndSaysWhatItIsCalledNow(t *testing.T) {
 	t.Setenv("AFORGE_HOME", t.TempDir())
 	planFile := writeTestPlan(t)
 
@@ -73,68 +193,82 @@ func TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow(t *testing.T) {
 		name string
 		old  string // the retired word or flag, as a person types it
 		now  string // what the notice must name instead
-		run  func()
+		// The two spellings of ONE invocation. Same door, same values, same
+		// ending — or this row is not a rename, it is a second command.
+		wasTyped func() error
+		nowTyped func() error
 	}{{
 		name: "run subharness is run",
 		old:  "run subharness", now: "aforge run",
-		run: func() { _ = runExecute([]string{"subharness", "a-program", "--input", "-"}) },
+		wasTyped: typed("run", "subharness", "a-program", "--input", "in.json"),
+		nowTyped: typed("run", "a-program", "--input", "in.json"),
 	}, {
 		name: "run of a plan file is plan run",
 		old:  "run <plan.json>", now: "aforge plan run",
-		run: func() { _ = runExecute([]string{planFile}) },
+		wasTyped: typed("run", planFile),
+		nowTyped: typed("plan", "run", planFile),
 	}, {
 		name: "bare plan is plan new",
 		old:  `plan "<goal>"`, now: "aforge plan new",
-		run: func() { _ = runPlanCommand([]string{"a goal"}) },
+		wasTyped: typed("plan", "a goal"),
+		nowTyped: typed("plan", "new", "a goal"),
 	}, {
 		name: "show is plan show",
 		old:  "show", now: "aforge plan show",
-		run: func() {
-			_ = renamedTo("show <plan.json>", "plan show <plan.json>", []string{planFile},
-				func(args []string) error { return runShow("plan show", args) })
-		},
+		wasTyped: typed("show", planFile),
+		nowTyped: typed("plan", "show", planFile),
 	}, {
 		name: "revise is plan revise",
 		old:  "revise", now: "aforge plan revise",
-		run: func() {
-			_ = renamedTo("revise <plan.json>", "plan revise <plan.json>", []string{planFile, "it went badly"},
-				func(args []string) error { return runRevise("plan revise", args) })
-		},
+		wasTyped: typed("revise", planFile, "it went badly"),
+		nowTyped: typed("plan", "revise", planFile, "it went badly"),
 	}, {
 		name: "exec --budget is --token-budget",
 		old:  "--budget", now: "--token-budget",
-		run: func() { _ = runExec([]string{"a prompt", "--budget", "9000"}) },
+		wasTyped: typed("exec", "a prompt", "--budget", "9000"),
+		nowTyped: typed("exec", "a prompt", "--token-budget", "9000"),
 	}, {
 		name: "exec --turns is --max-turns",
 		old:  "--turns", now: "--max-turns",
-		run: func() { _ = runExec([]string{"a prompt", "--turns", "3"}) },
+		wasTyped: typed("exec", "a prompt", "--turns", "3"),
+		nowTyped: typed("exec", "a prompt", "--max-turns", "3"),
 	}, {
 		name: "plan run --budget is --token-budget",
 		old:  "--budget", now: "--token-budget",
-		run: func() { _ = runGraph("plan run", []string{planFile, "--budget", "9000"}) },
+		wasTyped: typed("plan", "run", planFile, "--budget", "9000"),
+		nowTyped: typed("plan", "run", planFile, "--token-budget", "9000"),
 	}, {
 		name: "plan run --run-budget is --total-token-budget",
 		old:  "--run-budget", now: "--total-token-budget",
-		run: func() { _ = runGraph("plan run", []string{planFile, "--run-budget", "9000"}) },
+		wasTyped: typed("plan", "run", planFile, "--run-budget", "9000"),
+		nowTyped: typed("plan", "run", planFile, "--total-token-budget", "9000"),
 	}, {
 		name: "plan run --contracts is --no-method",
 		old:  "--contracts", now: "--no-method",
-		run: func() { _ = runGraph("plan run", []string{planFile, "--contracts=false"}) },
+		wasTyped: typed("plan", "run", planFile, "--contracts=false"),
+		nowTyped: typed("plan", "run", planFile, "--no-method"),
 	}, {
 		name: "plan new --brief is --instructions",
 		old:  "--brief", now: "--instructions",
-		run: func() { _ = runPlanNew("plan new", []string{"a goal", "--brief"}) },
+		wasTyped: typed("plan", "new", "a goal", "--brief"),
+		nowTyped: typed("plan", "new", "a goal", "--instructions"),
 	}, {
 		name: "plan new --ensemble is --passes",
 		old:  "--ensemble", now: "--passes",
-		run: func() { _ = runPlanNew("plan new", []string{"a goal", "--ensemble", "3"}) },
+		wasTyped: typed("plan", "new", "a goal", "--ensemble", "3"),
+		nowTyped: typed("plan", "new", "a goal", "--passes", "3"),
 	}, {
 		name: "wake --max-seconds is --timeout",
 		old:  "--max-seconds", now: "--timeout",
-		run: func() { _ = runWake([]string{"--max-seconds", "30"}) },
+		wasTyped: typed("wake", "--max-seconds", "30"),
+		nowTyped: typed("wake", "--timeout", "30"),
 	}} {
 		t.Run(spelling.name, func(t *testing.T) {
-			said := captureNotice(t, spelling.run)
+			wasParsed, said, wasEnding := watchParses(t, spelling.wasTyped)
+			nowParsed, quiet, nowEnding := watchParses(t, spelling.nowTyped)
+
+			// THE NOTICE: one line, on stderr, naming what to type instead and
+			// saying the grace ends.
 			if said == "" {
 				t.Fatalf("`%s` printed no notice at all — nothing told anybody it is now `%s`",
 					spelling.old, spelling.now)
@@ -148,6 +282,34 @@ func TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow(t *testing.T) {
 			if !strings.Contains(said, "one more release") {
 				t.Fatalf("`%s` said %q, which never says the old spelling is going away",
 					spelling.old, strings.TrimSpace(said))
+			}
+			// AND THE NEW SPELLING SAYS NOTHING. A notice on the spelling a
+			// person is being sent to would be the rename shouting at the
+			// people who already did what it asked.
+			if quiet != "" {
+				t.Fatalf("the current spelling of `%s` printed a rename notice of its own: %q",
+					spelling.old, strings.TrimSpace(quiet))
+			}
+
+			// IT GOT PAST THE COMMAND LINE. A spelling whose door parses flags
+			// and yet completed no parse died there — the exact failure the
+			// notice hides. `show` and `revise` declare no flags at all and so
+			// record nothing; the ending below is what carries those two.
+			if len(nowParsed) > 0 && len(wasParsed) == 0 {
+				t.Fatalf("`%s` printed its notice and then never got past the command line: %v",
+					spelling.old, wasEnding)
+			}
+			// THE SAME DOOR, THE SAME POSITIONALS, THE SAME VALUES.
+			if where := firstDifference(wasParsed, nowParsed); where != "" {
+				t.Fatalf("`%s` is not the same run as `%s`:\n  %s",
+					spelling.old, spelling.now, where)
+			}
+			// AND THE SAME ENDING. Both spellings walk into the same wall — a
+			// missing key, a plan with no nodes — and say the same sentence
+			// there. A different one is the old spelling landing somewhere else.
+			if was, still := wordsOf(wasEnding), wordsOf(nowEnding); was != still {
+				t.Fatalf("`%s` ended with %q; the current spelling ends with %q",
+					spelling.old, was, still)
 			}
 		})
 	}
@@ -205,15 +367,15 @@ func TestASingleLetterShorthandKeepsWorkingAndSaysNothing(t *testing.T) {
 	planFile := writeTestPlan(t)
 	for _, letter := range []struct {
 		name string
-		run  func()
+		run  func() error
 	}{
-		{"-w on do", func() { _ = runDo([]string{"a task", "-w", "."}) }},
-		{"-w on exec", func() { _ = runExec([]string{"a prompt", "-w", "."}) }},
-		{"-o on plan new", func() { _ = runPlanNew("plan new", []string{"a goal", "-o", "out.json"}) }},
-		{"-j on plan run", func() { _ = runGraph("plan run", []string{planFile, "-j", "4"}) }},
+		{"-w on do", func() error { return runDo([]string{"a task", "-w", "."}) }},
+		{"-w on exec", func() error { return runExec([]string{"a prompt", "-w", "."}) }},
+		{"-o on plan new", func() error { return runPlanNew("plan new", []string{"a goal", "-o", "out.json"}) }},
+		{"-j on plan run", func() error { return runGraph("plan run", []string{planFile, "-j", "4"}) }},
 	} {
 		t.Run(letter.name, func(t *testing.T) {
-			if said := captureNotice(t, letter.run); said != "" {
+			if said, _ := captureNotice(t, letter.run); said != "" {
 				t.Fatalf("%s printed %q — a shorthand is not going away and must say nothing",
 					letter.name, strings.TrimSpace(said))
 			}
@@ -439,7 +601,7 @@ func printedFlags(t *testing.T) []declaredFlag {
 				}
 				// A FLAG WITH NO SENTENCE IS NOT A PRINTED FLAG. The only ones
 				// in this package are the union set `aforge run` builds to find
-				// its first positional (run.go's namesAPlanFile), which is a
+				// its first positional (run.go's namesAPlanPath), which is a
 				// reader of somebody else's grammar and prints nothing at all.
 				if usageTextOf(call.Args[usageIndex]) == "" {
 					return true

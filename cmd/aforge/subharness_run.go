@@ -413,7 +413,7 @@ func (run subharnessRun) sayEnvelope(stop stopReason, result exec.RunResult, inc
 	// NOT `error`: `error` means the run never produced an answer at all, and a
 	// run that got part of the way did.
 	if incomplete != "" {
-		extra["incomplete"] = incomplete
+		extra[envelopeIncomplete] = incomplete
 	}
 	var seconds float64
 	if !run.started.IsZero() {

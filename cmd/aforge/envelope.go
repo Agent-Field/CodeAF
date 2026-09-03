@@ -360,6 +360,18 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 	}
 }
 
+// envelopeIncomplete is the ONE name for "the reason it did not finish", and it
+// is spelled here because two verbs publish it: `aforge run` when a saved
+// program stopped part of the way through, and `aforge exec` when a limit cut a
+// run that had already produced text.
+//
+// IT IS NOT `error`, AND THAT IS THE WHOLE POINT OF IT. `error` means the run
+// never produced an answer at all; a run stopped by its own budget with partial
+// text produced one. The limit's diagnostic is worth keeping machine-readable,
+// so it gets a field with a documented meaning of its own rather than squatting
+// in one whose meaning it contradicts.
+const envelopeIncomplete = "incomplete"
+
 // envelopeContract names every field of the contract above, in the order the
 // struct declares them. It is here so a test can assert that all three verbs
 // return the same keys without restating the list, and so that adding a field

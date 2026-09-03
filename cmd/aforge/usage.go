@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // This file is the ONE SEAM every subcommand's flags are built and parsed at.
@@ -64,6 +66,9 @@ func parseCommandFlags(flags *flag.FlagSet, args []string) error {
 	err := flags.Parse(args)
 	switch {
 	case err == nil:
+		if parseWatcher != nil {
+			parseWatcher(flags)
+		}
 		return nil
 	case errors.Is(err, flag.ErrHelp):
 		writeCommandUsage(usageOut, flags)
@@ -78,6 +83,19 @@ func parseCommandFlags(flags *flag.FlagSet, args []string) error {
 		return exitCannotRun
 	}
 }
+
+// parseWatcher is told, once per door, what a clean parse actually produced.
+//
+// IT IS A TEST SEAM, and it is here for the same reason [renameNotice] is a
+// variable rather than os.Stderr spelled inline: a claim about a rename — that
+// the old spelling reaches the SAME DOOR and lands the SAME VALUE as the new
+// one — cannot be checked from outside, because every door builds its flag set
+// privately and then goes looking for a provider key. A test that could only
+// watch stderr could check that a notice was printed and nothing else, which is
+// the whole of what the rename tests used to check.
+//
+// It is nil in the shipped binary and this is the only line that reads it.
+var parseWatcher func(*flag.FlagSet)
 
 // writeCommandUsage is one command's whole account of itself: the shape it is
 // called with, lifted out of [usageText] so the two can never disagree, then
@@ -151,6 +169,14 @@ func shownDefault(f *flag.Flag) string {
 
 // wrapAt folds one flag's sentence to a width that fits an eighty-column
 // terminal under the six-space indent the rows are written at.
+//
+// IT MEASURES DISPLAY CELLS, NOT BYTES. `len` was the measure, which is the
+// number a terminal is not laid out in: a flag sentence carrying a `·`, an
+// em dash or a quoted CJK model name counted two or three cells for every one
+// it draws, so the rows wrapped short and ragged — and the one case that goes
+// the other way, a combining accent, counts one byte too many for a mark that
+// takes no cell at all. [ansi.StringWidth] is what the rest of this binary
+// measures a row with.
 func wrapAt(text string, width int) []string {
 	words := strings.Fields(text)
 	if len(words) == 0 {
@@ -159,7 +185,7 @@ func wrapAt(text string, width int) []string {
 	lines := []string{words[0]}
 	for _, word := range words[1:] {
 		last := len(lines) - 1
-		if len(lines[last])+1+len(word) > width {
+		if ansi.StringWidth(lines[last])+1+ansi.StringWidth(word) > width {
 			lines = append(lines, word)
 			continue
 		}

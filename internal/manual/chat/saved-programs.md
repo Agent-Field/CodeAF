@@ -198,6 +198,13 @@ is absent from `--help`, and prints one line on stderr the first time it is used
 `note: \`aforge run subharness <name>\` is now \`aforge run <name>\` — the old spelling
 works for one more release.` The pipeline is `aforge plan run <plan.json>`.
 
+**The name is a bare word, and that is what tells the two apart.** `aforge run formatter`
+runs the saved program `formatter` from any directory, including one with a file of that
+name sitting in it; only an argument spelled as a path — a separator in it, a leading `./`,
+`../` or `~`, or a file extension — is read as a plan file and sent down the retired
+`aforge run <plan.json>` road. It used to be decided by whether the file existed, so the
+same command meant two different things in two different folders.
+
 Optional: `--dir <dir>` for the directory to work in (`-w` still works), `--model <slug>` for the work model,
 `--journal <path>` to append every call the run makes to a file, one JSON object per line,
 and `--json` for the one result object `aforge do` and `aforge exec` also print.
