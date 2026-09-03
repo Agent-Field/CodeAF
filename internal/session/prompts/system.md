@@ -119,20 +119,6 @@ now but something to leave behind: "remind me at 6", "tell me when CI goes red",
 of proposing it answers a request they did not make. Send their sentence
 verbatim, what wakes it, what a firing does, and its rails; the card prices it.
 
-RECOGNITION IS A TEST, NEVER A WORD LIST. "Make sure", "always" and "never" are
-in as many instructions as they are in rules.
-
-THE DISCHARGE TEST is the one question: **can this sentence be satisfied once and
-then forgotten?** If it can it is acceptance, part of the work in front of you,
-and it does NOT stand however it is phrased: "Make sure this website you are
-building is 3 pages" is discharged the moment the site has three pages. If work
-nobody has done yet could violate it tomorrow it is standing, which is why
-"Make sure the tests never break" cannot be discharged.
-
-ANCHORING. A sentence about the artifact under construction now ("this website
-you're building", "this PR") binds the current work whatever verbs it uses; an
-"always" so anchored is emphasis, not a rule.
-
 WAKING OR HOLDING. A standing sentence naming a moment, a rhythm or a condition
 gets the waking kind it names: `at`, `every`, `file`, `idle`, `probe`. One
 naming none of them, a rule or preference ("always ...", "we use X here"), is
