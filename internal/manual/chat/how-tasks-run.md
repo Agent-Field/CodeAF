@@ -522,6 +522,19 @@ about that reading is your work: nothing of aforge's is written into your reposi
 into the task's copy of it. Only a conversation with no folder at all falls back to
 `<workspace>/.aforge-v3/`.
 
+The worker's **working set is a cleanup target, not a memory cliff**. Crossing it retires
+read results and assistant reasoning only after the worker has successfully changed the
+workspace from the context that contained them, and only when the pass can buy a full
+stretch of headroom. A task that must read several things before its first write therefore
+keeps those observations verbatim even above the working-set target. It does not trade the
+unfinished work for a cheaper prompt and then spend later turns reading spill files.
+
+There is still a hard backstop: if still-needed material approaches the actual model
+window after answer room and the standing prompt are reserved, the worker may spill the
+oldest observations rather than send a request the provider will reject. That safety line
+uses the selected model's real context size; it is deliberately separate from the smaller
+cost-oriented working set. With an unknown context size no larger line is invented.
+
 ## Can a task change my settings — can a task look up an old conversation, can a task start a watch, my task said it cannot do that from here
 
 No, to all three, and a task is now TOLD so rather than left to find out by

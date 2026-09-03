@@ -411,6 +411,19 @@ func TestTheObservationWindowConvergesOnlyOnTheNamedWorkingSet(t *testing.T) {
 	}
 }
 
+func TestObservationSafetyUsesTheRealModelWindow(t *testing.T) {
+	const context = 1 << 20
+	working := observationWindow(context)
+	safety := observationSafetyWindow(context)
+	if safety <= working {
+		t.Fatalf("1M-token model safety window = %d, want more than %d-byte working target",
+			safety, working)
+	}
+	if unknown, fallback := observationSafetyWindow(0), observationWindow(0); unknown != fallback {
+		t.Fatalf("unknown-model safety = %d, want the defensible %d fallback", unknown, fallback)
+	}
+}
+
 // The same bytes are carried once and pointed at afterwards. The pointer is a
 // line rather than a copy, and it names where the material can be read, so a
 // model that needs the detail can still reach it.
@@ -864,6 +877,86 @@ func TestRetirementFollowsUseRatherThanAge(t *testing.T) {
 					live, observationBudget)
 			}
 		})
+	}
+}
+
+// A gather-before-write task is the case a cost-only working set gets wrong.
+// The leaf must be allowed to hold more than the soft target while every read
+// is still feeding the same pending edit; after that edit, the exact same bytes
+// are spent and may be retired in one useful batch.
+func TestWorkingSetWaitsForTheGatherToBeUsed(t *testing.T) {
+	const each = 8 << 10
+	var messages []ai.Message
+	for index := 0; index < 6; index++ {
+		id := fmt.Sprintf("g%d", index)
+		messages = append(messages,
+			ai.Message{Role: "assistant", Content: text("remember " + id),
+				ToolCalls: []ai.ToolCall{{ID: id}}},
+			ai.Message{Role: "tool", ToolCallID: id,
+				Content: text(strings.Repeat(string(rune('A'+index)), each))})
+	}
+	before := append([]ai.Message(nil), messages...)
+	fade := newDecayer(map[string]string{}, nil)
+	const safety = observationBudget * 4
+
+	if decayed := fade.decayWithin(messages, observationBudget, safety); decayed != 0 {
+		t.Fatalf("%d still-needed reads were retired at the working-set target", decayed)
+	}
+	for index := range messages {
+		if contentOf(messages[index]) != contentOf(before[index]) {
+			t.Fatalf("message %d changed before the gather was used", index)
+		}
+	}
+
+	// This is the mutation boundary the live loop records after write/edit.
+	fade.actedPast(len(messages))
+	if decayed := fade.decayWithin(messages, observationBudget, safety); decayed == 0 {
+		t.Fatal("spent reads did not retire after the gather produced a file")
+	}
+	if live := liveObservationBytes(messages); live > fade.lowWater(observationBudget) {
+		t.Fatalf("spent batch left %d bytes above its %d-byte low-water target",
+			live, fade.lowWater(observationBudget))
+	}
+}
+
+func TestWorkingSetDoesNotRewriteForInsufficientSpentHeadroom(t *testing.T) {
+	spent := strings.Repeat("S", 1<<10)
+	needed := strings.Repeat("N", 30<<10)
+	messages := []ai.Message{
+		{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "spent"}}},
+		{Role: "tool", ToolCallID: "spent", Content: text(spent)},
+		{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "needed"}}},
+		{Role: "tool", ToolCallID: "needed", Content: text(needed)},
+		{Role: "assistant", Content: text("assembling")},
+	}
+	fade := newDecayer(map[string]string{}, nil)
+	fade.used("spent")
+
+	if decayed := fade.decayWithin(messages, observationBudget, observationBudget*4); decayed != 0 {
+		t.Fatalf("a tiny cleanup invalidated the prefix by retiring %d observation(s)", decayed)
+	}
+	if contentOf(messages[1]) != spent || contentOf(messages[3]) != needed {
+		t.Fatal("a no-headroom pass rewrote the transcript")
+	}
+}
+
+func TestWorkingSetKeepsUnconsumedAssistantReasoning(t *testing.T) {
+	const assistantSize = 8 << 10
+	var messages []ai.Message
+	for index := 0; index < 6; index++ {
+		messages = append(messages, ai.Message{Role: "assistant",
+			Content: text(fmt.Sprintf("turn %d: %s", index, strings.Repeat("R", assistantSize)))})
+	}
+	before := append([]ai.Message(nil), messages...)
+	fade := newDecayer(map[string]string{}, nil)
+
+	if folded := fade.foldWithin(messages, observationBudget, observationBudget*4); folded != 0 {
+		t.Fatalf("%d active reasoning turns folded at the working-set target", folded)
+	}
+	for index := range messages {
+		if contentOf(messages[index]) != contentOf(before[index]) {
+			t.Fatalf("assistant turn %d changed before any workspace action", index)
+		}
 	}
 }
 

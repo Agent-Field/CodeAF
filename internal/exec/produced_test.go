@@ -35,6 +35,22 @@ func TestASubprocessCreatedFileIsRecordedAsAnArtifact(t *testing.T) {
 	}
 }
 
+func TestMutationRevisionAdvancesWhenTheSameArtifactIsEditedAgain(t *testing.T) {
+	space := workspace(t)
+	path := filepath.Join(space.Root(), "answer.md")
+	space.Record("7", path)
+	first := space.MutationCount("7")
+	space.Record("7", path)
+	second := space.MutationCount("7")
+
+	if second <= first {
+		t.Fatalf("mutation revision stayed at %d after a second edit to the same path", second)
+	}
+	if artifacts := space.Artifacts("7"); len(artifacts) != 1 {
+		t.Fatalf("one repeatedly edited path became %d artifacts: %v", len(artifacts), artifacts)
+	}
+}
+
 // A file the command only read is not a thing the command produced, or every
 // leaf would deliver its own inputs back to the person who supplied them.
 func TestAnUntouchedFileIsNotClaimedAsProduced(t *testing.T) {
