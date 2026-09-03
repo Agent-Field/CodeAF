@@ -28,6 +28,11 @@ import (
 // the node whose work it is a reading of.
 const EventVerification EventKind = "verification"
 
+// VerificationWhenFinished is the half of a photograph taken over the tree as
+// it was handed back. It is shared by the writer and every reader because a
+// journal vocabulary written twice is two strings waiting to disagree.
+const VerificationWhenFinished = "on the finished tree"
+
 // VerificationReading is that reading as the journal keeps it.
 //
 // The roster is kept as a COUNT plus a bounded sample rather than whole. The
