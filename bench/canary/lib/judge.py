@@ -20,6 +20,16 @@ import re
 import subprocess
 import sys
 
+# THE BASE IS MEASURED EXACTLY THE WAY A CELL IS GRADED. The whole-suite run
+# continues past a module that cannot import, so an unmet optional dependency
+# counts as one error and the rest of the suite still runs; without the flag
+# pytest stops at collection in half a second and the suite column says nothing
+# at all. The fix pull request's own tests are NOT run this way — a collection
+# error there is the grade. pick.py spells the same list in its own
+# `SUITE_FLAGS`, because the two files do not import each other; change one and
+# change the other in the same edit.
+SUITE_FLAGS = ["--continue-on-collection-errors"]
+
 
 def sh(args, cwd=None, cap=None):
     """Run one command and answer (exit code, combined output); a cap that hits reads as exit 124."""
@@ -79,9 +89,9 @@ def overlay(work, mirror, merge, tests):
             handle.write(body)
 
 
-def pytest(work, targets, cap, log):
+def pytest(work, targets, cap, log, flags=()):
     python = os.path.join(work, ".venv", "bin", "python")
-    code, output = sh([python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *targets], cwd=work, cap=cap)
+    code, output = sh([python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *flags, *targets], cwd=work, cap=cap)
     with open(log, "w") as handle:
         handle.write(output)
     return code, counts(output)
@@ -102,7 +112,7 @@ def main():
     changed, commits = keep_diff(args.work, args.out, args.base)
     overlay(args.work, args.mirror, args.merge, args.tests)
     f2p_code, f2p = pytest(args.work, args.tests, 600, os.path.join(args.out, "f2p.log"))
-    suite_code, suite = pytest(args.work, [], args.suite_cap, os.path.join(args.out, "suite.log"))
+    suite_code, suite = pytest(args.work, [], args.suite_cap, os.path.join(args.out, "suite.log"), SUITE_FLAGS)
 
     base = json.loads(args.base_suite) if args.base_suite.strip() else None
     regressed = None

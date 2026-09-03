@@ -20,6 +20,7 @@ Usage:
   pick.py --fresh 2 --exclude pool.json --out f.json  fresh picks for one run
   pick.py --dry-run                                   list candidates and reasons, no clones
   pick.py --seed 7 ...                                reproducible candidate order
+  pick.py --remeasure owner/repo [owner/repo ...]     re-measure those entries' base in pool.json
 
 Only the standard library is used; `gh`, `git` and `python3 -m venv` are
 shelled out to. Nothing is pushed, opened or commented anywhere: repositories
@@ -79,6 +80,16 @@ CRITERIA = {
     "suite_cap_seconds": 600,
 }
 
+# THE BASE IS MEASURED EXACTLY THE WAY A CELL IS GRADED. The whole-suite run
+# continues past a module that cannot import, so an unmet optional dependency
+# counts as one error and the rest of the suite still runs; without the flag
+# pytest stops at collection in half a second and the base says nothing at all.
+# The fix's own tests are NOT run this way — a collection error there is the
+# finding. lib/judge.py spells the same list in its own `SUITE_FLAGS`, because
+# the two files do not import each other; change one and change the other in
+# the same edit.
+SUITE_FLAGS = ["--continue-on-collection-errors"]
+
 # Files whose change would mean the fix needed packaging or CI work, which a
 # harness given only the source tree cannot be expected to reproduce.
 INFRA_PATTERNS = re.compile(
@@ -125,7 +136,17 @@ def run(cmd, cwd=None, timeout=None, env=None):
         return subprocess.run(cmd, cwd=cwd, timeout=timeout, env=env,
                               capture_output=True, text=True, errors="replace")
     except subprocess.TimeoutExpired as exc:
-        return subprocess.CompletedProcess(cmd, 124, exc.stdout or "", exc.stderr or "")
+        # A run cut at its cap hands its output back as bytes even in text
+        # mode, and a caller concatenating it with a string would die on the
+        # one suite that is slow: decode it here, once.
+        return subprocess.CompletedProcess(cmd, 124, _text(exc.stdout), _text(exc.stderr))
+
+
+def _text(chunk):
+    """Whatever a cut run left in a pipe, as text: bytes decode, None is nothing."""
+    if chunk is None:
+        return ""
+    return chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else chunk
 
 
 RATE_LIMITED = re.compile(r"rate limit|secondary|abuse|HTTP 403|HTTP 422|HTTP 429", re.I)
@@ -451,6 +472,14 @@ def not_green(what, counts, code, wb):
     return "%s (pytest exit %d: %s)" % (what, code, wb.last_line)
 
 
+def ladder_from(rung):
+    """The install ladder from `rung` downwards, or the whole of it when no rung
+    is named. A rung that is not on the ladder at all — an entry written when the
+    ladder was spelled differently — walks the whole ladder rather than nothing."""
+    ladder = CRITERIA["install_ladder"]
+    return ladder[ladder.index(rung):] if rung in ladder else ladder
+
+
 class Workbench:
     """One scratch clone with its own venv, at the candidate's base commit."""
 
@@ -482,11 +511,18 @@ class Workbench:
         env = dict(os.environ, PIP_DISABLE_PIP_VERSION_CHECK="1")
         return run([self.py(), "-m", "pip", "install", "--quiet"] + args, cwd=self.dir, timeout=remaining, env=env)
 
-    def make_venv(self):
+    def make_venv(self, start_rung=None):
         """Install the tests' dependencies by the same ladder bench/run.sh
         climbs: dev extras first, then the bare package, then requirement
         files, then nothing but pytest. The first rung that installs is
-        recorded, because a run must reproduce the same environment."""
+        recorded, because a run must reproduce the same environment.
+
+        A remeasure passes `start_rung` so a frozen entry is rebuilt from the
+        rung it was validated on, and — when that rung has stopped resolving —
+        from the next one DOWN. Never from a richer rung above it: the ladder is
+        ordered by how much of the suite's dependencies a rung installs, so
+        climbing back up would quietly measure a fuller environment than the
+        cells that read this base will ever build."""
         shutil.rmtree(self.venv, ignore_errors=True)
         if run([sys.executable, "-m", "venv", self.venv], timeout=120).returncode != 0:
             return "venv creation failed"
@@ -494,7 +530,7 @@ class Workbench:
         # The system pip predates PEP 735 dependency groups; bench/run.sh
         # upgrades before installing and this must build the same environment.
         self.pip(["--upgrade", "pip"], deadline)
-        for rung in CRITERIA["install_ladder"]:
+        for rung in ladder_from(start_rung):
             if time.time() > deadline:
                 return "install exceeded %ds" % CRITERIA["install_cap_seconds"]
             if self.try_rung(rung, deadline):
@@ -523,13 +559,14 @@ class Workbench:
             proc = self.pip(["-e", rung], deadline)
         return proc.returncode == 0 and "does not provide the extra" not in proc.stderr
 
-    def pytest(self, paths, timeout):
+    def pytest(self, paths, timeout, flags=()):
         """Run pytest with the cache disabled so the tree stays clean between
         checks; returns (counts, exit code). The last line pytest printed is
         kept on the counts, because a non-zero exit with no summary line (a
-        usage error, a broken conftest) is only explicable from that line."""
+        usage error, a broken conftest) is only explicable from that line.
+        Only the whole-suite measurement passes `flags`; see SUITE_FLAGS."""
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        proc = run([self.py(), "-m", "pytest", "-q", "-p", "no:cacheprovider"] + paths,
+        proc = run([self.py(), "-m", "pytest", "-q", "-p", "no:cacheprovider"] + list(flags) + paths,
                    cwd=self.dir, timeout=timeout, env=env)
         counts = pytest_counts(proc.stdout + proc.stderr)
         self.last_line = last_line_of(proc.stdout + proc.stderr)
@@ -590,7 +627,7 @@ def measure_base_suite(wb, record):
     instead of a number."""
     wb.reset()
     cap = CRITERIA["suite_cap_seconds"]
-    counts, code = wb.pytest([], cap)
+    counts, code = wb.pytest([], cap, SUITE_FLAGS)
     if code == 124:
         record["base_suite"] = None
         record["base_suite_note"] = "full suite exceeded the %ds cap; not measured" % cap
@@ -652,11 +689,81 @@ def excluded_repos(paths):
     return repos
 
 
-def write_pool(path, key, entries, seed):
-    doc = {"criteria": CRITERIA, "seed": seed, key: entries}
+def write_json(path, doc):
+    """Write a pool document in the one spelling this file uses, so a pool
+    rewritten in place differs from the one it replaced only where a
+    measurement actually moved."""
     with open(path, "w") as fh:
         json.dump(doc, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
+
+
+def write_pool(path, key, entries, seed):
+    write_json(path, {"criteria": CRITERIA, "seed": seed, key: entries})
+
+
+# ── remeasuring a pool that is already frozen ────────────────────────────────
+#
+# A frozen anchor is still a measurement of a moving world. A dependency rung
+# that resolved in June stops resolving in September, and a base measured before
+# SUITE_FLAGS existed was measured differently from how every cell is now
+# graded. Neither is a reason to repick the issue, so a remeasure rewrites ONLY
+# what was measured — the rung that installed, the counts at base, and the day
+# it was measured. The issue, its base, its merge, its tests and its prompt are
+# left exactly as they were, which is what keeps the anchor an anchor.
+
+def counts_text(suite):
+    """One phrase for a base_suite, for the line a remeasure prints."""
+    if not suite:
+        return "not measured"
+    return "%d passed, %d failed, %d errors" % (suite["passed"], suite["failed"], suite["errors"])
+
+
+def remeasure_entry(entry, scratch, keep):
+    """Rebuild one entry's environment and re-measure its base. A clone or an
+    install that fails leaves the entry untouched and says so: a base nobody
+    could measure today must not overwrite the one somebody measured before."""
+    was_rung, was_suite = entry.get("install"), entry.get("base_suite")
+    wb = Workbench(entry, scratch)
+    record = {}
+    try:
+        reason = wb.clone() or wb.make_venv(entry.get("install"))
+        if reason:
+            print("remeasure %s: %s — entry left unchanged" % (entry["repo"], reason), flush=True)
+            return
+        measure_base_suite(wb, record)
+    finally:
+        if not keep:
+            wb.cleanup()
+    entry["install"] = wb.install
+    entry["base_suite"] = record["base_suite"]
+    # The cap's note is rewritten with the number beside it: a measurement that
+    # no longer hits the cap must not leave the old note standing over a count.
+    if "base_suite_note" in record:
+        entry["base_suite_note"] = record["base_suite_note"]
+    else:
+        entry.pop("base_suite_note", None)
+    entry["measured"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    print("remeasure %s: %s -> %s · %s -> %s" % (
+        entry["repo"], was_rung, wb.install, counts_text(was_suite), counts_text(entry["base_suite"])), flush=True)
+
+
+def remeasure(pool_path, repos, scratch, keep):
+    """Re-measure every entry of the named repositories, in place. A repository
+    that is not in the pool is a typo rather than a no-op, so it stops the run
+    before anything is cloned."""
+    doc = load_json(pool_path)
+    by_repo = {}
+    for entry in doc.get("anchors", []) + doc.get("picks", []):
+        by_repo.setdefault(entry["repo"], []).append(entry)
+    missing = [repo for repo in repos if repo not in by_repo]
+    if missing:
+        sys.exit("not in %s: %s" % (pool_path, ", ".join(missing)))
+    for repo in repos:
+        for entry in by_repo[repo]:
+            remeasure_entry(entry, scratch, keep)
+    write_json(pool_path, doc)
+    log("rewrote %s" % pool_path)
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -665,6 +772,8 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--anchors", type=int, default=0, help="write this many frozen anchors into --pool")
     p.add_argument("--fresh", type=int, default=0, help="produce this many fresh validated picks into --out")
+    p.add_argument("--remeasure", nargs="+", default=[], metavar="REPO",
+                   help="re-measure these repositories' entries in --pool in place: install rung, base counts, date")
     p.add_argument("--pool", default=DEFAULT_POOL, help="the anchors file (default: pool.json beside this script)")
     p.add_argument("--out", default=None, help="where fresh picks are written")
     p.add_argument("--exclude", action="append", default=[], help="pool or pick files whose repositories are skipped")
@@ -739,8 +848,16 @@ def consider(cand, meta, args, used, tally, admitted):
 
 def main():
     args = parse_args()
-    if not args.dry_run and not (args.anchors or args.fresh):
-        sys.exit("say what you want: --anchors N, --fresh N, or --dry-run")
+    if args.remeasure and (args.anchors or args.fresh):
+        # A remeasure edits entries that already exist and a pick writes new
+        # ones; asking for both in one invocation can only mean one of them was
+        # a mistake, and guessing which would rewrite a frozen pool.
+        sys.exit("--remeasure cannot be combined with --anchors or --fresh")
+    if not args.dry_run and not (args.anchors or args.fresh or args.remeasure):
+        sys.exit("say what you want: --anchors N, --fresh N, --remeasure REPO..., or --dry-run")
+    if args.remeasure:
+        os.makedirs(args.scratch, exist_ok=True)
+        return remeasure(args.pool, args.remeasure, args.scratch, args.keep)
     if args.anchors:
         refuse_overwrite(args.pool)
     if args.fresh and not args.out:

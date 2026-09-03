@@ -19,6 +19,21 @@ The unit is a **cell**: one issue, one door, one clone, one home, one grade.
 2. **The suite, installed before the clock starts,** by the rung `pick.py`
    validated the pick on, so a cell builds the environment its grade was
    measured in. The venv's `bin` leads `PATH` for the door.
+
+   The base counts a grade is read against are measured the way a cell is
+   graded: the whole suite runs with `--continue-on-collection-errors`, so a
+   module that cannot import is one error and the rest of the suite still
+   runs. Two things can leave a base stale — a rung that stopped resolving,
+   so every cell reads `venv: pip install ... failed` at 0 s, or a base
+   measured before that flag existed, where one unmet optional dependency
+   stopped pytest at collection and the base says nothing at all.
+   `pick.py --remeasure owner/repo ...` fixes both in place: it clones the
+   entry's `base`, walks the ladder from the rung the entry records and down
+   from there — never up — and rewrites `install`, `base_suite` and
+   `measured`. The issue, its base, its merge and its tests are untouched,
+   which is what keeps a frozen anchor an anchor. A base that collected
+   nothing is not a baseline, so those rows read `base ⊘` in the suite column
+   instead of a comparison that would mean nothing.
 3. **A home of its own.** `AFORGE_HOME` moves the whole state root, so every
    cell has its own journal, call log, budget and first-run history. Only the
    api key is carried over from the person's profile; the talk model, all four
@@ -103,6 +118,7 @@ of it is written by `pick.py` and validated before the entry is kept.
 | `f2p_at_base` | those tests run at `base`: they must fail there or it is no test |
 | `gold` | those tests run on the merge: they must pass or the pick is unsound |
 | `base_suite` | the whole suite at `base`; a regression is measured against it |
+| `measured` | the day the base was last re-measured by `--remeasure`; absent means it has stood since `picked_at` |
 | `picked_at` | when `pick.py` wrote the entry |
 | `source` | `fresh` — the picker's own search — or `swe-bench-verified`, fed from that public list and so an issue a model may already have read. Absent means `fresh` |
 | `tier` | the narrowest size band the fix fits: `small` (≤2 files, ≤150 lines) or `medium` (≤4 files, ≤400 lines). Absent means `small` |
@@ -110,8 +126,8 @@ of it is written by `pick.py` and validated before the entry is kept.
 `run.sh` writes two more into each cell's `entry.json`: `anchor` (true for a
 frozen pool entry) and `door` (`do` or `chat`).
 
-**`cell.json`**, one per cell, written by `cell.sh` and the only thing the
-scoreboard reads. It carries `id`, `repo`, `issue`, `anchor`, `door`, `source`
+**`cell.json`**, one per cell, written by `cell.sh` and what the scoreboard
+reads — beside its own `entry.json`, for the base counts. It carries `id`, `repo`, `issue`, `anchor`, `door`, `source`
 and `tier` from the entry, and then:
 
 | field | what it is |
