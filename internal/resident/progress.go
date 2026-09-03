@@ -19,12 +19,16 @@
 //     is what the coverage finding exists to buy. verify.OwnChecks decides what
 //     a check is, by the runner's own naming convention and by nothing else.
 //   - A CHANGED SOURCE COUNTS WHEN THE JOB IS ABOUT IT. The job's focus is what
-//     its request names, resolved against the workspace by verify.Locate — the
-//     identical reading internal/exec takes to decide how much of a project to
-//     verify — plus the adjacency verify.Adjacent's first rank defines: a file
-//     named after something in the focus, or sitting in a directory the focus
-//     is in. `debug-grid.ts` at a repository root beside `package.json` is
+//     its request names: the paths the request spells that this workspace holds,
+//     and the names it uses resolved against the workspace by verify.Locate —
+//     the identical reading internal/exec takes to decide how much of a project
+//     to verify — plus the adjacency verify.Adjacent's first rank defines: a
+//     file named after something in the focus, or sitting in a directory the
+//     focus is in. `debug-grid.ts` at a repository root beside `package.json` is
 //     neither, and `src/grid.ts` is both.
+//   - A FILE THE REQUEST NAMES IS NEVER SCRATCH. The spelling comes first and
+//     the resolution second, because a resolution is a search and a search can
+//     come back without a file the request wrote out in full. See jobFocus.
 //   - A JOB THAT NAMED NOTHING IS ABOUT EVERYTHING. An empty focus is verify's
 //     own "reading of the whole project", and the fail-safe direction here is
 //     the same: with nothing to narrow by, every changed source counts and the
@@ -38,6 +42,7 @@
 package resident
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -118,7 +123,20 @@ func MeasureRound(graph *store.Store, jobRoot, workspace string, artifacts []str
 	return change
 }
 
-// jobFocus is what the job is about, as paths this workspace holds.
+// jobFocus is what the job is about, as paths this workspace holds: the union
+// of what the request SPELLS and what the plan's own names resolve to.
+//
+// A FILE THE REQUEST NAMES IS NEVER SCRATCH. What a round produced is judged
+// against what the request names, before what the plan chose to list. The
+// second half of the union is a resolution — a name is carried to a file by
+// walking the tree for it — and a resolution can lose a file the request wrote
+// out in full: it kept only entries that came back holding a separator, so a
+// job about `notes.md` beside a job about `src/grid.ts` had a focus of the
+// second alone, and the round that changed the file the brief was written about
+// was journaled as `produced: 0, scratch: 1`. Two of those are a standstill,
+// and the run was handed over with the work moving under it. So the request's
+// own spelling enters the focus in its own right, settled against the disk and
+// against nothing else.
 //
 // It is read from the JOB ROOT and never from the round being weighed. A
 // continuation's brief carries the partial, the artifact list and the whole
@@ -141,13 +159,15 @@ func jobFocus(graph *store.Store, jobRoot, workspace string) verify.Focus {
 	if spec := DecodeSpec(root.Spec); !spec.Empty() {
 		said += "\n" + spec.Render(jobFocusLimit)
 	}
+	held := spelledPaths(said, workspace)
 	named := verify.NamedSubjects(said)
 	if len(named) == 0 {
-		return nil
+		// Nothing else to resolve. Where the request spelled nothing either this
+		// is the empty focus MeasureRound reads as "the job named nothing this
+		// workspace holds", which is where every changed source counts.
+		return held
 	}
-	located := verify.Locate(workspace, verify.Focus(named))
-	held := make(verify.Focus, 0, len(located))
-	for _, entry := range located {
+	for _, entry := range verify.Locate(workspace, verify.Focus(named)) {
 		// Only what RESOLVED. Locate keeps a name it could not place, on the
 		// grounds that it costs nothing downstream; here it would cost
 		// everything, because an unresolved name matched against a path by
@@ -156,6 +176,36 @@ func jobFocus(graph *store.Store, jobRoot, workspace string) verify.Focus {
 		if strings.ContainsAny(entry, "/\\") {
 			held = append(held, filepath.ToSlash(filepath.Clean(entry)))
 		}
+	}
+	return held
+}
+
+// spelledPaths are the files the request writes out in full that this workspace
+// actually holds — the half of the focus the request owns.
+//
+// The reading is ONE STAT PER NAME and nothing else: no walk, no model, no
+// fuzzy matching, no threshold. A name is either a path this tree holds or it
+// contributes nothing, which is the only reading that can be trusted to widen a
+// bound — the focus grows by exactly the files a person could point at.
+//
+// The shape rule is verify.NamedPaths and never a second copy of it: which
+// tokens of a text read as a file is one question the repository answers in one
+// place, and it answers it by punctuation alone — a separator or a short
+// alphanumeric extension — so it knows no language, no framework and no kind of
+// file. A name that lands on a directory is dropped, because the three
+// questions focusShape asks a change are a file's.
+func spelledPaths(said, workspace string) verify.Focus {
+	names := verify.NamedPaths(said)
+	held := make(verify.Focus, 0, len(names))
+	for _, name := range names {
+		clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(name)))
+		if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(clean))); err != nil || info.IsDir() {
+			continue
+		}
+		held = append(held, clean)
 	}
 	return held
 }
@@ -192,7 +242,15 @@ func newFocusShape(focus verify.Focus) focusShape {
 			continue
 		}
 		shape.paths[clean] = true
-		shape.dirs[pathDirectory(clean)] = true
+		// THE ROOT IS NOT A DIRECTORY A FOCUS CAN BE IN. A focus entry sitting
+		// at the top of the workspace has no directory to be beside, and filing
+		// it under the empty one would make "beside it" mean "anywhere at the
+		// top" — which is precisely where a stuck model writes its scratch. A
+		// request naming `package.json` would have bought every debug file the
+		// ink s10 rounds wrote.
+		if dir := pathDirectory(clean); dir != "" {
+			shape.dirs[dir] = true
+		}
 		if stem := pathStem(clean); stem != "" {
 			shape.stems[stem] = true
 		}
