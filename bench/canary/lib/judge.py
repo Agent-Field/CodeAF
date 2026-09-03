@@ -27,7 +27,16 @@ def sh(args, cwd=None, cap=None):
         done = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=cap)
         return done.returncode, done.stdout + done.stderr
     except subprocess.TimeoutExpired as expired:
-        return 124, (expired.stdout or "") + (expired.stderr or "")
+        # A run cut at its cap hands its output back as bytes even in text mode,
+        # and a grade must not die on the one suite that is slow: decode it.
+        return 124, _text(expired.stdout) + _text(expired.stderr)
+
+
+def _text(chunk):
+    """Whatever a cut run left in a pipe, as text: bytes decode, None is nothing."""
+    if chunk is None:
+        return ""
+    return chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else chunk
 
 
 def counts(output):
