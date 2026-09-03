@@ -144,6 +144,32 @@ const (
 	RefusedOutOfWall = "there is not enough time left on this run to finish another round of work, so this is handed over while there is still time to check it"
 )
 
+// GrowthStopped reports whether a refusal cause is one of the two the governor
+// reaches by READING THE WORLD rather than by counting — the round before this
+// one changed nothing and neither did the work before that, or the remaining
+// work came back word for word the same — and gives the sentence a person reads
+// for it.
+//
+// ONCE THE HARNESS HAS CONCLUDED NOTHING IS CHANGING, IT STOPS SPENDING ON THAT
+// JOB: no gate on a tree with no diff, no repair round on a tree with no diff,
+// no resume. This is the one place that says which causes mean it, so the leaf
+// that carries the verdict across the seam and the scheduler that acts on it
+// cannot come to different answers about the same word. Every other cause is a
+// cap or a pause and leaves the requeue exactly as it was.
+//
+// The words are the constants above and are never rewritten here: the stream has
+// already printed this sentence by the time anyone asks, and a second wording of
+// one event is a reader working out whether it is the same event.
+func GrowthStopped(cause string) (string, bool) {
+	switch cause {
+	case CauseStandstill:
+		return RefusedStandstill, true
+	case CauseFixedPoint:
+		return RefusedFixedPoint, true
+	}
+	return "", false
+}
+
 // GrowthGate is the wave's rollback switch. Off, the governor keeps the three
 // free checks — rounds, ceiling, rail — and never asks the paid question, which
 // is today's behaviour plus the revision fix and the journal.

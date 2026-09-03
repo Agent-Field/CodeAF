@@ -108,3 +108,14 @@ func ReleaseWhy(reason string) string {
 	}
 	return strings.TrimSpace(reason)
 }
+
+// nothingChangedFailure is the third ending a leaf that ran out can be given,
+// and the only one that is not about the meter. The other two answer "how much
+// room was there"; this one answers a question the job has already settled — the
+// world stopped moving while it was being paid to move it — so the governor's
+// own sentence is the ending, verbatim, because it is the sentence the stream
+// printed at the moment it was decided. The figures follow it for the record,
+// exactly as they follow the other two.
+func nothingChangedFailure(result ExecResult, words string) string {
+	return words + meterAside(result.Meter)
+}

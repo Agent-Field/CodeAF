@@ -1750,6 +1750,17 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 		// measurement itself, and that sentence is the finding.
 		return firstLine(strings.TrimSpace(gate.Unmeasured)), "", true
 	}
+	// A GATE THAT WAS DECLINED RATHER THAN HELD NAMES NO GAP, AND ITS SENTENCE
+	// IS THE FINDING. The harness stops asking for a judgement once nothing is
+	// changing and journals the refusal in its place, unclosed; reading that row
+	// for a gap it does not have returned "nothing standing", so the one line at
+	// the end of a run that was never judged said nothing at all. There is no
+	// second clause to add — the refusal already says why nothing further ran.
+	if finding == "" && gate.Unclosed {
+		if refused := firstLine(strings.TrimSpace(gate.Refused)); refused != "" {
+			return refused, "", true
+		}
+	}
 	if finding == "" {
 		return "", "", false
 	}

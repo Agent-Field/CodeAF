@@ -176,31 +176,39 @@ func RemainderDigest(gap string) string {
 // Returns the spliced node count and the repair sink's id. DailyBudgetUSD zero
 // is unlimited; at the rail the durable question is posted and no splice lands.
 func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
-	return ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, Growth{Reason: GrowOverrun}, planRemainder)
+	spliced, sink, _, err := ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, Growth{Reason: GrowOverrun}, planRemainder)
+	return spliced, sink, err
 }
 
-// ReplanOverrunAs is the same splice with the growth named for what asked.
+// ReplanOverrunAs is the same splice with the growth named for what asked, and
+// it hands back WHICH GOVERNOR SPOKE when one refused the round.
 //
 // The delivery gate grows a job for a reason this file never had — a reviewer
 // found the result wrong, not the budget short — and it used to inherit this
 // path's governors by borrowing its whole function, which left the journal
 // unable to say afterwards which of the two had spent the round. The reason
 // travels now; everything else is identical.
-func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, growth Growth, planRemainder OverrunPlanFunc) (int, string, error) {
-	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", growth, planRemainder)
-	return spliced, sink, err
+//
+// refused is [GrowVerdict.Cause] verbatim, and empty when nothing refused —
+// including at the rail, which is a question waiting on a person rather than a
+// refusal. It is RETURNED rather than left in the journal for the caller to
+// read back, because the caller's next three decisions turn on it and a fact
+// re-derived from a row is a fact that can disagree with the row.
+func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, growth Growth, planRemainder OverrunPlanFunc) (spliced int, sink string, refused string, err error) {
+	return replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", growth, planRemainder)
 }
 
-// replanOverrun reports capped=true when a governor refused the splice: the
-// repair is abandoned for good, unlike the rail's zero-splice pause, which is
-// waiting for consent. Deferred resumption needs the difference — a capped
-// repair must resolve rather than wait forever.
-func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, growth Growth, planRemainder OverrunPlanFunc) (int, string, bool, error) {
+// replanOverrun reports a non-empty cause when a governor refused the splice:
+// the repair is abandoned for good, unlike the rail's zero-splice pause, which
+// is waiting for consent. Deferred resumption needs the difference — a capped
+// repair must resolve rather than wait forever — and every other caller needs
+// the cause itself, so the one value answers both.
+func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, growth Growth, planRemainder OverrunPlanFunc) (int, string, string, error) {
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
 		if err != nil {
-			return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
+			return 0, "", "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 		}
 	}
 	// The round is the prefix's own arithmetic rather than the journal's count:
@@ -238,7 +246,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	request = request.weighed(graph, request.JobRoot, lineage)
 	verdict, err := growJob(ctx, graph, growth.Ask, request)
 	if err != nil {
-		return 0, "", false, fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
+		return 0, "", "", fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
 	}
 	if !verdict.Allow {
 		if verdict.Cause == CauseRail {
@@ -252,11 +260,14 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap,
 				Artifacts: artifacts, Prefix: prefix, State: growth.State}
 			if err := graph.DeferOverrun(deferred); err != nil {
-				return 0, "", false, fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
+				return 0, "", "", fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
 			}
-			return 0, "", false, nil
+			// A RAIL IS NOT A REFUSAL. The repair is journaled and waiting on
+			// consent, so nothing downstream may read this as the job having
+			// concluded anything — see GrowthStopped.
+			return 0, "", "", nil
 		}
-		return 0, "", true, nil
+		return 0, "", verdict.Cause, nil
 	}
 	anchor := PlanAnchor{NodeID: request.JobRoot, SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
@@ -283,10 +294,10 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	}
 	subtree, err := planRemainder(planCtx, goal, prefix)
 	if err != nil {
-		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		return 0, "", "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	if len(subtree.Nodes) == 0 {
-		return 0, "", false, nil
+		return 0, "", "", nil
 	}
 	// The ceiling is read twice on purpose. On the way in it can only ask
 	// whether there is room for anything at all, because until the plan exists
@@ -298,7 +309,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	exact.Rechecking = true
 	exact.DailyBudgetUSD = 0
 	if recheck, err := growJob(ctx, graph, nil, exact); err == nil && !recheck.Allow {
-		return 0, "", true, nil
+		return 0, "", recheck.Cause, nil
 	}
 	subtree = attachNeeds(subtree, repairSources(graph, node))
 
@@ -310,7 +321,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		}
 	}
 	if sink == "" {
-		return 0, "", false, fmt.Errorf("replan overrun %s: subtree has no sink", node.ID)
+		return 0, "", "", fmt.Errorf("replan overrun %s: subtree has no sink", node.ID)
 	}
 
 	// The repair joins the exhausted node's own job when there is one; an
@@ -339,7 +350,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		Attachments: append([]string(nil), node.Provenance.Attachments...),
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
-		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		return 0, "", "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	admitGrowth(graph, request, verdict, len(subtree.Nodes))
 	// THE RESUMPTION IS JOURNALED, on the node that is actually resuming. A
@@ -373,7 +384,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			_ = graph.AddEdge(sink, edge.To, store.FeedsInto)
 		}
 	}
-	return len(subtree.Nodes), sink, false, nil
+	return len(subtree.Nodes), sink, "", nil
 }
 
 // OverrunLineage names the lineage a node belongs to and how deep into it the
@@ -468,14 +479,15 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			}
 			continue
 		}
-		spliced, _, capped, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
+		spliced, _, refused, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
 			dailyBudgetUSD, deferred.Prefix, Growth{Reason: GrowOverrun, State: deferred.State}, planRemainder)
 		if err != nil {
 			return resumed, err
 		}
-		// A capped repair is abandoned for good: resolve it so it stops
-		// occupying the queue. A rail pause keeps waiting for consent.
-		if capped {
+		// A refused repair is abandoned for good: resolve it so it stops
+		// occupying the queue. A rail pause names no governor and keeps waiting
+		// for consent, which is why the cause is what is asked here.
+		if refused != "" {
 			if err := graph.ResolveOverrun(deferred); err != nil {
 				return resumed, err
 			}

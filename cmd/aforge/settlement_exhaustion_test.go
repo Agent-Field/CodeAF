@@ -25,6 +25,17 @@ import (
 // Here the judge is scripted to give exactly that answer, over a leaf that
 // really does run out. Doneness is a claim; running out is measured; a measured
 // fact is never overturned by an unmeasured claim.
+//
+// WHAT CHANGED IN #386, AND WHAT DID NOT. The delivery gate is not that judge
+// and never was: it is shown the request, the record and the files, and a pass
+// from it is a reading of the WORK rather than a claim about the worker's last
+// sentence — so a cut leaf whose delivery was read and passed is now settled on
+// it, and this run therefore ends on a verdict rather than on the queue. What is
+// still refused, and what this test is named after, is the remainder judge's
+// say-so: it says done here on every round, and not one node settles on it. The
+// ⏳ is still answered by a ↻ and never by a bare ✓, and every completed node
+// that ran out still has to name the thing that took its work on — a splice, a
+// release, or a gate that passed.
 func TestALeafThatRanOutIsNeverSettledOnAJudgesSayySo(t *testing.T) {
 	script := newScriptedBrain(t)
 	script.runawayLeaf = true
@@ -46,12 +57,13 @@ func TestALeafThatRanOutIsNeverSettledOnAJudgesSayySo(t *testing.T) {
 		t.Fatalf("the remainder judge was never asked, so this run is not the one under test:\n%s",
 			stderr.String())
 	}
+	// And the run leaves on the gate's verdict. A delivery that was read against
+	// the request and passed is an account of the work, so exit 0 is the honest
+	// code here — the run that has nothing anybody read is the one that must not
+	// have it, which is the sibling law in TestALeafThatChangedNothing... .
 	var status exitStatus
-	if err == nil {
-		t.Fatalf("a run whose every leaf was cut off left with exit 0:\n%s", stderr.String())
-	}
-	if asExitStatus(err, &status) && status == 0 {
-		t.Fatalf("a run whose every leaf was cut off left with exit 0:\n%s", stderr.String())
+	if err != nil && !(asExitStatus(err, &status) && status == 0) {
+		t.Fatalf("a run whose delivery was read and passed left with %v:\n%s", err, stderr.String())
 	}
 
 	// THE STREAM SAYS WHAT HAPPENED. A ⏳ is answered by a ↻ — the work carried
@@ -109,7 +121,17 @@ func assertRanOutThenCarriedOn(t *testing.T, stream string) {
 
 // assertNothingCutOffWasCompletedAlone walks the whole journal once. A node that
 // journaled `leaf_exhausted` and then `node_completed` must have journaled a
-// splice or a release between the two — the successor that holds its work.
+// splice or a release between the two — the successor that holds its work — OR
+// have had its delivery read against the request and passed.
+//
+// The second arm is the one thing that answers the question a cut leaf leaves
+// open. Running out is a fact about the METER and the account it settles is
+// "there was no room left"; a delivery gate is a reading of the WORK against the
+// words the person used, and the account it settles is "this is what was asked
+// for". The remainder judge that produced the defect this file is named after is
+// neither: it was shown the brief and the leaf's own last sentence and nothing
+// else, which is why doneness claimed there is still never allowed to settle
+// anything.
 func assertNothingCutOffWasCompletedAlone(t *testing.T, graph *store.Store) {
 	t.Helper()
 	events, err := graph.Events(0, 5000)
@@ -129,6 +151,11 @@ func assertNothingCutOffWasCompletedAlone(t *testing.T, graph *store.Store) {
 				if event.NodeID == id || strings.HasPrefix(event.NodeID, id) {
 					covered[id] = true
 				}
+			}
+		case store.EventDeliveryGate:
+			var gate store.DeliveryGate
+			if err := json.Unmarshal(event.Payload, &gate); err == nil && gate.Pass {
+				covered[event.NodeID] = true
 			}
 		case store.EventNodeCompleted:
 			if cut[event.NodeID] && !covered[event.NodeID] {

@@ -57,7 +57,7 @@ func TestGateRepairConsumesTheFinishedSiblings(t *testing.T) {
 			{ID: prefix + "-n1", Brief: "assemble the twelve", Title: "Assemble"},
 		}}, nil
 	}
-	spliced, sink, err := ReplanOverrunAs(context.Background(), graph, root,
+	spliced, sink, _, err := ReplanOverrunAs(context.Background(), graph, root,
 		"two of twelve", "the other ten profiles are missing", nil, 0,
 		Growth{Reason: GrowGap}, planned)
 	if err != nil || spliced != 1 {

@@ -628,7 +628,16 @@ func (s *Store) AssessCharterFiring(nodeID string) (CharterFiringAssessment, boo
 		}
 		if ok && !gate.Pass && !gate.PolishClosed {
 			assessment.Decided = true
-			assessment.Reason = "firing output rejected: " + firstCharterLine(gate.Gap)
+			// The gap where a judgement found one, and otherwise the refusal
+			// that stood in for the judgement: a gate that was declined rather
+			// than held carries its sentence in Refused, and reading it for a
+			// gap would leave a person the words "firing output rejected: " with
+			// nothing after the colon. See RecordDeliveryGate.
+			why := gate.Gap
+			if strings.TrimSpace(why) == "" {
+				why = gate.Refused
+			}
+			assessment.Reason = "firing output rejected: " + firstCharterLine(why)
 			return assessment, true, nil
 		}
 	}

@@ -189,6 +189,27 @@ Every one of them hands over what exists rather than failing, and every one is
 said on the work's own record, so a job that quietly stopped growing never looks
 like a job that is still going.
 
+## After a standstill — is more money spent on that job
+
+It stops. Once the work has been declared at a standstill — or the same work
+again — that piece is handed over as it stands and **nothing more is bought for
+it**: no review of the delivery, no repair round against that review, and the
+piece is not picked up and run again. The sentence you already read is the whole
+ending, and it is what the piece's record says it finished on.
+
+Two of those three stop even without the standstill. A piece that ran out having
+written and altered nothing at all — same files, same sizes, same modification
+times as when it started — is not reviewed and not repaired either, because
+there is nothing for a review to read and nothing for a repair to build on. You
+see `nothing here was written or altered while this ran, so it is handed over as
+it stands. Nothing further was started.`
+
+What is NOT stopped by any of this: a piece that changed something is reviewed
+and repaired exactly as before, a piece whose review **passed** is finished and
+settled on that review even if it ran out of room getting there, and the first
+fruitless round is always bought — work can run out before it writes its first
+file.
+
 ## The practice carve-out
 
 Aforge's own practice has its own pocket: **$50.00 a day**, spent as at most two

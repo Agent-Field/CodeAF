@@ -787,3 +787,143 @@ func TestNodeTraceWindowStartsOnALineBoundary(t *testing.T) {
 		}
 	}
 }
+
+// ONCE THE HARNESS HAS CONCLUDED NOTHING IS CHANGING, IT STOPS SPENDING ON THAT
+// JOB. Two of the three doors that spending goes through are here: the gate and
+// the repair round it buys, both of which are skipped on a tree with no diff.
+//
+// The stamp is a before-and-after of the same record, so the question it answers
+// is "did THIS attempt move anything" and not "is there anything on disk". A
+// resumed leaf inherits its predecessor's files and must not read them as its
+// own work; a leaf that wrote its first file has moved the world and is judged
+// exactly as it always was.
+func TestALeafThatChangedNothingIsNotJudgedOrRepaired(t *testing.T) {
+	root := t.TempDir()
+	before := filepath.Join(root, "inherited.md")
+	if err := os.WriteFile(before, []byte("what the last attempt wrote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	startedWorldAs := revision.TreeStamp([]string{before})
+
+	ranOut := &exec.Outcome{Stop: exec.StopBudget}
+	if !nothingChanged(ranOut, startedWorldAs, revision.TreeStamp([]string{before})) {
+		t.Fatal("a leaf that ran out over an untouched tree was read as having moved it")
+	}
+	// The same reading with the leaf's own first file in it: the tree moved, so
+	// there is something to judge and something a repair could build on.
+	written := filepath.Join(root, "report.md")
+	if err := os.WriteFile(written, []byte("the answer\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if nothingChanged(ranOut, startedWorldAs, revision.TreeStamp([]string{before, written})) {
+		t.Fatal("a leaf that wrote its first file skipped the gate")
+	}
+	// And a leaf that FINISHED is none of this business, whatever the tree did.
+	// The law is about work that stopped, not about work that produced nothing
+	// because nothing needed producing.
+	if nothingChanged(&exec.Outcome{Stop: exec.StopDone}, startedWorldAs, startedWorldAs) {
+		t.Fatal("a leaf that finished inside its budget was denied its gate")
+	}
+	if nothingChanged(nil, startedWorldAs, startedWorldAs) {
+		t.Fatal("a leaf with no outcome at all was read as a standstill")
+	}
+}
+
+// What the person reads when the gate is not asked. It is the governor's own
+// sentence wherever the governor spoke, because that sentence is already on the
+// stream and in the record by the time this is composed, plus the one fact the
+// governor cannot know: that nothing was bought off the back of it.
+func TestTheUnaskedGateSaysWhyInTheGovernorsWords(t *testing.T) {
+	said := unchangedHandoverWords(resident.CauseStandstill)
+	if !strings.HasPrefix(said, resident.RefusedStandstill) {
+		t.Fatalf("handover = %q, want the governor's own sentence first", said)
+	}
+	if !strings.Contains(said, "Nothing further was started") {
+		t.Fatalf("handover = %q, want it to say nothing more was bought", said)
+	}
+	// And where no governor spoke — a first fruitless round, or a cap — the
+	// observation is still stated rather than left to silence.
+	plain := unchangedHandoverWords("")
+	if !strings.HasPrefix(plain, unchangedHandover) || !strings.Contains(plain, "Nothing further was started") {
+		t.Fatalf("handover with no governor = %q", plain)
+	}
+}
+
+// AND THE UNASKED GATE IS JOURNALED, THROUGH THE STORE THAT WILL ACTUALLY BE
+// ASKED TO TAKE IT.
+//
+// The sentence above was only ever checked as a string. The row it rides was
+// refused by the real validator on every real run — a gate that did not pass had
+// to name a gap, and a declined judgement names none — so what landed was
+// `note: could not journal the unasked gate on task-2-x1: record delivery gate:
+// invalid graph mutation: a failed gate must name the gap` and no row at all.
+// The promise of the change was a row a ledger could read; this writes exactly
+// what the surface writes and reads it back.
+func TestTheUnaskedGateIsJournaledAgainstTheRealStore(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-2-x1", Brief: "finish the migration", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "finish the migration"}); err != nil {
+		t.Fatal(err)
+	}
+
+	handover := unchangedHandoverWords(resident.CauseStandstill)
+	if err := graph.RecordDeliveryGate("task-2-x1", store.DeliveryGate{
+		Refused: handover, Unclosed: true,
+	}); err != nil {
+		t.Fatalf("the unasked gate was not journaled: %v", err)
+	}
+	gate, ok, err := graph.DeliveryGateFor("task-2-x1")
+	if err != nil || !ok {
+		t.Fatalf("DeliveryGateFor = %v, %v", ok, err)
+	}
+	if gate.Pass || !gate.Unclosed || gate.Refused != handover {
+		t.Fatalf("journaled gate = %+v, want the refusal standing and the delivery unclosed", gate)
+	}
+	// Never a pass: the exit code turns on this reading, and a run that changed
+	// nothing handed over less than it promised.
+	if gate.Whole() {
+		t.Fatal("a delivery nothing judged read as whole")
+	}
+	// And the person watching is told, in the governor's own words. The row
+	// names no gap, so a reader that asks it for one says nothing at the end of
+	// a run that was never judged.
+	finding, reason, standing := gateStanding(gate)
+	if !standing || !strings.HasPrefix(finding, resident.RefusedStandstill) {
+		t.Fatalf("gateStanding = %q, %q, %t; want the refusal as the finding", finding, reason, standing)
+	}
+	if verdict, detail := gateWords(gate); verdict != "refused" || detail == "" {
+		t.Fatalf("gateWords = %q, %q; want the refusal read as one", verdict, detail)
+	}
+}
+
+// The verdict rides the result, and only the two causes that read the world set
+// it. Everything else — a cap, the wall, the rail, an ordinary leaf — leaves the
+// field empty, which is what the scheduler reads as "requeue as you always did".
+func TestOnlyAWorldReadingRefusalRidesTheResult(t *testing.T) {
+	for _, cause := range []string{resident.CauseStandstill, resident.CauseFixedPoint} {
+		if _, stopped := resident.GrowthStopped(cause); !stopped {
+			t.Fatalf("%q did not stop the job", cause)
+		}
+	}
+	for _, cause := range []string{"", resident.CauseRounds, resident.CauseCeiling, resident.CauseRail} {
+		if _, stopped := resident.GrowthStopped(cause); stopped {
+			t.Fatalf("%q stopped the job", cause)
+		}
+	}
+	// And the field is on the result the leaf hands the scheduler, filled from
+	// the one place that can know it.
+	result := leafSpend(exec.Usage{}, nil, "worker/model", exec.Usage{},
+		&exec.Outcome{Stop: exec.StopBudget}, false)
+	if result.RefusedGrowth != "" {
+		t.Fatalf("a leaf nobody refused carried %q", result.RefusedGrowth)
+	}
+	result.RefusedGrowth = resident.CauseStandstill
+	if !result.RanOut() {
+		t.Fatal("a refused leaf with nothing continuing it is not being read as having run out")
+	}
+}

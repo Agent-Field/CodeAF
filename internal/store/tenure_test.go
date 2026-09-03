@@ -228,6 +228,19 @@ func TestTenuredFailureClassesDemoteAndSecondDemotionPauses(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, wantReason: "output rejected"},
+		{name: "judgement declined", mutate: func(t *testing.T, graph *Store, jobID string) {
+			// A gate that was never asked, because the harness had stopped
+			// spending on the job: the refusal stands in for the judgement and
+			// there is no gap. The reason a person reads is that sentence —
+			// reading the row for a gap left them "firing output rejected: "
+			// with nothing after the colon.
+			if err := graph.RecordDeliveryGate(jobID, DeliveryGate{
+				Refused:  "nothing here was written or altered while this ran",
+				Unclosed: true,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}, wantReason: "output rejected: nothing here was written or altered"},
 		{name: "user cancelled", mutate: func(t *testing.T, graph *Store, jobID string) {
 			if err := graph.CancelPending(jobID, "cancelled by user"); err != nil {
 				t.Fatal(err)
