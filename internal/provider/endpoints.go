@@ -548,6 +548,47 @@ func (c *Client) recoverFromRefusal(
 	return nil, c.refusalError(request, knobs, model, stripped, tried, attempt+1, last)
 }
 
+// widenPastTheRetiredPin is the ONE retry a request earns for having just cost
+// somebody their pin.
+//
+// It is rung one of the ladder and nothing else: the whole `provider` object
+// comes off ([relaxedPreferences]), so what goes out is the request `auto`
+// would have sent, which is precisely what the retirement next door has just
+// decided every LATER request will send. This one was already written when the
+// decision was taken, and re-sending it is cheaper than the alternative — a
+// dead turn, and a person reading the router's own sentence about a preference
+// they did not know they had (issue #456).
+//
+// IT IS ONE ATTEMPT AND NOT A LADDER. The ladder exists to find out WHICH field
+// of a request the router could not serve; here that is already known — it was
+// the demand, and the demand is gone — so climbing on to strip the reasoning
+// knob, the output cap and the tools would take away things the person may care
+// about having sent in order to answer a question nobody is asking. If the
+// widened request is refused as well, the turn ends with the refusal named,
+// exactly as it does at the top of any other ladder that runs out.
+func (c *Client) widenPastTheRetiredPin(
+	ctx context.Context,
+	request *ai.Request,
+	knobs callKnobs,
+	stream bool,
+	first []byte,
+) (*http.Response, error) {
+	widened := knobs
+	widened.relaxed |= relaxEndpointFilter
+	response, payload, err := c.attemptShaped(ctx, request, widened, stream)
+	if err != nil {
+		return nil, err
+	}
+	if response != nil {
+		return response, nil
+	}
+	if len(payload) == 0 {
+		payload = first
+	}
+	return nil, c.refusalError(request, knobs, c.modelFor(request),
+		[]string{rung(relaxEndpointFilter).name}, nil, 2, payload)
+}
+
 // attemptShaped sends one shaped attempt and separates the two outcomes the
 // chain cares about: something to hand back (an answer, or any failure that is
 // not this class), and another refusal of the same kind, whose body it returns

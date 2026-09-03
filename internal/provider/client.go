@@ -412,6 +412,11 @@ func (c *Client) modelFor(request *ai.Request) string {
 // way out rather than at each return so that no future rung can be added past
 // it and quietly keep a dead pin.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	// AND ANYTHING A PERSON IS STILL OWED IS SAID HERE, on the first request of
+	// theirs that goes out after it was learned (lanepin.go's
+	// [tellRetiredPins]). It is one nil check on a call nobody is reading and
+	// on every call after the sentence has been said.
+	tellRetiredPins(ctx)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	if err != nil || (response != nil && response.StatusCode >= 400) {
 		c.releaseEndpoint(ctx, c.modelFor(request))
@@ -429,14 +434,48 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
 	}
+	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	if readErr != nil || !c.routingRefusal(c.modelFor(request), response.StatusCode, peek) {
+	if readErr != nil || !c.routingRefusal(model, response.StatusCode, peek) {
 		// Not this class. The body is handed back whole — a peek must never
 		// shorten what the caller goes on to read.
 		response.Body = rewound(peek, response.Body)
 		return response, nil
 	}
 	response.Body.Close()
+	// THE REFUSAL IS CLASSIFIED ONCE, HERE, AND ACTED ON BEFORE EITHER RECOVERY
+	// RUNS. This line is the fork EVERY routing refusal passes through — the
+	// walk takes one road out of it and the ladder the other, and both are
+	// below here — which is why the two things that are true whatever happens
+	// next are true at this line and not on one of the two roads.
+	//
+	// THE STRIKE IS THE FIRST OF THEM, and it was missing (issue #456). It
+	// fired only where a refusal surfaced to a caller as a 4xx
+	// ([Client.refuseUpstream]'s three call sites); a routing refusal the
+	// LADDER absorbed never reached one, so the machine that had just said it
+	// cannot serve this model was left standing in the serving set and the next
+	// turn chose it again. "This machine refused this model" is true whatever
+	// the recovery below does with the request, and it is recorded at the seam
+	// where it is known.
+	refusal := c.refusalObject(request, knobs, apiError(response.StatusCode, peek))
+	c.strikeRefusal(model, refusal)
+	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
+	// router says it cannot serve for this model is stood down for that model,
+	// once, and the person is told in a sentence that stays.
+	//
+	// THE CALL THAT RETIRED IT WIDENS AND TRIES AGAIN RATHER THAN WALKING. One
+	// retry, at rung one, which is the rung that takes the whole provider
+	// object off — so the request that goes out is exactly the request `auto`
+	// would have sent. It is not a re-entry into the ladder: the demand has
+	// just been withdrawn, so what was wrong with this request is already
+	// fixed, and climbing on to strip the reasoning knob and the tools would be
+	// paying for a diagnosis nobody needs. And it is not the walk either: the
+	// walk is gated on a purse and on a frontier, and when it declines there is
+	// nothing underneath it — which is how the reported turn died with the
+	// person's brief unanswered and the router's own sentence on the screen.
+	if retirePinnedLane(ctx, model, refusal) {
+		return c.widenPastTheRetiredPin(ctx, request, knobs, stream, peek)
+	}
 	// THE LANE IS TRIED BEFORE THE REQUEST IS RELAXED. A refusal is a fact
 	// about the MACHINE that made it — one endpoint behind a model drops tool
 	// calls, another has no room for the output cap, a third has the reasoning
