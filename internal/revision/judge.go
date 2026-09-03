@@ -1274,7 +1274,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// there, on the same budget the worker was held to, so that the world's
 	// answer exists wherever a verdict is being reached rather than only where a
 	// worker happened to be able to take one.
-	evidence.measureFinalTree(ctx)
+	evidence.measureFinalTree(ctx, verify.JobKey(node.Provenance.Intent))
 	// AND THE RECORD OF WHAT WAS LEFT BEHIND IS SETTLED AGAINST THE WORLD BEFORE
 	// ANYTHING IS ASKED OF IT. Every reader below — the mechanical gate, the
 	// block the judge is shown, the door that refuses a gap the disk has already
@@ -2577,9 +2577,22 @@ func PlanNodeFor(planGraph *plan.Graph, prefix, nodeID string) *plan.Node {
 // It is a measurement and never a gate: a command that will not run, an
 // entrypoint that vanished, or a ceiling that fires all leave the evidence
 // exactly as it arrived.
-func (e *Evidence) measureFinalTree(ctx context.Context) {
+//
+// job is the request this tree is being changed for, and it is here for the one
+// question that has to be asked before the suite is: HAS ANYTHING HAPPENED SINCE
+// SOMEBODY LOOKED. Where the job has produced or changed no file since its
+// reading was taken, the tree in front of this gate is the tree in that reading,
+// and running the suite again spends an eighth of a wall to reproduce a roster
+// the evidence is already carrying. See verify.TreeState.
+func (e *Evidence) measureFinalTree(ctx context.Context, job string) {
 	reading := e.Verification
 	if !reading.Taken || reading.AfterTaken || strings.TrimSpace(e.Workspace) == "" {
+		return
+	}
+	if verify.TreeUnchangedSince(e.Workspace, job, verify.TreeState(e.Workspace, e.Artifacts)) {
+		if settled, unchanged := reading.OnAnUnchangedTree(); unchanged {
+			e.Verification = settled
+		}
 		return
 	}
 	// The SAME strategy the first reading was taken with, pinned rather than

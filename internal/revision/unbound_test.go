@@ -52,7 +52,7 @@ func unboundJob(t *testing.T) (root string, record []string) {
 			t.Fatal(err)
 		}
 	}
-	verify.RememberBaseline(root, verify.JobKey(unboundIntent), verify.Reading{
+	verify.RememberBaseline(root, verify.JobKey(unboundIntent), "", verify.Reading{
 		Surface: verify.PublicSurface(root),
 		Unread:  "this project declares no way of checking itself",
 	})

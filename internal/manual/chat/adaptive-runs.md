@@ -1040,7 +1040,10 @@ package's `__init__.py` is the only thing that says so. Only import lines are re
 whole names match, so `Log` is never `Logger` and `log` is never `dialog`. **Your request
 does not have to spell a path**: a name it uses that this repository has a file for — an
 `IntersectionObserver`, a `RichLog` — is resolved to that file, whole, and that is what
-decides which package is read. It resolves to **every** file of that name rather than the
+decides which package is read. **And a directory you name is the scope.** A request that
+says `go test ./internal/subharness/ -count=1`, or names `packages/happy-dom`, is read over
+that package and nothing else, as long as the workspace holds it — a place it does not hold
+is prose that happened to have a slash in it, and is dropped. It resolves to **every** file of that name rather than the
 first one found, so a repository that keeps a documented example beside the real widget does
 not send the reading to the example. And when your request writes a name both ways — `Log`
 and `RichLog` in one sentence — the short one counts as a name too, so a change to both is
@@ -1101,18 +1104,31 @@ for the reading taken after the work as much as for the one before it — and wh
 ran but printed nothing a check could be read out of, the record says that, rather than the
 same words it would use for a project it could not read at all.
 
-**And a reading cut at its ceiling is taken again, smaller.** Every other reason there is no
-reading is a fact about your project or about the time available, and a later round inherits
-it rather than paying to learn it twice. A scoped reading that ran out of time is not one of
-those: it is a fact about a size aforge chose, and the run now knows how fast this project's
-checks go — so the next reading is the checks your change is in, rather than the same
-ceiling again.
+**And a reading cut at its ceiling is taken again, smaller — when there is a smaller one to
+take.** Every other reason there is no reading is a fact about your project or about the
+time available, and a later round inherits it rather than paying to learn it twice. A scoped
+reading that ran out of time is not one of those: it is a fact about a size aforge chose, and
+the run now knows how fast this project's checks go — so the next reading is the checks your
+change is in, rather than the same ceiling again. But **only when that next reading is
+strictly smaller**: a reading of the whole suite has nothing narrower to fall to, and a
+second identical attempt cannot finish where the first one did not, so it stands as it is
+rather than spending another eighth of the wall to be killed at the same place.
 
 **Repair rounds are measured against the tree the job started with.** The first reading
 belongs to the whole job, not to one attempt: a second or third round inherits it rather
 than photographing a tree its own earlier round has already changed. Without that, a check
 broken in round one is red in round two's baseline and is never reported again. It also
 means a repair round runs the suite once rather than twice.
+
+**And the second reading is taken only when the tree changed.** What counts as changed is
+the run's own record of the files it produced or altered, settled against the disk: each
+recorded file's size and write time, and a marker for a recorded file that is no longer
+there. A rewrite of a file already recorded, and a deletion — which never appears in a file
+list, because that list is what you are shown and a deleted file is not something you can
+open — both count. When the job has changed nothing since the reading before the work, that
+reading *is* the reading of the finished tree: it stands, the record says it was inherited,
+and no command runs. The same holds at the check at the end of the job, for the tree it
+already has a reading of.
 
 **A behaviour you asked for that no check covers keeps the run from ending clean.** The
 check at the end of a job maps every behaviour your request states against the checks that
@@ -1211,6 +1227,32 @@ to be the same silence, and one of them costs an eighth of the wall. The reason 
 once per job, so a repair round inherits it rather than paying again. In every one of these
 cases the behaviour is what it would have been without any of this, and nothing is claimed
 about checks nobody read.
+
+## Why did it run the whole test suite when I asked about one package — and why more than once
+
+It should not, and since #429 it does not. A reading covers **what your request names or
+what the work touched**, and it is taken again only when the tree actually changed.
+
+- **What your request names.** A package or directory you spell — `./internal/subharness/`,
+  `packages/happy-dom` — is the scope, when the workspace holds it. So is a file you name,
+  and so is a name this repository has a file for. Only a request that names nothing at all,
+  in a job that has changed nothing yet, is read over the whole project.
+- **Once per tree.** Every leaf of a job after the first inherits the reading the job
+  already took. It used to be that inheriting one *bought* a second reading of the finished
+  tree; now the finished tree is only read when the run's own record says a file moved.
+- **Never the same reading twice.** A reading killed at its budget is retaken only over a
+  strictly smaller selection. A whole-suite reading has none, so it stands.
+- **A deletion counts as a change.** What decides all of the above is the run's own record
+  of the tree, read off the disk — each recorded file's size and write time, and a marker
+  for a recorded file that is gone. So a round that rewrote a file it had already written,
+  and a leaf whose only change was to REMOVE a file, are both read again; a file list alone
+  could see neither. And where nothing watched the tree — a job no worker photographed —
+  the check at the end reads it rather than assuming an empty file list means an untouched
+  tree.
+
+What that was worth: one measured errand — run one package's tests and report the last line,
+change no files — read `go test -json ./...` over 4,587 tests nine times, each killed at its
+two-minute budget, 82% of an 11m40s run.
 
 ## What "acceptance" means — the checklist read off your request before the work starts
 

@@ -597,7 +597,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// and a reading taken after WatchTree would file every one of them as
 	// something this leaf produced. Taken first, they belong to the world the
 	// leaf arrived in, which is what they are.
-	reading, inheritedReading := PhotographBefore(ctx, l.workspace, l.history, l.deadline, task)
+	reading, treeMoved := PhotographBefore(ctx, l.workspace, l.history, l.deadline, task)
 	// The world's own account of what this leaf leaves behind starts here: the
 	// tree as it stands before a single turn has run. Everything the leaf writes
 	// with a shell command, a script or a build is invisible to the write tools
@@ -789,11 +789,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			case ControlCancel:
 				outcome.Stop = StopCancelled
 				trace.note("cancel requested — stopping at turn boundary")
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			case ControlPause:
 				outcome.Stop = StopPaused
 				trace.note("pause requested — holding at turn boundary")
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			}
 		}
 		if landing == 0 && time.Until(deadline) <= landingReserve {
@@ -849,7 +849,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			if ctx.Err() != nil {
 				outcome.Stop = StopDeadline
 			}
-			return l.land(ctx, task, outcome, started, reading, inheritedReading), fmt.Errorf("node %s: %w", task.leafKey(), err)
+			return l.land(ctx, task, outcome, started, reading, treeMoved), fmt.Errorf("node %s: %w", task.leafKey(), err)
 		}
 		outcome.Turns++
 		// The node total, and the same numbers kept per turn. See meter.go: a
@@ -870,7 +870,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					outcome.Text = "The quick pass found that this needs a full job."
 				}
 				trace.turn(outcome.Turns, response, calls, nil, "promoted")
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			}
 		}
 		// The cooperative ending, and it is terminal by contract: a leaf that
@@ -899,7 +899,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				}
 				trace.turn(outcome.Turns, response, calls, nil, fmt.Sprintf(
 					"asked to divide into %d parts", len(request.Parts)))
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			}
 		}
 		if len(calls) == 0 {
@@ -920,7 +920,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				trace.turn(outcome.Turns, response, nil, nil, fmt.Sprintf(
 					"empty reply burned %d of %d remaining tokens — abandoned for escalation",
 					completionOf(response), remaining))
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			}
 			// An empty message with no tool calls is not a deliverable — it is
 			// what a reasoning model produces when the output ceiling cut it
@@ -985,7 +985,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				messages = messages[:len(messages)-1]
 			}
 			trace.turn(outcome.Turns, response, nil, nil, "final")
-			landed := l.land(ctx, task, outcome, started, reading, inheritedReading)
+			landed := l.land(ctx, task, outcome, started, reading, treeMoved)
 			// AND THE LEAF READS ITS OWN LANDING BEFORE ANYBODY ELSE DOES. The
 			// photograph the line above just took is a measurement of THIS
 			// leaf's work, and until now everything it found — a public name
@@ -1205,7 +1205,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			if landing == 1 {
 				outcome.Stop = landingStop
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			}
 			landing--
 			continue
@@ -1254,7 +1254,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				outcome.Meter = Meter{Name: MeterNoProgress, Reached: outcome.Turns}
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 				trace.note(progress.noProgressReason() + " — leaf terminated")
-				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+				return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 			}
 		}
 	}
@@ -1265,7 +1265,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	outcome.Stop = StopTurnCap
 	outcome.Meter = Meter{Name: MeterTurns, Reached: outcome.Turns, Allowed: l.maxTurns, Unit: "turns"}
 	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-	return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
+	return l.land(ctx, task, outcome, started, reading, treeMoved), nil
 }
 
 // readSteering drains the mailbox into the transcript and reports how many of
@@ -1308,14 +1308,15 @@ func readSteering(task Task, messages *[]ai.Message, trace *tracer) int {
 // verdict, and tells whatever routed the leaf how it went — in one place,
 // because there are five ways out of the loop above and a verdict that is set on
 // four of them is worse than none at all.
-// reading and inherited are the opening photograph this leaf has been carrying
-// since before its first turn, and they arrive here rather than at any of the
-// ten returns above for the same reason the verdict does: THIS IS THE ONE PLACE
-// EVERY EXIT PASSES THROUGH, and a measurement taken on nine of them is worse
-// than none, because the tenth reads as a project with nothing to check.
+// reading and moved are the opening photograph this leaf has been carrying
+// since before its first turn — the reading, and whether the job had already
+// changed the tree when it was taken — and they arrive here rather than at any
+// of the ten returns above for the same reason the verdict does: THIS IS THE ONE
+// PLACE EVERY EXIT PASSES THROUGH, and a measurement taken on nine of them is
+// worse than none, because the tenth reads as a project with nothing to check.
 func (l *Linear) land(
 	ctx context.Context, task Task, outcome *Outcome, started time.Time,
-	reading verify.Reading, inherited bool,
+	reading verify.Reading, moved bool,
 ) *Outcome {
 	// What the leaf left behind is read off the disk before it is reported, so
 	// the list is the world's answer and not only the write tools'.
@@ -1335,7 +1336,7 @@ func (l *Linear) land(
 	// a reason in the record, never an absence. The alternative, a fresh clock,
 	// would let a measurement push Run past the deadline its caller leased it.
 	PhotographAfter(ctx, l.workspace, l.history, l.deadline, task, reading,
-		len(outcome.Artifacts) > 0, inherited, outcome)
+		leafMovedTheTree(l.workspace, task.leafKey()), moved, outcome)
 	outcome.Elapsed = time.Since(started)
 	// AND THE METER IS READ AT LAND, NOT AT THE GRANT. The two live bounds are
 	// read when the landing reserve is handed out, and then the landing turns

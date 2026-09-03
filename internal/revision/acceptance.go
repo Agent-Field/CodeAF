@@ -241,6 +241,20 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 	}
 	if held, ok := verify.BaselineFor(evidence.Workspace, job); ok {
 		if held.Taken {
+			// AND THE READING OF A TREE NOTHING CHANGED IS THE READING SOMEBODY
+			// ALREADY TOOK OF IT. The gate is here to weigh the FINISHED tree,
+			// and where the job has produced or changed no file since the
+			// reading before the work, the finished tree is that tree — so the
+			// before half stands as the after half and the suite is not run a
+			// second time over identical bytes. It is the same law
+			// PhotographAfter is written to, one seam later, because the leaf
+			// and the node that gets judged are routinely not the same node.
+			if verify.TreeUnchangedSince(
+				evidence.Workspace, job, verify.TreeState(evidence.Workspace, evidence.Artifacts)) {
+				if settled, unchanged := held.OnAnUnchangedTree(); unchanged {
+					held = settled
+				}
+			}
 			journalGateReading(graph, nodeID, held, held.Before, true)
 			return held
 		}
@@ -252,7 +266,8 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 			if deadline, timed := ctx.Deadline(); timed {
 				retaken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 					gateFocus(evidence), held.Pace())
-				verify.RememberBaseline(evidence.Workspace, job, retaken)
+				verify.RememberBaseline(evidence.Workspace, job,
+					verify.TreeState(evidence.Workspace, evidence.Artifacts), retaken)
 				journalGateReading(graph, nodeID, retaken, retaken.Before, false)
 				return retaken
 			}
@@ -277,6 +292,19 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 	// It is taken on the wall this gate has left, through the same arithmetic
 	// the worker is held to, and it is REMEMBERED AGAINST THE JOB — so it costs
 	// one reading per job rather than one per round, exactly like the worker's.
+	//
+	// AND AN EMPTY RECORD IS NOT AN UNCHANGED TREE, WHICH IS WHY THERE IS NO
+	// "nothing to read" ANSWER HERE. It is tempting: a job that changed no file,
+	// on a request that names nothing, has nothing this reader could usefully
+	// look at, and saying so costs nothing where a whole reading costs an eighth
+	// of a wall. But the only account of the work this gate holds is the
+	// artifact list, and that list EXCLUDES DELETIONS by construction
+	// (exec.Workspace.Artifacts) — so a job whose one change was to remove a
+	// file arrives here indistinguishable from a job that did nothing, and the
+	// answer "nothing to read" would hide exactly the regression a removal
+	// causes. The tree is known unchanged only where something watched it, and
+	// that is the arm above, where a reading is inherited against a tree-state
+	// the workspace settled. Here nothing watched, so the tree is read.
 	deadline, timed := ctx.Deadline()
 	if !timed {
 		// A budget is a share of a wall, and there is no wall here to take a
@@ -289,7 +317,7 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 	}
 	taken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 		gateFocus(evidence), verify.Pace{})
-	verify.RememberBaseline(evidence.Workspace, job, taken)
+	verify.RememberBaseline(evidence.Workspace, job, verify.TreeState(evidence.Workspace, evidence.Artifacts), taken)
 	journalGateReading(graph, nodeID, taken, taken.Before, false)
 	return taken
 }
