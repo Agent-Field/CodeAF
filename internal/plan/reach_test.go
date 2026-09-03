@@ -242,6 +242,12 @@ func TestAScopeIsMarkedAndASentenceIsNot(t *testing.T) {
 	for _, source := range []string{
 		"rewrite register.txt in three lanes",
 		"register.txt",
+		// A mark with no words after it says nothing about which part is meant,
+		// so the name stands bare. A stray colon may not delete a 144 KB file
+		// from the measurement.
+		"register.txt:",
+		"register.txt ()",
+		"register.txt []",
 	} {
 		if got := reach.Measure(source).Bytes; got != register {
 			t.Fatalf("%q measured %d bytes, want the whole %d-byte file", source, got, register)
@@ -262,10 +268,11 @@ func TestAHeadingSetIsMeasuredAsItsHeadingLinesAndNotAsTheFile(t *testing.T) {
 		t.Fatalf("thirty heading lines of a %d-byte file measured %d bytes, past a %d-byte reach",
 			handbook, measurement.Bytes, measurement.Reach)
 	}
-	// And it is the heading lines themselves and not the file's mean line
-	// thirty times over: the mean is five times too generous about a chapter
-	// heading, and a number reported for material the pass did not locate is
-	// the guessing this replaced.
+	// And it is those thirty lines exactly. Not the file's mean line thirty
+	// times over — the mean is five times too generous about a chapter heading —
+	// and not the first thirty headings of any rank, which would have charged
+	// this node the `# Handbook` line it never mentioned: the scope spells `##`
+	// in its own pattern, so the rank is read out of the pattern's marks.
 	headings := 0
 	for _, line := range strings.SplitAfter(readFile(t, dir, "HANDBOOK.md"), "\n") {
 		if strings.HasPrefix(line, "## chapter ") {
@@ -275,7 +282,7 @@ func TestAHeadingSetIsMeasuredAsItsHeadingLinesAndNotAsTheFile(t *testing.T) {
 	if headings == 0 {
 		t.Fatal("the fixture wrote no chapter headings")
 	}
-	if measurement.Bytes > 2*headings {
+	if measurement.Bytes != headings {
 		t.Fatalf("thirty heading lines weighing %d bytes measured %d, of a %d-byte file",
 			headings, measurement.Bytes, handbook)
 	}
@@ -323,24 +330,29 @@ func TestAWholeFileNamedBareIsStillCorrectedAndStillJournalsTheRefusal(t *testin
 	}
 }
 
-// One bare name rides in free if the exemption above is written loosely: a node
-// sourcing the whole register beside a scoped line or two of a file its sibling
-// also scopes is not a lane of a division, and the whole register is exactly
-// what the correction exists to catch.
-func TestABareNameBesideASharedScopeIsStillCorrected(t *testing.T) {
+// The exemption is a statement about SHARED material, so material no sibling
+// names is still weighed on its own. A node sourcing the whole register — which
+// nobody else in the graph names — beside a scoped line or two of a file its
+// sibling does share is not a lane of a division, and the whole register is
+// exactly what the correction exists to catch.
+func TestABareOverLargeFileNoSiblingNamesIsStillCorrected(t *testing.T) {
 	dir, _ := registerWorkspace(t)
-	graph := laneGraph(dir)
-	// Two nodes scope the conventions between them, so the file is shared — and
-	// the first of them also names the whole register, with nothing scoping it.
-	graph.Node(1).Sources = []string{"register.txt", "CONVENTIONS.md: lines 2-4"}
-	graph.Node(2).Sources = []string{"CONVENTIONS.md: lines 5-9"}
+	graph := &Graph{Goal: "settle the conventions, then the register", NextID: 1, Workspace: dir,
+		Stages: []Stage{{Title: "Settle", Summary: "settle the conventions"}}}
+	// Two nodes share the conventions between them — and the first of them also
+	// names the whole register, which nothing else in the graph names at all.
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "Register",
+		Summary: "apply the rulings to the register",
+		Sources: []string{"register.txt", "CONVENTIONS.md: lines 2-4"}})
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "Rulings",
+		Summary: "restate the rulings", Sources: []string{"CONVENTIONS.md: lines 5-9"}})
 	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
-		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"}, {Node: 3, Size: "atomic"},
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"},
 	}}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := graph.Node(1).Size; got != SizeOversized {
-		t.Fatalf("a node naming the whole register beside a shared scope was sized %q", got)
+		t.Fatalf("a node naming a whole register no sibling names was sized %q", got)
 	}
 	if got := graph.Node(1).Undivided; got != RefusalBeyondReach {
 		t.Fatalf("the correction journaled %q, want %q", got, RefusalBeyondReach)
@@ -349,6 +361,156 @@ func TestABareNameBesideASharedScopeIsStillCorrected(t *testing.T) {
 	// window, so nothing about it changed.
 	if got := graph.Node(2).Size; got != SizeAtomic || graph.Node(2).Undivided != "" {
 		t.Fatalf("the sibling was corrected to %q/%q", got, graph.Node(2).Undivided)
+	}
+}
+
+// THE SHARING IS THE SIGNATURE, AND IT DOES NOT DEPEND ON PUNCTUATION. Measured
+// at the plan door on the handbook brief: the model divided it into three lanes,
+// the ruler called every one of them atomic, and every one of them wrote its
+// source as the bare name `HANDBOOK.md` with the lane's actual share said in the
+// summary. Weighing each of them at the whole 84.8 KB corrected all three to
+// oversized, and expansion then refused each as one piece — three lanes left
+// whole and the plan door exiting 2, which is issue #480 happening again through
+// the punctuation of a source line.
+func TestThreeLanesNamingOneFileBareUnderAtomicSizingsAreNeverVetoed(t *testing.T) {
+	dir, handbook := handbookWorkspace(t)
+	graph := &Graph{Goal: "three lanes over HANDBOOK.md", NextID: 1, Workspace: dir,
+		Stages: []Stage{{Title: "Lanes", Summary: "three lanes that share no lines"}}}
+	for _, lane := range []string{
+		"Format all chapter headings per spec.",
+		"Insert contents section after Handbook line.",
+		"Convert see-also lines to formatted links.",
+	} {
+		graph.Add(Node{Kind: KindWork, Stage: 1, Title: lane, Summary: lane,
+			Sources: []string{"HANDBOOK.md"}})
+	}
+	// Each lane really is charged the whole file — the words gave the measure
+	// nothing else to read — so it is the sharing and the atomic sizing, and
+	// nothing about the share, that keeps them.
+	if got := ReachFor(dir, 0).Measure("HANDBOOK.md"); !got.Exceeds() || got.Bytes != handbook {
+		t.Fatalf("a bare handbook measured %+v of %d bytes", got, handbook)
+	}
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"}, {Node: 3, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{1, 2, 3} {
+		if got := graph.Node(id).Size; got != SizeAtomic {
+			t.Fatalf("lane %d was corrected to %q", id, got)
+		}
+		if got := graph.Node(id).Undivided; got != "" {
+			t.Fatalf("lane %d was refused: %q", id, got)
+		}
+	}
+
+	// And the single node over the same file, with no sibling naming it, is
+	// corrected exactly as it always was — the guarantee from issue #384.
+	alone := &Graph{Goal: "rewrite HANDBOOK.md", NextID: 1, Workspace: dir}
+	alone.Add(Node{Kind: KindWork, Stage: 1, Title: "The handbook",
+		Summary: "rewrite the whole handbook", Sources: []string{"HANDBOOK.md"}})
+	if _, err := sizeApply(alone, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := alone.Node(1); got.Size != SizeOversized || got.Undivided != RefusalBeyondReach {
+		t.Fatalf("one node alone over the whole handbook was sized %q/%q", got.Size, got.Undivided)
+	}
+}
+
+// A file mentioned twice is weighed by the largest of its mentions, and the
+// order somebody wrote their sources in is not a measurement. Keeping the first
+// mention dropped a whole over-large file whenever a scoped line happened to be
+// written above a bare one.
+func TestAFileMentionedTwiceIsWeighedByItsLargestMention(t *testing.T) {
+	dir, register := registerWorkspace(t)
+	reach := ReachFor(dir, 0)
+	for _, sources := range [][]string{
+		{"register.txt: lines 2-40", "register.txt"},
+		{"register.txt", "register.txt: lines 2-40"},
+	} {
+		measurement := reach.Measure(sources...)
+		if measurement.Files != 1 {
+			t.Fatalf("%v measured %d files", sources, measurement.Files)
+		}
+		if measurement.Bytes != register {
+			t.Fatalf("%v measured %d bytes, want the whole %d-byte register",
+				sources, measurement.Bytes, register)
+		}
+	}
+	// And a node whose whole-file mention sits under a scoped one is corrected
+	// exactly as one whose sources say nothing else.
+	graph := &Graph{Goal: "the register", NextID: 1, Workspace: dir}
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "The register",
+		Summary: "settle the register", Sources: []string{"register.txt: lines 2-40", "register.txt"}})
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := graph.Node(1); got.Size != SizeOversized || got.Undivided != RefusalBeyondReach {
+		t.Fatalf("a node reading the whole register was sized %q/%q", got.Size, got.Undivided)
+	}
+}
+
+// A sibling that names the file in words nothing could weigh still NAMES it.
+// The signature of a division is the naming, so a lane whose scope happens to
+// be unresolvable does not stop vouching for the lane beside it.
+func TestASiblingWhoseScopeCannotBeWeighedStillNamesTheFile(t *testing.T) {
+	dir, _ := handbookWorkspace(t)
+	graph := &Graph{Goal: "two lanes over HANDBOOK.md", NextID: 1, Workspace: dir,
+		Stages: []Stage{{Title: "Lanes", Summary: "two lanes"}}}
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "Headings",
+		Summary: "format all chapter headings", Sources: []string{"HANDBOOK.md"}})
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "Links",
+		Summary: "convert the see-also lines",
+		Sources: []string{"HANDBOOK.md: the see-also sentences, wherever they fall"}})
+	// The sibling's own scope weighs nothing — it is words no arithmetic
+	// reaches — so it is the naming and nothing else that is doing the work.
+	if got := ReachFor(dir, 0).Measure(graph.Node(2).Sources...); got.Taken() {
+		t.Fatalf("the sibling's scope was weighed as %+v", got)
+	}
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{1, 2} {
+		if got := graph.Node(id); got.Size != SizeAtomic || got.Undivided != "" {
+			t.Fatalf("lane %d was sized %q/%q", id, got.Size, got.Undivided)
+		}
+	}
+}
+
+// A sibling is a sibling. A division is drawn in one place, so its lanes sit
+// beside each other under one parent; a node in another subtree — or a node's
+// own children — may not vouch for a leaf that owns a whole file by itself.
+func TestOnlyASiblingVouchesForALaneOverAWholeFile(t *testing.T) {
+	dir, _ := handbookWorkspace(t)
+	graph := &Graph{Goal: "the handbook, twice over", NextID: 1, Workspace: dir,
+		Stages: []Stage{{Title: "Two", Summary: "two unrelated pieces of work"}}}
+	// One leaf owning the whole handbook, alone under the root.
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "The handbook",
+		Summary: "rewrite the whole handbook", Sources: []string{"HANDBOOK.md"}})
+	// And two nodes elsewhere in the graph that name the same file. They are
+	// not its siblings, so they say nothing about it.
+	graph.Add(Node{Kind: KindWork, Stage: 1, Parent: 9, Title: "Elsewhere one",
+		Summary: "a lane of somebody else's division", Sources: []string{"HANDBOOK.md"}})
+	graph.Add(Node{Kind: KindWork, Stage: 1, Parent: 9, Title: "Elsewhere two",
+		Summary: "the other lane of it", Sources: []string{"HANDBOOK.md"}})
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"}, {Node: 3, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := graph.Node(1); got.Size != SizeOversized || got.Undivided != RefusalBeyondReach {
+		t.Fatalf("a leaf alone over the whole handbook was sized %q/%q", got.Size, got.Undivided)
+	}
+	for _, id := range []int{2, 3} {
+		if got := graph.Node(id); got.Size != SizeAtomic || got.Undivided != "" {
+			t.Fatalf("lane %d of the division under node 9 was sized %q/%q", id, got.Size, got.Undivided)
+		}
 	}
 }
 

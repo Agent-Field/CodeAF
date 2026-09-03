@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/verify"
@@ -127,14 +128,16 @@ const shareReadCeiling = 8 << 20
 
 // reading is one file some words name, and how much of that file they name.
 //
-// Scoped is kept beside the bytes because two passes need it and they need it
-// for opposite reasons: the sum does not care how a share was arrived at, while
-// correctBeyondReach cares about nothing else — a node scoping a region of a
-// file its siblings also scope is a division, not an over-large leaf.
+// Weighed is the difference between nothing and nothing-that-could-be-weighed,
+// and both consumers need it, in opposite directions. The sum takes only what
+// was weighed, because an unresolvable scope may not contribute a guess. The
+// sibling count takes every reading, weighed or not, because a lane whose scope
+// happens to be unreadable still NAMES the file its siblings name, and the
+// signature of a division is the naming.
 type reading struct {
-	Name   string
-	Bytes  int
-	Scoped bool
+	Name    string
+	Bytes   int
+	Weighed bool
 }
 
 // namedScope is one file name as some words spell it, together with the words
@@ -204,9 +207,26 @@ func namedScopes(text string) []namedScope {
 		if mark == "" {
 			continue
 		}
-		scopes[index].Scope = strings.TrimSpace(rest[len(mark):])
+		// A MARK WITH NO WORDS AFTER IT IS NOT A SCOPE. "large.txt:" at the end
+		// of a line, or "large.txt ()", says nothing at all about which part of
+		// the file is meant, so there is nothing here to resolve and the name is
+		// read as what it is: the file, bare. It is deliberately not read as an
+		// unresolvable scope — an unresolvable scope weighs nothing, and letting
+		// a stray colon delete a 144 KB file from the measurement would hand the
+		// #384 leaf back its exemption for a piece of punctuation. Words is what
+		// it takes, so a run of punctuation is measured as none.
+		scope := strings.TrimRight(strings.TrimSpace(rest[len(mark):]), " \t)]")
+		if !strings.ContainsFunc(scope, isWordRune) {
+			continue
+		}
+		scopes[index].Scope = scope
 	}
 	return scopes
+}
+
+// isWordRune is what makes a scope words rather than punctuation.
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 // Measure weighs the material these words name, once.
@@ -225,6 +245,9 @@ func (r Reach) weigh(readings []reading) Measurement {
 	}
 	measurement := Measurement{Reach: r.Bytes}
 	for _, one := range readings {
+		if !one.Weighed {
+			continue
+		}
 		measurement.Files++
 		measurement.Bytes += one.Bytes
 	}
@@ -236,15 +259,24 @@ func (r Reach) weigh(readings []reading) Measurement {
 //
 // Each name is looked up where the terrain was drawn from, and a regular file
 // that is really there contributes either its whole size — the name stood bare —
-// or the share its scope resolves to. A name that resolves to nothing, and a
-// scope that resolves to no share, contribute NOTHING rather than an estimate.
-// The same file named twice is weighed once, by its first mention.
+// or the share its scope resolves to. A name that resolves to nothing is not a
+// reading at all; a scope that resolves to no share is a reading of a file that
+// nothing could weigh, which is not the same thing and is not the same zero.
+//
+// A FILE MENTIONED MORE THAN ONCE IS WEIGHED BY THE LARGEST OF ITS MENTIONS,
+// and the mention order does not matter. A node whose sources say `register.txt:
+// lines 2-40` and, three lines later, `register.txt`, will read the whole
+// register: keeping the first mention and dropping the second made the
+// measurement a statement about the order somebody happened to write their
+// sources in, and in one of the two orders it dropped a whole over-large file.
+// A bare mention is the file, which is the largest a mention of it can be, so
+// the rule needs no special case for it.
 func (r Reach) readings(texts ...string) []reading {
 	if !r.known() {
 		return nil
 	}
 	var readings []reading
-	seen := map[string]bool{}
+	at := map[string]int{}
 	budget := namedCandidates
 	for _, text := range texts {
 		for _, named := range namedScopes(text) {
@@ -252,24 +284,28 @@ func (r Reach) readings(texts ...string) []reading {
 				return readings
 			}
 			budget--
-			if seen[named.Name] || !insideWorkspace(named.Name) {
+			if !insideWorkspace(named.Name) {
 				continue
 			}
-			seen[named.Name] = true
 			path := filepath.Join(r.Dir, named.Name)
 			info, err := os.Stat(path)
 			if err != nil || !info.Mode().IsRegular() {
 				continue
 			}
-			if named.Scope == "" {
-				readings = append(readings, reading{Name: named.Name, Bytes: int(info.Size())})
+			mention := reading{Name: named.Name, Bytes: int(info.Size()), Weighed: true}
+			if named.Scope != "" {
+				share, resolved := scopedShare(path, info.Size(), named.Scope)
+				mention = reading{Name: named.Name, Bytes: share, Weighed: resolved}
+			}
+			index, mentioned := at[named.Name]
+			if !mentioned {
+				at[named.Name] = len(readings)
+				readings = append(readings, mention)
 				continue
 			}
-			share, resolved := scopedShare(path, info.Size(), named.Scope)
-			if !resolved {
-				continue
+			if standing := readings[index]; !standing.Weighed || (mention.Weighed && mention.Bytes > standing.Bytes) {
+				readings[index] = mention
 			}
-			readings = append(readings, reading{Name: named.Name, Bytes: share, Scoped: true})
 		}
 	}
 	return readings
@@ -317,6 +353,16 @@ func insideWorkspace(name string) bool {
 // ANYTHING ELSE IS NOT A SCOPE THIS PASS CAN RESOLVE, and its file is not
 // measured at all. "CONVENTIONS.md: rulings on date format and scope" names a
 // region of a file in words no arithmetic reaches, so it weighs nothing here.
+//
+// THE KNOWN EDGE OF THAT RULE, so that nobody rediscovers it as a bug: a scope
+// can say the whole file in words, and then the whole file goes unweighed. One
+// node sourcing `register.txt (all three blocks, every byte except the dates
+// unchanged)` was measured at the plan door and came back unmeasured, so the
+// sizer's own "borderline" stood — for a node that will in fact read all 144 KB
+// of the register. That is the law as written and not an oversight: an
+// over-estimate is still a guess, and this pass's standing rule is that it does
+// not guess. The sizer keeps such a node, as it kept every node before any of
+// this existed.
 func scopedShare(path string, size int64, scope string) (int, bool) {
 	if size <= 0 || size > shareReadCeiling {
 		return 0, false
@@ -391,10 +437,12 @@ func lineRangeShare(lines []string, scope string) int {
 // thirty heading lines are a thousand bytes of an eighty-five-kilobyte file,
 // and the file's mean line is five times too generous about them.
 //
-// Every other count is the file's own mean line, that many times over. The
-// source said HOW MANY lines and not WHICH, and this is the file answering the
-// half of the question it can answer; the count is clamped to the file so the
-// answer can never be a statement about lines the file does not have.
+// Every other count is the file's own mean line, that many times over. It is an
+// average and it is named as one: the source said HOW MANY lines and not WHICH,
+// so the file cannot be asked which bytes are meant, and the mean is taken over
+// lines this pass did read — the whole file — rather than assumed. The count is
+// clamped to the file, so the answer can never be a statement about lines the
+// file does not have.
 func lineCountShare(lines []string, size int, scope string) int {
 	match := lineCount.FindStringSubmatch(scope)
 	if match == nil {
@@ -405,7 +453,7 @@ func lineCountShare(lines []string, size int, scope string) int {
 		return 0
 	}
 	if headingCount.MatchString(scope) {
-		if bytes := headingLinesShare(lines, count); bytes > 0 {
+		if bytes := headingLinesShare(lines, count, headingRankIn(scope)); bytes > 0 {
 			return bytes
 		}
 	}
@@ -415,13 +463,21 @@ func lineCountShare(lines []string, size int, scope string) int {
 	return count * (size / len(lines))
 }
 
-// headingLinesShare is the bytes of the file's first count heading lines, or of
-// all of them when it has fewer than that. Nothing is estimated here: these are
-// the lines themselves.
-func headingLinesShare(lines []string, count int) int {
+// headingLinesShare is the bytes of the file's first count heading lines of the
+// given rank, or of all of them when it has fewer than that. Nothing is
+// estimated here: these are the lines themselves.
+//
+// The rank is what keeps it to the headings the scope actually named. A source
+// that writes its pattern out — "all 30 `## chapter N: …` heading lines" —
+// spells the rank in the pattern's own marks, and taking the first thirty
+// headings of ANY rank would have charged that node a `# Handbook` line it never
+// mentioned. A scope that spells no rank takes headings of every rank, which is
+// all a scope that did not say can ask for.
+func headingLinesShare(lines []string, count, rank int) int {
 	bytes, found := 0, 0
 	for _, line := range lines {
-		if _, _, ok := headingLine(line); !ok {
+		lineRank, _, ok := headingLine(line)
+		if !ok || (rank > 0 && lineRank != rank) {
 			continue
 		}
 		bytes += len(line)
@@ -430,6 +486,19 @@ func headingLinesShare(lines []string, count int) int {
 		}
 	}
 	return bytes
+}
+
+// headingRankIn reads the heading rank a scope spells inside a backticked
+// pattern — the `##` of "`## chapter N: …`" — and zero when it spells none. It
+// is the pattern's literal marks and never an inference from its words.
+func headingRankIn(scope string) int {
+	for _, match := range backticked.FindAllStringSubmatch(scope, -1) {
+		pattern := strings.TrimSpace(match[1])
+		if marks := len(pattern) - len(strings.TrimLeft(pattern, "#")); marks > 0 && marks <= 6 {
+			return marks
+		}
+	}
+	return 0
 }
 
 // namedBlockShare finds the heading the scope spells and returns the extent of
@@ -554,21 +623,29 @@ func correctBeyondReach(graph *Graph) {
 		return
 	}
 	// The material each work node names, read once. Two passes want it — the
-	// sum for the node itself, and which files are scoped by more than one node
-	// — and reading a file twice per pass to answer both would be the same
-	// bytes read for nothing.
+	// sum for the node itself, and how many nodes name each file — and reading
+	// a file twice per pass to answer both would be the same bytes read for
+	// nothing.
 	named := make([][]reading, len(graph.Nodes))
-	scoped := map[string]int{}
+	// How many work nodes UNDER THE SAME PARENT name each file. Siblings and
+	// not simply other nodes: a division is drawn in one place, so its lanes sit
+	// beside each other, and counting the whole graph would let a node in some
+	// other subtree — or a node's own children — vouch for a leaf that owns a
+	// whole file by itself.
+	siblingsNaming := map[int]map[string]int{}
 	for index := range graph.Nodes {
 		node := &graph.Nodes[index]
 		if node.Kind != KindWork {
 			continue
 		}
 		named[index] = reach.readings(node.Sources...)
+		among := siblingsNaming[node.Parent]
+		if among == nil {
+			among = map[string]int{}
+			siblingsNaming[node.Parent] = among
+		}
 		for _, one := range named[index] {
-			if one.Scoped {
-				scoped[one.Name]++
-			}
+			among[one.Name]++
 		}
 	}
 	for index := range graph.Nodes {
@@ -579,7 +656,7 @@ func correctBeyondReach(graph *Graph) {
 		if !reach.weigh(named[index]).Exceeds() {
 			continue
 		}
-		if node.Size == SizeAtomic && isALaneOfADivision(named[index], scoped) {
+		if node.Size == SizeAtomic && isALaneOfADivision(named[index], siblingsNaming[node.Parent], reach) {
 			continue
 		}
 		node.Size = SizeOversized
@@ -588,25 +665,37 @@ func correctBeyondReach(graph *Graph) {
 }
 
 // isALaneOfADivision reports whether these readings are one lane of a division:
-// every one of them scopes a REGION of a file, and at least one of those files
-// is a file another node scopes a region of too.
+// they name a file that a sibling work node names too.
 //
-// Both halves are load-bearing. Without the second, a lone node scoping a
-// region larger than one worker holds would go uncorrected, and it is genuinely
-// over-large. Without the first, ONE BARE NAME RIDES IN FREE: a node sourcing
-// the whole of a 144 KB register beside a scoped line or two of a file its
-// sibling also scopes would be a lane by this test, and the whole register is
-// exactly what the correction exists to catch. A node that names any whole file
-// is judged on its material like any other.
-func isALaneOfADivision(readings []reading, scoped map[string]int) bool {
-	shared := false
+// THE SHARING IS THE SIGNATURE, WHETHER THE READING IS SCOPED OR BARE. That is
+// the correction to a first version of this test which demanded that every
+// reading be scoped, and it was measured wrong at the plan door on the very
+// brief the law was written for: asked for three lanes over one handbook, the
+// model sized each lane atomic and wrote each lane's source as the bare name
+// `HANDBOOK.md`, with the lane's share said in the summary instead — "Format
+// all chapter headings per spec.", "Insert contents section after Handbook
+// line.", "Convert see-also lines to formatted links." All three were then
+// charged 84.8 KB, corrected to oversized, refused as one piece and handed over
+// whole, which is the whole of issue #480 happening again through the source
+// line's punctuation. THREE ATOMIC SIBLINGS NAMING ONE FILE CANNOT EACH BE
+// HOLDING THE WHOLE OF IT — and the sizer read each of their summaries before
+// it called them atomic, which is precisely the judgment this pass has no
+// business overruling.
+//
+// The sharing is also what keeps the guarantee from issue #384, and it keeps it
+// per FILE rather than per node: material this node names that NO sibling names
+// is nobody else's share, so it is still weighed against the window on its own.
+// A node alone in naming a whole 144 KB register is corrected exactly as it
+// always was, and it stays corrected when a shared scope is sitting beside the
+// register in its source list.
+func isALaneOfADivision(readings []reading, siblingsNaming map[string]int, reach Reach) bool {
+	shared, alone := false, 0
 	for _, one := range readings {
-		if !one.Scoped {
-			return false
-		}
-		if scoped[one.Name] > 1 {
+		if siblingsNaming[one.Name] > 1 {
 			shared = true
+			continue
 		}
+		alone += one.Bytes
 	}
-	return shared
+	return shared && alone <= reach.Bytes
 }
