@@ -743,7 +743,14 @@ func (c *Client) completionInOnePiece(
 	// The usage block was decoded through the shadow so the reasoning count
 	// came with it; it goes straight back on the response, where every reader
 	// below and above this adapter expects to find it.
-	response.Usage = decoded.Usage.usage()
+	//
+	// A whole body carries one usage block and so has nothing to accumulate
+	// onto, but it is folded in through the same helper the streamed loop reads
+	// its frames with ([usageWire.mergeInto]) rather than assigned here: two
+	// readers of one wire shape is how one of them ends up with a law the other
+	// has never heard of.
+	var reasoningTokens int
+	response.Usage, reasoningTokens = decoded.Usage.mergeInto(response.Usage, 0)
 	// AND THE SAME SPLIT THE STREAM TAKES, taken over the whole body (answer.go).
 	// A gateway that fences its working in `<think>` does it whether or not the
 	// request asked for a stream, and an answer that carried the model's private
@@ -797,7 +804,7 @@ func (c *Client) completionInOnePiece(
 	c.record(recordFacts{
 		ctx: ctx, request: request, knobs: knobs, stream: stream,
 		began: logBegan, status: status, served: served,
-		response: &response, reasoningTokens: decoded.Usage.reasoningTokens(),
+		response: &response, reasoningTokens: reasoningTokens,
 		learned: relearned, responseBody: payload,
 	})
 	// The money, banked at the same instant the log row is written and for the
@@ -873,6 +880,81 @@ func (u *usageWire) reasoningTokens() int {
 		return 0
 	}
 	return u.CompletionTokensDetails.ReasoningTokens
+}
+
+// mergeInto folds one usage frame into what the call has counted so far, and
+// returns the accumulated block together with the reasoning count that survives
+// the frame. It is how a streamed chat and a whole-body one alike fold a usage
+// block in, so a second reader cannot drift from the first.
+//
+// USAGE ACCUMULATES ACROSS THE FRAMES OF ONE CALL: A LATER FRAME NEVER ZEROES A
+// COUNT AN EARLIER FRAME CARRIED. Every provider aforge drives today sends its
+// token counts and its price together in one terminal frame, so replacing the
+// block wholesale looked right for as long as that held — but that is a property
+// of today's endpoints and not of the protocol. An endpoint that reports the
+// counts when the answer ends and the price a frame later would have left the
+// ledger billing a call whose prompt and completion tokens were both zero, and
+// taken the thinking pass's cost down with it.
+func (u *usageWire) mergeInto(into *ai.Usage, reasoning int) (*ai.Usage, int) {
+	merged := mergeUsage(into, u.usage())
+	// The reasoning count rides alongside rather than inside ai.Usage, which has
+	// no field for it, and it obeys the same law: a frame that does not break the
+	// output down does not erase a breakdown an earlier frame gave.
+	if count := u.reasoningTokens(); count != 0 {
+		reasoning = count
+	}
+	return merged, reasoning
+}
+
+// mergeUsage folds one usage frame into the block a call has accumulated, under
+// the law stated on [usageWire.mergeInto]. It is written over the SDK's own type
+// rather than over the wire shadow so that every reader of a streamed usage
+// block — chat here, music in music.go — folds by the one rule.
+//
+// A field is taken from the frame when the frame states it and kept otherwise,
+// rather than summed: each frame carries the running TOTALS for the call, so
+// adding them would double-count an endpoint that reports twice.
+func mergeUsage(into, frame *ai.Usage) *ai.Usage {
+	if frame == nil {
+		// No usage block on this frame at all, which leaves the call exactly as
+		// it was — including a nil block, because a call that never saw a usage
+		// frame ends "unknown" and never "zero" (the emptiness law).
+		return into
+	}
+	merged := ai.Usage{}
+	if into != nil {
+		merged = *into
+	}
+	takeCount(&merged.PromptTokens, frame.PromptTokens)
+	takeCount(&merged.CompletionTokens, frame.CompletionTokens)
+	takeCount(&merged.TotalTokens, frame.TotalTokens)
+	takeCount(&merged.CacheReadInputTokens, frame.CacheReadInputTokens)
+	takeCount(&merged.CacheCreationInputTokens, frame.CacheCreationInputTokens)
+	// The OpenAI-style nesting is copied rather than aliased: the frame it came
+	// out of is one decode of one event and does not outlive the loop reading it,
+	// while the block being built here is handed to the ledger and the journal.
+	if nested := frame.PromptTokensDetails; nested != nil && nested.CachedTokens != 0 {
+		cached := *nested
+		merged.PromptTokensDetails = &cached
+	}
+	// Cost is a pointer because nil means "unknown" rather than "free", so what
+	// counts as stated here is a pointer that is set. A frame is still allowed to
+	// say a call was free — but only when nothing before it reported a real
+	// price, which is the same law the counts follow.
+	if frame.Cost != nil && (*frame.Cost != 0 || merged.Cost == nil) {
+		cost := *frame.Cost
+		merged.Cost = &cost
+	}
+	return &merged
+}
+
+// takeCount folds one count of a usage frame into the call's own, under the law
+// stated on [usageWire.mergeInto]: a frame that states the figure wins, and a
+// frame that is silent about it leaves what was already there.
+func takeCount(into *int, frame int) {
+	if frame != 0 {
+		*into = frame
+	}
 }
 
 // servedProvider reads the endpoint the router says answered. An absent field is
@@ -1346,8 +1428,11 @@ func (c *Client) completeWithMessagesStreaming(
 			return nil, false, refusal
 		}
 		if chunk.Usage != nil {
-			response.Usage = chunk.Usage.usage()
-			reasoningTokens = chunk.Usage.reasoningTokens()
+			// FOLDED IN, NEVER SWAPPED IN: a frame carrying only the price does
+			// not zero the counts the frame before it carried (see
+			// [usageWire.mergeInto], which both transports read a usage frame
+			// through).
+			response.Usage, reasoningTokens = chunk.Usage.mergeInto(response.Usage, reasoningTokens)
 		}
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
