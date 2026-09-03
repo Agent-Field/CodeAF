@@ -5597,13 +5597,14 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// discover that was measured at 13.8k and 23.9k prompt tokens on
 			// two real extensions — five to eight times the whole structuring
 			// cost of the jobs they were repairing. The full pipeline is still
-			// there for the remainder the spine judges genuinely multi-stage,
-			// and for the one the ruler judges past a single worker's reach —
-			// the shortcut asks the spine and then the ruler. It asks nothing
-			// about the remainder's own words: a remainder that lists eight
-			// failing tests is one worker's list, not eight jobs, and this
-			// option is what tells the planner that (see
-			// plan.admitsEnumeratedPieces).
+			// there for the remainder THE RULER judges past a single worker's
+			// reach, and for nothing else: the shortcut asks that one question
+			// and no other. It asks nothing about the remainder's own words — a
+			// remainder that lists eight failing tests is one worker's list,
+			// not eight jobs — and nothing about the spine's stage count, which
+			// for a remainder is the steps one worker would take rather than a
+			// division of the work. This option is what tells the planner both
+			// (see plan.admitsEnumeratedPieces and plan.foldedStage).
 			Undivided: true,
 			Progress:  progress,
 		})

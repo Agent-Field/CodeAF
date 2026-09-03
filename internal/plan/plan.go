@@ -352,12 +352,15 @@ type Options struct {
 	// five to eight times the entire structuring cost of the original job, to
 	// produce a graph of one node.
 	//
-	// The judgement stays the model's and the structure stays the code's: the
-	// spine call already reads the goal and already answers "one stage" when
-	// the goal has no real gate — its prompt says so in as many words, and
-	// calls that a correct and common answer. When it says one, this stops
-	// there and hands back one worker. When it says more, the full pipeline
-	// runs exactly as before. Nothing matches a phrase against anything.
+	// The judgement stays the model's and the structure stays the code's, and
+	// the judgement is the RULER'S REACH. The spine is asked what has to wait
+	// for what, which is advice about the shape of a fresh plan; for a
+	// remainder its answer is a list of the steps one worker would take, so
+	// however many stages come back they are folded into one node and the ruler
+	// is asked whether that node is within one worker. Within reach, this stops
+	// there and hands back one worker; past it, the full pipeline runs exactly
+	// as before and the stages inform the fan-out as they always did. Nothing
+	// matches a phrase against anything, and the stage count divides nothing.
 	Undivided bool
 
 	// Ensemble chooses between the two ways of spending parallelism: splitting
@@ -535,9 +538,9 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	report("spine", time.Since(start), fmt.Sprintf("%s %s", plural(len(choice.Stages), "stage"), spreadLabel(choice)))
 
 	// --- the undivided shortcut ---------------------------------------------
-	// The spine has spoken and there is nothing gated in this goal. For a
-	// remainder that is nearly the whole answer: one fresh worker, one contract,
-	// and none of fan-out, bind, audit, expansion or per-leaf briefs.
+	// The spine has spoken. For a remainder that is nearly the whole answer:
+	// one fresh worker, one contract, and none of fan-out, bind, audit,
+	// expansion or per-leaf briefs.
 	//
 	// THE SHORTCUT IS A JUDGMENT ABOUT GATES AND NEVER ONE ABOUT SIZE. It used
 	// to be taken on the spine's answer alone, and the spine is asked what has to
@@ -551,12 +554,26 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// division of a sequence lives (see sequence.go). That is one call, and it is
 	// the cheapest call in the system.
 	var reachErr error
-	if options.Undivided && len(choice.Stages) == 1 {
-		stage := choice.Stages[0]
+	if options.Undivided && len(choice.Stages) > 0 {
+		// AND THE SPINE'S STAGE COUNT IS NOT A DIVIDER FOR A REMAINDER. The
+		// shortcut used to require exactly one stage and hand anything else
+		// straight to the pipeline. The spine's shape is ADVICE FOR A FRESH PLAN
+		// AND A LIST FOR A REMAINDER: asked what has to wait for what, it
+		// answers a remainder's finding with the steps one worker would take —
+		// "Check unit tests", "Check integration test", "Verify no traceback" —
+		// and three such steps are one worker's list, not three jobs. Measured
+		// on the canary acceptance cell: a second remainder carrying "2
+		// unexercised behaviours" came back as three stages, was never offered
+		// the ruler at all, and bought fan-out, bind, sizing, audit and seven
+		// contracts. So the stages are folded into the one node and the ruler is
+		// asked its one question about the whole; only past its reach does the
+		// pipeline run, where the stages inform the fan-out exactly as they do
+		// today. See foldedStage and admitsEnumeratedPieces.
+		stage := foldedStage(choice.Stages)
 		single := Node{
 			Kind: KindWork, Stage: 1,
-			Title:   strings.TrimSpace(stage.Title),
-			Summary: strings.TrimSpace(stage.Summary),
+			Title:   stage.Title,
+			Summary: stage.Summary,
 			Brief:   goal,
 		}
 		// AND THE REACH QUESTION IS THE ONLY ONE ASKED HERE. The shortcut used
@@ -579,7 +596,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		if withinReach {
 			graph.Add(single)
 			emitProgress(progress, "steps", "1", "")
-			report("undivided", time.Since(start), "one worker — the spine found nothing gated")
+			report("undivided", time.Since(start), "one worker — within the ruler's reach")
 			return graph, errors.Join(groundErr, reachErr)
 		}
 		report("undivided", time.Since(start), "past one worker's reach — planned in full")
@@ -796,6 +813,38 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 // atomic, so the shortcut is then taken exactly as it was before the question
 // was asked. That is the safe direction for a question whose whole purpose is to
 // avoid buying a pipeline.
+// foldedStage is the spine's answer read as ONE worker's assignment: the shape
+// a one-stage answer already has, whatever number of stages came back.
+//
+// It exists because the undivided shortcut is only ever taken for a remainder,
+// and a remainder's stages are the steps of a single piece of repair rather
+// than a division of it. One stage is passed through untouched, so nothing
+// about the shortcut's long-standing case moves. Several are joined into a
+// title that names them in order and a summary that spells each out — which is
+// the enumerated shape a remainder's own words already have, and which
+// admitsEnumeratedPieces refuses to read as a division precisely because a
+// remainder divides on its size and never on its list.
+func foldedStage(stages []Stage) Stage {
+	titles := make([]string, 0, len(stages))
+	lines := make([]string, 0, len(stages))
+	for _, stage := range stages {
+		title := strings.TrimSpace(stage.Title)
+		summary := strings.TrimSpace(stage.Summary)
+		if title != "" {
+			titles = append(titles, title)
+		}
+		switch {
+		case title != "" && summary != "":
+			lines = append(lines, title+": "+summary)
+		case summary != "":
+			lines = append(lines, summary)
+		case title != "":
+			lines = append(lines, title)
+		}
+	}
+	return Stage{Title: strings.Join(titles, "; "), Summary: strings.Join(lines, " ")}
+}
+
 func withinOneWorker(ctx context.Context, client Completer, graph *Graph, node Node) (bool, Usage, error) {
 	probe := *graph
 	probe.Nodes, probe.NextID, probe.Usage = nil, 1, Usage{}
