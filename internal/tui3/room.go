@@ -493,7 +493,7 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 	}
 	return feedHooks{
 		now: a.now, follow: grew, touch: grew,
-		closed: func(e *entry, _ session.Event) { a.foldNodeStat(r.id, e) },
+		closed: func(*entry, session.Event) { a.tallyNode(r.id, r.entries) },
 	}
 }
 
@@ -522,6 +522,11 @@ func (a *app) openRoom(id uint64, title string) {
 	room := a.newRoom(id, title)
 	room.entries, room.turn = a.roomRecord(
 		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
+	// AND WHAT THIS NODE HAS ALREADY STARTED JOINS THE SESSION'S COUNTS. Opening
+	// the page is the moment this surface first READS a node's history, and a
+	// background job it started an hour ago is as alive as one it starts while
+	// somebody is watching ([app.tallyNode], Decision 4).
+	a.tallyNode(id, room.entries)
 	a.room = room
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).

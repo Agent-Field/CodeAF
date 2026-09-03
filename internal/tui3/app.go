@@ -1026,16 +1026,16 @@ type app struct {
 	hud      hudStats
 	hudStale bool
 	// nodeHud is what each of this session's NODES has added to those same two
-	// questions, tallied per node as its calls close (docs/design/lens/DESIGN.md,
-	// Decision 4). A task's `bash` with background:true starts a process on this
-	// machine exactly as the conversation's does, and until it was counted the Σ
-	// segment and the quit guard were silent about every one of them.
+	// questions (docs/design/lens/DESIGN.md, Decision 4). A task's `bash` with
+	// background:true starts a process on this machine exactly as the
+	// conversation's does, and until it was counted the Σ segment and the quit
+	// guard were silent about every one of them.
 	//
 	// IT IS KEYED BY NODE AND KEPT FOR THE SESSION because a room's entries are
-	// dropped when its page closes ([app.closeRoom]) and a count that appeared
-	// only while somebody had the page open would be a count nobody can act on.
-	// [app.foldNodeStat] is the only writer.
-	nodeHud map[uint64]*statWalk
+	// dropped when its page closes ([app.closeRoom]), and a count that vanished
+	// when somebody stopped looking would be a count nobody can act on.
+	// [app.tallyNode] is the only writer.
+	nodeHud map[uint64]hudStats
 
 	// stream is the channel being pumped and gen its generation. gen is
 	// bumped by every Submit so that a late event from an abandoned stream can
@@ -7329,10 +7329,10 @@ func (a *app) computeStats() hudStats {
 	// a call closes ([app.roomFeedHooks]), and it stays folded.
 	out := walk.out
 	for _, node := range a.nodeHud {
-		out.jobs += node.out.jobs
-		out.watches += node.out.watches
-		out.adds += node.out.adds
-		out.dels += node.out.dels
+		out.jobs += node.jobs
+		out.watches += node.watches
+		out.adds += node.adds
+		out.dels += node.dels
 	}
 	return out
 }
@@ -7419,29 +7419,42 @@ func (w *statWalk) kill(id string) {
 	}
 }
 
-// foldNodeStat folds ONE of a node's finished calls into that node's own tally.
+// tallyNode works out what ONE node has added to the ambient counts, from the
+// rows its page is holding, and remembers the answer.
 //
-// EACH NODE KEEPS ITS OWN WALK because a kill matches a start BY ID and the ids
-// are the machine's: a node killing job 3 must take away job 3 as that node
-// started it, not whichever job the conversation started last.
+// IT RE-COUNTS RATHER THAN ADDING ONE CALL AT A TIME, and that is what makes it
+// safe to call from two places. A room learns its history two ways — the journal
+// it replays when the page opens ([app.roomRecord]) and its lane while the page
+// is up — and only the second goes through the reducer. A tally that folded each
+// closed call as it arrived therefore missed every job the node had already
+// started before anybody looked, which is most of them: the first thing a person
+// does about a task is open it AFTER it has been working. Counting the whole list
+// instead answers for both halves, and re-answering is idempotent — opening the
+// same page twice cannot count the same job twice, which an accumulator could
+// not promise.
 //
-// It is called from the room's reducer and nowhere else, so a call is folded
-// EXACTLY ONCE — the moment it closes on the wire. Reopening a room replays its
-// journal through the shaper rather than the reducer ([app.roomRecord]), which
-// is what keeps a second visit from counting the same work twice.
-func (a *app) foldNodeStat(id uint64, e *entry) {
+// WHAT IT STILL CANNOT SEE, said plainly: a node whose page nobody has ever
+// opened. Its journal is on disk and this surface has not read it, so its jobs
+// are not in the count. That is the same honesty [hudStats] already states about
+// its own numbers — the count is what this session has SEEN — and it is the
+// right direction to be wrong in: a job that turns up when you open the page is
+// a job you learn about, where a count that guessed at unread journals would be
+// a number nobody could check.
+func (a *app) tallyNode(id uint64, es []entry) {
+	var walk statWalk
+	for i := range es {
+		walk.fold(&es[i])
+	}
 	if a.nodeHud == nil {
-		a.nodeHud = map[uint64]*statWalk{}
+		a.nodeHud = map[uint64]hudStats{}
 	}
-	walk, ok := a.nodeHud[id]
-	if !ok {
-		walk = &statWalk{}
-		a.nodeHud[id] = walk
+	if was, ok := a.nodeHud[id]; ok && was == walk.out {
+		return
 	}
-	walk.fold(e)
+	a.nodeHud[id] = walk.out
 	// THE COUNTS THE SURFACE IS SHOWING ARE NOW OLD, and this is the one place a
-	// room can say so: the cache is the conversation's and nothing else drops it
-	// on a node's event (see [app.hudStats]).
+	// node's page can say so: the cache is the conversation's and nothing else
+	// drops it on a task's event (see [app.hudStats]).
 	a.hudStale = true
 }
 

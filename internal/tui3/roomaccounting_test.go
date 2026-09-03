@@ -70,6 +70,34 @@ func TestATasksJobStaysCountedAfterItsPageIsClosed(t *testing.T) {
 	}
 }
 
+// AND A JOB THE TASK STARTED BEFORE ANYBODY LOOKED IS COUNTED THE MOMENT SOMEBODY
+// DOES. This is the case the first cut of this got wrong: the reducer only ever
+// sees a node's LIVE calls, so hooking it alone counted nothing for the ordinary
+// visit — you open a task's page after it has been working, not before.
+func TestAJobATaskStartedBeforeThePageWasOpenedIsCountedOnOpening(t *testing.T) {
+	a, fake, _ := roomApp(t)
+	fake.journal = roomJournal(t,
+		`{"type":"message","role":"user","content":"Bring the server up"}`,
+		`{"type":"message","role":"assistant","content":"Starting it.","toolCalls":[{"id":"b1","function":{"name":"bash","arguments":"{\"cmd\":\"npm run dev\",\"background\":\"true\"}"}}]}`,
+		`{"type":"message","role":"tool","toolCallId":"b1","content":"job 3 started; log at /tmp/3.log"}`,
+		`{"type":"message","role":"assistant","content":"It is up on 3000."}`,
+	)
+	if before := a.hudStats().jobs; before != 0 {
+		t.Fatalf("the session already counts %d jobs", before)
+	}
+	a.openRoom(7, "Bring the server up")
+	if got := a.hudStats().jobs; got != 1 {
+		t.Fatalf("opening the page did not learn the job the task had already started: %d", got)
+	}
+	// AND OPENING IT AGAIN DOES NOT COUNT IT TWICE, which is why the tally is a
+	// re-count rather than an accumulator.
+	a.closeRoom()
+	a.openRoom(7, "Bring the server up")
+	if got := a.hudStats().jobs; got != 1 {
+		t.Fatalf("a second visit counted the same job again: %d", got)
+	}
+}
+
 // AND A KILL TAKES AWAY THE JOB IT NAMES, matched against the starts THAT NODE
 // made rather than against whatever the conversation started last.
 func TestATaskKillingItsOwnJobTakesItOutOfTheCounts(t *testing.T) {
