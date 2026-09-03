@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"testing"
 )
 
 // AND THE TESTS DO NOT WRITE INTO THE DEVELOPER'S CHECKOUT EITHER.
@@ -44,6 +45,26 @@ import (
 // moves HEAD, and everything under `.aforge-v3/` is in .gitignore, so
 // `git status --porcelain` never names it. So the branches and the registered
 // worktrees are read too, and they are read the same symmetric way.
+//
+// THE GUARD REPORTS WHAT THIS RUN COULD HAVE WRITTEN, NOT EVERYTHING THAT
+// MOVED. Branches and worktrees are not facts about this working copy: they
+// belong to the whole shared repository, and this one shares its refs with
+// ~/src/aforge-v2 and with every other lane's worktree. This repo builds a
+// feature wave in a worktree as a matter of routine, several sessions at once,
+// and one `go test ./internal/session/` is nearly two minutes long — so a
+// neighbour's `git worktree add` inside that window would appear here as `now:`
+// and their `git branch -d` as `gone:`, and the run would fail for something no
+// test did. A guard that fails on other people's ordinary work is a guard
+// people learn to ignore, and a test that goes red only when other work runs
+// beside it is a bug in this repository, not a shape to write down. So each of
+// the two new readings is filtered to the harness's OWN shape first: a `task/`
+// branch, which is [prepareTaskTree]'s spelling and nothing a person types by
+// hand, and a worktree the harness would have registered.
+//
+// The trade is stated rather than hidden: a runaway that cut a branch under
+// some other name slips past this reading. The head and the porcelain beside it
+// do not care what anything is called and still catch the commit and the files,
+// which is the shape that actually cost somebody an afternoon.
 //
 // It cannot see a content change to a file that was already dirty before the
 // run — hashing the whole checkout each run costs more than it is worth — and
@@ -180,9 +201,18 @@ func porcelain(root string) map[string]bool {
 	return found
 }
 
-// branchNames is the set of branch names in root. It is asked with an explicit
-// format rather than read off plain `git branch --list`, whose leading `* ` on
-// the current branch would turn a head move into a second, invented line here.
+// harnessBranchPrefix is how a task's branch is spelled, and the whole of what
+// makes a branch this suite's to report: `"task/" + slugify(title) + "-" +
+// shortID()` in prepareTaskTree (task_run.go). Nothing a person cuts by hand in
+// this repository is named that way — lanes are `fix/…`, `feat/…`, `bench/…` —
+// so the prefix separates the harness's own work from the neighbour's without
+// having to know who the neighbours are.
+const harnessBranchPrefix = "task/"
+
+// branchNames is the set of branches in root that THIS SUITE could have cut. It
+// is asked with an explicit format rather than read off plain
+// `git branch --list`, whose leading `* ` on the current branch would turn a
+// head move into a second, invented line here.
 //
 // An unreadable tree is an empty set, for the same reason [porcelain] gives:
 // two empty sets say nothing changed, which is what a guard owes a machine it
@@ -194,34 +224,151 @@ func branchNames(root string) map[string]bool {
 		return found
 	}
 	for _, line := range out {
-		if line = strings.TrimSpace(line); line != "" {
-			found[line] = true
+		if name := strings.TrimSpace(line); harnessBranch(name) {
+			found[name] = true
 		}
 	}
 	return found
 }
 
-// worktreePaths is the set of worktree directories registered against root — the
-// main one and every linked one, including a linked one the suite hid under an
-// ignored folder.
+// harnessBranch says whether a branch name is one a task run made.
+func harnessBranch(name string) bool {
+	return strings.HasPrefix(name, harnessBranchPrefix)
+}
+
+// worktreePaths is the set of worktree directories registered against root that
+// THIS SUITE could have registered — including one it hid under an ignored
+// folder, which is the whole reason this reading exists.
 //
 // ONLY THE PATHS ARE KEPT. The plain listing carries each worktree's head
 // beside its path, so keeping the whole line would report a head move a second
 // time, in different words, from a set that is meant to answer a different
-// question. The porcelain form is asked for so the path can be taken on its
-// own, and an unreadable tree is an empty set as everywhere else here.
+// question. The porcelain form is asked for so the path and the branch can be
+// read separately, and an unreadable tree is an empty set as everywhere else
+// here.
 func worktreePaths(root string) map[string]bool {
-	found := map[string]bool{}
 	out, err := gitLines(root, "worktree", "list", "--porcelain")
 	if err != nil {
-		return found
+		return map[string]bool{}
 	}
-	for _, line := range out {
-		if path := strings.TrimPrefix(line, "worktree "); path != line && strings.TrimSpace(path) != "" {
-			found[strings.TrimSpace(path)] = true
+	return harnessWorktrees(root, out)
+}
+
+// harnessWorktrees reads `git worktree list --porcelain` — one record per
+// worktree, `worktree <path>` first and `branch <ref>` among the lines under it
+// unless the head is detached — and keeps the paths of the records the harness
+// could have made.
+//
+// THERE ARE TWO ROADS AND EACH NEEDS ITS OWN QUESTION. A task grounded in a
+// repository puts its tree INSIDE that repository, under `.aforge-v3/tasks/…`,
+// so a path below the watched root is the harness's whatever it is checked out
+// on. A task grounded in a session folder puts its tree at
+// `<session folder>/trees/<id>`, which is nowhere near the checkout and is
+// still registered against it — that one is recognised by its branch instead.
+func harnessWorktrees(root string, lines []string) map[string]bool {
+	found := map[string]bool{}
+	path, branch := "", ""
+	keep := func() {
+		if path != "" && harnessWorktree(root, path, branch) {
+			found[path] = true
 		}
 	}
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			keep()
+			path, branch = strings.TrimSpace(strings.TrimPrefix(line, "worktree ")), ""
+		case strings.HasPrefix(line, "branch "):
+			branch = strings.TrimSpace(strings.TrimPrefix(line, "branch "))
+		}
+	}
+	keep()
 	return found
+}
+
+// harnessWorktree says whether one registered worktree is one a task run made:
+// a working copy inside the watched checkout, or one standing on a task branch
+// wherever it happens to live. The checkout itself is neither — it was there
+// before the run and no test registered it.
+func harnessWorktree(root, path, branch string) bool {
+	if path == root {
+		return false
+	}
+	if strings.HasPrefix(path, strings.TrimSuffix(root, "/")+"/") {
+		return true
+	}
+	return harnessBranch(strings.TrimPrefix(branch, "refs/heads/"))
+}
+
+// TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten holds the filter
+// still. Everything else in this file only ever runs from TestMain, where its
+// answer is a failure message on somebody's terminal and never an assertion —
+// so the one judgement it makes about OTHER PEOPLE'S work is the one part that
+// has to be checked out loud.
+//
+// The rows on the false side are the reason the filter exists: `fix/578-…` and
+// a wave's worktree at ~/af-579 are a neighbour's ordinary afternoon in a
+// repository whose refs are shared, and a guard that named them would be
+// switched off within a week.
+func TestTheCheckoutGuardReportsOnlyWhatThisRunCouldHaveWritten(t *testing.T) {
+	const root = "/home/somebody/af-578"
+
+	for _, branch := range []struct {
+		name string
+		ours bool
+	}{
+		{"task/do-the-thing-0f1430", true},
+		{"task/paint", true},
+		{"dev", false},
+		{"fix/578-task-ground", false},
+		{"bench/canary", false},
+		{"aforge/leaf/task-2", false}, // a task in the NAME is not the prefix
+		{"", false},
+	} {
+		if got := harnessBranch(branch.name); got != branch.ours {
+			t.Errorf("harnessBranch(%q) = %v, want %v", branch.name, got, branch.ours)
+		}
+	}
+
+	// One listing, read whole, because the parsing and the filter are one
+	// answer: a record whose `branch` line was missed reads as detached, and a
+	// detached record outside the root is one this suite is told to ignore.
+	listing := []string{
+		"worktree " + root,
+		"HEAD 1111111111111111111111111111111111111111",
+		"branch refs/heads/fix/578-task-ground",
+		"",
+		"worktree " + root + "/.aforge-v3/tasks/s1/1",
+		"HEAD 2222222222222222222222222222222222222222",
+		"branch refs/heads/task/do-the-thing-0f1430",
+		"",
+		"worktree /home/somebody/.aforge-v3/sessions/s1/trees/4",
+		"HEAD 3333333333333333333333333333333333333333",
+		"branch refs/heads/task/measure-9ab120",
+		"",
+		"worktree /home/somebody/af-579",
+		"HEAD 4444444444444444444444444444444444444444",
+		"branch refs/heads/feat/579-something-else",
+		"",
+		"worktree /home/somebody/af-canary-build-713945e3",
+		"HEAD 5555555555555555555555555555555555555555",
+		"detached",
+	}
+	want := map[string]bool{
+		root + "/.aforge-v3/tasks/s1/1":                 true, // inside the checkout: ours whatever it stands on
+		"/home/somebody/.aforge-v3/sessions/s1/trees/4": true, // outside it, but standing on a task branch
+	}
+	got := harnessWorktrees(root, listing)
+	for path := range want {
+		if !got[path] {
+			t.Errorf("harnessWorktrees did not report %q, which a task run makes", path)
+		}
+	}
+	for path := range got {
+		if !want[path] {
+			t.Errorf("harnessWorktrees reported %q, which is somebody else's ordinary work", path)
+		}
+	}
 }
 
 // commitsBetween names what was written on top of the head the run started on,
