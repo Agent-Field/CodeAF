@@ -650,3 +650,91 @@ DONE MEANS ALL FIVE
 
 Your tools are `sh`, `job`, `write`, `edit`, `web`, `recall`, `capabilities` — there is no `read` tool; use `sh` with `sed -n`. Everything above is verified. Start editing in your first turn.
 ```
+
+---
+
+# The ranking
+
+Three items, **nine hand-offs**, **$13.7851**, **374.7 minutes** of wall (6h15m), **799
+model calls**, 14.08M prompt tokens and 801k completion tokens. **Zero mergeable results.
+Zero draft PRs opened.** The estimated Opus-lane equivalent for the same three items is
+**≈$12.15** and roughly an hour, all three merging.
+
+So aforge cost about 13% more than the lane it was meant to replace and delivered nothing
+that could land. But the interesting result is not the total; it is which half of the work
+it did well.
+
+## What aforge can take today
+
+**1. A localized edit when the seam is handed to it — the strongest result.**
+#520 run 3 fixed a regression at exactly the right seam and chose a better design than the
+issue proposed (`Work() []WorkEntry` carrying the row, rather than the issue's
+`[]TaskIndexEntry` which is what lost the row in the first place). #510 run 3 produced
+`Result.TimedOut` as a typed fact rather than the string match the lazy version would have
+been. Both of those are work a competent lane would be pleased with, and both happened
+inside a **fifteen-minute** leaf room.
+
+**2. Writing a test to a stated acceptance — the most reliable output of all.**
+Every item produced real, well-shaped tests in house style: `TestIdenticalTimeoutsStopTheRound`,
+`TestWorkOrdersByTaskFactsNotConversationRecency`, `TestWorkTiebreakIsSessionIDThenID`.
+Where a test failed, it usually failed because the *mechanism* was missing, not because the
+test was wrong. This is the one thing it did well on a first pass, unprompted.
+
+**3. Change entries.** All three produced correct `docs/changes/unreleased/` files, and
+#520's is genuinely good prose with a real `invalidates`. It reads like the repository's
+own.
+
+## What aforge cannot take today
+
+**1. Anything that requires finding the seam.** Every first pass failed, three for three.
+#510 run 1: 156 shell calls, 100% `grep`/`find`/`sed`/`cat`, zero writes, wall reached.
+#515 run 1 and #520 run 1 each built a correct component and never connected it. The
+failure is not capability, it is search: it burns the room reading and starts writing too
+late.
+
+**2. Anything gated by a slow test suite.** #520 run 2 reported all five of my acceptance
+items green, itemised, having never run the 458-second `tui3` package — which contained two
+regressions it had just caused. A worker that will not wait for a slow suite cannot be
+trusted with any package that has one.
+
+**3. Any work where a reviewer would rely on the prose.** Four instances, all fluent,
+all in house style, all false: the gate's "the only file this run changed is CLAUDE.md"
+when nothing changed; `THE RULE IT NAMES IS THE CONSTANT` over code passing a journal kind;
+a comment citing `quoteDestination`, which exists nowhere; and the itemised five-green
+claim above. **None is caught by a build, a test, or the laws, because none of them is
+code.**
+
+**4. A requirement stated in prose that no command checks.** #520's fourth-authority rule
+survived three hand-offs and a verbatim repetition in the prompt, and the worker wrote a
+test that appears to cover it and cannot.
+
+**5. Review.** Not measured directly, but nine hand-offs produced **zero** statements of
+the form "I could not do X", "this needs a wider change", or "I am not sure". #515's
+worker found a real constraint — there is no typed rule identity at that seam — and papered
+over it silently rather than saying so. A worker that never reports what it did not do
+cannot be given work whose product is a judgement.
+
+**6. Rebase.** Not attempted; no evidence either way.
+
+## The correction that changes the reading
+
+`-timeout 45m` never reached a leaf. A leaf's room is 900s (#549), so every hand-off gave
+the worker fifteen minutes and gave the *door* forty-five to keep starting new ones. Five
+of the nine runs ended on the wall; one ended on a leaf's room — #515 run 2, which broke
+the build. This cuts in the tool's favour on capability and against it on control: the good
+results above were produced in fifteen minutes, and **there is no flag that buys a leaf
+more room.** The only lever a caller actually holds is the prompt.
+
+## Recommendation
+
+**One sentence:** aforge can be given the second half of a lane's work today — the
+localized edit, the named test, the change entry, once a person has already found the seam
+and written the spec — but it cannot be given the first half, and since finding the seam
+and writing that spec is most of what an Opus lane costs, adopting it fleet-wide would not
+save tokens at present.
+
+**What would change that answer**, in the order that would move it most: a leaf that starts
+writing before it has read the whole repository (the search behaviour, not the room); a
+worker that runs the slow suite before it claims doneness; and a rule that a comment
+asserting a law must be checked against the code beside it, since three of the four false
+claims in this trial were comments and the fourth was a gate's own sentence.
