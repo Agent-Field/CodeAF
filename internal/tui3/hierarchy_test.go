@@ -59,8 +59,8 @@ func TestNarrationRecedesWhenWorkOpensUnderIt(t *testing.T) {
 	a.touch()
 
 	narration := rowWithText(t, a, "Let me check the config")
-	if !strings.HasPrefix(plain(narration.text), "  ") {
-		t.Fatalf("narration kept the answer's margin: %q", plain(narration.text))
+	if narration.hit != hitCaption {
+		t.Fatalf("narration is not the caption heading: %q", plain(narration.text))
 	}
 	if !strings.Contains(narration.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("narration kept the body ink: %q", narration.text)
@@ -108,7 +108,7 @@ func TestADemotedBlockForgetsItsMarkdownCut(t *testing.T) {
 	a.touch()
 
 	got := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(got, "Checking the parser.") || !strings.Contains(got, "It reads the prefix") {
+	if !strings.Contains(got, "Checking the parser") || !strings.Contains(got, "It reads the prefix") {
 		t.Fatalf("the cut block lost half of itself:\n%s", got)
 	}
 	painted := strings.Join(func() []string {
@@ -318,6 +318,9 @@ func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 	a.room = a.newRoom(7, "the node")
 	a.room.workOpen = map[int]bool{}
 	a.room.entries = hierarchyLab()
+	for _, f := range deriveWorkfolds(a.room.entries, 0) {
+		a.room.workOpen[f.key] = true
+	}
 
 	drawn, _ := a.deckRows(a.room.deck(), 60)
 	find := func(phrase string) row {
@@ -330,7 +333,7 @@ func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 		t.Fatalf("the room drew no row carrying %q", phrase)
 		return row{}
 	}
-	if r := find("Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
+	if r := find("Let me check the config"); r.hit != hitCaption ||
 		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a room promoted its narration: %q", r.text)
 	}
@@ -362,7 +365,7 @@ func TestAResumedConversationRebuildsTheSameHierarchy(t *testing.T) {
 	a.replay()
 	a.touch()
 
-	if r := rowWithText(t, a, "Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
+	if r := rowWithText(t, a, "Let me check the config"); r.hit != hitCaption ||
 		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a resumed turn promoted its narration: %q", r.text)
 	}
@@ -392,7 +395,7 @@ func TestTheRowCacheFollowsTheHierarchy(t *testing.T) {
 	// The work opens under it. Nothing touches the block itself.
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "read", text: "parser.go", turn: 1, status: toolOK})
 	a.touch()
-	if r := rowWithText(t, a, "Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
+	if r := rowWithText(t, a, "Let me check the config"); r.hit != hitCaption ||
 		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the block handed back the rows it drew as the answer: %q", r.text)
 	}
