@@ -162,7 +162,7 @@ launched from. `do --json` carries the same four facts as fields.
 | --- | --- | --- |
 | `0` | `done` | It is done, and what is on stdout is the answer. |
 | `1` | `error` | It could not be run at all — no key, bad arguments, the store would not open, the workspace could not be made, no resident took it. Nothing was attempted and nothing was spent. |
-| `2` | `incomplete` | It ran and did not finish: part of the work does not stand. The job failed or was cancelled, the delivery did not land whole, or a refusal that was not a question. Whatever it DID manage is on stdout and is worth reading. |
+| `2` | `incomplete`, `unchecked` | It ran and did not finish: part of the work does not stand. The job failed or was cancelled, the delivery did not land whole, or a refusal that was not a question. Whatever it DID manage is on stdout and is worth reading. `unchecked` is the same rung and a different fact: the work was delivered and the final check could not be reached, so nothing has vouched for it — read it, it may be perfectly good. |
 | `3` | `price`, `deadline` | A limit you set stopped it — the wall (`--timeout`), or a plan price that crossed the consent threshold with no `--yes-spend`. The work was going when it was cut off; raise the limit and run it again. |
 | `4` | `question` | It stopped to ask and nobody was there. The question is on stderr verbatim and in `blocked_on`. |
 
@@ -229,10 +229,11 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | Field | Contract |
 | --- | --- |
 | `ok` | The work stands. True on exactly the runs that exit `0`. |
-| `stop` | Why it ended, in one word: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question`. **This is the field to read.** The exit code says how much is wrong; `stop` says what. |
+| `stop` | Why it ended, in one word: `done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`, `deadline`, `price`, `question`. **This is the field to read.** The exit code says how much is wrong; `stop` says what. |
 | `answer` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
 | `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
+| `unjudged` | On `aforge do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
