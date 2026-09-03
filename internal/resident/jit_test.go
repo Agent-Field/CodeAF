@@ -262,7 +262,14 @@ func TestAnAtomicNodeIsNotAskedAgainAndCostsNothing(t *testing.T) {
 		parts []string
 	}{
 		{"atomic", plan.SizeAtomic, []string{"first", "second"}},
-		{"no two parts could be named", plan.SizeOversized, nil},
+		// Borderline rather than oversized, and the size is the whole point.
+		// An OVERSIZED node nobody could name two pieces for is no longer a
+		// free refusal at claim time: the burden's second discharge stands for
+		// it, so it is asked the stage question — one call, no fan-out — and
+		// divided in time or refused with the answer. The free refusal is what
+		// is left, and this is it: a node inside one worker's reach that names
+		// no pieces is not asked anything.
+		{"no two parts could be named", plan.SizeBorderline, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			graph, document := dividableJob(t, test.size, test.parts)

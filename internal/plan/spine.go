@@ -345,15 +345,7 @@ func spineOnce(ctx context.Context, client Completer, goal, terrain string, aske
 	if err != nil {
 		return nil, usageOf(response), fmt.Errorf("spine: %w", err)
 	}
-	stages := make([]Stage, 0, len(decoded.Stages))
-	for _, stage := range decoded.Stages {
-		stage.Title = trim(stage.Title)
-		stage.Summary = trim(stage.Summary)
-		if stage.Title == "" && stage.Summary == "" {
-			continue
-		}
-		stages = append(stages, stage)
-	}
+	stages := keptStages(decoded.Stages)
 	if len(stages) == 0 {
 		// Schema-valid and useless: the reply parsed, so nothing upstream of here
 		// could have caught it. This is the semantic half of verification and the
