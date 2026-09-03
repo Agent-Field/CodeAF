@@ -548,12 +548,35 @@ func withinDir(dir, path string) bool {
 	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
+// scratchDirs are the machine's scratch roots: THE PLACES A PROGRAM IS HANDED
+// TO PUT WORK DOWN IN, never places work is about. One list, read by everything
+// that has to tell the two apart — the write guard below and the ground law in
+// [repositoryRoot] — because two copies of it would drift and one of them would
+// be the copy missing the entry that matters.
+//
+// GOTMPDIR leads because it is the entry a second reader forgets and the one
+// that costs the most: Go roots t.TempDir() at GOTMPDIR when it is set, TMPDIR
+// after that, so a test run's whole scratch tree can sit wherever those two
+// point — including inside somebody's checkout.
+func scratchDirs() []string {
+	dirs := make([]string, 0, 6)
+	for _, dir := range []string{
+		os.Getenv("GOTMPDIR"), os.TempDir(),
+		"/tmp", "/private/tmp", "/var/folders", "/private/var/folders",
+	} {
+		if strings.TrimSpace(dir) != "" {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
 // scratchPath reports whether a path is the machine's scratch rather than
 // anybody's work.
 func scratchPath(path string) bool {
 	clean := filepath.Clean(path)
-	for _, dir := range []string{os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"} {
-		if strings.TrimSpace(dir) != "" && withinDir(dir, clean) {
+	for _, dir := range scratchDirs() {
+		if withinDir(dir, clean) {
 			return true
 		}
 	}

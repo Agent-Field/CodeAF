@@ -6864,7 +6864,41 @@ func repositoryRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
+	if climbsOutOfScratch(dir, root) {
+		return "", false
+	}
 	return canonicalPath(root), true
+}
+
+// climbsOutOfScratch is THE LAW: A GROUND NEVER CLIMBS OUT OF A SCRATCH
+// DIRECTORY ITS PATH LIVES IN.
+//
+// `git rev-parse --show-toplevel` walks UP, and it does not stop at the
+// directory it was handed. So a scratch directory that happens to have been
+// made inside a checkout answers with THAT CHECKOUT — and the ground ladder
+// then cuts a real task/* branch off a person's own HEAD, commits "task: Paint"
+// onto it and merges it home, over work they were in the middle of. That is not
+// a theory either: Go roots t.TempDir() at GOTMPDIR (then TMPDIR), so one
+// `go test ./internal/session/` run with either pointed inside a checkout moved
+// the developer's HEAD. The machine's scratch is where work is PUT DOWN, never
+// what work is ABOUT, and a repository that merely CONTAINS the machine's temp
+// directory is a repository this task was never given.
+//
+// The reading is PER BOUNDARY, never in aggregate: for each scratch root the
+// directory lives in, the answer must live in that same root. Asking instead
+// whether the root is scratch AT ALL would let the whole bug through, because
+// /tmp is itself a scratch root and a checkout at /tmp/somewhere is inside it —
+// while GOTMPDIR=/tmp/somewhere/.gotmp is the boundary that was actually
+// climbed out of.
+func climbsOutOfScratch(dir, root string) bool {
+	realDir, realRoot := resolveSymlinks(dir), resolveSymlinks(root)
+	for _, scratch := range scratchDirs() {
+		scratch = resolveSymlinks(scratch)
+		if withinDir(scratch, realDir) && !withinDir(scratch, realRoot) {
+			return true
+		}
+	}
+	return false
 }
 
 // git runs one command in a directory and returns its combined output. There is
