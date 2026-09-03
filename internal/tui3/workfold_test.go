@@ -136,3 +136,40 @@ func TestWorkfoldSettlementAnchorsBottomAndScrolledReader(t *testing.T) {
 		}
 	})
 }
+
+// ── ONE WORD FOR ONE NUMBER ─────────────────────────────────────────────────
+
+// ONE TURN COUNTED ITS CALLS IN TWO WORDS SIX ROWS APART: `2 tool calls` on the
+// fold chip and `2 tools` on the receipt under the same turn — and the rewind
+// sheet said `2 tools` for a third time. Two spellings of one number invite the
+// reader to check whether they are two numbers. [toolCallWord] is the one
+// spelling, and the noun is the CALL because that is what is counted.
+func TestOneTurnCountsItsToolCallsInOneWord(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries, a.workMode = foldFixture(), config.WorkFold
+	a.stamps = map[int]turnStamp{1: {took: 47 * time.Second, tools: 2, at: time.Unix(100, 0)}}
+	a.timestamps = timestampsFooters
+	a.touch()
+
+	// The frame carries both readings of the same number: the fold chip over the
+	// turn, and the receipt under it.
+	frame := strings.Join(plainRows(a), "\n")
+	if strings.Contains(frame, "2 tools") {
+		t.Fatalf("the turn still counts its calls two ways:\n%s", frame)
+	}
+	if want, got := "2 tool calls", strings.Count(frame, "2 tool calls"); got != 2 {
+		t.Fatalf("the chip and the receipt say %q %d times, want twice — one word for one number:\n%s",
+			want, got, frame)
+	}
+	if receipt := plain(a.stampRow(1, 80)); !strings.Contains(receipt, "2 tool calls") {
+		t.Fatalf("the receipt reads %q, want the same word the chip uses", receipt)
+	}
+
+	// And the singular is a sentence: `1 tool call`, never `1 tool calls`.
+	if got := toolCallWord(1); got != "1 tool call" {
+		t.Fatalf("one call is spelled %q, want %q", got, "1 tool call")
+	}
+	if got := toolCallWord(14); got != "14 tool calls" {
+		t.Fatalf("fourteen calls are spelled %q, want %q", got, "14 tool calls")
+	}
+}

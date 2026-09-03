@@ -1,0 +1,28 @@
+Usage of resume:
+  -at aforge serve
+    	reach a machine that has no ssh, by the name aforge serve prints there: otter-lamp-42, or otter-lamp-42:path/to/project
+  -debug
+    	keep the full record of this run — call bodies, tool calls and the choices made — in a folder of its own under the state root (env AFORGE_DEBUG; /debug turns it on mid-session)
+  -host string
+    	run the session on another machine over ssh: host, user@host, or host:path/to/project
+  -max-cost float
+    	how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)
+  -max-hours float
+    	how many hours an unattended --yolo session may carry its own work on (env AFORGE_MAX_HOURS)
+  -model string
+    	model slug for this session; beats the configured default
+  -no-compact
+    	never compact automatically
+  -no-host
+    	open this conversation in this process instead of attaching to this workspace's session host
+  -once string
+    	run one message non-interactively, print the reply, and exit
+  -one-model
+    	every text call this session makes runs on the session model: the tier rows, the role pins, the fallback chain and the task model all stand down
+  -reasoning string
+    	how hard this session's model is asked to think: off, low, medium or high
+  -session string
+    	session transcript to resume; empty resumes this directory's most recent
+  -yolo
+    	run every tool without asking: the approval default becomes allow
+error: flag: help requested

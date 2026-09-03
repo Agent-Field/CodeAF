@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+› emoji widths                                                                            │
+                                                                                          │ standing
+AAAA plain ascii control line                                                             │ ◦ the morning sweep
+                                                                                          │ ? CI on master
+BBBB 🎉🎉🎉🎉 four party poppers                                                          │ ◦ the public API
+                                                                                          │ + /standing
+CCCC ✅✅✅✅ four check marks                                                            │
+                                                                                          │
+DDDD 🇯🇵🇯🇵 two flags                                                                       │
+                                                                                          │
+EEEE 👩‍👩‍👧‍👦 one family                                                                      │
+                                                                                          │
+FFFF ❤️ ❤️  two hearts with vs16                                                          │
+                                                                                          │
+GGGG 日本語日本語 cjk                                                                     │
+                                                                                          │
+HHHH café naïve combining é                                                               │
+  · 3 standing orders here — /standing                                                    │
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-                │
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af- │
+  dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-                    │
+  v2/ffff0000emoji001/transcript.jsonl                                                    │
+  · esc interrupts · ctrl+c twice quits                                                   │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                                                                  ⠿ high
+ ›
+Emoji Widths · deepseek-v4-flash-latest                 crew balanced · ◦ keeping an eye on 3 · $0.00 · 5.4k/1.3M · idle

@@ -1,0 +1,16 @@
+Usage of plan:
+  -brief
+    	write a self-contained instruction for every leaf
+  -ensemble int
+    	0 decide from the goal, -1 never, N>=2 force N independent passes and merge them
+  -json
+    	print the graph as JSON instead of a table
+  -model string
+    	work model for this run (flag › AFORGE_MODEL › crew › default)
+  -o string
+    	write the graph as JSON to this file
+  -plan-model string
+    	model that plans, when different from the work model (flag › AFORGE_PLAN_MODEL › crew mastermind › the work model)
+  -w string
+    	directory holding the material this goal is about, read once to ground the plan
+error: flag: help requested

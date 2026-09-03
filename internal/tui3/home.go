@@ -362,7 +362,7 @@ const (
 	// homeSession is one conversation, and the only thing enter means anything
 	// on.
 	homeSession
-	// homeQuiet is a project's tail — "…2 more, quiet since Tue" folded, and
+	// homeQuiet is a project's tail — "2 more, quiet since 3d" folded, and
 	// the same line holding it open when it is not. IT IS A CURSOR STOP AND A
 	// DOOR: enter or → opens the project, ← folds it again, and a click does
 	// the same. A line that says work is being hidden and cannot be asked to
@@ -690,6 +690,17 @@ type homeView struct {
 	// nothing at the two wider tiers and vanish whole below them
 	// (homeattention.go).
 	tier homeTier
+	// room is how many rows THIS FRAME gave the column, settled by the draw
+	// before the column is built exactly as [homeView.tier] is
+	// (place_home.go's [placeHome.body]). The list is capped by it — as many
+	// rows as the frame can hold, never fewer than [switcherShown] — and a
+	// column that never asked was a home that drew eight conversations on a
+	// fifty-row terminal and left twenty-eight rows blank under them.
+	//
+	// ZERO IS "NOBODY HAS DRAWN A FRAME YET", not a column of no rows: a
+	// reading built before the first draw is the reading this surface made
+	// before the height was ever in scope.
+	room int
 	// reading is the resting list as switcher.go read it — the ledger, the
 	// ranked rows, the fold — and every line of [homeView.lines] built from it
 	// points into this (place_home.go). It is replaced whole with those lines,
@@ -727,6 +738,12 @@ type homeView struct {
 	standRoot string
 	bar       []hudSpan
 	barRow    int
+
+	// liftedItems is the standing items the phone's triage sections have already
+	// drawn, keyed by [phoneItemKey], so [homeView.projectBlock] does not draw
+	// them a second time under their own project (homephone.go's second law).
+	// It is nil at every wider tier, where nothing is lifted.
+	liftedItems map[string]bool
 
 	// bandOpen is which list-shaped bands of the right column a person opened,
 	// by band and subject (homebands.go). It dies with the screen.
@@ -1727,6 +1744,15 @@ func (h *homeView) projectBlock(hit homeHit, query string) {
 		shownItems, folded := standSplit(h.items[hit.project.Dir], h.itemsOpen[hit.project.Dir])
 		itemsFolded = folded
 		for _, view := range shownItems {
+			// AND A ROW APPEARS ONCE (homephone.go's second law). The phone's
+			// triage sections lift the items that need somebody or are firing
+			// right now to the top of the screen, and an item drawn there is
+			// not drawn again down here. The map is empty on every wider frame,
+			// where the zones are a summary rather than a second copy of the
+			// row.
+			if h.liftedItems[phoneItemKey(hit.project, view)] {
+				continue
+			}
 			if standHot(view) {
 				hot = append(hot, view)
 				continue
@@ -1823,7 +1849,7 @@ func (h *homeView) blank() {
 // expanded ([homeView.expanded]), and — the one that matters — A SEARCH IS
 // NEVER COLLAPSED. A filter that could not see what it hides would be a filter
 // lying about the machine: somebody typing three letters and getting
-// "…13 more, quiet since 10h" has been told the thing they asked for might be
+// "13 more, quiet since 10h" has been told the thing they asked for might be
 // behind a line they cannot open, which is worse than no search at all.
 func (h *homeView) split(project session.Project, rows []session.SessionRow, query string) (shown []session.SessionRow, quiet int, since time.Time) {
 	for i, row := range rows {
@@ -2817,6 +2843,10 @@ func (h *homeView) rebuild() {
 // disagree. The phone's inbox is homephone.go's; every wider frame is
 // [homeView.buildWorld]'s, untouched.
 func (h *homeView) buildFor() {
+	// NOTHING IS LIFTED UNTIL A SHAPE LIFTS IT. Only the phone's inbox takes
+	// rows out of their projects, and a map left standing from the frame before
+	// this one would silence a row on a screen that never lifted it.
+	h.liftedItems = nil
 	// bridge lane: whichever shape the column takes, THE ONE MOVING CELL is
 	// chosen with the lines rather than at the draw (homespinner.go). It is
 	// settled here, in the one place both fillers pass through, for the reason
@@ -4496,18 +4526,17 @@ func (h *homeView) projectInk(project session.Project) noteInk {
 // homeQuietWord is the collapsed tail's one line. The age is the newest of the
 // conversations it stands for, so "quiet since" is a fact about the whole group
 // rather than about whichever one sorted last.
+//
+// IT IS [foldWords], AND THE ELLIPSIS IS GONE. This function used to put a `…`
+// on the front of its own sentence while its two callers were already drawing a
+// fold mark in front of that, so the phone read `▸ …2 more` — a mark and an
+// ellipsis saying the same thing on one line — and the list one tier up read
+// `▸ 4 more`. One speller, and the mark belongs to whoever draws it.
 func homeQuietWord(line homeLine, now time.Time) string {
-	if !line.folded {
-		// Open, and the line is now the way back. It says how many it is
-		// holding open rather than how long they have been quiet: the ages are
-		// on the rows themselves, right above it.
-		return "…" + itoa(line.quiet) + " fewer"
-	}
-	word := "…" + itoa(line.quiet) + " more"
-	if age := sinceAt(line.since, now); age != "" {
-		word += ", quiet since " + age
-	}
-	return word
+	// Open, the line is the way back: [foldWords] says how many it is holding
+	// open rather than how long they have been quiet, because the ages are on
+	// the rows themselves, right above it.
+	return foldWords(!line.folded, line.quiet, quietFoldClause(line.since, now))
 }
 
 // homeNote is a conversation's dim tail: what it has going on, then how long
@@ -4760,11 +4789,17 @@ func homeGlyph(row session.SessionRow, ascii bool) string {
 	return homeIdleGlyph
 }
 
-// homeName is what a conversation is CALLED, through the one ladder this
-// surface has for the question ([humanName], resume.go): the title it gave
-// itself, the first words somebody said, then the file it lives in.
+// homeName is what a conversation is CALLED on this surface's lists, through
+// [listName]: the title it gave itself, then the folder it lives in when that
+// folder reads as words, and then — rather than the id it usually is — the
+// plain word for a conversation nothing has named yet.
+//
+// IT NEVER HAD THE PICKER'S MIDDLE RUNG. [humanName] can fall back to the first
+// thing the person said because the resume picker has read the transcript; a
+// [session.SessionRow] carries no opening line, so this call passed a title and
+// a path and got a title-cased hex id whenever the title was empty.
 func homeName(row session.SessionRow) string {
-	return humanName(Session{Title: row.Title, File: row.Transcript})
+	return listName(row.Title, row.Transcript)
 }
 
 // homeDetail is the right column, and it is a PREVIEW CARD rather than a second
@@ -5126,6 +5161,14 @@ func (a *app) homeHintWords() string {
 		// promising a conversation the key will not start. `ask here` is still
 		// true of a "/" line — the words can be asked about as words — so the
 		// clause that changes is the one that stopped being true.
+		//
+		// AND THE ORDER IS THE DROP ORDER. This sentence is a hundred and fourteen
+		// cells with the router's two keys on it, so a hundred-column frame cannot
+		// hold all of it and [hintFit] drops the clause nearest the way out —
+		// `↑ pick a match` — first. That is the right one to lose: ↑↓ walking a
+		// list is the key the resting foot already names (`↑↓ pick`) and the map
+		// names again, while `ctrl+enter` is a chord no other surface spells. A
+		// wide frame still says all three.
 		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
 			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
 		}

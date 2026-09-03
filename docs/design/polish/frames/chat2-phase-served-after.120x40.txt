@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+  · 3 standing orders here — /standing                                                    │
+  · new conversation · aforge-v2                                                          │ standing
+                                                                                          │ ◦ the morning sweep
+› count to forty in words, one per line                                                   │ ? CI on master
+                                                                                          │ ◦ the public API
+Okay, let's count to forty in words, one per line:                                        │ + /standing
+                                                                                          │
+one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen  │
+sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three             │
+twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty           │
+thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven        │
+thirty-eight thirty-nine                                                                  │
+forty                                                                                     │
+  ··· checking · 1s                                                                       │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.0053 · 21.9k tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+aforge-v2 · claude-3-haiku · via amazon bedrock · 1.5s · 132 t/s               $0.0053 · 5.3k/200k · 3% · ⠇ working · 5s

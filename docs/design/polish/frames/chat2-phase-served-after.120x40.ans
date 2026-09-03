@@ -1,0 +1,40 @@
+                                                                                          [38;5;243m│ + /task[39m
+  [38;5;243m· [38;5;116m3[38;5;243m standing orders here — [38;5;146m[48;5;237m/standing[39m[49m                                                    [38;5;243m│ [39m
+  [38;5;243m· new conversation · aforge-v2[39m                                                          [38;5;243m│ standing[39m
+                                                                                          [38;5;243m│ ◦[39m [38;5;110mthe morning sweep[39m
+[38;5;146m› [38;5;110mcount to forty in words, one per line[39m                                                   [38;5;243m│ [1m[38;5;140m?[0m [38;5;110mCI on master[39m
+                                                                                          [38;5;243m│ ◦[39m [38;5;110mthe public API[39m
+[38;5;252mOkay, let's count to forty in words, one per line:[39m                                        [38;5;243m│ + /standing[39m
+                                                                                          [38;5;243m│ [39m
+[38;5;252mone two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen[39m  [38;5;243m│ [39m
+[38;5;252msixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three[39m             [38;5;243m│ [39m
+[38;5;252mtwenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty[39m           [38;5;243m│ [39m
+[38;5;252mthirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven[39m        [38;5;243m│ [39m
+[38;5;252mthirty-eight thirty-nine[39m                                                                  [38;5;243m│ [39m
+[38;5;254mforty[39m                                                                                     [38;5;243m│ [39m
+[38;5;146m  ···[38;5;243m checking · 1s[39m                                                                       [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+                                                                                          [38;5;243m│ Σ $0.0053 · 21.9k tok[39m
+                                                                                          [38;5;243m│ [38;5;116mctrl+.[38;5;243m earlier[39m
+                                                                                          [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m─ master* ────────────────────────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+
+[39m                                                                                                                  [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243maforge-v2 · claude-3-haiku · via amazon bedrock · 1.5s · 132 t/s[39m               [38;5;252m$0.0053[38;5;243m · 5.3k/200k · 3% · [38;5;146m⠇[39m [38;5;146mworking[38;5;243m · [38;5;146m5s

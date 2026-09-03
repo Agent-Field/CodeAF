@@ -393,7 +393,7 @@ The same page opens with the cursor already on one order when you click its row 
 
 The line under the box names the verbs of **the row you are on**, and it never names one
 that is not bound. On an order that stands over this conversation it reads:
-`enter open where it was asked · → pause · stop · not here · esc`
+`enter open where it was asked · → verbs: pause, stop, not here · esc`
 
 The verbs are on the row's own strip: press **`→`** and they appear as
 `p pause   s stop   n not here` under the list, and only while that strip is drawn are those

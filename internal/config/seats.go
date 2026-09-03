@@ -324,13 +324,58 @@ func (s Seat) crewRung() string {
 // (internal/session's taskEscalationNote and checkpointCeilingNote). The
 // observation is the true thing: the profile is older than the seat. The promise
 // is what is running instead and what ends it.
+//
+// AND THE PROMISE NAMES THE DOOR, because it used to end in one nobody could
+// find. `until you pick a crew again` is a remedy with no address on it, and
+// this line is printed on FOUR HEADLESS DOORS — `aforge do`, `aforge plan run`,
+// `aforge exec` and `aforge run` — where there is no way at all to pick a crew:
+// [CrewPreset] is written by `/crew` and by the settings sheet's Providers row,
+// both of which are the conversation, and no flag and no terminal verb sets one.
+// So a person reading this in a terminal was told to do something, given no way
+// to do it, and left to discover on their own that the answer was a different
+// surface. Cause plus what to do is the law on both surfaces; a cause plus a
+// dead end is the defect.
+//
+// ONE FORM, TRUE FROM BOTH PLACES IT IS PRINTED. Naming `/crew` reads as the
+// next keystroke in the conversation and as a destination from the terminal, and
+// it is the same sentence in both — which is what keeps somebody who has seen
+// one surface recognising the other. `seat` STAYS: it is this product's own
+// noun for a row of the crew, taught under that name on the manual's own page
+// and spoken by the settings sheet and the model picker, and the vocabulary law
+// is about MACHINERY — the program's words for its own process — not about a
+// domain noun the product teaches.
+//
+// AND THE PROMISE ATTRIBUTES THE MODEL RATHER THAN DESCRIBING IT. This read
+// `it is running on your small work model`, printed directly under a models
+// line naming `deepseek/deepseek-v4-pro` — so two consecutive lines called one
+// model by its name and then called it small, and the developer who met them
+// could not tell which model the lane was actually on. The two lines were never
+// in disagreement about the FACT: whenever the source is [SeatInherited] the
+// model on the line above IS the inherited one, always, because that is what
+// inheriting means. What differed was the grammar. `small work` is the NAME OF
+// A SEAT on the settings sheet, one of the five this product seats, and putting
+// it in front of `model` turns a seat's name into an adjective about the model
+// it holds.
+//
+// So the notice never characterises the model a second time — it says which
+// SEAT lent it. `your small work seat's model` cannot be read as a claim about
+// deepseek-v4-pro, and it answers the question the person actually has: this
+// seat has no row of its own, so it is borrowing that one's. A description was
+// always going to contradict the line above it, since the two are one model.
 func (s Seat) Notice() string {
 	if s.Source != SeatInherited {
 		return ""
 	}
 	return "your crew was set before the " + string(s.Role) + " seat existed · " +
-		"it is running on your " + tierWords(s.From) + " model until you pick a crew again"
+		"it is running on your " + tierWords(s.From) + " seat's model until you pick a crew with " +
+		CrewCommand + " in the conversation"
 }
+
+// CrewCommand is the one door that ends the inheritance [Notice] describes. It
+// is a constant so the sentence and the surface that answers to it cannot drift
+// apart — the notice is printed by four commands that cannot reach it, and a
+// remedy naming a door that has been renamed is worse than one naming none.
+const CrewCommand = "/crew"
 
 // FromWords is the row this seat's model was inherited from, in the words the
 // settings sheet calls that row by — empty unless the source is

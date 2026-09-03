@@ -1,0 +1,30 @@
+ aforge                           $0.13 / $500 · thu 4:29am
+  home  tasks  standing  memory  spend  search  settings
+────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 16 pieces of work since aug 21.
+
+needs your look
+› ▸ ? Measure the frame …dget in every package that draws a…
+
+parked
+    ○ Write the change e…y and open the pull request agains…
+    ○ Fold the settled work on the task page
+
+done today
+    ✓ Port the picker onto the new list          40m · $0.31
+  ▸ ✓ Count the tabs the bar draws         holds 3 more · 2h
+
+earlier
+    · Rotate the wildcard certificate             incomplete
+    ✓ Write the morning sweep down                5h · $0.14
+    ✓ Put the annual toggle on the pricing page   5h · $0.27
+    ✓ Take the backup window down to twenty minutes       2d
+    ✕ Rebuild the frame budget report             8d · $0.18
+
+
+
+────────────────────────────────────────────────────────────
+ 4 needs your look · 2 parked · 5 done today · 5 earlier
+ › say what you want done                  here ~/aforge-v2
+ enter open its room · → what ran under it · tab next place

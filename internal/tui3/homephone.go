@@ -174,7 +174,12 @@ func (h *homeView) buildPhone() {
 		h.buildWorld()
 		return
 	}
-	lifted := phoneLifted{rows: map[string]bool{}, errands: map[*homeExchange]bool{}}
+	lifted := phoneLifted{rows: map[string]bool{}, items: map[string]bool{}, errands: map[*homeExchange]bool{}}
+	// THE ITEMS THE SECTIONS TAKE ARE HUNG ON THE VIEW, because the block that
+	// would draw them again is [homeView.projectBlock], which is shared with
+	// every wider frame and may not be handed a phone's bookkeeping. It is nil
+	// everywhere else, and nil is "nothing was lifted".
+	h.liftedItems = lifted.items
 	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, h.phoneWaiting(lifted))
 	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, h.phoneRunning(lifted))
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
@@ -205,9 +210,22 @@ func (h *homeView) phoneSection(word, key string, rows []homeLine) {
 
 // phoneLifted is what the triage sections took, so the projects under them do
 // not say it twice (this file's second law).
+//
+// THERE ARE THREE KINDS OF ROW ON THIS SCREEN AND ALL THREE ARE RECORDED. For a
+// wave there were only two: a standing item lifted into `waiting on you` was
+// drawn again under its own project four rows later, which on a twenty-six-row
+// phone frame spent four rows saying one thing twice — on the one tier that has
+// no rows to spare, against the law this file's own header states.
 type phoneLifted struct {
 	rows    map[string]bool
+	items   map[string]bool
 	errands map[*homeExchange]bool
+}
+
+// phoneItemKey names one standing item where it is drawn: a watch belongs to a
+// project, and two projects may hold items that answer to the same id.
+func phoneItemKey(project session.Project, view StandingItemView) string {
+	return project.Dir + "\x00" + view.Item.ID
 }
 
 // phoneWaiting is everything on this machine that has stopped and is asking for
@@ -225,6 +243,7 @@ func (h *homeView) phoneWaiting(lifted phoneLifted) []homeLine {
 	for _, project := range h.everyProject() {
 		for _, view := range h.items[project.Dir] {
 			if strings.TrimSpace(view.Item.NeedsPerson) != "" {
+				lifted.items[phoneItemKey(project, view)] = true
 				out = append(out, h.itemLine(project, view))
 			}
 		}
@@ -268,6 +287,7 @@ func (h *homeView) phoneRunning(lifted phoneLifted) []homeLine {
 	for _, project := range h.everyProject() {
 		for _, view := range h.items[project.Dir] {
 			if view.Running && strings.TrimSpace(view.Item.NeedsPerson) == "" {
+				lifted.items[phoneItemKey(project, view)] = true
 				out = append(out, h.itemLine(project, view))
 			}
 		}
@@ -496,7 +516,7 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	add(pal.dim(rule(width)), -1)
 	caretX, caretY := 0, 0
 	if a.home.box.empty() {
-		add(" "+pal.dim(fit(homeFootWord, width-2)), -1)
+		add(" "+pal.dim(hintFit(homeFootWord, width-2)), -1)
 		// Same as the wide frame: at rest there is nothing to type into, so the
 		// caret is hidden rather than blinking over the heading.
 		a.caret = false
@@ -763,16 +783,16 @@ func (a *app) homeBar(width int, targets []homeBarTarget, pal palette) string {
 		if a.home.msg != "" {
 			// A refusal or a report is a sentence, not a hint, and it is not
 			// painted like one.
-			return " " + pal.dim(fit(a.home.msg, width-2))
+			return " " + pal.dim(hintFit(a.home.msg, width-2))
 		}
-		return " " + paintHint(fit(word, width-2), pal, pal.dim)
+		return " " + paintHint(hintFit(word, width-2), pal, pal.dim)
 	}
 	// A REFUSAL OUTRANKS THE BAR. Every refusal on this screen is a fact about
 	// a door somebody just tried, and a row of targets drawn over the top of it
 	// would be the screen answering a question nobody asked instead of the one
 	// they did.
 	if a.home.msg != "" {
-		return " " + pal.dim(a.pathLink(a.home.msgPath, fit(a.home.msg, width-2)))
+		return " " + pal.dim(a.pathLink(a.home.msgPath, hintFit(a.home.msg, width-2)))
 	}
 	words := make([]string, 0, len(targets))
 	for _, target := range targets {

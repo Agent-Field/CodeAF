@@ -214,7 +214,9 @@ func renderMarkdownWithCode(st *tokens.Styler, text string, width int, plainCode
 	if layoutTier(width) == tierPhone {
 		return phoneMarkdown(st, text, width, plainCodeSpan)
 	}
-	return proseRowsWithCode(st, text, width, plainCodeSpan)
+	// AND A FENCE IS WRAPPED AT EVERY WIDTH, because the premise the truncation
+	// rests on is false on this surface at all of them. See [segmentedMarkdown].
+	return segmentedMarkdown(st, text, width, plainCodeSpan, false)
 }
 
 // proseRows is the unconditional path: prose renders the whole document, at the
@@ -295,14 +297,52 @@ const (
 // idempotent, and what lets a streaming reply call it on a growing prefix every
 // frame without an earlier row ever changing under the reader's eye.
 func phoneMarkdown(st *tokens.Styler, text string, width int, plainCodeSpan func(string) bool) []string {
+	return segmentedMarkdown(st, text, width, plainCodeSpan, true)
+}
+
+// segmentedMarkdown is [phoneMarkdown]'s body with the one thing the two tiers
+// disagree about handed in: whether a TABLE is stacked into records.
+//
+// THE FENCE IS WRAPPED AT EVERY WIDTH, and that is this wave's change.
+// prose/code.go truncates a code line and says why — indentation is how source
+// is read, and a caller that can scroll should do the cropping — and the second
+// half of that sentence is the premise. THERE IS NO HORIZONTAL SCROLL ANYWHERE
+// ON THIS SURFACE, at 160 columns any more than at 44: no key pans a block, no
+// door opens one wider, and copy mode yanks the rows as drawn. So a cut line was
+// a line that could not be read, could not be copied and could not be trusted —
+// and the cut moved with the frame, so the same answer was whole in one window
+// and truncated in the next, which is the difference that sends somebody hunting
+// a bug in their own code that is not there.
+//
+// It was worse than the audit had it. At 80 columns the tail simply stopped —
+// `…if room >= 0 { ` and then ground — with no ellipsis anywhere on the row, so
+// nothing at all said that bytes were missing.
+//
+// WHY WRAP RATHER THAN A DOOR. A door (`▸ 3 long lines · ctrl+e`) is the shape
+// this surface uses for something a person may not want to see; a line of code
+// in an answer they are reading is not that — it is the thing they came for, and
+// putting it one keystroke away spends a key to hide what was already on the
+// screen. The wrap costs a row and nothing else, it needs no state, it survives
+// a resize by re-wrapping, and the marker in the margin says which rows were
+// split so the reader can tell a wrap from a newline. The machinery is the one
+// the phone tier has been using and has tests for; all this does is stop asking
+// the frame's width whether the reader deserves it.
+//
+// A TABLE IS NOT THE SAME QUESTION. Stacking a four-column table into records is
+// right when a grid can no longer be a grid, and wrong at 160 columns where it
+// can — so tables keep the tier's answer (mdtable.go opens and re-lays them out
+// on their own), and only the fence is unconditional.
+func segmentedMarkdown(st *tokens.Styler, text string, width int, plainCodeSpan func(string) bool, stackTables bool) []string {
 	var out []string
 	for _, seg := range mdSegments(text) {
 		var rows []string
-		switch seg.kind {
-		case mdSegFence:
+		switch {
+		case seg.kind == mdSegFence:
 			rows = phoneCodeRows(st, seg, width)
-		case mdSegTable:
+		case seg.kind == mdSegTable && stackTables:
 			rows = phoneTableRows(st, seg, width, plainCodeSpan)
+		case seg.kind == mdSegTable:
+			rows = proseRowsWithCode(st, seg.src, width, plainCodeSpan)
 		default:
 			rows = proseRowsWithCode(st, seg.text, width, plainCodeSpan)
 		}

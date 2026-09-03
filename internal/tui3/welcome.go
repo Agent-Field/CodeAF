@@ -347,7 +347,14 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	}
 	a.chips = side.chips
 	a.resumed = true
-	a.note("resumed " + a.hostedPath(a.file))
+	// THE OTHER DOOR ONTO THE SAME LINE, and it says the same thing now: WHICH
+	// CONVERSATION this is, and the path only where there is no name to give
+	// ([app.resumedNote]). This road — the greeting's recent list and /resume —
+	// still spelled the absolute transcript out, so opening a conversation from
+	// the picker put four to six wrapped rows of `.aforge/v3/projects/…` above
+	// the person's own first message while opening the very same conversation
+	// from the launch line said its name. One sentence, one door.
+	a.note(a.resumedNote())
 	if conv.Notice != "" {
 		// The door had something to say about how this conversation came to be
 		// open, and the entry line is where the first one's notice lands too
@@ -399,19 +406,38 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// The wordmark, three rows of it, one entry per letter of [product]. It is
-// drawn from box-drawing characters rather than from a figlet font because a
-// figlet 'openaf' is nine rows of hash marks and this surface owns two: the
+// The wordmark, three rows of it, and it MUST HOLD A LETTERFORM FOR EVERY LETTER
+// OF [product] — [wordmarkRows] skips a letter it has never heard of, so a
+// missing glyph is not a build error, it is a word with a hole in it on the
+// first screen of a fresh install (TestTheWordmarkCanSpellTheProductsWholeName
+// is what holds the two together).
+//
+// It is drawn from box-drawing characters rather than from a figlet font because
+// a figlet wordmark is nine rows of hash marks and this surface owns two: the
 // letterform here is the same vocabulary the rail and the rules are drawn in,
 // which is the whole reason it reads as part of the surface rather than as
 // something pasted onto it.
 var wordmarkGlyphs = map[rune][3]string{
 	'o': {"┌─┐", "│ │", "└─┘"},
 	'p': {"┌─┐", "├─┘", "│  "},
-	'e': {"┌─┐", "├─ ", "└─┘"},
+	// THE CROSSBAR ENDS IN A TERMINAL AND NOT IN A BLANK. `e` is the last letter
+	// of [product], so its right column is the right edge of the first thing
+	// anybody sees — and it used to be `├─ `, a blank cell with the bowl's `┐`
+	// directly above it and its `┘` directly below. A hole punched in the edge of
+	// a block of box-drawing between two inked cells does not read as an open
+	// letterform; it reads as a word the terminal cut off, which is what the wave
+	// that found this filed it as. The half-stroke closes the edge while keeping
+	// the aperture a lowercase `e` has and `a` (`├─┤`) has not — the one cell
+	// that tells those two letters apart here.
+	'e': {"┌─┐", "├─╴", "└─┘"},
 	'n': {"┌─┐", "│ │", "│ │"},
 	'a': {"┌─┐", "├─┤", "└─┘"},
 	'f': {"┌─ ", "├─ ", "│  "},
+	// The shoulder alone, on the stem every other ascender here is drawn with.
+	'r': {"┌─┐", "│  ", "│  "},
+	// The bowl of an `a` with the tail under it, which is the one letter of this
+	// name that hangs below the line.
+	'g': {"┌─┐", "└─┤", "└─┘"},
 }
 
 // wordmarkRows is the wordmark as three unpainted rows, and the column each

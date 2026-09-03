@@ -1,0 +1,40 @@
+ aforge                                                                                         1 want you · thu 1:10am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+17 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
+? tell me when CI goes red on master       aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 2h
+○ Aforge-v2 Tui Porting                                                                                   aforge-v2 here
+○ Wrapping Torture                                                                                          aforge-v2 1h
+○ About Something You Remember: Deploys on Fridays                                                          aforge-v2 1h
+○ Notakey                                                                                                   aforge-v2 2h
+○ Why the Frame Jumps                                                                                       aforge-v2 2h
+○ The Certificate Rotation                                                                                      infra 2h
+○ The Tab Bar's Counts                                                                                      aforge-v2 2h
+○ Emoji Widths                                                                                              aforge-v2 2h
+○ Porting the Picker                                                                                        aforge-v2 2h
+○ Long Question                                                                                             aforge-v2 2h
+○ Pricing Research                                                                                       pricing-site 5h
+○ Standing Up the Watches                                                                                   aforge-v2 7h
+○ The Annual Toggle                                                                                      pricing-site 7h
+○ Reading the Ledger                                                                                        aforge-v2 1d
+○ What the Discount Means                                                                                pricing-site 1d
+○ The Backup Window                                                                                             infra 2d
+○ Rotating the Deploy Key                                                                                       infra 4d
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ type to search or start something new · ↑↓ pick · enter open · tab next place

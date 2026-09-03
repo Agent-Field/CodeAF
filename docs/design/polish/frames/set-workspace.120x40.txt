@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:03pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+› google sign-in id                                                                                              not set
+    identifies aforge to Google when you connect an account. Blank uses the one aforge ships with.
+  google sign-in secret                                                                                          not set
+  slack sign-in id                                                                                               not set
+  quiet before practice                                                                                              20m
+  arrival brief after                                                                                                 4h
+  tenure after                                                                                                         3
+  background checks                                                                                                  off
+  attribution                                                                                                         on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config.json is a hand edit
+ › say what you want done                                                                              here ~/aforge-v2
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

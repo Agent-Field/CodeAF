@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+› the frame jumps sideways every time the card opens                                      │
+                                                                                          │ standing
+The card is measured before the list is folded, so the list is laid out twice at two      │ ◦ the morning sweep
+widths. Measuring the fold first settles it.                                              │ ? CI on master
+                                                                                          │ ◦ the public API
+› show me where that measurement happens                                                  │ + /standing
+                                                                                          │
+internal/tui3/home.go, in the body pass — the card's width is asked for before the fold   │
+has decided how many rows it is hiding.                                                   │
+  · 3 standing orders here — /standing                                                    │
+                                                                                          │
+› reply with exactly: hello there friend                                                  │
+  ·· waiting for deepseek-v4-flash-latest · 49s · nothing has come back yet               │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.83 · 42.2k tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+Why the Frame Jumps · deepseek-v4-flash-latest     ◦ keeping an eye on 3 · $0.83 · 5.4k/1.3M · 0 tok/s · ⠙ working · 49s

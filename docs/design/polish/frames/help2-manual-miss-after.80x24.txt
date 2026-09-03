@@ -1,0 +1,24 @@
+  reaching-this-machine-without-ssh  Reaching a machine with a pairing code
+  reading-a-task-page                Reading a task's page — what is on this …
+  running-from-the-terminal          Commands you type in a terminal
+  running-on-another-machine         Running on another machine
+  saved-programs                     Saved programs
+  saved-shapes-of-work               Saved shapes of work — saving a way of w…
+  screen                             What is on the screen
+  sessions-and-rewind                Conversations, and taking a message back…
+  standing-orders                    Standing orders — rules that stay true a…
+  starting-aforge                    What aforge is, and how you start it
+  staying-on-that-machine            Staying on that machine
+  subharnesses                       Subharnesses
+  task-rooms-after-restart           A task's room after a restart
+  tasks                              Work that runs on its own — tasks, and f…
+  what-i-can-do                      What aforge can do for you
+  what-i-remember                    What I remember
+  when-the-connection-drops          When the connection drops
+
+─ master* ────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                          ⠿ high
+ ›
+aforge-v2 · deepseek-v4-flash-latest
+                crew balanced · ◦ keeping an eye on 3 · $0.00 · 5.3k/1.3M · idle

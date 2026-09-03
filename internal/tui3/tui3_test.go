@@ -1372,7 +1372,7 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	}
 
 	typeLine(t, a, "/nonsense")
-	if !strings.Contains(plain(frame(a)), "unknown command: /nonsense") {
+	if !strings.Contains(plain(frame(a)), unknownCommandWord("nonsense")) {
 		t.Fatalf("an unknown slash has to answer:\n%s", plain(frame(a)))
 	}
 
@@ -1419,7 +1419,7 @@ func notesSaying(a *app, text string) int {
 // answered by the line that is already there.
 func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	const unknown = "unknown command: /nonsense · try /help"
+	unknown := unknownCommandWord("nonsense")
 	for range 4 {
 		typeLine(t, a, "/nonsense")
 	}

@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:05pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+today $0.13 of $500 · /budget sets the limits
+$2.05 · 326.5k tokens                                                          shift+← aug 20 – sep 2 →  shift+↑ coarser
+⣀⣦⣦⣿⣦⣷⣶⣷⣤⣶⣄⣶⣀⣦
+aug 20                                                                                                       today $0.13
+aug 23 was the loudest day — $0.29, rebuild-the-frame-budget-report                                                tasks
+
+what ran it · by the model, and the role it was bound to
+· claude-opus-4.1 ████████████ 18 calls · 89.9k                                                                    $1.41
+· claude-sonnet-4 ████ 25 calls · 97k                                                                              $0.46
+· gpt-5-mini ██ 61 calls · 139.6k                                                                                  $0.18
+
+what it was for
+· Why the Frame Jumps · aforge-v2 · a conversation                                                                 $0.38
+· What the Discount Means · pricing-site · a conversation                                                          $0.34
+· rebuild-the-frame-budget-report · aforge-v2 · a task                                                             $0.32
+▸ 14 more
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place

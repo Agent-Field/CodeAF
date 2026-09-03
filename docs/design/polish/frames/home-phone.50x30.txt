@@ -1,0 +1,30 @@
+ home                                   esc close
+──────────────────────────────────────────────────
+ waiting on you
+  ? tell me when CI goes red on master
+    needs your look · May I re-run the typecheck …
+
+ aforge-v2
+  ? tell me when CI goes red on master
+    needs your look · May I re-run the typecheck …
+› ○ The Tab Bar's Counts
+    another window · now
+  ○ Porting the Picker
+    1 task · 11m
+  ○ Why the Frame Jumps
+    1 task · 3h
+  ○ Standing Up the Watches
+    1 task · 5h
+  ◦ never change the public API without telling m…
+    holds
+  ◦ sweep the repo every morning at nine and tell…
+    every morning at nine · last 14h
+  ▸ …2 more, quiet since 1d
+
+  ▸ infra
+    3 · now
+  ▸ pricing-site
+    3 · 3h
+──────────────────────────────────────────────────
+ type to search or start something new · ↑↓ pick…
+ open in another window — enter again to move it…

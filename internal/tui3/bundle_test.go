@@ -1272,8 +1272,8 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 		which   string
 	}{
 		{
-			at: 20 * time.Second, want: "20s / 1m 0s",
-			wantInk: a.pal.dim("20s / 1m 0s"), which: "the bound, stated in dim",
+			at: 20 * time.Second, want: "20s / 1m",
+			wantInk: a.pal.dim("20s / 1m"), which: "the bound, stated in dim",
 		},
 		{
 			at: 51 * time.Second, want: "51s · 9s left",
@@ -1845,10 +1845,14 @@ func TestALongNameDoesNotChangeTheLegend(t *testing.T) {
 	}
 }
 
-// THE NARROW LADDER: the microcopy goes before the branch, and below the tight
-// floor the branch goes too — the name is the last fact standing, because it is
-// the only one a person cannot read off the pane behind this one.
-func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
+// THE NARROW LADDER: THE BRANCH GOES BEFORE THE DOOR. It used to be the other
+// way round, and the phone tier paid for it — under the tight floor the hint
+// slot went silent AND the branch was dropped, so the line was refused at both
+// ends and drew a bare rule with nothing written on it, at the one width where
+// a newcomer most needs to be told that `/` opens the list of everything this
+// surface can be told to do. A branch is on the shell prompt behind this pane;
+// the door is written nowhere else on a frame this narrow.
+func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 	// The branch is long enough that the two cannot share an eighty-column frame.
@@ -1860,8 +1864,11 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	a.branch, a.branchDirty = branch, false
 
 	tight := plain(a.legend(60))
-	if strings.Contains(tight, microcopy) || strings.Contains(tight, "feature/") {
-		t.Fatalf("a tight frame kept its furniture: %q", tight)
+	if strings.Contains(tight, "feature/") {
+		t.Fatalf("a tight frame kept the branch: %q", tight)
+	}
+	if !strings.Contains(tight, microcopy) {
+		t.Fatalf("a tight frame is a rule with nothing written on it: %q", tight)
 	}
 	if strings.Contains(tight, "porting the parser") {
 		t.Fatalf("the tight legend repeated identity: %q", tight)
@@ -2361,9 +2368,10 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		// telemetry cannot both fit with a barrier between them — and everything
 		// else is still on.
 		{width: 70, delta: false, sp: true, branch: true, mic: true, rows: 2},
-		// Below the tight floor the legend gives up its facts and the meter keeps
-		// the number alone.
-		{width: 60, delta: false, sp: false, branch: false, mic: false, rows: 2},
+		// Below the tight floor the legend gives up THE BRANCH and keeps the
+		// door — the one fact on this line a person cannot read off the pane
+		// behind it — and the meter keeps the number alone.
+		{width: 60, delta: false, sp: false, branch: false, mic: true, rows: 2},
 	} {
 		rows := a.statusRows(tc.width)
 		if len(rows) != tc.rows {
@@ -3023,7 +3031,15 @@ func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	}
 	// THE CARD IS FOUND BY ITS HIT and not by its words: it is a block of two
 	// rows now, and what this test owns is the blank under the LAST of them.
-	if !strings.Contains(taskText(a), "Fix the nil-map · "+doneWord+" 8s · "+mergeWordMerged) {
+	//
+	// THE HEAD IS SPELLED THE WAY THIS WAVE SPELLS IT, and both halves of that
+	// moved on 2026-09-03. The name arrives WHOLE — taskident.go's [taskTitleOf]
+	// stopped cutting to three words, because a fitter cannot give back cells
+	// spent before it was asked (rowfit.go's first law) — and the span is joined
+	// to the state word with ` · ` like every other fact on the row, because
+	// `done 8s` fuses two separate facts into one phrase (taskdone.go's
+	// [app.doneTail] states the whole of it).
+	if !strings.Contains(taskText(a), "Fix the nil-map crash · "+doneWord+" · 8s · "+mergeWordMerged) {
 		t.Fatalf("the landed card is not in the transcript:\n%s", taskText(a))
 	}
 	// The card is the last entry here, so what it owes the next one is asserted
@@ -3187,7 +3203,11 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	drive(t, a, append(runCmd(cmd), streamEventMsg{gen: a.gen, ev: done})...)
 
 	text := taskText(a)
-	want := "Fix the nil-map · " + doneWord + " " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
+	// THE NAME IS WHOLE AND THE SPAN IS A FACT OF ITS OWN, both since 2026-09-03:
+	// taskident.go's [taskTitleOf] no longer cuts a title to three words before
+	// any width is known, and taskdone.go's [app.doneTail] joins the span to the
+	// state word with the row's own separator rather than with a bare space.
+	want := "Fix the nil-map crash · " + doneWord + " · " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
 	if strings.Count(text, want) != 1 {
 		t.Fatalf("the transcript holds %d copies of %q:\n%s", strings.Count(text, want), want, text)
 	}
@@ -3199,7 +3219,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
 	for _, want := range []string{
-		"Collect sources · " + doneFailWord + " " + taskSpanWord(4*time.Second),
+		"Collect sources · " + doneFailWord + " · " + taskSpanWord(4*time.Second),
 		`"the tests did not build"`,
 	} {
 		if !strings.Contains(taskText(a), want) {
@@ -3219,7 +3239,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
 	for _, want := range []string{
-		"Mix audio · " + doneFailWord + " " + taskSpanWord(90*time.Second) +
+		"Mix audio · " + doneFailWord + " · " + taskSpanWord(90*time.Second) +
 			" · " + taskStoppedKept + " · task/mix",
 		`"stopped: 40 steps and no finish"`,
 	} {
@@ -3431,16 +3451,27 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 			}
 		}
 		// The roster opens on the node itself — there are no headings any more, and
-		// a session of one node is one family of one (task.go). The slim rail fits
-		// the title to its column, so the assertion reads the prefix both widths
-		// keep.
+		// a session of one node is one family of one (task.go).
 		// The column opens with its section label now (margin.go), so the node is
 		// the row under it.
+		//
+		// EACH WIDTH IS ASSERTED IN ITS OWN SPELLING rather than in the prefix they
+		// share. The name reaches this column WHOLE now (taskident.go's
+		// [taskTitleOf] stopped cutting to three words on 2026-09-03, so the ROW
+		// decides what it can afford), and twenty-one cells do not fit a slim
+		// rail's title slot — so the full column draws the name and the slim one
+		// draws as much of it as [railTitleFloor] leaves once the id is measured
+		// out. Both are the roster naming the node, which is what this row of the
+		// test is here to say.
+		name := "Fix the nil-map crash"
+		if railColsFor(tc.width) < railCols {
+			name = "Fix the nil-ma"
+		}
 		top := a.bodyTop()
 		if tc.rail && !strings.Contains(lines[top], marginTasksWord) {
 			t.Fatalf("at %d columns the column does not open with its label:\n%q", tc.width, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[top+1], "Fix the nil-map") {
+		if tc.rail && !strings.Contains(lines[top+1], name) {
 			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+1])
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two

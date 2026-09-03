@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -103,6 +104,49 @@ var demoTasks = []demoTask{
 			DurationMS: 1 * 60 * 1000,
 		},
 	},
+	// WHAT THE FRAME-BUDGET FAMILY LEFT IN THE PROJECT'S OWN HISTORY. The same
+	// three pieces of work are in that conversation's checkpoint (seed_room.go),
+	// which is what the ROOM and the rail draw; these are what the tasks place
+	// draws, and the two agree on id, state and title so a person moving between
+	// the two surfaces is looking at one thing.
+	{
+		project: firstProjectName, talk: roomTalkTitle, ago: 55 * time.Minute,
+		entry: session.TaskIndexEntry{
+			ID: "1", Title: "Measure the frame budget in every package that draws a row",
+			Status:       string(session.TaskDone),
+			Outcome:      "Eleven packages measured. Four are over the cap; the plan takes the tab bar first because everything else reads its counts.",
+			Files:        []string{"docs/design/polish/budget.md"},
+			FilesChanged: 1, Cost: 0.21, Model: "anthropic/claude-sonnet-4", Tokens: 28_000,
+			DurationMS: 4 * 60 * 1000,
+		},
+	},
+	// THE ONE ROW THAT IS PARKED ON THE PERSON. `unverified` is the state the
+	// whole `needs your look` language on home points at, and nothing in this
+	// fixture was in it — so that sentence had never been drawn on the demo. Its
+	// title is 101 characters, for the reason seed_room.go's [roomLongTitle]
+	// states: no name here used to be long enough to make a row not fit.
+	{
+		project: firstProjectName, talk: roomTalkTitle, ago: 22 * time.Minute,
+		entry: session.TaskIndexEntry{
+			ID: "3", Parent: "1", Title: roomLongTitle, Status: string(session.TaskUnverified),
+			Outcome: "The four lists are on the fitter and the frames read right at 160 and 120; nothing here could prove the sixty-cell case, so it wants your eye.",
+			Files: []string{
+				"internal/tui3/tasksplace.go", "internal/tui3/jobsview.go",
+				"internal/tui3/deliverables.go", "internal/tui3/taskrecord.go",
+			},
+			FilesChanged: 4, Cost: 0.52, Model: "anthropic/claude-opus-4.1", Tokens: 77_500,
+			DurationMS: 12 * 60 * 1000,
+		},
+	},
+	{
+		project: firstProjectName, talk: roomTalkTitle, ago: 30 * time.Minute,
+		entry: session.TaskIndexEntry{
+			ID: "5", Parent: "1", Title: "Rebuild the frame budget report", Status: string(session.TaskFailed),
+			Outcome: "The sweep it re-runs needs a build that is not on this machine, so the report could not be regenerated.",
+			Cost:    0.04, Model: "anthropic/claude-sonnet-4", Tokens: 6_100,
+			DurationMS: 60 * 1000,
+		},
+	},
 	{
 		project: "infra", talk: "The Certificate Rotation",
 		entry: session.TaskIndexEntry{
@@ -156,13 +200,12 @@ func writeTaskIndex(projects map[string]*demoProject, ids map[string]string, now
 		// title as it was groomed, Label is what a row draws, and Name is the slug
 		// an "@" mention resolves and the spend page joins an id against
 		// (internal/tui3's spendNames) — a row with no Name draws a bare `1` in
-		// the `what it was for` column. Label is the title itself here because
-		// every title in this fixture is inside the engine's own 56-cell cap;
-		// [session.TaskSlug] is the engine's own kebab-caser and is asked for
-		// rather than imitated.
+		// the `what it was for` column. [session.TaskSlug] is the engine's own
+		// kebab-caser and is asked for rather than imitated; the label's cut is
+		// [demoTaskLabel], which is a copy and says why.
 		entry.Name = session.TaskSlug(entry.Title)
 		if entry.Label == "" {
-			entry.Label = entry.Title
+			entry.Label = demoTaskLabel(entry.Title)
 		}
 		entry.SessionID = id
 		entry.TranscriptURI = filepath.Join(project.bucket, id, "transcript.jsonl")
@@ -175,6 +218,28 @@ func writeTaskIndex(projects map[string]*demoProject, ids map[string]string, now
 		written++
 	}
 	return written, nil
+}
+
+// demoTaskLabelLimit and demoTaskLabel are internal/session's own cap on a row's
+// label and its own way of applying it (task_index.go's taskLabelLimit and
+// taskLabel), neither of which is exported.
+//
+// THE COPY IS HERE BECAUSE ONE TITLE IN THIS FIXTURE IS NOW LONGER THAN THE CAP,
+// deliberately (seed_room.go's [roomLongTitle]). Until then every title was
+// comfortably inside it and `Label = Title` was the same answer; a fixture
+// writing a 101-character label would be writing a row the engine never writes,
+// and the surface would then be judged on a width no real row has. The test
+// beside this program holds the length rather than the arithmetic, so a cap that
+// moves in the engine shows up here as a row that is not cut the way the engine
+// cuts it.
+const demoTaskLabelLimit = 56
+
+func demoTaskLabel(title string) string {
+	title = strings.Join(strings.Fields(title), " ")
+	if len(title) > demoTaskLabelLimit {
+		return strings.TrimSpace(title[:demoTaskLabelLimit-1]) + "…"
+	}
+	return title
 }
 
 // appendJSONL writes one record as a whole line, which is the shape every

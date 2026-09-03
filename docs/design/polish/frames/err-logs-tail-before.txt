@@ -1,0 +1,35 @@
+$ ./bin/aforge logs --tail notanumber
+error: invalid value "notanumber" for flag -tail: parse error
+  aforge logs [--tail 40] [--follow] [--path] [--json]
+              [--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]
+                                every model call aforge made — what was asked, which lane
+                                answered, what came back, and which ones are still in
+                                flight. The filters are exact and combine; --json prints
+                                the rows as they are on disk; --body prints one call's
+                                recorded request and reply. Prompts are not in the line.
+                                AFORGE_CALL_LOG=off turns it off, or names a file.
+
+flags:
+  --body string
+      print the recorded body of one call id
+  --call string
+      only this call id, both of its rows
+  --follow
+      keep printing calls as they happen
+  --json
+      print the matching rows exactly as they are on disk
+  --model string
+      only calls asking for this model
+  --node string
+      only calls belonging to this node
+  --path
+      print where the log is and nothing else
+  --run string
+      only calls belonging to this run
+  --tag string
+      only calls with this tag
+  --tail int
+      how many calls to show (default 40)
+
+run `aforge --help` for every command, `aforge help env` for the environment table.
+exit=1

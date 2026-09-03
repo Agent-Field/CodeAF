@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -203,5 +204,53 @@ func TestATopLineOverAQuietDaySaysNothingAboutMoney(t *testing.T) {
 	a.openHome()
 	if got := pulseMoney(a); got != "" {
 		t.Fatalf("the top line drew %q over a day that has spent nothing", got)
+	}
+}
+
+// A LIMIT IS THE SAME FIGURE WHEREVER IT IS DRAWN. The top line spelled the
+// allowance with the money formatter — `$500.00` — while the spending tab, the
+// rail and every other reading of that same number spell it with [railFigure],
+// which writes a whole figure whole because a limit is something a person TYPED
+// and nobody types five hundred dollars and no cents. One number, two spellings,
+// on two screens one keypress apart, which is the drift [railSpell]'s own header
+// was written to stop.
+func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
+	for _, rail := range []float64{500, 12.5, 4.1} {
+		t.Setenv("AFORGE_DAILY_BUDGET", strconv.FormatFloat(rail, 'f', -1, 64))
+		lab := newHomeLab(t)
+		now := time.Now()
+		here := lab.workspace("alpha")
+		mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
+		a := lab.app(mine)
+		a.width, a.height = 120, 30
+		a.clock = func() time.Time { return now }
+
+		raw, err := json.Marshal(session.UsageLine{
+			At:      now.Add(-time.Hour),
+			Session: "aaaa000000000001", Model: "m", Calls: 1, USD: 1.85,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(lab.root, session.UsageLedgerName), append(raw, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		a.openHome()
+
+		want := railFigure(rail)
+		drawn := ""
+		for _, segment := range a.pulseSegments(a.now(), a.pal) {
+			if strings.Contains(plain(segment), "$") {
+				drawn = plain(segment)
+			}
+		}
+		// THE WHOLE DENOMINATOR, NEVER A PREFIX OF IT. `$500` is a prefix of
+		// `$500.00`, so a Contains here would have passed against the very
+		// spelling this test exists to refuse.
+		_, limit, split := strings.Cut(drawn, pulseAllowanceGap)
+		if !split || strings.TrimSpace(limit) != want {
+			t.Errorf("with a limit of %v the top line drew %q; every other surface spells that limit %q",
+				rail, drawn, want)
+		}
 	}
 }

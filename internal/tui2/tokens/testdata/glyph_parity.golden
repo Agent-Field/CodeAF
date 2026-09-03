@@ -70,10 +70,10 @@ nerdfont "‹ tasks · \uf141"
          width 11/11  marks U+2039 U+00B7 U+F141
 
 --- prose and static overflow ---
-plain    "│ · a list item that ran out of column…  ▏ fmt.Println"
-         width 54/54  marks U+2502 U+00B7 U+2026 U+258F
-nerdfont "│ · a list item that ran out of column…  ▏ fmt.Println"
-         width 54/54  marks U+2502 U+00B7 U+2026 U+258F
+plain    "▏ · a list item that ran out of column…  ▏ fmt.Println"
+         width 54/54  marks U+258F U+00B7 U+2026 U+258F
+nerdfont "▏ · a list item that ran out of column…  ▏ fmt.Println"
+         width 54/54  marks U+258F U+00B7 U+2026 U+258F
 
 --- settle row ---
 plain    "✓ done · +42 · −7 · ✕ one check"

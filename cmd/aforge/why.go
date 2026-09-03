@@ -18,7 +18,7 @@ func runWhy(args []string) error {
 
 func runWhyTo(args []string, output io.Writer, now time.Time) error {
 	flags := commandFlags("why")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -54,6 +54,15 @@ func runWhyTo(args []string, output io.Writer, now time.Time) error {
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
 	receipts, err := graph.SelfReceipts(start)
 	if err != nil {
+		return err
+	}
+	// A COLUMN HEADER IS NEVER PRINTED WITHOUT A ROW UNDER IT. `TRIED COST
+	// LEARNED` over nothing is a table claiming rows that are not there, and a
+	// person reads it as a reader that failed rather than as a day with no
+	// self-spend on it. One short sentence instead, which is what `aforge
+	// cache` answers over the same emptiness.
+	if len(receipts) == 0 {
+		_, err := fmt.Fprintln(output, "nothing was tried on its own account today.")
 		return err
 	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
@@ -130,7 +139,14 @@ func writeNodeTranscript(output io.Writer, graph *store.Store, nodeID string) er
 		// Two different silences, said as one sentence, because a person
 		// holding an empty answer needs to know which of them they have.
 		fmt.Fprintf(output, "%s has no transcript: either nothing has run it yet, or the worker that ran it keeps no record.\n", nodeID)
-		return nil
+		// AND A MISS IS NOT A SUCCESS. This returned nil, so a script asking
+		// whether an id exists read exit 0 and concluded it existed and was
+		// empty — the two states this sentence exists to tell apart, collapsed
+		// again the moment anything but a person read it. `aforge logs` took
+		// exactly this change over the same emptiness, and `notebook retract`
+		// has always got it right. Exit 1 is the rung: nothing ran, because
+		// there was nothing here to run (envelope.go).
+		return exitCannotRun
 	}
 	for _, entry := range entries {
 		fmt.Fprintln(output, transcriptHeadline(entry))
@@ -162,7 +178,14 @@ func transcriptHeadline(entry store.TranscriptEntry) string {
 	case store.TranscriptFault:
 		return turn + " · stopped"
 	case store.TranscriptNote:
-		return turn + " · the harness"
+		// THE NOTE IS SIGNED WITH THE PRODUCT'S NAME. It read `the harness`,
+		// which names neither who wrote the line nor what happened — and
+		// "harness" is machinery vocabulary besides, spent in this product on
+		// the saved shapes of work a person builds and runs by name. A note in
+		// this record is aforge writing about the run rather than the model
+		// speaking, and `aforge` says exactly that in a word the reader already
+		// knows, because it is what they typed to get here.
+		return turn + " · aforge"
 	case store.TranscriptElided:
 		return turn + " · the record stops here"
 	}

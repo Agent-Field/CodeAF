@@ -1,0 +1,30 @@
+ aforge          1 want you · $1.85 / $500.00 · wed 11:14pm
+  spend
+────────────────────────────────────────────────────────────
+
+today $0.13 of $500 · /budget sets the limits
+$2.05 · 330.5k tokens               shift+← aug 20 – sep 2 →
+⣀⣦⣦⣿⣦⣷⣶⣷⣤⣶⣄⣶⣀⣦
+aug 20                                           today $0.13
+aug 23 was the loudest day — $0.29, rebuild-the-frame… tasks
+
+what ran it · by the model, and the role it was bound to
+· claude-opus-4.1                                      $1.41
+· claude-sonnet-4                                      $0.46
+· gpt-5-mini                                           $0.18
+· deepseek-v4-flash-0731                        under a cent
+· mistral-nemo                                  under a cent
+
+what it was for
+· Why the Frame Jumps · aforge-v2 · a conversation     $0.38
+· What the Discount Means · pricing-site · a conversa… $0.34
+· rebuild-the-frame-budget-report · aforge-v2 · a task $0.32
+▸ 14 more
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ › say what you want done                  here ~/aforge-v2
+ enter talk about it · alt+enter send it off as a task · a…

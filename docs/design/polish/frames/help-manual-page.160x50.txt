@@ -1,0 +1,50 @@
+  elapsed time, the thinking block's time when there was one, and the real call count.                                            │ + /task
+  There is a blank row between the chip and the answer under it.                                                                  │
+                                                                                                                                  │ + /standing
+  **A turn you stopped with `esc` says so instead**, and it collapses whole:                                                      │
+  `▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.                                         │
+  A stopped turn never reached an answer, so there is no answer to leave out of the chip —                                        │
+  that is the point of the wording. aforge's own lines about the stop (`· stopped`, and                                           │
+  what it dropped from the queue) stay outside the chip where you can read them.                                                  │
+                                                                                                                                  │
+  Click the chip or press `ctrl+e` over an empty message box to open or close it. There is                                        │
+  no transcript cursor, so the key chooses the latest completed turn's work in the                                                │
+  conversation. Opening restores the existing bounded views: thinking remains its                                                 │
+  own chip and only the latest 3 tool calls show until those are opened separately.                                               │
+  Questions, approval prompts, failure lines, text-only turns, and work with no trailing                                          │
+  answer are never hidden — nor is a second message you sent into a running turn, which                                           │
+  ends the chip above it and starts a new one. Fold state belongs to this window; resumed                                         │
+  sessions derive fresh closed chips from their saved entries.                                                                    │
+                                                                                                                                  │
+  **A task's page has chips too, cut differently.** The conversation folds by turn — one                                          │
+  chip per question you asked. A task's page is one long turn, so it folds by **phase**                                           │
+  instead: the work that came before each paragraph the task wrote goes behind its own                                            │
+  chip, and every paragraph stays standing. The work it is doing right now never folds.                                           │
+  `ctrl+e` opens the newest chip there, a click opens any of them, and scrolling up when                                          │
+  the page is already at its top opens the one nearest the top. `ui.work = open` opens them                                       │
+  all, exactly as it does out here. Where a task's page has no chip yet, `ctrl+e` falls                                           │
+  through to the thinking block as before.                                                                                        │
+                                                                                                                                  │
+  **A node's transcript inside an adaptive run's page never folds.** You got there by                                             │
+  asking to see what that one node did, and the page draws the tail of its journal under                                          │
+  the graph — so there is nothing there to fold away.                                                                             │
+                                                                                                                                  │
+  ## How do I keep everything expanded?                                                                                           │
+                                                                                                                                  │
+  Set `ui.work` to `open` to keep completed work visible. `fold` is the default. The row                                          │
+  live-applies on the next render; work stays indented in either mode.                                                            │
+                                                                                                                                  │
+  ## Things this page does not cover                                                                                              │
+                                                                                                                                  │
+  - **Slash commands** — what `/image`, `/export`, `/select`, `/copy`, `/model`,                                                  │
+    `/resume`, `/permissions` and the rest do: the commands page.                                                                 │
+  - **The status line, the legend under the box, and the layout**: the screen page.                                               │
+  - **Tasks, rooms, proposals and the roster**: the tasks pages.                                                                  │
+  - **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and                                         │
+    rewind page.                                                                                                                  │ ❯ ctrl+g hide
+
+─ master ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── space space home · / commands ─
+
+                                                                                                                                                          ⠿ high
+ ›
+aforge · deepseek-v4-flash-latest                                                                                       crew balanced · $0.00 · 5.4k/1.3M · idle

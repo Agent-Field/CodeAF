@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:14pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  memory                                                                                                              on
+  fallback models                                                                                 nearest in the catalog
+  ssh reuse                                                                                                          300
+› ssh heartbeat                                                                                                        3
+    seconds of silence before ssh asks whether the far machine is still there. 0 turns heartbeats off; a change lands
+    next launch.
+  ssh missed heartbeats                                                                                                3
+  ssh traffic                                                                                                   lowdelay
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ssh heartbeat
+ › 3                                                                                                   here ~/aforge-v2
+ enter save · empty clears · esc cancel

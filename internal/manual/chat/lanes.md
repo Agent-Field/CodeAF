@@ -56,7 +56,7 @@ Nothing is waiting on this when nobody is waiting on you. A background errand is
 ranked on price, because a second saved for a machine is a second nobody spends.
 
 **A run started from a terminal is routed on the same terms.** `aforge do`, `aforge run`
-and `aforge run subharness` open no conversation and draw no status line, and they used to
+and `aforge plan run` open no conversation and draw no status line, and they used to
 take whatever machine the router happened to hand them. They fetch the same sheet now and
 rank it with the same arithmetic — so a headless machine, one that only ever runs work
 from a terminal, is choosing between endpoints rather than between none, and every run

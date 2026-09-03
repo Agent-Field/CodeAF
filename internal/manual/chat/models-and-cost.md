@@ -416,8 +416,8 @@ the crew moved everything about a task except its cost.
 ## Does my crew reach aforge do, or only this conversation — what models a headless run uses
 
 **It reaches both.** A crew you set here is the crew a run started from a script or a
-terminal uses — `aforge do`, `aforge exec`, `aforge plan`, `aforge run`, `aforge revise`
-and `aforge run subharness`. Set it once with `/crew frugal` and the same policy holds
+terminal uses — `aforge do`, `aforge exec`, `aforge run`, `aforge plan new`,
+`aforge plan revise` and `aforge plan run`. Set it once with `/crew frugal` and the same policy holds
 whether the work is asked for here or run with nobody watching.
 
 Those runs seat two models, and each one is resolved the same way. The first of these that
@@ -458,7 +458,7 @@ models line:
 
 ```
 models: work deepseek/deepseek-v4-flash (crew custom, inherited) · plan deepseek/deepseek-v4-flash (crew custom)
-your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
 ```
 
 `inherited` beside the class means exactly that: **the model came from your crew, but from a
@@ -485,7 +485,7 @@ work takes the class the worker was split out of, **small work**, and the thread
 once, the first time a task starts:
 
 ```
-your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
 ```
 
 **It is said once per session**, when work actually starts, and never per task or per part.
@@ -776,7 +776,8 @@ seating anything this run.
 
 **And no crew receipt is posted.** The line a profile older than the work seat ordinarily gets
 when its first task starts — `your crew was set before the work seat existed · it is running on
-your small work model until you pick a crew again` — is not said under this flag. That line
+your small work seat's model until you pick a crew with /crew in the conversation` — is not said
+under this flag. That line
 reports a substitution, and under the flag there is none: every call is already on the model
 you are talking to, which is your own answer to the question it asks. Picking a crew would not
 change what runs, so the sentence is not offered, and the `/crew` sheet says nothing about an
@@ -1273,8 +1274,10 @@ arrives.
 
 ## What has this conversation cost me — /cost, how much this chat has cost, and why the same conversation suddenly costs more
 
-`/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on
-what, into the conversation. Up to eight aligned lines:
+`/cost` (also `/usage`, `/tokens`) prints what this conversation has spent, and on
+what, into the conversation. `/spend` is a different command and opens the **spend place**,
+which is the whole machine's ledger rather than this conversation's — it was an alias of
+`/cost` until the polish wave and is not one now. Up to eight aligned lines:
 
 | Line | What it is |
 |---|---|
@@ -1460,10 +1463,19 @@ correction of the other.
 `alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
 same three-second beat every place runs on, and it draws three things:
 
-- **the window and its total** — `$34.10 · 41.2M tokens` on the left of the head row and the
-  window itself at the right, as the control `shift+← aug 12 – aug 25 →` with `shift+↑
-  coarser` beside it — then a sparkline under it, one cell per day, and today's figure at the
-  right. The span is spelled once, between the arrows;
+- **the window and its total** — `14 days came to $34.10 · 41.2M tokens` on the left of the
+  head row and the window itself at the right, as the control `shift+← aug 12 – aug 25 →`
+  with `shift+↑ coarser` beside it. The left field **says which total it is**: the line above
+  it is the day (`today $3.42 of $500`) and this one is the whole window, so each figure
+  carries the period it is the total of. It is counted in the grain's own noun — `14 days`,
+  `4 weeks`, `6 months` — and on a narrow frame it gives up the words before the figure:
+  `14 days · $34.10`, then `$34.10`. The dates themselves are spelled once, between the
+  arrows;
+- **a chart of the window**, under that row, as wide as the frame allows — every bucket gets
+  the same number of cells, up to eight, so a fortnight on a wide terminal is a shape you can
+  read rather than fourteen cells in the corner. Its axis is **two dates**: the first bucket
+  at the left, and at the right the last one, called `today` when it is today. There is no
+  money on the axis — the money is the line above it;
 - **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
   a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
   `conversation`, `verification`, `naming`, `planning` — read from the settings as they
@@ -1493,6 +1505,12 @@ name on the row. A thing neither of them knows keeps its id.
 
 **`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
 place, a standing promise to the standing place, a conversation to home.
+
+**The loudest day is a row like those.** It reads
+`aug 20 was the loudest day — $21.40, the-filings-sweep` with the door out at its right —
+`enter opens it in tasks`, or `in tasks` on a narrower frame, or nothing at all where the
+sentence needs the whole row. `enter` on it opens that thing, exactly as it does on the rows
+under *what it was for*.
 
 **There is no budget editor here and there will not be one.** The page answers *what did it
 cost*; *what may it spend* is the Spending tab, and this page **points** at it rather than

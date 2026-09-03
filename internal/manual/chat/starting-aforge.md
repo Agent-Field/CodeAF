@@ -19,10 +19,15 @@ started, which have their own rules.
 
 ## What it is called
 
-The command you type is `aforge`. On screen the surface calls itself `openaf` —
-that name appears at the top of `/help`, on the card that asks to connect an
-account, and as the speaker heading in an exported conversation. They are the
-same program.
+The command you type is `aforge`, and `aforge` is what the surface calls itself
+everywhere it speaks: the wordmark on the first screen and in the welcome box, the
+name on home's top line, the first line of `/help`, the card that asks to connect
+an account, the desktop notification's title, and the speaker heading in an
+exported conversation.
+
+It used to say `openaf` in some of those places and `aforge` in the others, which
+meant a fresh install met one name in the wordmark and a different one in the
+prose three rows under it. There is one name now, and `openaf` is on no screen.
 
 ## Starting it
 

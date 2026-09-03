@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+
+
+                      ┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
+                      ├─┤ ├─  │ │ │   └─┤ ├─╴
+                      └─┘ │   └─┘ │   └─┘ └─┘
+                      ~deepseek/deepseek-v4-flash-latest · balanced crew
+
+                      ›
+                      try "what is in this folder" · /task <brief> starts work · / shows commands
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+aforge · deepseek-v4-flash-latest                                                                   crew balanced · idle

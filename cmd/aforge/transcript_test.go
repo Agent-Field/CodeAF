@@ -141,11 +141,15 @@ func TestWhyPrintsWhatTheLeafDid(t *testing.T) {
 // A node nobody has run, or one run by a worker that keeps no record, has to
 // say which of those it is rather than printing nothing and letting a reader
 // conclude the leaf did nothing.
+//
+// AND IT IS NOT A SUCCESS. The sentence is for the person; the non-zero rung
+// beside it is for the script, which otherwise reads exit 0 and concludes the
+// id exists and is empty (row 27, [TestAskingWhyAboutAnIdThatIsNotThereIsNotASuccess]).
 func TestWhySaysSoWhenThereIsNoTranscript(t *testing.T) {
 	graph, _ := watchdogFixture(t)
 	var printed strings.Builder
-	if err := writeNodeTranscript(&printed, graph, "leaf"); err != nil {
-		t.Fatal(err)
+	if code := exitCodeOf(writeNodeTranscript(&printed, graph, "leaf")); code == 0 {
+		t.Fatalf("a node with no record left with 0: %q", printed.String())
 	}
 	if !strings.Contains(printed.String(), "no transcript") {
 		t.Fatalf("an empty record printed %q", printed.String())

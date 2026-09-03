@@ -1,0 +1,30 @@
+ aforge                                         wed 11:36pm
+  search
+────────────────────────────────────────────────────────────
+
+search reads every message in every conversation on this ma…
+typing here searches; typing on home starts something.
+enter opens the conversation at the matching turn.
+type words you remember — "the docker error", a person's na…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ › say what you want done                       here aforge
+ type to search · tab next place · esc clears the words

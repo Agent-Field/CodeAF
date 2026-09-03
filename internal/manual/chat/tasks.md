@@ -1070,12 +1070,23 @@ Every landing writes a card into the conversation, with a blank row on each side
 the task's row on the roster.
 
 ```
-✓ ◆ Fix nil-map crash · done 4m12s · 3 files
-  "the guard is in and the regression test passes" · spawned 14:02 · ctrl+o output
+✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
+  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
 ```
 
 The head is what happened. The muted line under it is what came of it, in the task's own
 first sentence, quoted because they are its words and not aforge's.
+
+**Every fact on the head is joined by ` · `, the state word included.** It used to read
+`done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
+them was properly separated — so on a card asking for a hand, `needs your look 12m00s`
+made the reason it was asking read as part of a duration.
+
+**`started 14:02` is when the work began**, and the word is `started` — it said `spawned`
+until 2026-09-03, which is the machinery's own verb for launching a process and not a word
+anybody reads on a screen here. Where nothing knows when the work started — a task
+replayed out of a checkpoint, which keeps how long it ran and not when it began — the
+stamp is **absent** rather than invented.
 
 - **`done`** — a tick, muted. It is settled work on the roster.
 - **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
@@ -1290,8 +1301,11 @@ The clock appears **only when exactly one job is running**, because then there i
 duration to name. Past that the count is the news.
 
 **Expanded**, every running job draws (oldest first), then finished ones fill whatever
-room is left, newest first, and the remainder is counted on a `▸ N earlier` line rather
-than dropped. That remainder line is a count, not a door: it opens nothing.
+room is left, newest first, and the remainder is counted on an `N earlier` line rather
+than dropped. That remainder line is a count, not a door: it opens nothing, and it wears
+**no fold mark** for exactly that reason — it used to read `▸ 4 earlier` under a section
+whose head is also a `▸`, which invited a keypress that did nothing. It sits at the rows'
+own indent, under the rows it is counting.
 
 **Zero jobs draws nothing at all** — no label, no empty row, no `0 jobs`. A conversation
 that has started none looks as it did before jobs had a section.
@@ -1344,7 +1358,13 @@ the clock or how it ended.** The number is the handle — the same `3` in `job 3
 A running job's figure is the clock (`4m12s`). A clean finish reads `done` — how
 long it ran is on the page, not restated here, because a frozen clock and a
 ticking one are the same shape at a glance. A non-zero exit reads `exited 1`. A
-job somebody ended reads `stopped`. Under a second there is no clock on a
+job somebody ended reads `stopped`.
+
+**The page says the same word the row does.** Open the row and its first line reads
+`job 3 · exited 1 · ran 49s`, `job 3 · done · ran 12s`, `job 3 · stopped · ran 51m 12s` —
+one function behind both, so the section you pressed enter in and the page that opened
+cannot say two things about one job. The page used to print the engine's own name for the
+state (`failed`) and then repeat the code behind it (`exit 1`); it does neither now. Under a second there is no clock on a
 running row — `0s` on a row that has just begun would be a figure that has to be
 read to learn nothing — and the number still stands alone.
 
@@ -1409,8 +1429,14 @@ body — so the number is always visible in the head. The old feet
 
 The keys, quoted:
 
-- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
-- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
+- running: `x stop it · c copy path · m puts it in your message · ↑↓ scroll`
+- settled: `c copy path · m puts it in your message · ↑↓ scroll`
+
+**The way out is not on those feet, because the head is already saying it.** `esc back`
+sits in the head's right corner, and a page that named the same instruction twice was
+spending two of its words repeating itself. Where a long name takes the whole head line
+there is no corner left, and the foot takes the way out back — last, so a narrow frame
+spends it last: `x stop it · ↑↓ scroll · c copy path · m puts it in your message · esc back`.
 
 `c` copies the log path; the confirmation begins `copied `. `m` drops the name, the
 handle, the ending, and the last few log lines into your message box underneath, then
@@ -1529,7 +1555,7 @@ ctrl+. earlier
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   tasks place opens with every task this machine has run on it, grouped by what you do next
-  — `needs your look`, `running`, `done today`, `earlier`. `/history` is the same page.
+  — `needs your look`, `running`, `parked`, `done today`, `earlier`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
   `ctrl+. view more`. There is only ever one such line.
@@ -1707,10 +1733,18 @@ pages here take the frame — the settings panel, this one, and `/home` — and 
 them is ever up**: opening any one closes the other two.
 
 It opens on one sentence saying what it is holding — for example
-`work aforge ran on its own. 148 since aug 11, $34.10 of it.` The count is every row on
-the page, the date is the far edge of the time window, and the money is what those rows
-are known to have cost. A window with no known start drops the `since`, and rows nobody
-priced drop the money: zero means "nobody published a price", never "free".
+`work aforge ran on its own. 148 pieces of work since aug 11, $34.10 between them.` The
+count is every row the time window holds, the date is the far edge of that window, and the
+money is what those rows are known to have cost. One row reads `1 piece of work … $0.27 of
+it.` A window with no known start drops the `since`, and rows nobody priced drop the money:
+zero means "nobody published a price", never "free". **A frame too narrow for the whole
+sentence drops the money clause** rather than cutting the line, because half a figure is a
+wrong number.
+
+**The count is a claim about the PLACE and never about what you have typed.** With a filter
+on, the sentence goes on counting every row the window holds — a word that matches nothing
+does not make the machine's history empty. What matched is said on the note line at the
+bottom instead: `filter · zzz · nothing matches`.
 
 **When the time window holds none of it, that sentence says `work aforge ran on its own.
 nothing since jul 29.`** — in words, because a `0` there is the figure the emptiness law
@@ -1720,17 +1754,34 @@ window the four shift-arrows move, so a page that replaced it with the teaching 
 would have swallowed the way back. The teaching prose is for a machine that has run
 nothing IN ANY WINDOW, which is a different screen.
 
-Under it, **four sections, in the order you act on them**: `needs your look`, `running`,
-`done today`, then `earlier`. Nothing is grouped by whose work it is — a task this
+Under it, **five sections, in the order you act on them**: `needs your look`, `running`,
+`parked`, `done today`, then `earlier`. `running` is work a worker is actually inside;
+`parked` is work that has been admitted and that nothing is doing — waiting behind the
+piece that needs a person, or behind a slot — and it is the word the column uses for the
+same nodes. A parked row **carries no age at all**: it has not started, so there is nothing
+to count from. Nothing is grouped by whose work it is — a task this
 conversation started sits beside one another window is running and one a session you closed
 last week finished, filed by what you would do about it next.
 
-Each row is one line: a state glyph, the name, then — as the width allows — the
-conversation or project it came out of, what it is doing or what it came to, its kind
-(`adaptive`, `saved shape`, or `job`), what it cost, and how long ago. A row another window
-is running says `another window` on the right, with that window's own name after it when it
-has settled on one. A row that still claims `running` with **no** window behind it says
-`incomplete` — nobody judged the work, the window simply went.
+Each row is one line: a state glyph, then **the name, whole**, and then a dim tail of
+facts joined by ` · ` — how long ago, what it cost, the conversation or project it came out
+of, what it is doing or what it came to, and its kind (`adaptive`, `saved shape`, or `job`).
+
+**The name keeps every cell it asks for before a fact gets one**, and is shortened only
+where the frame cannot hold it alone; the facts behind it are dropped from the end as the
+frame narrows, and a long sentence of detail is said shorter (`2 files`) before it is
+dropped. So a narrow terminal shows the same facts a wide one does, with the end missing —
+never a different tail, and never a name you cannot match.
+
+A row another window is running says `another window`, with that window's own name after it
+when it has settled on one. A row that still claims `running` with **no** window behind it
+says `incomplete` and **carries no age at all** — nobody judged the work, the window simply
+went, and nothing in the record dates a row that never landed. Work that failed says the
+same word its own page says, with the reason after it: `failed · the package manager
+refused the archive`.
+
+**The sections are in time order, newest first**, and a family stays whole: the root is
+placed by its own stamp and the workers stand under it in theirs.
 
 **A section with nothing in it is not drawn at all**, heading and all. **The sections are
 separated by a blank line** and by nothing else — no rule, no dashes, no alternating
@@ -1740,14 +1791,19 @@ background.
 this window's own live work, and the window next door are read together and joined on the
 conversation and the id, with the freshest of them winning.
 
-**Nothing is folded away.** Every row the window holds has a line, and the page scrolls —
+**A family can be folded away.** Where it is, the section's own heading says so —
+`done today · 2 of 5 shown` — and `→` opens it. Everything else the window holds has a
+line, and the page scrolls —
 `↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
 the list runs on below the bottom of the window: three rows, each a step fainter, saying
 there is more under them. The row the cursor is on never fades wherever it sits, and a list
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting what is on the page, such as
+At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
+not the rows drawn, which is why it can read a larger number than you can count on the
+screen when a family is folded. The section heading is where that difference is said. It
+reads such as
 `2 needs your look · 3 running · 12 done today · 148 earlier` — a section with nothing in it
 is not counted at all — and under it the keys.
 
@@ -2001,34 +2057,40 @@ Clicking a row does what `enter` on it does, on the **first** press — the page
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## What does +3 under mean — work that split into workers is folded on the task page, the family tree
+## What does holds 3 more mean — the count on a folded row, work that split into workers, the family tree
 
 **A piece of work that handed itself out is one row, not nine.** The root is on the page and
 the workers are folded under it, shut:
 
 ```
 today
-  ▸ port the parser              a report · 3 files      +3 under
-    rename the flag              a report · 1 file
+  ▸ port the parser              3 files · a report      holds 3 more
+    rename the flag              1 file · a report
 ```
+
+The shut row used to say `+3 under`; it says `holds 3 more` now, because this surface says
+what things are in words rather than in arithmetic with a preposition for a noun.
 
 **`→` opens it**, and the workers appear underneath, connected:
 
 ```
 today
-  ▾ port the parser              a report · 3 files
-  ├ port the lexer               a report · 1 file
-  ├ port the tests               a report · 2 files
+  ▾ port the parser              3 files · a report
+  ├ port the lexer               1 file · a report
+  ├ port the tests               2 files · a report
   └ port the docs                a report
-    rename the flag              a report · 1 file
+    rename the flag              1 file · a report
 ```
+
+**A worker does not repeat its root's conversation.** The root names the conversation the
+family came out of and the rows under it spend those cells on their own names instead.
 
 **`←` folds it back up.** The foot of the page says which you are being offered:
 `→ what ran under it` on a shut family, `← fold it back up` on an open one.
 
 Every family opens **shut**. A page of four hundred tasks with every family expanded is the
-clutter the fold exists to remove — and the shut row says `+3 under`, so you can see what
-opening it would be worth without opening it.
+clutter the fold exists to remove — and the shut row says `holds 3 more`, so you can see
+what opening it would be worth without opening it.
 
 The two cells in front of every row are the family column, and they **appear only when
 there is a family on the page**. On a machine that has never split work up, nothing on the
@@ -2080,7 +2142,7 @@ door — they are the ones above, reshaped:
   — a room, or the record card — which is what a click already did at every width.
 - **The roster's foot** is a `‹ back` band in place of the key legend
   `enter open its room · type to filter`. Tap it to go back to the conversation.
-- **The record card's foot.** `esc back · ↑↓ scroll · m puts it in your message` is a
+- **The record card's foot.** `m puts it in your message · ↑↓ scroll` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
   scroll is the screen itself.
@@ -2098,10 +2160,11 @@ What opens is a full-screen card over the same page, with the list still underne
 ```
  Fix the nil-map crash                                              esc back
  ─────────────────────────────────────────────────────────────────────────────
- done · landed 3h ago · ran 4m12s
+ done · landed 3h ago · ran 4m 12s
 
  Added the guard and the regression test; the parser suite passes.
 
+ out of Fixing the importer
  anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
  3 files changed
 
@@ -2112,14 +2175,28 @@ What opens is a full-screen card over the same page, with the list still underne
  Added a nil check in parseRow before the map write, and a regression test that
  fails without it. The parser suite passes: 84 tests, 0 failures.
  ─────────────────────────────────────────────────────────────────────────────
- esc back · ↑↓ scroll · m puts it in your message
+ m puts it in your message · ↑↓ scroll
 ```
 
+**The rule and the keys sit under the last row the card drew**, not at the bottom of the
+terminal, and `esc back` is said once, in the head's right corner. This page has no
+composer under it, so a foot pinned to the bottom of a fifty-row frame under a six-line
+card was a foot pinned for nobody. A card long enough to scroll fills the frame and its
+foot is where it always was.
+
 Top to bottom: the title; the state it came home in, when it landed and how long it ran;
-the outcome sentence; what it ran on and what it spent; how many files it changed; where it
-left the work and where the story is; and then **the last thing the task itself said** —
-the whole report, read off that task's own journal, of which the outcome above is the first
-sentence.
+the outcome sentence; the conversation it came out of; what it ran on and what it spent;
+how many files it changed; where it left the work and where the story is; and then **the
+last thing the task itself said** — the whole report, read off that task's own journal, of
+which the outcome above is the first sentence.
+
+- **`out of <conversation>` names where the work came from**, spelled the way the row on the
+  list spells it, so the page is never a smaller answer than the row that opened it. It is
+  the project's name where nothing has titled the conversation yet, and it is left off
+  where nothing knows either.
+- **Work that failed did not land.** The clock clause follows the state in front of it:
+  `done · landed 3h ago`, and `failed · stopped 8d ago` — `landed` is this program's word
+  for work that arrived, and it was drawn over a run nothing came of.
 
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
@@ -2288,6 +2365,24 @@ the state glyph, a trail that always names `main` as the root, then the state wo
 clock, the spend, the model and — where you have set one — how hard this task is asked to
 think, as `thinking high`. Each is dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
+
+**The name on it is the task's whole name, and the facts behind it are what a narrow
+frame gives up.** Until 2026-09-03 a task's name was cut to three words the moment it
+arrived, before any width was known, so a room opened at a hundred and sixty columns
+named the work no better than the twenty-four-cell column did: a family of six pieces
+that all began with a verb and a plural noun came out as `Cut every list`, `Fold the
+settled`, `Move the tab`. The name now reaches every row whole and each row decides what
+it can afford — the header keeps the name first and drops facts off the end as the
+terminal narrows, and only a name that cannot fit the line **alone** is cut, in which
+case it takes the whole line and no fact is drawn beside it.
+
+**And the hint slot under a room asking for your look shortens rather than vanishing.**
+At sixty columns `a accept · l look again · n not right` is a few cells too long for what
+the foot has left beside `room · esc/←← main`, and the slot used to go empty — so the
+narrowest terminal was the one that named none of the keys answering the question it was
+standing on. It now reads `a accept · l look again · +1`, and `a accept · +2` narrower
+still: the same answers in the same order, with a count of the ones that did not fit. All
+three letters keep working whether or not they are printed.
 
 **`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
@@ -2489,17 +2584,18 @@ is nothing to say:
 ```
 ─ ⠙ main ▸ Write the tree · working · 2m 12s ────── esc/← main · ✕ ─
   part of: Ship the port
-  spawned: Cut the goldens — queued · Wire the seam — running
+  handed out: Cut the goldens — parked · Wire the seam — running
 ```
 
 - **`part of: <title>`** names the task that handed this work out — the parent. A task
-  nobody spawned draws no such line, so its absence means *this is a top-level task*. A
+  nobody handed out draws no such line, so its absence means *this is a top-level task*. A
   parent this session has had no update for is left unsaid rather than named as a bare id.
-- **`spawned: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
+- **`handed out: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
   the session met them. The state is the same word the roster uses: `queued`, `working`,
   `finishing`, `waiting`, `done`, `incomplete`, `failed`, `stopped`, `needs your look`. A piece that is
-  itself queued behind another piece says only `queued` here; open its own room to see what
-  it is behind.
+  itself held behind another piece says only `parked` here — the word the column uses for
+  it, and not `queued`, which would promise a scheduler that is not coming; open its own
+  room to see what it is behind.
 - **what this task waits on** is on the accent line itself, as its state word:
   `waits: <title>` names the prerequisites that have not finished. It is there rather than
   on a line of its own so the header never says the same thing twice.
@@ -3192,6 +3288,14 @@ While you are in a room the status line names that node: `<mark> <task name> · 
 <model>`. Press the `task <model>` part and the ordinary model picker opens, aimed at that
 task. Choose a row and that task moves onto it.
 
+**On a narrow window that line gives way in one order.** The task's *name* is drawn whole
+for as long as the row can hold it; then `task <model>` is dropped **whole** rather than
+shortened, because a bare model id in the one spot that has only ever held the
+conversation's would read as the conversation switching models; and only after that is the
+name itself cut with a `…`. So a window too narrow for both says where you are rather than
+what is answering — and a model that is not drawn cannot be pressed. Widen the window, or
+read the model on the task's own card.
+
 What that does, exactly:
 
 - **It takes effect on the task's next turn.** The call the worker is in the middle of
@@ -3393,6 +3497,15 @@ to it with `↑`/`↓` — and only over an **empty** message box, exactly like 
 into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
 
+**On a narrow terminal the row drops `[d]` and says so.** The three answers are the
+question and the fourth is a preference, so the preference is what goes first — and the
+row then ends in a dim `· +1`, the same count every other fold on this surface draws
+(`▸ +1`, `holds 3 more`). `[d]` still works unprinted. It reads:
+
+```
+[a] accept · [l] look again · [n] not right · +1
+```
+
 **The task's room asks the same question** at the foot of its page, and in there the four
 keys need no selection — see *How do I approve a task* below. Room and card are one
 question: answer in either and both show the receipt.
@@ -3549,7 +3662,8 @@ Pressing `x` on a run that has already finished does nothing but say so.
 ## The tasks place — grouped work, folds, filtering and time-window keys
 
 The **tasks** place is the machine-wide history of work aforge ran, grouped by what you do
-next: `needs your look`, `running`, `done today`, then `earlier`. Each task row can include
+next: `needs your look`, `running`, `parked`, `done today`, then `earlier` — where
+`parked` is admitted work nothing is doing, drawn with no age on it. Each task row can include
 its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
 cost, and age. Zero or unknown cost is left blank. A section with nothing in it is absent.
 

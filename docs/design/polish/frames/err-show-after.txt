@@ -1,0 +1,5 @@
+$ ./bin/aforge show /nope/graph.json
+note: `aforge show <plan.json>` is now `aforge plan show <plan.json>` — the old spelling works for one more release.
+error: there is nothing at /nope/graph.json.
+check the path, and make the folder above it first if it is meant to be new.
+exit=1

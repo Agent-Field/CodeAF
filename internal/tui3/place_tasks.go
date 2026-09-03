@@ -300,12 +300,20 @@ func (a *app) taskIndexHolds(node *taskNode) bool {
 // taskNodeEnded is when a node of this session's graph LANDED, and the zero time
 // while it is still going — which is what the index writes for a live row, and
 // what the emptiness law asks for over a node whose clock nobody started.
+// A LANDING TIME IS COMPUTED FROM A REAL START OR IT IS NOT COMPUTED AT ALL.
+// The only start this surface ever knows is [taskNode.began], anchored off the
+// age a running node's own update reported. A node replayed out of a checkpoint
+// has none — the record keeps how long the work ran and never when it began —
+// and dating one by when this WINDOW met it stamped work that finished twenty
+// minutes ago at twelve minutes from now, which the page's date filter then read
+// as tomorrow and dropped: the one task waiting on a person went missing from
+// the tasks place while its shorter siblings sat on it saying `now`.
 func taskNodeEnded(node *taskNode) time.Time {
 	if node.state == session.TaskRunning || node.state == session.TaskQueued {
 		return time.Time{}
 	}
 	at := node.began
-	if at.IsZero() {
+	if at.IsZero() && !node.restored {
 		at = node.met
 	}
 	if at.IsZero() {
@@ -710,7 +718,7 @@ func (p *tasksPlace) window(a *app, key string) bool {
 	// is the one predicate standing and spend ask as well (placeprose.go's
 	// [placeWindowFits]).
 	width, _ := a.size()
-	arrows, grain := placeWindowFits(width, p.reading.head(false), p.reading.win)
+	arrows, grain := placeWindowFits(width, p.reading.head(width, false), p.reading.win)
 	if !arrows {
 		return false
 	}
@@ -1022,6 +1030,15 @@ func taskSheetFilterLine(needle string, kept int) string {
 // this row can actually be asked for, and the filter — replaced, while one is
 // on, by the one key whose meaning just moved.
 func (p *tasksPlace) hint(a *app) string {
+	// A TEACHING PAGE PROMISES NO ROW KEYS. On a machine that has run nothing the
+	// body spends the whole frame saying what tasks ARE ([tasksTeach], gated on
+	// this same `held == 0`), and the foot under it went on offering `type to
+	// filter` over a page with no rows to filter, no fold to open and no verb to
+	// press. What is true there is the way out, and [placeTailed] puts `tab next
+	// place` in front of it.
+	if !p.detailOn && a.tasksFiltered().held == 0 {
+		return "esc"
+	}
 	var parts []string
 	item, ok := a.taskSheetCurrent()
 	switch {

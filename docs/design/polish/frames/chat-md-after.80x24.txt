@@ -1,0 +1,24 @@
+1. first
+2. second, with a much longer body so that it wraps and we can see whether the
+   hanging indent lines up under the text or under the number
+3. third
+
+· bullet
+  · nested bullet with enough words to wrap at the narrow sizes we care about
+
+› first line of a draft that I am still writing
+  second line here
+  third line, which is quite a lot longer than the two above it so that it has
+  to wrap when the window gets narrowlist the files in this directory, then say
+  done
+
+  · 3 standing orders here — /standing
+  · resumed · Wrapping Torture
+  · esc interrupts · ctrl+c twice quits
+
+─ master* ────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                          ⠿ high
+ ›
+Wrapping Torture · deepseek-v4-flash-latest
+                crew balanced · ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

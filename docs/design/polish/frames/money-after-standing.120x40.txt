@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $0.13 / $500.00 · thu 12:24am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  pricing-site
+  ○ The Annual Toggle                                                                                        1 task · 5h
+
+  infra
+  ○ The Backup Window                                                                                        1 task · 2d
+
+  aforge-v2
+  ○ Why the Frame Jumps                                                                                      1 task · 3h
+  ○ Sweeping the Frame Budget                                                                                  here · 5m
+  ○ The Tab Bar's Counts                                                                                   4 tasks · 44m
+
+  ? ask here: "Tab Tab"
+› + start a new conversation: "Tab Tab"
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › Tab Tab                                                                                             here ~/aforge-v2
+ enter starts a new conversation and sends this · ↑ pick a match · ctrl+enter ask here · tab next place · esc clear

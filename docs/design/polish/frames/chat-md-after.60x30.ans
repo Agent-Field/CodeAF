@@ -1,0 +1,30 @@
+[38;5;102m│[38;5;252m [38;5;145mA blockquote that runs on for a while so that it has to[39m
+[38;5;102m│[38;5;252m [38;5;145mwrap at sixty columns and shows what the marker does on[39m
+[38;5;102m│[38;5;252m [38;5;145mthe second line.[39m
+
+[38;5;102m1.[38;5;252m first[39m
+[38;5;102m2.[38;5;252m second, with a much longer body so that it wraps and we[39m
+[38;5;252m   can see whether the hanging indent lines up under the[39m
+[38;5;252m   text or under the number[39m
+[38;5;102m3.[38;5;252m third[39m
+
+[38;5;102m·[38;5;252m bullet[39m
+[38;5;252m  [38;5;102m·[38;5;252m nested bullet with enough words to wrap at the narrow[39m
+[38;5;252m    sizes we care about[39m
+
+[38;5;146m› [38;5;110mfirst line of a draft that I am still writing[39m
+  [38;5;110msecond line here[39m
+  [38;5;110mthird line, which is quite a lot longer than the two above
+[39m  [38;5;110mit so that it has to wrap when the window gets narrowlist[39m
+  [38;5;110mthe files in this directory, then say done[39m
+
+  [38;5;243m· [38;5;116m3[38;5;243m standing orders here — [38;5;146m[48;5;237m/standing[39m[49m
+  [38;5;243m· resumed · Wrapping Torture[39m
+  [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits[39m
+
+[38;5;243m──────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116mctrl+k[38;5;243m switch · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                      [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243mWrapping Torture · deepseek-v4-flash-latest[39m
+            [38;5;243m◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

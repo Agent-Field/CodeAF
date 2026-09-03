@@ -1854,7 +1854,14 @@ func (a *app) orchGateRows(page *orchPage, width int) {
 	if layoutTier(width) == tierPhone {
 		hint = "tap an answer · typing steers the planner"
 	}
-	page.put(a.orchLead(false) + a.pal.dim(fit(hint, width-2)))
+	// AND IT DROPS A GESTURE WHOLE RATHER THAN HALF OF ONE. This is a key list in
+	// the surface's own idiom, so it is fitted the way every other key list is
+	// ([hintFit]): the last clause is protected and what goes is the clause
+	// nearest it, working backwards. A character ruler ended this row `· or keep
+	// ty…` at the widths a person is most likely to meet a gate card at, which is
+	// the worst possible thing to do to the one row on the card that says how the
+	// card is answered.
+	page.put(a.orchLead(false) + a.pal.dim(hintFit(hint, width-2)))
 }
 
 // ── the header ──────────────────────────────────────────────────────────────

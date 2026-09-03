@@ -264,8 +264,23 @@ A name nothing matches says:
 no device called "phone" is paired with this machine — `aforge devices` lists the ones that are
 ```
 
-Two devices with the same name are refused rather than guessed at, and
-`aforge devices revoke --all laptop` stops both.
+Two devices with the same name are refused rather than guessed at, and `--all` stops every
+device answering to that name:
+
+```
+aforge devices revoke laptop --all
+aforge devices revoke --all laptop
+```
+
+**Both spellings work.** `--all` is an ordinary flag and is read wherever you put it, before
+the name or after it; `aforge devices revoke --help` prints it. It used to be read only when
+it came first, so `aforge devices revoke laptop --all` was refused with a usage line that did
+not mention `--all` at all.
+
+Stopping one device with `--all` answers in the ordinary sentence — `laptop has been stopped
+— it can no longer open a conversation here, and it will need a new pairing code to come
+back.` Stopping several answers `2 devices called laptop have been stopped — each needs a new
+pairing code to come back.`
 
 **Revoking is always the decision of the machine that owns the work.** There is no way to
 do it from the device, and no way for a device to remove another one.

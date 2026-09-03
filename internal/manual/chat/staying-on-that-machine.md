@@ -56,8 +56,11 @@ lives under this machine's aforge state directory at `~/.aforge/v3/ssh/` (moved 
 `AFORGE_HOME`). A state path too long for a unix socket disables reuse only; the ordinary
 ssh connection still opens.
 
-These network-dependent defaults are editable in settings as `ssh reuse`, `ssh
-heartbeat`, `ssh missed heartbeats`, and `ssh traffic`. Setting the heartbeat to 0 turns
+These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
+reuse` (`300s`), `ssh heartbeat` (`3s`), `ssh missed heartbeats` (`3`), and `ssh traffic`
+(`lowdelay`). They were on the Session tab and moved, because every one of them lands on
+the next launch rather than on the conversation in front of you; nothing you saved moved
+with them. Setting the heartbeat to 0 turns
 dead-link probes off; setting reuse to 0 stops keeping a connection after its channel
 closes. Whole-stream ssh compression stays off because it usually slows a LAN attach;
 large transcript frames compress themselves only when both aforge builds support it.

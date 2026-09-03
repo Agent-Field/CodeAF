@@ -1,0 +1,30 @@
+ aforge                            1 want you · thu 12:05am
+  settings
+────────────────────────────────────────────────────────────
+
+ …  Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────
+
+› ask before running                                  prompt
+    what happens when the model asks to run a tool.
+    Dangerous shell commands are asked about whichever way
+    this is set.
+  tool exceptions                                       none
+  shell command rules                                   none
+  guardian                                               off
+  approval countdown                                     10s
+  background after                                       30s
+  who settles work that needs a look                     ask
+  task countdown                                         15s
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config…
+ › say what you want done                  here ~/aforge-v2
+ ↑↓ move · ←→ tabs · tab next place · esc close

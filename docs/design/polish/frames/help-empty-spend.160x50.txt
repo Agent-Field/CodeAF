@@ -1,0 +1,50 @@
+ aforge                                                                                                                                             wed 11:05pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ What this machine has cost, by the day, by the model, and by what it was
+ for. Every model call writes a line, so the figures here are the bill and
+ not an estimate. There is nothing to set here — the allowance is edited on
+ the status line that shows it.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                           here aforge
+ enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place

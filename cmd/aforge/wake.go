@@ -83,16 +83,20 @@ func runWake(args []string) error {
 
 func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	flags := commandFlags("wake")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	maxSeconds := flags.Int("max-seconds", defaultWakeMaxSeconds, "maximum resident pass duration")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	// A WALL IS `--timeout` ON EVERY DOOR THAT HAS ONE. This was
+	// `--max-seconds`, which is the same concept spelled a third way and in the
+	// unit rather than in the quantity — so `aforge wake --max-seconds 5m` was a
+	// parse error on a machine where `aforge do --timeout 5m` works (wall.go).
+	wall := wallFlag{wall: time.Duration(defaultWakeMaxSeconds) * time.Second}
+	flags.Var(&wall, "timeout", "hard wall on the pass, as a duration such as 2m (a bare number is seconds)")
+	renamedFlag(flags, "max-seconds", "timeout")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge wake [--db path] [--max-seconds N]")
-	}
-	if *maxSeconds <= 0 {
-		return fmt.Errorf("wake max-seconds must be positive")
+		return fmt.Errorf("usage: aforge wake [--db path] [--timeout 2m]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -151,7 +155,12 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*maxSeconds)*time.Second)
+	// THE WALL IS THE WALL, TO THE NANOSECOND. `--timeout` is a duration on
+	// every door that has one, and this one used to fold it down to a whole
+	// number of seconds and multiply it back up — so `--timeout 500ms`
+	// truncated to zero, and a zero wall is no wall at all, which handed the
+	// pass the full default instead of the half second that was asked for.
+	ctx, cancel := context.WithTimeout(context.Background(), wall.wall)
 	defer cancel()
 	var pass resident.WatchPass
 	for tick := 0; tick < maxWakeTicks; tick++ {
@@ -201,9 +210,51 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	}); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(output, "examined %d, checked %d, fired %d, no %d, errors %d, rail waits %d, practice %d, learning %d\n",
-		pass.Examined, pass.Checked, pass.Fired, pass.No, pass.Errors, pass.RailWaits, practice, learning)
+	_, err = fmt.Fprintln(output, wakePassWords(pass, practice, learning))
 	return err
+}
+
+// wakePassWords is the one line a wake pass leaves behind, and it says only
+// what happened.
+//
+// THE EMPTINESS LAW REACHES A RECEIPT PRINTED ONCE. It used to print all eight
+// figures unconditionally, so an ordinary quiet pass read `examined 3, checked
+// 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learning 2` — four
+// numbers asserting a measurement where nothing had happened, and a reader has
+// to spend a moment on each of them to find that out. The one sanctioned
+// exception to the law is the live status line's `$0.00`, which is there so a
+// status segment does not jump sideways as it redraws; a line printed once and
+// never redrawn is not that.
+//
+// And a pass on which NOTHING happened says so in a sentence rather than in
+// eight zeroes, because a receipt of zeroes and a reader that failed look
+// identical, which is the same reason `why self` answers an empty day with one
+// sentence instead of a column header over nothing.
+func wakePassWords(pass resident.WatchPass, practice, learning int) string {
+	counted := []struct {
+		word  string
+		count int
+	}{
+		{"examined", pass.Examined},
+		{"checked", pass.Checked},
+		{"fired", pass.Fired},
+		{"no", pass.No},
+		{"errors", pass.Errors},
+		{"rail waits", pass.RailWaits},
+		{"practice", practice},
+		{"learning", learning},
+	}
+	clauses := make([]string, 0, len(counted))
+	for _, row := range counted {
+		if row.count == 0 {
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("%s %d", row.word, row.count))
+	}
+	if len(clauses) == 0 {
+		return "nothing was waiting to be looked at."
+	}
+	return strings.Join(clauses, ", ")
 }
 
 func addWatchPass(total *resident.WatchPass, pass resident.WatchPass) {

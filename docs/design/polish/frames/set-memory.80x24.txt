@@ -1,0 +1,24 @@
+ aforge                                           $0.37 / $500.00 · wed 11:14pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────
+
+12 held · 3 shelves · 1 let go                                    type to filter
+
+shelves · …  fact 7 · preference 2 · decision 2 · correction 1 · project state 1
+▾ you · 6  mostly facts · 6 new today                                         6m
+· deploys on Fridays  fact  new, learned 6m                                   6m
+· Ships on Fridays  fact  let go                                             15m
+· It is the strip, not the toolbar  correction  helped 3 times               15m
+▸ 3 more, on this shelf
+▸ this project · 4  mostly decisions · 4 new today                           15m
+▸ this machine · 3  mostly facts · 3 new today                               15m
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                      here ~/aforge-v2
+ enter open a shelf · type to filter · alt+s walk the shelves · tab next place

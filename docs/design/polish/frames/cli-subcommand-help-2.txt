@@ -1,0 +1,154 @@
+### aforge models --help
+panel:  none — AFORGE_MODELS is unset, so every call goes to ~deepseek/deepseek-v4-flash-latest  reasoning · effort
+
+nothing measured yet. Ratings appear once calls have been graded — run a plan or a graph with AFORGE_MODELS set.
+exit=
+
+### aforge doctor --help
+error: flag: help requested
+exit=
+
+### aforge cache --help
+error: usage: aforge cache [clean [--yes]]
+exit=
+
+### aforge notebook --help
+error: flag: help requested
+exit=
+
+### aforge competence --help
+error: flag: help requested
+exit=
+
+### aforge services --help
+Usage of services:
+  -db string
+    	path to the durable graph database (default "/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db")
+error: flag: help requested
+exit=
+
+### aforge wake --help
+error: flag: help requested
+exit=
+
+### aforge why --help
+error: flag: help requested
+exit=
+
+### aforge manual --help
+accounts                           Connected accounts
+adaptive-runs                      Adaptive runs
+asking-from-home                   Asking from home — reminders and watches without opening a conversation
+attaching-files                    Attaching files
+choosing-a-folder                  Choosing a folder
+commands                           Commands
+compacting-over-and-over           Compacting over and over
+debug-record                       The debug record
+empty-screen                       The empty screen — nothing on it, the screen is blank
+forking-and-syncing-a-workspace    Forking and syncing a workspace
+getting-started                    Getting started — the first-time setup
+hints-and-tips                     Hints and tips
+home                               Home — one list of everything on this machine
+how-tasks-run                      How work on its own actually runs
+keeping-an-eye                     Keeping an eye on things — reminders, watches, rules, overnight work, and checking on it later
+keys                               Keys, typing, and the mouse — what all the keys do
+lanes                              Lanes — which machine answers, and the question a slow lane asks
+making-pictures-audio-and-video    Making pictures, audio and video
+models-and-cost                    Models, context, and what it costs
+opening-files-from-that-machine    Opening files from that machine
+permissions                        What runs without asking, and who can see your files
+places                             Places
+reaching-this-machine-without-ssh  Reaching a machine with a pairing code
+reading-a-task-page                Reading a task's page — what is on this task page, what folds, and a page that looks stuck
+running-on-another-machine         Running on another machine
+exit=
+
+### aforge show --help
+error: open --help: no such file or directory
+exit=
+
+### aforge run --help
+Usage of run:
+  -budget int
+    	token budget per leaf — the limit that actually binds (default 150000)
+  -contracts
+    	write a per-leaf working method before executing (default true)
+  -j int
+    	how many leaves may run at once (default 32)
+  -model string
+    	work model for this run (flag › AFORGE_MODEL › crew › default)
+  -o string
+    	write the completed graph as JSON to this file
+  -plan-model string
+    	model for briefs, contracts, and recalibration, when different from the work model (flag › AFORGE_PLAN_MODEL › crew mastermind › the work model)
+  -run-budget int
+    	global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)
+  -turns int
+    	runaway backstop on iterations per leaf (clamped to the executor's own backstop) (default 200)
+  -w string
+    	workspace directory (default ./aforge-run-<goal hash>)
+  -yes-spend
+    	preauthorize raising today's dollar rail when reached
+error: flag: help requested
+exit=
+
+### aforge revise --help
+Usage of revise:
+  -done string
+    	mark these node ids finished before revising
+  -json
+    	print the graph as JSON instead of a table
+  -model string
+    	work model for this run (flag › AFORGE_MODEL › crew › default)
+  -o string
+    	write the revised graph as JSON to this file
+  -plan-model string
+    	model that revises the plan, when different from the work model (flag › AFORGE_PLAN_MODEL › crew mastermind › the work model)
+error: flag: help requested
+exit=
+
+### aforge rebuild --help
+error: flag: help requested
+exit=
+
+### aforge devices --help
+error: usage: aforge devices [revoke <name>]
+exit=
+
+### aforge resume --help
+Usage of resume:
+  -at aforge serve
+    	reach a machine that has no ssh, by the name aforge serve prints there: otter-lamp-42, or otter-lamp-42:path/to/project
+  -debug
+    	keep the full record of this run — call bodies, tool calls and the choices made — in a folder of its own under the state root (env AFORGE_DEBUG; /debug turns it on mid-session)
+  -host string
+    	run the session on another machine over ssh: host, user@host, or host:path/to/project
+  -max-cost float
+    	how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)
+  -max-hours float
+    	how many hours an unattended --yolo session may carry its own work on (env AFORGE_MAX_HOURS)
+  -model string
+    	model slug for this session; beats the configured default
+  -no-compact
+    	never compact automatically
+  -no-host
+    	open this conversation in this process instead of attaching to this workspace's session host
+  -once string
+    	run one message non-interactively, print the reply, and exit
+  -one-model
+    	every text call this session makes runs on the session model: the tier rows, the role pins, the fallback chain and the task model all stand down
+  -reasoning string
+    	how hard this session's model is asked to think: off, low, medium or high
+  -session string
+    	session transcript to resume; empty resumes this directory's most recent
+exit=
+
+### aforge serve --help
+Usage of serve:
+  -relay string
+    	the relay to be reachable through; empty reads AFORGE_RELAY
+  -workspace string
+    	directory a connection works in when it does not name one; empty is the directory this command was run in
+error: flag: help requested
+exit=
+

@@ -1,0 +1,50 @@
+ aforge                                                                                                                                             wed 11:06pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+› memory                                                                                                                                                      on
+    a few things are carried from one conversation to the next. Off, each one starts knowing nothing about you.
+  fallback models                                                                                                                         nearest in the catalog
+  ssh reuse                                                                                                                                                  300
+  ssh heartbeat                                                                                                                                                3
+  ssh missed heartbeats                                                                                                                                        3
+  ssh traffic                                                                                                                                           lowdelay
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config.json is a hand edit
+ › say what you want done                                                                                                                           here aforge
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

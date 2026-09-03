@@ -1,0 +1,29 @@
+{
+    "answer": "",
+    "artifacts": [],
+    "calls": 0,
+    "deliverable": "",
+    "error": "OPENROUTER_API_KEY (or OPENAI_API_KEY) is required\nexport OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.",
+    "files": [],
+    "model": "~deepseek/deepseek-v4-flash-latest",
+    "model_source": "default",
+    "nodes": 0,
+    "ok": false,
+    "plan_model": "",
+    "plan_model_source": "default",
+    "rounds": 0,
+    "run": "6c8d44f80d96ded3",
+    "seconds": 0.039156764,
+    "settled": false,
+    "spend": 0,
+    "spend_overhead": 0,
+    "spend_usd": 0,
+    "spend_work": 0,
+    "steps": 0,
+    "stop": "error",
+    "subharness": "",
+    "tokens": {
+        "in": 0,
+        "out": 0
+    }
+}

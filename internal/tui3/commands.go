@@ -119,6 +119,22 @@ var commands = []command{
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
 	{name: "home", desc: "every project and conversation on this machine"},
+	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
+	// does. /home, /memory, /standing, /history and /settings each open a place
+	// from the box; search and spend were reachable only by `alt+6`, `alt+5`,
+	// `tab`, the tab bar, or typing a word on home — every one of which has to be
+	// learned somewhere else first.
+	//
+	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
+	// an alias of /cost, so the one word a person guesses for "what has this cost
+	// me" printed THIS CONVERSATION's bill and never said the machine-wide place
+	// existed. The two answer different questions — /cost is this conversation,
+	// spend is every window, task and standing run on the machine — and the word
+	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
+	// own row which question it is answering, so nobody who typed either word
+	// lands nowhere.
+	{name: "search", desc: "everything said on this machine · alt+6"},
+	{name: "spend", desc: "what this machine has cost, by the day · alt+5"},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do
@@ -280,7 +296,11 @@ var commands = []command{
 	// lines it prints: somebody who wanted the money and typed the general word
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
-	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// THE ROW NAMES WHOSE BILL IT IS, because the other one is now a command of
+	// its own two rows up: /cost is THIS CONVERSATION and /spend is the machine.
+	// The word `spend` used to be an alias here and pointed the one guess a
+	// person makes at the wrong reading.
+	{name: "cost", desc: "what this conversation has spent · /spend is the whole machine", alias: []string{"usage", "tokens"}},
 	// AND DIRECTLY UNDER WHAT IT HAS SPENT, WHAT IT MAY. /cost is the reading and
 	// this is the editor, and they sit together because a person who has just
 	// read a figure is the person deciding whether it is too high (budget.go).
@@ -557,12 +577,28 @@ func (c command) typed() string {
 	return "/" + c.name + " " + c.args
 }
 
-// menuRows is how many command rows fit at once. The table has grown past it,
-// so it is now a real ceiling and the list scrolls under the cursor — which is
-// the trade taken on purpose: eight rows of commands over the conversation is
-// already half a short terminal, and a list that grew with the table would take
-// the screen every time a command was added. The ALIASES cost nothing here,
-// because an alias is a word on a row and never a row of its own.
+// menuRows is THE FLOOR: the least this list ever shows, whatever the frame.
+//
+// ── IT WAS A CEILING AND THAT WAS THE DEFECT ────────────────────────────────
+//
+// Eight was a bare constant and the only number the list knew, so a fifty-row
+// terminal drew eight commands of fifty-two under thirty-six blank rows, said
+// nothing about the other forty-four, and put both /help and /manual below the
+// fold. `/` is the one door the greeting advertises — `/ shows commands` — and
+// what it showed a person on a cold start was /model through /compact and a
+// stop. The stated reason for the ceiling, that eight rows over the conversation
+// is already half a short terminal, is true at twenty-four rows and simply false
+// at fifty.
+//
+// So the number is the FLOOR now and the frame is the ceiling: the list takes
+// what the room the frame hands it will hold, and never fewer than these eight
+// even on a short terminal, where [app.overlayHeight]'s own clamp is what keeps
+// the status line and a row of conversation alive. WHERE ROWS ARE STILL HIDDEN
+// THE LIST SAYS HOW MANY, in the `▸ 44 more` line every other list on this
+// surface draws (searchplace.go, the spend place's fold).
+//
+// The ALIASES cost nothing here, because an alias is a word on a row and never a
+// row of its own.
 const menuRows = 8
 
 // menu is the command list's whole state. The zero value is closed.
@@ -721,16 +757,49 @@ func (m *menu) choice() (command, bool) {
 // NONE: the draft under it is a perfectly good "/nonsense" that enter will
 // answer, and an overlay saying "no match" over a line that is about to get a
 // better answer is two answers to one question.
-func (m *menu) height(width int) int {
+// THE ROOM IS HANDED IN AS A NUMBER and the list stays pure. What is above this
+// line ranks and filters commands and has never known how tall a terminal is;
+// what the frame knows is how many rows are left once the status line, the box
+// and a row of conversation have taken theirs ([app.overlayHeight] does that
+// arithmetic once, for every list). So the frame passes the figure and this
+// decides what to do with it, rather than either of them guessing at the other.
+func (m *menu) height(width, room int) int {
 	if !m.open {
 		return 0
 	}
 	// The ceiling is in LINES, so at [tierPhone] the list holds four commands
 	// with what they do written under them instead of eight rows that all say
 	// "/settings   open the settings pa…" (palette.go).
-	return overlayWindow(width, m.top, len(m.hits), menuRows, func(at int) string {
-		return commands[m.hits[at]].note()
-	})
+	ceiling := menuRows
+	if room > ceiling {
+		ceiling = room
+	}
+	shown, lines := m.fit(width, ceiling)
+	if m.top+shown >= len(m.hits) || ceiling <= 1 {
+		return lines
+	}
+	// SOMETHING IS HIDDEN, SO ONE LINE OF THE CEILING IS THE FOLD'S. It is
+	// counted here rather than added on top, because the frame subtracts this
+	// figure from the conversation before the rows are drawn: a list that came
+	// back a line longer than it promised would push the status line off.
+	_, lines = m.fit(width, ceiling-1)
+	return lines + 1
+}
+
+// fit is how many ROWS and how many LINES this list draws from [menu.top] inside
+// a ceiling of screen lines. Two numbers rather than one because the fold has to
+// know how many commands were left over, and at [tierPhone] a row is two lines —
+// so a count of lines cannot answer that on its own.
+func (m *menu) fit(width, ceiling int) (rows, lines int) {
+	for at := m.top; at < len(m.hits) && lines < ceiling; at++ {
+		take := overlayItemLines(width, commands[m.hits[at]].note())
+		if lines+take > ceiling {
+			break
+		}
+		lines += take
+		rows++
+	}
+	return rows, lines
 }
 
 func (m *menu) rows(width, n int, pal palette, hover int) []string {
@@ -738,14 +807,29 @@ func (m *menu) rows(width, n int, pal palette, hover int) []string {
 		return nil
 	}
 	m.follow(overlayItems(n, width))
-	fill := newOverlayFill(width, n, pal, hover)
+	// The fold's line is taken off the room BEFORE the rows are laid into it, so
+	// what is said about the remainder is true of the rows actually drawn. A fold
+	// appended after the fact would be counting a row that is on the screen.
+	room := n
+	if shown, _ := m.fit(width, n); m.top+shown < len(m.hits) && n > 1 {
+		room = n - 1
+		m.follow(overlayItems(room, width))
+	}
+	fill := newOverlayFill(width, room, pal, hover)
+	past := m.top
 	for at := m.top; at < len(m.hits) && fill.room(); at++ {
 		c := commands[m.hits[at]]
 		if !fill.add(at, c.typed(), c.menuNote(width), at == m.cursor, false) {
 			break
 		}
+		past = at + 1
 	}
 	lines, _ := fill.done()
+	if hidden := len(m.hits) - past; hidden > 0 && room < n {
+		// The two cells in front of it are [overlayLead]'s own, so the count hangs
+		// under the commands rather than out in the margin beside them.
+		lines = append(lines, pal.dim(fit("  "+foldLine(hidden, ""), width)))
+	}
 	return lines
 }
 
@@ -875,6 +959,12 @@ func helpText(file string, chords chordSpelling) string {
 		lines = append(lines, c.typed()+strings.Repeat(" ", width-len(c.typed())+2)+c.note())
 	}
 	lines = append(lines,
+		// THE KEY THAT GETS A PERSON HERE IS THE FIRST KEY ON THE SHEET. `?` over
+		// an empty box is what opened this list for anybody who did not already
+		// know six characters of it, and a sheet that did not name it would be a
+		// door with no sign on it (the block at the foot of this file argues the
+		// binding).
+		helpKeyRow(helpAskKey, helpAskWord),
 		"@path          complete a file · a picture attaches",
 		// THE DOOR IS NAMED HERE BECAUSE IT NO LONGER BEHAVES THE WAY THE HABIT
 		// EXPECTS (quitarm.go): one press does not leave, and a person whose
@@ -884,6 +974,21 @@ func helpText(file string, chords chordSpelling) string {
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
 		"tab            go back to the last conversation, with an empty box",
+		// ── THE SEVEN PLACES, WHICH THIS SHEET USED TO NAME NO WAY INTO ───────
+		//
+		// This block lists every chord a person can press, and until this wave it
+		// held not one of `alt+1`…`alt+7`, `alt+.` or `tab`'s meaning on a place —
+		// so somebody who typed /help from a cold start finished it without
+		// learning that the places exist. The map (`alt+.`) is the surface's own
+		// chord list and was reachable only from inside a place you already had to
+		// know how to open, which is a help sheet behind the thing it explains.
+		//
+		// The three rows are spelled through [chordSpelling.say] like the
+		// `alt+enter` row above them, so a Mac reads `⌥1…⌥7` and a Linux box reads
+		// what is authored here — one substitution, one door (chords.go).
+		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
+		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
+		"               on a place, tab is the next place · esc back",
 		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order.
 		// On a Mac `alt+enter` is drawn `⌥enter` — three cells narrower — and a
 		// literal padded to the ASCII spelling would put this one row's sentence
@@ -898,7 +1003,15 @@ func helpText(file string, chords chordSpelling) string {
 		// it is about the sentence in the box rather than about the screen, and
 		// nothing else names it until a draft happens to look like something to
 		// build.
-		spellOutKey+"         spell it out · what the draft means · enter adds it to yours",
+		// AND THE SCOPE IS ON THE ROW, because this chord is on this sheet TWICE.
+		// `ctrl+r` is the spell-it-out chord over a draft and the reveal key inside
+		// /files (deliverables.go's [filesRevealKey]), thirty-six rows apart, and
+		// neither row said the other existed — so the sheet a person opens to learn
+		// the keys contradicted itself and gave no way to tell which reading was
+		// theirs. The two do not collide in the code, and now they do not collide
+		// on the page either: each says where it acts, in the grammar the scoped
+		// rows at the foot of this list already use.
+		helpKeyRow(spellOutKey, "over a draft: spell it out · what it means · enter adds it to yours"),
 		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
@@ -907,10 +1020,15 @@ func helpText(file string, chords chordSpelling) string {
 		// (steer.go). It sits directly under the line about the other two because
 		// the three are one decision — wait, go in, or stop the answer — and the
 		// one that waits is now the secondary choice a person may not guess.
-		parkKey+"      mid-answer: waits above the box · → sends a waiting one",
+		// AND THIS ROW IS SPELLED FOR THE TERMINAL READING IT, like the `alt+`
+		// rows above and below. It used to be a literal `cmd+enter` on every
+		// platform, so the sheet on a Linux box named a modifier that keyboard does
+		// not have — while the keystroke itself arrives there as `super+enter`
+		// (steer.go binds both names). The substitution is chords.go's one door.
+		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
-		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
+		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc back",
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -921,7 +1039,7 @@ func helpText(file string, chords chordSpelling) string {
 		// The line is TRUE IN BOTH MODES of ui.quick_switch on purpose: this list
 		// has no reach into the profile, and a clause that named one mode would be
 		// wrong in the other. The card's own head and the manual say the rest.
-		"ctrl+k         switch conversations · tap it like alt+tab · esc goes back",
+		"ctrl+k         switch conversations · tap it like alt+tab · esc back",
 		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
@@ -929,11 +1047,11 @@ func helpText(file string, chords chordSpelling) string {
 		// the machine, and one word meaning two places on the same list is a
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
-		"space space    over an empty box: home · /home · esc comes back",
+		"space space    over an empty box: home · /home · esc back",
 		"ctrl+w         delete the word behind the caret · ctrl+u the line",
-		"ctrl+,         settings",
+		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
-		"p s n          in /standing: pause one · stop it · not here",
+		"p s n          in /standing: pause one · stop it · keep it out of here",
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {
@@ -1045,3 +1163,90 @@ func (a *app) runDebugCommand() {
 	}
 	a.note("recording this conversation · it goes to " + folder)
 }
+
+// ── `?` — THE KEY A PERSON PRESSES WHEN THEY ARE LOST ───────────────────────
+//
+// Until this wave `?` was bound to nothing at all. It was an ALIAS of /help —
+// `/?`, six characters and a slash you already had to know about — so the
+// shortest honest route to the key sheet was a command a person could only find
+// by opening the command list, which is itself a door the greeting names in
+// four words at the bottom of the screen. Every program with a key sheet in it
+// has answered this key since curses existed, and the first thing a developer
+// does when a full-screen program stops making sense is press it.
+//
+// WHAT IT OPENS, AND WHY THAT IS TWO THINGS. `?` means one sentence — SHOW ME
+// THE KEYS FOR WHERE I AM STANDING — and this surface has two answers to it
+// because it has two screens:
+//
+//   - In a conversation it runs /help, which is the key sheet: every command,
+//     every chord, in the transcript where it can be scrolled and searched.
+//   - On a place it draws THE MAP (`alt+.`), which is that place's own key list
+//     drawn in the cells the foot was already using ([placeMapWords], SCREEN
+//     3b). Printing the sheet from a place would mean leaving the room a person
+//     is standing in to answer a question about it, and the map is the answer
+//     the surface already has: the chords, and — since row 14 of this wave —
+//     only the ones this place really has.
+//
+// It is one gesture with one meaning and two renderings, exactly as [helpText]
+// is one table with two ([app.slash]'s "One source, two renderings").
+//
+// AND THE ONE THING THAT WOULD MAKE IT WORSE THAN NOTHING: eating a `?` a
+// person is typing. The guard is the offer key's guard word for word (keys.go)
+// and it is structural rather than clever — THE BOX MUST BE EMPTY. A question
+// mark is nearly always the LAST character of a sentence and never the first,
+// so a draft with anything in it keeps the key and it types; and every overlay,
+// list, card and modal on this surface is read above this rung, so a `?` typed
+// into a filter box, a folder picker or a consent question never reaches here
+// at all.
+const helpAskKey = "?"
+
+// helpAsk is `?` on the conversation's road: the key sheet, over an empty box.
+//
+// It answers false for every other key and for a box with something in it, so
+// the rung it sits on in [app.key] costs one string comparison.
+func (a *app) helpAsk(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if msg.String() != helpAskKey || !a.input.empty() {
+		return nil, false
+	}
+	// THE COMMAND AND NOT A SECOND PRINTING OF THE SHEET. /help is what this
+	// key means, so it goes through the dispatcher the typed word goes through
+	// and gains whatever that command gains next.
+	return a.slash("/help"), true
+}
+
+// helpAskWord is the key sheet's own row for the key, and it is the sheet's
+// first key row because it is the one a lost person presses before they have
+// read any of the others.
+const helpAskWord = "the keys · on a place it draws that place's own map"
+
+// ── THE WORD THIS SURFACE DOES NOT HAVE ─────────────────────────────────────
+
+// unknownCommandWord is what a slash word nobody here recognises is answered
+// with, and it is A SENTENCE ABOUT THE WORLD.
+//
+// It read `unknown command: /nosuchthing · try /help` — a compiler's noun and a
+// colon, in a lane where every other refusal on this surface is written the way
+// a person would say it: `there is no manual page named xyzzy` (manualcmd.go),
+// `that conversation is not on this machine any more`. The half that mattered
+// was already right — it says what to do — so what changes is the register and
+// where it points.
+//
+// AND IT POINTS AT THE LIST RATHER THAN AT A SECOND COMMAND. `/help` is six
+// characters somebody who has just mistyped a command has to type correctly;
+// `/` is one keystroke, it is the door the greeting already advertises, and
+// since row 8 of this wave the list it opens fills the frame and says how many
+// rows it is holding back. `?` opens the sheet itself, in one key ([helpAskKey]).
+func unknownCommandWord(name string) string {
+	return unknownCommandLead + " /" + name + " · " + unknownCommandDoorWord
+}
+
+// unknownCommandLead is that sentence's opening, named so a test can assert the
+// refusal without pasting the whole of it — and so that a test asserting a
+// refusal did NOT happen cannot go on passing after the wording moves, which is
+// exactly what eight of them did while this line said "unknown command".
+const unknownCommandLead = "there is no command called"
+
+// unknownCommandDoorWord is that sentence's second clause, named because the
+// refusal for a DROPPED path is written from the same two halves (dropkeys.go)
+// and a door spelled twice is a door that gets moved once.
+const unknownCommandDoorWord = "/ lists them"

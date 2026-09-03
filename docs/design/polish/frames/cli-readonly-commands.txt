@@ -1,0 +1,54 @@
+=== aforge doctor
+brain            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db · 496 KiB
+resident         this terminal while open
+standing watch   not installed · last wake not yet
+spend            $0.00 today · rail $500.00
+standing         0 active charters · 0 pending questions
+model calls      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 16 KiB
+-- exit 0
+
+=== aforge why self
+TRIED  COST  LEARNED
+-- exit 0
+
+=== aforge models
+panel:  none — AFORGE_MODELS is unset, so every call goes to ~deepseek/deepseek-v4-flash-latest  reasoning · effort
+
+nothing measured yet. Ratings appear once calls have been graded — run a plan or a graph with AFORGE_MODELS set.
+-- exit 0
+
+=== aforge cache
+the cache is empty · /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/cache
+-- exit 0
+
+=== aforge notebook
+SEQ  SCOPE  KIND  AGE  USES  RIDES  BAD  STATUS  BELIEF
+
+today's spend: $0.00 of $500.00 daily rail
+-- exit 0
+
+=== aforge competence
+No competence evidence yet.
+-- exit 0
+
+=== aforge services
+
+-- exit 0
+
+=== aforge logs --tail 5
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
+23:08:41  turn  ~deepseek/deepseek-v4-flash-latest  high  → 429  0.3s  deadline 10.0s  API error (429): Provider returned error (via OpenInference: deepseek/deepseek-v4-flash-0731 is temporarily rate-limited upstream.)
+23:08:42  turn  ~deepseek/deepseek-v4-flash-latest  high  try 2  deadline 10.0s  ⋯ in flight 1m55s
+23:08:49  turn  ~deepseek/deepseek-v4-flash-latest  high  try 5  deadline 10.0s  ⋯ in flight 1m48s
+23:10:16  leaf  ~deepseek/deepseek-v4-flash-latest  BaseTen→OpenInference  #task-2  off  max 65536  → 200  2m30s  first token 0.6s  deadline 30.0s  the reply ran past 2m30s without finishing and was cut  acted report
+23:10:17  leaf  ~deepseek/deepseek-v4-flash-latest  DeepInfra  #task-2  off  max 65536  → 404  0.0s  deadline 30.0s  API error (404): All providers have been ignored. To change your default ignored providers, visit: https://openrouter.ai/settings/privacy
+-- exit 0
+
+=== aforge logs --path
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
+-- exit 0
+
+=== aforge version
+aforge 2d4c4dde8 built 2026-09-02 22:57
+-- exit 0
+

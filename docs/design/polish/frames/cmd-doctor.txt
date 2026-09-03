@@ -1,0 +1,6 @@
+brain            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db · 496 KiB
+resident         this terminal while open
+standing watch   not installed · last wake not yet
+spend            $0.00 today · rail $500.00
+standing         0 active charters · 0 pending questions
+model calls      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 26 KiB

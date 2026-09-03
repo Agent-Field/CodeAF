@@ -1,0 +1,66 @@
+aforge — the environment
+
+Every variable below is read at launch. A variable set here always wins over the
+`/settings` sheet in the chat, and that row reads read-only in the sheet rather
+than fighting your shell.
+
+  OPENROUTER_API_KEY   required
+  AFORGE_MODEL         default ~deepseek/deepseek-v4-flash-latest
+  AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
+                       replans, working methods, and the delivery gate on a
+                       stronger model while a smaller one does the steps; --model
+                       and --plan-model do the same per run.
+  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel and
+                       calls cascade — cheapest model first, escalating when a
+                       verifier catches a failure. Either a comma-separated list
+                       of slugs, or a path to a JSON file:
+                         AFORGE_MODELS=google/gemma-3-12b-it,~deepseek/deepseek-v4-flash-latest,moonshotai/kimi-k2.6
+                         AFORGE_MODELS=~/.aforge/models.json
+                       Ratings accumulate in ~/.aforge/router-ledger.json across
+                       runs; see them with `aforge models`.
+  AFORGE_REASONING     planning calls: off (default), low, medium, high
+  AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
+  AFORGE_EXEC_TIMEOUT  `aforge exec` only: hard wall when --timeout is not passed,
+                       as a duration or a bare number of seconds. AFORGE_EXEC_BUDGET
+                       and AFORGE_EXEC_TURNS do the same for --token-budget and
+                       --max-turns. A flag that was typed always wins; these exist
+                       so a harness can set the walls once for a campaign instead
+                       of on every call.
+  AFORGE_EXIT_CODES    "legacy" restores `aforge exec`'s old 2/3/4/5/6 exit codes for one
+                       release, and changes nothing else
+  AFORGE_MAX_DEPTH     2   how many levels of decomposition
+  AFORGE_NODE_BUDGET   60  hard ceiling on total steps
+  AFORGE_DAILY_BUDGET  500  the day's spending limit in dollars (0 = unlimited)
+  AFORGE_PLAN_CONSENT  100  a plan estimated above this quotes its price
+                       and waits for your word (0 = never asks)
+  AFORGE_IMAGE_MODEL          image-generation model (catalog-resolved by default)
+  AFORGE_SPEECH_MODEL         speech-synthesis model (catalog-resolved by default)
+  AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
+  AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
+  AFORGE_VISION_MODEL         image-inspection proxy model (talk/work/catalog-resolved by default)
+  AFORGE_DOC_ENGINE           auto (default), local, free, or ocr document-reading rung
+  AFORGE_PRACTICE_BUDGET  50  daily self-practice carve-out (0 = disabled)
+  AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
+  AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
+  AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
+                       carry its own work on (default none: it stops when the
+                       model stops). --max-hours wins.
+  AFORGE_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
+                       alone is a budget; without one, --yolo is only the
+                       approval posture it has always been.
+  AFORGE_PREAUTHORIZE_SPEND  1 spends past the day's limit without a headless stdin prompt
+  AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
+                       profiles, catalog, skills (default ~/.aforge). Move it to
+                       run a disposable store that touches nothing of yours.
+  AFORGE_PROFILE_DIR   where measured behaviour is kept (default AFORGE_HOME)
+  AFORGE_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
+                       "off" writes nothing; any other value is the file to write.
+  AFORGE_CALL_LOG_BODIES=1
+                       also record each call's whole request and response — your
+                       prompts included. Off by default, and for one run at a time.
+
+The user-facing knobs above — budgets, rhythm, the document rung, the vision and
+media slots — are also the `/settings` sheet in the chat, which persists them to
+the profile's config.json.
+
+Run `aforge --help` for every command.

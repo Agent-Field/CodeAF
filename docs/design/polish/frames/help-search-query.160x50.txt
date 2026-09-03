@@ -1,0 +1,50 @@
+ aforge                                                                                                                           $0.37 / $500.00 · wed 11:08pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+aforge-v2 6 · infra 3 · pricing-site 3
+› Porting the Picker · Yes, and the fold line is the list's rather than the picker's now, so the two cannot drift. · 3 more in this chat         aforge-v2 · 10m
+› The Annual Toggle · put the annual toggle on the pricing page · 1 more in this chat                                                         pricing-site · 10m
+› Why the Frame Jumps · the frame jumps sideways every time the card opens · 2 more in this chat                                                 aforge-v2 · 10m
+› The Certificate Rotation · rotate the wildcard certificate before it expires on the first · 1 more in this chat                                    infra · 10m
+› The Tab Bar's Counts · The bar and the list were taking two readings of the world a few hundred milliseconds apart. One reading, shared by ev… aforge-v2 · 10m
+› The Manual's Missing Page · The page saying it was impossible outlived the wave that shipped it. Removed, and the gate that would have caught… aforge-v2 · 10m
+› Rotating the Deploy Key · Two runners and the release job. All three moved; the old key is revoked. · 1 more in this chat                          infra · 10m
+› The Backup Window · does the restore still work? · 2 more in this chat                                                                             infra · 10m
+› Pricing Research · Remembered as a project decision, so the next conversation about the ladder starts knowing it. · 2 more in this chat     pricing-site · 10m
+› What the Discount Means · They are the same number said two ways. Two months free is the one buyers read fastest. · 1 more in this chat     pricing-site · 10m
+› Standing Up the Watches · and sweep the repo every morning at nine                                                                             aforge-v2 · 10m
+› Reading the Ledger · Most of it, and most of that went to two conversations rather than to work — the spend page has the split by model and b… aforge-v2 · 10m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › the                                                                                                                                         here ~/aforge-v2
+ enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place

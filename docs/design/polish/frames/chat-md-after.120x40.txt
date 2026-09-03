@@ -1,0 +1,40 @@
+The file lives at                                                                         │ + /task
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de  │
+mohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.                     │ standing
+                                                                                          │ ◦ the morning sweep
+▏ func (a *app) burnSegment() string {                                                    │ ? CI on master
+▏     if a.state != stateWorking || a.turnBegan.IsZero() { return a.holdBurn("") }        │ ◦ the public API
+▏     return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Seconds()))) + "… │ + /standing
+▏ }                                                                                       │
+                                                                                          │
+Supercalifragilisticexpialidociousandthensomeextraletterstomakeitlongerthansixtycolumnsw  │
+ide.                                                                                      │
+                                                                                          │
+Unicode: 日本語のテキストはここにあります、そして中文文本也在这里，很长很长。 And emoji:  │
+🎉 🚀 ✅ 🧪 — plus a flag 🇯🇵 and a family 👩‍👩‍👧‍👦.                                          │
+                                                                                          │
+│ A blockquote that runs on for a while so that it has to wrap at sixty columns and       │
+│ shows what the marker does on the second line.                                          │
+                                                                                          │
+1. first                                                                                  │
+2. second, with a much longer body so that it wraps and we can see whether the hanging    │
+   indent lines up under the text or under the number                                     │
+3. third                                                                                  │
+                                                                                          │
+· bullet                                                                                  │
+  · nested bullet with enough words to wrap at the narrow sizes we care about             │
+                                                                                          │
+› first line of a draft that I am still writing                                           │
+  second line here                                                                        │
+  third line, which is quite a lot longer than the two above it so that it has to wrap    │
+  when the window gets narrowlist the files in this directory, then say done              │
+                                                                                          │
+  · 3 standing orders here — /standing                                                    │ Σ $0.12 · 12.7k tok
+  · resumed · Wrapping Torture                                                            │ ctrl+. earlier
+  · esc interrupts · ctrl+c twice quits                                                   │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                                                                  ⠿ high
+ ›
+Wrapping Torture · deepseek-v4-flash-latest             crew balanced · ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

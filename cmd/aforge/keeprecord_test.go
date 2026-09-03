@@ -30,10 +30,10 @@ func TestAFailedHeadlessRunKeepsItsRecord(t *testing.T) {
 		{name: "a clean run is deleted", keep: false},
 		{name: "a clean run asked to be kept", asked: true, keep: true},
 		{name: "a clean run under the debug switch", debugging: true, keep: true},
-		{name: "a run that failed", outcome: headlessOutcome{status: exitFailed}, keep: true},
-		{name: "a run that landed partial", outcome: headlessOutcome{status: exitPartial}, keep: true},
+		{name: "a run that failed", outcome: headlessOutcome{stop: stopError}, keep: true},
+		{name: "a run that landed partial", outcome: headlessOutcome{stop: stopIncomplete}, keep: true},
 		{name: "a run that never reached an outcome", err: errors.New("the store would not open"), keep: true},
-		{name: "a failure asked to be kept", asked: true, outcome: headlessOutcome{status: exitFailed}, keep: true},
+		{name: "a failure asked to be kept", asked: true, outcome: headlessOutcome{stop: stopError}, keep: true},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			got := keepPrivateStore(row.asked, row.debugging, errandSucceeded(row.outcome, row.err))
@@ -132,5 +132,35 @@ func TestARunSaysWhichOfTheTwoEndingsItGot(t *testing.T) {
 	// every caller had before signals were routed through the context at all.
 	if (&settlementWatch{}).stoppedByHand() {
 		t.Fatal("a watcher with no signal to read called an ordinary wall a stop")
+	}
+}
+
+// A RUN THAT NEVER STARTED KEEPS NO RECORD AND NAMES NO FOLDER.
+//
+// `record kept at <path>` used to print for runs that fell over at the door: it
+// stood directly above `permission denied` and above the missing-key sentence,
+// pointing somebody at an empty folder on the exact line where they were
+// already looking for the cause.
+func TestARunThatNeverStartedKeepsNoRecord(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(homepkg.EnvVar, root)
+	t.Setenv("AFORGE_PROFILE_DIR", root)
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	var out, errs strings.Builder
+	err := doErrand(doRequest{task: "count the lines", stdout: &out, stderr: &errs})
+	if err == nil {
+		t.Fatal("a run with no key reported success")
+	}
+	if strings.Contains(errs.String(), "record kept at") {
+		t.Fatalf("a run that never started pointed the reader at a folder:\n%s", errs.String())
+	}
+	runs, readErr := os.ReadDir(filepath.Join(root, "runs"))
+	if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatal(readErr)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("a run that never started left %d folder(s) under runs/", len(runs))
 	}
 }

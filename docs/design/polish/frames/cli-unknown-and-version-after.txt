@@ -1,0 +1,18 @@
+=== aforge lgos
+error: there is no `aforge lgos`. did you mean `aforge logs`?
+run `aforge --help` for every command
+-- exit 1
+
+=== aforge doo
+error: there is no `aforge doo`. did you mean `aforge do`?
+run `aforge --help` for every command
+-- exit 1
+
+=== aforge quux
+error: there is no `aforge quux`.
+run `aforge --help` for every command
+-- exit 1
+
+=== aforge --version
+aforge 25e72ff41 (dirty) built 2026-09-02 23:36
+-- exit 0

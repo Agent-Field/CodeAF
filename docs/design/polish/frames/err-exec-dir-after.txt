@@ -1,0 +1,5 @@
+$ ./bin/aforge exec x --dir /nope
+models: work ~deepseek/deepseek-v4-flash-latest (default)
+error: /nope could not be created — this account is not allowed to write there.
+choose a path you own, such as one under your home directory.
+exit=1

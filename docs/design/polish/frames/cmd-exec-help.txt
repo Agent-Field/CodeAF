@@ -1,0 +1,26 @@
+Usage of exec:
+  -budget int
+    	token budget for the agent (env AFORGE_EXEC_BUDGET) (default 150000)
+  -completion-reserve int
+    	tokens reserved for each answer and its reasoning
+  -context-fill int
+    	context compaction threshold in percent (default 60)
+  -debug
+    	keep the full record of this run — call bodies, tool calls and the choices made — in a folder of its own under the state root (env AFORGE_DEBUG)
+  -json
+    	print a machine-readable result
+  -model string
+    	work model for this run (flag › AFORGE_MODEL › crew › default)
+  -o string
+    	write the machine-readable result to this file
+  -plan-model string
+    	accepted for headless model-pin parity; exec performs no planning
+  -system string
+    	working method for the agent
+  -timeout int
+    	hard wall in seconds (env AFORGE_EXEC_TIMEOUT; default: scale from the token budget)
+  -turns int
+    	runaway backstop on agent iterations (env AFORGE_EXEC_TURNS) (default 200)
+  -w string
+    	workspace directory (default ".")
+error: flag: help requested

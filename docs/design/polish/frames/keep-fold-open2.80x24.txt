@@ -1,0 +1,24 @@
+
+› list the files in this directory with the list tool, then in one sentence say
+  what this project is
+
+  ▸ worked · 1 tool call · ctrl+e
+
+This project appears to be a development workspace for an application called
+"aforge-v2", which is a terminal-based user interface (TUI) tool. The directory
+structure and files suggest it is an internal project that is being actively
+developed, with ongoing work being done to port various components like the
+picker, lexer, and tests to a new version of the TUI library.
+
+  · 3 standing orders here — /standing
+  · resumed · aforge-v2 tui porting
+  · esc interrupts · ctrl+c twice quits
+
+
+
+─ master* ────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                          ⠿ high
+ ›
+aforge-v2 tui porting · deepseek-v4-flash-latest
+                crew balanced · ◦ keeping an eye on 3 · $0.01 · 5.5k/1.3M · idle

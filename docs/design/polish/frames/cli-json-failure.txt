@@ -1,0 +1,41 @@
+=== do --json -w /nope/dir : STDOUT ONLY
+{
+  "deliverable": "",
+  "artifacts": [],
+  "spend": 0,
+  "spend_work": 0,
+  "spend_overhead": 0,
+  "nodes": 0,
+  "seconds": 0.051883598,
+  "settled": false,
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "plan_model": "",
+  "model_source": "default",
+  "plan_model_source": "default",
+  "subharness": "",
+  "error": "create chat workspace: mkdir /nope: permission denied"
+}
+-- exit 1 ; stdout above (empty = broken promise)
+
+=== do --json --db /nope/dir/g.db : STDOUT ONLY
+{
+  "deliverable": "",
+  "artifacts": [],
+  "spend": 0,
+  "spend_work": 0,
+  "spend_overhead": 0,
+  "nodes": 0,
+  "seconds": 0.000071472,
+  "settled": false,
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "plan_model": "",
+  "model_source": "default",
+  "plan_model_source": "default",
+  "subharness": "",
+  "error": "create the store directory: mkdir /nope: permission denied"
+}
+-- exit 1
+
+=== exec --json --model bogus : STDOUT ONLY
+{"text":"","stop":"error","usage":{"calls":0,"prompt_tokens":0,"completion_tokens":0,"cached_tokens":0,"cost":0},"artifacts":[],"turns":0,"elapsed_ms":40}
+-- exit 5

@@ -28,6 +28,13 @@ import (
 // hundred columns, and what keeps the place that draws it (place_home.go) down
 // to a cursor, two view flags and a fold.
 
+// switcherShown is the FLOOR on how many rows this list draws, and never the
+// ceiling. Eight is what a short terminal owes a person — enough rows that the
+// fold under them is a summary rather than a stub — and a taller frame draws as
+// many as it can hold ([switcherReading.capAtRest] does the arithmetic against
+// [switcherView.room]). It was a bare cap for a wave, which is how a fifty-row
+// terminal came to draw eight conversations, fold the other four behind
+// `▸ 4 more, quiet since 6d`, and leave twenty-eight blank rows under them.
 const switcherShown = 8
 
 // switcherVerb is one thing the strip can offer for a row: the letter, the word
@@ -61,6 +68,19 @@ type switcherView struct {
 	// line that says rows are being hidden and cannot be asked to stop hiding
 	// them is a dead end somebody hits and gives up at.
 	all bool
+	// room is how many rows the column this reading is drawn into actually has,
+	// and it is the answer to "how many rows may the list draw" that this file
+	// spent a wave not having: [switcherShown] alone made the list eight rows on
+	// a fifty-row terminal and eight on a twenty-four-row one.
+	//
+	// IT IS A NUMBER HANDED IN AND NEVER A NUMBER ASKED FOR. This file's header
+	// states the law — nothing here takes an *app, opens a file or measures a
+	// frame — so the room arrives with the rest of the facts, counted by the
+	// place that owns the column (place_home.go's [homeView.buildSwitch]). ZERO
+	// IS NO ANSWER, not a room of nothing: a reading told nothing about its
+	// frame draws exactly what it drew before this field existed, which is what
+	// keeps every fixture in switcher_test.go true.
+	room int
 }
 
 type switcherLedgerInput struct {
@@ -252,14 +272,28 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 	return r
 }
 
-// switcherCap is how many rows this reading draws before the rest go behind one
-// door. It is [switcherShown] at rest and NO CAP AT ALL once the fold has been
-// opened, which is the whole of what opening it means.
-func (r switcherReading) cap(n int) int {
-	if r.view.all {
-		return n
+// capAtRest is how many rows this reading draws before the rest go behind one
+// door: what the frame can hold, and never fewer than [switcherShown].
+//
+// IT IS THE CAP WITH THE FOLD SHUT WHETHER OR NOT THE FOLD IS OPEN, because it
+// is also the number the fold's own count is measured at — an opened fold draws
+// every row and still says how many it is the door over, which is the way back.
+// The two callers take the opened case themselves, in one line each, so that
+// this function answers exactly one question.
+//
+// extra is what this shape will spend on the page BESIDES the rows themselves —
+// the grouped list's project headings — because a heading takes a row from the
+// same frame a conversation would have had.
+func (r switcherReading) capAtRest(n, extra int) int {
+	shown := switcherShown
+	// THE ROWS ALREADY ON THE PAGE ARE SPENT. The `since you left` block and the
+	// section line above the list are written before this is asked, so what is
+	// left of the frame is the room less what is on it — less one more line for
+	// the fold itself, which is the row that says what did not fit.
+	if left := r.view.room - len(r.lines) - extra - 1; r.view.room > 0 && left > shown {
+		shown = left
 	}
-	return min(switcherShown, n)
+	return min(shown, n)
 }
 
 // switcherWhere is the project a row belongs to, in the words [homeView.gone] is
@@ -485,6 +519,17 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, world s
 	}
 }
 
+// switcherHeadRows is what a grouped list spends on names rather than on rows:
+// one heading per project, and the blank line [switcherReading.addSectionLine]
+// puts above each of them.
+func switcherHeadRows(rows []switcherRow) int {
+	seen := map[string]bool{}
+	for _, row := range rows {
+		seen[row.project] = true
+	}
+	return 2 * len(seen)
+}
+
 func (r *switcherReading) addFlat(all []switcherRow) {
 	if r.hasAttention {
 		r.addSectionLine(switcherLine{section: true})
@@ -505,8 +550,33 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 	if !r.view.hideQuiet {
 		selected = append(selected, quiet...)
 	}
-	capped := min(switcherShown, len(selected))
-	selected = selected[:r.cap(len(selected))]
+	// THE SECTION LINE IS PUT ON THE PAGE BEFORE THE CAP IS TAKEN, and not
+	// after: it is two of the frame's rows, and a cap that counted the rows
+	// already drawn while this one was still to come would hand the column two
+	// lines more than it has. Nothing is appended between here and the headings
+	// below, so the list reads in exactly the order it always did.
+	if r.hasAttention {
+		r.addSectionLine(switcherLine{section: true})
+	}
+	// A GROUPED LIST PAYS FOR ITS OWN HEADINGS OUT OF THE SAME FRAME: every
+	// project on the page costs a name and the blank above it, so the cap is
+	// settled by asking how many rows fit, counting the headings those rows
+	// would bring with them, and asking again. Each pass can only take rows
+	// away, so it settles — and it settles in one pass on the frames anybody
+	// actually has.
+	capped := r.capAtRest(len(selected), 0)
+	for i := 0; i < 4; i++ {
+		next := r.capAtRest(len(selected), switcherHeadRows(selected[:capped]))
+		if next >= capped {
+			break
+		}
+		capped = next
+	}
+	shown := capped
+	if r.view.all {
+		shown = len(selected)
+	}
+	selected = selected[:shown]
 	byProject := map[string][]switcherRow{}
 	for _, row := range selected {
 		byProject[row.project] = append(byProject[row.project], row)
@@ -538,9 +608,6 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 		}
 		return groups[i].at.After(groups[j].at)
 	})
-	if r.hasAttention {
-		r.addSectionLine(switcherLine{section: true})
-	}
 	for _, group := range groups {
 		r.addSectionLine(switcherLine{heading: group.name})
 		for _, row := range byProject[group.name] {
@@ -555,12 +622,12 @@ func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects 
 			quietAt := capped - len(active)
 			if r.view.hideQuiet {
 				clause = "quiet"
-			} else if quietAt < len(quiet) && !quiet[quietAt].at.IsZero() {
-				clause = "quiet since " + strings.ToLower(quiet[quietAt].at.Format("Jan 2"))
+			} else if quietAt < len(quiet) {
+				clause = quietFoldClause(quiet[quietAt].at, r.now)
 			}
 		}
 		r.hidden = hidden
-		r.addFold(foldLine(hidden, clause))
+		r.addFold(hidden, clause)
 	}
 }
 
@@ -578,8 +645,11 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 	// An opened fold draws every row and still says how many rows it is the door
 	// over, because it is the way back — a fold that vanished when it was opened
 	// would leave the list with no way to become a summary again.
-	capped := min(switcherShown, len(eligible))
-	shown := r.cap(len(eligible))
+	capped := r.capAtRest(len(eligible), 0)
+	shown := capped
+	if r.view.all {
+		shown = len(eligible)
+	}
 	for _, row := range eligible[:shown] {
 		copy := row
 		r.lines = append(r.lines, switcherLine{row: &copy})
@@ -589,12 +659,12 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 		if capped < len(all) && !all[capped].needs && !all[capped].moving {
 			if r.view.hideQuiet {
 				clause = "quiet"
-			} else if !all[capped].at.IsZero() {
-				clause = "quiet since " + strings.ToLower(all[capped].at.Format("Jan 2"))
+			} else {
+				clause = quietFoldClause(all[capped].at, r.now)
 			}
 		}
 		r.hidden = more
-		r.addFold(foldLine(more, clause))
+		r.addFold(more, clause)
 	}
 }
 
@@ -602,12 +672,19 @@ func (r *switcherReading) addRowsAndFold(all []switcherRow) {
 // wears the mark that says which way it goes — `▸` while it is hiding rows,
 // `▾` once it has been opened, the same two marks every other fold on this
 // surface uses.
-func (r *switcherReading) addFold(word string) {
+//
+// THE SENTENCE IS [foldWords] AND NOT THIS FILE'S OWN. This fold used to be
+// handed a finished [foldLine] and swap the glyph on the front of it, which left
+// an opened fold still saying `▾ 5 more` over five rows a person could see, and
+// left the list spelling the same idea differently from the phone and the
+// project tails. Both callers now hand in the count and the clause, and the one
+// speller says whether it is `more` or `fewer`.
+func (r *switcherReading) addFold(n int, clause string) {
 	mark := tokens.GlyphCollapsed
 	if r.view.all {
 		mark = tokens.GlyphExpanded
 	}
-	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + strings.TrimPrefix(word, tokens.GlyphCollapsed)}
+	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + " " + foldWords(r.view.all, n, clause)}
 	r.lines = append(r.lines, switcherLine{row: &row})
 }
 
@@ -766,8 +843,23 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 	if width < 80 {
 		note = ""
 	}
+	// THE NAME IS WHOLE BEFORE ANY FACT GETS A CELL (rowfit.go's law 1). The
+	// facts drop in rank order — the note first, then the project tag, then the
+	// margin — until the conversation's own title fits BESIDE what is left, and
+	// the title is cut only when the frame will not hold it alone, which is the
+	// one case that law allows a cut in.
+	//
+	// THE GUARD USED TO BE AN EIGHT-CELL FLOOR ON THE NAME, and eight cells is
+	// not a name: the ladder never fired while the title had eight cells left,
+	// so a hundred-column frame drew `? tell me when CI goe…` beside seventy-
+	// eight cells of somebody's question — eighteen cells spent on the one fact
+	// the row exists to carry and the rest on a sentence the card is there to
+	// carry properly. Eight survives as the LAST resort below: a row whose facts
+	// have all gone and whose name still will not fit is a row where every
+	// answer is a cut one, and this is where [rowPlan.fit] stops too.
 	parts := []string{project, note, age}
-	for switcherTailWidth(parts)+ansi.StringWidth(glyph)+2+8 > width {
+	whole := ansi.StringWidth(row.title)
+	for switcherTailWidth(parts)+ansi.StringWidth(glyph)+2+whole > width {
 		if parts[1] != "" {
 			parts[1] = ""
 			continue

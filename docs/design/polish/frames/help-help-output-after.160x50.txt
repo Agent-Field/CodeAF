@@ -1,0 +1,50 @@
+  /export                 write this conversation to a file · also /save                                                          │ + /task
+  /export <path>          …and write it there · tab completes the path                                                            │
+  /files                  what has been made for you · open, reveal or copy one                                                   │ + /standing
+  /files <path>           …or bring one back from the machine over there and open it                                              │
+  /attach <path>          attach a file · tab completes the path · also /upload                                                   │
+  /manual                 aforge's own manual · every page, one per line                                                          │
+  /manual <page>          …that page, as it is written                                                                            │
+  /manual <question>      …the sections that answer it, page and heading named                                                    │
+  /debug                  keep the full record of this conversation · says where it goes                                          │
+  /help                   this list · also /?                                                                                     │
+  /quit                   close this conversation · also /exit /q                                                                 │
+  @path          complete a file · a picture attaches                                                                             │
+  ctrl+c         twice quits everything · mid-turn one press interrupts, like esc                                                 │
+  tab            go back to the last conversation, with an empty box                                                              │
+  alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings                     │
+  alt+.          on a place: what else is here · every key that place has, drawn                                                  │
+                 on a place, tab is the next place · esc comes back                                                               │
+  alt+enter      open a line · enter sends                                                                                        │
+  ctrl+enter     keep this true · a standing order's card, never work done once                                                   │
+  ctrl+r         spell it out · what the draft means · enter adds it to yours                                                     │
+  ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too                             │
+  ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks                                                      │
+  ctrl+s         drag to select with your mouse · any key ends it                                                                 │
+  enter          mid-answer: stops the current reply and steers these words in                                                    │
+  cmd+enter      mid-answer: waits above the box · → sends a waiting one                                                          │
+  ctrl+q         hand this to the session now, to run after the current turn                                                      │
+  ctrl+e         open the model's thinking, streaming or finished                                                                 │
+  ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves                                                   │
+  ctrl+.         every task this project has run · /history · type to filter                                                      │
+  ctrl+g         close the roster's column, or bring it back · remembered                                                         │
+  ctrl+l         back to the latest · the chip above the box says so too                                                          │
+  ctrl+k         switch conversations · tap it like alt+tab · esc goes back                                                       │
+                 → reaches every other one on this machine · ctrl+w closes one                                                    │
+  → ←            over an empty box: into a running task, and back out                                                             │
+  ← ←            out of a task room · the conversation, at the live edge                                                          │
+  space space    over an empty box: home · /home · esc comes back                                                                 │
+  ctrl+w         delete the word behind the caret · ctrl+u the line                                                               │
+  ctrl+,         settings                                                                                                         │
+  d              in /permissions: drop the line under the cursor · press it twice                                                 │
+  p s n          in /standing: pause one · stop it · not here                                                                     │
+  ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere                                                        │
+  session · /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-│
+  tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-                                │
+  proj/770391df4a5f1343/transcript.jsonl                                                                                          │ ❯ ctrl+g hide
+
+─ master ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── space space home · / commands ─
+
+                                                                                                                                                          ⠿ high
+ ›
+aforge · deepseek-v4-flash-latest                                                                                       crew balanced · $0.00 · 5.4k/1.3M · idle

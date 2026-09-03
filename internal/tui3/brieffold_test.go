@@ -371,3 +371,68 @@ func TestAPageOverTheRoomKeepsTheFoldKey(t *testing.T) {
 		t.Fatalf("%s reached through the record page: %d lines, want %d", briefFoldKey, got, before)
 	}
 }
+
+// ── AND THE CONVERSATION'S OWN MESSAGES DO NOT FOLD AT ALL ──────────────────
+
+// conversationMessageRows is the person's message as the conversation draws it:
+// every row of block zero, with the indent law's gutter and the turn glyph
+// taken off, so what is left is the sentence.
+func conversationMessageRows(a *app, width int) []string {
+	var out []string
+	for _, r := range a.visible(width) {
+		if r.entry != 0 || strings.TrimSpace(plain(r.text)) == "" {
+			continue
+		}
+		line := strings.TrimSpace(unindented(plain(r.text)))
+		line = strings.TrimSpace(strings.TrimPrefix(line, strings.TrimSpace(plain(a.pal.youGlyph()))))
+		out = append(out, line)
+	}
+	return out
+}
+
+// A PERSON'S OWN MESSAGE IS DRAWN WHOLE, HOWEVER LONG IT IS. The fold's cut ran
+// over every user block while its door and its key were gated on the instruction
+// flag, so a six-line question stopped at three rows mid-sentence with nothing
+// on screen saying the rest existed and no key that brought it back. A fold that
+// cannot be opened is worse than no fold: the transcript is the only record of
+// what was asked for.
+func TestALongMessageIsNeverCutWithoutADoor(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 100, 40
+	said := briefWords(90)
+	a.entries = append(a.entries, entry{kind: entryUser, text: said})
+	a.touch()
+
+	width := a.bodyWidth()
+	want := wrap(said, width-userLeadCols)
+	if len(want) <= briefFoldLines {
+		t.Fatalf("the fixture is not long enough to be cut: it wraps to %d lines", len(want))
+	}
+	got := conversationMessageRows(a, width)
+	if len(got) != len(want) {
+		t.Fatalf("the message drew %d rows, want all %d:\ndrawn:\n%s\nwant:\n%s",
+			len(got), len(want), strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	for i := range want {
+		if got[i] != strings.TrimSpace(want[i]) {
+			t.Fatalf("row %d is %q, want %q", i, got[i], strings.TrimSpace(want[i]))
+		}
+	}
+	// AND THE LAST WORD OF IT IS ON THE SCREEN, which is the whole complaint
+	// said as a person would say it: they typed it and could not read it back.
+	if !strings.Contains(plain(frame(a)), "word89") {
+		t.Fatalf("the end of the person's own message is not on screen:\n%s", plain(frame(a)))
+	}
+	// AND NO DOOR IS DRAWN OVER IT, because there is nothing behind one: a fold
+	// line under a block that is all there would be furniture claiming to be an
+	// affordance.
+	for _, r := range a.visible(width) {
+		if r.hit == hitBrief {
+			t.Fatalf("an ordinary message grew an instruction's door: %q", plain(r.text))
+		}
+	}
+	// AND ctrl+o FALLS THROUGH, keeping every other meaning it has.
+	if a.toggleBriefFold() {
+		t.Fatal("the fold key claimed a conversation with nothing folded in it")
+	}
+}

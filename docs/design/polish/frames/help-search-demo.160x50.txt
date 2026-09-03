@@ -1,0 +1,50 @@
+ aforge                                                                                                                           $0.37 / $500.00 · wed 11:08pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+search reads every message in every conversation on this machine.
+typing here searches; typing on home starts something.
+enter opens the conversation at the matching turn.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                      here ~/aforge-v2
+ enter talk about it · alt+enter send it off as a task · alt+. for the map · tab next place

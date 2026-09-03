@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+                      ┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
+                      ├─┤ ├─  │ │ │   └─┤ ├─
+                      └─┘ │   └─┘ │   └─┘ └─┘
+
+                      setting up · 1 of 3
+
+                      connect openrouter
+                      sign in once in your browser. openrouter makes a key for this profile;
+                      aforge stores it on this machine. no prompt is sent and no model is called.
+                      or get a key at https://openrouter.ai/settings/keys
+
+                      ›
+
+                      enter connects in browser · paste a key · esc not now
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

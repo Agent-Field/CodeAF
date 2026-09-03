@@ -428,8 +428,13 @@ func TestATurnSaysWhatItCalledAndWhatItWrote(t *testing.T) {
 			notes[row.text] = row.note
 		}
 	}
-	if got := notes["change the parser"]; got != "3 tools · 2 files" {
-		t.Fatalf("the turn's tally is %q, want %q", got, "3 tools · 2 files")
+	// THE WORD FOR A TOOL CALL IS SPELLED ONCE, in [toolCallWord], and read
+	// from there rather than copied — this line held a THIRD spelling (`3
+	// tools` against the card's `3 tool calls`) and a literal here is exactly
+	// how a fourth would arrive.
+	want := toolCallWord(3) + " · 2 files"
+	if got := notes["change the parser"]; got != want {
+		t.Fatalf("the turn's tally is %q, want %q", got, want)
 	}
 	// THE EMPTINESS LAW: a turn that called nothing says nothing, not "0 tools".
 	if got := notes["thanks"]; got != "" {

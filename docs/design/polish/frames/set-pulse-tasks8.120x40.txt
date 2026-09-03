@@ -1,0 +1,40 @@
+ aforge                                                                                   $0.37 / $500.00 · wed 11:05pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 10, $2.21 of it.                                   shift+← aug 20 – sep 2 →  shift+↑ coarser
+
+done today
+›   ✓ Port the picker onto the new list                                         Porting the Picker saved shape $0.31 47m
+  ▸ ✓ Count the tabs the bar draws                                                The Tab Bar's Counts $0.42 2h +3 under
+    ✓ Write the morning sweep down                                                      Standing Up the Watches $0.14 5h
+    ✓ Put the… The Annual Toggle 2 files · Annual is the default and the monthly price stays visible beside it. $0.27 5h
+
+earlier
+    ✕ Rebuild the frame budget report                                     Why the Frame Jumps gave up, said why $0.18 8d
+    · Rotate the wildcard certificate                                            The Certificate Rotation incomplete now
+    ✓ Take the backup window down to twenty minutes                                           The Backup Window $0.55 2d
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 7 done today · 3 earlier
+ › say what you want done                                                                              here ~/aforge-v2
+ enter go inside it · type to filter · tab next place

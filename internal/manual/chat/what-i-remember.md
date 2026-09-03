@@ -96,20 +96,30 @@ They are drawn biggest first, under a section line that says what the shelves ar
 up with `▸` in front of them, and a fold at the bottom says exactly how many lines or shelves
 are not shown.
 
-The top line is the count: `41 held · 3 shelves · 2 let go`, with `type to filter` out at the
-right. A half that is zero is left out entirely.
+The top line is the count: `41 held · 3 shelves · 2 let go · 1 replaced`, with
+`type to filter` out at the right. A half that is zero is left out entirely, and **let go and
+replaced are counted apart** — one you asked for, the other happened on its own.
 
-Each line says what it is and **how it has done**, in plain words rather than a percentage:
+Each line says what it is and **how it has done**, in plain words rather than a percentage,
+and every field on the row is joined by the one separator this surface joins facts with:
 
 ```
-· tests live beside the file they test      lesson    helped 19 · bore on 3      2w ago
-· tui2 is the live tree; tui is dead code   quirk     new, learned 3h ago        3h
-· the rail owns the cursor                  let go                               6d ago
+· tests live beside the file they test · lesson · helped 19 · bore on 3      2w ago
+· tui2 is the live tree; tui is dead code · quirk · new, learned 3h ago      3h
+· the rail owns the cursor · fact · let go                                   6d ago
+· deploys on Fridays · fact · replaced                                       3d ago
 ```
+
+The **title is whole** whatever the frame is; the facts behind it are a ranked prefix, so a
+narrow terminal drops `helped 19 · bore on 3` from the end rather than cutting the line's own
+words. The age stays out at the right.
 
 `helped` is how many times a line actually changed an answer; `bore on` is how many times it
 was put in front of a model and had nothing to do with the reply. A line that was **let go**
-stays on the shelf, dimmed, rather than vanishing.
+stays on the shelf, dimmed, rather than vanishing — and so does one that was **replaced**,
+which is the word for a memory this machine retired on its own because something newer
+contradicted it (*Why did it say superseded?*, below). They are two different things and the
+page says which is which.
 
 **Typing filters what is already on the page.** The store is read once, when you walk in, and
 again on the same three-second beat every place runs on — never on a keystroke. Every letter
@@ -281,9 +291,12 @@ A line whose age is unknown — an old row from before this was recorded — sim
 carries no age rather than a zero. Nothing here asks a model to work out a date
 range for itself; it is only ever shown one.
 
-## Why did it say superseded?
+## Why did it say superseded? What does replaced mean on a memory?
 
-Because a memory was **replaced by one that contradicts it**. It is one of the
+Because a memory was **replaced by one that contradicts it**. `replaced` is the word the
+memory place puts on that line and the word the count at the top of the page uses for it;
+`superseded` is the store's own name for the same state, and the receipt in the conversation
+spells it that way. It is one of the
 two things here that change what is remembered without you asking — the other is
 the background tidy further down — and it is the riskier one:
 

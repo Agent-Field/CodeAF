@@ -1,0 +1,40 @@
+ aforge                                                                                    $0.14 / $500.00 · thu 1:02am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+14 held · 3 shelves · 1 let go                                                                            type to filter
+
+shelves · biggest first                              fact 9 · preference 2 · decision 2 · correction 1 · project state 1
+▾ you · 7  mostly facts                                                                                               1h
+· first line of a draft that  fact  new, learned 1h                                                                   1h
+· deploys on Fridays  fact  new, learned 1h                                                                           1h
+· Ships on Fridays  fact  let go                                                                                      2h
+▸ 4 more, on this shelf
+▸ this project · 5  mostly facts                                                                                      1h
+▸ this machine · 3  mostly facts                                                                                      2h
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ enter open a shelf · type to filter · alt+s walk the shelves · tab next place

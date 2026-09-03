@@ -1,0 +1,29 @@
+# `aforge help env` AFTER — laid out to 80 cells
+# 77 lines printed, 77 rows drawn on an 80-column terminal.
+# Below is the first screenful — 24 rows — folded where the TERMINAL
+# puts the break, which is the only fold a reader actually sees.
+#------------------------------------------------------------------------------
+aforge — the environment
+
+Every variable below is read at launch. A variable set here always wins over the
+`/settings` sheet in the chat, and that row reads read-only in the sheet rather
+than fighting your shell.
+
+  OPENROUTER_API_KEY   a provider key, and the first of three places one is
+                       looked for — this, then OPENAI_API_KEY, then the key
+                       kept in your profile. Any one of them is enough, so a
+                       machine set up in the chat needs no variable at all;
+                       `aforge doctor` names the one that answered.
+  AFORGE_MODEL         default ~deepseek/deepseek-v4-flash-latest
+  AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
+                       replans, working methods and the delivery gate on a
+                       stronger model while a smaller one does the steps;
+                       --model and --plan-model do the same per run.
+  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel
+                       and calls cascade — cheapest model first, escalating
+                       when a verifier catches a failure. Either a
+                       comma-separated list of slugs, or a path to a JSON file:
+                       AFORGE_MODELS=google/gemma-3-12b-it,~moonshotai/kimi-k2.6
+                       AFORGE_MODELS=~/.aforge/models.json
+                       Ratings accumulate in ~/.aforge/router-ledger.json
+                       across runs; see them with `aforge models`.

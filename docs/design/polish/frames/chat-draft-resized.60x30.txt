@@ -1,0 +1,30 @@
+│ the second line.
+
+1. first
+2. second, with a much longer body so that it wraps and we
+   can see whether the hanging indent lines up under the
+   text or under the number
+3. third
+
+· bullet
+  · nested bullet with enough words to wrap at the narrow
+    sizes we care about
+  · 3 standing orders here — /standing
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-
+  8173-4e64-b3ec-
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-
+  claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-
+  73decce3d3d5-scratchpad-demohome-aforge-
+  v2/ffff0000wrap0001/transcript.jsonl
+  · esc interrupts · ctrl+c twice quits
+
+────────────────────────────────────────────────────────────
+
+                                                      ⠿ high
+ › first line of a draft that I am still writing
+   second line here
+   third line, which is quite a lot longer than the two
+   above it so that it has to wrap when the window gets
+   narrow
+Wrapping Torture · deepseek-v4-flash-latest
+            ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

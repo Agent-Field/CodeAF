@@ -1,0 +1,99 @@
+# aforge exit codes and --json, AFTER the one envelope
+#
+# Same commands, same demo home, binary built from this branch.
+# The before is in cmd-envelope-before.txt.
+
+
+## exec, a one-line prompt that answers
+$ exec Reply with exactly: ok --json --turns 2 --budget 4000
+exit: 0
+--- stdout
+{"answer":"ok","artifacts":[],"elapsed_ms":67583,"error":"","files":[],"model":"~deepseek/deepseek-v4-flash-latest","ok":true,"seconds":67.583756849,"spend_usd":0.000175484,"steps":1,"stop":"done","text":"ok","tokens":{"in":3598,"out":2},"turns":1,"usage":{"calls":1,"prompt_tokens":3598,"completion_tokens":2,"cached_tokens":128,"cost":0.000175484}}
+--- stderr
+models: work ~deepseek/deepseek-v4-flash-latest (default)
+
+## exec, a model id the provider rejects
+$ exec hello --json --model nosuch/model-xyz
+exit: 1
+--- stdout
+{"answer":"","artifacts":[],"elapsed_ms":63,"error":"nosuch/model-xyz is not a valid model ID\nrun `aforge models` to see the ids this key can reach, or pass --model with one of them.","files":[],"model":"nosuch/model-xyz","ok":false,"seconds":0.063911902,"spend_usd":0,"steps":0,"stop":"error","text":"","tokens":{"in":0,"out":0},"turns":0,"usage":{"calls":0,"prompt_tokens":0,"completion_tokens":0,"cached_tokens":0,"cost":0}}
+--- stderr
+models: work nosuch/model-xyz (--model)
+error: nosuch/model-xyz is not a valid model ID
+run `aforge models` to see the ids this key can reach, or pass --model with one of them.
+
+## exec, the same failure with AFORGE_EXIT_CODES=legacy
+$ exec hello --json --model nosuch/model-xyz
+exit: 5
+--- stdout
+{"answer":"","artifacts":[],"elapsed_ms":47,"error":"nosuch/model-xyz is not a valid model ID\nrun `aforge models` to see the ids this key can reach, or pass --model with one of them.","files":[],"model":"nosuch/model-xyz","ok":false,"seconds":0.047944411,"spend_usd":0,"steps":0,"stop":"error","text":"","tokens":{"in":0,"out":0},"turns":0,"usage":{"calls":0,"prompt_tokens":0,"completion_tokens":0,"cached_tokens":0,"cost":0}}
+--- stderr
+models: work nosuch/model-xyz (--model)
+error: nosuch/model-xyz is not a valid model ID
+run `aforge models` to see the ids this key can reach, or pass --model with one of them.
+
+## do, a store that will not open
+$ do write the note --json --db /tmp/tmp.ruiAOtsYQ5/graph.db --timeout 30s
+exit: 1
+--- stdout
+{
+  "answer": "",
+  "artifacts": [],
+  "deliverable": "",
+  "error": "create the store directory: mkdir /tmp/tmp.ruiAOtsYQ5: not a directory",
+  "files": [],
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "model_source": "default",
+  "nodes": 0,
+  "ok": false,
+  "plan_model": "",
+  "plan_model_source": "default",
+  "seconds": 0.000092512,
+  "settled": false,
+  "spend": 0,
+  "spend_overhead": 0,
+  "spend_usd": 0,
+  "spend_work": 0,
+  "steps": 0,
+  "stop": "error",
+  "subharness": "",
+  "tokens": {
+    "in": 0,
+    "out": 0
+  }
+}
+--- stderr
+models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the work model (default)
+
+## run subharness, a name that is not a program
+$ run subharness nosuch --input /tmp/cap-in.json
+exit: 1
+--- stdout
+--- stderr
+models: work ~deepseek/deepseek-v4-flash-latest (default)
+error: there is no subharness called "nosuch", and this build has none to offer
+
+## run subharness, the same, with --json
+$ run subharness nosuch --input /tmp/cap-in.json --json
+exit: 1
+--- stdout
+{
+  "ok": false,
+  "stop": "error",
+  "answer": "",
+  "files": [],
+  "error": "there is no subharness called \"nosuch\", and this build has none to offer",
+  "spend_usd": 0,
+  "tokens": {
+    "in": 0,
+    "out": 0
+  },
+  "seconds": 0.000038912,
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "steps": 0
+}
+--- stderr
+models: work ~deepseek/deepseek-v4-flash-latest (default)
+error: there is no subharness called "nosuch", and this build has none to offer
+
+rc=0

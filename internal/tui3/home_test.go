@@ -258,7 +258,7 @@ func TestHomeListsEveryProjectAndItsConversations(t *testing.T) {
 	text := homeText(a)
 	// The screen names itself with the program's own name now, on the pulse line
 	// at the top of it (pulse.go).
-	for _, want := range []string{pulseName, "alpha", "beta", "Porting the Resume Picker", "Pricing Research"} {
+	for _, want := range []string{product, "alpha", "beta", "Porting the Resume Picker", "Pricing Research"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home does not mention %q:\n%s", want, text)
 		}
@@ -608,6 +608,12 @@ func TestHomeFoldsTheWholeMachinesQuietTailBehindOneDoor(t *testing.T) {
 		}
 	}
 	a := lab.app(mine)
+	// A FRAME TOO SHORT TO HOLD TWELVE ROWS, because the cap is the frame's now
+	// and never a bare number: the list draws as many conversations as the column
+	// can hold and folds only what is genuinely still under them (switcher.go's
+	// [switcherShown] is the FLOOR). At sixteen rows the floor is what is left,
+	// which is the eight this test is about.
+	a.width, a.height = 100, 17
 	a.openHome()
 	text := homeText(a)
 	if !strings.Contains(text, "more, quiet since") {
@@ -806,9 +812,28 @@ func TestTypingClustersAtTheFootOfHome(t *testing.T) {
 		t.Fatalf("the matches are not above the action row (match %d, action %d):\n%s",
 			match, action, strings.Join(rows, "\n"))
 	}
-	// The hint under the box names the arrow that is actually true of the screen.
-	if !strings.Contains(rows[len(rows)-1], "↑ pick a match") {
-		t.Fatalf("the hint names the wrong arrow:\n%s", rows[len(rows)-1])
+	// The hint under the box names the arrow that is actually true of the screen —
+	// ↑, because the matches rise ABOVE the action row the caret sits against.
+	//
+	// IT IS ASKED OF THE SENTENCE AND NOT OF THE DRAWN ROW, and that is not a
+	// weaker question. The foot is a hundred and fourteen cells with the router's
+	// keys on it and this frame is a hundred wide, so [hintFit] drops the clause
+	// nearest the way out to make it fit — by design, and the ladder it drops down
+	// is pinned by [TestAHintDropsWholeClausesAndKeepsTheWayOut]. Asked of the
+	// drawn row this assertion was really asking how wide the lab happens to be,
+	// and it passed for a year only because the old fitter sliced the tail off
+	// mid-word instead — the foot on this very screen read `… · tab next …`. The
+	// law it was written for is about the arrow, so the arrow is where it looks.
+	if hint := a.homeHintWords(); !strings.Contains(hint, "↑ pick a match") {
+		t.Fatalf("the hint names the wrong arrow: %s", hint)
+	}
+	// AND THE FOOT THAT IS DRAWN IS STILL WHOLE CLAUSES OF THAT SENTENCE, never a
+	// word with its end sliced off.
+	for _, clause := range strings.Split(strings.TrimSpace(rows[len(rows)-1]), railSep) {
+		if !strings.Contains(placeTailed(a.homeHintWords()), clause) {
+			t.Fatalf("the foot drew %q, which is not a clause of the hint:\n%s",
+				clause, rows[len(rows)-1])
+		}
 	}
 }
 
@@ -1068,8 +1093,11 @@ func TestAFreshLaunchOpensOnTheFirstConversationWhenItsOwnIsNotListed(t *testing
 
 	a := lab.app(mine)
 	// A card tier, because the last thing this test asks is that the row the
-	// first `↓` finds has a card, and there is none below [homeCardMin].
-	a.width, a.height = 200, 24
+	// first `↓` finds has a card, and there is none below [homeCardMin]; and a
+	// SHORT one, because the list draws as many rows as the frame can hold now
+	// (switcher.go's [switcherView.room]) and a tall window over thirteen
+	// conversations has nothing left to fold.
+	a.width, a.height = 200, 17
 	a.openHome()
 	// The window's own conversation is adopted into the world ([app.readWorld])
 	// but it has never been spoken in, so it sorts to the very bottom of the
@@ -1452,6 +1480,10 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	lab.session("-tmp-alpha", "cccc000000000001", "buried treasure", "/tmp/alpha", now.Add(-40*time.Hour))
 
 	a := lab.app(mine)
+	// A FRAME THE ROWS DO NOT FIT IN, because the resting list draws as many as
+	// the column can hold now and folds only what is genuinely under them
+	// (switcher.go's [switcherShown] is the floor, not the cap).
+	a.width, a.height = 100, 17
 	a.openHome()
 	if !strings.Contains(homeText(a), "more") {
 		t.Fatal("nothing was collapsed, so this proves nothing")
@@ -1500,7 +1532,11 @@ func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
 			fmt.Sprintf("filler %02d", i), work, now.Add(-time.Duration(i+1)*time.Hour))
 	}
 	a := lab.app(mine)
-	a.width, a.height = 100, 30
+	// A FRAME THE THIRTEEN ROWS DO NOT FIT IN, because the list draws as many as
+	// the column can hold now and folds only what is genuinely under them
+	// (switcher.go's [switcherShown] is the floor, not the cap). At seventeen
+	// rows the floor is what is left, so the fold stands over five.
+	a.width, a.height = 100, 17
 	a.openHome()
 
 	// onTheFold stands the cursor on the fold wherever the last rebuild left it,
@@ -1516,8 +1552,11 @@ func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
 		t.Fatalf("the list has no fold to press:\n%s", homeText(a))
 	}
 	// hidden is the row the fold is standing over, which must be off the list
-	// while it is shut and on it once it is open.
-	const hidden = "Filler 11"
+	// while it is shut and on it once it is open. It is the FIRST row behind the
+	// fold: what a fold hides is now exactly what the frame had no room for, so
+	// the row that comes back when it opens is the one the window can just
+	// reach.
+	const hidden = "Filler 07"
 
 	onTheFold()
 	if strings.Contains(homeText(a), hidden) {
@@ -1533,8 +1572,17 @@ func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
 	// AND THE LINE TURNS ROUND RATHER THAN VANISHING: it is the way back, so it
 	// still says how many rows it stands for and wears the opened mark
 	// ([switcherReading.addFold]).
-	if !strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 more") {
+	//
+	// IT SAYS `fewer` AND NO LONGER `more`. This assertion used to want
+	// `▾ 5 more` over five rows that were on the frame, where the glyph was the
+	// only thing telling "five are hidden" from "five of these are the ones you
+	// asked for"; [foldWords] settles it, and `fewer` is what pressing the line
+	// again would do.
+	if !strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 fewer") {
 		t.Fatalf("the opened fold is not the way back:\n%s", homeText(a))
+	}
+	if strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 more") {
+		t.Fatalf("an opened fold still says it is hiding five rows:\n%s", homeText(a))
 	}
 
 	onTheFold()

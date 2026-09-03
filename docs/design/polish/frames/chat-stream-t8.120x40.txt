@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+› the tab bar's counts disagree with the list underneath it                               │
+                                                                                          │ standing
+The bar and the list were taking two readings of the world a few hundred milliseconds     │ ◦ the morning sweep
+apart. One reading, shared by every place, is the fix.                                    │ ? CI on master
+                                                                                          │ ◦ the public API
+› which of the two folds should stay open when I come back?                               │ + /standing
+                                                                                          │
+The quiet fold, on the argument that it is the one somebody deliberately closed. I would  │
+rather ask than guess — may I regenerate the report to check?                             │
+  · 3 standing orders here — /standing                                                    │
+                                                                                          │
+› in two short sentences, what is a mutex?                                                │
+  · paced · 2s                                                                            │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $1.12 · 56.7k tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+The Tab Bar's Counts · deepseek-v4-flash-latest · paced · 2s                          $1.12 · 5.5k/1.3M · ⠙ working · 5s

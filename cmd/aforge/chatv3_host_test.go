@@ -156,10 +156,10 @@ func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
 func TestHostFlagIsOnTheChatUsage(t *testing.T) {
 	page, _ := captureUsage(t)
 	if code := exitCodeOf(openChatV3("chat", []string{"--help"}, false)); code != 0 {
-		t.Fatalf("chat --help left with %d, want 0", code)
+		t.Fatalf("`aforge chat --help` left with %d, want 0", code)
 	}
 	if !strings.Contains(page.String(), "--host") {
-		t.Fatalf("chat --help does not document --host:\n%s", page)
+		t.Fatalf("`aforge chat --help` does not document --host:\n%s", page)
 	}
 }
 

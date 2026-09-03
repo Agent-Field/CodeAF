@@ -1,0 +1,40 @@
+[38;5;243m  [38;5;116m@path[38;5;243m          complete a file · a picture attaches[39m                                     [38;5;243m│ + /task[39m
+[38;5;243m  [38;5;116mctrl+c[38;5;243m         twice quits everything · mid-turn one press interrupts, like esc[39m         [38;5;243m│ [39m
+[38;5;243m  [38;5;116mtab[38;5;243m            go back to the last conversation, with an empty box[39m                      [38;5;243m│ standing[39m
+[38;5;243m  [38;5;116malt+1…7[38;5;243m        go to a place · in the tab bar's own order: home tasks standing memory[39m   [38;5;243m│ ◦[39m [38;5;110mthe morning sweep[39m
+[38;5;243m  spend search settings[39m                                                                   [38;5;243m│ [1m[38;5;140m?[0m [38;5;110mCI on master[39m
+[38;5;243m  [38;5;116malt+.[38;5;243m          on a place: what else is here · every key that place has, drawn[39m          [38;5;243m│ ◦[39m [38;5;110mthe public API[39m
+                [38;5;243m on a place, tab is the next place · esc comes back[39m                       [38;5;243m│ + /standing[39m
+[38;5;243m  [38;5;116malt+enter[38;5;243m      open a line · enter sends[39m                                                [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+enter[38;5;243m     keep this true · a standing order's card, never work done once[39m           [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+r[38;5;243m         over a draft: spell it out · what it means · enter adds it to yours[39m      [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+o[38;5;243m         expand this turn's tool calls · click one to open it · in a task,[39m        [38;5;243m│ [39m
+[38;5;243m  scroll up does too[39m                                                                      [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+b[38;5;243m         copy mode · ↑↓ move · v marks · a takes the block · y yanks[39m              [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+s[38;5;243m         drag to select with your mouse · any key ends it[39m                         [38;5;243m│ [39m
+[38;5;243m  [38;5;116menter[38;5;243m          mid-answer: stops the current reply and steers these words in[39m            [38;5;243m│ [39m
+[38;5;243m  [38;5;116msuper+enter[38;5;243m    mid-answer: waits above the box · → sends a waiting one[39m                  [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+q[38;5;243m         hand this to the session now, to run after the current turn[39m              [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+e[38;5;243m         open the model's thinking, streaming or finished[39m                         [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+t[38;5;243m         the task roster · ↑↓ move · →← fold · enter opens · esc leaves[39m           [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+.[38;5;243m         every task this project has run · [38;5;146m[48;5;237m/history[38;5;243m[49m · type to filter[39m              [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+g[38;5;243m         close the roster's column, or bring it back · remembered[39m                 [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+l[38;5;243m         back to the latest · the chip above the box says so too[39m                  [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+k[38;5;243m         switch conversations · tap it like alt+tab · esc goes back[39m               [38;5;243m│ [39m
+                [38;5;243m → reaches every other one on this machine · ctrl+w closes one[39m            [38;5;243m│ [39m
+[38;5;243m  [38;5;116m→ ←[38;5;243m            over an empty box: into a running task, and back out[39m                     [38;5;243m│ [39m
+[38;5;243m  [38;5;116m← ←[38;5;243m            out of a task room · the conversation, at the live edge[39m                  [38;5;243m│ [39m
+[38;5;243m  [38;5;116mspace space[38;5;243m    over an empty box: home · [4m[38;5;146m[48;5;237m]8;;file:///home\/home[0m[38;5;243m]8;;\ · esc comes back[39m                         [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+w[38;5;243m         delete the word behind the caret · ctrl+u the line[39m                       [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+,[38;5;243m         settings[39m                                                                 [38;5;243m│ [39m
+[38;5;243m  [38;5;116md[39m              [38;5;243min /permissions: drop the line under the cursor · press it twice[39m         [38;5;243m│ [39m
+[38;5;243m  [38;5;116mp s n[38;5;243m          in /standing: pause one · stop it · not here[39m                             [38;5;243m│ [39m
+[38;5;243m  [38;5;116mctrl+r ctrl+y[38;5;243m  in /files: reveal the folder it is in · copy it somewhere[39m                [38;5;243m│ [39m
+[38;5;243m  session · [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/b531a33df5787095/transcript.jsonl\~/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-[0m]8;;\    [38;5;243m│ [38;5;116mctrl+.[38;5;243m earlier[39m
+[38;5;243m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/b531a33df5787095/transcript.jsonl\4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/b531a33df5787095/transcript.jsonl[0m]8;;\  [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m─ master* ────────────────────────────────────────────────────────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116mctrl+k[38;5;243m switch · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                                                                                  [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243maforge-v2 · deepseek-v4-flash-latest[39m                    [38;5;243mcrew balanced · ◦ keeping an eye on 3 · $0.00 · 5.3k/1.3M · idle

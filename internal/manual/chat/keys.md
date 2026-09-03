@@ -13,7 +13,8 @@ below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a lin
 
 `cmd+enter` while a turn is running **holds** what you have typed for the answer
 after this one. It is the secondary choice for when you do not want to change the
-work already under way. At rest it does nothing at all.
+work already under way. At rest it does nothing at all. **On Linux and Windows that key
+is called `super+enter`** — see "What cmd+enter is called on your keyboard" below.
 
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
@@ -177,6 +178,53 @@ stop clause that works in the current state.
 
 **What works everywhere instead.** `ctrl+q` queues a new turn after the current one.
 
+## What cmd+enter is called on your keyboard — super+enter off a Mac
+
+It is one keystroke with two names, and aforge spells it for the keyboard you are on.
+
+| Where you are | What `/help` and this page's key sheet draw | What the terminal sends |
+| --- | --- | --- |
+| macOS | `⌘enter` | `super+enter` or `meta+enter` |
+| Linux, Windows, WSL | `super+enter` | `super+enter` or `meta+enter` |
+
+`super` is the key with the diamond, the Windows logo, or the command symbol on it,
+depending on whose keyboard it is. aforge binds **both** names the terminals send, because
+which one arrives is a fact about the road the bytes took rather than about your hand.
+
+This page writes it `cmd+enter` throughout, which is the name it was chosen under; the key
+sheet substitutes the spelling for your platform at the moment it draws, exactly as it
+does for `alt+`/`⌥`.
+
+## ctrl+r means two things, and each says where it acts
+
+`ctrl+r` appears twice on the `/help` sheet, and the two are not the same key doing two
+jobs at random — each is scoped, and each row says its scope:
+
+- `ctrl+r` **over a draft** spells the draft out: aforge says back what it takes the
+  sentence to mean, and `enter` adds that to what you are saying. It is offered only while
+  the hint slot says `ctrl+r spell it out`, and it does nothing at all otherwise.
+- `ctrl+r` **in `/files`** reveals the folder a landed file is in, with `ctrl+y` beside it
+  to copy the file somewhere.
+
+`/files` is a full-screen list with its own keyboard, so the two never contend for one
+keystroke on one screen.
+
+## ? — the key that opens the key sheet
+
+`?` **over an empty box** opens `/help`: every command and every chord, written into the
+transcript where you can scroll it.
+
+**On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
+map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
+was already using. One meaning, two screens: show me the keys for where I am standing.
+
+**It never eats a question mark you are typing.** The binding wants the box EMPTY. With
+anything at all in the draft the key is an ordinary `?` and goes into your sentence; and
+every overlay, filter box, picker, panel and question on this surface takes the keyboard
+before this binding is read, so a `?` typed into one of those reaches it and nothing else.
+
+`/?` is an alias of `/help` as well, for fingers that arrived from elsewhere.
+
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
 `shift+enter` while a turn is running **stops the answer and sends what is in the box**,
@@ -295,7 +343,7 @@ typed something and this terminal can deliver `shift+enter`. A foreground comman
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c twice quits`.
+`esc interrupts · ctrl+c twice quits · ? for help`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
 see "Interrupt and say something new in one key" above. `esc` on its own stops without
@@ -708,7 +756,8 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where aforge names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits` — the
+on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits · ? for
+help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
 never have to be told apart. See "Why is one word in a line brighter than the rest" on
@@ -1207,14 +1256,17 @@ cursor — `enter open its room · → verbs: stop it · type to filter` over a 
 running, `enter go inside it` on a task another conversation ran, which has no room to open,
 no `enter` clause at all where the row under the cursor has no door — which is a page
 holding only work running in other aforge windows — and `esc clear the filter` in place of
-`type to filter` while you are typing one. Clicking a row acts on the first press; the wheel
+`type to filter` while you are typing one. On a machine that has run **nothing at all**,
+where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
+there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
 walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
-`esc back · ↑↓ scroll · m puts it in your message`. Clicking its head row or its foot goes
+`m puts it in your message · ↑↓ scroll`; `esc back` is in the head's right corner instead,
+said once. Clicking its head row or its foot goes
 back to the list; its body is read.
 
 **Rewind timeline** (`/rewind`, or `tab` from inside the quick `esc` `esc` mode): `esc`
@@ -1540,7 +1592,10 @@ place key that does: `tab` belongs to the composer's path completion while you a
 and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
 is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
 number opens its room whatever is in it: a place with nothing of its own to draw spends the
-frame saying what it is for, and none of the seven is ever a key that does nothing.
+frame saying what it is for, and none of the seven is ever a key that does nothing. **On
+such a page the line under the box names only the way out** — `tab next place · esc` — on
+tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
+filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
 taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
@@ -1610,7 +1665,7 @@ and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
 with no verbs the arrows are the fold's, the way they are in the task column: on home's one
-fold — `▸ 15 more, quiet since aug 21` — `enter` or `→` shows every row and `enter` or `←`
+fold — `▸ 15 more, quiet since 6d` — `enter` or `→` shows every row and `enter` or `←`
 folds them back, and on a card `→` opens every folded band while `←` folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
@@ -1659,7 +1714,7 @@ on that same row when what is typed is a slash command, because `enter` runs it 
 sending it (home's page has that rule whole).
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in; a card stands beside it only at 160 columns and wider. **While anything
+this window is in; a card stands beside it only at 136 columns and wider. **While anything
 is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
 with `ask here: "…"` directly above it, both directly above the box, and the matches rise
 above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches

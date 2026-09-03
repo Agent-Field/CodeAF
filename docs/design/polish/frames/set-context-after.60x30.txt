@@ -1,0 +1,30 @@
+ aforge                            1 want you · thu 12:05am
+  settings
+────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending  …
+────────────────────────────────────────────────────────────
+
+› searching                                             auto
+    now firecrawl, keyless — set search.exaKey or
+    search.firecrawlKey to raise it
+  exa key                                            not set
+  firecrawl key                                      not set
+  jina key                                           not set
+  compact at                                             60%
+  answer room                                      65536 tok
+  working set                                     160000 tok
+  context reuse                                         250%
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config…
+ › say what you want done                  here ~/aforge-v2
+ ↑↓ move · ←→ tabs · tab next place · esc close

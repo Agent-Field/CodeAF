@@ -1,0 +1,12 @@
+                      ┌─┐ ┌─  ┌─┐ ┌─┐ ┌─┐ ┌─┐
+                      ├─┤ ├─  │ │ │   └─┤ ├─
+                      └─┘ │   └─┘ │   └─┘ └─┘
+
+                      setting up · 1 of 3
+
+                      connect openrouter
+                      or get a key at https://openrouter.ai/settings/keys
+
+                      ›
+
+                      enter connects in browser · paste a key · esc not now
