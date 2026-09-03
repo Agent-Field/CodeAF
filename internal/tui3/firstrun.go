@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"errors"
+	"io/fs"
 	"strconv"
 	"strings"
 
@@ -404,7 +406,7 @@ func (a *app) adoptOpenRouterFlow(msg openRouterFlowMsg) tea.Cmd {
 	}
 	a.setup.authStarting = false
 	if msg.err != nil {
-		a.setup.refusal = msg.err.Error()
+		a.setup.refusal = setupConnectFailedWord
 		a.setup.authID = 0
 		a.touch()
 		return nil
@@ -426,7 +428,7 @@ func (a *app) adoptOpenRouterFlow(msg openRouterFlowMsg) tea.Cmd {
 		return nil
 	}
 	if err := processOpener(a.setup.authLink); err != nil {
-		a.setup.refusal = err.Error() + " · open the link above"
+		a.setup.refusal = setupBrowserWord
 	}
 	a.touch()
 	flow, ctx := msg.flow, a.ctx
@@ -448,7 +450,7 @@ func (a *app) adoptOpenRouterKey(msg openRouterKeyMsg) tea.Cmd {
 	a.setup.authLink = ""
 	a.setup.authID = 0
 	if msg.err != nil {
-		a.setup.refusal = msg.err.Error()
+		a.setup.refusal = setupSignInLostWord
 		a.touch()
 		return nil
 	}
@@ -465,7 +467,7 @@ func (a *app) adoptOpenRouterKey(msg openRouterKeyMsg) tea.Cmd {
 		return nil
 	}
 	if err := row.Apply(key); err != nil {
-		a.setup.refusal = err.Error()
+		a.setup.refusal = setupSaid(err, setupSaveFailedWord)
 		a.touch()
 		return nil
 	}
@@ -512,7 +514,7 @@ func (a *app) setupCommit() bool {
 			return true
 		}
 		if err := row.Apply(key); err != nil {
-			s.refusal = err.Error()
+			s.refusal = setupSaid(err, setupSaveFailedWord)
 			return false
 		}
 		return true
@@ -522,7 +524,7 @@ func (a *app) setupCommit() bool {
 			return true
 		}
 		if err := row.Apply(config.CrewPresets[s.crew.cursor]); err != nil {
-			s.refusal = err.Error()
+			s.refusal = setupSaid(err, setupSaveFailedWord)
 			return false
 		}
 		a.refreshSettings()
@@ -561,7 +563,7 @@ func (a *app) setupRail(at int) bool {
 		raw = setupRailDefault(at)
 	}
 	if err := row.Apply(raw); err != nil {
-		s.refusal = err.Error()
+		s.refusal = setupSaid(err, setupSaveFailedWord)
 		return false
 	}
 	s.railText[at] = raw
@@ -569,8 +571,71 @@ func (a *app) setupRail(at int) bool {
 	return true
 }
 
-// setupKeyShapeWord is the one refusal the key step has of its own. Everything
-// else it could say is the row's.
+// ── WHAT THIS SCREEN SAYS WHEN SOMETHING GOES WRONG ─────────────────────────
+//
+// THE FIRST SCREEN OF A FRESH INSTALL MAY NOT PRINT A GO ERROR. Seven of this
+// setup's refusals were `err.Error()`, so the first sentence a new person could
+// be shown — on the one screen where they have done nothing yet and something
+// has already failed — was a wrapped chain like `write config daily_budget_usd:
+// open /home/…/.aforge/config.json: permission denied`. It names a function, a
+// key, a path inside the program's own storage and an errno, and there is no act
+// in it. Three lines away this same file already had the right shape twice
+// ([setupKeyShapeWord], [setupNoKeyWord]): the cause, and then what to do.
+//
+// THE THREE THAT ARE ALWAYS THE MACHINE'S are authored outright — nothing a
+// browser trip can return is a sentence for a person — and the four that write
+// through a settings row go through [setupSaid], which keeps the REGISTRY's own
+// refusal and replaces the operating system's.
+const (
+	// setupConnectFailedWord is the browser sign-in that never started: the
+	// listener, the flow, the round trip to openrouter.
+	setupConnectFailedWord = "could not reach openrouter to start the sign-in — check the network, or paste a key instead"
+	// setupBrowserWord is the browser that would not open. The link is on the
+	// screen directly above it, which is the whole of what to do about it.
+	setupBrowserWord = "could not open your browser · open the link above"
+	// setupSignInLostWord is the trip that started and did not come back —
+	// closed tab, refused page, a connection that went away mid-flight.
+	setupSignInLostWord = "the browser sign-in did not finish — enter tries again, or paste a key instead"
+	// setupSaveFailedWord is the answer that could not be written down. It names
+	// no path: the folder is aforge's own, a person who needs its name asks
+	// /status, and a permission on a directory is the one thing they can act on.
+	setupSaveFailedWord = "could not save that — the folder aforge keeps your settings in is not writable"
+)
+
+// setupSaid is the line under the box for an error a SETTINGS ROW handed back:
+// the row's own words where it wrote them for a person, and the authored
+// sentence where the operating system wrote them for a program.
+//
+// THE TEST IS STRUCTURAL AND NOT A GUESS AT THE PROSE. Every refusal the
+// registry authors is a plain fmt.Errorf with nothing wrapped inside it —
+// `that's not a dollar amount — a number, or none for no limit`,
+// `pick one of: frugal, balanced, max`, `OpenRouter key is set by
+// OPENROUTER_API_KEY` — while every failure that came off the disk is wrapped
+// around the operating system's own error (internal/config's
+// writeProfileValues wraps each one with %w). So an error that wraps another
+// error is the machine talking, and an error that wraps nothing is a person's
+// sentence this screen has no business rewriting. The two file errors are
+// checked as well, for the writer that hands one back unwrapped.
+//
+// It is the settings panel's own bargain kept on this screen: that panel draws
+// `item.row.Apply`'s refusal as it stands (settings.go's [app.applySetting]),
+// because the rows are written to be read.
+func setupSaid(err error, instead string) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Unwrap(err) != nil || errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrNotExist) {
+		return instead
+	}
+	if said := strings.TrimSpace(err.Error()); said != "" {
+		return said
+	}
+	return instead
+}
+
+// setupKeyShapeWord is the one refusal the key step has about the SHAPE of what
+// was typed. Everything else it could say is either the row's or one of the
+// four sentences above.
 const setupKeyShapeWord = "not the shape of an openrouter key — they start with sk-or-"
 
 // setupBudgetDefault is the ceiling enter accepts, spelled from the one

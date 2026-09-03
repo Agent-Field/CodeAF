@@ -1378,9 +1378,15 @@ const (
 	// where FIDELITY.md item 3 puts it, and a tail that repeated it would put the
 	// same chord on two lines of the same frame.
 	placeHintTail = "tab next place"
+	// placeMapVerbWords is the map's clause about the row under the cursor, named
+	// so that the line can be built WITH it and drawn WITHOUT it: it is the one
+	// clause on this line that is not true on every place ([placeHintSaid] drops
+	// it where the place declares no verbs).
+	placeMapVerbWords = "→ verbs on this row"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close"
+	placeMapWords = "alt+1…7 go to a place · alt+enter send it off as a task · " +
+		placeMapVerbWords + " · " + mapCloseWords
 	// mapCloseWords is that line's last clause, named so the switcher's own
 	// clause can be spliced IN FRONT of it rather than after it (hop.go): `esc
 	// close` is the way out and the way out is always said last.
@@ -1424,7 +1430,7 @@ func (a *app) placeHintSaid() string {
 		// every place and drawn on none of them would break SCREEN 3a's clause,
 		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…7`
 		// alias ([chordSpelling.mapLine]).
-		line := a.chords.mapLine(placeMapWords, a.ctrlDigits())
+		line := a.chords.mapLine(a.placeMapSaid(), a.ctrlDigits())
 		if a.hopAvailable() {
 			line = strings.Replace(line, mapCloseWords, hopMapWords+" · "+mapCloseWords, 1)
 		}
@@ -1453,6 +1459,29 @@ func (a *app) placeHintSaid() string {
 		return placeHintWords
 	}
 	return placeTailed(pl.hint(a))
+}
+
+// placeMapSaid is the map's chord list FOR THE PLACE IT IS DRAWN OVER: the
+// fixed line, minus the clause about the row under the cursor where this place
+// has no verbs to open.
+//
+// A KEY DRAWN THAT DOES NOTHING IS SCREEN 3a'S CLAUSE READ BACKWARDS. The map
+// promised `→ verbs on this row` over all seven places while [placeSearch]
+// declares no verbs at all — so on search the arrow the map named opened
+// nothing and fell through to the caret inside the box. The line is built from
+// what the standing place actually declares rather than from a constant that
+// cannot know, which is the same rule the foot above it already keeps: key
+// hints true for where you stand.
+//
+// IT ASKS THE PLACE AND NOT A TABLE, so a place that grows a verb gains the
+// clause on the day it does, and a row with nothing to open loses it — [verb]
+// lists are built per row on every place that has any.
+func (a *app) placeMapSaid() string {
+	pl := a.showing()
+	if pl != nil && len(pl.verbs(a)) > 0 {
+		return placeMapWords
+	}
+	return strings.Replace(placeMapWords, placeMapVerbWords+railSep, "", 1)
 }
 
 // placeTailed puts the router's own keys on a place's sentence, and puts them

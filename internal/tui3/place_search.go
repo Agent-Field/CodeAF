@@ -93,6 +93,12 @@ func (a *app) refreshSearch() {
 func (a *app) rebuildSearch() {
 	p := &a.search
 	p.reading = readSearch(p.ask.query, p.hits, p.world, p.read)
+	// AND WHETHER THERE IS AN INDEX AT ALL IS A FACT ABOUT THE SURFACE, not
+	// about the words: it is read here, where the reading is made, so the page
+	// can tell "nothing was said" from "nothing looked" ([searchNoIndexWord]).
+	// The hosted case is answered further up by [placeSearch.remote], which says
+	// WHOSE index is missing and is the better sentence where it applies.
+	p.reading.noIndex = a.searchStore == nil && !a.hosted()
 	p.cursor = a.nearestSearchStop(p.cursor)
 }
 

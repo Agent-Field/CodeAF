@@ -347,7 +347,14 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	}
 	a.chips = side.chips
 	a.resumed = true
-	a.note("resumed " + a.hostedPath(a.file))
+	// THE OTHER DOOR ONTO THE SAME LINE, and it says the same thing now: WHICH
+	// CONVERSATION this is, and the path only where there is no name to give
+	// ([app.resumedNote]). This road — the greeting's recent list and /resume —
+	// still spelled the absolute transcript out, so opening a conversation from
+	// the picker put four to six wrapped rows of `.aforge/v3/projects/…` above
+	// the person's own first message while opening the very same conversation
+	// from the launch line said its name. One sentence, one door.
+	a.note(a.resumedNote())
 	if conv.Notice != "" {
 		// The door had something to say about how this conversation came to be
 		// open, and the entry line is where the first one's notice lands too

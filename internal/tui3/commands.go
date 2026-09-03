@@ -959,6 +959,12 @@ func helpText(file string, chords chordSpelling) string {
 		lines = append(lines, c.typed()+strings.Repeat(" ", width-len(c.typed())+2)+c.note())
 	}
 	lines = append(lines,
+		// THE KEY THAT GETS A PERSON HERE IS THE FIRST KEY ON THE SHEET. `?` over
+		// an empty box is what opened this list for anybody who did not already
+		// know six characters of it, and a sheet that did not name it would be a
+		// door with no sign on it (the block at the foot of this file argues the
+		// binding).
+		helpKeyRow(helpAskKey, helpAskWord),
 		"@path          complete a file · a picture attaches",
 		// THE DOOR IS NAMED HERE BECAUSE IT NO LONGER BEHAVES THE WAY THE HABIT
 		// EXPECTS (quitarm.go): one press does not leave, and a person whose
@@ -997,7 +1003,15 @@ func helpText(file string, chords chordSpelling) string {
 		// it is about the sentence in the box rather than about the screen, and
 		// nothing else names it until a draft happens to look like something to
 		// build.
-		spellOutKey+"         spell it out · what the draft means · enter adds it to yours",
+		// AND THE SCOPE IS ON THE ROW, because this chord is on this sheet TWICE.
+		// `ctrl+r` is the spell-it-out chord over a draft and the reveal key inside
+		// /files (deliverables.go's [filesRevealKey]), thirty-six rows apart, and
+		// neither row said the other existed — so the sheet a person opens to learn
+		// the keys contradicted itself and gave no way to tell which reading was
+		// theirs. The two do not collide in the code, and now they do not collide
+		// on the page either: each says where it acts, in the grammar the scoped
+		// rows at the foot of this list already use.
+		helpKeyRow(spellOutKey, "over a draft: spell it out · what it means · enter adds it to yours"),
 		"ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
@@ -1006,7 +1020,12 @@ func helpText(file string, chords chordSpelling) string {
 		// (steer.go). It sits directly under the line about the other two because
 		// the three are one decision — wait, go in, or stop the answer — and the
 		// one that waits is now the secondary choice a person may not guess.
-		parkKey+"      mid-answer: waits above the box · → sends a waiting one",
+		// AND THIS ROW IS SPELLED FOR THE TERMINAL READING IT, like the `alt+`
+		// rows above and below. It used to be a literal `cmd+enter` on every
+		// platform, so the sheet on a Linux box named a modifier that keyboard does
+		// not have — while the keystroke itself arrives there as `super+enter`
+		// (steer.go binds both names). The substitution is chords.go's one door.
+		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
@@ -1144,3 +1163,90 @@ func (a *app) runDebugCommand() {
 	}
 	a.note("recording this conversation · it goes to " + folder)
 }
+
+// ── `?` — THE KEY A PERSON PRESSES WHEN THEY ARE LOST ───────────────────────
+//
+// Until this wave `?` was bound to nothing at all. It was an ALIAS of /help —
+// `/?`, six characters and a slash you already had to know about — so the
+// shortest honest route to the key sheet was a command a person could only find
+// by opening the command list, which is itself a door the greeting names in
+// four words at the bottom of the screen. Every program with a key sheet in it
+// has answered this key since curses existed, and the first thing a developer
+// does when a full-screen program stops making sense is press it.
+//
+// WHAT IT OPENS, AND WHY THAT IS TWO THINGS. `?` means one sentence — SHOW ME
+// THE KEYS FOR WHERE I AM STANDING — and this surface has two answers to it
+// because it has two screens:
+//
+//   - In a conversation it runs /help, which is the key sheet: every command,
+//     every chord, in the transcript where it can be scrolled and searched.
+//   - On a place it draws THE MAP (`alt+.`), which is that place's own key list
+//     drawn in the cells the foot was already using ([placeMapWords], SCREEN
+//     3b). Printing the sheet from a place would mean leaving the room a person
+//     is standing in to answer a question about it, and the map is the answer
+//     the surface already has: the chords, and — since row 14 of this wave —
+//     only the ones this place really has.
+//
+// It is one gesture with one meaning and two renderings, exactly as [helpText]
+// is one table with two ([app.slash]'s "One source, two renderings").
+//
+// AND THE ONE THING THAT WOULD MAKE IT WORSE THAN NOTHING: eating a `?` a
+// person is typing. The guard is the offer key's guard word for word (keys.go)
+// and it is structural rather than clever — THE BOX MUST BE EMPTY. A question
+// mark is nearly always the LAST character of a sentence and never the first,
+// so a draft with anything in it keeps the key and it types; and every overlay,
+// list, card and modal on this surface is read above this rung, so a `?` typed
+// into a filter box, a folder picker or a consent question never reaches here
+// at all.
+const helpAskKey = "?"
+
+// helpAsk is `?` on the conversation's road: the key sheet, over an empty box.
+//
+// It answers false for every other key and for a box with something in it, so
+// the rung it sits on in [app.key] costs one string comparison.
+func (a *app) helpAsk(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if msg.String() != helpAskKey || !a.input.empty() {
+		return nil, false
+	}
+	// THE COMMAND AND NOT A SECOND PRINTING OF THE SHEET. /help is what this
+	// key means, so it goes through the dispatcher the typed word goes through
+	// and gains whatever that command gains next.
+	return a.slash("/help"), true
+}
+
+// helpAskWord is the key sheet's own row for the key, and it is the sheet's
+// first key row because it is the one a lost person presses before they have
+// read any of the others.
+const helpAskWord = "the keys · on a place it draws that place's own map"
+
+// ── THE WORD THIS SURFACE DOES NOT HAVE ─────────────────────────────────────
+
+// unknownCommandWord is what a slash word nobody here recognises is answered
+// with, and it is A SENTENCE ABOUT THE WORLD.
+//
+// It read `unknown command: /nosuchthing · try /help` — a compiler's noun and a
+// colon, in a lane where every other refusal on this surface is written the way
+// a person would say it: `there is no manual page named xyzzy` (manualcmd.go),
+// `that conversation is not on this machine any more`. The half that mattered
+// was already right — it says what to do — so what changes is the register and
+// where it points.
+//
+// AND IT POINTS AT THE LIST RATHER THAN AT A SECOND COMMAND. `/help` is six
+// characters somebody who has just mistyped a command has to type correctly;
+// `/` is one keystroke, it is the door the greeting already advertises, and
+// since row 8 of this wave the list it opens fills the frame and says how many
+// rows it is holding back. `?` opens the sheet itself, in one key ([helpAskKey]).
+func unknownCommandWord(name string) string {
+	return unknownCommandLead + " /" + name + " · " + unknownCommandDoorWord
+}
+
+// unknownCommandLead is that sentence's opening, named so a test can assert the
+// refusal without pasting the whole of it — and so that a test asserting a
+// refusal did NOT happen cannot go on passing after the wording moves, which is
+// exactly what eight of them did while this line said "unknown command".
+const unknownCommandLead = "there is no command called"
+
+// unknownCommandDoorWord is that sentence's second clause, named because the
+// refusal for a DROPPED path is written from the same two halves (dropkeys.go)
+// and a door spelled twice is a door that gets moved once.
+const unknownCommandDoorWord = "/ lists them"

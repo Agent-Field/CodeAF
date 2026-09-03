@@ -600,6 +600,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// AND `?` OVER AN EMPTY BOX IS THE KEY SHEET (commands.go's [app.helpAsk]).
+	// It is read here for the offer letter's reason exactly: it is a CHARACTER,
+	// so its guard is that the box is empty, and every overlay, list and card
+	// that could want it has already been asked above this line. With anything
+	// typed it falls through to the switch below and lands in the sentence, which
+	// is the whole of what keeps this key from being worse than no key at all.
+	if cmd, taken := a.helpAsk(msg); taken {
+		return cmd
+	}
+
 	switch msg.String() {
 	case "esc":
 		// esc during a recall is the recall's: it puts the person's own draft

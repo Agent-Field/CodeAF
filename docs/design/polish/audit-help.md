@@ -205,3 +205,135 @@ Rows 7, 13, 14, 16, 17, 18, 19, 20, 21, 22 and 23 are untouched; 11 and 12 are h
 - **Row 3's fitter is general.** `hintFit` is the one door every foot on a place goes
   through, so a row that adds a clause to any place's hint gets the ladder for free —
   and a clause that must never be dropped goes after `tab next place`, not before it.
+
+---
+
+## fixed — the second pass (`?`, the refusals, the sheet's own keys)
+
+Same lane, later wave, on `ui/polish-v0`. Frames are prefixed `help2-`; the
+`-before` reading of each is the frame the row it closes already names.
+
+**Row 23 — `?` opens the keys, and never eats a typed one** · `internal/tui3/commands.go`
+(`helpAskKey`, `app.helpAsk`, `helpAskWord` and the sheet's new first key row),
+`internal/tui3/input.go` (one rung, beside the offer letter's),
+`internal/tui3/placekeys.go` (`?` normalised to `placeMapKey`, so it toggles and dismisses
+identically to the chord), `internal/tui3/app.go` (`landingKeysWord`) ·
+`internal/manual/chat/{keys,commands,screen,empty-screen}.md`
+
+**What it opens, and why.** `?` means one sentence — *show me the keys for where I am
+standing* — and this surface has two screens, so it has two renderings of one gesture, the
+way `helpText` is one table with two:
+
+- in a **conversation** it runs `/help`, the whole key sheet, into the transcript where it
+  can be scrolled and searched;
+- on a **place** it draws **the map** (`alt+.`) — that place's own keys, in the cells the
+  foot was already using. Printing the sheet from a place would mean leaving the room to
+  answer a question about it, and since row 14 below the map now names only the keys that
+  place really has.
+
+**The guard is structural.** The box must be EMPTY — the offer key's rule word for word
+(`keys.go`) — so a `?` typed into a sentence, a filter, a picker or a panel is a question
+mark and nothing else. Every overlay on this surface is read above that rung.
+It is advertised on the first key row of `/help` and on the line every session opens with:
+`esc interrupts · ctrl+c twice quits · ? for help`. It is **not** on the greeting's starter
+ladder: those three clauses measure 75 cells inside a 76-cell unit
+(`welcomeUnitWidth`), which the first-run block now shares, so a fourth clause would
+either never draw or move the setup screen.
+Tests `TestTheQuestionMarkOpensHelpAndNeverEatsATypedOne`,
+`TestTheQuestionMarkIsAdvertisedOnTheSheetAndTheOpeningLine` ·
+after `help2-qmark-chat-after.120x40.txt` (the sheet), `help2-qmark-after.{160x50,120x40,60x30}.txt`
+(the map, on home), `help2-manual-miss-after.160x50.txt` (the opening line)
+
+**Row 16 — the first screen refuses in sentences** · `internal/tui3/firstrun.go`
+(`setupConnectFailedWord`, `setupBrowserWord`, `setupSignInLostWord`,
+`setupSaveFailedWord`, and `setupSaid` behind the four `row.Apply` sites) ·
+`internal/manual/chat/getting-started.md`. The three browser-trip refusals are authored
+outright — nothing a listener, an `xdg-open` or a closed tab returns is a sentence for a
+person. The four that write through a **settings row** keep the REGISTRY's own words and
+replace only the operating system's, and the test for which is which is structural rather
+than a guess at the prose: every refusal the registry authors is a bare `fmt.Errorf`
+(`that's not a dollar amount — a number, or none for no limit`, `pick one of: frugal,
+balanced, max`, `OpenRouter key is set by OPENROUTER_API_KEY`), while every disk failure is
+wrapped around the operating system's own error with `%w` — so an error that wraps another
+error is the machine talking. That is the settings panel's own bargain kept on this screen
+(`app.applySetting` draws `row.Apply`'s refusal as it stands).
+Tests `TestTheSetupRefusesInSentencesAndNeverInGoErrors` (which makes a profile directory
+read-only and asserts the drawn line carries no `/`, no `:`, no `config` and no `denied`),
+`TestTheSetupKeepsASettingsOwnRefusalAboutWhatWasTyped`
+
+**Rows 13 and 21 — the key sheet's own two wrong keys** · `internal/tui3/chords.go`
+(`chordCmdWord`, `chordCmdGlyph`, `chordSuperWord`, `chordSpelling.cmdWord`, and `say`
+substituting both modifiers), `internal/tui3/commands.go` (the park row spelled through
+`chords.say`; the spell-it-out row scoped) · `internal/manual/chat/keys.md`. `cmd+enter`
+stays the authored spelling and is drawn `⌘enter` on a Mac and `super+enter` everywhere
+else — one door, the way `alt+`/`⌥` already went. And the two `ctrl+r` rows now each say
+where they act: `over a draft:` and `in /files:`. They never collided in the code; they
+collided on the page, which is the one page a person reads to learn the keys.
+Test `TestTheKeySheetSpellsTheSendChordForThisKeyboardAndScopesBothCtrlR` ·
+before `help-help-output.160x50.txt` (lines 20, 25 and 41) → after
+`help2-help-output-after.{160x50,80x24}.txt`, `help2-qmark-chat-after.120x40.txt`
+
+**Row 14 — the map names row verbs only where the row has them** · `internal/tui3/pages.go`
+(`placeMapVerbWords` named out of `placeMapWords`, and `app.placeMapSaid` asking the
+standing place what it declares) · `internal/manual/chat/places.md` · test
+`TestTheMapNamesTheRowVerbsOnlyWhereTheRowHasThem` · before `help-map-on-search.160x50.txt`
+→ after `help2-map-on-search-after.160x50.txt` (search: no `→` clause) against
+`help2-qmark-after.160x50.txt` (home: it keeps it)
+
+**Rows 11, 12 and 18 — search's half** · `internal/tui3/searchplace.go` (the teaching goes
+through `placeTeachProse` a sentence at a time; `searchHung` puts the body's one-cell lead
+on every row and the rows are built into the cell that leaves; `searchNothingSaid`;
+`searchNoIndexWord` and `searchReading.noIndex`), `internal/tui3/place_search.go`
+(`rebuildSearch` reads whether there is an index at all) · `internal/manual/chat/places.md`
+· `internal/tui3/searchplace_test.go`'s cursor test updated, since it pinned the column
+this row moves. A search that finds nothing now says `· try fewer words, or a name`, and a
+window with no store behind it says so rather than reporting an empty result — "nobody said
+that" and "nothing looked" were the same line.
+Tests `TestTheSearchTeachingWrapsAndHangsFromTheBodysColumn`,
+`TestASearchThatFindsNothingSaysWhatToDoAndAMissingIndexSaysSo` · before
+`help-empty-search.{80x24,160x50}.txt`, `help-search-nohit.160x50.txt` → after
+`help2-empty-search-after.{160x50,120x40,80x24,60x30}.txt`,
+`help2-search-nohit-after.160x50.txt`
+
+**Row 7 — the manual listing never invents a page** · `internal/tui3/manualcmd.go` (all
+three listings go through `app.noteBlock`). The listing is one line per page and an
+ordinary note RE-FLOWS its text, so a long title wrapped and its tail landed at the column
+the page NAMES are in — `/manual` drew a page called `later`, and `/manual later` then
+answered that there is no such page. `noteBlock` is the door for exactly this shape: a note
+whose line structure is its meaning, cut rather than re-flowed. No new formatter, and
+`manual.Corpus.Listing` stays the one place a listing is built.
+Test `TestTheManualListingNeverInventsAPage` · before `help-manual-list.160x50.txt`,
+`help-manual-miss.160x50.txt` → after `help2-manual-list-after.{160x50,80x24}.txt`,
+`help2-manual-miss-after.{160x50,80x24}.txt`
+
+**Row 20 — the entry note, on the door that still dumped the path** ·
+`internal/tui3/welcome.go` (`app.openSession` says `app.resumedNote()`),
+`internal/tui3/app.go` (`/help`'s `session · …` row written against `$HOME`). The launch
+line was fixed a wave ago and the PICKER's road was not, so opening a conversation from the
+greeting still put four to six wrapped rows of absolute transcript above the person's first
+message while opening the same conversation from the launch line said its name.
+Test `TestOpeningAConversationFromThePickerNamesItAndNotItsPath` · after
+`help2-manual-miss-after.160x50.txt` (line 2: `resumed · wrapping`)
+
+**Row 22 — the unknown command is a sentence** · `internal/tui3/commands.go`
+(`unknownCommandWord`, `unknownCommandLead`, `unknownCommandDoorWord`),
+`internal/tui3/app.go` (the one call site) · `internal/manual/chat/{commands,attaching-files}.md`
+· `dropkeys_test.go`, `homedrop_test.go`, `homeslash_test.go`, `payload_test.go`,
+`surface_test.go`, `tui3_test.go` all updated: **eight** of those assertions are negative —
+"this must NOT say unknown command" — and every one of them would have gone on passing
+against the new wording, which is the defect this lane was told to watch for. They read
+`unknownCommandLead` now. The refusal points at `/` — one keystroke, the list itself —
+rather than at a second command to type. Test
+`TestAnUnknownCommandIsRefusedInASentenceAndPointsAtTheList` · before
+`help-badcommand.160x50.txt` → after `help2-badcommand-after.160x50.txt`
+
+**Row 10, checked rather than changed.** The spend place's empty state was closed by the
+sibling lane above (`spendTeachEmptyWord` — `nothing spent yet — the first model call
+writes a line here.`). Nothing to do.
+
+### Files outside this lane's list, and why
+
+`internal/tui3/input.go` and `internal/tui3/placekeys.go` each took ONE rung so that `?`
+could be bound at all — a key cannot be bound from the file that describes it — and
+`internal/tui3/app.go` took three one-line changes (the opening line, `/help`'s path, the
+unknown-command call site). None of the three is a file another lane was named as holding.

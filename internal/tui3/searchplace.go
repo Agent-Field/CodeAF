@@ -50,6 +50,10 @@ type searchReading struct {
 	hits   []searchHit
 	facets []searchFacet
 	now    time.Time
+	// noIndex says there is no conversation store behind this window at all, so
+	// that "nobody has said that" and "nothing looked" are two different
+	// sentences on the page rather than one ([searchNoIndexWord]).
+	noIndex bool
 }
 
 // readSearch joins the store's remembered turns to the already-read world.
@@ -112,32 +116,83 @@ func (r searchReading) rows(width int, pal palette) []string {
 	if width <= 0 {
 		return nil
 	}
+	// EVERY ROW HANGS FROM THE BODY'S OWN COLUMN, which is one cell in — where
+	// tasks, standing and spend all hang theirs (placebodies.go's
+	// [placeTeachRows]). This page built its rows itself and started at column 1,
+	// so walking the tab bar left to right the body stepped sideways on two
+	// places out of seven. The lead goes on here, once, and everything below is
+	// built into the cell less that leaves.
+	room := width - 1
+	if room <= 0 {
+		return nil
+	}
+	if r.noIndex {
+		// AND A PLACE WITH NO INDEX BEHIND IT SAYS SO. Without this line a machine
+		// whose store was never wired answered `nothing on this machine says "x"`,
+		// which is a search that never happened reporting a result — the one
+		// sentence on this page that could make somebody believe a conversation
+		// does not exist.
+		return searchHung(placeTeachProse(searchNoIndexWord, width, pal))
+	}
 	if r.query == "" {
-		out := searchTeach(pal)
-		for i := range out {
-			out[i] = fit(out[i], width)
+		// THE PROSE IS WRAPPED AND NEVER CUT. Every sentence went through [fit]
+		// before this wave, so at eighty columns the third one drew
+		// `enter opens the conversation at the matching t…` and its other half was
+		// simply gone — while tasks, standing and spend all wrap at the same
+		// reading measure and never lose a word. A sentence about what this place
+		// is FOR is the only thing on an empty page, and half of it is worse than
+		// none ([placeTeachProse] is the helper those three already use).
+		var out []string
+		for _, line := range searchTeachWords {
+			out = append(out, searchHung(placeTeachProse(line, width, pal))...)
 		}
 		return out
 	}
 	if len(r.hits) == 0 {
-		return []string{pal.dim(fit(fmt.Sprintf("nothing on this machine says %q", r.query), width))}
+		return searchHung(placeTeachProse(searchNothingSaid(r.query), width, pal))
 	}
 	var out []string
-	if legend := r.legend(width, pal); legend != "" {
-		out = append(out, legend)
+	if legend := r.legend(room, pal); legend != "" {
+		out = append(out, " "+legend)
 	}
 	shown := len(r.hits)
 	if shown > searchShown {
 		shown = searchShown
 	}
 	for _, hit := range r.hits[:shown] {
-		out = append(out, searchRowAt(hit, r.query, width, r.now, pal))
+		out = append(out, " "+searchRowAt(hit, r.query, room, r.now, pal))
 	}
 	if more := len(r.hits) - shown; more > 0 {
-		out = append(out, pal.dim(fit(foldLine(more, ""), width)))
+		out = append(out, " "+pal.dim(fit(foldLine(more, ""), room)))
 	}
 	return out
 }
+
+// searchHung puts the body's own one-cell lead on rows that were built without
+// one ([placeTeachRows] does the same for the places that go through it).
+func searchHung(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, " "+line)
+	}
+	return out
+}
+
+// searchNothingSaid is the whole answer to a search that found nothing: the
+// emptiness, and then what to do about it.
+//
+// IT USED TO BE THE EMPTINESS ALONE — one dim line in a forty-three row body,
+// honest and finished. A person cannot tell a typo from a machine that has not
+// indexed anything from a phrase that was never said, and an empty place says
+// what to do next, in a verb (the law tasks and spend already keep).
+func searchNothingSaid(query string) string {
+	return fmt.Sprintf("nothing on this machine says %q · try fewer words, or a name", query)
+}
+
+// searchNoIndexWord is the page over a surface with no conversation store
+// wired: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, and this is the
+// sentence that says which of the two silences this one is.
+const searchNoIndexWord = "there is no index of this machine's conversations behind this window, so nothing can be searched from here."
 
 func (r searchReading) legend(width int, pal palette) string {
 	parts := make([]string, 0, len(r.facets))
@@ -255,13 +310,25 @@ func (r searchReading) at(i int) (searchHit, bool) {
 // searchable thing here.
 const searchExampleWord = `type words you remember — "the docker error", a person's name, a filename`
 
+// searchTeachWords is what this place says with nothing typed into it, ONE
+// SENTENCE PER PARAGRAPH: each is wrapped on its own so that a line break falls
+// where a sentence ends rather than wherever the frame's measure lands.
+var searchTeachWords = []string{
+	"search reads every message in every conversation on this machine.",
+	"typing here searches; typing on home starts something.",
+	"enter opens the conversation at the matching turn.",
+	searchExampleWord,
+}
+
+// searchTeach is those sentences dimmed, unwrapped: the reading's own rows go
+// through [placeTeachProse] instead, and this is the plain form a test and any
+// other reader can hold.
 func searchTeach(pal palette) []string {
-	return []string{
-		pal.dim("search reads every message in every conversation on this machine."),
-		pal.dim("typing here searches; typing on home starts something."),
-		pal.dim("enter opens the conversation at the matching turn."),
-		pal.dim(searchExampleWord),
+	out := make([]string, 0, len(searchTeachWords))
+	for _, line := range searchTeachWords {
+		out = append(out, pal.dim(line))
 	}
+	return out
 }
 
 // SearchStore is the exact durable seam the search place needs: ONE call, which
