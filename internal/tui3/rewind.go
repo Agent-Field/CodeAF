@@ -517,9 +517,9 @@ func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, c
 func (a *app) rebuildTranscript() {
 	a.entries = nil
 	a.turn = 0
-	a.live = -1
+	abandonLive(a.entries, &a.live)
+	abandonLive(a.entries, &a.think)
 	a.echoAt = -1
-	a.think = -1
 	a.sel = -1
 	a.unfolded = map[int]bool{}
 	a.rows, a.rowsWidth = nil, 0

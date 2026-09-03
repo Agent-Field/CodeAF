@@ -921,6 +921,36 @@ and the painting is aforge's own token layer.
 Every byte of a reply is sanitised and any surviving escape sequence is stripped, so a
 reply cannot paint itself a heading.
 
+## The reply pops in as a block instead of streaming smoothly — why it writes in
+
+A model that is writing to you a few characters at a time is drawn a few characters at a
+time: whatever the connection hands over, you see, as it lands. Nothing is held back and
+no delay is added.
+
+What used to pop is the other case — a **paragraph that arrives in one piece**, because
+the endpoint buffered it or the connection stalled and then dumped what it had been
+holding. Those bytes are kept; what you see is the growing edge writing them in over a
+fraction of a second, fast at first and finer at the end. A few characters land on the
+instant so the edge is already moving.
+
+**A finished or stopped answer is always whole.** The moment the turn ends — it finished,
+you pressed `esc`, a call started under it — anything still being written in appears at
+once. There is no state in which a reply is left half-drawn.
+
+The thinking window and an `ask here` reply on home behave the same way. A screen-reader
+session never paces: every byte lands the moment it is known.
+
+## Why the reply still jumps — a blob of text arrives all at once
+
+That is the connection, not the screen, and the screen softens it. A stalled wire that
+then dumps a paragraph is drawn as the growing edge writing that paragraph in over a
+fraction of a second rather than as one block appearing. A stream that is genuinely
+arriving word by word is drawn word by word, with nothing held back — the surface never
+slows down text the connection delivered quickly.
+
+If a reply seems to hang and then land whole, that gap is the model or the network. The
+status line's `working` word and the elapsed clock are what to read for it.
+
 ## Markdown while a reply is still arriving
 
 The live tail of a streaming answer is plain wrapped text, not markdown.

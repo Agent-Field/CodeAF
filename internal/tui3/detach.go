@@ -267,7 +267,9 @@ func (a *app) detachConversation() *aside {
 // rare. It is not latent here.
 func (a *app) clearConversation() {
 	a.entries = nil
-	a.live, a.sel, a.think = -1, -1, -1
+	abandonLive(a.entries, &a.live)
+	abandonLive(a.entries, &a.think)
+	a.sel = -1
 	// AND THE ECHO GOES WITH THE CONVERSATION IT WAS TYPED INTO (echo.go): an
 	// index into a transcript that has been replaced points at somebody else's
 	// row, and a confirmation arriving after the swap would take the mark off it.
