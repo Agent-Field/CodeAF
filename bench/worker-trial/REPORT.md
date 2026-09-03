@@ -26,6 +26,17 @@ in the table is reconstructed from `~/.aforge/logs/calls.jsonl` over the run's t
 window — a log shared with every other session on this box, whose `start` rows carry no
 run id. Each row says which method it used; all of them, so far, say *window*.
 
+### A figure I got wrong, corrected
+
+An earlier reading of this trial said "roughly 12% of each run's spend is retry and hedge
+waste". That conflated two things. Measured from `waste_usd` on the call rows, the wasted
+spend is **8.4% / 14.0% / 5.2%** of the three #510 runs, **9.3%** over all three
+($0.4194 of $4.5297). The 429s counted beside it are **not** part of that: a refused call
+bills nothing, so the 8-9 upstream rate-limit responses per run cost **$0** and show up as
+wall time, not money. #543 measures the same waste engine-side at 6.4% of spend and finds
+that the settle line does not show it at all, which is why it is easy to miss from
+outside.
+
 ### How the Opus-lane column is estimated
 
 A comparable Claude Opus 5 subagent lane on this repository — one that reads the seam,
