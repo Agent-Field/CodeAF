@@ -1743,6 +1743,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
+		// And the one thing that ends a pin without the person: the router
+		// saying that machine cannot serve that model at all (issue #456). It
+		// is asked as somebody reads it on the screen and wants to know what it
+		// costs them.
+		{"I pinned a provider and it says it cannot serve this model, what happens now", "lanes"},
 		{"what does via cloudflare mean on the status line", "lanes"},
 		// The offer, from the side the page owns: what the answer NO would be.
 		// The key itself is the keys page's, because that is where somebody

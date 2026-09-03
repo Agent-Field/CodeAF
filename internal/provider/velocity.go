@@ -720,11 +720,29 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 // is both paced here and written out of the serving set, because a pin the
 // frontier can still choose is a pin that comes back on the next turn.
 func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error) bool {
+	return c.strikeRefusal(c.modelFor(request), c.refusalObject(request, knobs, err))
+}
+
+// strikeRefusal is the strike itself, asked by a caller that has already
+// classified the refusal.
+//
+// IT IS AN ENTRANCE AND NOT A SECOND STRIKE, for [Client.laneRefusalFor]'s
+// reason exactly: the fork every routing refusal passes through
+// (client.go's [Client.sendRecovered]) holds the object already, and asking the
+// classifier a second time from there would be the classification happening
+// twice — which is the whole defect refusalobject.go closed. Everything a
+// strike DOES is here, once, and [Client.refuseUpstream] is this function with
+// the classification in front of it.
+//
+// STRIKING TWICE IS HARMLESS AND IS RELIED ON. A refusal that reaches a caller
+// as a 4xx is struck at this seam and struck again by whoever reads the status;
+// both halves are writes of a state rather than counters ([lane.RefuseServing]
+// files a moment, [velocityLedger.pace] sets strikes rather than incrementing
+// them), so the second is the first said again.
+func (c *Client) strikeRefusal(model string, refusal laneRefusal) bool {
 	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
 		return false
 	}
-	model := c.modelFor(request)
-	refusal := c.refusalObject(request, knobs, err)
 	if !refusal.struck() {
 		return false
 	}

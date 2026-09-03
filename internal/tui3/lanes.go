@@ -80,7 +80,10 @@ type LaneNews struct {
 	Trying bool
 
 	// Reason is why the rescue went out, in the transport's own two words
-	// ([provider.RescueSlow], [provider.RescueRefused]). It is CARRIED and never
+	// ([provider.RescueSlow], [provider.RescueRefused]) — or
+	// [provider.RescueRetired], which is not about a rescue at all but about a
+	// person's pin, refused for this model and stood down until they pin again
+	// (issue #456). It is CARRIED and never
 	// decided here: a surface that formed its own opinion about a refusal would
 	// be a second classifier, drifting from the one the routing acted on
 	// (internal/provider's refusalobject.go). An empty word reads as slow, which
@@ -1020,20 +1023,29 @@ func (a *app) setLaneRouterOnly(model string) {
 // far machine's own launch resolved its own row. It is [app.hosted] and not an
 // empty profile path for the reason stated over [app.pinLane] — an empty path
 // is the ordinary launch, not the absence of one.
+//
+// AND IT IS THE PERSON'S OWN ENTRANCE AND NOT THE RESOLVERS'
+// ([provider.RepinLane], not [provider.SetLanePin]). Every path that reaches
+// here is somebody's act — enter on a lane in the picker, `/model @cloudflare`,
+// `/model auto`, the `lane` row in the settings panel — so a refusal the wire
+// collected earlier is forgotten whatever the row now says, INCLUDING when they
+// have chosen the machine they had already chosen. Re-picking coreweave is a
+// row that did not change and an instruction that did, and "pinning again puts
+// it straight back" is what the manual promises them (issue #456).
 func (a *app) laneRowChanged() {
 	if a.hosted() {
 		return
 	}
 	slot := laneSlotFor(a.model)
 	if name, pinned := config.LanePinned(a.profileDir, slot); pinned {
-		provider.SetLanePin(provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(a.profileDir, slot)})
+		provider.RepinLane(provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(a.profileDir, slot)})
 		return
 	}
 	if strings.EqualFold(config.LaneAt(a.profileDir, slot), config.LaneOpenRouter) {
-		provider.SetLanePin(provider.LanePin{OpenRouter: true})
+		provider.RepinLane(provider.LanePin{OpenRouter: true})
 		return
 	}
-	provider.SetLanePin(provider.LanePin{})
+	provider.RepinLane(provider.LanePin{})
 }
 
 // ── THE STATUS LINE ─────────────────────────────────────────────────────────
@@ -1049,6 +1061,16 @@ func (a *app) laneRowChanged() {
 //	refused · trying nextbit…          a lane said no and a rescue is in flight
 //	coreweave refused                  the rescue itself was refused
 //	via coreweave · rescued            it worked, for this answer only
+//	coreweave cannot serve this model; routing on auto for this model until you pin again
+//	                                   the machine you pinned said no, so the pin is retired
+//
+// AND THE LAST OF THOSE IS SAID IN THE CONVERSATION TOO, which is where a
+// person really reads it. This row is outranked by the phase clock for as long
+// as a request is in flight ([app.servedRiderAt]) and holds only the NEWEST
+// news about a model, which the answer's own arrival overwrites — so a sentence
+// that only ever lived here was a sentence nobody saw in a measured run of
+// eight cells. The transport says it as a note as well, once
+// (internal/provider's lanepin.go), and that one stays.
 //
 // THE SURFACE SAYS WHAT THE WIRE SAID. "slow" is a claim about a wait and
 // "refused" is a claim about a machine, and for a whole measured run this line
@@ -1088,6 +1110,18 @@ func (a *app) laneRider() string {
 			return " · refused · trying " + strings.ToLower(news.Alt) + "…"
 		}
 		return " · slow · trying " + strings.ToLower(news.Alt) + "…"
+	}
+	// THE PIN THAT WAS RETIRED (issue #456). It is neither a rescue in flight
+	// nor a retraction of one: it is the row a person wrote changing what it
+	// means for the rest of the run, and the only sentence on this line that
+	// tells somebody what will happen NEXT. So it is written out whole — the
+	// machine as they spelled it when they pinned it, what the wire said about
+	// it, and how to get their pin back — rather than compressed into two words
+	// like the states above it, which are all about the answer in front of
+	// them. The words are the transport's own, so that this row and the note it
+	// leaves in the conversation cannot come to disagree.
+	if news.Reason == provider.RescueRetired && news.Alt != "" {
+		return " · " + provider.RetiredPinLine(news.Alt)
 	}
 	// THE RETRACTION. The machine this line was promising has failed, so the
 	// promise comes off and the only thing left worth saying is what it did.
