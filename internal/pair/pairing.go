@@ -147,7 +147,13 @@ func pairAsSurface(conn io.ReadWriteCloser, service, machineName, code, label st
 }
 
 // pairAsMachine runs the introduction from the machine that showed the code.
-func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device, now time.Time) (Paired, error) {
+//
+// admit is handed the device the introduction produced, and is this machine
+// writing it into its own book. It is asked BEFORE the reply that tells the
+// surface the pairing held, and it is never nil: every caller has a book, and
+// the whole point of the argument is that there is no way to run this exchange
+// without one.
+func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device, now time.Time, admit func(Paired) error) (Paired, error) {
 	first, err := readRecord(conn)
 	if err != nil {
 		return Paired{}, err
@@ -190,9 +196,35 @@ func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device,
 		return Paired{}, errors.New("that device offered something this build cannot read")
 	}
 	deviceKey := append([]byte{}, offer[:32]...)
-	label := readableLabel(string(offer[32:]))
+	one := Paired{
+		Label: readableLabel(string(offer[32:])),
+		Key:   base64.RawURLEncoding.EncodeToString(deviceKey),
+		Since: now,
+	}
 
-	reply, _, _, err := handshake.WriteMessage(nil, append(append([]byte{}, me.Public()...), machineName...))
+	// THE MACHINE WRITES THE DEVICE DOWN BEFORE IT SAYS THE PAIRING HELD.
+	//
+	// The reply below is the whole of what the surface has to go on: it reads it,
+	// says "paired", and dials straight back. A book written after that reply went
+	// out is a book the very next connection can find empty — and a device that was
+	// let in one millisecond ago is then told it has been stopped, which is the
+	// sentence for a device somebody deliberately revoked. So the book is written
+	// here, ahead of the reply. This is the shape acceptAsMachine already has,
+	// where `allow` is asked before the last message is composed.
+	//
+	// A WRITE THAT FAILS SENDS NOTHING AT ALL. There is no room in this message
+	// for a machine to say why it stopped — its shape is the machine's key and
+	// its name, and it is the same shape every build of aforge has ever sent — so
+	// the refusal is the silence of a machine that hangs up, which is exactly what
+	// this machine already does when the six digits were wrong. The device is left
+	// knowing the pairing did not hold, which is the fact that matters to it, and
+	// the reason is kept where it can be acted on: this machine's own screen.
+	if err := admit(one); err != nil {
+		return Paired{}, notWrittenDown{err}
+	}
+
+	answer := append(append([]byte{}, me.Public()...), machineName...)
+	reply, _, _, err := handshake.WriteMessage(nil, answer)
 	if err != nil {
 		return Paired{}, err
 	}
@@ -200,11 +232,7 @@ func pairAsMachine(conn io.ReadWriteCloser, machineName, code string, me Device,
 		return Paired{}, err
 	}
 
-	return Paired{
-		Label: label,
-		Key:   base64.RawURLEncoding.EncodeToString(deviceKey),
-		Since: now,
-	}, nil
+	return one, nil
 }
 
 // readableLabel keeps a device's own name for itself down to something that can
