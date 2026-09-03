@@ -1,0 +1,24 @@
+─ ? main ▸ Cut every list · needs your look · 12m 0s · $0.52 · 7 tool calls ────
+  part of: Measure the frame
+  handed out: Fold the settled — parked
+That is the law inverted exactly. Rewriting it as a rowPlan.
+  ▸ worked · 1 tool call · ctrl+e
+
+Same shape for the jobs column, the made-for-you note and the task card.
+  ▸ worked · 3 tool calls · ctrl+e
+
+Running the surface's own suite over the four.
+  ▸ worked · 1 tool call · ctrl+e
+
+The four lists are on the fitter and the frames read right at 160 and 120.
+Nothing here could prove the sixty-cell case — the only terminal that narrow is
+yours — so it wants your eye before it lands.
+  finished, but nobody has checked it — your call
+  [a] accept · [l] look again · [n] not right · [d] decide these for me
+
+─ room · esc/←← main ─────────────────── a accept · l look again · n not right ─
+
+  ? Cut every list › finished — say it to main, or open its parent, Measure the…
+  ? Cut every list ›
+? Cut every list · task claude-opus-4.1
+                crew balanced · ◦ keeping an eye on 3 · $1.07 · 5.5k/1.3M · idle

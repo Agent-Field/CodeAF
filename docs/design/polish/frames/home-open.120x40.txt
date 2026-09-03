@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:06pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+12 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
+? tell me when CI goes red on master       aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 7m
+○ Porting the Picker                                                                            aforge-v2 another window
+○ The Certificate Rotation                                                                                     infra 27m
+○ The Tab Bar's Counts                                                                                     aforge-v2 47m
+○ Why the Frame Jumps                                                                                       aforge-v2 3h
+○ Pricing Research                                                                                       pricing-site 3h
+○ Standing Up the Watches                                                                                   aforge-v2 5h
+○ The Annual Toggle                                                                                      pricing-site 5h
+○ Reading the Ledger                                                                                        aforge-v2 1d
+○ What the Discount Means                                                                                pricing-site 1d
+○ The Backup Window                                                                                             infra 2d
+○ Rotating the Deploy Key                                                                                       infra 4d
+○ 273Ecd8c7da60bc8                                                                                        aforge-v2 here
+▾ 5 more, quiet since sep 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                here aforge-v2
+ enter open where it was asked · → pause · stop · tab next place · esc close

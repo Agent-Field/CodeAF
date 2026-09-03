@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:10pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+13 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
+? tell me when CI goes red on master      aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 12m
+○ Notakey                                                                                                 aforge-v2 here
+○ Why the Frame Jumps                                                                                       aforge-v2 2m
+○ The Certificate Rotation                                                                                      infra 3m
+○ The Tab Bar's Counts                                                                                      aforge-v2 4m
+○ Porting the Picker                                                                                       aforge-v2 14m
+○ Wrapping Torture                                                                                         aforge-v2 25m
+○ Pricing Research                                                                                       pricing-site 3h
+▸ 6 more, quiet since sep 2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ type to search or start something new · ↑↓ pick · enter open · tab next place

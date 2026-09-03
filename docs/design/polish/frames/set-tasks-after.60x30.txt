@@ -1,0 +1,30 @@
+ aforge                            1 want you · thu 12:05am
+  settings
+────────────────────────────────────────────────────────────
+
+ …  Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────
+
+› starting a task                                      sized
+    what /task does with your brief: sized reads it for
+    width first, so the one worker that starts can hand
+    the parts out once it has opened the material, single…
+  check task work                                         on
+  task repair rounds                                       1
+  tasks at once                                     no limit
+  busy machine                                  1.5 per core
+  memory floor                                       1536 MB
+  task model                        follows the conversation
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config…
+ › say what you want done                  here ~/aforge-v2
+ ↑↓ move · ←→ tabs · tab next place · esc close

@@ -1,0 +1,24 @@
+ [1m[38;5;110maforge[0m                                                [38;5;186m1 want you[39m · [38;5;243mthu 12:05am[39m
+ [38;5;243m home [39m [38;5;243m tasks [39m [38;5;243m standing [39m [38;5;243m memory [39m [38;5;243m spend [39m [38;5;243m search [39m [1m[38;5;252m[48;5;237m settings [0m
+[38;5;243m────────────────────────────────────────────────────────────────────────────────
+
+[39m [38;5;243m Session [39m [38;5;243m Context [39m [1m[38;5;146m[48;5;237m Workspace [0m [38;5;243m Display [39m [38;5;243m Spending [39m [38;5;243m Safety [39m [38;5;243m Tasks [39m [38;5;243m…[39m
+[38;5;243m────────────────────────────────────────────────────────────────────────────────
+
+[38;5;146m[48;5;235m› [1m[38;5;252mgoogle sign-in id[0m[48;5;235m                                                      [38;5;252mnot set
+[39m[49m    [38;5;243midentifies aforge to Google when you connect an account. Blank uses the[39m
+    [38;5;243mone aforge ships with.[39m
+  [38;5;243mgoogle sign-in secret[39m                                                  [38;5;243mnot set
+[39m  [38;5;243mslack sign-in id[39m                                                       [38;5;243mnot set
+[39m  [38;5;243mquiet before practice[39m                                                      [38;5;243m20m
+[39m  [38;5;243marrival brief after[39m                                                         [38;5;243m4h
+[39m  [38;5;243mtenure after[39m                                                   [38;5;243m3 clean firings
+[39m  [38;5;243mbackground checks[39m                                                          [38;5;243moff
+[39m  [38;5;243mattribution[39m                                                                 [38;5;243mon
+[39m  [38;5;243mssh reuse[39m                                                                 [38;5;243m300s
+[39m  [38;5;243mssh heartbeat[39m                                                               [38;5;243m3s
+
+────────────────────────────────────────────────────────────────────────────────
+[39m [38;5;243msaved to your profile · a project's own .aforge-v3/config.json is a hand edit[39m
+ [38;5;243m› say what you want done[39m                                      [38;5;243mhere ~/aforge-v2[39m
+ [38;5;252m↑↓[38;5;243m move · [38;5;252m←→[38;5;243m tabs · [38;5;252menter[38;5;243m change · type to search · [38;5;252mtab[38;5;243m next place · [38;5;252mesc[38;5;243m close[39m

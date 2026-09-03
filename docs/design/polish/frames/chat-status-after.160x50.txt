@@ -1,0 +1,50 @@
+                                                                                                                                  │ + /task
+› LINE-ONE the tab bar keeps two counts and they disagree after a task lands, so I want you to look at LINE-TWO where the count is│
+  read and where the list is built, and tell me whether they share a reading. LINE-THREE if they do not, say what the cheapest    │ standing
+  single reading would be and which file owns it. LINE-FOUR do not change anything yet, just tell me what you find and where.     │ ◦ the morning sweep
+  LINE-FIVE and please quote the exact line numbers so I can go and look myself. LINE-SIX-THE-END this last sentence is the one I │ ? CI on master
+  want to still be able to read on the screen.                                                                                    │ ◦ the public API
+                                                                                                                                  │ + /standing
+They do not share a reading.                                                                                                      │
+                                                                                                                                  │
+  · 3 standing orders here — /standing                                                                                            │
+  · resumed · Long Question                                                                                                       │
+  · esc interrupts · ctrl+c twice quits                                                                                           │
+  · session        Long Question                                                                                                  │
+  model          ~deepseek/deepseek-v4-flash-latest                                                                               │
+  crew           balanced · brain glm-5.3:high · hands glm-5.3-flash · checks qwen3.8-27b                                         │
+  search         firecrawl · keyless                                                                                              │
+  watching       ◦ keeping an eye on 3                                                                                            │
+  context        5.5k/1.3M                                                                                                        │
+  compacts at    85% of 1.3M (derived)                                                                                            │
+  state          idle                                                                                                             │
+  keeping watch  while a window is open                                                                                           │
+  place          ~/aforge-v2 · master*                                                                                            │
+  keys           / commands                                                                                                       │
+  build          49655664f (dirty) built 2026-09-02 23:50                                                                         │
+  file           /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-                                                   │
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-             │
+  73decce3d3d5-scratchpad-demohome-aforge-v2/ffff0000longmsg1/transcript.jsonl                                                    │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │ ctrl+. earlier
+                                                                                                                                  │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                                                                                                          ⠿ high
+ ›
+Long Question · deepseek-v4-flash-latest                                                        crew balanced · ◦ keeping an eye on 3 · $0.00 · 5.5k/1.3M · idle

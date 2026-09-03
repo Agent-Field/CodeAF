@@ -1,0 +1,30 @@
+ aforge                       $0.37 / $500.00 · wed 11:52pm
+  tasks
+────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 15 pieces of work since aug 20.
+
+running
+›   ○ Write the change e…d open the pull request against dev
+    ○ Fold the settled work on the task page             now
+
+done today
+    ✓ Move the tab bar onto one reading of the world     now
+    ✓ Measure the frame …t in every package that draws a row
+    ✕ Rebuild the frame budget report            now · $0.04
+    ✓ Port the picker onto the new list          47m · $0.31
+  ▸ ✓ Count the tabs the bar draws holds 3 more · 2h · $0.42
+    ✓ Write the morning sweep down                5h · $0.14
+    ✓ Put the annual toggle on the pricing page   5h · $0.27
+
+earlier
+    · Rotate the wildcard certificate             incomplete
+    ✓ Take the backup window down to twenty minutes       2d
+    ✕ Rebuild the frame budget report             8d · $0.18
+
+
+
+────────────────────────────────────────────────────────────
+ 2 running · 10 done today · 3 earlier
+ › say what you want done                  here ~/aforge-v2
+ enter open its room · → verbs: stop it · tab next place

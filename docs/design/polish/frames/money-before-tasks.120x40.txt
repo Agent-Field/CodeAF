@@ -1,0 +1,40 @@
+ aforge                                                                                   $0.37 / $500.00 · thu 12:22am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 16, $3.32 of it.                                   shift+← aug 21 – sep 3 →  shift+↑ coarser
+
+needs your look
+›   ? Cut every list on the task surface over to the shared row fitter so a name is… Sweeping the Frame Budget $0.52 now
+
+running
+    ○ Write the change entry and open the pull request against dev                         Sweeping the Frame Budget now
+    ○ Fold the settled work on the task page                                               Sweeping the Frame Budget now
+
+done today
+    ✕ Rebuild the frame budget report                                                Sweeping the Frame Budget $0.04 now
+    ✓ Measure the frame budget in every package that draws a row                     Sweeping the Frame Budget $0.21 now
+    ✓ Move the tab bar onto one reading of the world                                 Sweeping the Frame Budget $0.34 now
+
+earlier
+    ✓ Port the picker onto the new list                                         Porting the Picker saved shape $0.31 42m
+  ▸ ✓ Count the tabs the bar draws                                                The Tab Bar's Counts $0.42 2h +3 under
+    ✕ Rebuild the frame budget report                                     Why the Frame Jumps gave up, said why $0.18 8d
+    ✓ Write the morning sweep down                                                      Standing Up the Watches $0.14 5h
+    · Rotate the wildcard certificate                                            The Certificate Rotation incomplete now
+    ✓ Take the backup window down to twenty minutes                                           The Backup Window $0.55 2d
+    ✓ Put the… The Annual Toggle 2 files · Annual is the default and the monthly price stays visible beside it. $0.27 5h
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 1 needs your look · 2 running · 3 done today · 10 earlier
+ › say what you want done                                                                              here ~/aforge-v2
+ enter open its room · type to filter · tab next place

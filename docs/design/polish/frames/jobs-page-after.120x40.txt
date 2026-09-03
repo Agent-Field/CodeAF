@@ -1,0 +1,40 @@
+ npm run dev                                                                                                   esc back
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ job 1 · stopped · ran 51m 12s
+
+ 09:28:44 [vite] GET /jobs/1 200 in 15ms
+ 09:28:44 [vite] GET /spend 200 in 15ms
+ 09:28:44 [vite] GET /standing 200 in 15ms
+ 09:28:44 [vite] GET /memory 200 in 15ms
+ 09:28:44 [vite] GET /search 200 in 15ms
+ 09:35:55 [vite] GET / 200 in 18ms
+ 09:35:55 [vite] GET /home 200 in 18ms
+ 09:35:55 [vite] GET /tasks 200 in 18ms
+ 09:35:55 [vite] GET /tasks/3 200 in 18ms
+ 09:35:55 [vite] GET /jobs 200 in 18ms
+ 09:35:55 [vite] GET /jobs/1 200 in 18ms
+ 09:35:55 [vite] GET /spend 200 in 18ms
+ 09:35:55 [vite] GET /standing 200 in 18ms
+ 09:35:55 [vite] GET /memory 200 in 18ms
+ 09:35:55 [vite] GET /search 200 in 18ms
+ 09:35:05 [vite] hmr update /src/pages/Tasks.tsx
+ 09:42:06 [vite] GET / 200 in 21ms
+ 09:42:06 [vite] GET /home 200 in 21ms
+ 09:42:06 [vite] GET /tasks 200 in 21ms
+ 09:42:06 [vite] GET /tasks/3 200 in 21ms
+ 09:42:06 [vite] GET /jobs 200 in 21ms
+ 09:42:06 [vite] GET /jobs/1 200 in 21ms
+ 09:42:06 [vite] GET /spend 200 in 21ms
+ 09:42:06 [vite] GET /standing 200 in 21ms
+ 09:42:06 [vite] GET /memory 200 in 21ms
+ 09:42:06 [vite] GET /search 200 in 21ms
+ 09:49:17 [vite] GET / 200 in 24ms
+ 09:49:17 [vite] GET /home 200 in 24ms
+ 09:49:17 [vite] GET /tasks 200 in 24ms
+ 09:49:17 [vite] GET /tasks/3 200 in 24ms
+ 09:49:17 [vite] GET /jobs 200 in 24ms
+ 09:49:17 [vite] GET /jobs/1 200 in 24ms
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/jobsfix/.aforge/v3/projects/-tm…
+ esc back · ↑↓ scroll · c copy path · m puts it in your message

@@ -1,0 +1,40 @@
+ Rebuild the frame budget report                                                                               esc back
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ failed · landed 8d ago · ran 4m 0s
+
+ The sweep it re-runs needs a build that is not on this machine, so the report could not be regenerated.
+
+ anthropic/claude-sonnet-4 · $0.18 · 22.1k tok
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc back · ↑↓ scroll · m puts it in your message

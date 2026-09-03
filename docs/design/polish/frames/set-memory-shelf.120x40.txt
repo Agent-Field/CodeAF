@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+  · 3 standing orders here — /standing                                                    │
+  · new conversation · aforge-v2                                                          │ standing
+                                                                                          │ ◦ the morning sweep
+› about something you remember: deploys on Fridays                                        │ ? CI on master
+  ·· paced                                                                                │ ◦ the public API
+                                                                                          │ + /standing
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.0000 · 671 tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+aforge-v2 · deepseek-v4-flash-latest · paced     ◦ keeping an eye on 3 · $0.0000 · 5.3k/1.3M · 30 tok/s · ⠏ working · 1s

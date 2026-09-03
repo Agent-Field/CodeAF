@@ -1,0 +1,30 @@
+ aforge                       $0.37 / $500.00 · wed 11:03pm
+  tasks
+────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 10 since aug 20, $2.21 of it.
+
+done today
+›   ✓ Port the pic… Porting the Picker saved shape $0.31 45m
+  ▸ ✓ Count the tabs… The Tab Bar's Counts $0.42 2h +3 under
+    ✓ Write the morning sw… Standing Up the Watches $0.14 5h
+    ✓ Put the annual toggle on t… The Annual Toggle $0.27 5h
+
+earlier
+    ✕ Rebuild the frame budget… Why the Frame Jumps $0.18 8d
+    · Rotate the wi… The Certificate Rotation incomplete now
+    ✓ Take the backup window dow… The Backup Window $0.55 2d
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ 7 done today · 3 earlier
+ › say what you want done                  here ~/aforge-v2
+ enter go inside it · type to filter · tab next place

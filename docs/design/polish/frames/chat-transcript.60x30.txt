@@ -1,0 +1,30 @@
+
+  · 3 standing orders here — /standing
+  · esc interrupts · ctrl+c twice quits
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+
+                                                      ⠿ high
+ ›
+aforge-v2 · deepseek-v4-flash-latest
+            ◦ keeping an eye on 3 · $0.00 · 5.3k/1.3M · idle

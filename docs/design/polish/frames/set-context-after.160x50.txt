@@ -1,0 +1,50 @@
+ aforge                                                                                                                                1 want you · thu 12:08am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+› searching                                                                                                                                                 auto
+    now firecrawl, keyless — set search.exaKey or search.firecrawlKey to raise it
+  exa key                                                                                                                                                not set
+  firecrawl key                                                                                                                                          not set
+  jina key                                                                                                                                               not set
+  compact at                                                                                                                                                 60%
+  answer room                                                                                                                                          65536 tok
+  working set                                                                                                                                         160000 tok
+  context reuse                                                                                                                                             250%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config.json is a hand edit
+ › say what you want done                                                                                                                      here ~/aforge-v2
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

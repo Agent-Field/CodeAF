@@ -1,0 +1,40 @@
+ aforge                                                                                        1 want you · thu 12:06am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  per day                                                                                                           $500
+› per conversation                                                                                              no limit
+    what one conversation may spend before it stops starting turns. The turn in flight always finishes and your
+    message stays yours to send again. none removes the limit.
+  per plan                                                                                         asks first above $100
+  per task                                         no limit of its own · it spends against the day and this conversation
+  per standing run                                                             $5 a firing · each order may name its own
+  practice                                                                                                $50 of the day
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ per conversation · an amount in dollars, like 5 or 2.50 — or none for no limit
+ › say what you want done                                                                              here ~/aforge-v2
+ enter save · empty clears · esc cancel

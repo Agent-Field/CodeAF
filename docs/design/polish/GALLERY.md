@@ -37,7 +37,17 @@ each has a `.ans` twin beside it carrying the colour.
 | `home-idle` | 120x40 | [before](frames/home-idle.120x40.txt) | [after](frames/home-idle-after.120x40.txt) |
 | `home-idle` | 80x24 | [before](frames/home-idle.80x24.txt) | [after](frames/home-idle-after.80x24.txt) |
 | `home-idle` | 60x30 | [before](frames/home-idle.60x30.txt) | [after](frames/home-idle-after.60x30.txt) |
+| `narrow-home` | 60x30 | [before](frames/narrow-home.60x30.txt) | [after](frames/narrow-home-after.60x30.txt) |
+| `set-connections` | 120x40 | [before](frames/set-connections.120x40.txt) | [after](frames/set-connections-after.120x40.txt) |
+| `set-context` | 120x40 | [before](frames/set-context.120x40.txt) | [after](frames/set-context-after.120x40.txt) |
+| `set-display` | 120x40 | [before](frames/set-display.120x40.txt) | [after](frames/set-display-after.120x40.txt) |
+| `set-edit-perday` | 120x40 | [before](frames/set-edit-perday.120x40.txt) | [after](frames/set-edit-perday-after.120x40.txt) |
+| `set-providers` | 120x40 | [before](frames/set-providers.120x40.txt) | [after](frames/set-providers-after.120x40.txt) |
+| `set-safety` | 120x40 | [before](frames/set-safety.120x40.txt) | [after](frames/set-safety-after.120x40.txt) |
 | `set-session` | 120x40 | [before](frames/set-session.120x40.txt) | [after](frames/set-session-after.120x40.txt) |
+| `set-spending` | 120x40 | [before](frames/set-spending.120x40.txt) | [after](frames/set-spending-after.120x40.txt) |
+| `set-tasks` | 120x40 | [before](frames/set-tasks.120x40.txt) | [after](frames/set-tasks-after.120x40.txt) |
+| `set-workspace` | 120x40 | [before](frames/set-workspace.120x40.txt) | [after](frames/set-workspace-after.120x40.txt) |
 | `task-filter-none` | 120x40 | [before](frames/task-filter-none.120x40.txt) | [after](frames/task-filter-none-after.120x40.txt) |
 | `task-fold-open` | 160x50 | [before](frames/task-fold-open.160x50.txt) | [after](frames/task-fold-open-after.160x50.txt) |
 | `task-list` | 160x50 | [before](frames/task-list.160x50.txt) | [after](frames/task-list-after.160x50.txt) |
@@ -134,23 +144,35 @@ Either a surface no lane has reached, or one the audit found already right.
 - `home-firstrun-esc` — [120x40](frames/home-firstrun-esc.120x40.txt)
 - `home-grouped` — [120x40](frames/home-grouped.120x40.txt)
 - `home-open` — [120x40](frames/home-open.120x40.txt)
-- `main-home` — [120x40](frames/main-home.120x40.txt)
+- `jobs-home` — [120x40](frames/jobs-home.120x40.txt)
+- `main-home` — [120x40](frames/main-home.120x40.txt) · [60x30](frames/main-home.60x30.txt)
 - `memory` — [120x40](frames/memory.120x40.txt)
+- `money-after-home` — [120x40](frames/money-after-home.120x40.txt)
+- `money-after-memory` — [120x40](frames/money-after-memory.120x40.txt)
+- `money-after-rev-home` — [120x40](frames/money-after-rev-home.120x40.txt)
+- `money-after-rev-spend` — [120x40](frames/money-after-rev-spend.120x40.txt)
+- `money-after-rev-tasks` — [120x40](frames/money-after-rev-tasks.120x40.txt)
+- `money-after-search` — [120x40](frames/money-after-search.120x40.txt)
+- `money-after-settings` — [120x40](frames/money-after-settings.120x40.txt)
+- `money-after-spend` — [120x40](frames/money-after-spend.120x40.txt)
+- `money-after-spend-open` — [120x40](frames/money-after-spend-open.120x40.txt)
+- `money-after-standing` — [120x40](frames/money-after-standing.120x40.txt)
+- `money-after-tasks` — [120x40](frames/money-after-tasks.120x40.txt)
+- `money-before-home` — [120x40](frames/money-before-home.120x40.txt)
+- `money-before-memory` — [120x40](frames/money-before-memory.120x40.txt)
+- `money-before-spend` — [120x40](frames/money-before-spend.120x40.txt)
+- `money-before-standing` — [120x40](frames/money-before-standing.120x40.txt)
+- `money-before-tasks` — [120x40](frames/money-before-tasks.120x40.txt)
 - `search` — [120x40](frames/search.120x40.txt)
 - `seed-home` — [160x50](frames/seed-home.160x50.txt) · [120x40](frames/seed-home.120x40.txt) · [60x30](frames/seed-home.60x30.txt)
 - `seed-room` — [160x50](frames/seed-room.160x50.txt) · [120x40](frames/seed-room.120x40.txt) · [80x24](frames/seed-room.80x24.txt) · [60x30](frames/seed-room.60x30.txt)
 - `seed-talk` — [160x50](frames/seed-talk.160x50.txt) · [120x40](frames/seed-talk.120x40.txt) · [80x24](frames/seed-talk.80x24.txt) · [60x30](frames/seed-talk.60x30.txt)
 - `seed-tasks` — [120x40](frames/seed-tasks.120x40.txt) · [60x30](frames/seed-tasks.60x30.txt)
-- `set-connections` — [120x40](frames/set-connections.120x40.txt)
 - `set-connections-80` — [80x24](frames/set-connections-80.80x24.txt)
-- `set-context` — [120x40](frames/set-context.120x40.txt)
 - `set-context-80` — [80x24](frames/set-context-80.80x24.txt)
-- `set-display` — [120x40](frames/set-display.120x40.txt)
-- `set-edit-perday` — [120x40](frames/set-edit-perday.120x40.txt)
 - `set-edit-sshreuse` — [120x40](frames/set-edit-sshreuse.120x40.txt)
 - `set-memory` — [160x50](frames/set-memory.160x50.txt) · [80x24](frames/set-memory.80x24.txt) · [60x30](frames/set-memory.60x30.txt)
 - `set-memory-shelf` — [120x40](frames/set-memory-shelf.120x40.txt)
-- `set-providers` — [120x40](frames/set-providers.120x40.txt)
 - `set-pulse-home` — [120x40](frames/set-pulse-home.120x40.txt)
 - `set-pulse-memory10` — [120x40](frames/set-pulse-memory10.120x40.txt)
 - `set-pulse-memory3` — [120x40](frames/set-pulse-memory3.120x40.txt)
@@ -161,14 +183,10 @@ Either a surface no lane has reached, or one the audit found already right.
 - `set-pulse-tasks1` — [120x40](frames/set-pulse-tasks1.120x40.txt)
 - `set-pulse-tasks1-slow` — [120x40](frames/set-pulse-tasks1-slow.120x40.txt)
 - `set-pulse-tasks8` — [120x40](frames/set-pulse-tasks8.120x40.txt)
-- `set-safety` — [120x40](frames/set-safety.120x40.txt)
 - `set-set-spending` — [160x50](frames/set-set-spending.160x50.txt) · [80x24](frames/set-set-spending.80x24.txt) · [60x30](frames/set-set-spending.60x30.txt)
 - `set-settings` — [160x50](frames/set-settings.160x50.txt) · [80x24](frames/set-settings.80x24.txt) · [60x30](frames/set-settings.60x30.txt)
 - `set-spend` — [160x50](frames/set-spend.160x50.txt) · [80x24](frames/set-spend.80x24.txt) · [60x30](frames/set-spend.60x30.txt)
-- `set-spending` — [120x40](frames/set-spending.120x40.txt)
-- `set-tasks` — [120x40](frames/set-tasks.120x40.txt)
 - `set-tasks-tab-80` — [80x24](frames/set-tasks-tab-80.80x24.txt)
-- `set-workspace` — [120x40](frames/set-workspace.120x40.txt)
 - `settings` — [120x40](frames/settings.120x40.txt)
 - `spend` — [120x40](frames/spend.120x40.txt)
 - `standing` — [120x40](frames/standing.120x40.txt)

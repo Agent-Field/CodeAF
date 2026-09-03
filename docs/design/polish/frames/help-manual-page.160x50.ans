@@ -1,0 +1,50 @@
+[38;5;243m  elapsed time, the thinking block's time when there was one, and the real call count.[39m                                            [38;5;243m│ + /task[39m
+[38;5;243m  There is a blank row between the chip and the answer under it.[39m                                                                  [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ + /standing[39m
+[38;5;243m  **A turn you stopped with `esc` says so instead**, and it collapses whole:[39m                                                      [38;5;243m│ [39m
+[38;5;243m  `▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.[39m                                         [38;5;243m│ [39m
+[38;5;243m  A stopped turn never reached an answer, so there is no answer to leave out of the chip —[39m                                        [38;5;243m│ [39m
+[38;5;243m  that is the point of the wording. aforge's own lines about the stop (`· stopped`, and[39m                                           [38;5;243m│ [39m
+[38;5;243m  what it dropped from the queue) stay outside the chip where you can read them.[39m                                                  [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  Click the chip or press `ctrl+e` over an empty message box to open or close it. There is[39m                                        [38;5;243m│ [39m
+[38;5;243m  no transcript cursor, so the key chooses the latest completed turn's work in the[39m                                                [38;5;243m│ [39m
+[38;5;243m  conversation. Opening restores the existing bounded views: thinking remains its[39m                                                 [38;5;243m│ [39m
+[38;5;243m  own chip and only the latest 3 tool calls show until those are opened separately.[39m                                               [38;5;243m│ [39m
+[38;5;243m  Questions, approval prompts, failure lines, text-only turns, and work with no trailing[39m                                          [38;5;243m│ [39m
+[38;5;243m  answer are never hidden — nor is a second message you sent into a running turn, which[39m                                           [38;5;243m│ [39m
+[38;5;243m  ends the chip above it and starts a new one. Fold state belongs to this window; resumed[39m                                         [38;5;243m│ [39m
+[38;5;243m  sessions derive fresh closed chips from their saved entries.[39m                                                                    [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  **A task's page has chips too, cut differently.** The conversation folds by turn — one[39m                                          [38;5;243m│ [39m
+[38;5;243m  chip per question you asked. A task's page is one long turn, so it folds by **phase**[39m                                           [38;5;243m│ [39m
+[38;5;243m  instead: the work that came before each paragraph the task wrote goes behind its own[39m                                            [38;5;243m│ [39m
+[38;5;243m  chip, and every paragraph stays standing. The work it is doing right now never folds.[39m                                           [38;5;243m│ [39m
+[38;5;243m  `ctrl+e` opens the newest chip there, a click opens any of them, and scrolling up when[39m                                          [38;5;243m│ [39m
+[38;5;243m  the page is already at its top opens the one nearest the top. `ui.work = open` opens them[39m                                       [38;5;243m│ [39m
+[38;5;243m  all, exactly as it does out here. Where a task's page has no chip yet, `ctrl+e` falls[39m                                           [38;5;243m│ [39m
+[38;5;243m  through to the thinking block as before.[39m                                                                                        [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  **A node's transcript inside an adaptive run's page never folds.** You got there by[39m                                             [38;5;243m│ [39m
+[38;5;243m  asking to see what that one node did, and the page draws the tail of its journal under[39m                                          [38;5;243m│ [39m
+[38;5;243m  the graph — so there is nothing there to fold away.[39m                                                                             [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  ## How do I keep everything expanded?[39m                                                                                           [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  Set `ui.work` to `open` to keep completed work visible. `fold` is the default. The row[39m                                          [38;5;243m│ [39m
+[38;5;243m  live-applies on the next render; work stays indented in either mode.[39m                                                            [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  ## Things this page does not cover[39m                                                                                              [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  - **Slash commands** — what `/image`, `/export`, `/select`, `/copy`, `/model`,[39m                                                  [38;5;243m│ [39m
+[38;5;243m    `/resume`, `/permissions` and the rest do: the commands page.[39m                                                                 [38;5;243m│ [39m
+[38;5;243m  - **The status line, the legend under the box, and the layout**: the screen page.[39m                                               [38;5;243m│ [39m
+[38;5;243m  - **Tasks, rooms, proposals and the roster**: the tasks pages.[39m                                                                  [38;5;243m│ [39m
+[38;5;243m  - **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and[39m                                         [38;5;243m│ [39m
+[38;5;243m    rewind page.[39m                                                                                                                  [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m─ master ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                                                                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243maforge · deepseek-v4-flash-latest[39m                                                                                       [38;5;243mcrew balanced · $0.00 · 5.4k/1.3M · idle

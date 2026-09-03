@@ -1,0 +1,50 @@
+                                                                                                                                  [38;5;243m│ + /task[39m
+  [38;5;243m· resumed [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-[0m[38;5;243m]8;;\│ [39m
+[38;5;243m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-[0m]8;;\                                [38;5;243m│ + /standing[39m
+[38;5;243m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\proj/770391df4a5f1343/transcript.jsonl[0m]8;;\                                                                                          [38;5;243m│ [39m
+  [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits[39m                                                                                           [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m─ master ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── [38;5;116m↑↓[38;5;243m · [38;5;116menter[38;5;243m · [38;5;116mesc[38;5;243m ─
+
+[39m                                                                                                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [38;5;252m/[39m
+[38;5;146m[48;5;235m› [1m[38;5;252m/model[0m[48;5;235m                                                                                                     [38;5;252mpick a model · or press its name in the status line
+[39m[49m  [38;5;243m/model <slug>[39m                                                                                                                                 [38;5;243mswitch the model
+[39m  [38;5;243m/image <path>[39m                                                                                                        [38;5;243mattach a picture · tab completes the path
+[39m  [38;5;243m/settings[39m                                                                                                 [38;5;243mopen the settings panel · ctrl+, · also /set /config
+[39m  [38;5;243m/connect[39m                                                                                         [38;5;243myour connected accounts · connect another · also /connections
+[39m  [38;5;243m/new[39m                                                                                    [38;5;243mstart another conversation in this project · also /clear /clean /reset
+[39m  [38;5;243m/resume[39m                                                                                                          [38;5;243mopen an earlier conversation · also /sessions
+[39m  [38;5;243m/compact[39m                                                                                                                        [38;5;243msummarize the conversation now
+aforge · deepseek-v4-flash-latest[39m                                                                                       [38;5;243mcrew balanced · $0.00 · 5.4k/1.3M · idle

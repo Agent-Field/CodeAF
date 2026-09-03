@@ -1,0 +1,50 @@
+ aforge                                                                                                                                             wed 11:05pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ tasks is the history of work this machine has run.
+ it lists work aforge ran on its own, across every project.
+ enter opens a task's room when there is one here.
+ no tasks yet — /task <brief> starts one
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                           here aforge
+ type to filter · tab next place

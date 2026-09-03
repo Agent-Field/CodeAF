@@ -1,0 +1,50 @@
+
+                                                                                                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [38;5;252m/[39m
+[38;5;146m[48;5;235m› [1m[38;5;252m/model[0m[48;5;235m                                                                                                     [38;5;252mpick a model · or press its name in the status line
+[39m[49m  [38;5;243m/model <slug>[39m                                                                                                                                 [38;5;243mswitch the model
+[39m  [38;5;243m/image <path>[39m                                                                                                        [38;5;243mattach a picture · tab completes the path
+[39m  [38;5;243m/settings[39m                                                                                                 [38;5;243mopen the settings panel · ctrl+, · also /set /config
+[39m  [38;5;243m/connect[39m                                                                                         [38;5;243myour connected accounts · connect another · also /connections
+[39m  [38;5;243m/new[39m                                                                                    [38;5;243mstart another conversation in this project · also /clear /clean /reset
+[39m  [38;5;243m/resume[39m                                                                                                          [38;5;243mopen an earlier conversation · also /sessions
+[39m  [38;5;243m/compact[39m                                                                                                                        [38;5;243msummarize the conversation now
+[39m  [38;5;243m/workspace <path>[39m                                                                                                        [38;5;243manchor this conversation to a project
+[39m  [38;5;243m/folder[39m                                                                                  [38;5;243mchoose a folder to work in · type a path to browse · also /place /dir
+[39m  [38;5;243m/folder <path>[39m                                                                                                           [38;5;243m…open it already pointed at that path
+[39m  [38;5;243m/land[39m                                                                                     [38;5;243mput the changes for another folder into it · says what changed first
+[39m  [38;5;243m/land <folder>[39m                                                                                                     [38;5;243m…that folder, when more than one is waiting
+[39m  [38;5;243m/home[39m                                                                                                           [38;5;243mevery project and conversation on this machine
+[39m  [38;5;243m/search[39m                                                                                                                [38;5;243meverything said on this machine · alt+6
+[39m  [38;5;243m/spend[39m                                                                                                          [38;5;243mwhat this machine has cost, by the day · alt+5
+[39m  [38;5;243m/rewind[39m                                                                           [38;5;243mgo back to an earlier point · esc esc takes back the last · also /undo /back
+[39m  [38;5;243m/permissions[39m                                                                                          [38;5;243mwhat runs without asking · drop one with d · also /perms
+[39m  [38;5;243m/standing <words>[39m                                                                                                [38;5;243mkeep this true · a card, never work done once
+[39m  [38;5;243m/standing[39m                                                                      [38;5;243m…or what stands over this conversation · stop, pause or not here · also /orders
+[39m  [38;5;243m/harness[39m                                                                        [38;5;243mthe shapes of work you have saved · a space picks one to run · also /harnesses
+[39m  [38;5;243m/subharness[39m                                                                       [38;5;243mthe programs you can run · type to filter · enter opens its card · also /sub
+[39m  [38;5;243m/subharness <name>[39m                                                                                                                [38;5;243m…straight to that one's card
+[39m  [38;5;243m/memory[39m                                                                                                                  [38;5;243minspect and change what is remembered
+[39m  [38;5;243m/memory <query>[39m                                                                                                        [38;5;243mprint only the memories matching a word
+[39m  [38;5;243m/memories[39m                                                                                                                   [38;5;243mprint what is remembered about you
+[39m  [38;5;243m/memories <query>[39m                                                                                                               [38;5;243m…only the ones matching a word
+[39m  [38;5;243m/remember <text>[39m                                                                                                           [38;5;243mkeep one thing across conversations
+[39m  [38;5;243m/forget <query>[39m                                                                                                        [38;5;243mdrop what is remembered about something
+[39m  [38;5;243m/crew[39m                                                                                [38;5;243mthe five models aforge uses on its own behalf, beside the one you talk to
+[39m  [38;5;243m/crew <preset>[39m                                                                                         [38;5;243m…set the five to frugal, balanced or max · /model stays
+[39m  [38;5;243m/task <brief>[39m                                                                                                                [38;5;243mstart work you can walk away from
+[39m  [38;5;243m/task solo <brief>[39m                                                                                              [38;5;243m…with one worker, and no sizing call before it
+[39m  [38;5;243m/history[39m                                                                                                              [38;5;243mevery task this project has run · ctrl+.
+[39m  [38;5;243m/status[39m                                                                              [38;5;243meverything the status line knows, one fact per line · also /info /context
+[39m  [38;5;243m/cost[39m                                                                     [38;5;243mwhat this conversation has spent · /spend is the whole machine · also /usage /tokens
+[39m  [38;5;243m/budget[39m                                                                                          [38;5;243mwhat aforge may spend · every limit on one tab · also /limits
+[39m  [38;5;243m/budget <amount>[39m                                                                                                        [38;5;243m…set the day's limit · none removes it
+[39m  [38;5;243m/budget <row> <amount>[39m                                                                                     [38;5;243m…set one by name: day, conversation, plan, practice
+[39m  [38;5;243m/cache[39m                                                                                                             [38;5;243mthe shared build cache — how big, and where
+[39m  [38;5;243m/cache clean[39m                                                                                         [38;5;243m…delete it to free disk · asks before anything is removed
+[39m  [38;5;243m/copy[39m                                                                                                     [38;5;243mread the conversation back and copy from it · ctrl+b
+[39m  [38;5;243m/select[39m                                                                                                                [38;5;243mdrag to select with your mouse · ctrl+s
+[39m  [38;5;243m/export[39m                                                                                                         [38;5;243mwrite this conversation to a file · also /save
+[39m  [38;5;243m/export <path>[39m                                                                                                    [38;5;243m…and write it there · tab completes the path
+  ▸ 9 more[39m
+[38;5;243maforge · deepseek-v4-flash-latest[39m                                                                                       [38;5;243mcrew balanced · $0.00 · 5.4k/1.3M · idle

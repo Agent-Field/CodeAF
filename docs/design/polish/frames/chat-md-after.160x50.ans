@@ -1,0 +1,50 @@
+[38;5;145mcolumn one  what it does[39m                                 [38;5;145mthe default[39m                                                              [38;5;243m│ + /task[39m
+[38;5;102m───────────────────────────────────────────────────────────────────────[39m                                                           [38;5;243m│ [39m
+[38;5;252m--host      runs the engine on another machine over ssh  unset[39m                                                                    [38;5;243m│ standing[39m
+[38;5;252m--at        names the working directory on that machine  the launch dir[39m                                                           [38;5;243m│ ◦[39m [38;5;110mthe morning sweep[39m
+[38;5;252m--attach    carries a file across to the engine          nothing[39m                                                                  [38;5;243m│ [1m[38;5;140m?[0m [38;5;110mCI on master[39m
+                                                                                                                                  [38;5;243m│ ◦[39m [38;5;110mthe public API[39m
+[38;5;252mLook at[39m                                                                                                                           [38;5;243m│ + /standing[39m
+[4m[38;5;252mhttps://openrouter.ai/api/v1/chat/completions?model=deepseek/deepseek-v4-flash-latest&st[0m                                          [38;5;243m│ [39m
+[4m[38;5;252mream=true&provider=openinference[0m[38;5;252m for the shape.[39m                                                                                   [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;252mThe file lives at[39m                                                                                                                 [38;5;243m│ [39m
+[38;5;252m/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de[39m                                          [38;5;243m│ [39m
+[38;5;252mmohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.[39m                                                             [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;102m▏[38;5;255m[48;5;234m [38;5;182mfunc[38;5;255m (a *app) [38;5;152mburnSegment[38;5;255m() [38;5;182mstring[38;5;255m {[39m                                                                                            [38;5;243m[49m│ [39m
+[38;5;102m▏[38;5;255m[48;5;234m     [38;5;182mif[38;5;255m a.state != stateWorking || a.turnBegan.[38;5;152mIsZero[38;5;255m() { [38;5;182mreturn[38;5;255m a.[38;5;152mholdBurn[38;5;255m([38;5;151m""[38;5;255m) }[39m                                                [38;5;243m[49m│ [39m
+[38;5;102m▏[38;5;255m[48;5;234m     [38;5;182mreturn[38;5;255m a.[38;5;152mholdBurn[38;5;255m([38;5;152mtokenWord[38;5;255m([38;5;152mburnStep[38;5;255m([38;5;182mint[38;5;255m([38;5;182mfloat64[38;5;255m(written)/elapsed.[38;5;152mSeconds[38;5;255m()))) + [38;5;151m" tok/s"[38;5;255m)[39m                                  [38;5;243m[49m│ [39m
+[38;5;102m▏[38;5;255m[48;5;234m }[39m                                                                                                                               [38;5;243m[49m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;252mSupercalifragilisticexpialidociousandthensomeextraletterstomakeitlongerthansixtycolumnsw[39m                                          [38;5;243m│ [39m
+[38;5;252mide.[39m                                                                                                                              [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;252mUnicode: 日本語のテキストはここにあります、そして中文文本也在这里，很长很长。 And emoji:[39m                                          [38;5;243m│ [39m
+[38;5;252m🎉 🚀 ✅ 🧪 — plus a flag 🇯🇵 and a family 👩‍👩‍👧‍👦.[39m                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;102m│[38;5;252m [38;5;145mA blockquote that runs on for a while so that it has to wrap at sixty columns and[39m                                               [38;5;243m│ [39m
+[38;5;102m│[38;5;252m [38;5;145mshows what the marker does on the second line.[39m                                                                                  [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;102m1.[38;5;252m first[39m                                                                                                                          [38;5;243m│ [39m
+[38;5;102m2.[38;5;252m second, with a much longer body so that it wraps and we can see whether the hanging[39m                                            [38;5;243m│ [39m
+[38;5;252m   indent lines up under the text or under the number[39m                                                                             [38;5;243m│ [39m
+[38;5;102m3.[38;5;252m third[39m                                                                                                                          [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;102m·[38;5;252m bullet[39m                                                                                                                          [38;5;243m│ [39m
+[38;5;252m  [38;5;102m·[38;5;252m nested bullet with enough words to wrap at the narrow sizes we care about[39m                                                     [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+[38;5;146m› [38;5;110mfirst line of a draft that I am still writing[39m                                                                                   [38;5;243m│ [39m
+  [38;5;110msecond line here[39m                                                                                                                [38;5;243m│ [39m
+  [38;5;110mthird line, which is quite a lot longer than the two above it so that it has to wrap when the window gets narrowlist the files[39m  [38;5;243m│ [39m
+  [38;5;110min this directory, then say done[39m                                                                                                [38;5;243m│ [39m
+                                                                                                                                  [38;5;243m│ [39m
+  [38;5;243m· [38;5;116m3[38;5;243m standing orders here — [38;5;146m[48;5;237m/standing[39m[49m                                                                                            [38;5;243m│ Σ $0.12 · 12.7k tok[39m
+  [38;5;243m· resumed · Wrapping Torture[39m                                                                                                    [38;5;243m│ [38;5;116mctrl+.[38;5;243m earlier[39m
+  [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits[39m                                                                                           [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m─ master* ────────────────────────────────────────────────────────────────────────────────────────────────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116mctrl+k[38;5;243m switch · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                                                                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243mWrapping Torture · deepseek-v4-flash-latest[39m                                                     [38;5;243mcrew balanced · ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

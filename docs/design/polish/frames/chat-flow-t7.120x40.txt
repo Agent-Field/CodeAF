@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+› rotate the wildcard certificate before it expires on the first                          │
+                                                                                          │ standing
+Running it now — the terraform change and the runbook go together, and I will not apply   │ ∙ the Monday advisory check
+anything without asking.                                                                  │ + /standing
+  · 1 standing order here — /standing                                                     │
+                                                                                          │
+› write one paragraph of about 90 words about why goroutines are cheap. plain prose, no   │
+  lists.                                                                                  │
+                                                                                          │
+  · remembered · deploys on Fridays                                                       │
+  ·· all lanes slow · still waiting · 7s                                                  │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.67 · 35.8k tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+The Certificate Rotation · deepseek-v4-flash-latest · all lanes slow · still waiting · 7s    5.4k/1.3M · ⠙ working · 11s

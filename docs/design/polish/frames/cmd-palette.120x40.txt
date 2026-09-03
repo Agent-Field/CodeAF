@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:32pm
+  home   tasks   standing   memory 1   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  /compact                                                                    a command · summarize the conversation now
+  /resume                                                      a command · open an earlier conversation · also /sessions
+  /new                                a command · start another conversation in this project · also /clear /clean /reset
+  /connect                                     a command · your connected accounts · connect another · also /connections
+  /settings                                             a command · open the settings panel · ctrl+, · also /set /config
+  /image <path>                                                    a command · attach a picture · tab completes the path
+  /model <slug>                                                                             a command · switch the model
+  /model                                                 a command · pick a model · or press its name in the status line
+  ? ask here: "/"
+› + start a new conversation in /
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › /                                                                                                   here ~/aforge-v2
+ enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · tab next place · esc clear

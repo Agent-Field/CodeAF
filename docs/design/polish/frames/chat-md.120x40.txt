@@ -1,0 +1,40 @@
+https://openrouter.ai/api/v1/chat/completions?model=deepseek/deepseek-v4-flash-latest&st  │ + /task
+ream=true&provider=openinference for the shape.                                           │
+                                                                                          │ standing
+The file lives at                                                                         │ ◦ the morning sweep
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/de  │ ? CI on master
+mohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.                     │ ◦ the public API
+                                                                                          │ + /standing
+▏ func (a *app) burnSegment() string {                                                    │
+▏     if a.state != stateWorking || a.turnBegan.IsZero() { return a.holdBurn("") }        │
+▏     return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Seconds()))) + "… │
+▏ }                                                                                       │
+                                                                                          │
+Supercalifragilisticexpialidociousandthensomeextraletterstomakeitlongerthansixtycolumnsw  │
+ide.                                                                                      │
+                                                                                          │
+Unicode: 日本語のテキストはここにあります、そして中文文本也在这里，很长很长。 And emoji:  │
+🎉 🚀 ✅ 🧪 — plus a flag 🇯🇵 and a family 👩‍👩‍👧‍👦.                                          │
+                                                                                          │
+│ A blockquote that runs on for a while so that it has to wrap at sixty columns and       │
+│ shows what the marker does on the second line.                                          │
+                                                                                          │
+1. first                                                                                  │
+2. second, with a much longer body so that it wraps and we can see whether the hanging    │
+   indent lines up under the text or under the number                                     │
+3. third                                                                                  │
+                                                                                          │
+· bullet                                                                                  │
+  · nested bullet with enough words to wrap at the narrow sizes we care about             │
+  · 3 standing orders here — /standing                                                    │
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-                │
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af- │
+  dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-                    │ Σ $0.12 · 11k tok
+  v2/ffff0000wrap0001/transcript.jsonl                                                    │ ctrl+. earlier
+  · esc interrupts · ctrl+c twice quits                                                   │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                                                                  ⠿ high
+ ›
+Wrapping Torture · deepseek-v4-flash-latest             crew balanced · ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

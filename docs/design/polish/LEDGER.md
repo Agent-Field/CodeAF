@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 04:01Z_
+_2026-09-03 04:35Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -138,18 +138,29 @@ _2026-09-03 04:01Z_
 
 ## jobs — [audit-jobs.md](audit-jobs.md)
 
-- `J1`    high open   A conversation reopened draws none of the background jobs it ran, because the surface has no case for them on the lane the engine replays them on
-- `J2`    high open   A task restored from a checkpoint is dated by when the WINDOW opened plus how long the work ran, which is a landing time in the future
-- `J3`    high open   Work parked on a person's decision is filed under `running` and dated `now`
+- `J1`    high CLOSED A conversation reopened draws none of the background jobs it ran, because the surface has no case for them on the lane the engine replays them on
+- `J2`    high CLOSED A task restored from a checkpoint is dated by when the WINDOW opened plus how long the work ran, which is a landing time in the future
+- `J3`    high CLOSED Work parked on a person's decision is filed under `running` and dated `now`
 - `J4`    high open   A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
 - `J5`    med  open   The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
-- `J6`    med  open   The word on a landed card for when the work began is `spawned`
+- `J6`    med  CLOSED The word on a landed card for when the work began is `spawned`
 - `J7`    med  open   A task's price is drawn twice on the same home card, four cells apart, in two different inks
 - `J8`    med  open   A conversation whose name carries a combining accent is drawn with the accent silently removed
-- `J9`    med  open   The room's kin line names a child's state with a word that is neither true nor in the vocabulary
-- `J10`   low  open   At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
-- `J11`   med  open   The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
+- `J9`    med  CLOSED The room's kin line names a child's state with a word that is neither true nor in the vocabulary
+- `J10`   low  CLOSED At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
+- `J11`   med  CLOSED The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
 - `J12`   low  open   The status line under a room wraps onto two lines and leaves a hole under the left half
+
+## narrow — [audit-narrow.md](audit-narrow.md)
+
+- `N1`    high CLOSED At sixty columns the place bar collapses to the word `home` and nothing says the other six exist
+- `N2`    high CLOSED Home's foot is sliced mid-word, so it names a key and then eats it
+- `N3`    med  CLOSED A conversation with no title draws a title-cased hex id as its name
+- `N4`    med  open   The job page's key row is still painted through a plain `fit` and is cut mid-word
+- `N5`    med  open   The task record's key row is cut the same way
+- `N6`    med  open   The pulse line is all-or-nothing, so navigation is outranked by a clock
+- `N7`    low  open   Five more person-facing foot lines are cut by character rather than by clause
+- `N8`    low  open   The resting foot promises `tab next place` on a frame that used to draw one place
 
 ## settings — [audit-settings.md](audit-settings.md)
 
@@ -157,9 +168,9 @@ _2026-09-03 04:01Z_
 - `S11`   med  open   The daily rail is spelled two ways on one frame
 - `S12`   med  open   `dollars` renders a positive cost under a hundredth of a cent as `$0.0000`
 - `S13`   med  open   At the widths where the memory type legend fits but the line is tight, the section's IDENTITY is truncated to keep a secondary legend whole: at 80 cells the heading reads `shelves · …` beside `fact 7 · preference 2 · decision 2 · correction 1 · project state 1`
-- `S14`   med  open   The four ssh rows sit under `Session`, while a tab literally named `Connections` sits four tabs to the right holding Amplitude, PostHog and Braintree
-- `S15`   low  open   A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
-- `S16`   low  open   On a wide frame a settings row puts 150 blank cells between a label and a three-character value
+- `S14`   med  CLOSED The four ssh rows sit under `Session`, while a tab literally named `Connections` sits four tabs to the right holding Amplitude, PostHog and Braintree
+- `S15`   low  CLOSED A row whose label and tail exactly fill the frame collides into one sentence with a single space between them: `per task no limit of its own · it spends against the day and this conversation` at 80 cells
+- `S16`   low  CLOSED On a wide frame a settings row puts 150 blank cells between a label and a three-character value
 - `S17`   low  open   The `loudest day` line right-aligns a bare noun with no verb and nothing joining it to the sentence: `aug 23 was the loudest day
 
 ## tasks — [audit-tasks.md](audit-tasks.md)

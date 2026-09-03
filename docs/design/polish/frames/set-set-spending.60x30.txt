@@ -1,0 +1,30 @@
+ aforge          1 want you · $1.85 / $500.00 · wed 11:14pm
+  settings
+────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safe…
+────────────────────────────────────────────────────────────
+
+  today                   $0.13 of $500 · resets at midnight
+› per day                                 $500 · $0.13 today
+    what aforge may spend on your work in a day. When the
+    day's calls reach it, new work waits for midnight or
+  per conversation                                  no limit
+  per plan                             asks first above $100
+  per task                               no limit of its own
+  per standing run $5 a firing · each order may name its own
+  practice                                    $50 of the day
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config…
+ › say what you want done                  here ~/aforge-v2
+ ↑↓ move · ←→ tabs · enter change · type to search · tab n…

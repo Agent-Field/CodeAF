@@ -1,0 +1,3 @@
+panel:  none — AFORGE_MODELS is unset, so every call goes to ~deepseek/deepseek-v4-flash-latest  reasoning · effort
+
+nothing measured yet. Ratings appear once calls have been graded — run a plan or a graph with AFORGE_MODELS set.

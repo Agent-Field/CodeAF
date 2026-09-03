@@ -1,0 +1,6 @@
+Usage of serve:
+  -relay string
+    	the relay to be reachable through; empty reads AFORGE_RELAY
+  -workspace string
+    	directory a connection works in when it does not name one; empty is the directory this command was run in
+error: flag: help requested

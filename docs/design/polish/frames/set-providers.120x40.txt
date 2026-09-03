@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:04pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Providers   Connections
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+› your model                                                                          ~deepseek/deepseek-v4-flash-latest
+    the model you are talking to. Everything below it is a model aforge uses on your behalf.
+  lane                                                                                                              auto
+  speed guard                                                                                                         on
+  routing                                                                                                        latency
+  crew                                                                                                          balanced
+  reflex                                                                                          mistralai/mistral-nemo
+  small work                                                                             deepseek/deepseek-v4-flash-0731
+  worker                                                                                              z-ai/glm-5.3-flash
+  careful work                                                                                          qwen/qwen3.8-27b
+  mastermind                                                                                           z-ai/glm-5.3:high
+  pinned roles                                                                                                      none
+
+  roles · reflex
+  reflex                                                                                          mistralai/mistral-nemo
+
+  roles · small work
+  consolidate                                                                            deepseek/deepseek-v4-flash-0731
+  guardian                                                                               deepseek/deepseek-v4-flash-0731
+  intake                                                                                 deepseek/deepseek-v4-flash-0731
+  jobname                                                                                deepseek/deepseek-v4-flash-0731
+  router                                                                                 deepseek/deepseek-v4-flash-0731
+  sentinel                                                                               deepseek/deepseek-v4-flash-0731
+  spellout                                                                               deepseek/deepseek-v4-flash-0731
+  taskname                                                                               deepseek/deepseek-v4-flash-0731
+  title                                                                                  deepseek/deepseek-v4-flash-0731
+
+  roles · worker
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config.json is a hand edit
+ › say what you want done                                                                              here ~/aforge-v2
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close
