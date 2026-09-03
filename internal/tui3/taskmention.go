@@ -402,6 +402,9 @@ func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
 		}
 		return glyphQueued
 	case string(session.TaskFailed):
+		if refused(entry.Ending) {
+			return glyphHalted
+		}
 		if ascii {
 			return glyphBadASCII
 		}

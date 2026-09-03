@@ -1010,8 +1010,9 @@ Being stopped is a statement about the **trajectory**, never about the deliverab
 these really happened: a task wrote all six of the stories it was asked for, spent six steps
 re-reading them to be sure, and was stopped with `stopped: 6 steps without progress` — the
 same target twice is exactly the spin the counter is for. Its own landing turn then said the
-six files were written and the work was done. You saw ✗ failed and a kept branch next to a
-report saying it had finished.
+six files were written and the work was done. The check did not accept that claim, so you
+saw `! incomplete`, a kept branch, and the check's reason next to the report saying it had
+finished.
 
 So a stopped task is still judged on its work. After the landing turn writes up what it has,
 the same check a task that finished on its own gets is run — the same acceptance, the same
@@ -1632,6 +1633,11 @@ over unchanged, with no mark. So: no, not every byte — yes, every earlier task
 | Failed | It fails too, with `it waits on task 3, which did not finish` |
 | Not in this session's work at all | It fails, with `it waits on task 3, which is not in this session's work` |
 | **Needs your look** | It **stays queued** — it does not fail |
+
+A task shown as **incomplete** is still failed for dependency purposes: the check found
+work left to do, so anything waiting on it fails with the existing `did not finish`
+reason. The new word changes what the person sees about that task, not what the task graph
+allows to advance.
 
 **A bad id never gets that far on a new proposal.** `depends_on` takes only ids
 `propose_task` itself returned. A job, an adaptive run, a step count, or a task that

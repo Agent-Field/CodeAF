@@ -468,13 +468,16 @@ type taskSheetHit struct {
 //
 // The vocabulary is the surface's and not the engine's: `needs your look` where
 // the code says TaskUnverified (task.go states that law at [taskUnverifiedWord]),
-// and `incomplete` for a claim of running with nothing behind it — which is not
-// a judgement about the work, only the fact that the window went.
+// and `incomplete` for either a claim of running with nothing behind it or a
+// failed row that explicitly says a check refused it. The reason beside the row
+// distinguishes an interrupted present from work the check found unfinished.
 func taskStateWord(entry session.TaskIndexEntry, runs bool) string {
 	switch {
 	case entry.Live() && runs:
 		return taskRecordRunsWord
 	case entry.Live():
+		return taskRecordStoppedWord
+	case entry.Status == string(session.TaskFailed) && refused(entry.Ending):
 		return taskRecordStoppedWord
 	case entry.Status == string(session.TaskFailed):
 		return doneFailWord

@@ -5249,6 +5249,12 @@ func (a *app) taskStateMark(node *taskNode) string {
 	if mark, stopped := a.stoppedGlyph(node); stopped {
 		return mark
 	}
+	// A CHECK REFUSAL IS UNFINISHED WORK, NOT A FAULT. The engine still holds
+	// the failed state so nothing depending on it advances; the person sees the
+	// steer mark and the report's concrete next move.
+	if mark, incomplete := a.incompleteGlyph(node); incomplete {
+		return mark
+	}
 	// AND ! IS THE NEXT: a node the wire, a threshold, a loop or another task's
 	// copy halted settles as `failed` on the wire too, and the cross would be
 	// the same finding nobody made (taskending.go).
@@ -5288,6 +5294,9 @@ func (a *app) taskStateMark(node *taskNode) string {
 func (a *app) taskStateInk(node *taskNode) func(string) string {
 	if _, stopped := a.stoppedGlyph(node); stopped {
 		return a.pal.dim
+	}
+	if _, incomplete := a.incompleteGlyph(node); incomplete {
+		return a.pal.warn
 	}
 	if _, halted := a.haltedGlyph(node); halted {
 		return a.pal.warn

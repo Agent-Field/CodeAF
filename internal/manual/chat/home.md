@@ -818,7 +818,9 @@ leads the second line instead, with the glyph it wears everywhere else here:
 - `◐ running · checking what it left`, `◐ running · closing gaps` — the minutes when the
   node's own worker is not the one at it, said here for another window's node as well as
   for this one's, and never for a window that has gone (the page on how tasks run has both).
-- `◌ incomplete` — work that was under way when the window went
+- `◌ incomplete · <what is still missing>` — work a check did not accept, or work that was
+  under way when the window went; home shares this empty-circle shape with queued work and
+  distinguishes it with the state word and warn hue
 - `? needs your look · <what it came to>` — brought up out of the dim, because it is asking
 - `✗ failed · <what stopped it>`
 
