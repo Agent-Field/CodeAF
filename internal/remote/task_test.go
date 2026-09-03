@@ -16,7 +16,7 @@ func TestTaskCallOutlivesTheEngineShaper(t *testing.T) {
 }
 
 func TestTaskDoorsRunOnTheEngineAgent(t *testing.T) {
-	far := &fakeAgent{}
+	far := &fakeAgent{startNote: session.TaskShapeFallbackNote}
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
 		return &Engine{Agent: far, Workspace: "/srv/app", SessionFile: "/srv/app/j.jsonl"}, nil
 	}})
@@ -25,9 +25,13 @@ func TestTaskDoorsRunOnTheEngineAgent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 
-	id, title, _, err := loop.Client.Agent().StartTask(context.Background(), "fix it")
-	if err != nil || id != 17 || title != "far task" {
-		t.Fatalf("start = %d %q %v", id, title, err)
+	// AND THE FALLBACK NOTE CROSSES THE WIRE. The whole reason [TaskStarted]
+	// grew a Note is that a shaper cut on the ENGINE machine has to reach the
+	// surface drawing the started row, so the receipt is checked for it here
+	// rather than only where session hands it over.
+	id, title, note, err := loop.Client.Agent().StartTask(context.Background(), "fix it")
+	if err != nil || id != 17 || title != "far task" || note != session.TaskShapeFallbackNote {
+		t.Fatalf("start = %d %q %q %v", id, title, note, err)
 	}
 	run, name, err := loop.Client.Agent().StartPlannerRun(context.Background(), "plan it", "two parts")
 	if err != nil || run != "run-8" || name != "far plan" {

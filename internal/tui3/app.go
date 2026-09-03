@@ -3640,9 +3640,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// while the mode word and `started` stay in the note's own dim.
 			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
 			// AND THE ONE HONEST LINE ABOUT A CUT SHAPER (path (a) of issue
-			// #133, internal/session's [taskShapeFallbackNote]). Dim, beside the
-			// started line, in the same slot [app.noteFacts] already carries
-			// facts in; empty is every ordinary start and says nothing.
+			// #133, [session.TaskShapeFallbackNote]). Its own dim line under the
+			// started one, in the same slot [app.noteFacts] already carries facts
+			// in; empty is every ordinary start and says nothing.
 			if msg.note != "" {
 				a.note(msg.note)
 			}
