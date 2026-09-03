@@ -386,6 +386,12 @@ type entry struct {
 	// block have already been promoted to markdown.
 	settled bool
 	mdCut   int
+	// edge is how far the LIVE EDGE has been drawn (reveal.go). Zero means the
+	// block is not pacing — settled history, anything the wire delivered
+	// fine-grained, anything the clock has not been asked to walk. A block with
+	// a lump still arriving holds the received bytes in [entry.text] and this
+	// cursor is what the frame paints.
+	edge int
 
 	// mdHead is the PROMOTED HALF of a still-streaming block, already rendered,
 	// kept beside the cut and the width it was rendered at (render.go's
@@ -572,6 +578,12 @@ type (
 		// in the order they arrived. It is nil on every message that folded
 		// nothing, which is every message a test builds and most of the rest.
 		then *session.Event
+		// lump says the run this message carries contained a single wire event
+		// big enough to be one ([isLump]). It is decided HERE, in the only place
+		// that can see the run's parts, because a fold of short deltas is not a
+		// lump however long the fold is — the surface paces the wire's lumps and
+		// never its own fold (reveal.go).
+		lump bool
 	}
 	streamClosedMsg struct{ gen int }
 	compactedMsg    struct{ err error }
@@ -863,6 +875,21 @@ type app struct {
 	// agent (see [app.switchModel]), so the surface is the one that knows.
 	ctxWindow int
 	ctxTokens int
+	// shownCost, shownTokens and shownCtx are the figures the status line
+	// paints while a turn is running (reveal.go). The books stay on cost /
+	// tokens / ctxTokens; these chase them on the paint clock so a reading
+	// that jumped by a thousand tokens writes the new figure rather than
+	// popping it. meterChasing is whether this turn has asked them to.
+	shownCost    float64
+	shownTokens  int
+	shownCtx     int
+	meterChasing bool
+	// revealMoved is when the live edge and the meters last stepped, on this
+	// surface's own clock ([app.now]). The walk is a function of TIME and not of
+	// how many frames were painted (reveal.go's [app.tickReveal]), and this is
+	// the one stamp it is measured from — one per surface, because every edge on
+	// it walks on the same clock.
+	revealMoved time.Time
 	// inputTokens is the session's prompt-token total, and cacheRead/cacheWrite
 	// its prompt-cache totals. The first two together are the status line's warm
 	// share — the fraction of everything this session has sent that came off a
@@ -3302,7 +3329,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// so two goroutines reading one channel, which is two events delivered
 		// in whichever order they happened to win — so the applying and the
 		// re-arming are separated here and nowhere else ([app.apply]).
-		after := a.apply(msg.ev)
+		after := a.applyEvent(msg.ev, msg.lump)
 		if msg.then != nil {
 			after = tea.Batch(after, a.apply(*msg.then))
 		}
@@ -3761,6 +3788,10 @@ func (a *app) paint() tea.Cmd {
 	// stops itself (welcome.go), which is what makes it one-shot rather than a
 	// loop with a condition somebody has to remember to write.
 	a.welcome.tick(a.frameStride())
+	// AND THE LIVE EDGE WALKS HERE, on the same clock: a lumped stream and a
+	// jumped meter become a few frames of writing rather than a paragraph
+	// that pops (reveal.go).
+	a.tickReveal(a.now())
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
@@ -3882,7 +3913,12 @@ func (a *app) paint() tea.Cmd {
 		// forming stream already wakes the surface up to ten times a second; a
 		// second visibility fact would only let the clock disagree with the card
 		// about whether its live row still exists (task.go).
-		a.formingCardLive() {
+		a.formingCardLive() ||
+		// AND AN UNREAD EDGE IS THE SIXTEENTH: the stream may have gone quiet
+		// with a lump still walking onto the page, and without this the last
+		// paragraph would freeze mid-word until something unrelated asked
+		// for a frame (reveal.go).
+		a.liveRevealing() {
 		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false
@@ -3913,7 +3949,7 @@ func promoteBlock(e *entry, at *time.Time) {
 		return
 	}
 	*at = time.Now()
-	cut := strings.LastIndexByte(e.text, '\n') + 1
+	cut := strings.LastIndexByte(e.revealed(), '\n') + 1
 	if cut <= e.mdCut {
 		return
 	}
@@ -3997,6 +4033,11 @@ func (a *app) feedHooks(l lens) feedHooks {
 		now:    a.now,
 		follow: a.follow,
 		touch:  a.touch,
+		// THE SCREEN-READER TIER DRAWS EVERY BURST WHOLE. It is the only reason
+		// this hook exists, and both surfaces answer it the same way (reveal.go).
+		// It is one of THE PAGE's and not one of the card's: every surface with a
+		// screen owes the reducer an answer to it, so it sits above the lens gate.
+		snap: func() bool { return a.linear },
 		closed: func(e *entry, ev session.Event) {
 			a.learnBackground(e, ev.Output)
 			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
@@ -4053,7 +4094,18 @@ func (a *app) event(ev session.Event) tea.Cmd {
 
 // apply is the whole of the above except the wait: it answers what this event
 // asks the program loop to DO, and nothing about listening for the next one.
+// apply is one wire event delivered ALONE — a lane that does not fold
+// (room.go, homeexchange.go), the event that ended a fold and travelled beside
+// it, a test's own event. Its whole text arrived in one piece, so it is a lump
+// exactly when it is long enough to be one.
 func (a *app) apply(ev session.Event) tea.Cmd {
+	return a.applyEvent(ev, isLump(len(ev.Text)))
+}
+
+// applyEvent is the reducer, told whether the text it carries is a lump the
+// clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
+// run, which is why the bit is a parameter rather than a length read here.
+func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	// after is what this event asks the program loop to DO, as opposed to what
 	// it asks the screen to say. Two events produce one — a turn ending, which
 	// may ring a terminal nobody is looking at (notify.go), and a task node
@@ -4140,7 +4192,7 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 	// gate to keep in step — and a gate is exactly what this was: a second
 	// spelling of the kinds feed.go handles, which a new event wired in the
 	// reducer would pass tests and the task room and never reach the chat.
-	a.ingest(ev)
+	a.ingestStream(ev, lump)
 	switch ev.Kind {
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
@@ -4644,8 +4696,9 @@ func (a *app) settleTurn() {
 		}
 		// THE STALE FLAG IS THE WHOLE OF THE SETTLE, in [feed.closeLive]'s words:
 		// the rows a block was drawn with mid-stream are handed back by
-		// [app.entryRows] until something says they are wrong.
-		e.settled, e.stale = true, true
+		// [app.entryRows] until something says they are wrong — and the edge
+		// snaps with it, which is livestate.go's law.
+		settleBlock(e)
 	}
 }
 
@@ -4695,6 +4748,7 @@ func (a *app) usageBack(msg usageMsg) {
 // session's total both come through here and only the session's total is
 // monotonic — a per-turn event must never shrink a running total.
 func (a *app) take(u session.Usage) {
+	prevCost, prevTok := a.cost, a.tokens
 	if u.CostUSD > a.cost {
 		a.cost = u.CostUSD
 	}
@@ -4712,6 +4766,22 @@ func (a *app) take(u session.Usage) {
 	}
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
+	}
+	// A JUMP WHILE THE TURN IS RUNNING IS WALKED, not popped. The first
+	// reading of a working turn pins the drawn figures where they were so
+	// the clock has somewhere to ease from; a restore or a switch lands
+	// on the exact bill, because nobody is watching those numbers grow
+	// (reveal.go).
+	if a.cost != prevCost || a.tokens != prevTok {
+		// The figures ease FROM where they were, which is why the previous
+		// readings are carried in rather than read back off the fields the lines
+		// above have already moved (reveal.go's [app.armMeters]). The context
+		// weight is not one of them: [app.take] never touches it, so the field
+		// still holds the reading the person is looking at.
+		a.armMeters(prevCost, prevTok, a.ctxTokens)
+	}
+	if a.state != stateWorking || a.linear {
+		a.snapMeters()
 	}
 }
 
@@ -4891,6 +4961,11 @@ func (a *app) wake() tea.Cmd {
 		return nil
 	}
 	a.painting = true
+	// AND THE WALK'S CLOCK STARTS WITH THE FRAMES. The live edge advances by the
+	// time that has passed since it last moved (reveal.go), so a surface that sat
+	// idle between turns would hand the first lump of the next one every second
+	// it was still and dump it whole on the first frame.
+	a.revealMoved = a.now()
 	return a.frameTick()
 }
 
@@ -4964,6 +5039,10 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 		// growing one string per fold would be quadratic in a burst.
 		var run strings.Builder
 		var then *session.Event
+		// THE BIT IS ABOUT THE PARTS AND NOT THE TOTAL. Each event this loop
+		// takes is one thing the wire delivered, so the run is a lump exactly
+		// when one of them was (reveal.go).
+		lump := isLump(len(ev.Text))
 		// An event only folds into one of its own kind, so an event that does not
 		// fold into itself cannot start a run and the drain is skipped entirely.
 	drain:
@@ -4988,12 +5067,13 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 				then = &held
 				break drain
 			}
+			lump = lump || isLump(len(next.Text))
 			run.WriteString(next.Text)
 		}
 		if run.Len() > 0 {
 			ev.Text += run.String()
 		}
-		return streamEventMsg{gen: gen, ev: ev, then: then}
+		return streamEventMsg{gen: gen, ev: ev, then: then, lump: lump}
 	}
 }
 
@@ -7009,6 +7089,9 @@ func (a *app) resetMeters() {
 	// keeping it buys. That stall would land on precisely the frame this reset
 	// exists to make right.
 	a.ctxTokens = 0
+	a.shownCost, a.shownTokens, a.shownCtx = 0, 0, 0
+	a.meterChasing = false
+	a.revealMoved = time.Time{}
 	// The HUD's own state is a fact about one conversation too: a sparkline
 	// carried across /new would be a graph of somebody else's context, and an
 	// ambient count would be claiming jobs that died with the agent.
@@ -7032,7 +7115,37 @@ func (a *app) measureContext() {
 	if a.agent == nil {
 		return
 	}
+	// AND A WEIGHT THAT MOVED WHILE THE TURN RUNS IS WALKED, from the reading
+	// that is on the screen right now. This is the only place the weight ever
+	// changes, so it is the only place that can arm the walk for it — and
+	// [app.take]'s arming cannot do it, because a turn's usage lands long before
+	// the pass that changes what the conversation weighs. The compaction call
+	// site is the one this is really for: it changes the meter by an order of
+	// magnitude in the middle of a turn (see [app.compacted]). At the settle the
+	// turn is no longer running, so [app.armMeters] declines and the exact figure
+	// is drawn — which is the snap rule, not an exception to it.
+	was := a.ctxTokens
 	a.ctxTokens = a.agent.ContextTokens()
+	switch {
+	case a.ctxTokens > was:
+		// A WEIGHT THAT GREW IS TELEMETRY AND WALKS, from the reading that is on
+		// the screen right now. This is the only place the weight ever changes,
+		// so it is the only place that can arm the walk for it: [app.take]'s
+		// arming cannot, because a turn's usage lands long before the pass that
+		// changes what the conversation weighs.
+		a.armMeters(a.spendShown(), a.tokens, was)
+	case a.ctxTokens < was:
+		// A WEIGHT THAT FELL IS AN EVENT, AND THE EVENT IS THE POINT. Only a
+		// compaction takes weight off a conversation, and the whole reason this
+		// is re-read there rather than at the end of the turn is that the figure
+		// must say so AT ONCE — a meter easing down from 168k over a third of a
+		// second is a meter animating the one fact a person is waiting to see
+		// ([TestCompactionRereadsTheContextMeterImmediately]). It is written past
+		// any walk already in flight rather than through [app.armMeters], because
+		// a chase the usage started is holding the old figure and would go on
+		// drawing it.
+		a.shownCtx = a.ctxTokens
+	}
 	if a.ctxWindow <= 0 {
 		// The door may not have known the window at boot: a cold catalog
 		// resolves in the background AFTER this surface is already up, and it

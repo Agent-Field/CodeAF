@@ -491,8 +491,11 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 		}
 		a.touch()
 	}
+	// snap is the conversation's own answer: a node's page paces its live edge
+	// exactly as the transcript does, and stops for the same reader (reveal.go).
 	return feedHooks{
 		now: a.now, follow: grew, touch: grew,
+		snap:   func() bool { return a.linear },
 		closed: func(*entry, session.Event) { a.tallyNode(r.id, r.entries) },
 	}
 }
@@ -928,7 +931,10 @@ func (a *app) roomAppend(e entry) {
 		return
 	}
 	room.entries = append(room.entries, e)
-	room.live = -1
+	// THE POINTER GOES AND THE EDGE SNAPS WITH IT (livestate.go). The block is
+	// deliberately not settled here — [app.roomCloseLive] is the door that ends
+	// one — but a block nobody is walking must not stay a prefix on the page.
+	abandonLive(room.entries, &room.live)
 	a.roomTouched()
 }
 

@@ -1099,10 +1099,13 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	}
 	e.feet = nil
 	var out []string
-	if e.mdCut > 0 {
+	drawn := e.revealed()
+	if e.mdCut > 0 && e.mdCut <= len(drawn) {
 		out = append(out, a.promotedRows(e, width)...)
+		out = append(out, a.liveTail(drawn[e.mdCut:], width)...)
+	} else {
+		out = append(out, a.liveTail(drawn, width)...)
 	}
-	out = append(out, a.liveTail(e.text[e.mdCut:], width)...)
 	return append(tags, trimBlanks(out)...)
 }
 
@@ -2058,7 +2061,7 @@ func (a *app) telemetry(width int) []hudPart {
 	// work this conversation started is spending its money, and a segment that
 	// waited for each task to close said `$2.53` for two hours over a family
 	// burning $51.05 (treespend.go's [app.spendShown]).
-	add(segCost, dollars(a.spendShown()))
+	add(segCost, dollars(a.spendDrawn()))
 	if context, _ := a.contextSegment(); context != "" {
 		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
 			context += " " + spark
@@ -2624,7 +2627,7 @@ func (a *app) contextSegment() (string, bool) {
 	if a.ctxTokens <= 0 || a.ctxWindow <= 0 {
 		return "", false
 	}
-	segment := tokenWord(a.ctxTokens) + "/" + tokenWord(a.ctxWindow)
+	segment := tokenWord(a.ctxDrawn()) + "/" + tokenWord(a.ctxWindow)
 	if pct, ok := a.ctxPercent(); ok && pct >= 1 {
 		segment += " · " + itoa(pct) + "%"
 	}
