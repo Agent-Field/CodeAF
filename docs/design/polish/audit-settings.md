@@ -52,3 +52,105 @@ registry row the tab writes through.
 16. On a wide frame a settings row puts 150 blank cells between a label and a three-character value — `ssh reuse` … `300` at 160 cells — `internal/tui3/settings.go:2494` → `internal/tui3/palette.go:886` (`overlayLines` right-aligns the tail to the full frame width, with no measure cap) — a developer on a full-screen terminal loses the line between the two halves of a pair and reads the wrong value against the wrong row; this is a pure-width problem and does not appear at 120 — clamp the row's measure the way prose is clamped (lay the pair out inside a max column of roughly 100 cells and leave the rest of the frame empty), which also gives the ssh and Context rows their unit (row 3) somewhere to sit — sev: low — frames: `/home/santosh/af-polish/docs/design/polish/frames/set-settings.160x50.txt`, `set-memory.160x50.txt`
 
 17. The `loudest day` line right-aligns a bare noun with no verb and nothing joining it to the sentence: `aug 23 was the loudest day — $0.29, rebuild-the-frame-budget-report` … `tasks`, and at 60 cells the ellipsis abuts it: `rebuild-the-frame… tasks` — `internal/tui3/spendplace.go:513` (`door = "tasks"`, handed to `spendSides` as the right field) — the word is meant as a door label but reads as a fourth fact about the day, and a developer cannot tell whether `tasks` is a count, a category or a place; nothing else on the surface labels a door with a bare noun — say the door as the rest of the surface says one (`enter opens it in tasks` where it fits, `in tasks` where it does not), or drop it and let the place's hint line (row 10) carry `enter` — sev: low — frames: `/home/santosh/af-polish/docs/design/polish/frames/set-spend.120x40.txt`, `set-spend.60x30.txt`, `set-spend.160x50.txt`
+
+---
+
+## fixed
+
+Fix lane, `ui/polish-v0`. Frames re-captured against `bin/aforge` on the demo home
+through a private tmux socket (`polish-fixset`), walking all nine settings tabs at
+160x50, 120x40, 80x24 and 60x30. Before frames are untouched; every after frame carries
+an `-after` suffix.
+
+**Row 3 — every settings row draws what its number means.** `internal/config/settings.go`
+grew `Setting.Unit`, `Setting.UnitOne`, the `UnitInLabel` sentinel and `Setting.Reading()`
+— the unit lives beside the default, so it is written once and every surface that draws a
+number gets it. `Setting.Apply` now takes the unit back off what was typed, so a row that
+draws `300s` accepts `300s`. `internal/tui3/settings.go`'s `rowLinesWithin` draws
+`Reading()` where it drew `Value()`; the edit box still opens on the bare figure. Fifteen
+rows carry a unit now: `ssh reuse 300s`, `ssh heartbeat 3s`, `approval countdown 10s`,
+`background after 30s`, `task countdown 15s`, `compact at 60%`, `answer room 65536 tok`,
+`working set 160000 tok`, `context reuse 250%`, `memory floor 1536 MB`, `busy machine 1.5
+per core`, `tenure after 3 clean firings` — and `task repair rounds`, `tasks at once` and
+`ssh missed heartbeats` declare `UnitInLabel`, because their own label already names what
+is counted. The `context reuse` hint stops saying "in hundredths" and names the whole the
+percentage is of; the `compact at` hint stops saying "as a percent", which the value now
+says.
+Files: `internal/config/settings.go`, `internal/tui3/settings.go`,
+`internal/manual/chat/commands.md`.
+Tests: `TestEverySettingSaysWhatItsNumberMeans`, `TestEverySettingSaysWhatItDecides`,
+`TestAUnitIsWrittenAgainstItsNumberOnlyWhenItIsASymbol`, `TestASettingTakesBackTheUnitItDrew`
+(`internal/config/settingunit_test.go`); `TestEverySettingRowDrawsWhatItsNumberMeans`
+(`internal/tui3/settingunit_test.go`).
+Frames: `frames/set-context-after.120x40.txt`, `set-workspace-after.120x40.txt`,
+`set-safety-after.120x40.txt`, `set-tasks-after.120x40.txt` — against `set-context-80.80x24.txt`,
+`set-session.120x40.txt`, `set-safety.120x40.txt`, `set-tasks-tab-80.80x24.txt`.
+
+**Row 4 — the tab strip follows the cursor.** `sheetTabBar` no longer builds from index 0
+and cuts on the right. `tabWindow(width, active)` picks the chips the frame can hold with
+the cursor's chip always among them, and each cut end wears a `…`; `tabSpans` and
+`tabAtColumn` take the same window, so a click resolves against the strip that was
+actually painted and a tab the window left out cannot be clicked. Scrolling rather than
+the place bar's collapse, and the comment over `tabWindow` argues it: nine tabs are one
+ordered strip that `←` and `→` walk a step at a time, so dropping the middle would make
+those two keys jump between words that are not neighbours.
+Files: `internal/tui3/settings.go`, `internal/tui3/chip_test.go`,
+`internal/tui3/chrome_test.go`, `internal/manual/chat/commands.md`.
+Tests: `TestTheSettingsTabStripAlwaysInksTheTabYouAreStandingOn`,
+`TestTheSettingsTabStripMarksTheTabsItCouldNotShow` (`internal/tui3/settingunit_test.go`).
+Frames: `frames/set-providers-after.80x24.ans` and `set-connections-after.80x24.ans` now
+ink the open tab (`48;5;237` band on `Providers` / `Connections`) where
+`set-connections-80.80x24.ans` and `set-tasks-tab-80.80x24.ans` inked nothing; every tab at
+`set-*-after.60x30.ans` is inked too.
+
+**Row 5 — partly fixed, and the last line is another lane's.** The line above the box now
+says which row is being changed AND what it takes, in the writer's own words: `per
+conversation · an amount in dollars, like 5 or 2.50 — or none for no limit`. That is
+`sheetEditNote` in `internal/tui3/settings.go`, feeding `sheetEdit.label`, which
+`place_settings.go`'s `note` already draws. **The box itself still rests on `say what you
+want done`**: the only seam for that is `app.placeRestWord` at `internal/tui3/pages.go:1282`,
+which this lane does not hold. One line there — consult `a.sheet.edit` and answer with the
+row's `Accepts()` — finishes it.
+Files: `internal/tui3/settings.go`, `internal/manual/chat/commands.md`.
+Test: `TestOpeningAValueSaysWhatThatRowTakes` (`internal/tui3/settingunit_test.go`).
+Frames: `frames/set-edit-perday-after.120x40.txt` against `set-edit-perday.120x40.txt`.
+
+**Row 6 — a description that is cut says so.** `settingAboutLines` replaces the silent
+two-line break in `listLines`: three lines, and whatever is still over the end is marked
+with the same `…` every other cut on this surface wears.
+Files: `internal/tui3/settings.go`.
+Test: `TestASettingsDescriptionThatIsCutSaysSo` (`internal/tui3/settingunit_test.go`).
+Frames: `frames/set-spending-after.60x30.txt` and `set-spending-after.80x24.txt` — the `per
+day` sentence now ends `none removes the limit.` where `set-set-spending.60x30.txt` ended
+`…new work waits for midnight or` and `set-set-spending.80x24.txt` ended `…none removes`.
+
+**Row 14 — the ssh rows moved to the tab a person would open to find them.** All four
+(`ssh reuse`, `ssh heartbeat`, `ssh missed heartbeats`, `ssh traffic`) left **Session** for
+**Workspace**. No stored key changed; only the tab they are drawn under. Session keeps
+`memory` and `fallback models`, which is its honest size.
+The audit's other half — the word `Connections` doing two jobs — is NOT fixed and cannot be
+from these files: that tab builds its rows from the engine's account catalog rather than
+from the registry (`connectcaps.go`), so a registry row filed there would be unreachable,
+and renaming it to `Accounts` means editing `connectcaps.go`. The registry category stays
+`CategoryInterface`; it is not the tab, and the panel's category map only binds Spending,
+Safety and Tasks.
+Files: `internal/tui3/settings.go`, `internal/tui3/chrome_test.go`,
+`internal/manual/chat/commands.md`, `internal/manual/chat/staying-on-that-machine.md`.
+Test: `TestTheSshRowsAreOnTheTabAboutReachingAnotherMachine`
+(`internal/tui3/settingunit_test.go`).
+Frames: `frames/set-workspace-after.120x40.txt` and `set-session-after.120x40.txt` against
+`set-session.120x40.txt`.
+
+### not fixed, and why
+
+- **Rows 1, 2, 11, 12** — the money figures and the pulse. Held by another lane and a
+  separate pull request against `dev`.
+- **Rows 7, 13** — memory rows and the shelves heading. `internal/tui3/memoryplace.go`,
+  held by another lane.
+- **Rows 8, 9, 10, 17** — the spend page's two totals, the sparkline, its hint line and the
+  `loudest day` door. `internal/tui3/spendplace.go` and `place_spend.go`, held by another
+  lane.
+- **Row 15** (sev: low) — `rowGutter` is `internal/tui3/rowfit.go`, not this lane's.
+- **Row 16** (sev: low) — the 150 blank cells at 160 columns are `overlayLines` in
+  `internal/tui3/palette.go`, not this lane's. The units from row 3 do give those rows
+  something to sit on, but the measure cap is still uncapped.

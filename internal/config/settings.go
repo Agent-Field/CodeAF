@@ -1202,6 +1202,32 @@ type Setting struct {
 	Hint     string
 	Kind     SettingKind
 
+	// Unit is WHAT THIS ROW'S NUMBER IS COUNTED IN, and it lives here beside
+	// the default rather than in the surface that draws the row. `ssh reuse
+	// 300` is a row nobody can decide — three hundred seconds, connections,
+	// kilobytes? — and a panel that spelled the `s` for itself would be a
+	// second place for that answer to live, drifting the day somebody widened
+	// the row. One source: the registry says what the number is, every surface
+	// renders it ([Setting.Reading]).
+	//
+	// THE SYMBOLS ATTACH AND THE WORDS DO NOT. `300s`, `60%`, `20m` are one
+	// token in every terminal font, the way the two SettingDuration rows beside
+	// them already read; `1536 MB` and `65536 tok` are two words and read as
+	// two ([unitAttaches] is the whole list).
+	//
+	// A ROW WHOSE READING ALREADY CARRIES ITS UNIT LEAVES THIS EMPTY — a
+	// duration writes `20m`, a dollar row writes `$5`, [formatPercent] writes
+	// its own `%`. A row whose LABEL already names what is counted declares
+	// [UnitInLabel] rather than nothing, so "somebody decided this row needs no
+	// suffix" and "nobody has looked at this row yet" are different states and
+	// the completeness test can tell them apart.
+	Unit string
+
+	// UnitOne is [Setting.Unit] at exactly one — `1 clean firing` rather than
+	// `1 clean firings`. Empty means the unit reads the same at every number,
+	// which is true of every symbol and of `tok`, `MB` and `per core`.
+	UnitOne string
+
 	// Slot is the model role a SettingModel row fronts.
 	Slot string
 
@@ -1266,6 +1292,52 @@ func (s Setting) Value() string {
 	return value
 }
 
+// UnitInLabel is the [Setting.Unit] of a row whose own LABEL names what is
+// counted: `tasks at once  3` needs no `tasks` on the end, and `task repair
+// rounds  1 round` would be the row saying `rounds` twice. It reads as nothing
+// and it is not nothing — it is the row saying it was looked at.
+const UnitInLabel = "-"
+
+// Reading is [Setting.Value] with the row's unit on the end — the string a
+// surface DRAWS, where Value is the string an editor opens on.
+//
+// The two are separate because a unit is a fact about the number and never part
+// of it: an edit box that opened on `300s` would be asking a person to type the
+// `s` back, and the writers refuse anything that is not a bare figure.
+func (s Setting) Reading() string {
+	value := s.Value()
+	if value == "" || s.Unit == "" || s.Unit == UnitInLabel {
+		return value
+	}
+	// A ROW READING ITS OFF WORD IS NOT READING A NUMBER. `no limit` is the
+	// answer to "how many", not a quantity of them, and `no limit tasks` would
+	// be this surface putting a unit on a refusal.
+	if s.EmptyLabel != "" && value == s.EmptyLabel {
+		return value
+	}
+	unit := s.Unit
+	if value == "1" && s.UnitOne != "" {
+		unit = s.UnitOne
+	}
+	if unitAttaches(unit) {
+		return value + unit
+	}
+	return value + " " + unit
+}
+
+// unitAttaches is the short list of units that are written against the figure
+// rather than beside it. It is a list and not a rule about length because the
+// reason is typographic: `s`, `m`, `h` and `%` are read as part of the number
+// the way `20m` on the two duration rows already is, and every word is read as
+// a word.
+func unitAttaches(unit string) bool {
+	switch unit {
+	case "s", "m", "h", "%":
+		return true
+	}
+	return false
+}
+
 // Accepts is what this row will take, in the words its own writer refuses in.
 //
 // It lives here rather than in the surfaces because it is the WRITER'S sentence
@@ -1317,7 +1389,25 @@ func (s Setting) Apply(raw string) error {
 	if s.write == nil {
 		return fmt.Errorf("%s cannot be changed here", s.Label)
 	}
-	return s.write(raw)
+	return s.write(s.withoutUnit(raw))
+}
+
+// withoutUnit takes the row's own unit back off what was typed, because a row
+// that DRAWS `300s` and then refuses `300s` is a row arguing with itself: the
+// suffix is this registry's word and the person is handing it back. Anything
+// else — a unit that is not this row's, a bare figure — reaches the writer
+// untouched and is refused or accepted in the writer's own words.
+func (s Setting) withoutUnit(raw string) string {
+	text := strings.TrimSpace(raw)
+	for _, unit := range []string{s.Unit, s.UnitOne} {
+		if unit == "" || unit == UnitInLabel {
+			continue
+		}
+		if trimmed, cut := strings.CutSuffix(text, unit); cut && strings.TrimSpace(trimmed) != "" {
+			return strings.TrimSpace(trimmed)
+		}
+	}
+	return raw
 }
 
 // SettingGroup is one rendered category.
@@ -1696,7 +1786,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyConsentTimeout, Category: CategorySafety, Kind: SettingCount,
-			Label: "approval countdown",
+			Label: "approval countdown", Unit: "s",
 			Hint: "how many seconds an approval question waits for you before it answers itself. " +
 				"It answers no — the call is refused and the model is told, never approved — " +
 				"and the clock stops the moment you press any key. 0 waits for you forever.",
@@ -1705,7 +1795,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyBashBackgroundAfter, Category: CategorySafety, Kind: SettingCount,
-			Label: "background after", Hint: BashBackgroundAfterHint,
+			Label: "background after", Unit: "s", Hint: BashBackgroundAfterHint,
 			read:  func() string { return strconv.Itoa(BashBackgroundAfterAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyBashBackgroundAfter, raw) },
 		},
@@ -1839,7 +1929,7 @@ func (s *Settings) build() []Setting {
 		// something about work it has already decided to hand off.
 		Setting{
 			Key: KeyTaskAutoApprove, Category: CategorySafety, Kind: SettingCount,
-			Label: "task countdown",
+			Label: "task countdown", Unit: "s",
 			Hint: "how many seconds a proposed task waits for you before it starts on its own. " +
 				"The countdown is your window to redirect it or wave it off, not a gate — " +
 				"0 waits for your answer instead of starting. A change lands on the next session.",
@@ -1851,7 +1941,7 @@ func (s *Settings) build() []Setting {
 		// sent back to close them before it is called incomplete.
 		Setting{
 			Key: KeyTaskRepairRounds, Category: CategoryTasks, Kind: SettingCount,
-			Label: "task repair rounds",
+			Label: "task repair rounds", Unit: UnitInLabel,
 			Hint: "how many times a task that came back with something missing is sent back " +
 				"to finish the job — same working copy, same brief, with the gaps in front of " +
 				"it — before it lands as incomplete. Each round costs another run and another " +
@@ -1865,7 +1955,7 @@ func (s *Settings) build() []Setting {
 		// will say no to whatever you named.
 		Setting{
 			Key: KeyTaskParallel, Category: CategoryTasks, Kind: SettingCount,
-			Label: "tasks at once", EmptyLabel: "no limit",
+			Label: "tasks at once", EmptyLabel: "no limit", Unit: UnitInLabel,
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
 				"tasks back when it is loaded — and the model provider's own rate limit, which " +
@@ -1880,7 +1970,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTaskMaxLoad, Category: CategoryTasks, Kind: SettingText,
-			Label: "busy machine",
+			Label: "busy machine", Unit: "per core",
 			Hint: "the load average per core at which aforge stops starting new tasks — 1.5 by " +
 				"default, which is where the machine is handing out slices rather than running " +
 				"work. Tasks already running are never touched, so the queue moves again on " +
@@ -1890,7 +1980,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTaskMinFreeMB, Category: CategoryTasks, Kind: SettingCount,
-			Label: "memory floor",
+			Label: "memory floor", Unit: "MB",
 			Hint: "how many MB of memory must be available before another task may start — " +
 				"1536 by default, roughly what one more task and its build need. Under it, new " +
 				"tasks wait rather than push the machine into swap; running ones carry on. " +
@@ -2033,9 +2123,9 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyContextFill, Category: CategoryModels, Kind: SettingCount,
-			Label: "context fill", Env: "AFORGE_CONTEXT_FILL_PCT",
+			Label: "context fill", Unit: "%", Env: "AFORGE_CONTEXT_FILL_PCT",
 			Hint: "how much of a model's context window aforge fills before it starts " +
-				"compacting, as a percent. Higher packs more in; the rest stays as thinking " +
+				"compacting. Higher packs more in; the rest stays as thinking " +
 				"and answer room. Left alone, a conversation follows its own model's window " +
 				"instead — set this and it becomes the line, which /status then says. " +
 				"A change lands on the next call.",
@@ -2044,7 +2134,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyCompletionReserve, Category: CategoryModels, Kind: SettingCount,
-			Label: "answer room", Env: "AFORGE_COMPLETION_RESERVE",
+			Label: "answer room", Unit: "tok", Env: "AFORGE_COMPLETION_RESERVE",
 			Hint: "tokens every call keeps free for its answer and its reasoning. " +
 				"Generous costs nothing on turns that do not use it; small produces empty " +
 				"replies from a model that thinks past it. A change lands on the next call.",
@@ -2053,7 +2143,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyWorkingSet, Category: CategoryModels, Kind: SettingCount,
-			Label: "working set", Env: "AFORGE_WORKING_SET",
+			Label: "working set", Unit: "tok", Env: "AFORGE_WORKING_SET",
 			Hint: "the most material aforge keeps quoted in front of a worker at once, in tokens, " +
 				"however large the model's window is. A huge window is permission to send a lot, " +
 				"not a reason to: past this the older material fades to pointers it can still read " +
@@ -2063,20 +2153,21 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyContextReuse, Category: CategoryModels, Kind: SettingCount,
-			Label: "context reuse", Env: "AFORGE_CONTEXT_REUSE_PCT",
-			// THE UNIT IS A MULTIPLE IN HUNDREDTHS, AND THE SENTENCE LEADS WITH
-			// THAT. "as a percent" over a row whose default reads 250 asks a
-			// reader to find the whole this is a percentage OF — a window, a
-			// budget — and there is no such whole: 100 is one context over, 250 is
-			// two and a half. The old wording is also why the floor reads as a
-			// mistake (writeContextReuse refuses below 100, where a percentage
-			// would clamp above it), so the worked example comes before anything
+			Label: "context reuse", Unit: "%", Env: "AFORGE_CONTEXT_REUSE_PCT",
+			// THE UNIT NAMES THE WHOLE, AND THE SENTENCE LEADS WITH THE WORKED
+			// EXAMPLE. A bare "as a percent" over a row whose default reads 250
+			// asks a reader to find the whole this is a percentage OF — a window,
+			// a budget — and the answer is none of those: it is ONE WHOLE
+			// CONTEXT, so 100% is one context over and 250% is two and a half.
+			// Naming that whole is also what stops the floor reading as a mistake
+			// (writeContextReuse refuses below 100%, where a percentage of a
+			// window would clamp above it), so the example comes before anything
 			// else the row has to say.
 			Hint: "how many times over one piece of work may re-send its whole context before " +
-				"aforge tells it to land, in hundredths — 100 is once, 250 is two and a half " +
-				"times, and 100 is the floor. Every turn re-sends everything before it, so this " +
-				"is what stops a worker going round in circles at full price. " +
-				"A change lands on the next job.",
+				"aforge tells it to land, as a share of one whole context — 100% is once, " +
+				"250% is two and a half times, and 100% is the floor. Every turn re-sends " +
+				"everything before it, so this is what stops a worker going round in circles " +
+				"at full price. A change lands on the next job.",
 			read:  func() string { return strconv.Itoa(ContextReuseAt(dir)) },
 			write: func(raw string) error { return writeContextReuse(dir, raw) },
 		},
@@ -2095,7 +2186,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
-			Label: "tenure after", Env: "AFORGE_TENURE_AFTER",
+			Label: "tenure after", Unit: "clean firings", UnitOne: "clean firing", Env: "AFORGE_TENURE_AFTER",
 			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
 			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
 			write: func(raw string) error { return writeTenure(dir, raw) },
@@ -2194,7 +2285,7 @@ func (s *Settings) build() []Setting {
 		// ~/.ssh/config, because command-line options win.
 		Setting{
 			Key: KeySSHControlPersist, Category: CategoryInterface, Kind: SettingCount,
-			Label: "ssh reuse",
+			Label: "ssh reuse", Unit: "s",
 			Hint: "seconds an ssh connection stays reusable after its channel closes. 300 makes a " +
 				"quick reconnect avoid a new handshake; 0 turns persistence off. A change lands next launch.",
 			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ControlPersistSeconds) },
@@ -2202,7 +2293,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeySSHServerAlive, Category: CategoryInterface, Kind: SettingCount,
-			Label: "ssh heartbeat",
+			Label: "ssh heartbeat", Unit: "s",
 			Hint: "seconds of silence before ssh asks whether the far machine is still there. 3 detects " +
 				"a dead link promptly; 0 turns heartbeats off. A change lands next launch.",
 			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveSeconds) },
@@ -2210,7 +2301,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeySSHServerMisses, Category: CategoryInterface, Kind: SettingCount,
-			Label: "ssh missed heartbeats",
+			Label: "ssh missed heartbeats", Unit: UnitInLabel,
 			Hint: "how many unanswered ssh heartbeats end a dead connection. 3 with the default heartbeat " +
 				"notices an unresponsive link in about 9 seconds. A change lands next launch.",
 			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveMisses) },
