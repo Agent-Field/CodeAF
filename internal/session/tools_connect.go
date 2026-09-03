@@ -86,6 +86,10 @@ const (
 // reason searchTools is: a hub that is not there contributes no tool at all
 // rather than a tool that answers "nothing is configured".
 func (a *Agent) connectTools() []bare.Tool {
+	// [Config.hasConnect] is this same question asked of a config, and it asks
+	// it by calling [newConnectHub] — the very constructor agent.go ran to fill
+	// this field — so the page's `use_service` sentences cannot promise an
+	// account seam this line withheld (beltfacts.go).
 	if a.connect == nil {
 		return nil
 	}

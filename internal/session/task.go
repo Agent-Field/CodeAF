@@ -460,9 +460,12 @@ func (a *Agent) taskTools() []bare.Tool {
 // The graph is what the orchestrate run's workers and the auditor are NOT handed
 // (task_run.go's newTaskAgent), which is how they end up without the verb
 // without anybody writing a second rule about them.
-func (a *Agent) mayProposeTask() bool {
-	return !a.config.InTask || a.config.mayFanOut()
-}
+// It is [Config.mayProposeTask] asked of a live agent (beltfacts.go), and it is
+// written that way round rather than repeated here because the render step asks
+// the CONFIG the same question before there is an agent to ask: the page's
+// `tasks` sentences are composed from it, so a floor node is never told to call
+// a verb this line has just kept off its belt.
+func (a *Agent) mayProposeTask() bool { return a.config.mayProposeTask() }
 
 // mayFanOut is the same question asked of a CONFIG, before there is an agent to
 // ask: [renderSystem] decides whether to tell this worker how to split its work

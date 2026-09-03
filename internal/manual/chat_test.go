@@ -243,6 +243,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// WHAT A WORKER'S BELT DOES NOT CARRY, asked the way people meet it: as a
+		// thing they want done from inside a task, and as the sentence a worker
+		// says back when it cannot.
+		{"can a task change my settings", "how-tasks-run"},
+		{"can a task look up an old conversation", "how-tasks-run"},
+		{"can a task start a watch", "how-tasks-run"},
 		// What a task inherits that git cannot see, asked the four ways people
 		// ask it: the file they are worried about, the folder they do not want
 		// reinstalled, and the general form of the question.

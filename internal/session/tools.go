@@ -153,7 +153,9 @@ func (a *Agent) belt() []bare.Tool {
 		}
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
-	if !a.config.InTask {
+	// watch, on the predicate the prompt's own `watch` sentence is composed
+	// from (beltfacts.go): a node has no conversation for a delta to arrive in.
+	if a.config.mayWatch() {
 		tools = append(tools, a.watchTool())
 	}
 	// tasks rides with propose_task: it is the window onto the work this agent

@@ -90,6 +90,12 @@ var searchConversationsSchemaJSON = `{
 // is a store behind it (tools.go), because the index lives in the store and a
 // session with memory off has opened none.
 func (a *Agent) conversationTools() []bare.Tool {
+	// THE BRAIN AND NOT THE FIELD, because everything below dereferences the
+	// brain. [Config.hasStore] is the same fact asked of a config, which is all
+	// the render step has when it composes this tool's sentence
+	// (beltfacts.go); newAgent builds the brain from exactly that field, and
+	// prompt_belt_test.go pins the two answers together for every shape this
+	// package builds.
 	if !a.remembers() {
 		return nil
 	}
