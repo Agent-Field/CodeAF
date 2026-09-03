@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a canary cell installs the environment its base was measured in, and the do verdict reads the exit ladder
+title: a canary cell installs the environment its base was measured in; do verdicts read the exit ladder
 pr: 596
 surface: [build]
 invalidates:
