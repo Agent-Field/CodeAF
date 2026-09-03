@@ -729,6 +729,18 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		mentions = a.refreshTasks()
 	case session.EventTaskPhase:
 		a.taskPhaseMoved(ev)
+	case session.EventJobUpdate:
+		// A CONVERSATION REOPENED REDRAWS THE JOBS IT RAN, and this lane is the
+		// only one that can carry them: the engine replays every restored job
+		// row onto it when it wakes a checkpointed conversation (session's
+		// task_run.go), long after the turn that started them ended. Without
+		// this case the column beside a transcript full of jobs draws nothing,
+		// and because the section is the only door to a job's page there is no
+		// way left to read the log — which is the one thing a person coming
+		// back the next morning actually wants.
+		if ev.Job != nil && a.jobUpdate(*ev.Job) {
+			a.touch()
+		}
 	case session.EventStandingProposal:
 		a.proposeStanding(ev)
 	case session.EventTakeover:
