@@ -439,3 +439,185 @@ func TestTheFaultQuotesTheReplyItCouldNotRead(t *testing.T) {
 		t.Fatalf("err = %v, want the reply quoted in the fault", err)
 	}
 }
+
+// ── re-ask quotation repair ─────────────────────────────────────────────────
+
+// A first answer that is valid JSON but fails only the quotation rule — the
+// caller's contract demands a quote and the model left it empty — is not asked
+// for the whole verdict again. The re-ask asks for the missing quotation alone
+// over the answer already held, and the merged result is accepted.
+func TestReaskQuotationOnlyRepair(t *testing.T) {
+	first := whole(`{"pass":false,"gaps":"incomplete","quote":""}`)
+	quoteReply := whole("the behaviour about retries")
+	client := &scripted{replies: []*ai.Response{first, quoteReply}}
+	var into quoteDestination
+	_, err := Answer(context.Background(), client, Ask{Lane: "gate"}, &into)
+	if err != nil {
+		t.Fatalf("a quotation-only repair must succeed: %v", err)
+	}
+	if into.Quote != "the behaviour about retries" {
+		t.Fatalf("quote = %q, want the merged reply", into.Quote)
+	}
+	if len(client.ceilings) != 2 {
+		t.Fatalf("calls = %d, want the attempt and one targeted re-ask", len(client.ceilings))
+	}
+	// The re-ask must ask for the quotation alone, not the whole verdict.
+	asked := client.sent[1][len(client.sent[1])-1].Content[0].Text
+	if !strings.Contains(asked, "quotation") && !strings.Contains(asked, "quote") {
+		t.Fatalf("the re-ask did not ask for the missing quotation:\n%s", asked)
+	}
+	// It must carry the answer already held so the model can fill in the gap.
+	if !strings.Contains(asked, `"gaps":"incomplete"`) {
+		t.Fatalf("the re-ask did not carry the answer already held:\n%s", asked)
+	}
+}
+
+// quoteDestination accepts any valid JSON but refuses a verdict whose quote is
+// empty — the delivery gate's rule in miniature, and the exact failure this
+// repair exists for.
+type quoteDestination struct {
+	Pass  bool   `json:"pass"`
+	Gaps  string `json:"gaps"`
+	Quote string `json:"quote"`
+}
+
+func (d *quoteDestination) UnmarshalJSON(data []byte) error {
+	type alias quoteDestination
+	var raw alias
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Quote == "" {
+		return fmt.Errorf("a fail must quote the words of the request it is a failure of")
+	}
+	*d = quoteDestination(raw)
+	return nil
+}
+
+// The quotation re-ask names the rule the first answer broke, carried in the
+// caller's own refusal note — never duplicated prose that can drift from the
+// one place the rule is stated.
+func TestReaskPromptNamesBrokenRule(t *testing.T) {
+	// The quotation rule: the re-ask prompt must name it from the parse note.
+	client := &scripted{replies: []*ai.Response{
+		whole(`{"pass":false,"gaps":"incomplete","quote":""}`),
+		whole("the behaviour about retries"),
+	}}
+	var into quoteDestination
+	if _, err := Answer(context.Background(), client, Ask{Lane: "gate"}, &into); err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+	asked := client.sent[1][len(client.sent[1])-1].Content[0].Text
+	if !strings.Contains(asked, "must quote") {
+		t.Fatalf("the re-ask did not name the broken rule:\n%s", asked)
+	}
+}
+
+// ── findQuotationField ──────────────────────────────────────────────────────
+
+// findQuotationField returns "quote" when the refusal note is about a quotation
+// or a missing quote, and "" for every other kind of refusal — the empty string
+// is what keeps non-quotation refusals on the ordinary re-ask road.
+func TestFindQuotationFieldReturnsQuoteForQuotationNote(t *testing.T) {
+	if got := findQuotationField("any", "a fail must quote the words of the request"); got != "quote" {
+		t.Fatalf("findQuotationField = %q, want %q", got, "quote")
+	}
+	if got := findQuotationField("any", "the quotation is missing"); got != "quote" {
+		t.Fatalf("findQuotationField = %q, want %q", got, "quote")
+	}
+}
+
+func TestFindQuotationFieldReturnsEmptyForNonQuotationNote(t *testing.T) {
+	if got := findQuotationField("any", ""); got != "" {
+		t.Fatalf("findQuotationField(empty) = %q, want \"\"", got)
+	}
+	if got := findQuotationField("any", "no JSON object found"); got != "" {
+		t.Fatalf("findQuotationField(non-quotation) = %q, want \"\"", got)
+	}
+	if got := findQuotationField("any", "invalid character '}' looking for beginning of value"); got != "" {
+		t.Fatalf("findQuotationField(parse error) = %q, want \"\"", got)
+	}
+}
+
+// ── mergeQuote ──────────────────────────────────────────────────────────────
+
+// mergeQuote takes the field name as a parameter and sets that field in the
+// original object. It does not hardcode "quote", so a caller whose quotation
+// field has a different name gets its own field set.
+func TestMergeQuoteUsesFieldParameter(t *testing.T) {
+	original := `{"pass":false,"gaps":"incomplete"}`
+	merged := mergeQuote(original, "the answer is correct", "custom")
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(merged), &raw); err != nil {
+		t.Fatalf("mergeQuote produced invalid JSON: %v", err)
+	}
+	if got := string(raw["custom"]); got != `"the answer is correct"` {
+		t.Fatalf("raw[\"custom\"] = %s, want \"the answer is correct\"", got)
+	}
+	if _, ok := raw["quote"]; ok {
+		t.Fatal("mergeQuote set raw[\"quote\"] — it must not hardcode the field name")
+	}
+}
+
+// ── quotation repair journal ────────────────────────────────────────────────
+
+// When the quotation repair succeeds, RepairReasked appears exactly once in the
+// journal — at the success path inside the branch. A repair that was journaled
+// twice (once before the attempt and again on success) would mislead an autopsy
+// into counting one repair as two.
+func TestQuotationRepairThatSucceedsJournalsOnce(t *testing.T) {
+	first := whole(`{"pass":false,"gaps":"incomplete","quote":""}`)
+	quoteReply := whole("the behaviour about retries")
+	client := &scripted{replies: []*ai.Response{first, quoteReply}}
+	var seen []Repair
+	ctx := WithJournal(context.Background(), JournalFunc(func(r Repair) { seen = append(seen, r) }))
+	var into quoteDestination
+	if _, err := Answer(ctx, client, Ask{Lane: "gate"}, &into); err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+	reasked := 0
+	for _, r := range seen {
+		if r.Kind == RepairReasked {
+			reasked++
+		}
+	}
+	if reasked != 1 {
+		t.Fatalf("RepairReasked count = %d, want exactly 1 — the journal must note the repair once, not before and after the attempt", reasked)
+	}
+}
+
+// When the quotation repair is attempted but the merge does not produce a valid
+// answer — the model sent back something that still fails the caller's contract —
+// the branch falls through to the ordinary re-ask. RepairReasked must appear
+// exactly once, from the fall-through note, and not from the branch's success
+// path (which is never reached).
+func TestQuotationRepairThatFallsThroughJournalsOnce(t *testing.T) {
+	// The first answer has an empty quote, refused by quoteDestination.
+	// The quotation repair reply is also empty, so the merged result still has
+	// an empty quote, which quoteDestination refuses again — DecodeJSONObject
+	// fails, the branch falls through.
+	first := whole(`{"pass":false,"gaps":"incomplete","quote":""}`)
+	emptyReply := whole(``) // empty reply → merge keeps quote empty → still fails
+	normalReply := whole(`{"pass":true,"gaps":"","quote":"the behaviour about retries"}`)
+	client := &scripted{replies: []*ai.Response{first, emptyReply, normalReply}}
+	var seen []Repair
+	ctx := WithJournal(context.Background(), JournalFunc(func(r Repair) { seen = append(seen, r) }))
+	var into quoteDestination
+	if _, err := Answer(ctx, client, Ask{Lane: "gate"}, &into); err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+	reasked := 0
+	for _, r := range seen {
+		if r.Kind == RepairReasked {
+			reasked++
+		}
+	}
+	if reasked != 1 {
+		t.Fatalf("RepairReasked count = %d, want exactly 1 — a fall-through must journal the re-ask once, not twice", reasked)
+	}
+	// The quotation repair was attempted (call 2) and the ordinary re-ask
+	// succeeded (call 3).
+	if len(client.ceilings) != 3 {
+		t.Fatalf("calls = %d, want attempt, quotation repair, and fall-through re-ask", len(client.ceilings))
+	}
+}
