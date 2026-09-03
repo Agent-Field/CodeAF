@@ -445,6 +445,32 @@ case where the wordmark and the centred message box greet you; home itself is st
 `space space` away. On a profile with nothing configured yet, the once-only setup screen
 comes first (the getting-started page), and the greeting arrives the moment it closes.
 
+## The "resumed" line at the top — what it says, and where the file path went
+
+A conversation that opens over an existing transcript writes one dim line into the top of
+the page:
+
+```
+· resumed · porting the parser
+```
+
+**It names the conversation, not the file.** The name is the one the session gave itself
+from its first exchange; a conversation that has not named itself yet is called by the
+opening of the first thing you said in it. Either way it is one row, at every width.
+
+It used to print the journal's absolute path there instead, which ran to four or five
+wrapped rows above your own first message, and at sixty columns it took a fifth of the
+screen.
+
+**The path is still one keystroke away.** `/status` prints it on its `file` row, whole,
+with the machine in front of it on a `--host` session, and it is a link you can click. So
+is the path in the `resumed` line itself on the one occasion it is still drawn: a
+conversation with no name and nothing said in it falls back to the path, written against
+your home directory as `~/…` so it can be pasted straight into a shell.
+
+`/resume`, which swaps the conversation you are in for another one, notes `resumed <path>`
+in the older spelling.
+
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 
 The name is written by a model, once, and appears in the status line below the message
