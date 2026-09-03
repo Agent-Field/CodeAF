@@ -63,4 +63,18 @@ func TestCollapseAtomicChain(t *testing.T) {
 	if folded := collapseAtomicChain(fanIn); folded != 0 {
 		t.Fatalf("fan-in graph folded = %d, want 0", folded)
 	}
+	// A chain that is one node's inside is not the graph's own shape. This is
+	// what keeps the collapse from undoing the division of a sequence: the links
+	// sit at depth 1 under the node they were drawn for, and folding them would
+	// hand back the very node the ruler put past one worker's reach.
+	spliced := chainOf(2)
+	for index := range spliced.Nodes {
+		spliced.Nodes[index].Depth = 1
+		spliced.Nodes[index].Parent = 99
+	}
+	spliced.Add(Node{Kind: KindSynthesis, Stage: 1, Title: "Work",
+		Needs: []int{spliced.Nodes[1].ID}})
+	if folded := collapseAtomicChain(spliced); folded != 0 {
+		t.Fatalf("a spliced chain folded = %d, want 0 — the division was undone", folded)
+	}
 }

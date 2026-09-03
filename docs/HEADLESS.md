@@ -494,7 +494,7 @@ esac
 | Command | What it is for |
 | --- | --- |
 | `aforge chat --once "<text>" [--model slug] [--yolo] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. See below — it is a different shape from `do`. |
-| `aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]` | Compile a goal to a graph file. For reading and editing a plan by hand. |
+| `aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]` | Compile a goal to a graph file. For reading and editing a plan by hand. Exits `2` when the graph it wrote still carries a node the ruler measured past one worker and the passes then left whole — see below. |
 | `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge revise <graph.json> "<what happened>" [--done 1,2,3]` | Re-plan a graph from what actually happened. |
 | `aforge show <graph.json>` | Print a graph. |
@@ -508,6 +508,32 @@ esac
 | `aforge services [stop <name>]` | Long-running processes it was asked to keep. |
 | `aforge models` | The router ledger — ratings and how many observations back each. |
 | `aforge rebuild [--yes]` | Discard every derived table and replay the journal. |
+
+### `aforge plan` — exit `2` means the plan is not settled
+
+`plan` writes and prints its graph whatever it thinks of it: a plan with one
+leaf too big for the worker that will run it is still the best account of the
+goal anyone has, and `-o` and `--json` produce exactly the same bytes they
+always did.
+
+What the exit code says is whether the planning finished. **A node sized
+`oversized` that carries an `undivided` reason is a piece of planning that did
+not finish** — nobody could name two pieces for it, the division gave back the
+node again, the depth ceiling arrived first — and the door exits `2` over it,
+with one line per node on **stderr**:
+
+```
+not settled: North, South, East — no two pieces could be named for it
+```
+
+Exit `0` therefore means every leaf is one the ruler will stand behind. A
+harness that reads `$?` and stops there is reading the right thing; one that
+reads only "a graph was written" was, until this, told a plan was settled on
+103 of 273 measured draws where it was not.
+
+An oversized leaf with no reason on it is not this: the split gate collapsing a
+graph writes its own sentence and takes the responsibility, and the door leaves
+that alone.
 
 ### `aforge chat --once` — one turn, and what it is not
 

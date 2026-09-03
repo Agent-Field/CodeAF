@@ -5127,8 +5127,18 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// remainder is the one plan most at risk of being over-divided —
 			// it is already smaller than one worker's assignment — so it is the
 			// one that most needs the price of a child in front of it.
-			Invoice:    measuredInvoice(settings, workingModel),
-			MaxDepth:   0,
+			Invoice: measuredInvoice(settings, workingModel),
+			// A REMAINDER IS ALLOWED ONE LEVEL OF DIVISION. Depth zero is not a
+			// judgment that a remainder is small — it was a statement that a
+			// remainder should not grow a tree — but it is read as both: it
+			// refuses every node at plan.JudgeSplit before the node is weighed,
+			// and it runs the expansion loop zero times. So the one shape a
+			// remainder most often has, a piece too large for the worker that
+			// just exhausted itself on it, had nowhere to go. One level is the
+			// smallest ceiling that lets that piece be divided — into
+			// simultaneous parts where it has them, into ordered stages where it
+			// does not — and it still forbids the tree.
+			MaxDepth:   1,
 			NodeBudget: min(settings.NodeBudget, replanNodeBudget),
 			Briefs:     true,
 			Journal:    briefJournal(history, prefix),
@@ -5138,7 +5148,9 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// discover that was measured at 13.8k and 23.9k prompt tokens on
 			// two real extensions — five to eight times the whole structuring
 			// cost of the jobs they were repairing. The full pipeline is still
-			// there for the remainder the spine judges genuinely multi-stage.
+			// there for the remainder the spine judges genuinely multi-stage,
+			// and for the one the ruler judges past a single worker's reach —
+			// the shortcut asks both questions now, not just the first.
 			Undivided: true,
 			Progress:  progress,
 		})

@@ -459,7 +459,50 @@ func runPlan(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nwarning: %v\n", err)
 	}
 	gatePlanDivision(graph, goal)
-	return emit(graph, *output, *asJSON)
+	if err := emit(graph, *output, *asJSON); err != nil {
+		return err
+	}
+	// A GRAPH THAT STILL CARRIES A SIZING REFUSAL IS NOT A SETTLED PLAN, AND
+	// THE DOOR MAY NOT SAY IT IS. The graph is written and printed either way —
+	// a plan with one leaf too big for the worker that will run it is still the
+	// best account of the goal anyone has, and a caller that wants to look at it
+	// or hand it to `run` must be able to. What changes is the answer to `$?`,
+	// the one thing a harness reads: a node the ruler put past one worker's
+	// reach and the passes then left whole is an unfinished piece of planning,
+	// and exit 0 over it reads as "planned" to every script and every bench.
+	// Measured: the door exited 0 on 103 of 273 draws holding exactly this.
+	//
+	// It is exitPartial rather than a failure because that is what it is —
+	// something usable is above, and it is not the whole of what was asked for —
+	// and the reason is printed on stderr so stdout stays the graph.
+	if refused := unsettledSizing(graph); len(refused) > 0 {
+		fmt.Fprintln(os.Stderr)
+		for _, node := range refused {
+			fmt.Fprintf(os.Stderr, "not settled: %s — %s\n", node.Title, node.Undivided)
+		}
+		return exitPartial
+	}
+	return nil
+}
+
+// unsettledSizing lists the work nodes a finished graph still carries an
+// unresolved sizing refusal on: measured past what one worker holds, and then
+// left whole for a reason journaled on the node — nobody could name two pieces
+// for it, the division gave back the node again, the depth ceiling arrived
+// first. Every one of those is a piece of planning that did not finish.
+//
+// A node with no reason on it is not one of these. An oversized leaf can be
+// left whole deliberately — the split gate collapsing a graph writes its own
+// sentence and takes the responsibility — and what this reads is the refusal,
+// not the size.
+func unsettledSizing(graph *plan.Graph) []plan.Node {
+	var refused []plan.Node
+	for _, node := range graph.Nodes {
+		if node.Kind == plan.KindWork && node.Size == plan.SizeOversized && node.Undivided != "" {
+			refused = append(refused, node)
+		}
+	}
+	return refused
 }
 
 // runRevise takes no -w and renders no terrain of its own, which is deliberate

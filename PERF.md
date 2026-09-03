@@ -1006,7 +1006,7 @@ room = one object × how many objects the ask asks for + what the answer echoes
 | term | value | where |
 | --- | --- | --- |
 | one object | `CompletionReserve() / 8`, floored at **4096** | `objectShare`, `objectFloor`, `internal/shaped/ceiling.go` |
-| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
+| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, `sequenceDepth` (**4**) for the stage question a sequence is divided by, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
 | the echo | `2 × len(material) / 3` — tokens ≈ bytes/3, twice, because the compiled goal restates the request and then quotes it | `Ask.Echo` |
 | the memo | the widest cut this model has been watched taking on this lane, **doubled** | `provider.WidestAnswerCut`, `model-quirks.json` |
 | the bound | never past `CompletionReserve()` | `reserve()` |
@@ -1029,7 +1029,10 @@ separately and which is now written here alone.
 The width the fan-out prompt states and the width its ceiling is derived from
 are one constant, interpolated into the prompt (`fanOutWidth`,
 `internal/plan/fanout.go`). `TestAFanOutIsSizedForTheWidthItsPromptPermits` fails
-if they ever become two.
+if they ever become two. The stage question that divides a node no worker can
+carry to an end is the same arrangement one constant along (`sequenceDepth`,
+`internal/plan/sequence.go`), pinned by
+`TestTheStagePromptAsksTheSizePromptsSecondQuestion`.
 
 `internal/shaped/shaped_test.go` pins the derivation, the operator's reserve
 never being outrun, and the three repairs.

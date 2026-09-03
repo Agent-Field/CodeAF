@@ -1062,6 +1062,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"run one task from a script", "adaptive-runs"},
 		{"what flags does aforge do take", "adaptive-runs"},
 		{"what does the last line of aforge do mean", "adaptive-runs"},
+		{"the plan said not settled, what do I do", "adaptive-runs"},
 		// And the door below that one: a single worker with no plan behind it,
 		// asked either by its name or by what it does.
 		{"what is aforge exec for", "adaptive-runs"},

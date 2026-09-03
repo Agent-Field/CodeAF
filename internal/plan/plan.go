@@ -536,19 +536,57 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 
 	// --- the undivided shortcut ---------------------------------------------
 	// The spine has spoken and there is nothing gated in this goal. For a
-	// remainder that is the whole answer: one fresh worker, one contract, and
-	// none of fan-out, bind, size, audit, expansion or per-leaf briefs.
+	// remainder that is nearly the whole answer: one fresh worker, one contract,
+	// and none of fan-out, bind, audit, expansion or per-leaf briefs.
+	//
+	// THE SHORTCUT IS A JUDGMENT ABOUT GATES AND NEVER ONE ABOUT SIZE. It used
+	// to be taken on the spine's answer alone, and the spine is asked what has to
+	// wait for what — a question a piece far too large for one worker answers
+	// "nothing" as honestly as a two-line errand does. So a leaf that had just
+	// measured itself at 263K of a 150K window was replanned as one worker with
+	// the goal as its brief, and nothing between the two runs was in a position
+	// to notice. The one node is therefore sized before it is handed out, and the
+	// shortcut is taken only where the ruler says it is within one worker's
+	// reach; anything larger falls through to the pipeline, which is where the
+	// division of a sequence lives (see sequence.go). That is one call, and it is
+	// the cheapest call in the system.
+	var reachErr error
 	if options.Undivided && len(choice.Stages) == 1 {
 		stage := choice.Stages[0]
-		graph.Add(Node{
+		single := Node{
 			Kind: KindWork, Stage: 1,
 			Title:   strings.TrimSpace(stage.Title),
 			Summary: strings.TrimSpace(stage.Summary),
 			Brief:   goal,
-		})
-		emitProgress(progress, "steps", "1", "")
-		report("undivided", time.Since(start), "one worker — the spine found nothing gated")
-		return graph, groundErr
+		}
+		// AND THE PROBE IS NOT ASKED WHERE THE STAGE'S OWN WORDS HAVE ALREADY
+		// ANSWERED. The one call this shortcut spends is asked of a node whose
+		// title reads "North, South, East" and whose summary spells the three
+		// lanes out one by one; the ruler answered atomic, named no parts, and
+		// the whole goal went to one fresh worker on the strength of it. The
+		// words are read first instead (enumerated.go, free), and a one-stage
+		// spine that enumerates its pieces falls through to the pipeline, where
+		// the fan-out and then the stage question get to answer. Nothing else
+		// about the shortcut moves: a stage naming one subject is probed and
+		// taken exactly as it was.
+		enumerated := namesSeveralPieces(single.Title, single.Summary)
+		var withinReach bool
+		if !enumerated {
+			var reachUsage Usage
+			withinReach, reachUsage, reachErr = withinOneWorker(ctx, client, graph, single)
+			graph.Usage.merge(reachUsage)
+		}
+		if withinReach {
+			graph.Add(single)
+			emitProgress(progress, "steps", "1", "")
+			report("undivided", time.Since(start), "one worker — the spine found nothing gated")
+			return graph, errors.Join(groundErr, reachErr)
+		}
+		detail := "past one worker's reach — planned in full"
+		if enumerated {
+			detail = "its own words name several pieces — planned in full"
+		}
+		report("undivided", time.Since(start), detail)
 	}
 
 	// --- ensemble hook (ensemble.go) ---------------------------------------
@@ -558,7 +596,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// it. It is decided here because grounding and the spine are both already
 	// paid for and both feed the judgment.
 	if ensemble, chosen, ensembleErr := ensembleHook(ctx, client, graph, options, report, start); chosen {
-		return ensemble, errors.Join(groundErr, ensembleErr)
+		return ensemble, errors.Join(groundErr, reachErr, ensembleErr)
 	}
 	// --- end ensemble hook --------------------------------------------------
 
@@ -707,10 +745,16 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// inside a worker, not a gate between workers. When the whole graph is that
 	// chain, the graph is the undivided answer the spine's one-stage sample
 	// would have given, reached by evidence instead of by sampling luck.
+	// It cannot undo the second move, and the shape is what guarantees that
+	// rather than a flag: a node divided into ordered stages leaves a synthesis
+	// parent over links at depth 1, and this rule folds only a graph that is
+	// every-node-work at depth 0. A chain the ruler put past one worker's reach
+	// is not a chain of sittings, and folding one back would hand out exactly the
+	// node the division was bought to avoid.
 	if collapsed := collapseAtomicChain(graph); collapsed != 0 {
 		report("collapse", time.Since(start), fmt.Sprintf("chain of %d atomic nodes is one sitting", collapsed))
 		emitProgress(progress, "steps", "1", "")
-		return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr)
+		return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr)
 	}
 
 	graph.Prune()
@@ -730,7 +774,29 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		report("brief", time.Since(start), plural(len(graph.writtenLeaves()), "leaf"))
 	}
 
-	return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr, briefErr)
+	return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr, briefErr)
+}
+
+// withinOneWorker asks the ruler about a single node without letting the
+// question touch the graph.
+//
+// The probe is a copy of the graph by value, so it carries the same goal,
+// terrain, settled points, window and prices the real build carries — a probe
+// assembled field by field would go stale the day a field is added — and it
+// shares nothing the sizing pass writes to, because the node being judged exists
+// only in the copy. The stages come with it, so this is one call.
+//
+// A sizing call that fails leaves its node unjudged, which sizeApply reads as
+// atomic, so the shortcut is then taken exactly as it was before the question
+// was asked. That is the safe direction for a question whose whole purpose is to
+// avoid buying a pipeline.
+func withinOneWorker(ctx context.Context, client Completer, graph *Graph, node Node) (bool, Usage, error) {
+	probe := *graph
+	probe.Nodes, probe.NextID, probe.Usage = nil, 1, Usage{}
+	id := probe.Add(node)
+	usage, err := SizeNodes(ctx, client, &probe)
+	judged := probe.Node(id)
+	return judged != nil && judged.Size == SizeAtomic, usage, err
 }
 
 // collapseAtomicChain folds a graph that is one short chain of atomic work
