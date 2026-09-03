@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: the canary marks column counts an unreachable or absent mark reader, and carry counts the steward alone
+title: the canary marks column counts only an unreachable or absent mark reader
 pr: 509
 surface: [build, chat]
 invalidates:
