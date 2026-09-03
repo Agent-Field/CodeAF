@@ -406,9 +406,15 @@ var tuiWords = map[string]tuiWord{
 			"record card, which is the mode `space` pages and the door home had to give the key back to",
 	},
 	"taskRoomFootWord": {
-		screen: "esc back · ↑↓ scroll · m puts it in your message",
+		screen: "m puts it in your message · ↑↓ scroll",
 		why: "the record's own foot, and the one sentence that says a person is still standing in the room — " +
-			"it names `↑↓ scroll`, which is the family of keys `space` belongs to on this card",
+			"it names `↑↓ scroll`, which is the family of keys `space` belongs to on this card. " +
+			"IT WAS `esc back · ↑↓ scroll · m puts it in your message` AND THE ORDER IS THE POINT OF THE CHANGE: " +
+			"the foot is fitted by [hintFit], which keeps a key row's FINAL clause and drops the ones in front of " +
+			"it working backwards, so a sheet that opened on `esc back` gave the way out away first and a " +
+			"sixty-cell card offered the mention and no way off the page. This is the HELD sheet — the one the " +
+			"foot draws wherever the head's own corner already says `esc back`, which is every width the suite " +
+			"runs at — so the way out is not on it at all",
 	},
 
 	// ── the seat a crew older than it never wrote ────────────────────────────

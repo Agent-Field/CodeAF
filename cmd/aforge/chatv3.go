@@ -1324,6 +1324,13 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// down — and it is handed to a process-wide knob rather than onto the config
 	// because the picker rewrites it while the program is running
 	// (internal/provider's lanepin.go says why that is not a Config field).
+	//
+	// IT IS THE RESOLVER'S ENTRANCE AND NOT A PERSON'S. This function reads the
+	// row and hands the answer down, and it runs again on every standing tick
+	// for as long as the window lives ([v3StandingTicker], five minutes apart) —
+	// so it must not be able to forget what the wire said about the row while
+	// nobody has touched it. A person's own act goes to [provider.RepinLane]
+	// (internal/tui3's laneRowChanged), which forgets unconditionally.
 	provider.SetLanePin(v3LanePin(profileDir))
 	// And whether a slow answer is worth one extra call to rescue. It is one
 	// switch over the hedge and the probe together, for the reason it is one row.
