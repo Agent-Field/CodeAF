@@ -43,9 +43,10 @@
 // questions from the base URL for `openrouter.ai` or from a model spelled
 // `openrouter/…`, a loopback address is neither, and so every test that wanted
 // to see a preference on the wire had to dress itself up as the shipped router.
-// A test written that way today is testing the DRESS. Point it at
-// [Server.URL], and if a preference does not arrive, that is the product
-// answering.
+// This stub carried that costume — a second mount under a path spelled
+// `/openrouter.ai`, handed out by a second accessor — and it is gone (#426):
+// there is one address now, and if a preference does not arrive at it, that is
+// the product answering.
 //
 // SECOND, the fast clock is ONE TIMELINE. Its Wait returns at once and advances
 // a shared offset, which is exactly right for a scripted single stream and
@@ -332,17 +333,14 @@ func New(model string, lanes ...Lane) *Server {
 	}
 	server.Model(model, lanes...)
 	mux := http.NewServeMux()
-	// THE SAME ROUTER, MOUNTED TWICE, AND THE SECOND MOUNT IS NOW ONLY FOR THE
-	// SHIPPED ROUTER'S OWN FAST PATH. [Server.RouterURL] hands out the dressed
-	// spelling, and what it still buys is stated where it is defined: the two
-	// hints that remain hostname-shaped, which are the ones that really are
-	// about that one machine. Nothing about lanes or preferences needs it any
-	// more — [Server.URL] gets both from what this stub answers.
-	for _, prefix := range []string{"", routerPathPrefix} {
-		mux.HandleFunc("GET "+prefix+"/api/v1/models/{author}/{slug}/endpoints", server.serveSheet)
-		mux.HandleFunc("GET "+prefix+"/api/v1/models", server.serveCatalog)
-		mux.HandleFunc("POST "+prefix+"/api/v1/chat/completions", server.serveCompletion)
-	}
+	// ONE MOUNT, AT THE ONE ADDRESS [Server.URL] HANDS OUT. There was a second
+	// one for a while, under a path spelled `/openrouter.ai`, so that a build
+	// which read a router out of its hostname would fetch this stub's sheet;
+	// nothing reads a hostname for that any more (#419, #433), so the dress is
+	// gone and a test that wants lanes points at the plain URL.
+	mux.HandleFunc("GET /api/v1/models/{author}/{slug}/endpoints", server.serveSheet)
+	mux.HandleFunc("GET /api/v1/models", server.serveCatalog)
+	mux.HandleFunc("POST /api/v1/chat/completions", server.serveCompletion)
 	server.http = httptest.NewServer(mux)
 	return server
 }
@@ -448,35 +446,6 @@ func (s *Server) SetClock(clock Clock) {
 // real router's own URL carries, so nothing about a client has to be shaped
 // differently for the stub.
 func (s *Server) URL() string { return s.http.URL + "/api/v1" }
-
-// routerPathPrefix is the path segment that makes [Server.RouterURL] read as
-// THE SHIPPED ROUTER to the two hints that are still hostname-shaped.
-const routerPathPrefix = "/openrouter.ai"
-
-// RouterURL is [Server.URL] spelled so that this build reads the stub as THE
-// SHIPPED ROUTER — the specific machine — rather than as a router in general.
-//
-// IT IS NO LONGER HOW A TEST GETS LANES, AND USING IT FOR THAT IS A BUG IN THE
-// TEST. Lanes, a sheet and a routing preference all now come from what a base
-// ANSWERS: #419 made the endpoints page the probe, and #433 made the
-// preference the base's own answer, so [Server.URL] gets the whole of the lane
-// behaviour and a test that dresses up to obtain it is asserting against the
-// dress. A test on the plain URL is the one that would notice a regression.
-//
-// WHAT IT IS STILL HONEST FOR is the fast path itself, and only that: the
-// shipped router skips the asking ([provider.LaneSheetCertain] passes `known`
-// to the sheet, which files the preference answer with it), so a test that
-// wants to prove the shipped path pays NO EXTRA REQUEST has to be talking to
-// something this build reads as that machine. The two remaining hostname
-// readings in internal/provider — the attribution headers OpenRouter's ranking
-// page reads, and the choice of this adapter's own transport over the SDK's —
-// are the other things it stages, and neither is a claim about lanes.
-//
-// It is a URL and not a flag on purpose: the seam being staged is the one the
-// product really reads, so a build that stopped recognising the shipped router
-// by hostname would stop recognising this too, which is the honest way for a
-// stub to fail.
-func (s *Server) RouterURL() string { return s.http.URL + routerPathPrefix + "/api/v1" }
 
 // Close shuts the router down.
 func (s *Server) Close() { s.http.Close() }
