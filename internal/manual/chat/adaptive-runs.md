@@ -1334,7 +1334,7 @@ exactly as it would have without any of this.
 
 ## When nothing checks what you asked for — "no check exercises …"
 
-At the end, the review asks one more question of every verdict it reaches — whether it was
+At the end, the review asks one more question of every answer it reaches — whether it was
 about to accept the work or has already found something else missing: for each behaviour on
 the checklist, **is there a check that would fail if this were absent or wrong?** Where the
 review has already named a gap, both gaps travel together, so the repair round is told about
@@ -1382,7 +1382,7 @@ it: "the project's checks could not be read and the work's own diff names none, 
 behaviour could be matched to a check". No finding, and no round bought for it. A suite
 that ran and genuinely has no tests is a real measurement and still raises the finding.
 
-Watching a headless run, it is one line under the verdict — the first behaviour named, the
+Watching a headless run, it is one line under the review's answer — the first behaviour named, the
 rest counted:
 
 ```
@@ -1416,7 +1416,7 @@ finished work that was not re-checked as something missing.
 When the answer is no, nothing changes: the repair round is bought exactly as before, and
 what the question found absent is kept on the record beside the review's own gap rather
 than mixed into it. If that repair round produces a new answer, the new answer gets its own
-question before any further work is planned — but one verdict is never asked about twice.
+question before any further work is planned — but one answer is never asked about twice.
 
 **It is never asked about something measured.** A file the plan promised that is not on
 disk, a check that passed before the work and fails after it, a name nothing in the tree

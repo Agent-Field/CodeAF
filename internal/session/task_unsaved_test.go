@@ -10,10 +10,15 @@ package session
 // stopped at the first path it could not place, leaving the person's folder with
 // half a deliverable under a row that read finished.
 //
-// So every test here asserts the same two things about a landing that failed:
-// THE WORK IS STILL THERE, and the node says somebody has to look.
+// So every test here asserts the same thing about a landing that failed: THE
+// WORK IS STILL THERE, and the person is told where. What the node then SAYS
+// depends on which failure it was — a conflict about the work goes back to
+// somebody to decide, and a tree that would not take the work is settled where
+// it stands rather than asked about again (task_land_unsaved.go's [treeRefused],
+// #513).
 
 import (
+	"errors"
 	"go/ast"
 	"go/token"
 	"os"
@@ -49,7 +54,7 @@ func TestALandingThatCouldNotSaveTheWorkKeepsIt(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 	readOnlyGitDir(t, tree)
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py"})
 
 	if cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want a landing that saved nothing to refuse", merge, detail)
@@ -98,7 +103,7 @@ func TestALandingThatCouldSaveTheWorkStillComesHome(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py"})
 
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it merged", merge, detail)
@@ -117,10 +122,24 @@ func TestALandingThatCouldSaveTheWorkStillComesHome(t *testing.T) {
 	}
 }
 
-// AND THE NODE SAYS SOMEBODY HAS TO LOOK, on the road a person takes hours
-// later: an accept over a working copy that cannot be committed into settles
-// needing a look with the directory named, not done.
-func TestAcceptingWorkThatCannotBeSavedNeedsALook(t *testing.T) {
+// AND THE NODE IS SETTLED WHERE IT STANDS, on the road a person takes hours
+// later: an accept over a working copy that cannot be committed into keeps the
+// work where it is, names the directory, and IS NOT ASKED AGAIN.
+//
+// THIS ARM CHANGED, AND #255'S LAW IS THE HALF THAT DID NOT. What that issue
+// bought is that nothing is lost and nothing is silent: the merge is refused,
+// the working copy is left standing, the report names the directory the only
+// copy of the work is in, and no note offers a branch holding nothing. Every one
+// of those is asserted below and every one of them still holds.
+//
+// WHAT MOVED IS WHO IS ASKED AGAIN. Settling back into "needs your look" put the
+// same question in front of the same decider over the same disk, and the answer
+// could only ever be the same: a measured run accepted this node three times,
+// was refused three times, and spent its parent's remaining minutes on the loop
+// (#513). A reason that is about the TREE cannot be changed by answering it
+// again, so the decision stands and the next resolution is told it is already
+// settled (task_land_unsaved.go's [treeRefused]).
+func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	agent, node := unverifiedNode(t, nil)
 	repo := newTestRepo(t)
 	tree, err := prepareTaskTree(Place{}, repo, "ffff6666ffff8888", 19, "add the parser")
@@ -136,12 +155,15 @@ func TestAcceptingWorkThatCannotBeSavedNeedsALook(t *testing.T) {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
-	if state := node.stateNow(); state != TaskUnverified {
-		t.Fatalf("state = %q, want it to need a look: nobody could put the work away", state)
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("state = %q, want the accept to stand: asking again cannot change a disk", state)
 	}
 	report, _, _, merge := node.leavings()
-	if !strings.HasPrefix(report, needsLookLead) {
-		t.Fatalf("the report leads with %q, want the words a person reads for a landing nobody could finish", report)
+	if !strings.HasPrefix(report, keptWhereItIsLead) {
+		t.Fatalf("the report leads with %q, want the words a person reads for work that stayed where it is", report)
+	}
+	if strings.Contains(report, needsLookLead) {
+		t.Fatalf("the report still asks somebody to look at a decision they already made:\n%s", report)
 	}
 	if !strings.Contains(report, tree.dir) {
 		t.Fatalf("the report never says where the work is:\n%s", report)
@@ -162,6 +184,14 @@ func TestAcceptingWorkThatCannotBeSavedNeedsALook(t *testing.T) {
 	if !strings.Contains(note, tree.dir) {
 		t.Fatalf("the note never says where the work is:\n%s", note)
 	}
+	// AND A SECOND ANSWER ON THE SAME NODE IS TOLD IT IS ALREADY SETTLED, which
+	// is the whole of "never a fourth card": the model's own `tasks … resolve`
+	// and a person's keypress reach the same sentence (task_audit.go's
+	// [settledAlready]).
+	err = agent.ResolveUnverified(node.id, TaskAccept, "I read it myself")
+	if !errors.Is(err, ErrTaskDecided) {
+		t.Fatalf("a second accept answered %v, want the already-settled sentence", err)
+	}
 }
 
 // ISSUE #256, THE REPLICATION. A folder family whose ledger cannot be laid in
@@ -175,7 +205,7 @@ func TestAFolderLandingThatCannotBeLaidInFullLaysNothing(t *testing.T) {
 	writeFile(t, filepath.Join(folder, "sub"), "not a directory\n")
 	before := folderContents(t, folder)
 
-	merge, detail := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
+	merge, detail, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
 
 	if cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want a half-lay to refuse", merge, detail)
@@ -206,7 +236,7 @@ func TestAnOrdinaryFolderLandingStillLaysEveryFile(t *testing.T) {
 	writeFile(t, filepath.Join(parent.dir, "a.md"), "the first half\n")
 	writeFile(t, filepath.Join(parent.dir, "sub", "b.md"), "the second half\n")
 
-	merge, detail := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
+	merge, detail, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
 
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q (%s), want an ordinary lay saying nothing", merge, detail)
@@ -219,10 +249,12 @@ func TestAnOrdinaryFolderLandingStillLaysEveryFile(t *testing.T) {
 	}
 }
 
-// AND THE LATE ROAD REFUSES IT TOO. A folder family accepted by hand hours
-// later, over a folder that cannot take the lay, settles needing a look rather
-// than done — with the folder still untouched.
-func TestAcceptingAFolderFamilyThatCannotBeLaidNeedsALook(t *testing.T) {
+// AND A FOLDER GROUND ANSWERS THE SAME WAY. A folder family accepted by hand
+// hours later, over a folder that cannot take the lay, settles where it stands —
+// with the folder still untouched and the copy still whole. The folder is the
+// tree here, and a folder that has a file where a directory has to go has it the
+// second time too.
+func TestAcceptingAFolderFamilyThatCannotBeLaidSettlesWhereItStands(t *testing.T) {
 	agent, node := unverifiedNode(t, nil)
 	folder, _, parent := familyOnAFolder(t)
 	writeFile(t, filepath.Join(parent.dir, "a.md"), "the first half\n")
@@ -236,11 +268,11 @@ func TestAcceptingAFolderFamilyThatCannotBeLaidNeedsALook(t *testing.T) {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
-	if state := node.stateNow(); state != TaskUnverified {
-		t.Fatalf("state = %q, want it to need a look", state)
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("state = %q, want the accept to stand", state)
 	}
 	report, _, _, _ := node.leavings()
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, keptWhereItIsLead) {
 		t.Fatalf("the report leads with %q", report)
 	}
 	if after := folderContents(t, folder); after != before {
@@ -341,7 +373,10 @@ var savedWorkAnswerDropped = map[string]string{
 // TestNoLandingDropsWhatASaveAnswered fails when a call to either save discards
 // the failure without an entry above.
 func TestNoLandingDropsWhatASaveAnswered(t *testing.T) {
-	saves := map[string]int{"stageTaskWork": 0, "commitTaskWork": 1, "commitTaskWorkAs": 2}
+	// The index is the ERROR's position in each save's answer: [commitTaskWorkAs]
+	// answers the typed refusal before it, and the refusal is a reading of that
+	// same error, never a fact of its own.
+	saves := map[string]int{"stageTaskWork": 0, "commitTaskWork": 1, "commitTaskWorkAs": 3}
 	found := map[string]bool{}
 	forEachPackageFile(t, func(path string, file *ast.File, fset *token.FileSet) {
 		var enclosing string
@@ -431,7 +466,7 @@ func TestALandingRefusesWhenOnePathOfTheLedgerCouldNotBeStaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	merge, detail := tree.comeHome("write both halves", []string{"open.md", "closed.md"})
+	merge, detail, _ := tree.comeHome("write both halves", []string{"open.md", "closed.md"})
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse over the path it could not take", merge, detail)
@@ -523,7 +558,7 @@ func TestALandingWhoseCommitGitRefusedKeepsTheWork(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py"})
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse a commit git would not write", merge, detail)
@@ -626,7 +661,7 @@ func TestALandingRefusesWhenATrackedDeletionCouldNotBeStaged(t *testing.T) {
 	}
 	readOnlyGitDir(t, tree)
 
-	merge, detail := tree.comeHome("take the file out", []string{"shared.txt"})
+	merge, detail, _ := tree.comeHome("take the file out", []string{"shared.txt"})
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse over a deletion it could not stage", merge, detail)

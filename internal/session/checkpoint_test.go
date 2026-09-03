@@ -3318,8 +3318,8 @@ func TestAMarkReaderWithNoModelIsAbsentRatherThanFailing(t *testing.T) {
 			t.Fatalf("round %d: a session with no second model still paid for a reading", round)
 		}
 		agent.journalMarkRead(read, round, 10, checkpointDecisionContinue)
-		if line := agent.readRemains(context.Background()); line != "" {
-			t.Fatalf("round %d: a reader that is not there answered %q", round, line)
+		if line := agent.readRemains(context.Background()); line.answered {
+			t.Fatalf("round %d: a reader that is not there answered %+v", round, line)
 		}
 	}
 
@@ -3357,6 +3357,9 @@ func TestTheCarriedOnNoteSaysWhatWasObserved(t *testing.T) {
 		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
 		Checks:     []CheckRun{{Command: "go build ./...", Passed: false}},
+		// A red that counts is a red the before-reading has landed for; until it
+		// has, no check is counted against the run and the note says so instead.
+		BaselineRead: true,
 	})
 	note := checkpointCarriedOnNote(decision.Observed)
 	if !strings.Contains(note, "wire the handlers did not finish") ||

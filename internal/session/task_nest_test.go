@@ -974,7 +974,7 @@ func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 	// nothing to lay anywhere — and the ledger it settles with is still the
 	// whole of the subtree under it.
 	partTree := taskTree{dir: tree.dir, ground: tree.dir, merge: mergeInPlace, mode: TaskModeFolder}
-	partLedger, merge, _ := landHome(part, partTree, []string{"part.md"})
+	partLedger, merge, _, _ := landHome(part, partTree, []string{"part.md"})
 	part.finish("wrote the note", partLedger, "", merge)
 	graph.complete(part, TaskDone)
 

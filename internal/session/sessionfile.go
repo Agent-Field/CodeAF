@@ -547,9 +547,13 @@ type journalMark struct {
 // Decision is `moved`, `dropped:nothing-left` — the running model declared the
 // work finished AND the mark's own reader agreed nothing remained — or
 // `dropped:no-brief`, which is the one other way a ceiling ends with no task:
-// nothing could be written down for anybody. TaskID names the node when one was
-// admitted, and is absent otherwise by the emptiness law the rest of the line
-// keeps.
+// nothing could be written down for anybody. On a run with a goal owner two more
+// are possible, and both mean the turn was sealed at the handover with no task
+// started: `dropped:stopped`, the owner read the ending and stopped the run with
+// a reason, and `dropped:done`, the owner read it and said the ask was met
+// (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID names the node when one
+// was admitted, and is absent otherwise by the emptiness law the rest of the
+// line keeps.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.

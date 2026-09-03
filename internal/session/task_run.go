@@ -2696,12 +2696,25 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Waiting:   waiting,
 		Stopped:   n.stopped,
 		Ending:    n.endingLocked(),
+		// AND WHAT ITS OWN CHECK SAID, which is not the same fact as its state: a
+		// node taken as it stands, one landed with the check switched off and one
+		// a person accepted are all done and none of them was checked
+		// (taskgrade.go's [TaskNode.checkSaid]).
+		Checked: n.checked,
 		// WHAT IT IS RUNNING ON, WHICH IS THE SPEC'S UNLESS SOMETHING SWAPPED IT.
 		// See [TaskNode.ran] for why the swap is a second field rather than an
 		// edit to the frozen spec.
 		Model:   n.runModelLocked(),
 		CostUSD: cost,
 	}
+}
+
+// endingNow is [TaskNode.endingLocked] for a caller that does not hold the
+// graph, which is every reader outside the task engine.
+func (n *TaskNode) endingNow() TaskEnding {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.endingLocked()
 }
 
 // endingLocked is the ending a notice and a record carry, with the graph held.
@@ -2934,6 +2947,35 @@ func (a *Agent) settlePolicy() TaskSettle {
 	return settleOrAsk(a.config.TaskSettle)
 }
 
+// unattendedRun reports that the CONVERSATION this node's family belongs to was
+// left running with a ceiling and nobody is coming back to it — the `--yolo`
+// posture with a budget, which is the one thing in this build that means a run
+// carries its own work on ([Steward], principal.go).
+//
+// ── IT IS ASKED OF THE CONVERSATION AND NEVER OF THE RUNNER ─────────────────
+//
+// A node's own agent is not the one to ask. A sub-task is run by its PARENT
+// NODE'S agent ([TaskNode.owner]), and a worker holds a [Person] by law — it has
+// no budget, no acceptance and no ceiling of its own (principal_wire.go refuses
+// a worker a steward outright). So the question "is anybody coming back to this"
+// belongs to the conversation the whole family hangs off, which is the graph's
+// home and is written once before any node can run.
+//
+// AND IT IS NARROWER THAN [Agent.settlePolicy] ON PURPOSE. Auto also covers a
+// headless `--once` — which ends with its one turn either way — and a nested task
+// under a session somebody IS watching, whose decision belongs to the worker that
+// commissioned it and which can read the diff and answer. Neither of those is the
+// run that was measured stalling, and taking their decisions away would be the
+// widening this seam exists to avoid.
+func (n *TaskNode) unattendedRun() bool {
+	// home is written once, before any node can run, and read without the
+	// graph's lock — the same reading [TaskNode.enterPhase] takes of it.
+	if n == nil || n.graph == nil || n.graph.home == nil {
+		return false
+	}
+	return n.graph.home.steward() != nil
+}
+
 // The two sentences a landing nobody could check ends with, and which one is
 // written is the whole of what `task.settle` changes.
 //
@@ -2988,6 +3030,8 @@ func haltedVerb(ending TaskEnding) string {
 	switch ending {
 	case TaskEndingWire:
 		return "lost the connection"
+	case TaskEndingUpstream:
+		return "the model provider refused it"
 	case TaskEndingCircling:
 		return "went in circles"
 	case TaskEndingBlocked:
@@ -3704,6 +3748,19 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 			node.finish(withReport("lost the connection to the model: "+runErr.Error(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
+		// AND A PROVIDER THAT COULD NOT SERVE THE REQUEST IS THE SAME NEWS AS THE
+		// WIRE. Nothing was learned about the work — the service was down, the
+		// route had no provider left, the account could not be served — so the
+		// ending is classed for what it was ([TaskEndingUpstream]) and a reader
+		// of what is left knows not to count it as a gap in the ask. The question
+		// is put to the error's own TYPE and STATUS ([providerCouldNotServe]),
+		// and the person's sentence is unchanged: what they need is the
+		// provider's own account of it.
+		if providerCouldNotServe(runErr) {
+			node.end(TaskEndingUpstream)
+			node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
+			return TaskFailed, true
+		}
 		node.end(TaskEndingError)
 		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 		return TaskFailed, true
@@ -3980,14 +4037,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			changed, tree.branch, merge)
 		return TaskUnverified
 	case !verdict.answered:
-		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
-		// and not failed either, because no finding was made about this work.
-		// The node's own claim is kept UNDER the non-answer: whoever is asked to
-		// resolve this needs both halves, what the work says it did and what the
-		// checker said instead of an answer (task_contract.go's TaskUnverified).
-		merge, changed := keepHome(node, tree, changed)
-		node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
-		return TaskUnverified
+		// NOBODY COULD SAY, and who is asked about that is the posture's to
+		// answer ([Agent.landUnchecked]).
+		return a.landUnchecked(node, tree, changed, report, verdict, log)
 	case !verdict.verified:
 		// INCOMPLETE, WITH EVERY ROUND'S GAPS. The node's own claim is dropped
 		// exactly as it was before: somebody looked at the work and said what is
@@ -4003,6 +4055,48 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// every remaining question, the ground and the merge, is the one every road
 	// home asks ([Agent.landFinished]).
 	return a.landFinished(node, tree, changed, report, verdict.doneOutcome(), "", log)
+}
+
+// landUnchecked settles a node NOBODY COULD SAY ANYTHING ABOUT, and which of its
+// two endings it takes is decided by whether anybody is coming back to the run.
+//
+// It is a function of its own rather than an arm of the gate because the gate is
+// already at its ledgered length (complexity_test.go) and because the two endings
+// are one question asked once: a check that could not run is a person's to decide
+// where there is a person, and the harness's where there is not.
+//
+// ── A CHECK THAT COULD NOT RUN IS NEVER A PERSON QUESTION WHEN NOBODY IS COMING
+// BACK ([TaskNode.unattendedRun]) ──
+//
+// On a run somebody left going with a ceiling, the road this used to take was:
+// land needing a look, wake whoever holds the decision with the auto note, have
+// them read the work and call `tasks … resolve accept`, and merge. Every step of
+// that is spend, and it ends where this ends. The measured run never got through
+// it: the accept was refused by the tree, the node was offered again, and the
+// loop ate the parent's remaining minutes (#513).
+//
+// SO THE WORK IS TAKEN AS IT STANDS AND THE LANDING SAYS SO. The checking has
+// already been run twice ([Agent.auditNode] asks a fresh checker after a
+// non-answer), the tail names what became of it and that there was nobody to ask
+// (task_audit.go's [takenAsItStands]), and the state is the same TaskDone the
+// accept would have reached one round-trip later.
+//
+// AND EVERY OTHER SESSION IS UNTOUCHED. A person sitting in front of the card
+// keeps their four answers; a nested task under one of those still goes to the
+// worker that commissioned it, which can read the diff and decide. A harness
+// that took either decision away would be the opposite defect.
+func (a *Agent) landUnchecked(node *TaskNode, tree taskTree, changed []string, report string, verdict auditVerdict, log io.Writer) TaskState {
+	if node.unattendedRun() {
+		return a.landFinished(node, tree, changed, report, takenAsItStands(verdict), " (unchecked)", log)
+	}
+	// Not done — nothing merges on an answer nobody gave — and not failed
+	// either, because no finding was made about this work. The node's own claim
+	// is kept UNDER the non-answer: whoever is asked to resolve this needs both
+	// halves, what the work says it did and what the checker said instead of an
+	// answer (task_contract.go's TaskUnverified).
+	merge, changed := keepHome(node, tree, changed)
+	node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
+	return TaskUnverified
 }
 
 // landStopped settles a node whose threshold fired — and it is where a landing
@@ -4227,7 +4321,7 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	saved, problem := commitTaskWork(tree.dir, title, changed)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -6087,20 +6181,20 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // land. If git cannot do it — a real conflict, or local changes it would have
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
-func (t taskTree) comeHome(title string, wrote []string) (string, string) {
+func (t taskTree) comeHome(title string, wrote []string) (string, string, landingRefusal) {
 	if t.mode == TaskModeMirror {
 		return t.landMirror(wrote)
 	}
 	if t.merge == mergeInPlace || t.root == "" {
-		return mergeInPlace, ""
+		return mergeInPlace, "", refusedNothing
 	}
 	// A LANDING THAT COULD NOT SAVE THE WORK STOPS HERE. Nothing merges, nothing
 	// is released, and the branch and the working copy both stay exactly where
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem := commitTaskWork(t.dir, title, wrote); problem != "" {
-		return mergeAborted, unsavedSentence(t.dir, problem)
+	if _, problem, why := commitTaskWork(t.dir, title, wrote); problem != "" {
+		return mergeAborted, unsavedSentence(t.dir, problem), why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
 	// off the ground ladder's machine commit holds the parent's uncommitted
@@ -6131,7 +6225,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	if out, err := t.carryBranchHomeLocked(); err != nil {
 		t.releaseKeptLocked()
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
-			leftBehindSentence(left, true))
+			leftBehindSentence(left, true)), refusedByTheWork
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own
@@ -6146,7 +6240,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 		// task folder that a later sweep may remove underneath it.
 		t.releaseKeptLocked()
 		return mergeConflicted, withReport(withReport(said, stranded),
-			leftBehindSentence(left, true))
+			leftBehindSentence(left, true)), refusedByTheWork
 	}
 	// The working copy is given back only once its work is in, and which road
 	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).
@@ -6155,7 +6249,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
 	return mergeMerged, withReport(withReport(said, stranded),
-		leftBehindSentence(left, false))
+		leftBehindSentence(left, false)), refusedNothing
 }
 
 // landMirror brings a mirrored folder home: the files the node wrote, laid over
@@ -6173,9 +6267,9 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 // EXCEPT WHERE THE FOLDER MOVED UNDER IT, which is the one outcome that is not
 // in-place: a file the person edited themselves while the work ran is a file
 // this refuses to write over (task_mirror_manners.go).
-func (t taskTree) landMirror(wrote []string) (string, string) {
+func (t taskTree) landMirror(wrote []string) (string, string, landingRefusal) {
 	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
-		return mergeInPlace, ""
+		return mergeInPlace, "", refusedNothing
 	}
 	// AND IT DOES NOT WRITE OVER A FILE THAT CHANGED UNDER IT
 	// (task_mirror_manners.go). The mark is [mergeConflicted] because that is what
@@ -6185,16 +6279,20 @@ func (t taskTree) landMirror(wrote []string) (string, string) {
 	// the copy is left whole, and what a person does about two versions of their
 	// own file is theirs to decide, exactly as it is on a repository ground.
 	if changed := groundChanged(t.dir, t.ground, wrote); len(changed) > 0 {
-		return mergeConflicted, groundChangedSentence(t.dir, t.ground, changed)
+		return mergeConflicted, groundChangedSentence(t.dir, t.ground, changed), refusedByTheWork
 	}
 	// A LAY THAT COULD NOT HAPPEN IS NOT A LANDING EITHER, and it says so with
 	// the mark every road refuses ([cameHome]): the ledger goes into the folder
 	// whole or not at all (task_lay.go), and the copy it came from is untouched,
 	// so everything the family made is still in the directory this names.
 	if problem := layWork(t.dir, t.ground, wrote); problem != "" {
-		return mergeAborted, unlaidSentence(t.dir, t.ground, problem)
+		// A FOLDER THAT WOULD NOT TAKE THE LAY IS THE FOLDER REFUSING, and it will
+		// refuse the same way next time — a file where a directory has to go, a
+		// mount that will not be written. It is typed here, where the lay was
+		// refused, rather than read back out of the sentence.
+		return mergeAborted, unlaidSentence(t.dir, t.ground, problem), refusedByTheTree
 	}
-	return mergeInPlace, ""
+	return mergeInPlace, "", refusedNothing
 }
 
 // conflictSentence is what a person reads when a branch would not merge: which
@@ -6412,12 +6510,12 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string) ([]string, string) {
-	saved, _, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote)
+func commitTaskWork(dir, title string, wrote []string) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote)
 	if err != nil {
-		return nil, firstLine(err.Error())
+		return nil, firstLine(err.Error()), why
 	}
-	return saved, ""
+	return saved, "", refusedNothing
 }
 
 // commitTaskWorkAs is [commitTaskWork] with the sentence the commit carries
@@ -6431,10 +6529,13 @@ func commitTaskWork(dir, title string, wrote []string) ([]string, string) {
 // stay in step — the same identity, the same `--no-verify`, the same reading of
 // what was actually staged — and the day either moved, only one of them would.
 //
-// IT ANSWERS THREE THINGS AND THE COMMIT IS THE ONE THAT MATTERS. The paths are
+// IT ANSWERS FOUR THINGS AND THE COMMIT IS THE ONE THAT MATTERS. The paths are
 // what was staged, read off the index. THE COMMIT IS THE SHA IT WROTE, empty
 // when there was nothing to write, and the error is a `git commit` that would
-// not run — a hook, a read-only object store, a repository somebody broke.
+// not run — a hook, a read-only object store, a repository somebody broke. The
+// refusal is that same error read for WHO refused, the tree or the work
+// ([landingRefusal]); it is never set without the error and says nothing on its
+// own, so a caller that reads the error may leave it unread.
 //
 // THOSE TWO USED TO BE THROWN AWAY, and that was a fault with teeth: the paths
 // came back looking exactly like a commit that had happened, so a caller could
@@ -6442,30 +6543,38 @@ func commitTaskWork(dir, title string, wrote []string) ([]string, string) {
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, error) {
-	if problem := stageTaskWork(dir, wrote); problem != "" {
-		return nil, "", errors.New(problem)
+func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, landingRefusal, error) {
+	if problem, why := stageTaskWork(dir, wrote); problem != "" {
+		return nil, "", why, errors.New(problem)
 	}
 	saved, problem := stagedPaths(dir)
 	if problem != "" {
-		return nil, "", errors.New(problem)
+		return nil, "", askTheTree(dir), errors.New(problem)
 	}
 	if len(saved) == 0 {
 		// Nothing the node wrote is different from HEAD, which is the ordinary
 		// answer for a node that only read and for a ledger already committed by a
-		// round before this one. It is not a failure and there is no commit.
-		return nil, "", nil
+		// round before this one. IT IS NOT A FAILURE, there is no commit, and there
+		// is nothing to refuse: the landing goes on and merges a branch that holds
+		// what it always held.
+		return nil, "", refusedNothing, nil
 	}
 	if out, err := git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", message); err != nil {
-		return saved, "", fmt.Errorf("git commit: %s", firstLine(out))
+		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
+		// could not make, a ref it could not lock, a rule the repository holds —
+		// and those are refusals a second answer can get past. Which of the two
+		// this was is asked of the TREE rather than read out of git's sentence
+		// ([askTheTree]): a tree that still takes a write is a tree worth
+		// accepting into again, whatever the sentence said.
+		return saved, "", askTheTree(dir), fmt.Errorf("git commit: %s", firstLine(out))
 	}
 	head, err := git(dir, "rev-parse", "HEAD")
 	if err != nil {
-		return saved, "", fmt.Errorf("git rev-parse: %s", firstLine(head))
+		return saved, "", askTheTree(dir), fmt.Errorf("git rev-parse: %s", firstLine(head))
 	}
-	return saved, strings.TrimSpace(head), nil
+	return saved, strings.TrimSpace(head), refusedNothing, nil
 }
 
 // unheldLedgerPaths is every path the node's ledger names that this tree does
@@ -6577,13 +6686,17 @@ func stagedDiffStat(dir string) string {
 // when there is nothing to report. A directory that is not a worktree, an add
 // nothing survived and a refused reset were all silent, and a landing that
 // cannot see them merges an empty branch over the work (task_land_unsaved.go).
-func stageTaskWork(dir string, wrote []string) string {
+func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
-		return firstLine(out)
+		// AND THIS IS THE SEAM THAT KNOWS THE PLACE IS NOT A REPOSITORY. It is a
+		// question asked and answered here, so the refusal it produces is typed
+		// where it happens rather than read back out of anybody's prose
+		// (task_land_unsaved.go's [landingRefusal]).
+		return firstLine(out), refusedByTheTree
 	}
 	paths := stageableWork(dir, wrote)
 	if len(paths) == 0 {
-		return ""
+		return "", refusedNothing
 	}
 	problem := ""
 	if out, err := git(dir, append([]string{"add", "--all", "--"}, paths...)...); err != nil {
@@ -6594,7 +6707,10 @@ func stageTaskWork(dir string, wrote []string) string {
 	if out, err := git(dir, "reset", "--quiet", "--", aforgeDroppings); err != nil && problem == "" {
 		problem = firstLine(out)
 	}
-	return problem
+	if problem == "" {
+		return "", refusedNothing
+	}
+	return problem, askTheTree(dir)
 }
 
 // stageableWork turns the run's record of what it wrote into pathspecs git can

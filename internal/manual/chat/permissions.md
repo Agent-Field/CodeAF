@@ -483,7 +483,7 @@ The whole list, by settings key:
   **background after** on `/settings`' Safety tab and arms both the engine's handoff
   clock and the countdown for the next session.
 - **Whether aforge's own work is checked** — `task.audit`. A session that can
-  switch off the auditor can call anything done.
+  switch off the check can call anything done.
 - **How work that leaves this machine is signed** — `attribution`.
 - **Your credentials** — `search.exaKey`, `search.firecrawlKey`, `search.jinaKey`,
   `google_oauth_secret`, and `google_oauth_client`, which is useless without the

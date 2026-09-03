@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // ── The task contract ───────────────────────────────────────────────────────
@@ -210,6 +212,16 @@ const (
 	// parent all read. The work it did do is on its branch like any other halted
 	// node's.
 	TaskEndingNotes TaskEnding = "notes"
+	// TaskEndingUpstream says the provider refused the request or would not
+	// serve it — an API error, a refusal, a model that is not there. Like
+	// [TaskEndingWire] it is a fact about WHO WAS ASKED and never about the work:
+	// nothing was found out about the job, so a node that ended this way is not
+	// evidence that anything is left to do. It is told apart from
+	// [TaskEndingError] by [terminalProviderFailure], which reads the error's own
+	// type, and it exists because the two used to be one word — a sibling that
+	// died on an API 404 read as a gap in the ask and held an unattended run open
+	// over a tree that was finished (#513).
+	TaskEndingUpstream TaskEnding = "upstream"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"
@@ -510,6 +522,12 @@ type TaskNotice struct {
 	// gave up going in circles, a check that did not accept the work, and not one
 	// person pressing stop.
 	Ending TaskEnding
+	// Checked is WHAT THE CHECK SAID about this node's work, and "" on a node no
+	// check ever read. It is narrower than State on purpose: a node taken as it
+	// stands, one landed with the check switched off and one a person accepted
+	// are all done and none of them was judged (taskgrade.go's
+	// [TaskNode.checkSaid]).
+	Checked provider.Verdict
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that

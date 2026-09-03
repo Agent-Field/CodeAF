@@ -26,6 +26,7 @@ import "github.com/Agent-Field/aforge-v2/internal/session"
 // the engine's ("wire", "circling", "refused" are field values, not sentences).
 const (
 	endingWordWire     = "lost the connection"
+	endingWordUpstream = "the model provider refused it"
 	endingWordCircling = "went in circles"
 	endingWordBlocked  = "blocked by another task"
 	endingWordSteps    = "out of steps"
@@ -44,6 +45,8 @@ func endingWord(ending session.TaskEnding) string {
 		return taskStoppedWord
 	case session.TaskEndingWire:
 		return endingWordWire
+	case session.TaskEndingUpstream:
+		return endingWordUpstream
 	case session.TaskEndingCircling:
 		return endingWordCircling
 	case session.TaskEndingBlocked:
@@ -80,8 +83,8 @@ func endingKept(ending session.TaskEnding) string {
 // would not follow.
 func halted(ending session.TaskEnding) bool {
 	switch ending {
-	case session.TaskEndingWire, session.TaskEndingCircling, session.TaskEndingBlocked,
-		session.TaskEndingSteps, session.TaskEndingNotes:
+	case session.TaskEndingWire, session.TaskEndingUpstream, session.TaskEndingCircling,
+		session.TaskEndingBlocked, session.TaskEndingSteps, session.TaskEndingNotes:
 		return true
 	}
 	return false

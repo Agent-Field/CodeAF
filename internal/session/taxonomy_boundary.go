@@ -238,6 +238,53 @@ func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) boo
 // the second worker and the ending both ask, so it is one function — and it
 // lives here because [terminalProviderFailure] is the boundary's to ask
 // (taxonomy_law_test.go).
+// providerCouldNotServe answers the one question a failed landing's ending turns
+// on: did the provider FAIL TO SERVE this request, or did it ANSWER it?
+//
+// ── UPSTREAM IS THE PROVIDER FAILING TO SERVE, NOT THE PROVIDER ANSWERING ───
+//
+// The two look alike from the call site — both arrive as an error, both end the
+// node — and they are opposite news about the WORK. A service that was down, a
+// route with no provider left on it, a limit still refusing after the call's own
+// retries, an account that could not be served: none of them found anything out
+// about the job, so counting one as work left undone spends a run's ceiling on
+// somebody else's outage (#513, task_run.go's [TaskEndingUpstream]).
+//
+// BUT A MODEL REFUSING IS AN ANSWER, and so is a 4xx about what the request
+// actually held — a body this run assembled that was malformed, too large, or
+// could not be processed. Those are the provider answering, what it answered is
+// about this work, and the work is still undone: they keep [TaskEndingError] and
+// go on being named as left.
+//
+// SO THE STATUS IS READ OFF THE TYPED ERROR and never off its prose, and anything
+// this does not recognise is the WORK — the safe side, because an unfamiliar
+// failure keeps the meaning it has always had.
+func providerCouldNotServe(err error) bool {
+	if err == nil {
+		return false
+	}
+	// A REFUSAL IS AN ANSWER: the chain reached a model, the model read the
+	// request and would not do it.
+	var refusal *provider.RefusalError
+	if errors.As(err, &refusal) {
+		return false
+	}
+	var api *provider.APIError
+	if !errors.As(err, &api) {
+		return false
+	}
+	switch {
+	case api.Status >= 500:
+		// The service itself could not answer.
+		return true
+	case api.Status == 404, api.Status == 429, api.Status == 401, api.Status == 403:
+		// No route left to serve it, a limit still refusing after the retries,
+		// and an account that could not be served. Each is about who was asked.
+		return true
+	}
+	return false
+}
+
 func diedOnTheWire(err error) bool {
 	if err == nil || terminalProviderFailure(err) || errors.Is(err, context.Canceled) {
 		return false

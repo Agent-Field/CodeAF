@@ -15,6 +15,8 @@ package session
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // principalEar is the half of a principal that is TOLD things rather than
@@ -209,12 +211,20 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			continue
 		}
 		settled++
-		report, _, _, _ := node.leavings()
+		report, changed, _, merge := node.leavings()
 		out = append(out, Landing{
 			ID:     node.id,
 			Title:  node.title(),
 			State:  state,
 			Report: report,
+			// WHY IT ENDED AND WHAT IT TOUCHED, so a reader of what is left can
+			// tell a gap in the ask from a sibling that died on the wire, and
+			// from one whose work somebody else has since brought home
+			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
+			Ending:  node.endingNow(),
+			Files:   changed,
+			Merged:  merge == mergeMerged,
+			Checked: node.checkAnswer() == provider.VerdictVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -378,17 +388,43 @@ func landingSignature(state TaskState, report string) string {
 // once, at the one moment their answer can change anything: after a principal
 // has said the ask is met (principal_audit.go). Everything here is a read of
 // what the session already holds.
-func (a *Agent) remainsFor(said, reader string) Remains {
+func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	landings, landed, flight := a.landings()
-	return Remains{
+	remains := Remains{
 		Said:       said,
-		Reader:     reader,
+		Reader:     reader.said,
 		Acceptance: a.who().Acceptance(),
 		Landings:   landings,
 		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
 	}
+	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
+	// job inline never settles a task, so [Remains.Landed] — which is a reading of
+	// the graph and nothing else — stays false over a tree it has just written, and
+	// "nothing has been finished yet" was the first line of both briefs the
+	// standstill then compared (#513). What it made is the session's own ledger,
+	// sorted into the deliverable exactly as the tidy sorts it (principal_audit.go's
+	// [reconcile]), and it counts only WITH the reader agreeing — a session's own
+	// files are not a second opinion about themselves
+	// ([Remains.finishedSomething]).
+	//
+	// IT IS FILES THIS SESSION CREATED OR CHANGED under the tree. The two are
+	// kept in separate ledgers because only the created ones may ever be swept
+	// ([Agent.rememberCreated]); the changed ones are read and never acted on
+	// ([Agent.rememberChanged]). A fix that is one edit to a file the project
+	// already had is the commonest shape of finished work there is, and a Made
+	// that counted only new files read it as nothing (#513).
+	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0 || a.changedInDeliverable()
+	remains.ReaderSaysDone = reader.nothingLeft
+	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
+	// decision — rather than beside the checks themselves: the checks are run
+	// once, after a principal has said the ask is met, and a baseline attached at
+	// that moment would be a baseline of a tree this session has already changed
+	// ([Agent.openBaseline]). The reading runs in the background, so it may not
+	// have landed; a reading with no baseline counts nothing as this run's own.
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	return remains
 }
 
 // ── ADDRESSING A LANDING ────────────────────────────────────────────────────
@@ -461,5 +497,9 @@ func landingFromNotice(notice TaskNotice) Landing {
 		State:     notice.State,
 		Report:    notice.Report,
 		Signature: landingSignature(notice.State, notice.Report),
+		Ending:    notice.Ending,
+		Files:     notice.Changed,
+		Merged:    notice.Merge == mergeMerged,
+		Checked:   notice.Checked == provider.VerdictVerifiedSuccess,
 	}
 }
