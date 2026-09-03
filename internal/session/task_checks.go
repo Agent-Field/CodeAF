@@ -660,6 +660,82 @@ func onThePath(word string) bool {
 	return err == nil
 }
 
+// normalizedCheckCommand is this package's ONE reading of "are these two
+// spellings the same check", and it exists because nothing else here answers
+// that question: [appendChecks] dedupes on the exact bytes, [commandLike] asks
+// about SHAPE, and [runnableHere] asks whether a span could run at all.
+//
+// NORMALIZATION DROPS WHAT DOES NOT CHANGE WHAT IS MEASURED, AND KEEPS
+// EVERYTHING THAT NARROWS WHAT RUNS. That is the whole rule, and it is stated
+// once, here, because a second reading of it somewhere else would be a second
+// rule the day the two disagreed (design-law §ONE SOURCE OF TRUTH).
+//
+// DROPPED: the whitespace a model happened to type, which is typing and not
+// measurement; a trailing path separator on a word that is already a path,
+// because a shell reads `./pkg/` and `./pkg` as one directory; and a word that
+// only defeats a result cache (`-count=1`), because it changes whether an answer
+// is REUSED and never which answer is asked for.
+//
+// KEPT: every other word — a filter, a package path, a flag — because each of
+// them narrows what actually runs, and folding two narrowed checks together
+// would quietly drop one somebody asked for. `./internal/tui3` and
+// `./internal/tui3/...` are DELIBERATELY TWO COMMANDS: one measures a package
+// and the other measures a subtree, and the day they read as one is the day a
+// division could hoist away a check nobody else was going to make.
+//
+// AND TWO LIMITS, STATED RATHER THAN FIXED, because both of them cost a MISS and
+// the repairs for them would cost a REFUSAL — which is the wrong way round for a
+// reading that stands in front of a road:
+//
+//   - WHITESPACE INSIDE A QUOTED ARGUMENT IS COLLAPSED WITH ALL OTHER
+//     WHITESPACE, so `printf 'a b'` and `printf 'a   b'` read as one command
+//     here. That is inherited from this package's own reading of a command
+//     ([refuseOutsideDoor] normalises a command's whitespace the same way), and
+//     it is kept the same ON PURPOSE: one reading of what a command is, not two.
+//   - `-count=1` AND `-count 1` ARE THE SAME CHECK AND DO NOT FOLD, because
+//     folding them means parsing a flag's VALUE — knowing which flags take one
+//     and which do not — and a guess at a flag's shape that came out wrong would
+//     fold two different checks into one and refuse a division over it. The miss
+//     costs a repeated run; the guess would cost a road.
+func normalizedCheckCommand(command string) string {
+	words := strings.Fields(command)
+	kept := make([]string, 0, len(words))
+	for _, word := range words {
+		if word == cacheDefeatingWord {
+			continue
+		}
+		if pathLikeWord(word) {
+			word = strings.TrimSuffix(word, "/")
+		}
+		kept = append(kept, word)
+	}
+	return strings.Join(kept, " ")
+}
+
+// pathLikeWord says whether a trailing `/` on this word is a SEPARATOR — a word
+// that names a directory either way — rather than a character somebody meant.
+//
+// THE SEPARATOR HAS TO HAVE SEPARATED SOMETHING, which is the whole rule. A word
+// still holding a `/` once its last character is off is a path and `./pkg/` is
+// `./pkg`; a word whose ONLY slash is the last one has not separated anything,
+// and `-run TestHTTP/` is a FILTER whose subtests are a different check from
+// `-run TestHTTP`'s. Cutting it there would fold two filters into one and refuse
+// a division over it, which is the exact failure this normalisation promises not
+// to cause. A word that opens with `-` is a flag and is never a path, and a bare
+// `/` is a directory in its own right and not a spelling of anything.
+func pathLikeWord(word string) bool {
+	if strings.HasPrefix(word, "-") {
+		return false
+	}
+	return strings.Contains(strings.TrimSuffix(word, "/"), "/")
+}
+
+// cacheDefeatingWord is the one word this package knows changes nothing about
+// WHICH work a check does. It is a constant rather than a list because there is
+// exactly one of it: a list would be the beginning of a grammar over flags, and
+// every flag that is not this one narrows what runs and is kept.
+const cacheDefeatingWord = "-count=1"
+
 // ranChecks is source (b): what the last worker ITSELF ran, read off the
 // receipts the node already carries for the auditor's packet (task_audit.go's
 // [lastToolReceipts]).

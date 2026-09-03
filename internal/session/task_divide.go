@@ -596,6 +596,15 @@ const (
 	// work as one job from a road that would have handed it out happily if the
 	// briefs had drawn the line anywhere.
 	divisionRefusedScope = "refused:scope"
+	// divisionRefusedShared is one check standing in the done-condition of two
+	// or more parts (task_divide_scope.go). It is its own word beside `scope`
+	// because it is a different finding about a division that is otherwise
+	// right: the boundaries may be perfect and the parts may own nothing in
+	// common, and what is wrong is that they were all told to make the same
+	// family-wide run. A bench counting it beside `scope` could not tell a
+	// division that would have lost work from one that would merely have bought
+	// one suite four times.
+	divisionRefusedShared = "refused:shared-check"
 	// divisionRefusedFreeze is a family whose own tree would not take the commit
 	// its parts have to start from (task_divide_wip.go). It is its own word
 	// because it is the only refusal here that is about THE MACHINE rather than
@@ -758,6 +767,20 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		return said, "", false
 	}
 
+	// AND THE SAME MOMENT ASKS THE SECOND ADMISSION RULE: NO CHECK MAY BE
+	// ORDERED BY TWO PARTS (task_divide_scope.go states the law and why it
+	// classifies by repetition rather than by any program's name). It stands
+	// here for gate three's reason exactly — it is free, and a division that was
+	// never going to be allowed to stand should not buy a reading to find that
+	// out — and it is asked again below on the parts the reviewer settled,
+	// because the reviewer may sharpen a family-wide run into a brief the worker
+	// never put it in.
+	if shared, said := sharedCheckRefusal(parsed.Parts, scopeSpentNothing); said != "" {
+		line.Decision = divisionRefusedShared
+		line.Shared = shared
+		return said, "", false
+	}
+
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
 	// both gates because it is the only step here that costs money: a division
 	// nobody is free to pick up, or one the evidence does not support on work no
@@ -830,6 +853,11 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// honestly.
 	if said := a.scopeRefusal(parsed.Parts, scopeSpentTheRead); said != "" {
 		line.Decision = divisionRefusedScope
+		return said, "", false
+	}
+	if shared, said := sharedCheckRefusal(parsed.Parts, scopeSpentTheRead); said != "" {
+		line.Decision = divisionRefusedShared
+		line.Shared = shared
 		return said, "", false
 	}
 

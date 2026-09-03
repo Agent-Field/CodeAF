@@ -2943,6 +2943,19 @@ and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
 version of it would simply be gone, with no conflict for anybody to notice.
 
+**And no two parts may be told to run the same check.** Each part is finished against the
+check that proves **its own slice** — the files that part produces and no others — and one
+check that *every* part was told to run is the **family's**, not any part's, so that
+division is refused too, before anything is handed out, and the command is named. The
+reason is the same shape as the one above: the parts work side by side in working copies of
+their own, so a check written into three done-conditions runs three times, and every one of
+those runs judges a tree that does not hold the other parts' files yet. **The whole run is
+the parent's to make once, after the parts' work is home.** So the road out is to give each
+part a check over the files it produces, keep the family-wide run in the parent's own
+done-condition, and ask again — it is not a finding that the work cannot be split. Two
+checks that name different things — a package each, a file each — are two checks and are
+admitted; nothing here reads which program is being run or how long it takes.
+
 **Shared material is read, never written — and that half is not enforced.** A file every
 part reads is nobody's to change: everything the parts write goes into one deliverable, so
 a shared file two of them edited is kept once and the other's edit is simply gone, which is

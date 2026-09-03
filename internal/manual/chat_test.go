@@ -1118,6 +1118,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what makes a part own a file, its brief or its done-condition", "tasks"},
 		{"two parts both mention the same file in their briefs, is that an overlap", "tasks"},
 		{"can two parts read the same shared file", "tasks"},
+		// And the other half of the same refusal, which a person meets as parts
+		// that were told to run the SAME check: a done-condition every part
+		// shares is a file every part owns, so nothing can be divided (#569).
+		// These are the words they type after reading that.
+		{"two parts told to run the same check", "tasks"},
+		{"the parts all had the same done-condition and it would not split", "tasks"},
+		{"each part should only check its own files", "tasks"},
+		{"it refused the split because the parts share a check", "tasks"},
 		// Hands: the third weight, and the one a person meets as a line they did
 		// not ask for in the middle of their own answer. They ask in the words on
 		// the screen — "three hands on it" — or in the words for what they saw,
