@@ -1166,8 +1166,8 @@ func (g *TaskGraph) runFrontier() {
 		g.announce(node)
 	}
 	for _, node := range failing {
-		close(node.done)
 		g.announce(node)
+		close(node.done)
 	}
 	for at, node := range starting {
 		g.announce(node)
@@ -1561,11 +1561,16 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	}
 	g.handBackSlotLocked(node)
 	g.mu.Unlock()
+	// THE NOTE LANDS BEFORE THE DONE CHANNEL CLOSES. Anything waiting on
+	// `done` treats closure as "this node is fully settled", and
+	// reportTaskNode is part of that settlement. Closing first was a race:
+	// the waiter could read an empty steering queue before the note was
+	// enqueued (harness_build_test.go's TestAnApprovedDesignIsSavedAndDetectableAtOnce).
+	g.announce(node)
 	close(node.done)
 
 	g.checkpoint()
 	g.grade(node)
-	g.announce(node)
 	g.runFrontier()
 }
 
