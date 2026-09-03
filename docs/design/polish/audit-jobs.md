@@ -178,10 +178,14 @@ flag, and the emptiness law covers only the genuinely undated.
 
 ### Not done, and why
 
-- **Rows 4, 5, 6, 7, 8, 12** need `taskident.go`, `taskdone.go`, `place_home.go`,
-  `homeband_work.go`, `home.go`, `render.go` / `phase.go` — files other lanes hold.
-- **Row 10** needs `tasksettle.go` (`roomSettleHint`, the answers row) as well as
-  the room's foot, and half of it would be worse than none.
+- **Rows 7, 8 and 12** need `place_home.go`, `homeband_work.go`, `home.go`,
+  `render.go` / `phase.go` — files other lanes hold. (Rows 4, 5 and 6 were on this
+  list too, and then this lane got the files and DID them; their accounts are under
+  the heading below, where a reader — and the ledger generator — can tell that they
+  are closures rather than excuses.)
+- ~~**Row 10** needs `tasksettle.go` as well as the room's foot, and half of it
+  would be worse than none.~~ THIS WENT THE SAME WAY: the lane came back with
+  both halves and its account is below, under the `## fixed` heading.
 - **Row eleven** is left. The foot is ALREADY conditional on the selected row
   (`place_tasks.go`'s `hint` and `verbs`): `enter open its room` is drawn only for a
   node in this window's graph, and `stop it` only where `stopTaskTarget` and
@@ -190,6 +194,8 @@ flag, and the emptiness law covers only the genuinely undated.
   `<title> is parked — `. What the row actually asks for is a verb that UNPARKS,
   and there is no seam behind one: a capability that cannot work is absent, not
   broken, so it is not invented here.
+
+## fixed — rows 4, 5 and 6, which this lane went back for
 
 **Row 4 — a task's identity was cut to three words before any width was known.**
 The cut is gone from the source and lives at every drawing site, which is where

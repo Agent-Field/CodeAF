@@ -107,9 +107,14 @@ func TestALimitedExecRunPublishesItsAnswerAndNoError(t *testing.T) {
 // AND A RUN THAT COULD NOT BE RUN AT ALL STILL FILLS `error` AND NOTHING ELSE.
 // The fix must not have moved the failure out of the one field a script has
 // always read it from.
+//
+// THE ROW IS A NIL OUTCOME, which is what "it never started" is. It used to be
+// `exec.Outcome{Stop: exec.StopError}`, and that outcome is a run that STARTED
+// and broke — the executor writes it from inside the turn loop — so the test
+// asserting the old premise was the defect written down as a passing check.
 func TestARunThatCouldNotStartStillFillsTheErrorField(t *testing.T) {
 	envelope := buildExecEnvelope(
-		&exec.Outcome{Stop: exec.StopError},
+		nil,
 		errors.New("node task-1: OPENROUTER_API_KEY (or OPENAI_API_KEY) is required"),
 		"a/model")
 	fields := envelopeFields(t, envelope)

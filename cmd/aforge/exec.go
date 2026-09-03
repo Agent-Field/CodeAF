@@ -132,10 +132,12 @@ func runExec(args []string) error {
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
 		WithAttribution(settings.Attribution).
 		WithContextLength(modelCatalog.ContextLength(settings.Model))
+	// NO OUTCOME IS CARRIED AS NO OUTCOME, all the way to the ladder. This used
+	// to substitute an `exec.Outcome{Stop: exec.StopError}` here, which threw
+	// away the one fact exit 1 is about — whether anything ran at all — and
+	// made a run that never started indistinguishable from one that failed at
+	// turn nine. [execStop] is the only reader of that difference now.
 	outcome, runErr := linear.Run(execCtx, execTask(prompt, *system, space.Root()))
-	if outcome == nil {
-		outcome = &exec.Outcome{Stop: exec.StopError, Artifacts: []string{}}
-	}
 	if runErr != nil {
 		// The same sentence the envelope carries, and the same one either way:
 		// a caller reading stderr and a caller reading --json must not be told
@@ -160,7 +162,11 @@ func runExec(args []string) error {
 			outputErr = err
 		}
 	} else {
-		if _, err := fmt.Fprintln(os.Stdout, outcome.Text); err != nil {
+		// The envelope's own answer, so the person reading stdout and the script
+		// reading `--json` are handed the same string rather than two readings
+		// of the same facts — and so a run that came back with no outcome at all
+		// prints nothing instead of dereferencing one.
+		if _, err := fmt.Fprintln(os.Stdout, envelope.Answer); err != nil {
 			outputErr = err
 		}
 	}
@@ -273,12 +279,20 @@ func execDeadline(maxTokens int, wall time.Duration) time.Duration {
 //
 //   - "done" with nothing to show is INCOMPLETE. The loop stopped asking for
 //     tools and produced no text, which is a run that did not finish however
-//     calmly it ended. This is the old exit 6, and the field it changes is the
-//     one value in `stop` that moves in this change.
-//   - a run that came back with an error and no reason of its own could not be
-//     run at all. Where it DID name a reason — the wall, the budget — that
-//     reason is kept, because the error is what the wall left behind and not
-//     what stopped it.
+//     calmly it ended. This is the old exit 6.
+//   - AN OUTCOME THAT EXISTS MEANS IT RAN, and `exec.StopError` is an outcome.
+//     The executor writes it when a model call fails mid-loop — at turn nine, on
+//     a run that has already spent money and may be holding half an answer — and
+//     mapping it to `error` put that run on exit 1, the rung whose whole meaning
+//     is that nothing was attempted. A script reading the ladder retried it as a
+//     startup failure or threw its evidence away. It is `incomplete`: it ran,
+//     and part of the work does not stand.
+//
+// So the rule this function keeps, and [TestOnlyARunWithNoOutcomeAtAllCouldNotBeRunAtAll]
+// pins: `stopError` COMES BACK FROM NO OUTCOME AND FROM NOTHING ELSE. Every
+// refusal that really is exit 1 — no key, a flag that would not parse, a
+// workspace that would not open — is returned from [runExec] before the
+// executor is ever reached, and never arrives here at all.
 func execStop(outcome *exec.Outcome, runErr error) stopReason {
 	if outcome == nil {
 		return stopError
@@ -289,14 +303,21 @@ func execStop(outcome *exec.Outcome, runErr error) stopReason {
 		if strings.TrimSpace(outcome.Text) == "" {
 			stop = stopIncomplete
 		}
-	case exec.StopBudget, exec.StopTurnCap, exec.StopDeadline, exec.StopError:
+	case exec.StopError:
+		// It ran and it broke. The provider's own sentence is not lost: it goes
+		// to `incomplete` in the envelope below, beside whatever text the run
+		// had managed by then.
+		stop = stopIncomplete
+	case exec.StopBudget, exec.StopTurnCap, exec.StopDeadline:
 		// Already one of the shared words, spelled identically.
 	default:
 		// promote, paused, cancelled, empty, split, overrun: it ran, and this
 		// is not a rung of its own. The word itself survives in `stop`.
 	}
 	if runErr != nil && stop == stopDone {
-		return stopError
+		// A finished run handed back with an error beside it: it ran, so this
+		// is the one thing a caller must not read as "it never started".
+		return stopIncomplete
 	}
 	return stop
 }
@@ -306,8 +327,10 @@ func execExit(outcome *exec.Outcome, runErr error) exitStatus {
 	if legacyExitCodes() {
 		// EXACTLY THE OLD NUMBERS, taken from the old code path and nothing
 		// else: a run that came back with an error was 5 whatever its stop
-		// reason said, and everything else was execLegacyExitCode's table.
-		if runErr != nil {
+		// reason said, and everything else was execLegacyExitCode's table. The
+		// rung `exec.StopError` lands on above MOVED and this did not, which is
+		// the entire purpose of the hatch.
+		if runErr != nil || outcome == nil {
 			return exitStatus(5)
 		}
 		return exitStatus(execLegacyExitCode(outcome.Stop, outcome.Text))
@@ -361,12 +384,15 @@ func execLegacyExitCode(stop exec.StopReason, text string) int {
 // ([subharnessRun.sayEnvelope]), so the two verbs say one thing one way rather
 // than growing a second word for it.
 func buildExecEnvelope(outcome *exec.Outcome, runErr error, model string) resultEnvelope {
+	// THE STOP IS READ OFF THE OUTCOME BEFORE THE OUTCOME IS INVENTED. A nil
+	// outcome is the one thing that means "it never ran", so substituting an
+	// empty one first would erase the fact the rung is about.
+	stop := execStop(outcome, runErr)
 	if outcome == nil {
-		outcome = &exec.Outcome{Stop: exec.StopError}
+		outcome = &exec.Outcome{}
 	}
 	artifacts := make([]string, len(outcome.Artifacts))
 	copy(artifacts, outcome.Artifacts)
-	stop := execStop(outcome, runErr)
 	said := execFailureWords(runErr)
 	failure := ""
 	extra := legacyExecFields(outcome)

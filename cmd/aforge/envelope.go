@@ -50,6 +50,14 @@ const (
 	// exitCannotRun: it could not be run at all — no key, bad arguments, a store
 	// that would not open, a name that is not a program. Nothing was attempted,
 	// so nothing was spent and there is nothing on stdout to read.
+	//
+	// THAT SENTENCE IS A PROMISE AND NOT A DESCRIPTION. A run that started and
+	// then failed leaves on exitIncomplete however early it broke, because it
+	// may have spent money and what it did manage is worth reading; only a
+	// refusal BEFORE any work starts belongs here. `aforge exec` published a
+	// mid-run provider failure on this rung for a while, and a script reading
+	// the ladder retried a run that had already cost real money as though it
+	// had never begun (execStop).
 	exitCannotRun exitStatus = 1
 	// exitIncomplete: it ran and it did not finish. Part of the work does not
 	// stand — a step failed, a delivery did not land whole, or the run produced
@@ -246,9 +254,11 @@ type resultEnvelope struct {
 	// them. Never null: a run that wrote nothing carries an empty list, because
 	// a caller ranging over null is a caller crashing on a successful run.
 	Files []string `json:"files"`
-	// Error is why the run did not produce an answer, in the same words a
-	// person would have read on stderr, with no wrapped Go chain (plainwords.go).
-	// Empty on every run that produced one.
+	// Error is why the run COULD NOT BE RUN AT ALL, in the same words a person
+	// would have read on stderr, with no wrapped Go chain (plainwords.go).
+	// Empty on every run that started, however it ended: a limit that cut a run
+	// short and a provider that gave up at turn nine both say why under
+	// `incomplete`, beside whatever answer the run had managed.
 	Error string `json:"error"`
 	// SpendUSD is what this run cost, whole, in dollars.
 	SpendUSD float64 `json:"spend_usd"`
@@ -259,7 +269,11 @@ type resultEnvelope struct {
 	// Model is the model the work ran on, as the seat ladder resolved it.
 	Model string `json:"model"`
 	// Steps is how many pieces of work ran: `do`'s nodes, `exec`'s turns. A
-	// saved program does not count them and reports 0.
+	// saved program DOES NOT MEASURE IT, and the key is still there with
+	// nothing behind it — a machine contract keeps its keys even where the
+	// screen would print nothing, because a caller that reaches for a key which
+	// vanished is a caller crashing. `0` here is an absent measurement and not
+	// a count of zero, which is why nothing may report it as one.
 	Steps int `json:"steps"`
 
 	// extra is what one verb carries beyond the contract, and it is two things:

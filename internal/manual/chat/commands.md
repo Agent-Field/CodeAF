@@ -254,11 +254,23 @@ rows, directly under the `tab` row:
 ```
 alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
 alt+.          on a place: what else is here · every key that place has, drawn
-               on a place, tab is the next place · esc comes back
+               on a place, tab is the next place · esc back
 ```
 
 On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
+
+**One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
+back` — the places row, the task roster on `ctrl+t`, the conversation switcher on `ctrl+k`,
+`space space` — and that is the same two words the cards, pickers, the rewind sheet and the
+switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
+and `esc leaves` on four different rows, which read as four gestures on the one screen you
+open to find out how many there are. The longer `esc leaves it as it was` is a different
+sentence and stays where it is: it is said over a value you were editing, and it means the
+edit is discarded, not that you moved.
+
+Two rows say what their key DOES rather than naming the thing it reaches: `ctrl+,` is
+`open settings`, and `n` on the `/standing` row is `keep it out of here`.
 
 The last line of `/help` is `session · <path>`, and it appears **only when the session
 has a file**. The path is written against your home — `~/.aforge/v3/…` — so that it fits
@@ -932,7 +944,7 @@ headings, one line per conversation under each: a glyph (`?` waiting on you, `�
 `◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the
 right half shows the line it is stopped on. Quiet
-conversations past the first four per project collapse to `…3 more, quiet since 2d`. The
+conversations past the first four per project collapse to `▸ 3 more, quiet since 2d`. The
 right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
 
 `↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from.
@@ -947,7 +959,7 @@ The foot reads exactly
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it. A project
-folds its quiet conversations into `…13 more, quiet since 1d`; that line is a door (`enter`
+folds its quiet conversations into `▸ 13 more, quiet since 1d`; that line is a door (`enter`
 or `→` opens it, `←` folds it), and searching sees through the fold.
 
 **`enter` opens any row on the screen, in any project.** The conversation you were in is

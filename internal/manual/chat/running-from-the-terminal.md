@@ -56,6 +56,17 @@ set cut it off, so raising `--timeout`, `--token-budget` or `--max-turns` and ru
 again is the remedy. 2 says it got to the end and part of it does not stand, so what came
 back is worth reading before anything is re-run.
 
+**Exit 1 means nothing ran, and only that.** It is the rung for a refusal *before* the work
+starts — no key, a flag it could not parse, a store that would not open, a saved program by
+that name that does not exist. Nothing was attempted, so nothing was spent and there is
+nothing on stdout worth keeping. **A run that started and then failed leaves with 2, not
+1**, however early it broke: a provider that gave up at turn nine has already cost you
+money and is usually holding part of an answer, and the reason it stopped is in
+`incomplete` rather than in `error`. So a script may retry exit 1 blind, and must not do
+that with exit 2 — read what came back first. `aforge exec` published mid-run provider
+failures as exit 1 for a while; if a wrapper of yours treats 1 as "provider flaked, try
+again", that is the line to revisit.
+
 **Exit 4 is the one nobody can fix by retrying.** A headless run has no keyboard, so a
 question ends it. The question is printed on stderr verbatim, under `it stopped to ask:`,
 and it is in the `blocked_on` field of `--json`. Answer it inside the ask itself and run it
@@ -89,12 +100,12 @@ stdout, always parseable, printed even when the run failed**:
 | `stop` | why it ended: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question` |
 | `answer` | what was produced, in prose. Empty when nothing was |
 | `files` | the paths it wrote. Never null — a run that wrote nothing carries `[]` |
-| `error` | why it could not be run at all, in the same words stderr carried. Empty on every run that produced an answer, limits included |
+| `error` | why it could not be run at all, in the same words stderr carried. Empty on every run that started, however it ended — a limit that cut a run short and a provider that failed mid-run both say why under `incomplete` |
 | `spend_usd` | what it cost, whole, in dollars |
 | `tokens` | `{"in": …, "out": …}` |
 | `seconds` | wall clock |
 | `model` | the model the work ran on |
-| `steps` | how many pieces of work ran — `do`'s nodes, `exec`'s turns. A saved program does not count them and reports 0 |
+| `steps` | how many pieces of work ran — `do`'s nodes, `exec`'s turns. A saved program does not measure it: the key is still there, holding `0`, and that `0` is a measurement nobody took rather than a count of none |
 
 **Within a release a field is never removed and never changes meaning; new fields may
 appear.** `stop` is the field to read for *why*; the exit code only says how much is wrong.
@@ -131,10 +142,10 @@ and `report`.
 
 `incomplete` is on `aforge run` and `aforge exec` both, and it is why it did not finish, in
 the same words stderr carried — a token budget that ran out with half an answer already
-written, a wall that arrived. It is **not** `error`: `error` means the run never produced an
-answer at all, and a run that got part of the way did. A limit that cut a run short leaves
-`error` empty, puts what it managed in `answer`, names the limit in `stop`, and says the
-sentence in `incomplete`.
+written, a wall that arrived, a provider that gave up at turn nine. It is **not** `error`:
+`error` means the run could not be started at all, and every one of those started. A run
+that was cut short leaves `error` empty, puts what it managed in `answer`, names the reason
+in `stop`, and says the sentence in `incomplete`.
 
 ## Keeping exec's old numbers for one release — the legacy switch
 
@@ -202,8 +213,8 @@ examined 3, checked 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learni
 
 ## What did that task actually do — see one piece of work's turn-by-turn record, with aforge why
 
-`aforge why <node-id>` prints one piece of work's whole record: every turn, what it said,
-every tool it called with its arguments, what came back, and how it ended.
+This prints one piece of work's whole record: every turn, what it said, every tool it
+called with its arguments, what came back, and how it ended.
 
 ```
 aforge why <node-id> [--db path]
@@ -216,15 +227,15 @@ turn 1 · said
 turn 2 · read ←
 turn 2 · read → 12ms
 turn 3 · bash → 1.4s · error
-turn 4 · the harness
+turn 4 · aforge
 turn 5 · stopped
 turn 6 · the record stops here
 ```
 
 `←` is the call going out; `→` is what came back, with how long it took — milliseconds
-under a second, tenths of a second above. `· error` marks a tool that failed. `the harness`
-is a note written by the machinery rather than by the model, and `the record stops here`
-means the record was trimmed.
+under a second, tenths of a second above. `· error` marks a tool that failed. A turn signed with the product's own name is a note
+about the run rather than something the model said, and `the record stops here` means the
+record was trimmed.
 
 **When there is nothing to print it says which nothing it is**, because those are two very
 different situations:
@@ -392,7 +403,7 @@ The journal itself is untouched; everything derived from it is discarded and rep
 `--yes` skips the question for a script. When it is done it says what it replayed:
 
 ```
-rebuilt 128 nodes from 4173 journaled events
+rebuilt 128 steps from 4173 journaled events
 ```
 
 **It refuses while another process holds that store**, because the rebuild is one

@@ -112,8 +112,12 @@ func TestTheExitLadderIsOneTable(t *testing.T) {
 		}{
 			{what: "the model answered", outcome: exec.Outcome{Stop: exec.StopDone, Text: "here"},
 				stop: stopDone, want: exitDone},
-			{what: "the provider failed", outcome: exec.Outcome{Stop: exec.StopError},
-				runErr: errors.New("no key"), stop: stopError, want: exitCannotRun},
+			// THE PROVIDER FAILING IS A RUN THAT RAN. It is `incomplete` and
+			// not `error`, because an outcome exists at all only after the
+			// executor started (execStop); exit 1 is `aforge exec` refusing
+			// before it opens a connection, and never a run that spent money.
+			{what: "the provider failed mid-run", outcome: exec.Outcome{Stop: exec.StopError, Turns: 9},
+				runErr: errors.New("upstream returned 500"), stop: stopIncomplete, want: exitIncomplete},
 			{what: "it finished with nothing to show", outcome: exec.Outcome{Stop: exec.StopDone, Text: "  "},
 				stop: stopIncomplete, want: exitIncomplete},
 			{what: "the token budget ran out", outcome: exec.Outcome{Stop: exec.StopBudget, Text: "half"},
@@ -294,10 +298,14 @@ func TestLegacyExitCodesRestoresExecsOldRungsAndNothingElse(t *testing.T) {
 		{name: "budget", outcome: exec.Outcome{Stop: exec.StopBudget, Text: "half"}, legacy: 2, ladder: exitLimit},
 		{name: "turn cap", outcome: exec.Outcome{Stop: exec.StopTurnCap, Text: "half"}, legacy: 3, ladder: exitLimit},
 		{name: "deadline", outcome: exec.Outcome{Stop: exec.StopDeadline, Text: "half"}, legacy: 4, ladder: exitLimit},
-		{name: "error", outcome: exec.Outcome{Stop: exec.StopError}, legacy: 5, ladder: exitCannotRun},
+		// AN OUTCOME EXISTS ONLY AFTER THE RUN STARTED, so on the ladder these
+		// two are `ran and did not finish` — the rung the old 5 always meant,
+		// under its new number. The legacy column is unmoved, which is the
+		// whole point of the hatch.
+		{name: "error", outcome: exec.Outcome{Stop: exec.StopError}, legacy: 5, ladder: exitIncomplete},
 		{name: "done with nothing to show", outcome: exec.Outcome{Stop: exec.StopDone}, legacy: 6, ladder: exitIncomplete},
 		{name: "an error came back", outcome: exec.Outcome{Stop: exec.StopError},
-			runErr: errors.New("no key"), legacy: 5, ladder: exitCannotRun},
+			runErr: errors.New("no key"), legacy: 5, ladder: exitIncomplete},
 	}
 
 	for _, row := range rows {

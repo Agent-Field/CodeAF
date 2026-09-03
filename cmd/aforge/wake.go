@@ -210,9 +210,51 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	}); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(output, "examined %d, checked %d, fired %d, no %d, errors %d, rail waits %d, practice %d, learning %d\n",
-		pass.Examined, pass.Checked, pass.Fired, pass.No, pass.Errors, pass.RailWaits, practice, learning)
+	_, err = fmt.Fprintln(output, wakePassWords(pass, practice, learning))
 	return err
+}
+
+// wakePassWords is the one line a wake pass leaves behind, and it says only
+// what happened.
+//
+// THE EMPTINESS LAW REACHES A RECEIPT PRINTED ONCE. It used to print all eight
+// figures unconditionally, so an ordinary quiet pass read `examined 3, checked
+// 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learning 2` — four
+// numbers asserting a measurement where nothing had happened, and a reader has
+// to spend a moment on each of them to find that out. The one sanctioned
+// exception to the law is the live status line's `$0.00`, which is there so a
+// status segment does not jump sideways as it redraws; a line printed once and
+// never redrawn is not that.
+//
+// And a pass on which NOTHING happened says so in a sentence rather than in
+// eight zeroes, because a receipt of zeroes and a reader that failed look
+// identical, which is the same reason `why self` answers an empty day with one
+// sentence instead of a column header over nothing.
+func wakePassWords(pass resident.WatchPass, practice, learning int) string {
+	counted := []struct {
+		word  string
+		count int
+	}{
+		{"examined", pass.Examined},
+		{"checked", pass.Checked},
+		{"fired", pass.Fired},
+		{"no", pass.No},
+		{"errors", pass.Errors},
+		{"rail waits", pass.RailWaits},
+		{"practice", practice},
+		{"learning", learning},
+	}
+	clauses := make([]string, 0, len(counted))
+	for _, row := range counted {
+		if row.count == 0 {
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("%s %d", row.word, row.count))
+	}
+	if len(clauses) == 0 {
+		return "nothing was waiting to be looked at."
+	}
+	return strings.Join(clauses, ", ")
 }
 
 func addWatchPass(total *resident.WatchPass, pass resident.WatchPass) {

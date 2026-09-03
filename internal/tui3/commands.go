@@ -988,7 +988,7 @@ func helpText(file string, chords chordSpelling) string {
 		// what is authored here — one substitution, one door (chords.go).
 		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
-		"               on a place, tab is the next place · esc comes back",
+		"               on a place, tab is the next place · esc back",
 		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order.
 		// On a Mac `alt+enter` is drawn `⌥enter` — three cells narrower — and a
 		// literal padded to the ASCII spelling would put this one row's sentence
@@ -1028,7 +1028,7 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
-		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
+		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc back",
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1039,7 +1039,7 @@ func helpText(file string, chords chordSpelling) string {
 		// The line is TRUE IN BOTH MODES of ui.quick_switch on purpose: this list
 		// has no reach into the profile, and a clause that named one mode would be
 		// wrong in the other. The card's own head and the manual say the rest.
-		"ctrl+k         switch conversations · tap it like alt+tab · esc goes back",
+		"ctrl+k         switch conversations · tap it like alt+tab · esc back",
 		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
@@ -1047,11 +1047,11 @@ func helpText(file string, chords chordSpelling) string {
 		// the machine, and one word meaning two places on the same list is a
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
-		"space space    over an empty box: home · /home · esc comes back",
+		"space space    over an empty box: home · /home · esc back",
 		"ctrl+w         delete the word behind the caret · ctrl+u the line",
-		"ctrl+,         settings",
+		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
-		"p s n          in /standing: pause one · stop it · not here",
+		"p s n          in /standing: pause one · stop it · keep it out of here",
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {

@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 07:45Z_
+_2026-09-03 07:47Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -149,13 +149,13 @@ _2026-09-03 07:45Z_
 - `J1`    high CLOSED A conversation reopened draws none of the background jobs it ran, because the surface has no case for them on the lane the engine replays them on
 - `J2`    high CLOSED A task restored from a checkpoint is dated by when the WINDOW opened plus how long the work ran, which is a landing time in the future
 - `J3`    high CLOSED Work parked on a person's decision is filed under `running` and dated `now`
-- `J4`    high open   A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
-- `J5`    med  open   The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
+- `J4`    high CLOSED A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
+- `J5`    med  CLOSED The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
 - `J6`    med  CLOSED The word on a landed card for when the work began is `spawned`
 - `J7`    med  CLOSED A task's price is drawn twice on the same home card, four cells apart, in two different inks
 - `J8`    med  CLOSED A conversation whose name carries a combining accent is drawn with the accent silently removed
 - `J9`    med  CLOSED The room's kin line names a child's state with a word that is neither true nor in the vocabulary
-- `J10`   low  open   At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
+- `J10`   low  CLOSED At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
 - `J11`   med  CLOSED The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
 - `J12`   low  open   The status line under a room wraps onto two lines and leaves a hole under the left half
 

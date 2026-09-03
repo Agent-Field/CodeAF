@@ -373,29 +373,51 @@ func TestHeadlessDocumentsExec(t *testing.T) {
 // copy of the sentence on stderr, so a caller reading stdout could learn THAT
 // the run failed and never WHY. `do --json` shipped the same field for the same
 // reason; exec never got it.
+//
+// THE SENTENCE IS ON THE OBJECT; WHICH FIELD CARRIES IT FOLLOWS THE RUNG. A run
+// that never started says it under `error`; a run that started and broke says it
+// under `incomplete`, because `error` means "it could not be run at all" and
+// that run was run. Both rows are here so that neither door can lose it.
 func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	runErr := errors.New("node " + execNodeKey + ": API error (400): nosuch/model-xyz is not a valid model ID")
-	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError}, runErr, "")
-	if envelope.Error == "" {
-		t.Fatal("the failure envelope carries stop=error and no reason at all, so a script can never learn why")
+	for _, door := range []struct {
+		what string
+		// outcome is nil for the run that never started.
+		outcome *exec.Outcome
+		// field is the envelope key a script reads the sentence from.
+		field string
+	}{
+		{"a run that could not be started", nil, "error"},
+		{"a run that broke after it started", &exec.Outcome{Stop: exec.StopError, Turns: 3}, envelopeIncomplete},
+	} {
+		envelope := buildExecEnvelope(door.outcome, runErr, "")
+		fields := envelopeFields(t, envelope)
+		said, _ := fields[door.field].(string)
+		if said == "" {
+			t.Fatalf("%s carries stop=%q and no reason at all under %q, so a script can never learn why:\n  %v",
+				door.what, envelope.Stop, door.field, fields)
+		}
+		if !strings.Contains(said, "nosuch/model-xyz is not a valid model ID") {
+			t.Fatalf("%s names something other than the cause: %q", door.what, said)
+		}
+		for _, machinery := range []string{"API error", "node " + execNodeKey} {
+			if strings.Contains(said, machinery) {
+				t.Fatalf("%s leaks the internal verb %q into the machine contract: %q", door.what, machinery, said)
+			}
+		}
+		if !strings.Contains(said, "aforge models") {
+			t.Fatalf("%s never says what to do about it: %q", door.what, said)
+		}
 	}
-	encoded, err := json.Marshal(envelope)
+
+	// AND THE `error` KEY IS EMPTY, NOT MISSING, ON THE RUN THAT STARTED.
+	ran := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError, Turns: 3}, runErr, "")
+	encoded, err := json.Marshal(ran)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(encoded), `"error":`) {
-		t.Fatalf("--json carries no error field:\n%s", encoded)
-	}
-	if !strings.Contains(envelope.Error, "nosuch/model-xyz is not a valid model ID") {
-		t.Fatalf("the reason names something other than the cause: %q", envelope.Error)
-	}
-	for _, machinery := range []string{"API error", "node " + execNodeKey} {
-		if strings.Contains(envelope.Error, machinery) {
-			t.Fatalf("the machine contract leaks the internal verb %q: %q", machinery, envelope.Error)
-		}
-	}
-	if !strings.Contains(envelope.Error, "aforge models") {
-		t.Fatalf("the reason never says what to do about it: %q", envelope.Error)
+	if !strings.Contains(string(encoded), `"error":""`) {
+		t.Fatalf("a run that started and broke filled `error`, which means it could not be run at all:\n%s", encoded)
 	}
 	// A run that worked says nothing. The KEY IS STILL THERE and empty, which is
 	// the envelope's guarantee: a field is never absent, so a caller reading

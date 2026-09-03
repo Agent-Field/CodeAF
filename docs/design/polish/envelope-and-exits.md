@@ -61,7 +61,8 @@ The ladder, as it now stands for all three verbs:
 | the token budget ran out | 2 | **3** | 2 |
 | the turn cap ran out | 3 | **3** | 3 |
 | the wall arrived | 4 | **3** | 4 |
-| the provider failed, the key was missing, the model id was rejected | 5 | **1** | 5 |
+| the key was missing or the model id was rejected — the run never started | 5 | **1** | 5 |
+| the provider failed PART WAY THROUGH, after the run had started | 5 | **2** | 5 |
 | it finished with nothing to show | 6 | **2** | 6 |
 | any other ending (cancelled, paused, promoted, split) | 5 | **2** | 5 |
 
@@ -133,10 +134,15 @@ Fields that belong to one verb and stay: `do`'s `spend_work`, `spend_overhead`,
 | `price` | the price crossed the consent threshold | 3 |
 | `question` | it needed an answer and nobody was there | 4 |
 
-`exec`'s five existing values — `done`, `budget`, `turn-cap`, `deadline`, `error` — are
-spelled exactly as they were. Endings `exec` reports that are not rungs of their own
-(`cancelled`, `paused`, `promote`, `split`, `empty`, `overrun`) still pass through under
-their own names and land on exit 2.
+Four of `exec`'s five existing values — `done`, `budget`, `turn-cap`, `deadline` — are
+spelled exactly as they were. `error` IS NOT, and this is the one behaviour change in
+the table above worth reading twice: it now means THE RUN NEVER STARTED, and nothing
+else. An executor that hands back an outcome has, by definition, started — so a
+provider that fails at turn nine is `incomplete` and exit 2, not `error` and exit 1.
+The old spelling told a script that a run which had already spent money never began,
+which is the one thing exit 1 exists to say. Endings `exec` reports that are not rungs
+of their own (`cancelled`, `paused`, `promote`, `split`, `empty`, `overrun`) still pass
+through under their own names and land on exit 2.
 
 **One value moved.** `exec` used to report `"stop": "done"` for a run that finished
 having produced no text at all, and exit 6 under it. That now reports

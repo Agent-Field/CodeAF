@@ -171,7 +171,14 @@ func transcriptHeadline(entry store.TranscriptEntry) string {
 	case store.TranscriptFault:
 		return turn + " · stopped"
 	case store.TranscriptNote:
-		return turn + " · the harness"
+		// THE NOTE IS SIGNED WITH THE PRODUCT'S NAME. It read `the harness`,
+		// which names neither who wrote the line nor what happened — and
+		// "harness" is machinery vocabulary besides, spent in this product on
+		// the saved shapes of work a person builds and runs by name. A note in
+		// this record is aforge writing about the run rather than the model
+		// speaking, and `aforge` says exactly that in a word the reader already
+		// knows, because it is what they typed to get here.
+		return turn + " · aforge"
 	case store.TranscriptElided:
 		return turn + " · the record stops here"
 	}

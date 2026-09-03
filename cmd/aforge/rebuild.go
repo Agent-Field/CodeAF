@@ -87,6 +87,11 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(output, "rebuilt %d nodes from %d journaled events\n", len(nodes), events)
+	// WHAT WAS REBUILT IS COUNTED IN STEPS. `nodes` is the store's own word for
+	// them and it is machinery in front of a person — the same pieces of work
+	// are `steps` in the `--json` envelope, on the task page and everywhere
+	// else a person is shown a count of them, and one thing may not have two
+	// names depending on which command printed it.
+	_, err = fmt.Fprintf(output, "rebuilt %d steps from %d journaled events\n", len(nodes), events)
 	return err
 }
