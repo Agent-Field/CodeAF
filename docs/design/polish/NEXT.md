@@ -127,12 +127,52 @@ record`, so that phrase is not the gate's habit — it is one line's.
   (`The deliverable is a plan for what to run next, not the finished work
   itself`). Same grammar minus the leading token, and the sentence carries its
   own subject without trouble.
-- **outcome first** (`E`) — `carrying on has stopped changing anything — twice
-  over now, nothing was written or altered — so this is handed over as it
-  stands.` **This one is ALREADY IN THE TARGET SHAPE**, and it is the strongest
-  argument the row has: the first of the four rules is not a proposal, it is
-  something this product already does somewhere else. Write the others to look
-  like `E`.
+- **`E` IS NOT A REFUSAL, and I had this wrong in an earlier revision of this
+  file.** Its body appears in the trial's own log under a DIFFERENT LABEL, word
+  for word (`510-run1-stream.log:73`, committed and pushed, so the body has a
+  permanent citation even though the `gate: refused —` rendering of it does
+  not):
+
+  ```
+  nothing is changing — carrying on has stopped changing anything — twice over
+  now, nothing was written or altered — so this is handed over as it stands
+  26m1s
+  ```
+
+  against the reaped rendering:
+
+  ```
+  gate: refused — carrying on has stopped changing anything — twice over now,
+  nothing was written or altered — so this is handed over as it stands. Nothing
+  further was started.
+  ```
+
+  **Same body, two labels, and only one of them leads with the outcome.** So `E`
+  does not belong in the list above at all: at the gate it opens `gate: refused`
+  like every other specimen. The outcome-first virtue was never the sentence's —
+  it belongs to the label `nothing is changing`, which one lane applies and the
+  other does not.
+
+  **That is a better row than the one it replaces**, and it changes what a lane
+  is being asked to do. `lead with the outcome` is not a rule to invent and
+  argue for: THIS PRODUCT ALREADY OWNS AN OUTCOME-FIRST LABEL FOR THIS EXACT
+  BODY and does not use it at the gate. The work is to apply consistently
+  something that already happens half the time.
+
+**AND A REAL OUTCOME-FIRST LINE, citable, from the same run as the worst
+specimen** (`510-run1-stream.log:116`, its closing line):
+
+```
+partial — no relevant progress in 2 rounds; last change: nothing this job is
+about has changed  45m0s
+```
+
+The verdict first, then the reason, then the state of the tree as a plain fact.
+**Argue the house rule from this one run and nothing else.** At `41m17s` the
+same stream spends ninety words opening on a claim about a file that is not
+true; at `45m0s` it spends sixteen and opens on the verdict. Four minutes apart,
+one log, and a reader can see the whole argument without being asked to trust
+six sources of differing provenance.
 
 **TWO CONSTRAINTS THE SPECIMENS ADD, and both would have been missed:**
 
