@@ -3,7 +3,9 @@
 *2026-09-03, written against `dev @ 7ea37cab2`. Status: design → build. Lives at
 `docs/design/task-continue/DESIGN.md`. Every `file.go:line` was verified at that
 commit. `internal/tui3/place_tasks.go:1064-1079` is the sentence this page
-replaces.*
+replaces. §E is derived against `docs/design/polish/COMMANDS.md` on
+`ui/polish-v0` (PR #518), which is the terminal's vocabulary law and lands on
+`dev` the same day as this page.*
 
 ## The one sentence
 
@@ -97,12 +99,31 @@ per-ending durability is `task_run.go`'s five landing roads plus
 
 Two readings fall straight out of this table, and they are the whole design:
 
-**Almost everything survives almost every ending.** The two exceptions are
-narrow, and both are about *success*: a finished chat task loses its tree because
-its work came home, and a clean headless run loses its record because isolation
-was the point of a one-shot. Everything else — nine endings out of eleven — ends
-with the branch, the working copy, the journal and the findings all sitting on
-disk with no verb pointed at them.
+**Almost everything survives almost every ending**, and the two places where
+something does not are both about *success* — which is precisely where the owner's
+order says a continuation is wanted. So they are not limits to be stated; they are
+the two things this design changes about durability, and each is a milestone:
+
+- **A finished chat task has not lost its tree — its tree landed.** `releaseLanded`
+  removes the worktree and runs `git branch -d` only *after* `carryBranchHome` has
+  put the commits on the person's own branch (`groundladder.go:955-979`), and
+  `git branch -d` refuses a branch that is not merged, so the deletion is proof the
+  work is home rather than gone. The follow-up therefore cuts a fresh working copy
+  **from the commit the finished work landed at** and inherits the brief, the
+  acceptance and the history from the record. Nothing was lost; it moved.
+- **A clean headless run must keep a small record**, and today it keeps none.
+  `keepPrivateStore` (`do.go:696-698`) deletes the whole private home on a clean
+  run, and the home holds two very different things: `graph.db`, which is the plan,
+  the nodes, their outcomes, the usage and the transcript rows — and
+  `graph-scratch/` (`home.StoreDir(path, "scratch")`, `chat.go:301`), which is
+  derived working material. **The record is kept and the scratch is dropped**, so
+  `--continue` has something to read and the disk does not grow by a workspace per
+  run. The workspace itself was never at issue: a headless run edits the person's
+  own directory in place (`do.go:659-685`) and nothing ever deleted it.
+
+Everything else — nine endings out of eleven — already ends with the branch, the
+working copy, the journal and the findings all sitting on disk with no verb
+pointed at them.
 
 **Two stores, and they are not the same store.** The chat engine's durable record
 is a JSON checkpoint per conversation (`~/.aforge/v3/projects/<project>/<session>/tasks.json`,
@@ -250,13 +271,14 @@ cut off on the other (`executor.go:605-607`). There is one.
 ### Decision 3 — the continuation runs in the tree the ending left
 
 **Decision.** Where a working copy still stands — nine endings out of eleven — the
-continuation takes it, exactly as `resumeTree` already does. Where the work
-already came home and `releaseLanded` removed the worktree and deleted the branch
-(`groundladder.go:971-979`), the continuation cuts a fresh working copy **from the
-ground's current tip**, which is the commit the finished work landed. Where the
-work could not be saved and the directory is the only copy (#277), the
-continuation takes that directory and the first thing it is told is that its
-predecessor's work could not be committed.
+continuation takes it, exactly as `resumeTree` already does. Where the work already
+came home, the continuation cuts a fresh working copy **from the commit that work
+landed at**: `releaseLanded` removes the worktree and runs `git branch -d` only
+after `carryBranchHome` has put the commits on the person's branch, and `git branch
+-d` refuses an unmerged branch — so the deletion is the proof the work is there,
+not that it is gone. Where the work could not be saved and the directory is the
+only copy (#277), the continuation takes that directory and the first thing it is
+told is that its predecessor's work could not be committed.
 
 **Rejected: composing a tree from the record.** A tree built from a summary is a
 tree that has lost every file the summary did not mention. THE TREE IS THE
@@ -310,38 +332,103 @@ confidence the record does not support.
 
 ## E. The same door, headless
 
-The vocabulary is settled by what the two words already mean in this product:
-`/resume` and `aforge resume` open an earlier **conversation**
-(`internal/manual/chat/hints-and-tips.md:49`, `staying-on-that-machine.md:97`).
-So:
+Derived against `docs/design/polish/COMMANDS.md` (branch `ui/polish-v0`, PR #518,
+landing on `dev` today), which is the terminal's vocabulary law. Four of its rules
+decide the shape, and none of them is negotiable here.
 
-> **CONTINUE IS FOR WORK; RESUME IS FOR CONVERSATIONS.** No door spells one of
-> them with the other's word.
+**Its §3 makes `a task` a noun and gives it an address.** *"a **task** — one piece
+of work you handed over — `aforge do "<task>"`, `aforge tasks <id>`"*. And its §7
+rename 2 makes `aforge tasks <id>` the read verb for one piece of work. So the
+argument is a **task id**, the same handle `aforge tasks <id>` already takes:
 
 ```sh
-aforge do --continue <record>              # carry on, with nothing added
-aforge do --continue <record> "also do X"  # carry on, with a finding
+aforge do --continue <id>              # carry on, with nothing added
+aforge do --continue <id> "also do X"  # carry on, with a finding
 ```
 
-`<record>` is the path the run already printed as `record kept at %s`
-(`do.go:375`), or a `--db` store. The flag implies `--db <record>/graph.db`, so the
-continuation opens the store the first run wrote, `ReleaseOrphans` puts its
-unfinished claims back, and the composed continuation enters as one
-`CommandSplice` against the same root — the existing chain at
-`cmd/aforge/chat.go:334` and `:807-820`, reached deliberately instead of by
-accident.
+*Rejected: `--continue <path-to-record>`.* A path is not one of §3's nouns, and
+the noun for a path there is **the store**, which already has a spelling —
+`--db <path>`, carried by `do` and `tasks` alike. A run whose record is not in the
+default store is reached the way every other verb reaches one:
 
-Two honest limits, stated rather than engineered around:
+```sh
+aforge tasks --db <store>                       # what ran there
+aforge do --continue <id> --db <store>          # carry one of them on
+```
 
-- **A clean run deletes its record**, and `--continue` on a path that is gone
-  says so and continues from what is left — the assignment and the working
-  directory as it stands — rather than pretending to carry a bank it has not got.
-  The closing line of every `do` run therefore names the record and the command:
-  `record kept at <path> · continue it with: aforge do --continue <path>`, and on
-  a clean run, `record deleted · pass --keep to be able to continue this run`.
-- **A headless run edits the working directory in place** (`do.go:659-685`) and
-  never made a worktree, so its tree is the person's own directory and is always
-  still there. THE TREE IS THE RECORD holds most simply here.
+That is one flag doing one job, and it is why the record must survive a clean run:
+an id nothing can look up is not an address.
+
+**Its §4 fixes the rest of the spelling.** The directory is `--dir`, not `-w`
+(rename 4, single letters kept as hidden aliases); the wall is `--timeout` taking a
+duration; the token wall is `--token-budget` and never `--budget`, because *budget
+is a word about money in this product*. `--continue` needs no new concept in that
+table — it is a verb's argument, not a wall.
+
+**Its §5 puts the record path on stderr.** *"stdout carries the answer and nothing
+else… anything a person reads about the run — the models line, progress, a
+warning, a question, the path a record was kept at — goes to stderr"*, and it names
+`aforge do` as the standard the others should follow. So the closing lines that
+make a continuation findable are stderr lines, beside `record kept at %s`:
+
+```
+record kept at <path> · continue it with: aforge do --continue 7
+```
+
+and on a run that finished, the same sentence — because after this design a clean
+run keeps its record too, and the only difference a person sees is that there is
+nothing wrong to look at.
+
+**Its §5 exit ladder is five codes, and a continuation reads them.** `0` done ·
+`1` could not be run at all · `2` ran and did not finish · `3` a limit you set
+stopped it · `4` needs an answer from you and nobody was there. A continuation is
+worth offering after `2`, `3` and `4`, and is a follow-up after `0`; after `1`
+there is nothing to continue and the line is absent. The reason is not read off the
+code but off the envelope's `stop` field, which §5 says is *"where a script should
+have been reading it all along"*.
+
+**Its §5 result envelope is one shape across `do`, `exec` and `run`**, and
+`settled` becomes `ok`. A continuation adds **no field**: it reports `ok`, `stop`,
+`answer`, `files`, `spend_usd`, `tokens`, `seconds`, `model` and `steps` exactly as
+a first run does, because it *is* a run of the same task. The guarantee that a
+field is never removed and never changes meaning within a release is what makes
+that the right answer rather than the lazy one.
+
+### What the record is, and what it costs
+
+A clean run keeps `graph.db` and drops `graph-scratch/`. That is one file holding
+the plan, the nodes, their outcomes, the usage and the transcript rows — the whole
+of what a continuation reads — and it drops the derived working material, which is
+the bulk. `keepPrivateStore` (`do.go:696-698`) therefore stops answering one
+question and answers two: **the record is kept always; the scratch is kept when the
+run went wrong, was asked for with `--keep`, or was tracing.** The existing law
+above it — *A FAILURE KEEPS ITS OWN EVIDENCE WITHOUT BEING ASKED* — is unchanged and
+gains a companion:
+
+> **A RUN THAT FINISHED KEEPS ENOUGH OF ITSELF TO BE CONTINUED.**
+
+Records are swept by age on the next `do` launch, at one constant spelled once
+(`recordsKeptFor`, 30 days), interpolated into the manual page rather than repeated
+in it. A record the person has continued from is touched, so a task somebody is
+still working on does not age out from under them.
+
+*Rejected: keeping the record only under `--keep`.* It requires knowing before the
+run that you will want to continue it, which is the exact reasoning
+`keepPrivateStore`'s own comment already rejected for failures: *"the only cure was
+to have passed `--keep` before knowing there would be anything to look at."*
+
+*Rejected: distilling a smaller record than `graph.db`.* A second serialisation of
+the same facts is a second thing to keep true, and the transcript rows it would
+drop are the ones `bank.go:96` calls the field that makes a restart a resumption.
+
+### One thing the terminal owes the manual
+
+`COMMANDS.md` §8 asks for `internal/manual/chat/running-from-the-terminal.md` and
+for the build gate to extend over `knownCommands` (`cmd/aforge/usage.go:285`), so a
+verb without a page fails the build the way a slash command already does. If that
+page exists by the time M4 lands, `--continue` is documented there; if it does not,
+M4 does not mint it, and the headless shape goes into the sections §J already
+names. **A milestone does not create a page another wave is designing.**
 
 ---
 
@@ -420,6 +507,11 @@ arrive as this round's finding.
 > continuation never re-derives a fact the record already holds, and never claims
 > to carry one it does not.
 
+> **A RUN THAT FINISHED KEEPS ENOUGH OF ITSELF TO BE CONTINUED.** Finishing is not
+> a reason to throw the record away: the record is kept on every ending, the
+> derived scratch is dropped where the run went cleanly, and what is kept is swept
+> by age at one constant spelled once.
+
 > **A CONTINUATION NEVER RE-PLANS THE ISSUE.** It is the original assignment plus
 > one finding, admitted undivided, and it divides only when the ruler puts its
 > own size past one worker — never because its words name several things.
@@ -486,7 +578,8 @@ at all.
 | `internal/tui3/place_tasks_test.go:130-153` | `TestTheTasksPlaceNeverNamesRunItAgain` retired in the same commit — it asserts the feature is absent |
 | `internal/tui3/tasksettle.go` | `c continue` in the keychip grammar for an ended task |
 | `internal/tui3/taskcommand.go`, `commands.go` | `/continue`, and its row in the command table |
-| `cmd/aforge/do.go` | `--continue <record>`; the closing line names the record and the command; `keepPrivateStore` unchanged, and the clean-run line says what `--keep` buys |
+| `cmd/aforge/do.go` | `--continue <id>`, resolved through the same lookup `aforge tasks <id>` uses and scoped by `--db`; `keepPrivateStore` splits into *keep the record* (always) and *keep the scratch* (asked, tracing, or the run went wrong); `recordsKeptFor` and the sweep on launch; the stderr line naming the command |
+| `cmd/aforge/tasks.go` (`why.go` until #518's rename 2) | a continued task reads as one task with more than one attempt, not as two rows |
 | `internal/session/prompts/system.md` | the model is told the verb exists, since it will otherwise deny having it |
 | `internal/manual/chat/` | §J |
 
@@ -587,19 +680,27 @@ make build
 export AFORGE_HOME=$(mktemp -d)
 # point the provider at a port nothing is listening on, mid-run
 bin/aforge do "add a --verbose flag to the sample tool and a test for it" \
-  --model deepseek/deepseek-v4-flash --timeout 10m -w "$(mktemp -d)" &
-sleep 90 && OPENROUTER_BASE_URL=http://127.0.0.1:1 ...   # or drop the route
+  --model deepseek/deepseek-v4-flash --timeout 10m --dir "$(mktemp -d)" &
+# ninety seconds in, take the provider away: point OPENROUTER_BASE_URL at a dead
+# port, or drop the route to openrouter.ai
 ```
 
-The run ends non-zero, keeps its store (`keepPrivateStore`, `do.go:696`) and
-prints `record kept at <path>`. Then:
+The run ends on the exit ladder's `2` or `3`, keeps its record (`keepPrivateStore`,
+`do.go:696`) and prints `record kept at <path>` on **stderr**. Then:
 
 ```sh
-bin/aforge do --continue <path>
+bin/aforge tasks --db <path>/graph.db          # the id, and how it ended
+bin/aforge do --continue <id> --db <path>/graph.db
 ```
 
 Expected after M4: the second run reports the files the first left, does not
-re-plan the issue, and its own record shows it carried on rather than started.
+re-plan the issue, exits `0`, and `aforge tasks` shows one task with two attempts
+rather than two tasks. Run the same recipe again **without** killing the provider:
+the run exits `0`, its record is still there, and `aforge do --continue <id> "also
+add a --quiet flag"` is a follow-up rather than a repeat.
+
+*(`--dir` and the exit ladder are `docs/design/polish/COMMANDS.md` §4 and §5; until
+#518 lands, `-w` and `0/1/2` are what the binary answers to.)*
 
 *Owner's forensics, may be gone by the time you read this:* none. This
 replication is deliberately self-contained, because #185's was not.
@@ -623,14 +724,23 @@ replication is deliberately self-contained, because #185's was not.
   it does today — `failed`, `lost the connection`, branch kept — and no
   continuation string appears anywhere on the screen.
 
-- **e2e, headless:** `aforge do --continue <record>` against a kept record from a
-  killed run exits 0, its `--json` object names the same root, and the deliverable
-  does not restate the first run's work as new.
+- **e2e, headless:** `aforge do --continue <id>` against a kept record from a
+  killed run exits `0`, its `--json` envelope carries the same field set as a first
+  run (no new field), `stop` reads `done`, and the answer does not restate the first
+  run's work as new.
+
+- **e2e, headless, the finished case:** a run that exits `0` still has a record;
+  `aforge tasks --db <store>` lists its id; `aforge do --continue <id> "also do X"`
+  runs the follow-up against the files the first run left. Its `graph-scratch/` is
+  gone and its `graph.db` is not.
 
 - **Unit:** the peel is exact-prefix (a preamble occurring inside a person's own
   assignment is not stripped); a third continuation carries one wrapper; the
   criterion is byte-identical across three rounds; a bank with nothing in it
-  composes no continuation blocks at all.
+  composes no continuation blocks at all; `keepPrivateStore`'s two questions are
+  answered independently, and a clean run keeps `graph.db` and removes
+  `graph-scratch/`; the sweep removes a record older than `recordsKeptFor` and not
+  one that was continued from since.
 
 - **Structural (`make test-laws`, `go/ast`):** every write of `TaskQueued` onto a
   settled node goes through the one reopen; every block written by any composer
@@ -656,8 +766,6 @@ replication is deliberately self-contained, because #185's was not.
 - **It does not give a task a second landing.** A continuation lands the way any
   attempt lands, through the same five roads; `absorbedLedger` is already
   idempotent, and nothing here adds a second way home.
-- **It does not un-delete a clean headless run's record.** It says so, and it
-  says what `--keep` buys.
 - **It does not add a scheduler, a queue or a retry budget.** A continuation is a
   person's decision, taken one at a time. The machine's own automatic carry-on —
   `interrupt`, `ReleaseOrphans`, the overrun rounds — is unchanged and stays
