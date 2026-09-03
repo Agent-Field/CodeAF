@@ -1769,6 +1769,10 @@ type Agent struct {
 	// having been started ([Agent.openBaseline] runs it in the background) and
 	// not the same as the list being non-empty (a clean tree reads as no red).
 	baselineRead bool
+	// baselineUnread is the checks the reading could not read at all — one that
+	// changed the tree, one the shell could not run, one the window never
+	// reached ([Remains.Unread]).
+	baselineUnread []string
 	// baselineDone is closed when the reading lands, so the one moment that has
 	// to have it can wait ([Agent.awaitBaseline]).
 	baselineDone chan struct{}

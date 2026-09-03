@@ -342,11 +342,24 @@ type Remains struct {
 	// else's bug. Measured (#513): the attrs cell's acceptance was `tox -e py`
 	// passes over a suite with one pre-existing failure, and it never stopped.
 	//
-	// EMPTY WITH BaselineRead IS A CLEAN TREE; empty without it is a reading that
-	// has not landed. A session that never takes one — every watched session —
-	// counts no check as its own, which is the one safe answer when nobody knows
-	// what was red to begin with.
+	// EMPTY WITH BaselineRead IS A CLEAN TREE ONLY IF Unread IS EMPTY TOO; empty
+	// without BaselineRead is a reading that has not landed. A session that never
+	// takes one — every watched session — counts no check as its own, which is
+	// the one safe answer when nobody knows what was red to begin with.
 	WasFailing []string
+
+	// Unread is the declared checks the before-reading COULD NOT READ: one that
+	// changed the tree and had its answer thrown away, one the shell could not
+	// run, one the window never reached.
+	//
+	// A CHECK WHOSE READING WAS THROWN AWAY DOES NOT MAKE EVERY RED LOOK NEW.
+	// With WasFailing alone, a baseline that discarded its ONLY check came back
+	// empty — which the field above calls a clean tree — over a project with 85
+	// pre-existing failures, and every one of them then read as this run's own
+	// (#513: the attrs cell's `python -m pytest tests/` was discarded because
+	// pytest writes `.pytest_cache/`). So what could not be read is carried
+	// separately and is never counted either way.
+	Unread []string
 }
 
 // finishedSomething answers the first question [Remains.unmet] asks: has this
@@ -421,11 +434,19 @@ func (r Remains) unmet() []string {
 	// red is the project's — so the honest answer about the checks is silence
 	// rather than a guess, and [stewardBrief] says the reading is still going.
 	if r.BaselineRead {
-		for _, command := range verify.NewFailures(r.WasFailing, r.redChecks()) {
+		for _, command := range verify.NewFailures(r.WasFailing, r.attributableRed()) {
 			out = append(out, command+" does not pass")
 		}
 	}
 	return out
+}
+
+// attributableRed is every red check the baseline actually READ, which is the
+// only red anybody can say whose it is. A check the before-reading could not
+// read is not evidence in either direction and is left out of the arithmetic
+// entirely ([Remains.Unread]).
+func (r Remains) attributableRed() []string {
+	return verify.Subtract(r.redChecks(), r.Unread)
 }
 
 // redChecks is every declared check that is failing NOW, in the order they ran.
@@ -446,6 +467,7 @@ func (r Remains) alreadyRed() []string {
 	if !r.BaselineRead {
 		return nil
 	}
+	red = r.attributableRed()
 	return verify.Subtract(red, verify.NewFailures(r.WasFailing, red))
 }
 
@@ -913,6 +935,13 @@ func (s *Steward) Decide(r Remains) Decision {
 	brief := strings.TrimSpace(r.Reader)
 	if brief == "" {
 		brief = stewardBrief(r, unmet)
+	} else {
+		// AND WHAT IS KNOWN ABOUT THE CHECKS RIDES EVERY BRIEF, not only the one
+		// this package wrote. A reader's line is about the WORK and says nothing
+		// about which red was already there — so a worker handed it alone can see
+		// red it was never told to leave alone, and goes and fixes somebody else's
+		// bug. The two sentences are the same two [stewardBrief] appends.
+		brief = withWhatIsKnownAboutTheChecks(brief, r)
 	}
 	// AND NOTHING IS A STANDSTILL WHILE SOMETHING IS STILL MOVING. An unmet set
 	// that has not changed because the work has not come home yet is a session
@@ -998,18 +1027,27 @@ func stewardBrief(r Remains, unmet []string) string {
 	// will go and fix it, which is the whole failure in its other form; told
 	// that it was red before the work and is not being counted, it can leave it
 	// alone or say so.
+	return withWhatIsKnownAboutTheChecks(out.String(), r)
+}
+
+// withWhatIsKnownAboutTheChecks appends the two sentences a brief owes about the
+// declared checks, and it is ONE function because both briefs owe them.
+//
+// A BRIEF WRITTEN BEFORE THE BASELINE LANDED SAYS SO. A worker told nothing about
+// the checks reads the silence as "they pass"; told that nobody has finished
+// reading them yet, it knows the one thing that is actually true.
+//
+// AND WHAT WAS ALREADY BROKEN IS SAID OUT LOUD RATHER THAN SILENTLY DROPPED. A
+// worker handed a brief that does not mention red it can plainly see will go and
+// fix it, which is the whole failure in its other form.
+func withWhatIsKnownAboutTheChecks(brief string, r Remains) string {
 	if !r.BaselineRead && len(r.Checks) > 0 {
-		// AND A BRIEF WRITTEN BEFORE THE BASELINE LANDED SAYS SO. A worker told
-		// nothing about the checks would read the silence as "they pass"; told
-		// that nobody has finished reading them yet, it knows the one thing that
-		// is actually true.
-		out.WriteString("\n\n")
-		out.WriteString(baselineStillReading)
-	} else if already := r.alreadyRed(); len(already) > 0 {
-		out.WriteString("\n\n")
-		out.WriteString(alreadyRedSentence(already))
+		return brief + "\n\n" + baselineStillReading
 	}
-	return out.String()
+	if already := r.alreadyRed(); len(already) > 0 {
+		return brief + "\n\n" + alreadyRedSentence(already)
+	}
+	return brief
 }
 
 // baselineStillReading is what a brief says while the before-reading of the

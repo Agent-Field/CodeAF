@@ -2611,7 +2611,7 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 		// [Agent.terminalAudit] waits for it, so by here it has, and a reading
 		// still carrying the old "not yet" would count nothing against the tree
 		// it has just measured.
-		remains.WasFailing, remains.BaselineRead = a.baselineRedChecks()
+		remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
 		decision = principal.Decide(remains)
 		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
 		// checks and carries on may be about to read the very files this would

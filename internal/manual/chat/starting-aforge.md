@@ -213,12 +213,18 @@ down which were already failing. At the end it runs them again, and only a check
 
 That first reading runs **in the background**, so nothing waits for it: your first turn
 starts straight away. It gets one window for the whole set rather than one per check, and
-two things are deliberately not counted in it — a check that **changed the tree** (a build,
-a formatter, a migration: that would be aforge making the first edit, not looking) and a
-check the shell **could not run at all**. Neither is a photograph of anything, so both are
-thrown away, and a command nobody could run keeps its ordinary meaning: if it fails later,
-that counts. Until the reading lands, no check is counted against your ask either way, and
-the run says so in as many words.
+two things are deliberately not read — a check that **changed the tree** (a build, a
+formatter, a migration: that would be aforge making the first edit, not looking) and a
+check the shell **could not run at all**. Writing a cache or a coverage file is not
+changing the tree: in a git repository the question is asked against what the project
+itself keeps, so anything your `.gitignore` covers is invisible here and a test runner's
+`.pytest_cache/` costs you nothing.
+
+**A check the reading could not take is never counted against you — or for you.** Nobody
+knows whose red it is, so it is left out of the arithmetic in both directions rather than
+guessed at. Until the whole reading lands the same is true of every check, and the run says
+so in as many words. At the very end it waits for the reading before deciding, so a run is
+never called finished over red nobody could account for.
 
 That matters because of the sentence people naturally write: *"the existing test suite
 passes"*. Over a project whose suite already has one failing test, that can never become

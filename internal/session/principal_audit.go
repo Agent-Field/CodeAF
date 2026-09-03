@@ -463,7 +463,7 @@ func (a *Agent) openBaseline(ctx context.Context) {
 		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
 		// runnable check has no baseline to wait for, and leaving the reading
 		// permanently open would mean no check ever counted as this run's own.
-		a.closeBaseline(nil)
+		a.closeBaseline(nil, nil)
 		return
 	}
 	go func() {
@@ -481,12 +481,12 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 	defer done()
 
 	tree := a.deliverableTree()
-	var red, moved []string
-	for _, check := range checks {
+	var red, unread, moved []string
+	for index, check := range checks {
 		if ctx.Err() != nil {
-			// The window closed. Everything unread keeps the meaning it has
-			// always had, which is the safe side: it is not baseline-red, so red
-			// on it later is still named.
+			// The window closed. Everything it did not reach was not read, and
+			// says so rather than passing for green.
+			unread = append(unread, checks[index:]...)
 			break
 		}
 		before := treeStateNow(tree)
@@ -496,6 +496,7 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 			// changed itself, so it is not a photograph of anything and it is
 			// discarded rather than trusted.
 			moved = append(moved, check)
+			unread = append(unread, check)
 			continue
 		}
 		// AND A CHECK THAT COULD NOT BE RUN IS NOT A CHECK THAT FAILED. A command
@@ -503,12 +504,16 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 		// anything about the tree — and recording it as already-red would SILENCE
 		// a real failure on it later, which is the opposite of this law. Only a
 		// check that ran to an answer and answered red is baseline-red.
-		if run.Ran && !run.Passed {
+		if !run.Ran {
+			unread = append(unread, check)
+			continue
+		}
+		if !run.Passed {
 			red = append(red, check)
 		}
 	}
-	a.closeBaseline(red)
-	a.journalBaseline(red, moved)
+	a.closeBaseline(red, unread)
+	a.journalBaseline(red, unread, moved)
 }
 
 // treeStateNow photographs the deliverable tree, bounded, for the one question
@@ -521,20 +526,46 @@ func treeStateNow(tree string) string {
 }
 
 // treeRecord lists the tree's own files for [treeStateNow], bounded by the same
-// ceiling a claim hunt uses ([claimScanFiles]) and skipping the corners nobody
-// keeps a deliverable in.
+// ceiling a claim hunt uses ([claimScanFiles]).
+//
+// ── WHAT IT LEAVES OUT IS THE WHOLE OF WHETHER THIS WORKS ───────────────────
+//
+// The question being asked is "did that command change the DELIVERABLE", and
+// almost every real check writes something that is not one: a cache, a coverage
+// file, a lock, a log. The attrs cell's only declared check was
+// `python -m pytest tests/`, pytest wrote `.pytest_cache/` and `.hypothesis/`,
+// and the reading was thrown away — leaving a baseline that said nothing was
+// already failing over a project with 85 pre-existing failures (#513).
+//
+// THE REPOSITORY'S OWN ANSWER IS THE ONE THAT COUNTS, because the person has
+// already written it down. Where the tree is a git worktree, the record is what
+// `ls-files --cached --others --exclude-standard` lists: everything tracked, plus
+// everything untracked that `.gitignore` does NOT cover — which is exactly "the
+// files this project considers its own", asked in one call rather than one per
+// path. A new source file a check writes still shows up, because it is untracked
+// and not ignored.
+//
+// AND WHERE THERE IS NO REPOSITORY, [verify.SkipTree] IS THE WHOLE RULE — the
+// one list this codebase keeps of what is not a deliverable. It is coarser: a
+// build directory or a cache with no dot in its name is a change here, and a
+// check that writes one has its reading discarded. That is the safe side (a
+// discarded reading is never counted against the run) and it is said out loud
+// rather than papered over.
 //
 // IT IS A LIST OF NAMES AND THE STATE IS BUILT FROM THE DISK, which is
 // [verify.TreeState]'s own law: a name is not a state, so each path is settled
 // against its size and its modification time there.
 func treeRecord(tree string) []string {
+	if record, ours := treeRecordFromGit(tree); ours {
+		return record
+	}
 	var record []string
 	_ = filepath.WalkDir(tree, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if entry.IsDir() {
-			if skipDuringHunt(entry.Name()) && path != tree {
+			if verify.SkipTree(entry.Name()) && path != tree {
 				return fs.SkipDir
 			}
 			return nil
@@ -542,22 +573,46 @@ func treeRecord(tree string) []string {
 		if len(record) >= claimScanFiles {
 			return fs.SkipAll
 		}
+		if verify.SkipTree(entry.Name()) {
+			return nil
+		}
 		record = append(record, path)
 		return nil
 	})
 	return record
 }
 
+// treeRecordFromGit asks the repository which files are its own, and answers
+// false where there is no repository to ask.
+func treeRecordFromGit(tree string) ([]string, bool) {
+	out, err := git(tree, "ls-files", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, false
+	}
+	var record []string
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		if len(record) >= claimScanFiles {
+			break
+		}
+		record = append(record, name)
+	}
+	return record, true
+}
+
 // closeBaseline publishes the reading and says it has happened, which are one
 // step: a reader that saw the list before the flag would count nothing, and one
 // that saw the flag before the list would count everything.
-func (a *Agent) closeBaseline(red []string) {
+func (a *Agent) closeBaseline(red, unread []string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.baselineRead {
 		return
 	}
-	a.baselineRed = red
+	a.baselineRed, a.baselineUnread = red, unread
 	a.baselineRead = true
 	if a.baselineDone != nil {
 		close(a.baselineDone)
@@ -587,7 +642,7 @@ func (a *Agent) awaitBaseline(ctx context.Context) {
 		return
 	}
 	if !started || done == nil {
-		a.closeBaseline(nil)
+		a.closeBaseline(nil, nil)
 		return
 	}
 	select {
@@ -598,10 +653,11 @@ func (a *Agent) awaitBaseline(ctx context.Context) {
 
 // baselineRedChecks is what this session found already failing before it worked,
 // and whether the reading has landed at all ([Remains.WasFailing]).
-func (a *Agent) baselineRedChecks() ([]string, bool) {
+func (a *Agent) baselineRedChecks() ([]string, []string, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return append([]string(nil), a.baselineRed...), a.baselineRead
+	return append([]string(nil), a.baselineRed...),
+		append([]string(nil), a.baselineUnread...), a.baselineRead
 }
 
 // journalBaseline writes the baseline down, INCLUDING WHEN IT WAS ALL GREEN.
@@ -613,9 +669,10 @@ func (a *Agent) baselineRedChecks() ([]string, bool) {
 // not the reading being missing — and a check that moved the tree is named
 // beside it, because a declared check that writes is worth somebody knowing
 // about whatever else it answered.
-func (a *Agent) journalBaseline(red, moved []string) {
+func (a *Agent) journalBaseline(red, unread, moved []string) {
 	a.journalFile().appendPrincipal(journalPrincipal{
-		Who: principalWord(a.who()), Event: "baseline", Failed: red, Removed: moved,
+		Who: principalWord(a.who()), Event: "baseline",
+		Failed: red, Checks: unread, Removed: moved,
 	})
 }
 

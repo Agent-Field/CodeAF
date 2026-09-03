@@ -420,7 +420,7 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// that moment would be a baseline of a tree this session has already changed
 	// ([Agent.openBaseline]). The reading runs in the background, so it may not
 	// have landed; a reading with no baseline counts nothing as this run's own.
-	remains.WasFailing, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
 	return remains
 }
 
