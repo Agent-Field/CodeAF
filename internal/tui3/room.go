@@ -466,12 +466,19 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 // the same act in here, and [app.roomTouched] is that act named for the several
 // other files that perform it.
 //
-// THE FOUR THE CHAT INSTALLS ARE ABSENT AND THE ABSENCE IS THE DESIGN. A node
+// THE THREE THE CHAT INSTALLS ARE ABSENT AND THE ABSENCE IS THE DESIGN. A node
 // draws no spawn card, so it forms none, refuses none and throws none away when
-// a request is cut; a node's spend is folded by its pilot and never twice
-// (see [app.roomEvent]). `closed` is left nil deliberately — the lane that walks
-// a room's finished calls into the header instrument installs it there
-// (docs/design/lens/DESIGN.md, Decision 3).
+// a request is cut (lens.go's [lens.spawnCards] is where the chat declares that
+// it does); a node's spend is folded by its pilot and never twice (see
+// [app.roomEvent]).
+//
+// AND `closed` IS INSTALLED, which is the fourth (Decision 4). A call that
+// finished is the only event that moves the ambient counts, and a node's calls
+// move them exactly as the conversation's do: `bash` with background:true starts
+// a process on this machine whoever asked for it. Folding it here — at the
+// instant the wire says the call closed — is what makes the header instrument
+// and the Σ segment one set of numbers instead of two clocks, and it is the one
+// place a room can drop a cache the conversation owns ([app.foldNodeStat]).
 //
 // IT CLOSES OVER THE PAGE AND NOT OVER [app.room], because the page is built
 // before it is the one on screen, and a reducer pointed at whatever room happens
@@ -484,7 +491,10 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 		}
 		a.touch()
 	}
-	return feedHooks{now: a.now, follow: grew, touch: grew}
+	return feedHooks{
+		now: a.now, follow: grew, touch: grew,
+		closed: func(e *entry, _ session.Event) { a.foldNodeStat(r.id, e) },
+	}
 }
 
 func (a *app) openRoom(id uint64, title string) {
@@ -2119,13 +2129,14 @@ func roomWorkOf(es []entry) roomWork {
 		if !e.began.IsZero() && e.began.After(out.last) {
 			out.last = e.began
 		}
-		if e.kind != entryTool {
+		if callClosed(e) {
+			// THE SAME "FINISHED" THE AMBIENT COUNTS USE (app.go's [callClosed]),
+			// so the figure in the header and the figures in the Σ segment cannot
+			// be counting two different things.
+			out.calls++
 			continue
 		}
-		switch e.status {
-		case toolOK, toolFailed:
-			out.calls++
-		case toolRunning:
+		if e.kind == entryTool && e.status == toolRunning {
 			// THE NEWEST ONE IN FLIGHT, because a row that named the oldest would
 			// go stale while the work moved on under it.
 			out.running = e.tool

@@ -147,6 +147,15 @@ var overseerLens = lens{
 // worse than no fold, and DISCOVERABILITY BEFORE PURITY says a disclosure
 // ships with its working door or does not ship.
 //
+// THE SECOND HALF IS A LIMITATION AND NOT A PRINCIPLE, and the difference
+// matters for whoever reads this next. Only the first paragraph is an argument
+// about what a person came to that page for; the dead end is an accident of how
+// that deck is built. So if [app.orchTranscriptDeck] ever KEEPS its fold map —
+// on the run, the way a room keeps its own — this lens should collapse back into
+// [overseerLens] and be deleted, not go on standing as a third posture because
+// it happens to exist. A page that folds nothing has to re-earn that every time
+// somebody asks.
+//
 // It keeps the room's tool tail: the same reason, said about the same rows.
 var transcriptLens = lens{
 	receipts: receiptsHeader,

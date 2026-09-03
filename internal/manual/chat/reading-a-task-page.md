@@ -1,4 +1,4 @@
-# Reading a task's page — what folds, what never does, and a page that looks stuck
+# Reading a task's page — what is on this task page, what folds, and a page that looks stuck
 
 A task's page is the whole of what the task did, drawn with the conversation's own
 blocks: its instruction, its prose, its tool calls, and its report. It is built for the
@@ -6,6 +6,16 @@ visit people actually make — a glance to see whether the work is going right, 
 correction if it is not — so the settled work is folded and the machinery is one gesture
 away. This page is about what is folded, how to open it, and what to do when the page
 seems empty or stuck at the top.
+
+## What is on this task page — everything a task's page shows, in order
+
+The instruction it was given, folded to three lines with a door. The work it did, folded
+into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
+covers the work behind it. Anything you steered into it, drawn where you said it. The report
+at the end. And pinned above all of it, one line saying what it is doing, how long it has
+been going, what it has cost and how many calls it has made.
+
+Nothing here is thrown away — what is folded is one keypress from open.
 
 ## Why most of the work is hidden on a task page — the `▸ worked` chips, and `ctrl+e` to open them
 
@@ -93,7 +103,7 @@ The pinned header is the whole glance, and it says as much of this as your frame
 enough for, in this order:
 
 ```
-⠙ main › Port the loader · working · 3m 20s · $0.42 · 14 tool calls · bash
+⠙ main ▸ Port the loader · working · 3m 20s · $0.42 · 14 tool calls · bash
 ```
 
 The task's name first — that never gets cut while there is room for it — then what it is
@@ -105,6 +115,37 @@ working`, which is the truest thing the page can say about a silence.
 cost, one that has called nothing shows no count, and a queued one has no clock — a figure
 that is zero is a figure nobody measured. On a narrow terminal the line gives up facts
 from the end, in that order, and never cuts the name.
+
+The first of those facts — the word for what the work is doing — has a fixed vocabulary,
+and the next section lists every word it can be.
+
+## What the word at the top of a task's page means — the task page header says sizing the work, queued, checking what it left, the header word on a task's page
+
+The pinned header of a task's page carries one word for what the work is doing right now.
+Every word it draws:
+
+- `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
+  held behind named work instead, it reads `waits: <the work it waits on>`.
+- `sizing the work` — the reading that decides whether this job is handed out in parts and
+  how. It is the first thing a brand new task does, before its worker has said a word, and
+  it is why a page can sit there for a few seconds with nothing on it.
+- `working` — its worker is getting on with it. This is the ordinary one.
+- `checking what it left` — the worker has stopped and what it produced is being read.
+- `closing gaps · round 1 of 2` — the check found something and a round is closing it.
+- `finishing` — a gap is being tied off on work that is otherwise done.
+- `waiting` — still running, but its calls to the model are being paced.
+- `stopping` — you ended it and it is still letting go; `stopped` once it has.
+- `needs your look` — it finished and nobody could say whether the work holds.
+- `merged`, `in your own folder`, `conflicted`, `stopped`, `done`, `failed` — it is over,
+  and the word says how it ended: its branch came home; there was no branch to bring home,
+  so it edited your own files; the merge clashed; it was ended early; it is over and nothing
+  was said about a branch; or it did not come off.
+- A sub-harness being designed says what it is doing in its own words — `designing`, and
+  `awaiting your look` while its page sits waiting on you.
+
+**`briefing a worker` is not one of them.** That one is on the status line under the message
+box in the conversation while your turn is being handed to a task — before the task, and its
+page, exist at all.
 
 ## Can't scroll in a task — the wheel and pgup do nothing
 
@@ -262,33 +303,6 @@ task's foot spends its cells on the half nothing else on the screen is saying.
 
 The header is the other half of the answer, and it has always been true: if it says the work
 is running, it is running. The next section lists every word it draws.
-
-## What the word at the top of a task's page means — the task page header says sizing the work, queued, checking what it left, the header word on a task's page
-
-The pinned header of a task's page carries one word for what the work is doing right now.
-Every word it draws:
-
-- `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
-  held behind named work instead, it reads `waits: <the work it waits on>`.
-- `sizing the work` — the reading that decides whether this job is handed out in parts and
-  how. It is the first thing a brand new task does, before its worker has said a word, and
-  it is why a page can sit there for a few seconds with nothing on it.
-- `working` — its worker is getting on with it. This is the ordinary one.
-- `checking what it left` — the worker has stopped and what it produced is being read.
-- `closing gaps · round 1 of 2` — the check found something and a round is closing it.
-- `finishing` — a gap is being tied off on work that is otherwise done.
-- `waiting` — still running, but its calls to the model are being paced.
-- `stopping` — you ended it and it is still letting go; `stopped` once it has.
-- `needs your look` — it finished and nobody could say whether the work holds.
-- `merged`, `inplace`, `conflicted`, `stopped`, `done`, `failed` — it is over, and the word
-  says how it ended: its branch came home, it worked in your own folder, the merge clashed,
-  it was ended early, it landed with no branch to bring home, or it did not come off.
-- A sub-harness being designed says what it is doing in its own words — `designing`, and
-  `awaiting your look` while its page sits waiting on you.
-
-**`briefing a worker` is not one of them.** That one is on the status line under the message
-box in the conversation while your turn is being handed to a task — before the task, and its
-page, exist at all.
 
 ## How long did a call take in a task — the 1.4s at the end of a call's row on a task's page, and the dim lines between its calls
 

@@ -186,6 +186,87 @@ func TestTheBriefAFailureAndAnElbowNeverFold(t *testing.T) {
 	}
 }
 
+// AND THE WIRING HOLDS FOR THE ELBOW THE PRODUCT ACTUALLY MAKES. The table above
+// holds the LAW — a run carrying a correction folds nothing — against a
+// hand-built elbow, and it is the test that fails if [groupBreaks] stops ending
+// a run at one. This one holds the WIRING: a correction typed at a running task
+// draws a real entrySteer now (#252, ruling 2, landed by L3), the work that
+// follows it settles into a phase of its own, and the person's words are on the
+// page with every chip shut.
+//
+// IT IS DELIBERATELY NOT A SECOND COPY OF THE LAW TEST, and saying so is worth a
+// line: the elbow is protected TWICE — [groupBreaks] ends the run, and
+// [countWork] steps over corrections when it picks a chip's start — so a chip
+// can never be keyed on one even if the first guard were removed. Asserting the
+// law here would pass with that guard gone and prove nothing. What this asserts
+// is what only the live path can be wrong about.
+func TestACorrectionTypedIntoARunningTaskBreaksThePhaseFold(t *testing.T) {
+	a, fake, _ := roomApp(t)
+	fake.journal = workedJournal(t)
+	a.workMode = config.WorkFold
+	a.openRoom(7, "Draw two posters")
+
+	before := len(derivePhaseFolds(a.room.entries))
+	if before == 0 {
+		t.Fatal("the page folded nothing before the correction, so this proves nothing")
+	}
+
+	// The correction, typed and sent at the page the way a person sends one.
+	a.input.setText("portrait, not landscape")
+	drive(t, a, key("enter"))
+
+	if len(fake.steered) != 1 {
+		t.Fatalf("the line did not reach the node: %v", fake.steered)
+	}
+	elbow := -1
+	for i := range a.room.entries {
+		if a.room.entries[i].kind == entrySteer {
+			elbow = i
+		}
+	}
+	if elbow < 0 {
+		t.Fatalf("the correction did not draw an elbow:\n%s", roomText(a))
+	}
+
+	// AND THE NODE GOES ON WORKING AND THEN SPEAKS, which is what makes this a
+	// real test rather than a vacuous one: a settled paragraph after the elbow is
+	// exactly what would close a phase ACROSS it if the law did not hold.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolBegin, Tool: "generate_image", CallID: "c9",
+		Hint: "generate_image", Args: `{"prompt":"portrait"}`,
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolEnd, Tool: "generate_image", CallID: "c9", Output: "wrote portrait.png",
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventTextDelta, Text: "Redrawn in portrait.",
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{Kind: session.EventTurnDone}})
+	if after := len(derivePhaseFolds(a.room.entries)); after <= before {
+		t.Fatalf("the work after the correction never settled into a phase (%d then %d), "+
+			"so nothing here could have covered the elbow", before, after)
+	}
+	// THE PHASE THAT CLOSED STARTS AFTER THE CORRECTION, never on or before it.
+	for start, f := range derivePhaseFolds(a.room.entries) {
+		if start <= elbow && f.answer > elbow {
+			t.Fatalf("a chip covers the correction at %d: %+v\n%s", elbow, f, roomText(a))
+		}
+	}
+	// AND THE WORDS ARE ON THE PAGE WITH EVERY CHIP SHUT, which is the whole of
+	// what the person is owed: they said something to running work and can see
+	// that they did, without opening anything.
+	page := roomText(a)
+	if !strings.Contains(page, "portrait, not landscape") {
+		t.Fatalf("the page does not show what the person said:\n%s", page)
+	}
+	if !strings.Contains(page, "Redrawn in portrait.") {
+		t.Fatalf("the paragraph the correction bought is not standing:\n%s", page)
+	}
+	if strings.Contains(page, "generate_image") {
+		t.Fatalf("the work after the correction did not fold into its chip:\n%s", page)
+	}
+}
+
 // EVERY DOOR OPENS A CHIP, because the disclosure ladder may never dead-end:
 // ctrl+e opens the newest, and a scroll up at the top of the page opens the one
 // nearest the top.

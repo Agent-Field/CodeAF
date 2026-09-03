@@ -1025,6 +1025,17 @@ type app struct {
 	// rows, that is the status line costing more than the conversation.
 	hud      hudStats
 	hudStale bool
+	// nodeHud is what each of this session's NODES has added to those same two
+	// questions, tallied per node as its calls close (docs/design/lens/DESIGN.md,
+	// Decision 4). A task's `bash` with background:true starts a process on this
+	// machine exactly as the conversation's does, and until it was counted the Σ
+	// segment and the quit guard were silent about every one of them.
+	//
+	// IT IS KEYED BY NODE AND KEPT FOR THE SESSION because a room's entries are
+	// dropped when its page closes ([app.closeRoom]) and a count that appeared
+	// only while somebody had the page open would be a count nobody can act on.
+	// [app.foldNodeStat] is the only writer.
+	nodeHud map[uint64]*statWalk
 
 	// stream is the channel being pumped and gen its generation. gen is
 	// bumped by every Submit so that a late event from an abandoned stream can
@@ -7298,54 +7309,140 @@ func (a *app) hudStats() hudStats {
 }
 
 func (a *app) computeStats() hudStats {
-	var out hudStats
-	// live holds the ids of the background jobs this surface watched start, so a
-	// kill can take away the one it names rather than the newest.
-	var live []string
+	var walk statWalk
 	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || e.status != toolOK {
-			continue
-		}
-		fields := argsOf(e.detail.Args)
-		switch e.tool {
-		case "edit":
-			adds, dels, _ := editStat(e.detail.Args)
-			out.adds, out.dels = out.adds+adds, out.dels+dels
-		case "write":
-			content, _ := argBody(argString(fields, "content"))
-			out.adds += lineCount(content)
-		case "bash":
-			if argString(fields, "background") != "true" {
-				continue
-			}
-			out.jobs++
-			live = append(live, jobID(e.detail.Output))
-		case "watch":
-			out.watches++
-		case "jobs":
-			if argString(fields, "action") != "kill" {
-				continue
-			}
-			id := argString(fields, "id")
-			if at := indexOf(live, id); id != "" && at >= 0 {
-				live = append(live[:at], live[at+1:]...)
-				out.jobs--
-				continue
-			}
-			// An id this surface never saw start is a watch's — watches are
-			// jobs too (kind watch) and their start line publishes no id — and
-			// failing that it is a job from before we were looking.
-			if out.watches > 0 {
-				out.watches--
-				continue
-			}
-			if out.jobs > 0 {
-				out.jobs--
-			}
-		}
+		walk.fold(&a.entries[i])
+	}
+	// AND WHAT THE SESSION'S NODES STARTED, which is the other half of the same
+	// sentence (docs/design/lens/DESIGN.md, Decision 4). A node runs `bash` with
+	// background:true exactly as the conversation does, on this machine, out of
+	// this session — and until this landed the Σ segment said nothing about it
+	// and the quit guard let a person walk away from three servers a task had
+	// started ([app.quitArmed]).
+	//
+	// IT IS A TALLY AND NOT A SECOND WALK, and that is the whole of why the
+	// numbers do not flicker. A room's entries live only while its page is open
+	// ([app.closeRoom] drops them), so a walk over them would have counted a
+	// node's jobs on the frames somebody was LOOKING at that node and not on the
+	// others — a count that changes because you opened a page is a count nobody
+	// can act on. The tally is folded once, by the room's reducer, at the instant
+	// a call closes ([app.roomFeedHooks]), and it stays folded.
+	out := walk.out
+	for _, node := range a.nodeHud {
+		out.jobs += node.out.jobs
+		out.watches += node.out.watches
+		out.adds += node.out.adds
+		out.dels += node.out.dels
 	}
 	return out
+}
+
+// callClosed reports whether this row is A CALL THAT FINISHED, either way — the
+// one event on this surface that can move a count.
+//
+// IT IS ONE FUNCTION BECAUSE TWO COUNTS ASK IT. The ambient sums walk it here
+// ([statWalk.fold]) and a room's header counts calls with it (room.go's
+// [roomWorkOf]), and a header that said `14 tool calls` beside a Σ segment
+// summing a different fourteen would be the surface keeping two clocks about
+// one fact (docs/design/lens/DESIGN.md, Decision 4).
+func callClosed(e *entry) bool {
+	return e.kind == entryTool && (e.status == toolOK || e.status == toolFailed)
+}
+
+// statWalk is the ambient counts being summed, and the state that sum carries
+// between entries. It is a type rather than a loop body because TWO CALLERS FOLD
+// THE SAME ARITHMETIC: the conversation walks its whole list on demand
+// ([app.computeStats]), and a node's page folds one call at a time as its
+// reducer closes it ([app.foldNodeStat]) — and two spellings of "what a finished
+// call adds to the counts" is two spellings that drift.
+type statWalk struct {
+	out hudStats
+	// live holds the ids of the background jobs this walk watched start, so a
+	// kill can take away the one it names rather than the newest.
+	live []string
+}
+
+// fold adds one entry to the counts, and ignores everything that is not a call
+// that finished cleanly.
+func (w *statWalk) fold(e *entry) {
+	if !callClosed(e) {
+		return
+	}
+	// AND ONLY A CALL THAT WORKED CHANGED ANYTHING. A failed edit wrote no lines
+	// and a failed `bash` started no process, so a finished call still has to
+	// have succeeded before it moves a count — which is the one place these sums
+	// narrow what [callClosed] admits, and it is narrower on purpose rather than
+	// by a second definition of "finished".
+	if e.status != toolOK {
+		return
+	}
+	fields := argsOf(e.detail.Args)
+	switch e.tool {
+	case "edit":
+		adds, dels, _ := editStat(e.detail.Args)
+		w.out.adds, w.out.dels = w.out.adds+adds, w.out.dels+dels
+	case "write":
+		content, _ := argBody(argString(fields, "content"))
+		w.out.adds += lineCount(content)
+	case "bash":
+		if argString(fields, "background") != "true" {
+			return
+		}
+		w.out.jobs++
+		w.live = append(w.live, jobID(e.detail.Output))
+	case "watch":
+		w.out.watches++
+	case "jobs":
+		if argString(fields, "action") != "kill" {
+			return
+		}
+		w.kill(argString(fields, "id"))
+	}
+}
+
+// kill takes one job away from the counts, by name where this walk saw it start.
+func (w *statWalk) kill(id string) {
+	if at := indexOf(w.live, id); id != "" && at >= 0 {
+		w.live = append(w.live[:at], w.live[at+1:]...)
+		w.out.jobs--
+		return
+	}
+	// An id this surface never saw start is a watch's — watches are jobs too
+	// (kind watch) and their start line publishes no id — and failing that it is
+	// a job from before we were looking.
+	if w.out.watches > 0 {
+		w.out.watches--
+		return
+	}
+	if w.out.jobs > 0 {
+		w.out.jobs--
+	}
+}
+
+// foldNodeStat folds ONE of a node's finished calls into that node's own tally.
+//
+// EACH NODE KEEPS ITS OWN WALK because a kill matches a start BY ID and the ids
+// are the machine's: a node killing job 3 must take away job 3 as that node
+// started it, not whichever job the conversation started last.
+//
+// It is called from the room's reducer and nowhere else, so a call is folded
+// EXACTLY ONCE — the moment it closes on the wire. Reopening a room replays its
+// journal through the shaper rather than the reducer ([app.roomRecord]), which
+// is what keeps a second visit from counting the same work twice.
+func (a *app) foldNodeStat(id uint64, e *entry) {
+	if a.nodeHud == nil {
+		a.nodeHud = map[uint64]*statWalk{}
+	}
+	walk, ok := a.nodeHud[id]
+	if !ok {
+		walk = &statWalk{}
+		a.nodeHud[id] = walk
+	}
+	walk.fold(e)
+	// THE COUNTS THE SURFACE IS SHOWING ARE NOW OLD, and this is the one place a
+	// room can say so: the cache is the conversation's and nothing else drops it
+	// on a node's event (see [app.hudStats]).
+	a.hudStale = true
 }
 
 // jobID reads the id out of a background bash call's own answer, which session
