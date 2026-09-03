@@ -574,9 +574,15 @@ front of it — and, if the gap survives that, the work that closes it, planned 
 like any other piece. You see one line: `a review found this still missing: … — finishing
 that before delivering`.
 
-**Three things can stop that round being bought, and only one of them means the review was
-wrong.**
+**Four things can stop that round being bought, and two of them end the run finished.**
 
+- **The request is already satisfied.** Before any repair is started, the run asks one more
+  question with your request in front of it exactly as you wrote it: is this, as stated,
+  satisfied by what is in hand? A yes ends the job there, with `the request was met as
+  stated` on the record and on the last line. Nothing is redone and nothing is queued. It is
+  only ever asked about the review's own reading of your words — never about something
+  measured, such as a file that is not on disk, a check this work turned red, or a behaviour
+  nothing exercises. See "Why it kept going after it already had the answer" below.
 - **It is already there.** The file the review says is missing is on disk under the name
   you used. The review was checked against the world and lost, and the answer is handed
   over as finished: `a review raised this: … — I've delivered as it stands, because what
@@ -597,7 +603,7 @@ wrong.**
   this still missing: … I've taken it as far as repair takes it: there is not enough time
   left on the run to finish it.`
 
-**Only the first of those is a finished run.** The other two hand over something the run
+**Only the first two of those are a finished run.** The other two hand over something the run
 itself says is short, so the work lands as **partial** — headless, `aforge do` leaves with
 **exit 2: the run handed over less than it promised, and the finding it is short of is
 named on the last line.** That is the whole difference: a refusal that was checked against
@@ -1231,6 +1237,12 @@ rather than lines because one line of yours often states several things at once,
 checklist that read "defaults are threshold = 5, cooldown = 30000, halfOpenMaxRequests = 1"
 as one behaviour had nothing fine enough to match a check to.
 
+Each point is also read as one of two kinds: a **behaviour** of the finished work — a rule
+it follows, a case it handles, an output it produces — or an **action** of the run, which is
+something done on the way rather than something the result is: a command run, a report
+made, a file read. Both stay on the list, because both are your words. Only behaviours are
+ever matched to a check.
+
 **When there is no list.** A request that states no checkable behaviour — a question, a
 lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
 exactly as it would have without any of this.
@@ -1272,6 +1284,19 @@ when the review's own finding is refused**: a ruling about where a review got it
 nothing about a behaviour nothing exercises. If nothing closes it the run lands partial
 rather than finished.
 
+**It is only ever raised where a check could exist**, and there are three ways it is not.
+A point of your request that names something the RUN does — a command to run, a report to
+make, a file to read — is written down as an action and is never matched to a check at all;
+nothing a repository can run would fail because a command that has already been run were
+not run. A run that **changed no code** is asked for no check either: there is nothing for
+one to be missing from, and the run says so on its record — "the work changed no code, so
+there is no check to ask for". And where the project's own checks **could not be read** —
+the suite was never run, was killed at its ceiling, or failed to collect — and the change
+itself declares none, the answer is that nothing measured it, not that nothing exercises
+it: "the project's checks could not be read and the work's own diff names none, so no
+behaviour could be matched to a check". No finding, and no round bought for it. A suite
+that ran and genuinely has no tests is a real measurement and still raises the finding.
+
 Watching a headless run, it is one line under the verdict — the first behaviour named, the
 rest counted:
 
@@ -1279,6 +1304,77 @@ rest counted:
   gate: fail — The deliverable is a report about the work rather than the work.  14m39s
   no check exercises — A half-open probe holds its slot across internal retries — and 2 more  14m39s
 ```
+
+## Why it kept going after it already had the answer — it said partial but the tests were green
+
+At the moment the run would otherwise buy another round — a review has failed the work and
+a repair is about to be started — one more question is asked, with your request in front of
+it exactly as you wrote it: **is this request, as stated, satisfied by what is in hand?**
+
+A yes ends the job there. No repair, no extra work planned, no reservation on the delivery;
+the run finishes and says, under the same ✓ the rest of the stream uses:
+
+```
+  ✓ run it — the request was met as stated
+```
+
+That sentence — `the request was met as stated` — is the receipt, and it is on the run's
+own record as well as on the screen. A run that ends this way is finished, not partial.
+
+The question is asked at that one moment and nowhere else, so it costs one model call in
+place of the round it replaces, and nothing on the ordinary path. It is asked with the
+deliverable and the record of what changed, and it is told that form is not substance: an
+answer wrapped in a sentence, put in a code block, or given under a heading **is** the
+answer. It is also told not to add what a careful engineer would also do, and not to treat
+finished work that was not re-checked as something missing.
+
+When the answer is no, nothing changes: the repair round is bought exactly as before, and
+what the question found absent is kept on the record beside the review's own gap rather
+than mixed into it. If that repair round produces a new answer, the new answer gets its own
+question before any further work is planned — but one verdict is never asked about twice.
+
+**It is never asked about something measured.** A file the plan promised that is not on
+disk, a check that passed before the work and fails after it, a name nothing in the tree
+binds, a behaviour no check exercises: those are facts gathered from your project, and no
+reading of your request can talk one away. The question is put only about what the review
+itself concluded from your words.
+
+There is a second receipt for a different ending. Where the project's own checks could not
+be read at all but the work's own checks ran and every one of them settled, the delivery
+carries `checked by tests, coverage not measured` — so a run whose tests are green is never
+called partial, and never quietly passed either. The receipt says which of the two it was.
+
+## "It failed but the tests were green" — the model dropped out after finishing
+
+A worker can write the change, run your project's own checks, find them green, and then have
+its very next call to the model never come back — the provider refuses it, or the connection
+dies. That used to end the run: exit 1, the provider's own sentence printed as the
+deliverable, and nothing anywhere had looked at the work sitting on disk.
+
+**A worker cut off on the wire is judged on the tree.** Where the last attempt ended because
+a CALL failed rather than because the WORK failed, and the worker left files behind, what is
+on disk is put to the same review a delivered worker faces: the reading of your project's own
+checks first, then the one question — *is this request, as stated, satisfied by what is in
+hand?* A yes ends the run finished, under the same ✓ every satisfied run gets:
+
+```
+  ✓ fix the pager tempfile mode — the request was met as stated
+```
+
+and in plain words on the run's own record:
+
+```
+the work landed and was checked on the tree; the last message from the model never arrived
+```
+
+**A no leaves the failure exactly where it was**, with both facts written down: `the last
+message from the model never arrived, and what is on the tree does not do what was asked
+— …`. Anything measured decides it before the question is even asked — a check this work
+turned red, a name nothing in the tree binds, a rule you stated and the work broke.
+
+**It widens nothing else.** A worker cut off having written no file still fails as it did;
+so does one whose own work errored, and one whose clock ran out; and where the review itself
+could not be reached, the failure stands rather than being passed.
 
 ## When a check names what you asked for and asserts nothing about it
 

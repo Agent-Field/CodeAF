@@ -1511,6 +1511,20 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		}
 		verdict, detail := gateWords(gate)
 		w.note("gate: "+verdict, detail)
+		// AND A DELIVERY THAT ENDED BECAUSE WHAT WAS ASKED FOR IS IN HAND SAYS
+		// SO, under the mark this stream already uses for work that finished.
+		//
+		// It is the one positive line the gate can write and it is the whole
+		// repair of a silence that was being read as its opposite: a run that
+		// had the answer at two minutes and then spent eleven more on rounds
+		// ended on the word `partial`, and nothing anywhere said that the thing
+		// the person asked for had been done. The receipt says which of the two
+		// endings this was — the request met as stated, or the work's own checks
+		// green over coverage nobody could measure — in the words the record
+		// keeps. See revision.RequestMetWords and revision.CheckedNotMeasured.
+		if receipt := strings.TrimSpace(gate.Receipt); receipt != "" {
+			w.say("✓", nodeDisplay(node), receipt)
+		}
 		// The coverage finding gets its own line, because it is a different
 		// fact from the verdict and it is the one the acceptance line above
 		// promised. A FAIL-SAFE PROPAGATES TO THE VERDICT THE PERSON READS

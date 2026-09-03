@@ -123,3 +123,29 @@ func TestTheSubtractionIsOrderStableAndNamesNothingTwice(t *testing.T) {
 		t.Errorf("NewFailures = %#v, want %#v in the after reading's own order", got, want)
 	}
 }
+
+// A SLASH MEANS A PATH, AND A PATH IS NOT QUALIFIED BY ITS DOTS. The last dotted
+// segment of a name is a class or a package the check hangs off — but only where
+// the name is a qualified name at all. In a path that dot is an extension or a
+// package's own name, and reducing it left one reading identified as `test` and
+// another as `py`.
+func TestAPathIsNotQualifiedByItsDots(t *testing.T) {
+	for name, want := range map[string]string{
+		// Paths and package names, which keep every byte they arrived with.
+		"example.com/widget.test": "example.com/widget.test",
+		"tests/x.py":              "tests/x.py",
+		"example.com/circuit":     "example.com/circuit",
+		// A file named with no directory in front of it is still a file.
+		"x.py": "x.py",
+		// And the qualifications that DO reduce, including the subtest — which
+		// is read off before any of this, or its own slash would keep it.
+		"TestX/sub":                  "TestX",
+		"example.com/pkg.TestX/sub":  "TestX",
+		"pkg.Class.method":           "method",
+		"Ofetch.Tests.Api.OpensOnce": "OpensOnce",
+	} {
+		if got := CheckIdentity(name); got != want {
+			t.Errorf("CheckIdentity(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

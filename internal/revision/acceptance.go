@@ -22,6 +22,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -115,6 +117,22 @@ func checkEvidence(evidence Evidence, reading verify.Reading) []string {
 		added, _ := verify.PatchChecks(patch)
 		checks = append(checks, added...)
 	}
+	// AND THE CHECKS THE RUN WROTE ARE READ OFF THE TREE WHEN THERE IS NO DIFF
+	// TO READ THEM OUT OF. This is the same source as the line above it — the
+	// declarations the work itself made — reached by the one route that does
+	// not depend on a worker having derived a patch.
+	//
+	// It is here because the diff route is, today, never taken: Evidence.Patch
+	// is filled from outcome.Account.Patch and nothing in this tree sets
+	// Outcome.Account any more, so every belt reached this reader with the
+	// patch half empty. A real issue measured it — a run wrote 195 lines of
+	// pytest covering seven stated behaviours, the project's own suite could
+	// not collect, the mapping call went out carrying a roster of nothing, and
+	// the gate declared six behaviours unexercised three times over a fix whose
+	// tests were green (2026-09-02, deepseek-v4-flash, Human-Agent-Society/reef
+	// #145). THE WORK'S OWN CHECKS ARE THE ONE SOURCE THAT DOES NOT NEED THE
+	// PROJECT TO COLLECT, and they were the one source that never arrived.
+	checks = append(checks, declaredByTheRun(evidence)...)
 	roster := reading.After.Reported
 	if !reading.AfterTaken {
 		// The before roster is the fallback and not a substitute: it names the
@@ -127,7 +145,59 @@ func checkEvidence(evidence Evidence, reading verify.Reading) []string {
 	if reading.Taken {
 		checks = append(checks, roster...)
 	}
-	return verify.Subtract(checks, nil)
+	// ONE ENTRY PER CHECK, however many readers named it. The three sources
+	// above are two readers of the same suite — a diff and a tree read for what
+	// they DECLARE, a runner read for what it REPORTED — and a check the run
+	// wrote and the suite then ran is named by both. Subtract compares strings
+	// and would let `test_headers` and `tests/api_test.py::test_headers` through
+	// as two checks, which tells the mapping a behaviour is covered twice.
+	// verify.CheckIdentity is what says they are one.
+	return verify.UniqueChecks(checks)
+}
+
+// declaredByTheRun is every check identity the run's own new and changed check
+// files declare, read out of the tree the delivery stands in.
+//
+// The record is the artifact registry SETTLED AGAINST THE FILESYSTEM by the
+// time any of this is asked (Evidence.completeAgainstTheWorld), so a path here
+// is a file that exists, and verify.OwnChecks is the same rule the mapping's
+// own grounding door uses to decide which of them are checks — one reading of
+// "this is a test file", not two.
+//
+// The identities come back as the runner-independent bare names
+// verify.DeclaredChecks reads, which is what the diff route already produced,
+// so nothing downstream learns a second spelling. A name that the project's own
+// roster ALSO reported arrives twice, spelled the runner's way the second time,
+// and the two are collapsed to one check by the verify.UniqueChecks above.
+//
+// It is bounded twice, by the same two numbers the mapping's body reader
+// spends: a repository of generated fixtures may not turn a cheap scan into an
+// unbounded one, and a file this could not read declares nothing — which leaves
+// the point uncovered, the safe direction.
+func declaredByTheRun(evidence Evidence) []string {
+	root := strings.TrimSpace(evidence.Workspace)
+	if root == "" || len(evidence.Artifacts) == 0 {
+		return nil
+	}
+	budget := mappingBodyBudget
+	var checks []string
+	for _, path := range verify.OwnChecks(root, evidence.Artifacts) {
+		if budget <= 0 {
+			break
+		}
+		whole := filepath.Join(root, filepath.FromSlash(path))
+		info, err := os.Stat(whole)
+		if err != nil || info.IsDir() || info.Size() > mappingBodyBytes {
+			continue
+		}
+		body, err := os.ReadFile(whole)
+		if err != nil {
+			continue
+		}
+		budget -= len(body)
+		checks = append(checks, verify.DeclaredChecks(string(body))...)
+	}
+	return checks
 }
 
 // jobReading is THE PHOTOGRAPH THE JOB TOOK, not the one this round's worker
@@ -952,7 +1022,11 @@ func requestLine(quote string, lines []string) int {
 // Sourced, for the same reason as its two siblings: nobody has to ask for their
 // tests to keep existing.
 func WeakenedChecks(removed, vanished []string) (judgment Judgment, ok bool) {
-	gone := verify.Subtract(append(append([]string{}, removed...), vanished...), nil)
+	// The two sources spell one check two ways — the diff names the declaration
+	// it took out, the roster names what the runner called it — so they are
+	// unioned by identity and not by string. A check deleted from a file the
+	// suite also ran was otherwise named twice in one finding.
+	gone := verify.UniqueChecks(append(append([]string{}, removed...), vanished...))
 	if len(gone) == 0 {
 		return Judgment{}, false
 	}
@@ -1031,7 +1105,169 @@ func settleUnmeasured(verdict Judgment, evidence Evidence, reading verify.Readin
 			verdict.Unmeasured += ": " + why
 		}
 	}
+	// AND A RUN WHOSE OWN CHECKS RAN AND SETTLED IS NOT A RUN NOTHING CHECKED.
+	//
+	// Unreadable is the fact that turns a pass into a partial, and it is the
+	// right fact about a project whose suite nobody could read. It is not the
+	// whole fact about a delivery whose own checks ran and every one of them
+	// came back settled: something was checked, it is simply not the thing the
+	// coverage question asks about. A person told "partial" over work whose
+	// tests are green has been told something false, and told nothing at all is
+	// worse — so the receipt says WHICH of the two happened, in one sentence,
+	// on the record and in what they read.
+	//
+	// The fallback is the worker's STRUCTURED account of what it ran, settled
+	// against the two lists the world produced, and never the deliverable's
+	// prose about its own tests — that sentence is weighed by nothing in this
+	// file and this does not become the exception.
+	if verdict.Unreadable && checkedByItsOwnTests(evidence) {
+		verdict.Unreadable = false
+		verdict.Receipt = CheckedNotMeasured
+	}
 	return verdict
+}
+
+// CheckedNotMeasured is the receipt a delivery earns where the coverage
+// question had no measurement to answer from and the work's own checks ran and
+// settled. It is stated once because three readers spell it: the settlement
+// sets it, the journal keeps it, and the closing narration says it.
+const CheckedNotMeasured = "checked by tests, coverage not measured"
+
+// checkedByItsOwnTests says the work ran checks of its own and every one of
+// them settled, with nothing the world measured standing against them.
+//
+// Three conditions and all three are facts rather than claims. The account is
+// the worker's structured record of what it ran and what each run found, which
+// is the same reader plan's remainder judge already spends (exec.Account.
+// Verified); OwnFailing is the checks this run wrote that are red, read off the
+// two photographs; Regressed is what this run turned red that was green before
+// it. A run with an empty account answers no, because "nothing was checked" and
+// "everything passed" are the two answers a silence used to collapse into.
+func checkedByItsOwnTests(evidence Evidence) bool {
+	return evidence.Account.Verified() &&
+		len(evidence.OwnFailing) == 0 && len(evidence.Regressed) == 0
+}
+
+// The three sentences the settlement gives instead of a coverage finding, each
+// stated once because the journal keeps them and a person reads them.
+//
+// They are Unmeasured-shaped on purpose: the field already means "the gate
+// answered and this half of its question had no evidence to answer from", and
+// all three of these are that fact with a different reason attached. A separate
+// boolean per reason would be three fields nothing reads together.
+const (
+	// NoBehaviourAsked is a request that asks for things to be DONE rather than
+	// for something to BE a certain way. Nothing a repository could run would
+	// fail if a command that has already been run were not run.
+	NoBehaviourAsked = "the request states what the run is to do rather than what the " +
+		"finished work is to be, so there is no behaviour a check could exercise"
+	// NoCodeChanged is a run that left the tree as it found it. A check
+	// exercises something that exists; a run that produced nothing to exercise
+	// has nothing for one to be missing from.
+	NoCodeChanged = "the work changed no code, so there is no check to ask for"
+	// CoverageUnread is the reading that was not taken, was cut, or could not
+	// collect, on a run whose own change declares no checks either. AN EMPTY OR
+	// UNREADABLE ROSTER IS NOT EVIDENCE THAT NO CHECK EXISTS.
+	CoverageUnread = "the project's checks could not be read and the work's own diff names " +
+		"none, so no behaviour could be matched to a check"
+)
+
+// sayUnmeasured records why the coverage half of this verdict was not settled,
+// and never overwrites a sentence that is already there.
+//
+// settleUnmeasured's reading is about the WORLD — whether anything could be
+// read at all — and it is both the older and the more particular fact. Where
+// both hold, a verdict should say the one that is about this run's own tree.
+func sayUnmeasured(verdict Judgment, why string) Judgment {
+	if strings.TrimSpace(verdict.Unmeasured) == "" {
+		verdict.Unmeasured = why
+	}
+	return verdict
+}
+
+// unaskable is the verdict of a delivery THE COVERAGE QUESTION COULD NOT BE PUT
+// OF AT ALL, and it takes Unreadable back off.
+//
+// Unreadable says the project declared a way of checking itself and this run
+// could not read it, and it is what turns a pass into a partial — the floor
+// that stops a delivery nothing checked from leaving as done (FAILSAFE clause
+// 5). It is settled above this, before anything has classified what the request
+// even asked for, and that ordering was wrong for exactly two runs: one whose
+// request states no behaviour of any finished thing, and one that changed no
+// code. NEITHER OF THEM HAS A COVERAGE QUESTION TO ANSWER, so a suite that
+// timed out somewhere else in the repository says nothing whatever about them,
+// and holding such a delivery partial over it charges an errand for a silence
+// that could not have acquitted it either.
+//
+// The read-only errand is the case that measured it: "run this command and
+// report the final line, change no files", over a project whose whole-suite
+// reading was cut at its ceiling, failed Whole() and left as `partial` — and
+// there was never a check that could have exercised anything it asked for.
+//
+// The third silence is NOT this one. Where the request states behaviours over a
+// change that was made, an unreadable suite leaves a real question unanswered
+// and Unreadable stands, which is where ink s7 exited 0 at 13 of 25.
+func unaskable(verdict Judgment, why string) Judgment {
+	verdict.Unreadable = false
+	verdict.Unmeasured = why
+	return verdict
+}
+
+// codeChanged says this run left something behind that a check could exercise,
+// AND IT ANSWERS YES WHEREVER IT CANNOT TELL.
+//
+// A run that changed nothing has nothing for a check to be missing from, and
+// asking which repository test exercises it is a question with no answer: the
+// errand that measured this bought two coverage-mapping calls carrying ~127k
+// prompt tokens each, on a run whose whole instruction was to change no files.
+//
+// But AN EMPTY RECORD IS ONLY A FACT WHERE SOMEBODY WAS RECORDING, which is the
+// distinction Evidence.Observed exists for and the one this rule would
+// otherwise collapse. A caller holding no outcome, a judgement reached off a
+// rehydrated row, a test that builds a bare Evidence — none of them are runs
+// that demonstrably changed nothing, and skipping the coverage question over
+// them would switch the whole mechanism off by omission. So the unobserved run
+// is mapped exactly as it was before this rule existed.
+//
+// Where somebody was recording, the two sources are the world rather than an
+// account of it: the change's own text where a diff was derived, and the run's
+// record settled against the filesystem otherwise. verify's own split of a
+// record into checks and sources decides whether a path counts, so "which of
+// these files is part of the project" is read one way here and in the mapping's
+// grounding door rather than two — and a path outside the workspace is in
+// neither list, which is what keeps a run's own sidecars from reading as a
+// change to the project.
+func codeChanged(evidence Evidence) bool {
+	if !evidence.Observed || strings.TrimSpace(evidence.patchSource()) != "" {
+		return true
+	}
+	root := strings.TrimSpace(evidence.Workspace)
+	if root == "" {
+		return len(evidence.Artifacts) > 0
+	}
+	return len(verify.ChangedSources(root, evidence.Artifacts)) > 0 ||
+		len(verify.OwnChecks(root, evidence.Artifacts)) > 0
+}
+
+// rosterSpeaks says the reading this settlement holds is one the coverage
+// question can be asked of — that somebody looked and the looking finished.
+//
+// It is asked only where the check list came back EMPTY, and there it is the
+// whole difference between two answers wearing one silence. A project with a
+// runner and no tests answers "there is no check for this", and that is a
+// measurement and a finding. A suite that could not collect, was killed at its
+// ceiling, or printed nothing a reader recognised answers NOTHING, and reading
+// that as "there is no check for this" is the gate's own doctrine turned on
+// itself — silence in the records is evidence, never proof.
+func rosterSpeaks(reading verify.Reading) bool {
+	if !reading.Taken || reading.Partial {
+		return false
+	}
+	result := reading.Before
+	if reading.AfterTaken {
+		result = reading.After
+	}
+	return !result.TimedOut && !result.Uncollected && strings.TrimSpace(result.Error) == ""
 }
 
 func settleAcceptance(ctx context.Context, settings config.Config, client *pool.Client,
@@ -1064,6 +1300,24 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 		return verdict
 	}
 	RememberChecklist(job, points)
+	// A GATE CHECKS THE REQUEST THE PERSON MADE, NOT THE REQUEST THE GATE
+	// IMAGINES. The checklist is the person's whole ask and is remembered whole;
+	// what is MAPPED is the half a check could exist for. An action of the run —
+	// a command it runs, a report it makes, a step it takes — is exercised by no
+	// repository test that could ever be written, and asking which one does is a
+	// question with no answer that nonetheless buys a repair round to go and
+	// find it. See plan.Behaviours.
+	behaviours := plan.Behaviours(points)
+	if len(behaviours) == 0 {
+		return unaskable(verdict, NoBehaviourAsked)
+	}
+	// AND A CHECK EXERCISES SOMETHING THAT EXISTS. A run that left the tree as
+	// it found it produced nothing for a check to be missing from, so there is
+	// no coverage question to ask and no round to buy for the answer. The
+	// delivery is still judged for substance by everything above this.
+	if !codeChanged(evidence) {
+		return unaskable(verdict, NoCodeChanged)
+	}
 	if !Measured(evidence) && !reading.Taken {
 		// AND A FINDING ALREADY MEASURED STANDS UNTIL A MEASUREMENT CLOSES IT.
 		// A behaviour an earlier round proved nothing exercises does not become
@@ -1097,6 +1351,31 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// skipped the question left the set exactly where it was and called that
 	// progress.
 	checks := checkEvidence(evidence, reading)
+	// AN EMPTY OR UNREADABLE ROSTER IS NOT EVIDENCE THAT NO CHECK EXISTS.
+	//
+	// This is the gate's own doctrine turned on itself — silence in the records
+	// is evidence, never proof. A reading that was TAKEN and named nothing is a
+	// measurement and maps: the project was asked how it checks itself, it
+	// answered, and nothing it printed exercises anything. A reading that was
+	// never taken, was cut at its ceiling, or could not collect answers NOTHING,
+	// and mapping six stated behaviours against that silence declares them
+	// unexercised over a fix whose own tests are green — three times, on a real
+	// issue, while the deliverable in the same gate named the ten tests that
+	// exercise them (2026-09-02, Human-Agent-Society/reef #145). The mapping
+	// call went out carrying 1,598 tokens of roster; the same call on a project
+	// that could be read carries ~127k.
+	//
+	// There is no measurement here, so the verdict says so and buys nothing —
+	// and where the work's own checks ran and settled it says THAT too, because
+	// a person owed an answer about green work must not be handed either a
+	// partial or a silence. See CheckedNotMeasured.
+	if len(checks) == 0 && !rosterSpeaks(reading) {
+		verdict = sayUnmeasured(verdict, CoverageUnread)
+		if strings.TrimSpace(verdict.Receipt) == "" && checkedByItsOwnTests(evidence) {
+			verdict.Receipt = CheckedNotMeasured
+		}
+		return verdict
+	}
 	// AND WHAT COMES BACK GOES THROUGH THE SAME DOOR A CITATION GOES THROUGH.
 	// The mapping is one model call, and a pairing it makes on vocabulary alone
 	// is a behaviour declared covered by a check that is merely about the same
@@ -1108,14 +1387,17 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// or does it only visit it. See WeighAssertions — a check that calls
 	// `write(expand=True)` and asserts the widget has some lines names every
 	// symbol the behaviour names and weighs none of them.
-	mapping := WeighAssertions(evidence.Workspace, job, evidence.Artifacts, points,
-		GroundMapping(evidence.Workspace, evidence.Artifacts, points,
-			MapChecks(ctx, settings, client, node, points, checks, workerModel)))
+	mapping := WeighAssertions(evidence.Workspace, job, evidence.Artifacts, behaviours,
+		GroundMapping(evidence.Workspace, evidence.Artifacts, behaviours,
+			MapChecks(ctx, settings, client, node, behaviours, checks, workerModel)))
 	verdict.Exercises = mapping
-	finding, unexercised := Unexercised(points, mapping, grounds)
+	finding, unexercised := Unexercised(behaviours, mapping, grounds)
 	// Measured either way. An empty set is the news that this round closed the
-	// gap, and it is exactly the answer that must not be lost.
-	RememberUnexercised(job, finding.Unexercised, finding.Unasserted, len(points))
+	// gap, and it is exactly the answer that must not be lost. The score it is
+	// remembered with counts BEHAVIOURS: "2 of 7" over a checklist whose other
+	// five entries are things the run did is a fraction of a number nobody
+	// stated.
+	RememberUnexercised(job, finding.Unexercised, finding.Unasserted, len(behaviours))
 	if !unexercised {
 		return verdict
 	}
