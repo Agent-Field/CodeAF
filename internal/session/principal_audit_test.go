@@ -55,6 +55,9 @@ func TestAnEditToAFileTheProjectAlreadyHadIsWorkTheSessionMade(t *testing.T) {
 	if err := os.WriteFile(existing, []byte("def discover(): ...\n"), 0o644); err != nil {
 		t.Fatalf("writing the project's file: %v", err)
 	}
+	// The digest the ledger takes at pre-action, which is what makes the edit
+	// below a change rather than a path somebody wrote to.
+	before := fileDigest(existing)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.Workspace = tree
 		c.Unattended = true
@@ -64,7 +67,10 @@ func TestAnEditToAFileTheProjectAlreadyHadIsWorkTheSessionMade(t *testing.T) {
 		t.Fatal("a session that has written nothing was said to have made something")
 	}
 
-	agent.rememberChange(fileChange{path: existing, shown: "discover.py", created: false})
+	if err := os.WriteFile(existing, []byte("def discover(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	agent.rememberChange(fileChange{path: existing, shown: "discover.py", created: false, before: before})
 	if !agent.remainsFor("fixed", readerLine{}).Made {
 		t.Fatal("an edit to the project's own file was not counted as work the session made")
 	}
@@ -176,7 +182,7 @@ func TestAPersonsSessionIsOfferedTheScratchAndNeverLosesIt(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = tree })
 	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
 
-	_, found := agent.terminalAudit(context.Background())
+	_, found, _ := agent.terminalAudit(context.Background())
 	if len(found.scratch) != 1 || found.scratch[0] != scratch {
 		t.Fatalf("the scratch was not found: %+v", found.scratch)
 	}
@@ -205,7 +211,7 @@ func TestAnUnattendedSessionPicksUpItsOwnScratch(t *testing.T) {
 	})
 	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
 
-	_, found := agent.terminalAudit(context.Background())
+	_, found, _ := agent.terminalAudit(context.Background())
 	found = agent.sweepSession(found)
 	if len(found.removed) != 1 || found.removed[0] != scratch {
 		t.Fatalf("the scratch was not picked up: %+v", found)
@@ -730,5 +736,349 @@ func TestQueuedBehindWorkThatDidNotFinishIsStuckToo(t *testing.T) {
 	graph.mu.Unlock()
 	if len(flight.stuck) != 0 || len(flight.moving) != 2 {
 		t.Fatalf("work queued behind something that is moving was called stuck: %+v", flight)
+	}
+}
+
+// A FILE WRITTEN BACK TO WHAT IT WAS IS NOT WORK THE SESSION MADE.
+//
+// [Remains.Made] used to turn on the PATH being in the changed ledger, and a
+// path is not a change. Measured on the canary of 2026-09-03: the attrs cell
+// edited the file that held the fix, ran the suite, then ran `git stash` to
+// compare its work against the baseline and never popped it — and the door said
+// `finishing here · what was asked is done` over a tree with zero changed files.
+// A revert and an edit that puts a file back the way it was fail identically.
+func TestAFileWrittenBackToWhatItWasIsNotMade(t *testing.T) {
+	tree := t.TempDir()
+	existing := filepath.Join(tree, "_make.py")
+	original := "def make(): ...\n"
+	if err := os.WriteFile(existing, []byte(original), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	before := fileDigest(existing)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+
+	if err := os.WriteFile(existing, []byte("def make(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	agent.rememberChange(fileChange{path: existing, shown: "_make.py", created: false, before: before})
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("an edit whose content is in the tree was not counted as work the session made")
+	}
+
+	// AND THE WORK GOES BACK OUT OF THE TREE. The ledger still holds the path and
+	// the file is still there; what is gone is the difference.
+	if err := os.WriteFile(existing, []byte(original), 0o644); err != nil {
+		t.Fatalf("putting the project's file back: %v", err)
+	}
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a file written back to exactly what it was counted as work the session made")
+	}
+
+	// A CREATED FILE COUNTS AS IT ALWAYS DID: there was no content before it for
+	// its content to be the same as.
+	fresh := filepath.Join(tree, "test_make.py")
+	if err := os.WriteFile(fresh, []byte("def test_make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the new file: %v", err)
+	}
+	agent.rememberChange(fileChange{path: fresh, shown: "test_make.py", created: true})
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a file the session created was not counted as work it made")
+	}
+
+	// AND A WRITE THROUGH A LINK INSIDE THE TREE IS A WRITE TO WHAT IT POINTS AT.
+	// The ledger's digest is taken through the link (os.Stat and os.Open follow
+	// one), so the reading has to resolve the path too — an Lstat here answered
+	// "not a regular file" and never counted the work at all.
+	linked := t.TempDir()
+	target := filepath.Join(linked, "real.py")
+	if err := os.WriteFile(target, []byte("def real(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the link's target: %v", err)
+	}
+	link := filepath.Join(linked, "linked.py")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("this filesystem has no symlinks: %v", err)
+	}
+	through, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = linked
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	linkBefore := fileDigest(link)
+	if err := os.WriteFile(link, []byte("def real(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("writing through the link: %v", err)
+	}
+	through.rememberChange(fileChange{path: link, shown: "linked.py", created: false, before: linkBefore})
+	if !through.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a write through a link inside the tree was not counted as work the session made")
+	}
+	if err := os.WriteFile(target, []byte("def real(): ...\n"), 0o644); err != nil {
+		t.Fatalf("putting the link's target back: %v", err)
+	}
+	if through.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a link whose target was written back counted as work the session made")
+	}
+}
+
+// A STASH HOLDS WORK THAT IS NOT IN THE TREE, AND THE READING SAYS SO — BUT
+// ONLY THE ENTRIES THIS RUN PUT THERE.
+//
+// The stash is the one account of the session's own work that nothing else in
+// the building can take: the checks, the reconciliation and the session's ledger
+// all read the tree as it stands, and a tree with the fix stashed out of it
+// looks exactly like a tree the fix was never written into. What it may not do
+// is name somebody's older stash, which would tell every run over that
+// repository that work was left undone at every ending, for ever.
+func TestAStashedFixIsNotDone(t *testing.T) {
+	tree := t.TempDir()
+	revertRepo(t, tree)
+	project := filepath.Join(tree, "_make.py")
+	if err := os.WriteFile(project, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the reproduction runs and the suite passes")
+
+	// THE PERSON'S OWN STASH, TAKEN BEFORE THE RUN BEGAN. Nothing this session
+	// does may ever name it.
+	if err := os.WriteFile(project, []byte("half a thought, from last week\n"), 0o644); err != nil {
+		t.Fatalf("writing the person's own work: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("the person's git stash: %v (%s)", err, out)
+	}
+	// AND WITH NO BEFORE-READING NOTHING IS COUNTED, because nobody yet knows
+	// which entries appeared since.
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a session that has taken no before-reading counted %d stash entries", got)
+	}
+	agent.openBaseline(context.Background())
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a stash the person took before the run counted as %d entries of this run's work", got)
+	}
+
+	// The session leaves a file of its own behind, so that what it MADE is not
+	// what is in question here — and then edits the project's file and stashes
+	// the edit to compare against the baseline, exactly as the attrs cell did.
+	note := filepath.Join(tree, "NOTES.md")
+	if err := os.WriteFile(note, []byte("what I found\n"), 0o644); err != nil {
+		t.Fatalf("writing the session's own file: %v", err)
+	}
+	agent.rememberChange(fileChange{path: note, shown: "NOTES.md", created: true})
+	if err := os.WriteFile(project, []byte("def make(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("git stash: %v (%s)", err, out)
+	}
+
+	if got := agent.stashedWork(); got != 1 {
+		t.Fatalf("the reading found %d stash entries of this run's own, want 1", got)
+	}
+	reader := readerLine{answered: true, nothingLeft: true}
+	remains := agent.remainsFor("fixed", reader)
+	if !remains.Made || !remains.ReaderSaysDone {
+		t.Fatalf("the fixture is not the case under test: %+v", remains)
+	}
+	if got := agent.who().Decide(remains); got.Verb != DecideDone {
+		t.Fatalf("the first reading, which has not looked at the tree, answered %+v", got)
+	}
+
+	decision, _ := agent.decideOverTheChecks(context.Background(), remains)
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a done was decided over a stashed fix: %+v", decision)
+	}
+	const said = "1 stash entry holds work that is not in the tree"
+	if !containsWord(decision.Observed, said) {
+		t.Fatalf("the reading never said what it found: %v", decision.Observed)
+	}
+	if !strings.Contains(decision.Brief, said) {
+		t.Fatalf("the brief the next turn opens on never mentions the stash:\n%s", decision.Brief)
+	}
+
+	// AND THE PLURAL IS THE PLURAL. A second stash of this run's own is a second
+	// entry, said as entries rather than as one of them — and the person's is
+	// still not among them.
+	if err := os.WriteFile(project, []byte("def make(): return 2\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file again: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("git stash: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 2 {
+		t.Fatalf("the reading found %d stash entries of this run's own, want 2", got)
+	}
+	remains.Stashed = 2
+	if !containsWord(remains.unmet(), "2 stash entries hold work that is not in the tree") {
+		t.Fatalf("two stashes were not said as two: %v", remains.unmet())
+	}
+}
+
+// AND THE GROUND LADDER'S OWN STASH IS NOT WORK LEFT LYING ABOUT.
+//
+// A landing that has to merge into a ground holding uncommitted work sets that
+// work aside with `git stash push` and puts it back on every road out
+// ([taskTree.carryGroundWork]). The window is short and every road pops, but a
+// terminal reading taken inside it would see the harness's own entry and tell a
+// finished run to carry on. The message the push was given is what tells them
+// apart.
+func TestTheGroundLaddersOwnStashIsNotWorkLeftLyingAbout(t *testing.T) {
+	tree := t.TempDir()
+	revertRepo(t, tree)
+	project := filepath.Join(tree, "_make.py")
+	if err := os.WriteFile(project, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the suite passes")
+	agent.openBaseline(context.Background())
+
+	if err := os.WriteFile(project, []byte("the person's own uncommitted work\n"), 0o644); err != nil {
+		t.Fatalf("writing the ground's uncommitted work: %v", err)
+	}
+	if out, err := git(tree, "stash", "push", "-m", groundStashMessage("task/fix-a-1")); err != nil {
+		t.Fatalf("the ground ladder's git stash push: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a landing's own set-aside work counted as %d entries of unfinished work", got)
+	}
+
+	// AND AN ENTRY THE SESSION PUSHED ITSELF IS STILL COUNTED, so the exception
+	// is the harness's own message and not the stash as a whole.
+	if err := os.WriteFile(project, []byte("def make(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("git stash: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 1 {
+		t.Fatalf("the reading found %d stash entries of this run's own, want 1", got)
+	}
+
+	// AND A SUBJECT THAT MERELY MENTIONS THE SENTENCE IS STILL COUNTED. Somebody
+	// writing about what aforge did is describing their own work, and swallowing
+	// it would be this reading going quiet about the entry it exists to name.
+	if out, err := git(tree, "stash", "pop"); err != nil {
+		t.Fatalf("git stash pop: %v (%s)", err, out)
+	}
+	if out, err := git(tree, "stash", "push", "-m",
+		"before I ask "+groundStashMessage("the parser")); err != nil {
+		t.Fatalf("the person's own git stash push: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 1 {
+		t.Fatalf("a person's stash that quotes the ladder's sentence counted as %d, want 1", got)
+	}
+	for _, subject := range []string{
+		"On main: " + groundStashMessage("task/fix-a-1"),
+		"On (no branch): " + groundStashMessage("task/fix-a-1"),
+	} {
+		if !isGroundStash(subject) {
+			t.Fatalf("the ladder's own entry was not recognised: %q", subject)
+		}
+	}
+	for _, subject := range []string{
+		"WIP on main: 6f67812 " + groundStashMessage("task/fix-a-1"),
+		"On main: before I ask " + groundStashMessage("the parser"),
+		"On main: fixing the parser",
+	} {
+		if isGroundStash(subject) {
+			t.Fatalf("a person's own entry was taken for the ladder's: %q", subject)
+		}
+	}
+}
+
+// A STASH READING THAT COULD NOT BE TAKEN IS NOT AN EMPTY STASH.
+//
+// The two answer the same empty list and mean opposite things. Collapsed into
+// one value, a before-reading over a directory that was not a repository yet, or
+// on a machine with no git, marked the baseline as taken — and every entry the
+// run found afterwards counted as its own doing.
+func TestAStashReadingThatCouldNotBeTakenIsNotAnEmptyStash(t *testing.T) {
+	tree := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the suite passes")
+
+	// The before-reading is taken over a directory that is not a repository, so
+	// there was nothing to read and the flag stays down.
+	agent.openBaseline(context.Background())
+	agent.mu.Lock()
+	read := agent.stashBeforeRead
+	agent.mu.Unlock()
+	if read {
+		t.Fatal("a reading that could not be taken was recorded as having happened")
+	}
+
+	// And now the tree becomes a repository with a stash in it. Nobody knows
+	// whether this run put it there, so nobody says it did.
+	revertRepo(t, tree)
+	project := filepath.Join(tree, "_make.py")
+	if err := os.WriteFile(project, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+	if err := os.WriteFile(project, []byte("def make(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("git stash: %v (%s)", err, out)
+	}
+	if got, read := stashList(tree); !read || len(got) != 1 {
+		t.Fatalf("the tree now holds read=%v with %d entries, want one that reads", read, len(got))
+	}
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a run with no before-reading counted %d stash entries as its own", got)
+	}
+}
+
+// AND A WORKSPACE THAT IS NOT A REPOSITORY SAYS NOTHING ABOUT STASHES. There is
+// nobody to ask, so the honest answer is silence rather than a sentence about a
+// stash that cannot exist — and the same answer covers a machine with no git.
+func TestANonRepositoryWorkspaceSaysNothingAboutStashes(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "_make.py"), []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	if got, read := stashList(tree); read || len(got) != 0 {
+		t.Fatalf("a directory that is no repository answered read=%v with %d entries", read, len(got))
+	}
+	if got, read := stashList(""); read || len(got) != 0 {
+		t.Fatalf("a session with no deliverable tree answered read=%v with %d entries", read, len(got))
+	}
+	agent.openBaseline(context.Background())
+
+	_, _, stashed := agent.terminalAudit(context.Background())
+	if stashed != 0 {
+		t.Fatalf("the terminal reading reported %d stash entries over a plain directory", stashed)
+	}
+	remains := agent.remainsFor("fixed", readerLine{answered: true, nothingLeft: true})
+	remains.Stashed = stashed
+	for _, line := range remains.unmet() {
+		if strings.Contains(line, "stash") {
+			t.Fatalf("a plain directory was told about a stash: %q", line)
+		}
 	}
 }

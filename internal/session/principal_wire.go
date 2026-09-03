@@ -415,6 +415,12 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// ([Agent.rememberChanged]). A fix that is one edit to a file the project
 	// already had is the commonest shape of finished work there is, and a Made
 	// that counted only new files read it as nothing (#513).
+	//
+	// AND CHANGED MEANS ITS CONTENT IS STILL DIFFERENT, not that its path was
+	// once written. A stash, a revert or an edit that puts a file back the way it
+	// was leaves the path in the ledger and nothing in the tree, so each modified
+	// path is settled against the digest taken before the write
+	// ([Agent.changedInDeliverable]).
 	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0 || a.changedInDeliverable()
 	remains.ReaderSaysDone = reader.nothingLeft
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
