@@ -280,7 +280,11 @@ func stripMarkup(title string) string {
 // of them appearing anywhere in an answer means the model handed the
 // instruction back rather than doing what it said. They are matched against the
 // normalized answer, so case, quotes and punctuation do not hide an echo.
-var instructionPhrases = []string{"name this session", "name this piece of work"}
+var instructionPhrases = []string{
+	"name this session",
+	"name this piece of work",
+	"what is this work trying to find out",
+}
 
 // instructionEchoDivisor sets how much of a prompt an answer may borrow: an
 // answer holding one in every two of a prompt's distinct words — HALF of them —
@@ -311,7 +315,7 @@ func namesTheInstruction(name string) bool {
 	for _, word := range said {
 		spoken[word] = true
 	}
-	for _, prompt := range []string{titlePrompt, taskNamePrompt, jobNamePrompt} {
+	for _, prompt := range []string{titlePrompt, taskNamePrompt, jobNamePrompt, captionPrompt} {
 		asked := 0
 		shared := 0
 		for _, word := range uniqueWords(normalizedWords(prompt)) {
@@ -390,7 +394,7 @@ var openerVocabulary = map[string]bool{
 	"ll": true, "would": true, "call": true, "title": true, "titled": true,
 	"name": true, "named": true, "session": true, "for": true, "of": true,
 	"and": true, "your": true, "my": true, "answer": true, "about": true,
-	"called": true, "as": true, "follows": true,
+	"called": true, "as": true, "follows": true, "caption": true,
 }
 
 // allOpenerWords reports whether every word of an answer is announcement.
@@ -412,7 +416,7 @@ func isOpener(words []string) bool {
 		return true
 	}
 	switch words[len(words)-1] {
-	case "title", "name", "is", "about", "called", "answer":
+	case "title", "name", "is", "about", "called", "answer", "caption":
 		return true
 	}
 	return false

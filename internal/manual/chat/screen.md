@@ -1470,15 +1470,19 @@ ever — a column of ticks is a column you must read to learn nothing. In the
 screen-reader tier the marks are `o` queued, `*` running, `x` failed, `.` idle; `?` is
 already ASCII.
 
-At most **3** calls of a turn stay on screen. The rest fold into one line reading
-`↳ 1 earlier tool call · ctrl+o` or `↳ N earlier tool calls · ctrl+o`. Press `ctrl+o`
-or click the line to unfold. Three is the number you can hold without reading: the call
-that is running and the two it followed.
+Calls in one step fold under a short **caption** — one sentence of about 5 to
+10 words saying what that step is doing and where, with the honest call count
+at the right. On a narrow window the caption wraps onto the next line; it is
+never cut with an ellipsis mid-sentence. Press `ctrl+o` on the live caption or
+click it to show the tool rows. A caption can be wrong; the rows beneath it are
+the truth. Before a long live run has a caption, at most **3** calls stay on
+screen and the rest use the fallback `↳ 1 earlier tool call · ctrl+o` or
+`↳ N earlier tool calls · ctrl+o`.
 
-A **task's page** keeps more — as many calls as the window is tall — and its fold line
-reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there scrolling up at the
-top of the page opens it too. The conversation's fold only ever opens with `ctrl+o` or a
-click.
+A **task's page** keeps more in that no-caption fallback — as many calls as the window is
+tall — and its line reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there
+scrolling up at the top of the page opens it too. The conversation's fallback only ever
+opens with `ctrl+o` or a click.
 
 ## What a tool row says, part by part
 
@@ -1560,7 +1564,7 @@ above. It does not any more.
 **To see the whole command, open the call**: click the row anywhere along its length, or
 select it with `↑`/`↓` and press `enter`. The same gesture closes it again. That is per
 call — opening one leaves its neighbours alone — and it is different from `ctrl+e`, which
-folds or unfolds a whole turn's worth of work at once. See *Seeing more of a tool call*.
+opens the newest work chip onto its caption outline. See *Seeing more of a tool call*.
 
 Resizing the terminal re-cuts every row to the new width. Widen the frame past the length
 of the command and the `…` goes away on its own.
@@ -1698,8 +1702,8 @@ lifts the cap.
 **The whole line is the door** — anywhere along it, from the rail to the frame's right
 edge, and the whole line lights up under the pointer to say so. `↑`/`↓` and `enter` reach
 the same door with no pointer at all, and `enter` again closes the call. This opens **one
-call**; `ctrl+e` folds and unfolds a whole turn's machinery, and `ctrl+o` is the run of
-earlier calls a cluster folded away.
+call**; `ctrl+e` opens the newest work chip onto its caption outline, and `ctrl+o` opens
+the live caption's rows or the no-caption fallback of earlier calls.
 
 What you get, per tool, each with its own line cap:
 

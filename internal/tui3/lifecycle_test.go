@@ -589,19 +589,20 @@ func TestHoverFollowsTheFoldLineAndTheThinkingBlock(t *testing.T) {
 	a := toolApp(t, tokens.ANSI256, events)
 	a.toggleLatestWorkfold()
 
-	foldY := screenRowOf(t, a, func(r row) bool { return r.hit == hitFold })
+	foldY := screenRowOf(t, a, func(r row) bool { return r.hit == hitCaption })
 	drive(t, a, motionAt(foldY))
-	if a.hot.kind != hoverFold {
+	if a.hot.kind != hoverCaption {
 		t.Fatalf("the fold line did not answer the pointer: %v", a.hot)
 	}
 	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 	var fold string
 	for _, r := range rows(a) {
-		if r.hit == hitFold {
+		if r.hit == hitCaption && a.isHot(r) {
 			fold = r.text
+			break
 		}
 	}
-	if !strings.Contains(fold, background) || !strings.Contains(fold, a.pal.accent(glyphTool)) {
+	if fold == "" || !strings.Contains(fold, background) {
 		t.Fatalf("the hovered fold line did not react: %q", fold)
 	}
 
