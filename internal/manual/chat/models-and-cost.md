@@ -2475,6 +2475,12 @@ prompts, your attached file contents, the model's whole reply. Turn it on for th
 are debugging and off again afterwards, and treat the file as you would the conversation
 itself.
 
+That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
+in a conversation — which keeps the **debug record** of a run in a folder of its own. The
+bodies are moving there, so that this file stays small enough to grep and a long run
+cannot rotate away the failure you came for. The debug-record page says where the folder
+is and what is in it today.
+
 **Why did that call fail?** The line says. A `→ 400` carries the endpoint's own first
 sentence; a line with no status at all is a request that never reached an endpoint; a line
 marked `empty at the ceiling` is the thinking pass having spent the whole reply room

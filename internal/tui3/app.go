@@ -6083,6 +6083,15 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openResume()
 		return nil
 
+	case "debug":
+		// The third door onto one switch — the other two are --debug and
+		// AFORGE_DEBUG — and the only one that can be reached from inside a
+		// conversation that is already open (commands.go's [app.runDebugCommand]).
+		// It is also the only one whose scope is this conversation alone: the
+		// pin and the flag were given to the whole process, this was typed here.
+		a.runDebugCommand()
+		return nil
+
 	case "compact":
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
