@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 09:13Z_
+_2026-09-03 09:14Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -65,9 +65,9 @@ _2026-09-03 09:13Z_
 - `M1`    high CLOSED `--help` opens by calling the product "build and revise task graphs"
 - `M2`    high CLOSED `aforge run --help` says "leaf" or "leaves" six times
 - `M3`    high CLOSED `aforge why <node-id>` help says "show what one leaf actually did"
-- `M4`    high open   `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
-- `M5`    high open   Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
-- `M6`    high open   Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
+- `M4`    high CLOSED `why`, `notebook`, `competence`, `services`, `wake` and `rebuild` appear nowhere in `internal/manual/chat/`
+- `M5`    high CLOSED Two `--json` result envelopes with no shared vocabulary (cli-24 covers only that neither is documented)
+- `M6`    high CLOSED Three exit-code tables, two of which contradict each other (cli-6 covers only exec's being undocumented)
 - `M7`    high CLOSED `--budget` means tokens while "budget" means dollars everywhere else in the product
 - `M8`    high CLOSED `--timeout` is a duration on `do` and an integer of seconds on `exec`
 - `M9`    high CLOSED `run` names two unrelated commands and help needs a special case to tell them apart
@@ -100,8 +100,8 @@ _2026-09-03 09:13Z_
 - `D4`    med  CLOSED `do` has no `--yolo`, and a developer coming from the chat types it and gets `error: flag provided but not defined: -yolo` and exit 1. `do` IS unattended by construction, so the flag would be meaningless
 - `D5`    med  CLOSED `do --json` carries spend, nodes, seconds, settled and model but no CALL COUNT and no ROUND COUNT, so the developer went to `~/.aforge/logs/calls.jsonl` to reconstruct them
 - `D6`    low  CLOSED A refused flag is echoed back in a spelling the person did not type: `--nosuchflag` comes back as `error: flag provided but not defined: -nosuchflag`. Go's flag package writes it, and every other door on this surface now spells flags with two dashes. Somebody scanning for their own typo is looking for a string that is not there.
-- `D7`    ?    open   NOT A DEFECT ON THIS BRANCH, and recorded so nobody reopens it: the report says a bad flag and a failed run both exit 1, so a typo and a failure are indistinguishable to a script. That was TRUE ON DEV and is FALSE HERE. `7d6e372c6` moved `exec.StopError` off exit 1
-- `D8`    ?    open   NOT A DEFECT ON THIS BRANCH: the report says the usage banner prints `--db` and `--timeout 900` while `do --help` prints single-dash, and that the banner still shows the bare-seconds form. Both were fixed here
+- `D7`    ?    CLOSED NOT A DEFECT ON THIS BRANCH, and recorded so nobody reopens it: the report says a bad flag and a failed run both exit 1, so a typo and a failure are indistinguishable to a script. That was TRUE ON DEV and is FALSE HERE. `7d6e372c6` moved `exec.StopError` off exit 1
+- `D8`    ?    CLOSED NOT A DEFECT ON THIS BRANCH: the report says the usage banner prints `--db` and `--timeout 900` while `do --help` prints single-dash, and that the banner still shows the bare-seconds form. Both were fixed here
 
 ## eyes — [audit-eyes.md](audit-eyes.md)
 

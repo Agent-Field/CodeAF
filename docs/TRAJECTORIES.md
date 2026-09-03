@@ -163,10 +163,16 @@ path.
 | `aforge run <subharness>` | `main.go:123` → `subharness_run.go:54` | one typed program | none | **exemplary** — `headlessEnv.Ask` returns `Unanswered=true` and stops (`cmd/aforge/subharness_env.go:259-283`): "Nothing here ever returns an approval" (`:255-257`) | as-intended |
 | checkpoint recovery | `task_store.go:838` → `:994` `restoreNode` | restored nodes on the frontier | division; never the planner | **re-derived, not persisted** | none required | drifted — **M3** |
 
-Exit codes, cross-checked against `docs/HEADLESS.md:93`, `:306`, `:322-325`:
-`do` 0/1/2 (`do.go:73`, `:82`); `exec` 0/2/3/4/5/6 (`exec.go:211-226`);
-`run <subharness>` 0/1/2 (`subharness_run.go:35-37`); `tick` 0 clean, 0 on
-`ErrHeld`, 1 otherwise (`cmd/aforge/tick.go:42-47`); any plain error 1.
+Exit codes: **there is ONE ladder and it is `exitLadder` in
+`cmd/aforge/envelope.go`**, which every headless verb now reads rather than
+spelling its own. `TestTheExitLadderIsOneTable` fails by name for a verb that
+disagrees with it, and `aforge --help` prints it interpolated from the same
+list, so this document deliberately does NOT restate the numbers — the table
+that used to be here was a per-verb list (`do` 0/1/2, `exec` 0/2/3/4/5/6) that
+had gone stale in both its rungs and its line references, and it was the FIFTH
+copy of that ladder found in this repository. `AFORGE_EXIT_CODES=legacy`
+restores `exec`'s old numbers for one release. `tick` is outside the ladder: 0
+clean, 0 on `ErrHeld`, 1 otherwise (`cmd/aforge/tick.go`).
 
 ### What a restart keeps
 

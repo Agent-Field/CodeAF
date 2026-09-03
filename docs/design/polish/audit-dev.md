@@ -147,3 +147,14 @@ and does fail when the mapping in `buildResultEnvelope` is broken.
 
 `TestNoDoorPrintsItsCommentaryToStdout` was checked BOTH ways for row 28 (see
 `audit-cli.md`) and is not a guard.
+
+## fixed
+
+**Rows 7 and 8 — CLOSED AS NOT DEFECTS ON THIS BRANCH**, which is a resolution
+and not an open row: both were verified against the running binary before the
+audit was written, and both are recorded above with the commit that closed them
+(`7d6e372c6` for the exit codes, `dc1a3a898` and the rename lane's
+`commandFlags` for the banner). They are written down so that nobody reads the
+developer's report six months from now and reopens work that was already done.
+
+**Rows 1, 2, 3, 4, 5, 6** — closed by `b398c8d62`; the lane's account is above.

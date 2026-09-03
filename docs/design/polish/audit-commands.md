@@ -701,3 +701,22 @@ anything else keeps it: "` — so it now follows `+` and now fails for the right
 reason. `TestTheCacheQuestionIsAskedOffTheAnswerStream` fails beside it.
 Live, on the rebuilt binary with a non-empty cache: stdout carries only `kept —
 nothing was deleted.` and the four question lines are all on stderr.
+
+## fixed — verified rather than re-done
+
+**Rows 4, 5 and 6** were closed by earlier lanes in this wave and never written
+down here, so the ledger went on calling three high rows open. Verified in the
+tree rather than taken on trust:
+
+- **Row 4** — all six verbs (`why`, `notebook`, `competence`, `services`,
+  `wake`, `rebuild`) are in `internal/manual/chat/running-from-the-terminal.md`,
+  and `TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo` fails the
+  build if a verb the command line answers to has no page.
+- **Row 5** — there is ONE envelope. `buildExecEnvelope` fills `runResult` and
+  hands it to `buildResultEnvelope`, which is the only place a `resultEnvelope`
+  is constructed.
+- **Row 6** — the three tables the row named are gone, a fourth was found in the
+  chat manual and closed by `dc1a3a898`, and **a FIFTH turned up in
+  `docs/TRAJECTORIES.md`** — a per-verb list (`exec` 0/2/3/4/5/6) stale in both
+  its rungs and its line numbers. That document now names `exitLadder` as the
+  one ladder and deliberately restates no numbers.
