@@ -547,7 +547,7 @@ func TestReasoningDoesNotFoldIntoAReply(t *testing.T) {
 }
 
 // AND A FOLDED RUN DRAWS WHAT THE DELTAS WOULD HAVE DRAWN. This is the whole
-// claim the fold rests on: [app.appendText] concatenates, so a joined text and
+// claim the fold rests on: [feed.say] concatenates, so a joined text and
 // the texts joined are the same transcript.
 func TestAFoldedRunDrawsWhatTheDeltasWouldHave(t *testing.T) {
 	parts := []string{"## the answer\n\n", "it parses, ", "and the loop ", "is where it lands.\n"}

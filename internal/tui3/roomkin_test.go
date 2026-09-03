@@ -21,7 +21,7 @@ import (
 // what is under test is the header, and the journal and the lane are not part of
 // it.
 func roomOn(a *app, id uint64, title string) {
-	a.room = &taskRoom{id: id, title: title, unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(id, title)
 }
 
 // kinRows is the kin block as a reader sees it.

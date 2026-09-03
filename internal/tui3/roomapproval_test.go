@@ -37,7 +37,7 @@ func awaitingDesign(t *testing.T) (*app, *designingRoomAgent) {
 	}))
 	page := designedPage()
 	a.finishHarnessCard(session.Event{ID: 4, Harness: &page, Task: &session.TaskNotice{ID: 4}})
-	a.room = &taskRoom{id: 4, title: "harness · flake triage", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.room = a.newRoom(4, "harness · flake triage")
 	return a, agent
 }
 

@@ -364,7 +364,7 @@ func TestNoLinksWhereThePathsBelongToAnotherTree(t *testing.T) {
 	if !a.linker().on {
 		t.Fatal("an ordinary local conversation was refused links")
 	}
-	a.room = &taskRoom{}
+	a.room = a.newRoom(0, "")
 	if a.linker().on {
 		t.Fatal("a task's page linked a path against this session's workspace")
 	}

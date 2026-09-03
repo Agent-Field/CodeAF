@@ -20,13 +20,13 @@ import (
 //
 //  1. NOTHING STREAMED OUTLIVES THE SETTLE. After a turn ends nothing is live,
 //     and a delta arriving after it lands SETTLED on the answer it belongs to —
-//     never as a new live block for the next question to close ([app.settledTurn],
+//     never as a new live block for the next question to close ([feed.settledTurn],
 //     [app.growSettledAnswer]).
 //  2. A LINE THIS SURFACE WROTE DOES NOT CUT THE REPLY IN TWO. A note landing
 //     mid-answer used to close the live block, so the rest of the reply opened a
 //     second one and the first half was demoted into narration — which is drawn
 //     plain, so half a markdown answer came back as its source characters
-//     ([app.noteWritten] through [app.said], hierarchy.go).
+//     ([feed.noteWritten] through [feed.said], hierarchy.go).
 //
 // The wants are asked of the STRUCTURE and of the RENDERED ROWS both, for
 // settleboundary_test.go's reason: a test that sniffed the text for markdown

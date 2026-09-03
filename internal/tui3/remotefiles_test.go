@@ -630,9 +630,10 @@ func TestAHostedTaskRoomPrefetchesAndRestylesItsPictures(t *testing.T) {
 	a, wire, _ := hostedFixture(t)
 	target := "/srv/app/in/room.png"
 	wire.farFile(target, "image/png", "picture bytes", 1700)
-	a.room = &taskRoom{entries: []entry{{
+	a.room = a.newRoom(0, "")
+	a.room.entries = []entry{{
 		kind: entryUser, pictures: []string{target}, picturesHere: false,
-	}}}
+	}}
 
 	cmd := a.prefetchRoomPictures()
 	answer := run(cmd)

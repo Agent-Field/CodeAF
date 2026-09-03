@@ -72,7 +72,7 @@ func kindsAfter(a *app) []entryKind {
 func TestAPersonsLineNeverCutsAStreamedAnswerInTwo(t *testing.T) {
 	a, _ := streaming(t, "the first paragraph of the answer. ")
 	a.submit("do much more of a deep research please")
-	a.appendText("and the second paragraph of the same answer.")
+	a.say("and the second paragraph of the same answer.")
 	drive(t, a, frameMsg{})
 
 	blocks := assistantBlocks(a)
@@ -100,7 +100,7 @@ func TestAPersonsLineNeverCutsAStreamedAnswerInTwo(t *testing.T) {
 // same shape (room.go's [app.roomSaid]).
 func TestARoomsSteerNeverCutsTheNodesAnswerInTwo(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
-	a.room = &taskRoom{id: 3, title: "port the parser", unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(3, "port the parser")
 	a.roomAppend(entry{kind: entryAssistant, text: "the first half. "})
 	a.room.live = 0
 

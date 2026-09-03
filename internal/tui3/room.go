@@ -223,22 +223,24 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 type taskRoom struct {
 	id    uint64
 	title string
-	// entries is the page, in the conversation's own blocks (app.go's [entry]).
-	// It is the same list a transcript is, built from the node's journal and
-	// then grown by its lane, and it is drawn by the conversation's renderers
-	// through [taskRoom.deck].
-	entries []entry
+	// feed is this page's transcript and the reducer that grows it (feed.go).
+	//
+	// IT IS THE CONVERSATION'S OWN REDUCER AND NOT A SECOND ONE, which is the
+	// whole of docs/design/lens/DESIGN.md's Decision 1: this file used to hold a
+	// hand-copy of eleven of its methods, and being the copy is why a node's row
+	// never said "took 4s", why a retry inside a task was invisible, and why an
+	// end event paired by a different rule in here than out there. It is
+	// EMBEDDED, so `room.entries`, `room.live`, `room.think` and `room.turn` mean
+	// what they have always meant to every reader of them — the fields moved
+	// house, not name.
+	feed
 	// unfolded is the page's OWN fold state, keyed by the page's own turns. It is
 	// not the conversation's map for the reason the entries are not the
 	// conversation's list: a turn number means nothing outside the list it counts
 	// (render.go's [deck]).
 	unfolded map[int]bool
 	workOpen map[int]bool
-	// turn counts the page's turns — the node's first instruction, then every
-	// line steered into it. It is what groups a tool cluster and what ctrl+o
-	// folds, exactly as [app.turn] is out in the conversation.
-	turn int
-	lane <-chan session.Event
+	lane     <-chan session.Event
 	// stop LEAVES that lane, and is nil for an agent that offers no way out of
 	// one. A room a person walked out of while the conversation goes on running
 	// is a subscriber that must say goodbye: nothing else can tell a reader that
@@ -250,15 +252,6 @@ type taskRoom struct {
 	// while its channel still had events in flight must not paint into the room
 	// that replaced it.
 	gen int
-	// live is the index of the node's growing assistant block, or -1, and think
-	// the index of its reasoning block, or -1. Both are [app.live] and
-	// [app.think] applied to this list, and the folders below are those two
-	// files' rules restated over it.
-	live  int
-	think int
-	// mdAt is the markdown promotion clock for the live block (app.go's
-	// [app.promoteMarkdown], which runs over this list too).
-	mdAt time.Time
 	// done says the WORK IS OVER — the lane closed, or the roster's row settled —
 	// which is the one fact the room adds to what it is showing: a foot line, and
 	// a refusal for anything typed after it.
@@ -447,6 +440,58 @@ const roomTail = 120
 // microseconds apart, in the order the node writes them.
 // The command that starts the lane is PARKED rather than returned, in
 // [app.roomPump]. See that field for the call path that forces it.
+// newRoom builds a node's page with its reducer already installed, and it is the
+// ONE door that builds one.
+//
+// A PAGE WITH NO REDUCER IS A PAGE THAT DRAWS NOTHING, and a page whose reducer
+// was built by struct literal is worse than that ([newFeed] says what the zero
+// value does). Three places open a room — a node, a hosted node, an adaptive run
+// — and three copies of the same eight fields is three chances for the fourth
+// one to be built wrong.
+func (a *app) newRoom(id uint64, title string) *taskRoom {
+	a.roomGen++
+	r := &taskRoom{
+		id: id, title: title, gen: a.roomGen,
+		unfolded: map[int]bool{},
+		stick:    true,
+		dirty:    true,
+	}
+	r.feed = newFeed(a.roomFeedHooks(r))
+	r.mdAt = a.now()
+	return r
+}
+
+// roomFeedHooks is the task page's whole declaration of what it is, as far as
+// the reducer that grows its transcript is concerned (feed.go).
+//
+// THREE OF THEM, AND THE THIRD IS THE SECOND. Out in the conversation, growing
+// at the edge and having stale rows are two facts with two answers — the frame
+// clock throttles the flood of deltas and only the structural changes repaint.
+// A room's row cache is keyed on ONE flag ([app.roomRows]), so both hooks are
+// the same act in here, and [app.roomTouched] is that act named for the several
+// other files that perform it.
+//
+// THE FOUR THE CHAT INSTALLS ARE ABSENT AND THE ABSENCE IS THE DESIGN. A node
+// draws no spawn card, so it forms none, refuses none and throws none away when
+// a request is cut; a node's spend is folded by its pilot and never twice
+// (see [app.roomEvent]). `closed` is left nil deliberately — the lane that walks
+// a room's finished calls into the header instrument installs it there
+// (docs/design/lens/DESIGN.md, Decision 3).
+//
+// IT CLOSES OVER THE PAGE AND NOT OVER [app.room], because the page is built
+// before it is the one on screen, and a reducer pointed at whatever room happens
+// to be open is a reducer that paints a closed page's events into its successor.
+func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
+	grew := func() {
+		r.dirty = true
+		if r.stick {
+			r.offset = 0 // resolved from the bottom by roomOffsetFor
+		}
+		a.touch()
+	}
+	return feedHooks{now: a.now, follow: grew, touch: grew}
+}
+
 func (a *app) openRoom(id uint64, title string) {
 	doors, ok := a.roomDoors()
 	if !ok {
@@ -469,16 +514,7 @@ func (a *app) openRoom(id uint64, title string) {
 		// the moment the engine publishes it ([app.taskUpdate]).
 		title = taskIDWord(id)
 	}
-	a.roomGen++
-	room := &taskRoom{
-		id: id, title: title, gen: a.roomGen,
-		unfolded: map[int]bool{},
-		live:     -1,
-		think:    -1,
-		mdAt:     a.now(),
-		stick:    true,
-		dirty:    true,
-	}
+	room := a.newRoom(id, title)
 	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal, !a.hosted())
 	a.room = room
 	prefetch := a.prefetchRoomPictures()
@@ -529,7 +565,7 @@ func (a *app) openRoom(id uint64, title string) {
 		// ROSTER'S ROW, which the engine publishes on every notice, so that is
 		// what is asked ([roomRowDone]).
 		room.done = roomRowDone(a.tasks[id])
-		a.roomResolveUnfinished()
+		room.resolveUnfinished()
 		a.roomPump = tea.Batch(prefetch, a.wake())
 		return
 	}
@@ -545,13 +581,8 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 	if title == "" {
 		title = taskIDWord(node.id)
 	}
-	a.roomGen++
-	room := &taskRoom{
-		id: node.id, title: title, gen: a.roomGen, unfolded: map[int]bool{},
-		live: -1, think: -1, mdAt: a.now(), stick: true, dirty: true,
-		done:    roomRowDone(node),
-		loading: true,
-	}
+	room := a.newRoom(node.id, title)
+	room.done, room.loading = roomRowDone(node), true
 	a.room = room
 	a.sel = -1
 	a.dropHover()
@@ -577,7 +608,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	if msg.err == nil {
 		a.room.entries, a.room.turn = readRoomJournalBytes(msg.record.Journal, a.pal, roomTail, !a.hosted())
 	}
-	a.roomResolveUnfinished()
+	a.room.resolveUnfinished()
 	a.roomTouched()
 	prefetch := a.prefetchRoomPictures()
 	node := a.tasks[a.room.id]
@@ -921,7 +952,7 @@ func shapeRoomJournal(lines []journalLine, pal palette, limit int, picturesHere 
 					// THE PROVIDER'S ID IS KEPT because it is the call's identity in the
 					// file, and it is what any pairing by id has to pair on. Nothing
 					// pairs on it today: the end events this row is waiting for carry no
-					// id (session's loop.go), so [roomClaimRunning] matches on the
+					// id (session's loop.go), so [claimRunning] matches on the
 					// payload and then on the name.
 					callID: call.ID,
 					// UNPARSED, exactly as a replayed call carries it: everything the
@@ -1059,13 +1090,13 @@ func runeStart(b byte) bool { return b&0xC0 != 0x80 }
 
 // roomEvent folds one of the child's events in and re-arms the pump.
 //
-// IT IS [app.event]'s SWITCH, over the page's list. The kinds it takes are the
-// kinds a node produces that a person in here is watching for — what it is
-// saying, what it is THINKING, what it is doing, what it cost itself in
-// compaction, and what went wrong. A node's usage and its title are the child
-// agent's accounting, and nothing in a task can ask this keyboard a question
-// (its policy allows everything but the floor, and the floor refuses rather than
-// prompts), so there is no question in here to draw.
+// IT IS [app.apply]'s SHAPE, over the page's own reducer: what the event does to
+// the transcript is [feed.ingest]'s, once, for every surface, and what it asks
+// THIS program loop to do is the switch below. This file used to hold a
+// hand-copy of the reducer instead — eleven functions that agreed with the
+// conversation's on the day they were written and had fallen behind by six event
+// kinds — which is the whole reason the reducer exists (feed.go states the law,
+// docs/design/lens/DESIGN.md's Decision 1 states the design).
 //
 // THE SPEND IS NOT COUNTED HERE, AND THE OMISSION IS THE DESIGN. A node's turn
 // totals are folded by its PILOT (task.go's [app.pilotEvent]), which keeps flying
@@ -1075,65 +1106,38 @@ func runeStart(b byte) bool { return b&0xC0 != 0x80 }
 // openRoom().join()) and hands each caller its own copy of every event. A fold
 // on this lane as well would therefore bill every turn twice for exactly as long
 // as a person had the page open.
+//
+// AND NOTHING IN A TASK ASKS THIS KEYBOARD A QUESTION. A node's policy allows
+// everything but the floor and the floor refuses rather than prompts, so a
+// consent request and a task proposal reach the chat and never a room — the one
+// class of event this page is deliberately without, and the reason is written
+// where it is tested (salience_test.go) rather than only here.
 func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	room := a.room
 	if room == nil {
 		return nil
 	}
 	var after tea.Cmd
-	// THE COLLAPSE RULE, quoted from the conversation's pump (app.go's [app.event],
+	// THE COLLAPSE RULE, quoted from the conversation's pump (app.go's [app.apply],
 	// thinking.go): the first thing a turn says that is not reasoning ends the
 	// reasoning block, and EventThinking is exempt because it is the marker that
 	// opened the run. A text delta settles the block and keeps it
-	// ([app.roomSettleThought]) so an interleaved stream grows one block instead
-	// of sawing the answer apart; everything else seals it.
+	// ([feed.settleThought]) so an interleaved stream grows one block instead of
+	// sawing the answer apart; everything else seals it.
 	switch ev.Kind {
 	case session.EventReasoning, session.EventThinking:
 	case session.EventTextDelta:
-		a.roomSettleThought()
+		room.settleThought()
 	default:
-		a.roomCollapseThought()
+		room.collapseThought()
 	}
+	room.ingest(ev)
 	switch ev.Kind {
-	case session.EventTextDelta:
-		a.roomSay(ev.Text)
-
-	case session.EventReasoning:
-		a.roomThink(ev.Text)
-
-	case session.EventToolForming:
-		// THE NODE'S CALL IS ARRIVING, drawn while it arrives — the same event
-		// the conversation draws from (app.go's [feed.formTool]). A room without
-		// this said nothing at all while a node streamed a file out, which is
-		// the exact gap the forming row was built to close, left open in the one
-		// place a person goes BECAUSE they want to watch.
-		a.roomFormTool(ev)
-
-	case session.EventToolAnnounced:
-		a.roomAnnounceTool(ev)
-
-	case session.EventToolBegin:
-		a.roomBeginTool(ev)
-
 	case session.EventToolEnd:
-		a.roomCloseTool(ev, toolOK, "")
+		// A FILE THE NODE JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
+		// speculatively, before anybody has clicked anything (remotefiles.go).
+		// Nil on every local session.
 		after = a.prefetchWritten(ev)
-
-	case session.EventToolFailed:
-		a.roomCloseTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
-
-	case session.EventCompacting:
-		a.roomCloseLive()
-		a.roomAppend(entry{
-			kind:  entryCompact,
-			text:  firstNonEmpty(ev.Hint, "compacting"),
-			turn:  room.turn,
-			began: a.now(),
-		})
-
-	case session.EventCompacted:
-		a.roomCloseLive()
-		a.roomSettleCompaction(firstNonEmpty(ev.Hint, "compacted"))
 
 	case session.EventTurnDone:
 		// THE STEP IS FINISHED AND ON DISK — the same event internal/session's
@@ -1143,7 +1147,7 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// step's last paragraph. A design felt this hardest: its draft and the
 		// revision the review pass writes are two replies on one lane, and
 		// without this they arrived as one unbroken wall of JSON.
-		a.roomCloseLive()
+		room.closeLive()
 
 	case session.EventError:
 		a.roomNote("error: " + errText(ev.Err))
@@ -1152,349 +1156,20 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())
 }
 
-// roomSay grows the node's live block, opening one when the last thing on the
-// page was anything else. It is [app.appendText] over the room's list.
-func (a *app) roomSay(text string) {
-	room := a.room
-	if text == "" || room == nil {
-		return
-	}
-	if room.live < 0 || room.live >= len(room.entries) ||
-		room.entries[room.live].kind != entryAssistant {
-		room.entries = append(room.entries, entry{kind: entryAssistant, turn: room.turn})
-		room.live = len(room.entries) - 1
-		room.mdAt = a.now()
-	}
-	e := &room.entries[room.live]
-	e.text += text
-	e.stale = true
-	a.roomTouched()
-}
-
-// roomThink grows the node's reasoning block. It is [app.appendThought] over the
-// room's list, down to the rule that the reply in progress is closed first so
-// the block lands above the answer rather than splitting a paragraph that is
-// still being written (thinking.go).
-func (a *app) roomThink(text string) {
-	room := a.room
-	if text == "" || room == nil {
-		return
-	}
-	if room.think < 0 || room.think >= len(room.entries) ||
-		room.entries[room.think].kind != entryThinking {
-		a.roomCloseLive()
-		now := a.now()
-		room.entries = append(room.entries, entry{
-			kind: entryThinking, turn: room.turn, began: now, ended: now,
-		})
-		room.think = len(room.entries) - 1
-	}
-	e := &room.entries[room.think]
-	e.text += text
-	e.ended = a.now()
-	e.stale = true
-	a.roomTouched()
-}
-
-// roomSettleThought folds the streaming block without letting go of it — the
-// text-delta half of the collapse rule, [feed.settleThought] over the room's
-// list: the next reasoning delta grows this block rather than opening another
-// and closing the answer mid-word.
-func (a *app) roomSettleThought() {
-	room := a.room
-	if room == nil || room.think < 0 || room.think >= len(room.entries) ||
-		room.entries[room.think].kind != entryThinking {
-		return
-	}
-	e := &room.entries[room.think]
-	if !e.settled {
-		e.settled, e.stale = true, true
-		if !e.latched {
-			e.open = false
-		}
-		a.roomTouched()
-	}
-}
-
-// roomCollapseThought settles the streaming reasoning block ([feed.collapseThought]).
-func (a *app) roomCollapseThought() {
-	room := a.room
-	if room == nil || room.think < 0 {
-		return
-	}
-	if room.think < len(room.entries) && room.entries[room.think].kind == entryThinking {
-		e := &room.entries[room.think]
-		e.settled, e.stale = true, true
-	}
-	room.think = -1
-	a.roomTouched()
-}
-
-// roomCloseLive ends the assistant block being streamed into ([feed.closeLive]).
-func (a *app) roomCloseLive() {
-	room := a.room
-	if room == nil {
-		return
-	}
-	if room.live >= 0 && room.live < len(room.entries) {
-		e := &room.entries[room.live]
-		e.settled, e.stale = true, true
-	}
-	room.live = -1
-}
-
-// roomFormTool draws — and keeps redrawing — the row for a call the node is
-// STILL SPELLING OUT. It is [feed.formTool] over the room's list, down to the
-// rule that nothing is unmarshaled: the row holds how much has arrived, the
-// gloss session built from the fields that have closed, and the streamed tail of
-// the one field a forming call is previewed by ([formingPreviewField]) — never
-// the half-sent JSON itself.
+// roomNote is the surface's own line inside the room — [feed.note] over the
+// page's list, drawing the same dim "· " block, with the same
+// same-sentence-twice rule and the same promise not to cut a reply in two.
 //
-// There is no spawn card half here, unlike out in the conversation: a node does
-// not propose tasks to the person standing in its room.
-func (a *app) roomFormTool(ev session.Event) {
-	room := a.room
-	if room == nil {
-		return
-	}
-	at := claimForming(room.entries, ev)
-	if at < 0 {
-		a.roomCloseLive()
-		a.roomAppend(entry{
-			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
-			status: toolForming, callID: ev.CallID, bytes: ev.Bytes,
-			formed: formingPreview(ev.Tool, ev.ArgsText),
-		})
-		return
-	}
-	// Every field is taken FORWARD only, for [feed.formTool]'s reason: a later
-	// fragment that carried less than the one before it must not un-say what the
-	// row already knows.
-	e := &room.entries[at]
-	e.callID = firstNonEmpty(ev.CallID, e.callID)
-	e.tool = firstNonEmpty(ev.Tool, e.tool)
-	e.text = firstNonEmpty(ev.Hint, e.text)
-	if ev.Bytes > e.bytes {
-		e.bytes = ev.Bytes
-	}
-	e.formed = firstNonEmpty(formingPreview(firstNonEmpty(ev.Tool, e.tool), ev.ArgsText), e.formed)
-	a.roomTouched()
-}
-
-// roomResolveUnfinished resolves every call that was still in the air when the
-// node's lane ended. It is [app.dropForming] over the room's list, widened by
-// one state, and it exists for that function's reason: a lane that has closed is
-// the last word there will ever be about the calls on this page — no
-// announcement, no begin, no end is coming — so a row left in a live state is
-// the page animating work that is over.
-//
-// THE WIDENING IS THE JOURNAL'S. A call the file names with no result under it
-// is drawn as RUNNING ([readRoomJournal]), which is true of a node still working
-// and false the moment its lane closes; before that state existed, the only row
-// that could be caught out this way was a forming one.
-//
-// Every row is RESOLVED, never removed: the node started asking for something
-// and stopped, which is a fact about what happened, and a row that vanished
-// would take it with it. The status is left alone for the same reason — this
-// surface does not know whether the call ran, and "failed" is a claim about
-// something nobody watched.
-func (a *app) roomResolveUnfinished() {
-	room := a.room
-	if room == nil {
-		return
-	}
-	now := a.now()
-	for i := range room.entries {
-		e := &room.entries[i]
-		if e.kind != entryTool || !e.ended.IsZero() {
-			continue
-		}
-		if e.forming() || e.status.live() {
-			e.ended = now
-		}
-	}
-	a.roomTouched()
-}
-
-// roomAnnounceTool draws the row for a call the node has finished asking for.
-// It is [feed.announceTool] over the room's list, and it exists for the same
-// reason: the change an edit is ABOUT to make is previewed from the arguments,
-// and the moment that preview is worth anything is the moment before it happens.
-//
-// IT ADOPTS THE FORMING ROW rather than drawing a second one — one call, one
-// line, from the first fragment to the last — and it pairs by the call's id,
-// which session's announcement carries (its loop.go).
-func (a *app) roomAnnounceTool(ev session.Event) {
-	room := a.room
-	if room == nil {
-		return
-	}
-	if at := claimFormed(room.entries, ev); at >= 0 {
-		e := &room.entries[at]
-		e.status = toolQueued
-		e.tool = firstNonEmpty(ev.Tool, e.tool)
-		e.text = firstNonEmpty(ev.Hint, e.text)
-		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
-		e.formed = ""
-		a.roomTouched()
-		return
-	}
-	a.roomCloseLive()
-	a.roomAppend(entry{
-		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
-		status: toolQueued, detail: toolDetail{Args: ev.Args},
-	})
-}
-
-// roomBeginTool is EXECUTION STARTED, and it adopts the row the announcement
-// drew ([feed.beginTool], whose pairing rule [roomClaimAnnounced] restates).
-func (a *app) roomBeginTool(ev session.Event) {
-	room := a.room
-	if room == nil {
-		return
-	}
-	at := roomClaimAnnounced(room.entries, ev)
-	if at < 0 {
-		// A call that formed and then began with no announcement between them.
-		// The ordering law says that cannot happen, and a row left pulsing at a
-		// call that is already running would be the page believing the law over
-		// the event in its hand ([feed.beginTool] says the same).
-		at = claimFormed(room.entries, ev)
-	}
-	if at >= 0 {
-		e := &room.entries[at]
-		e.status = toolRunning
-		e.began = a.now()
-		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
-		e.text = firstNonEmpty(ev.Hint, e.text)
-		e.formed = ""
-		a.roomTouched()
-		return
-	}
-	a.roomCloseLive()
-	a.roomAppend(entry{
-		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
-		status: toolRunning, began: a.now(), detail: toolDetail{Args: ev.Args},
-	})
-}
-
-// roomClaimAnnounced finds the queued row this begin belongs to, or -1. The
-// payload is matched first and the name only after, for the reason
-// [feed.claimAnnounced] states: a batch of three edits announces three rows, and
-// pairing by name alone would start the clock on whichever was drawn first.
-func roomClaimAnnounced(es []entry, ev session.Event) int {
-	fallback := -1
-	for i := range es {
-		e := &es[i]
-		if e.kind != entryTool || e.status != toolQueued || e.tool != ev.Tool {
-			continue
-		}
-		if ev.Args != "" && e.detail.Args == ev.Args {
-			return i
-		}
-		if fallback < 0 {
-			fallback = i
-		}
-	}
-	return fallback
-}
-
-// roomClaimRunning finds the live row this END belongs to, or -1. It is
-// [roomClaimAnnounced]'s rule one state later, and it earned its own function
-// when the journal began drawing calls it left unanswered as running
-// ([readRoomJournal]): oldest-of-that-tool was a guess that was right by
-// convention, and a page can now hold two `bash` rows at once — one off the file
-// and one off the lane — where the guess is wrong half the time.
-//
-// The payload is matched first for that reason, and it is a PREFERENCE rather
-// than a key: session renders a call's arguments for the end event and this
-// surface renders them again off the journal, which agree for an ordinary call
-// and can differ on one long enough to be clipped. So the walk by name is what
-// is left, exactly as it is for an announcement.
-func roomClaimRunning(es []entry, ev session.Event) int {
-	fallback := -1
-	for i := range es {
-		e := &es[i]
-		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
-			continue
-		}
-		if ev.Args != "" && e.detail.Args == ev.Args {
-			return i
-		}
-		if fallback < 0 {
-			fallback = i
-		}
-	}
-	return fallback
-}
-
-// roomCloseTool resolves the live line this end belongs to. It is
-// [feed.closeTool] over the room's list, failure-opens-itself included: a call
-// that failed is the one row whose detail is the reason the person came in here.
-func (a *app) roomCloseTool(ev session.Event, status toolState, why string) {
-	room := a.room
-	if room == nil {
-		return
-	}
-	if at := roomClaimRunning(room.entries, ev); at >= 0 {
-		e := &room.entries[at]
-		e.status = status
-		e.ended = a.now()
-		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
-		e.detail.Output = firstNonEmpty(ev.Output, why)
-		if why != "" && status == toolFailed {
-			e.text = strings.TrimSpace(e.text + " — " + why)
-		}
-		if status == toolFailed {
-			e.open = true
-		}
-		a.roomTouched()
-		return
-	}
-	// A close with no open line still deserves to be seen rather than silently
-	// dropped: the node said something happened.
-	if status == toolFailed {
-		a.roomAppend(entry{
-			kind: entryTool, tool: ev.Tool, text: why, turn: room.turn, status: toolFailed,
-			open:   true,
-			detail: toolDetail{Args: ev.Args, Output: firstNonEmpty(ev.Output, why)},
-		})
-	}
-}
-
-// roomSettleCompaction stops the newest compaction row's clock, or draws one
-// born finished when this page never saw the pass start ([feed.settleCompaction]).
-func (a *app) roomSettleCompaction(text string) {
-	room := a.room
-	if room == nil {
-		return
-	}
-	for i := len(room.entries) - 1; i >= 0; i-- {
-		e := &room.entries[i]
-		if e.kind != entryCompact || !e.ended.IsZero() {
-			continue
-		}
-		e.text, e.ended = text, a.now()
-		e.stale = true
-		a.roomTouched()
-		return
-	}
-	now := a.now()
-	a.roomAppend(entry{
-		kind: entryCompact, text: text, turn: room.turn, began: now, ended: now,
-	})
-}
-
-// roomNote is the surface's own line inside the room. It is [app.note] over the
-// room's list, and it draws the same dim "· " block.
+// The blank is refused here rather than in the reducer because it is a fact
+// about the CALLERS in this file: a refusal with nothing to say and an engine
+// error with an empty reason both reach this door, and the emptiness law says a
+// line about nothing is no line at all.
 func (a *app) roomNote(text string) {
-	room := a.room
-	if room == nil {
+	if a.room == nil {
 		return
 	}
 	if text = strings.TrimSpace(text); text != "" {
-		a.roomCloseLive()
-		a.roomAppend(entry{kind: entryNote, text: text, turn: room.turn})
+		a.room.note(text)
 	}
 }
 
@@ -1510,37 +1185,24 @@ func (a *app) roomAppend(e entry) {
 	a.roomTouched()
 }
 
-// roomSaid is [app.said] over the room's own transcript: the person's line goes
+// roomSaid is [feed.said] over the room's own transcript: the person's line goes
 // in below the answer that is still streaming rather than cutting it in two.
-// The rule is the deck's, not the conversation's, which is why the room gets it
-// for free — see [app.said] for the defect and the reasoning.
+// See [feed.said] for the defect and the reasoning.
 func (a *app) roomSaid(e entry) {
-	room := a.room
-	if room == nil {
+	if a.room == nil {
 		return
 	}
-	live := room.live
-	room.entries = append(room.entries, e)
-	if live < 0 || live >= len(room.entries)-1 || room.entries[live].kind != entryAssistant {
-		room.live = -1
-	} else {
-		room.live = live
-	}
+	a.room.said(e)
 	a.roomTouched()
 }
 
 // roomTouched drops the room's cached rows and keeps a reader at the live edge
-// where they were already at it. It is [app.follow]'s law, applied to the room's
-// own offset.
+// where they were already at it. It is the page's own [feedHooks.follow], named
+// for the several files that perform that act without going through an event.
 func (a *app) roomTouched() {
-	if a.room == nil {
-		return
+	if a.room != nil {
+		a.room.follow()
 	}
-	a.room.dirty = true
-	if a.room.stick {
-		a.room.offset = 0 // resolved from the bottom by roomOffsetFor
-	}
-	a.touch()
 }
 
 // The call's identity, its sentence and its rail all come from the same two
@@ -1626,7 +1288,7 @@ func (a *app) steer() tea.Cmd {
 	// is what groups the calls that answer it into one cluster and what ctrl+o
 	// folds. The chips are not spent here — a room's box sends words, and the tray
 	// belongs to the conversation.
-	a.roomCollapseThought()
+	room.collapseThought()
 	room.turn++
 	// AND THE LINE SAYS WHERE IT WENT, when the node it went to is a named place
 	// rather than work being watched (turncontext.go). It is taken here, at the

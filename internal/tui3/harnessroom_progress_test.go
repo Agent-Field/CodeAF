@@ -13,7 +13,7 @@ func TestHarnessProgressReplacesOneRowInTheDesignRoom(t *testing.T) {
 	a.width, a.height = 100, 30
 	a.tasks = map[uint64]*taskNode{}
 	a.tasks[4] = &taskNode{id: 4, title: "design helper"}
-	a.room = &taskRoom{id: 4, title: "design helper", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.room = a.newRoom(4, "design helper")
 	a.beginHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Text: "design helper", Task: &session.TaskNotice{ID: 4}})
 	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "designing", Attempt: 1, Attempts: 3, Hint: "sketching"})
 	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "reviewing", Attempt: 2, Attempts: 3, ThoughtTail: "checking the retry branch"})
@@ -35,7 +35,7 @@ func TestHarnessRoomRowPrefersTheHintOverTheThinking(t *testing.T) {
 	a.width, a.height = 100, 30
 	a.tasks = map[uint64]*taskNode{}
 	a.tasks[4] = &taskNode{id: 4, title: "design helper"}
-	a.room = &taskRoom{id: 4, title: "design helper", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.room = a.newRoom(4, "design helper")
 	a.beginHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Text: "design helper", Task: &session.TaskNotice{ID: 4}})
 	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "designing", Attempt: 1, Attempts: 3,
 		ThoughtTail: "let me reconsider the split", Hint: "4 steps so far"})
@@ -53,7 +53,7 @@ func TestTheRoomTickerGoesAwayWhenThePageLands(t *testing.T) {
 	a.width, a.height = 100, 30
 	a.tasks = map[uint64]*taskNode{}
 	a.tasks[4] = &taskNode{id: 4, title: "design helper"}
-	a.room = &taskRoom{id: 4, title: "design helper", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.room = a.newRoom(4, "design helper")
 	a.beginHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Text: "design helper", Task: &session.TaskNotice{ID: 4}})
 	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "reviewing", Hint: "checking the draft"})
 	a.finishHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Harness: &subharness.Harness{}})
@@ -64,7 +64,7 @@ func TestTheRoomTickerGoesAwayWhenThePageLands(t *testing.T) {
 
 func TestHarnessProgressForUnknownTaskDoesNothing(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.room = &taskRoom{id: 4, unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.room = a.newRoom(4, "")
 	a.beginHarnessCard(session.Event{Kind: session.EventHarnessDesign, ID: 7, Task: &session.TaskNotice{ID: 99}})
 	a.progressHarnessRoom(session.Event{Kind: session.EventHarnessProgress, ID: 7, Phase: "designing", Hint: "should not land"})
 	if a.room.harnessProgress != "" {

@@ -174,7 +174,7 @@ func TestTheRoomHeaderSaysWhichLifeTheNodeIsIn(t *testing.T) {
 	if got := a.roomStateWord(node); got != taskCheckingWord {
 		t.Fatalf("the header calls a checked node %q, want %q", got, taskCheckingWord)
 	}
-	a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(7, "Write the report")
 	head := plain(a.roomHeadWord(120))
 	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskCheckingWord) {
 		t.Fatalf("the room header is %q", head)

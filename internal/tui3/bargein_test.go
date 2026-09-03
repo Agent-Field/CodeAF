@@ -376,7 +376,7 @@ func TestTheChordDoesNotStopATurnToRunASlashCommand(t *testing.T) {
 // reach past the room and stop the conversation's turn behind it.
 func TestTheChordIsAbsentInsideATaskRoom(t *testing.T) {
 	a, agent := bargeable(t, "reading the tree. ")
-	a.room = &taskRoom{id: 3, title: "port the parser", unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(3, "port the parser")
 	typeInto(t, a, "use the other file")
 
 	if a.bargeOffered() {

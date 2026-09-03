@@ -228,8 +228,8 @@ func TestAWrappedDraftLinesUpPastTheRoomsSegment(t *testing.T) {
 // than by borrowing a colour that would mean something.
 func TestARunsPageGetsADimSegment(t *testing.T) {
 	a, _, _ := roomApp(t)
-	a.room = &taskRoom{id: 0, title: "port the parser", unfolded: map[int]bool{}, live: -1, think: -1,
-		orch: &orchRun{id: "run-1", goal: "port the parser", seen: map[string]bool{}, fresh: map[string]bool{}}}
+	a.room = a.newRoom(0, "port the parser")
+	a.room.orch = &orchRun{id: "run-1", goal: "port the parser", seen: map[string]bool{}, fresh: map[string]bool{}}
 	lead := a.roomLead(a.width - len(inputPad))
 	if !strings.Contains(plain(lead), "port the parser") {
 		t.Fatalf("a run's page does not name itself at the box:\n%q", plain(lead))

@@ -1032,9 +1032,9 @@ func TestDeltasCoalesceIntoOneFrame(t *testing.T) {
 		t.Fatal("a frame that was just built is still dirty")
 	}
 
-	a.appendText("one ")
-	a.appendText("two ")
-	a.appendText("three")
+	a.say("one ")
+	a.say("two ")
+	a.say("three")
 	if a.dirty {
 		t.Fatal("a streamed delta dirtied the frame — deltas paint on the clock, not on arrival")
 	}
@@ -1203,7 +1203,7 @@ func notesSaying(a *app, text string) int {
 	return n
 }
 
-// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE (app.go's [app.note]).
+// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE (app.go's [feed.note]).
 //
 // A person who presses a command four times because they are not sure it
 // registered used to get four identical lines stacked in the transcript, which
@@ -1303,7 +1303,7 @@ func TestScrollSticksToTheBottomUntilTheReaderLeaves(t *testing.T) {
 	agent := &fakeAgent{model: "m"}
 	a := newTestApp(agent)
 	// Numbered, because the note lane will not write the same sentence twice
-	// running ([app.note]) and this transcript has to be taller than its window.
+	// running ([feed.note]) and this transcript has to be taller than its window.
 	for i := range 40 {
 		a.note("line " + itoa(i))
 	}
@@ -1342,7 +1342,7 @@ func TestTheEllipsisOnlyShowsWhileNothingElseIsMoving(t *testing.T) {
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: toolEnd("bash", "ok")})
 
-	a.appendText("done: ")
+	a.say("done: ")
 	if _, ok := a.ellipsis(); ok {
 		t.Fatal("streaming text replaces the ellipsis")
 	}

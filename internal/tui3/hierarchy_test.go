@@ -315,11 +315,9 @@ func TestASteerEndsTheAnswerItFollows(t *testing.T) {
 func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 80, 40
-	a.room = &taskRoom{
-		id: 7, title: "the node", live: -1, think: -1,
-		unfolded: map[int]bool{}, workOpen: map[int]bool{},
-		entries: hierarchyLab(),
-	}
+	a.room = a.newRoom(7, "the node")
+	a.room.workOpen = map[int]bool{}
+	a.room.entries = hierarchyLab()
 
 	drawn, _ := a.deckRows(a.room.deck(), 60)
 	find := func(phrase string) row {

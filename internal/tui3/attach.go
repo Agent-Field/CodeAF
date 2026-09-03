@@ -870,7 +870,7 @@ func (a *app) submitImagesShown(text, shown string) tea.Cmd {
 	a.disarmQuit()
 	a.sel = -1
 	// The person's line goes in WITHOUT cutting a reply that is still streaming
-	// in two — see [app.said], which is the whole of this wave's render-order fix
+	// in two — see [feed.said], which is the whole of this wave's render-order fix
 	// and belongs to every door onto the transcript, not just the plain one.
 	// And the block carries the context this turn runs in, for [app.submitting]'s
 	// reason and by the same law: a door onto the transcript that dropped the mark

@@ -56,42 +56,6 @@ const thoughtWindow = 200
 // more, however long the model goes on for.
 const thoughtLive = 3
 
-// appendThought grows the turn's reasoning block, opening one on the first
-// delta.
-//
-// Like a text delta it does NOT ask for a repaint per chunk — it marks the block
-// stale and lets the frame clock decide when a flood becomes a frame. The one
-// exception is the block's first delta, which appends an ENTRY: a structural
-// change the layout has to see.
-func (a *app) appendThought(text string) {
-	if text == "" {
-		return
-	}
-	if a.think < 0 || a.think >= len(a.entries) || a.entries[a.think].kind != entryThinking {
-		// The reply in progress is closed first, so the block lands above the
-		// answer rather than splitting a paragraph that is still being written.
-		a.closeLive()
-		now := time.Now()
-		a.entries = append(a.entries, entry{
-			kind: entryThinking, turn: a.turn, began: now, ended: now,
-			// A BLOCK OPENED AFTER ITS TURN'S BOUNDARY IS BORN SETTLED (#225,
-			// [app.settledTurn]). The boundary that would have closed it has
-			// already gone by, and a thought block left open would stay expanded
-			// over the next turn — the very thing [feed.collapseThought] runs at
-			// the settle to prevent.
-			settled: a.settledTurn > 0 && a.turn == a.settledTurn,
-		})
-		a.think = len(a.entries) - 1
-		a.follow()
-		a.touch()
-	}
-	e := &a.entries[a.think]
-	e.text += text
-	e.ended = time.Now()
-	e.stale = true
-	a.follow()
-}
-
 // toggleThought opens or closes one block, streaming or settled, and LATCHES
 // what was chosen — in whichever list is on screen.
 //

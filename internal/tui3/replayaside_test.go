@@ -57,7 +57,7 @@ func TestAReplayedAsideIsTheSurfacesOwnLaneAndNotThePersons(t *testing.T) {
 	if users != 1 {
 		t.Fatalf("%d user lines replayed, want 1 — the one that was typed", users)
 	}
-	// It is the surface's own lane: the dim "· " row [app.note] writes.
+	// It is the surface's own lane: the dim "· " row [feed.note] writes.
 	aside := false
 	for i := range a.entries {
 		if a.entries[i].kind == entryNote && strings.Contains(a.entries[i].text, "task 7 could not be verified") {

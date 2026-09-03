@@ -227,22 +227,21 @@ func TestBelowThe256RungAStreamingReplyIsUnpainted(t *testing.T) {
 // depending on which page a person happened to be standing on.
 //
 // The path is proved through [app.entryRows] rather than [app.assistantRows]
-// directly, because the cache is half of what settling IS: [app.roomCloseLive]
+// directly, because the cache is half of what settling IS: [feed.closeLive]
 // has to mark the block stale as well as settled, or the page keeps the rows it
 // was drawn with mid-stream and the ink never dries.
 func TestANodesRoomSettlesLikeTheConversation(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	a.width, a.height = 80, 40
 	const head = "The parser is fixed.\n"
-	a.room = &taskRoom{
-		id: 7, title: "the node", live: 0, think: -1,
-		unfolded: map[int]bool{}, workOpen: map[int]bool{},
-		entries: []entry{{
-			kind:  entryAssistant,
-			text:  head + "It was reading the length prefix twice",
-			mdCut: len(head),
-		}},
-	}
+	a.room = a.newRoom(7, "the node")
+	a.room.workOpen = map[int]bool{}
+	a.room.entries = []entry{{
+		kind:  entryAssistant,
+		text:  head + "It was reading the length prefix twice",
+		mdCut: len(head),
+	}}
+	a.room.live = 0
 
 	rows := a.entryRows(a.room.deck(), 0, 60)
 	if !strings.Contains(strings.Join(rows, "\n"), liveSGR()) {
@@ -250,10 +249,10 @@ func TestANodesRoomSettlesLikeTheConversation(t *testing.T) {
 			strings.Join(rows, "\n"))
 	}
 
-	a.roomCloseLive()
+	a.room.closeLive()
 	settled := a.entryRows(a.room.deck(), 0, 60)
 	if strings.Contains(strings.Join(settled, "\n"), liveSGR()) {
-		t.Fatalf("a node's finished answer kept the live tier — [app.roomCloseLive] "+
+		t.Fatalf("a node's finished answer kept the live tier — [feed.closeLive] "+
 			"must mark the block stale as well as settled, or the page hands back "+
 			"the rows it built mid-stream:\n%s", strings.Join(settled, "\n"))
 	}
