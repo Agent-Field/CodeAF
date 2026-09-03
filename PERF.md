@@ -887,7 +887,10 @@ bound's direction wherever the journal is missing.
 `verify`'s own, not a second one: `verify.Locate` resolves what the request names
 against the tree, bounded at `scopeScanLimit` (**6000** entries) like every other
 walk in that package, and `verify.OwnChecks` / `verify.ChangedSources` are two
-passes over the round's own artifact list. It runs a handful of times in a job's
+passes over the round's own artifact list. The paths the request SPELLS join that
+focus for **one `os.Stat` each** and no walk at all — a file the request names is
+never scratch, and settling a name a person wrote out in full against the disk is
+a single stat rather than a search. It runs a handful of times in a job's
 life — once per growth ask, and the exact-ceiling recheck deliberately reuses the
 first reading rather than taking a second, because a recheck that could answer
 differently is not a recheck. See `internal/resident/progress.go`.
