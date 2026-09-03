@@ -620,9 +620,11 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		on = " on " + spec.model
 	}
 	if state == TaskQueued {
-		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
+		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
+		return withElsewhere(withReport(result, stand.redirect), elsewhere), false, nil
 	}
-	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
+	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
+	return withElsewhere(withReport(result, stand.redirect), elsewhere), false, nil
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
@@ -892,7 +894,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 			Summary:    spec.summary,
 			Brief:      spec.brief,
 			Acceptance: spec.acceptance,
-			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where),
+			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where, spec.mode),
 			Ground:     spec.ground,
 			Mode:       spec.mode,
 			DependsOn:  spec.dependsOn,
@@ -1007,8 +1009,18 @@ func (a *Agent) taskClockTimer(after time.Duration) (<-chan time.Time, func()) {
 	return timer.C, func() { timer.Stop() }
 }
 
-func taskWhereNotice(place Place, workspace string, id uint64, where string) string {
+func taskWhereNotice(place Place, workspace string, id uint64, where string, mode TaskMode) string {
 	where = strings.TrimSpace(where)
+	redirectedInPlace := false
+	if strings.EqualFold(where, "in place") {
+		_, redirectedInPlace = whereInsideRepository(where, workspace)
+	}
+	if where != "" && (mode == TaskModeWorktree || strings.EqualFold(where, "in place") && redirectedInPlace) {
+		if trees := place.Trees(); trees != "" {
+			return filepath.Join(trees, strconv.FormatUint(id, 10))
+		}
+		return "task folder"
+	}
 	if strings.EqualFold(where, "in place") {
 		return workspace
 	}
