@@ -2182,6 +2182,11 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	cancel    context.CancelFunc
+	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
+	// It sits outside mu and holds its own lock: Interrupt is the one call that
+	// must always be answerable, and the handlers it serializes must never need
+	// the session lock to ask whether they may fire.
+	interrupt interruptFan
 	// generation is the CURRENT provider request, independently cancellable from
 	// the turn around it (steer.go). A steer cuts this context and leaves cancel
 	// alone, so the same turn can record the partial answer, land the person's

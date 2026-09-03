@@ -1343,6 +1343,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.empty() {
 		a.recordUserLocked(user)
 	}
+	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
+	// here for the sentence that follows Esc, and that sentence is the one
+	// decision the leftover handlers and this turn's opening share.
+	a.interrupt.note(user.text())
 	// THE TURN'S WORK BEGINS HERE, and the floor says so for [Agent.AttachReplay]:
 	// everything recorded at or past this index while the turn runs is work the
 	// hub's backlog can replay, so a replay-then-attach surface must not be
@@ -1407,6 +1411,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			a.liftSteersLocked(hub)
 			_, unanswered := a.drainSteeringLocked(hub)
 			a.running = false
+			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
+			// as they always have; an interrupted turn that never received
+			// new words leaves the generation standing (interrupt_fan.go).
+			a.interrupt.finishTurn()
 			// And the presence stops claiming a turn is in flight, for the
 			// reason it started claiming one (taskpresence.go).
 			a.nudgePresence()
@@ -1573,6 +1581,10 @@ func (a *Agent) dropFollowUpsLocked() {
 // and that drain starts nothing, so it cannot resurrect anything. Both queues
 // are empty once the interrupted turn has finished.
 func (a *Agent) Interrupt() {
+	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
+	// leftover handler that has not yet entered callRole shares the same
+	// "what changed" decision as the redirect that follows (interrupt_fan.go).
+	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
 	jobs := a.jobs

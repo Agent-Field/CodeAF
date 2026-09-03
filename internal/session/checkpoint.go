@@ -1425,6 +1425,13 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	if a.markReaderAbsent() {
 		return checkpointRead{}
 	}
+	// A REDIRECT AFTER ESC ALREADY SAYS WHAT CHANGED. Re-reading the
+	// conversation to sketch what is left is the 57-message stall (F13): the
+	// person's next words are the decision, and a second mind asked to
+	// rediscover them is the duplicate planner pass.
+	if a.interrupt.redirecting() {
+		return checkpointRead{}
+	}
 	// AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION, for the price
 	// [checkpointDigestTokens] states: the reader is asked about the SHAPE of what
 	// is left, and nothing inside a tool result changes that shape.
@@ -1704,6 +1711,7 @@ const (
 	carryNoSentence  = "the person's own words were empty"
 	carryDraftLooped = "the draft had stopped saying new things"
 	carryHeldWork    = "it assigned work this conversation is still holding"
+	carryRedirect    = "a redirect after stop does not re-read the conversation"
 )
 
 // And what the PERSON is told, which is the same fact in the register every dim
@@ -3853,6 +3861,12 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 // two facts rather than one: falling back to the person's ask and dropping the
 // handover are opposite answers to opposite failures.
 func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep) {
+	// DO NOT RE-READ THE CONVERSATION FOR A REDIRECT. The measured stall sent
+	// fifty-seven messages to write a brief the person had just spoken in one
+	// sentence (F13). Their words stand as the brief; the draft rung is skipped.
+	if a.interrupt.redirecting() {
+		return "", true, carryStep{rung: carryRungDraft, outcome: carrySkipped, reason: carryRedirect}
+	}
 	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
@@ -3965,6 +3979,12 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 // leave a mastermind-priced line on the bill with nothing beside it saying what
 // it bought.
 func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (string, carryStep) {
+	// THE REDIRECT IS THE BRIEF. A mastermind asked to rewrite the conversation
+	// after Esc is the 36-second stall (F14) and the second of the two planner
+	// passes one keystroke used to buy (F17).
+	if a.interrupt.redirecting() {
+		return "", carryStep{rung: carryRungHandoff, outcome: carrySkipped, reason: carryRedirect}
+	}
 	if strings.TrimSpace(digest) == "" {
 		digest = checkpointDigest(asked, a.snapshot())
 	}

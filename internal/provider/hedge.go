@@ -476,12 +476,16 @@ func (r *hedgeRace) act(from int, act control.Act) {
 	case control.Ask:
 		r.ask(from, act)
 	case control.Report:
-		// THE CONTROLLER DECIDES AND THE WIRE OBEYS. A report is a report: that
-		// a wait reaching the ceiling with an affordable alternative in hand is
-		// a rescue rather than a report is `internal/lane/control`'s ruling and
-		// is taken there, so the act that arrives here is the act that happened.
-		// Rewriting a verdict at this layer would put a request on the wire that
-		// the row still called a report.
+		// A REPORT IS "THE PURSE WILL NOT BET ON SLOWNESS", NOT "SIT UNTIL
+		// THE LANE DIES". Walk only runs after a terminal error. A stall that
+		// keeps the stream open — a late first token, keepalives — never
+		// reaches it, which is how a turn sat at "all lanes slow" for 129s
+		// with arms:None (F33). The ceiling still owes one rescue; if that
+		// arm can start, the wait is being answered and is not said as a
+		// report. Only a stall with nowhere left to go is told out loud.
+		if r.rescueOnStall(from, act) {
+			return
+		}
 		r.tellTheWait(act)
 	case control.Escalate:
 		// THE CONTROLLER NEVER CHANGES A MODEL. Rung four of the ladder is
@@ -532,6 +536,79 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	r.start(index, alt)
 }
 
+// rescueOnStall starts the second arm a stall is owed, without waiting for
+// the primary to die.
+//
+// THE PURSE STILL GATES THIS. A wait at the ceiling is the role's bound, but
+// answering it with another request is spending and follows the same law as
+// every other hedge. claim is asked `past` so an earlier refusal may be
+// reconsidered if the rolling budget has since opened; [lanes.Budget.Allow]
+// makes the decision again at the moment the rescue would start.
+func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
+	if r == nil || r.base == nil || r.base.Err() != nil {
+		return false
+	}
+	alt := r.claim(act.Lane, true)
+	if alt == "" && !r.openStallRescue() {
+		return false
+	}
+	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+		r.mu.Lock()
+		r.refused = true
+		if alt != "" {
+			delete(r.tried, strings.ToLower(alt))
+		}
+		r.mu.Unlock()
+		return false
+	}
+	r.mu.Lock()
+	if r.winner >= 0 || len(r.arms) >= maxArms {
+		r.mu.Unlock()
+		return false
+	}
+	index := len(r.arms)
+	primary := r.armAt(from)
+	r.mu.Unlock()
+	quiet := ""
+	fault := false
+	if primary != nil && primary.watch != nil {
+		fault = primary.watch.fault
+		quiet = primary.watch.quietFor(waitNow())
+	}
+	r.report.note(func(report *HedgeReport) {
+		report.hedged, report.reason = true, act.Reason
+		report.fault = fault
+		if report.action == "" {
+			report.action, report.silence = actionWord(control.Hedge), act.Silence
+		}
+	})
+	if alt != "" {
+		r.report.started(RescueNews{Alt: alt, Reason: RescueSlow})
+		r.phase.switching(strings.ToLower(alt), quiet)
+	} else {
+		r.report.started(RescueNews{Reason: RescueSlow})
+	}
+	r.start(index, alt)
+	return true
+}
+
+// openStallRescue reports whether a stall with nowhere named may still put
+// a second unpinned request on the wire.
+//
+// A choice that named one machine and no alternative is a real
+// nowhere-to-go and stays a report. An empty plan is a cold router: the
+// chooser named nothing (one belief is not a ranking), and a second
+// unpinned arm is what lets the router pick another machine rather than
+// sit until a terminal error.
+func (r *hedgeRace) openStallRescue() bool {
+	if r.client == nil || !r.client.carriesPreferences() || r.client.routing() == RoutingOff {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.plan.Lane == "" && len(r.plan.Alts) == 0 && !r.plan.Pinned && len(r.arms) == 1 && r.winner < 0
+}
+
 // claim reserves the machine a rescue would go to, and answers empty when there
 // is no room, no money or nowhere left to go.
 //
@@ -545,10 +622,11 @@ func (r *hedgeRace) claim(preferred string, past bool) string {
 	if r.winner >= 0 || len(r.arms) >= maxArms {
 		return ""
 	}
-	// past is the walk, and only the walk: a lane that FAILED must not be left
-	// unanswered because a lane that was merely SLOW had its rescue refused a
-	// moment earlier. Every other caller stops at a refusal, which is what
-	// keeps one refusal from becoming a poll.
+	// past is the walk and the stall rescue: a lane that FAILED, or one that
+	// has sat past the ceiling without dying, must not be left unanswered
+	// because a slowness hedge was refused a moment earlier. Every other
+	// caller stops at a refusal, which is what keeps one refusal from
+	// becoming a poll.
 	if r.refused && !past {
 		return ""
 	}
