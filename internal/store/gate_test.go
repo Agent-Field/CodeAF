@@ -111,10 +111,65 @@ func TestDeliveryGateLineageReadsEveryRoundAndSurvivesRebuild(t *testing.T) {
 			t.Fatalf("Rebuild: %v", err)
 		}
 	}
-	// A failed gate still has to name the gap; nothing about the ledger relaxes
-	// that, because a gap nobody can state is not a verdict.
+	// A gate that did not pass still has to say why; nothing about the ledger
+	// relaxes that, because a shortfall nobody can state is not a verdict.
 	if err := graph.RecordDeliveryGate("job", DeliveryGate{Quote: "every part"}); err == nil {
 		t.Fatal("a failed gate with a quote and no gap was recorded")
+	}
+}
+
+// A GATE THAT DID NOT PASS MUST SAY WHY, AND A REFUSAL IS ONE OF THE TWO WAYS
+// TO SAY IT.
+//
+// The harness stops spending on a job once nothing is changing: no gate is
+// asked, and what is journaled in place of a judgement is the refusal that
+// stood in for it, unclosed. The validator demanded a gap of that row and
+// refused it on every real run — `record delivery gate: invalid graph mutation:
+// a failed gate must name the gap` in the log, and no row at all — so a battery
+// reading the journal could not tell a delivery nothing had judged from one that
+// had been checked and passed. A row that says NEITHER is still refused.
+func TestADeclinedJudgementIsJournaledWithTheRefusalInPlaceOfTheGap(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "task-2", Brief: "finish the migration", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1", Intent: "finish the migration"}); err != nil {
+		t.Fatal(err)
+	}
+
+	declined := DeliveryGate{
+		Refused:  "nothing here was written or altered while this ran, so it is handed over as it stands. Nothing further was started.",
+		Unclosed: true,
+	}
+	if err := graph.RecordDeliveryGate("task-2", declined); err != nil {
+		t.Fatalf("the unasked gate was refused: %v", err)
+	}
+	got, ok, err := graph.DeliveryGateFor("task-2")
+	if err != nil || !ok {
+		t.Fatalf("DeliveryGateFor = %v, %v", ok, err)
+	}
+	if got.Pass || !got.Unclosed || got.Refused != declined.Refused || got.Gap != "" {
+		t.Fatalf("row read back as %+v, want the refusal standing with no gap", got)
+	}
+	// And it settles nothing, which is what the exit code turns on: a run that
+	// changed nothing handed over less than it promised.
+	if got.Whole() {
+		t.Fatal("a delivery nothing judged read as whole")
+	}
+	// A row that names neither a gap nor a refusal is still refused: a gate that
+	// recorded nothing at all is a gate no autopsy can read.
+	if err := graph.RecordDeliveryGate("task-2", DeliveryGate{}); err == nil {
+		t.Fatal("a gate that said nothing at all was recorded")
+	}
+	// And a refusal that does not stand — the gate was held, its finding was
+	// weighed and lost — is not a substitute for the gap either.
+	if err := graph.RecordDeliveryGate("task-2", DeliveryGate{
+		Refused: "what it asked for is already on disk under the name the request used",
+	}); err == nil {
+		t.Fatal("a closed refusal with no gap was recorded")
 	}
 }
 

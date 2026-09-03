@@ -389,15 +389,32 @@ func (g DeliveryGate) Cited() []string {
 func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	nodeID = strings.TrimSpace(nodeID)
 	gate.Gap = strings.TrimSpace(gate.Gap)
+	gate.Refused = strings.TrimSpace(gate.Refused)
 	if nodeID == "" {
 		return fmt.Errorf("record delivery gate: %w: empty node id", ErrInvalid)
 	}
-	if !gate.Pass && gate.Gap == "" {
-		return fmt.Errorf("record delivery gate: %w: a failed gate must name the gap", ErrInvalid)
+	// A GATE THAT DID NOT PASS MUST SAY WHY, AND THERE ARE TWO WAYS TO SAY IT.
+	// One is the gap a judgement found. The other is the refusal that stood in
+	// for the judgement — a gate that was never asked at all — and that row says
+	// so in Refused with Unclosed set, which is the shape every reader here and
+	// the exit code already spend.
+	//
+	// Demanding a gap of the second rejected it on every real run. The harness
+	// stops spending on a job once nothing is changing, journals the unasked
+	// gate as `{Refused: …, Unclosed: true}` (cmd/aforge/chat.go), and got back
+	// `record delivery gate: invalid graph mutation: a failed gate must name the
+	// gap` — so the row a battery reads to tell an unjudged delivery from a
+	// checked one never landed, and the only trace was a note in the log.
+	//
+	// A row that says neither is still refused: a gate that recorded nothing at
+	// all is a gate no autopsy can read.
+	if !gate.Pass && gate.Gap == "" && !(gate.Refused != "" && gate.Unclosed) {
+		return fmt.Errorf("record delivery gate: %w: a gate that did not pass must name the gap "+
+			"it found, or the refusal that stood in for the judgement", ErrInvalid)
 	}
 	gate.Gap = bounded(gate.Gap, MaxDigestBytes)
 	gate.Quote = bounded(strings.TrimSpace(gate.Quote), MaxDigestBytes)
-	gate.Refused = bounded(strings.TrimSpace(gate.Refused), MaxDigestBytes)
+	gate.Refused = bounded(gate.Refused, MaxDigestBytes)
 	// Per citation, not on the list as a whole. The bound exists so one event
 	// cannot carry an unbounded string, and a citation clipped to a share of a
 	// budget it does not know the size of would be clipped mid-word — which is

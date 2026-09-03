@@ -849,6 +849,58 @@ func TestTheUnaskedGateSaysWhyInTheGovernorsWords(t *testing.T) {
 	}
 }
 
+// AND THE UNASKED GATE IS JOURNALED, THROUGH THE STORE THAT WILL ACTUALLY BE
+// ASKED TO TAKE IT.
+//
+// The sentence above was only ever checked as a string. The row it rides was
+// refused by the real validator on every real run — a gate that did not pass had
+// to name a gap, and a declined judgement names none — so what landed was
+// `note: could not journal the unasked gate on task-2-x1: record delivery gate:
+// invalid graph mutation: a failed gate must name the gap` and no row at all.
+// The promise of the change was a row a ledger could read; this writes exactly
+// what the surface writes and reads it back.
+func TestTheUnaskedGateIsJournaledAgainstTheRealStore(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-2-x1", Brief: "finish the migration", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "finish the migration"}); err != nil {
+		t.Fatal(err)
+	}
+
+	handover := unchangedHandoverWords(resident.CauseStandstill)
+	if err := graph.RecordDeliveryGate("task-2-x1", store.DeliveryGate{
+		Refused: handover, Unclosed: true,
+	}); err != nil {
+		t.Fatalf("the unasked gate was not journaled: %v", err)
+	}
+	gate, ok, err := graph.DeliveryGateFor("task-2-x1")
+	if err != nil || !ok {
+		t.Fatalf("DeliveryGateFor = %v, %v", ok, err)
+	}
+	if gate.Pass || !gate.Unclosed || gate.Refused != handover {
+		t.Fatalf("journaled gate = %+v, want the refusal standing and the delivery unclosed", gate)
+	}
+	// Never a pass: the exit code turns on this reading, and a run that changed
+	// nothing handed over less than it promised.
+	if gate.Whole() {
+		t.Fatal("a delivery nothing judged read as whole")
+	}
+	// And the person watching is told, in the governor's own words. The row
+	// names no gap, so a reader that asks it for one says nothing at the end of
+	// a run that was never judged.
+	finding, reason, standing := gateStanding(gate)
+	if !standing || !strings.HasPrefix(finding, resident.RefusedStandstill) {
+		t.Fatalf("gateStanding = %q, %q, %t; want the refusal as the finding", finding, reason, standing)
+	}
+	if verdict, detail := gateWords(gate); verdict != "refused" || detail == "" {
+		t.Fatalf("gateWords = %q, %q; want the refusal read as one", verdict, detail)
+	}
+}
+
 // The verdict rides the result, and only the two causes that read the world set
 // it. Everything else — a cap, the wall, the rail, an ordinary leaf — leaves the
 // field empty, which is what the scheduler reads as "requeue as you always did".
