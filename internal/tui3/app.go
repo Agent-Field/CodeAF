@@ -303,7 +303,7 @@ type entry struct {
 	// (brieffold.go). It is false on every other block, which is nearly all of
 	// them.
 	//
-	// IT IS SET WHERE THE FACT IS KNOWN (room.go's [readRoomJournalTail]) and
+	// IT IS SET WHERE THE FACT IS KNOWN (replay.go's [roomReplay]) and
 	// never worked out at render time, because [app.renderEntry] paints one block
 	// at a time and must not ask what surrounds it — the same law the answer
 	// hierarchy is stamped under ([app.deckRows]).
@@ -3504,6 +3504,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// One of the two catch-up ticks: nothing changed, but a number that was
 		// news four seconds ago has stopped being news, and the frame has to be
 		// drawn again to say so.
+		//
+		// AND A ROOM'S OWN ROW CACHE IS TOLD, because it keeps the whole page
+		// rather than the block ([app.roomRows]): the per-block bypass that lets a
+		// moving correction repaint ([app.entryRows]) is never reached while that
+		// list is being reused, so a delivery receipt would sit on the page for
+		// ever instead of fading off it.
+		a.roomFading()
 		a.touch()
 		return a, nil
 

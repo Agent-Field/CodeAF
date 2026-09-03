@@ -77,7 +77,9 @@ follow-up queue. Each nonempty queue says what was dropped — `1 waiting messag
 or `N waiting messages dropped` for parked messages, and the corresponding `queued`
 word for follow-ups. Replacing the conversation with `/new` or from the welcome box also
 drops parked messages. Inside a **task room** `enter` steers the node instead and nothing
-is held; that is the room's own key (see the room section below).
+is held; that is the room's own key (see the room section below). Your line lands on the
+task's page as a `└ ` elbow where you said it, with a short `· delivered` clause that
+fades away.
 
 **Why it goes straight in.** Plain `enter` is the gesture people expect to act now.
 The current generation is itself made into a legal boundary: aforge keeps its partial
@@ -1786,7 +1788,8 @@ the key then closes the column it would just have raised, so a second press brin
 back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
-cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
+cancelled first · `enter` steers the node (see *What steering a task looks like on its
+page* below) · `ctrl+b` freezes the room's own rows for
 copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` walk your history,
 and scroll the page one row only when there is no history to walk. `left` is
 deliberately **not** taken here — it falls through to the message box's
@@ -1800,6 +1803,28 @@ into a task goes into it**, so `↑` brings back the last thing you said to the 
 you can edit it and send it again. A line the steer guard refused is not remembered. On
 an **adaptive run's page** `↑`/`↓` over an empty box walk the graph's chips and the fuel
 gate's answers instead; type something and they walk the history from there.
+
+**What steering a task looks like on its page.** Your line is drawn where you said it,
+under whatever the task had already done, as an elbow:
+
+```
+└ the config lives under etc/ · delivered
+```
+
+The `└ ` says it is a correction to the work already running and not a new question, so
+the page's turn count does not move — a task's page is one question, the instruction it
+was given, with your corrections hanging off it. The clause after your words is what the
+sending did, and it is there for a few seconds and then gone: `· delivered` ordinarily,
+and `· it was waiting on its pieces — your line wakes it` when the task had handed its
+work out and was parked on the reports, because then your line is what starts it moving
+again. The elbow itself stays.
+
+**A task's page reopened later reads your corrections as corrections.** Leave the room
+and come back, or open the task tomorrow, and every line you steered into it comes back
+as a `└ ` elbow in the place you said it — with no clause, because what happened to those
+words is news and the elbow's position is the whole of the record. They used to come back
+as fresh questions with a `›`, which made yesterday's correction read as a second
+instruction and made the page count turns nobody opened.
 
 **`esc` in a room never interrupts and never stops.** Out in the conversation `esc`
 interrupts the running turn; inside a room the first `esc` leaves the room and the next

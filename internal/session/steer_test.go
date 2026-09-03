@@ -770,7 +770,7 @@ func TestATranscriptWithNoSteersLoadsExactlyAsItAlwaysDid(t *testing.T) {
 func TestNodeSteeringIsNotATurnSplice(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 
-	if !agent.enqueueSteeredLine("the config lives under etc/") {
+	if !agent.enqueueSteeredLine("the config lives under etc/", false) {
 		t.Fatal("the node's own steering lane refused a line")
 	}
 	agent.mu.Lock()
@@ -785,8 +785,18 @@ func TestNodeSteeringIsNotATurnSplice(t *testing.T) {
 	if queued[0].steer != nil {
 		t.Fatal("a line steered at a node was marked as a turn splice")
 	}
+	// AND IT CARRIES THE RECORD'S OWN MARK, which is the other half of the same
+	// distinction (#252): the person corrected running work, so the file says so
+	// — with the promise this door actually makes, which is delivery.
+	crossed := queued[0].crossed
+	if crossed == nil {
+		t.Fatal("a line steered at a node carries nothing for the record to keep")
+	}
+	if !crossed.Consumed || crossed.Landing != steerDeliveredWord || crossed.At.IsZero() {
+		t.Fatalf("the delivered line's mark = %+v, want it delivered, at a known instant", *crossed)
+	}
 	// It drains as it always did: into the transcript, as the person's words,
-	// with no steer mark on the journal line and no lift out of the queue.
+	// and with no lift out of the queue.
 	agent.mu.Lock()
 	agent.liftSteersLocked(nil)
 	landed, owed := agent.drainSteeringLocked(nil)
@@ -796,11 +806,6 @@ func TestNodeSteeringIsNotATurnSplice(t *testing.T) {
 	}
 	if got := messageText(lastMessage(agent)); got != "the config lives under etc/" {
 		t.Fatalf("transcript tail = %q, want the steered line", got)
-	}
-	for _, entry := range agent.Transcript() {
-		if entry.Steer != nil {
-			t.Fatalf("a node's steered line came back marked as a splice: %+v", entry)
-		}
 	}
 	if strings.TrimSpace(messageText(lastMessage(agent))) == "" {
 		t.Fatal("the steered line reached the transcript empty")

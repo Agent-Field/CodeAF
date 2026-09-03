@@ -133,6 +133,38 @@ A job that has written nothing yet draws no tail and no error. The old feet
 `this log grows as the job works — say it to main` and
 `a background job keeps a log, not a transcript` are gone: there is no composer to refuse.
 
+## Steer a task from its page — the `└` elbow, the `· delivered` clause, and how corrections read back
+
+`enter` inside a task's page sends what you typed to the task itself. It arrives on the
+page where you said it, under whatever the work had already done, drawn as an **elbow**:
+
+```
+└ the config lives under etc/ · delivered
+```
+
+The `└ ` is what says this is a correction to work already moving and not a new question.
+A task's page is one question — the instruction the task was given, folded at the top of
+the page — and everything you say on the page after that bends that one question, so the
+page's turn count does not move when you steer.
+
+The clause after your words is what the sending did, and it is news: it is there for a few
+seconds and then fades off the row, leaving the elbow. `· delivered` is the ordinary one
+and says the only thing you cannot see for yourself — the words crossed to the worker and
+did not vanish on the way. `· it was waiting on its pieces — your line wakes it` appears
+instead when the task had handed its work out and was parked on the reports; then nothing
+was running to read your line at its next step, and your line is what starts it moving.
+
+**Reopen the page and your corrections are still corrections.** Leave and come back, or
+open the task tomorrow, and each line you steered comes back as a `└ ` elbow in the place
+you said it, with no clause on it — the elbow's position is the record of where the words
+went. Older builds drew them as fresh `›` questions, so a page read back showed your
+corrections as extra instructions and counted turns nobody had opened.
+
+Steering is refused rather than quietly re-pointed when there is nobody to read it — a
+finished task, a background job, a task being checked — and then a question comes up
+offering to send the words to the main conversation or to ask for the work to be started
+again. Nothing is sent anywhere until you answer it.
+
 ## Task page says finished but the work is still running
 
 It does not any more. If you are on an older build, this is what you were seeing: a job's

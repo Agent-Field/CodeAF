@@ -184,7 +184,11 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// same fact from the person's side, and naming the wrong end of the run
 	// ("not started yet" about a task that is finishing) is worse than naming
 	// neither.
-	if !node.openRoom().steerIn(text) {
+	// The answer travels WITH the line rather than being asked for again at the
+	// far end, because by the time the line is written down the node is no longer
+	// parked — this is the enqueue that released it — and the record would then
+	// say the ordinary thing about the one moment it was not true.
+	if !node.openRoom().steerIn(text, waiting) {
 		return false, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
 	}
 	return waiting, nil
@@ -492,7 +496,7 @@ func (r *taskRoom) speaker() *Agent {
 // runner's final queue check, which answers it with one more turn — or the
 // withdrawal won and this refuses, words kept. Split across two locks it was
 // the #273 race with a narrower window, not a fix.
-func (r *taskRoom) steerIn(text string) bool {
+func (r *taskRoom) steerIn(text string, waiting bool) bool {
 	if r == nil {
 		return false
 	}
@@ -501,7 +505,7 @@ func (r *taskRoom) steerIn(text string) bool {
 	if r.closed || r.child == nil {
 		return false
 	}
-	return r.child.enqueueSteeredLine(text)
+	return r.child.enqueueSteeredLine(text, waiting)
 }
 
 // bill is the agent whose unfolded usage the node's price still owes: the
@@ -613,7 +617,7 @@ func (r *taskRoom) close() {
 // message naming it was written before it started, so the journal has the call
 // already; what the file cannot say is that it has not come back, and a surface
 // reads that off the missing tool result rather than off an event (internal/tui3
-// readRoomJournal). An ANNOUNCED call is the other half of that: the model has
+// ReadTranscript). An ANNOUNCED call is the other half of that: the model has
 // finished spelling it out and the batch has not started, so nothing has been
 // written yet and the announcement is carried.
 type taskCatchup struct {

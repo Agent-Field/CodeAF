@@ -3,7 +3,7 @@ package tui3
 // THE INSTRUCTION A TASK WAS GIVEN, FOLDED.
 //
 // A node's page opens on the words it was sent to do: the first line of its
-// journal is the person's own message ([readRoomJournal], room.go), and it is
+// record is the person's own message ([roomReplay], replay.go), and it is
 // drawn the way every message on this surface is drawn — whole. That is right
 // for the sentence somebody typed after `/task` and wrong for everything else
 // that arrives there: a brief the planner wrote out in full, a paragraph pasted

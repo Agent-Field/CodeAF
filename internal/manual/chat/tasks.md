@@ -2315,11 +2315,17 @@ it is: waiting on its own pieces is the work.
 
 **Type into its room anyway — your line is what wakes it.** The task reads your words as your
 words, answers them, and goes back to waiting for its pieces. Because the page has been
-still, the room says what just happened when it takes the line:
+still, your line says what the sending just did — as a short clause on the line itself,
+which is drawn as a `└ ` elbow where you said it:
 
 ```
-· it was waiting on its pieces — your line wakes it
+└ check the staging bucket first · it was waiting on its pieces — your line wakes it
 ```
+
+The clause is there for a few seconds and then fades off the row, leaving the elbow. Every
+steer into a task carries one: this sentence when the task was parked on its pieces, and
+`· delivered` when it was taking steps and your line will land at the next one
+(*Reading a task page*).
 
 Nothing else about the task moves. What it was asked to do and what it will be checked
 against were frozen when it started, and steering never touches either — if the goal itself

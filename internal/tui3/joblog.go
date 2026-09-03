@@ -53,7 +53,7 @@ const (
 // jobLogMsg is one reading of a job's log, coming back off the loop. An
 // unreadable file is not an error here and carries no error field: the log is
 // EVIDENCE and not a prerequisite, exactly as a node's journal is
-// ([readRoomJournal] says so), and a page that drew a failure over healthy work
+// ([session.ReadTranscript] says so), and a page that drew a failure over healthy work
 // would be the emptiness law broken in the loudest possible way.
 type jobLogMsg struct {
 	gen   int
