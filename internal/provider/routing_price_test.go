@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"testing"
+
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE PRICE OF SPEED ──────────────────────────────────────────────────────
@@ -224,6 +227,30 @@ func TestTheRefusalLadderTakesTheCeilingOff(t *testing.T) {
 	}
 	if relaxed.Sort != "latency" {
 		t.Fatalf("relaxed sort = %q, want the ask among whatever is left", relaxed.Sort)
+	}
+}
+
+func TestARescueDemandCarriesNoPriceCeiling(t *testing.T) {
+	ceiling := &maxPrice{Prompt: 1, Completion: 2}
+	prefs := hedgePreference(&providerPrefs{Sort: "latency", MaxPrice: ceiling}, callKnobs{hedgeLane: "Fireworks"})
+	if prefs == nil || len(prefs.Only) != 1 || prefs.Only[0] != "Fireworks" {
+		t.Fatalf("rescue preferences = %+v, want a demand for Fireworks", prefs)
+	}
+	if prefs.MaxPrice != nil {
+		t.Fatalf("the rescue demand kept its ceiling: %+v", prefs.MaxPrice)
+	}
+}
+
+func TestAStrictLaneDemandCarriesNoPriceCeiling(t *testing.T) {
+	client, _ := pricedClient(t, nil, 0.66e-6, 1.98e-6, true)
+	choice := lanes.Choice{Only: []string{"Fireworks"}}
+	prefs := &providerPrefs{Sort: "latency", MaxPrice: &maxPrice{Prompt: 0.825, Completion: 2.475}}
+	client.applyLaneChoice(prefs, "vendor/fast-model", callKnobs{laneChoice: &choice}, &ai.Request{}, "")
+	if len(prefs.Only) != 1 || prefs.Only[0] != "Fireworks" {
+		t.Fatalf("strict preferences = %+v, want a demand for Fireworks", prefs)
+	}
+	if prefs.MaxPrice != nil {
+		t.Fatalf("the strict lane demand kept its ceiling: %+v", prefs.MaxPrice)
 	}
 }
 

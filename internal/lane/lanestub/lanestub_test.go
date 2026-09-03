@@ -212,6 +212,41 @@ func TestTheStreamHonoursTheRoutingPreference(t *testing.T) {
 	}
 }
 
+func TestThePriceCeilingIsRecordedAndAppliedBeforeADemand(t *testing.T) {
+	server := New(model,
+		Lane{Name: "DeepSeek", Profile: Profile{PriceIn: 0.66e-6, PriceOut: 1.98e-6}},
+		Lane{Name: "Fireworks", Profile: Profile{PriceIn: 1.32e-6, PriceOut: 3.96e-6}},
+	)
+	defer server.Close()
+	post := func(body string) (*http.Response, []byte) {
+		t.Helper()
+		response, err := http.Post(server.URL()+"/chat/completions", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+		defer response.Body.Close()
+		raw, _ := io.ReadAll(response.Body)
+		return response, raw
+	}
+
+	response, raw := post(`{"model":"` + model + `","stream":true,"provider":{"only":["Fireworks"],"max_price":{"prompt":0.825,"completion":2.475}},"messages":[]}`)
+	if response.StatusCode != http.StatusNotFound || !strings.Contains(string(raw), "Providers serving "+model+": deepseek") {
+		t.Fatalf("the post-cap serving set answered %d %s", response.StatusCode, raw)
+	}
+	if strings.Contains(string(raw), "Providers serving "+model+": deepseek, fireworks") {
+		t.Fatalf("the price-filtered lane remained in the serving list: %s", raw)
+	}
+	asks := server.Asks()
+	if len(asks) != 1 || asks[0].MaxPrice == nil || asks[0].MaxPrice.Prompt != 0.825 || asks[0].MaxPrice.Completion != 2.475 {
+		t.Fatalf("the recorded max_price is %+v, want 0.825/2.475", asks)
+	}
+
+	response, raw = post(`{"model":"` + model + `","stream":true,"provider":{"max_price":{"prompt":0.5,"completion":1.5}},"messages":[]}`)
+	if response.StatusCode != http.StatusNotFound || !strings.Contains(string(raw), "Paid model training violation") {
+		t.Fatalf("an empty capped set answered %d %s", response.StatusCode, raw)
+	}
+}
+
 // TestAPreferenceThatEmptiesTheSetIsTheRoutersOwn404 stages what the relaxation
 // ladder in `internal/provider` exists for.
 func TestAPreferenceThatEmptiesTheSetIsTheRoutersOwn404(t *testing.T) {
@@ -226,6 +261,25 @@ func TestAPreferenceThatEmptiesTheSetIsTheRoutersOwn404(t *testing.T) {
 	raw, _ := io.ReadAll(response.Body)
 	if response.StatusCode != http.StatusNotFound || !strings.Contains(string(raw), "No endpoints found") {
 		t.Fatalf("an emptied set answered %d %s", response.StatusCode, raw)
+	}
+}
+
+func TestAnUncappedEmptySetKeepsTheGenericDataPolicyRefusal(t *testing.T) {
+	server := New(model, Lane{Name: "Cloudflare", Profile: Profile{}})
+	defer server.Close()
+	request, _ := http.NewRequest(http.MethodPost, server.URL()+"/chat/completions",
+		strings.NewReader(`{"model":"`+model+`","stream":true,"provider":{"ignore":["Cloudflare"]},"messages":[]}`))
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusNotFound || !strings.Contains(string(raw), "No endpoints found matching your data policy") {
+		t.Fatalf("an uncapped empty set answered %d %s", response.StatusCode, raw)
+	}
+	if strings.Contains(string(raw), "Paid model training violation") {
+		t.Fatalf("an uncapped preference was described as the measured ceiling refusal: %s", raw)
 	}
 }
 

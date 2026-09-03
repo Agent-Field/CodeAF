@@ -495,6 +495,15 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// where it is known.
 	refusal := c.refusalObject(request, knobs, apiError(status, peek))
 	c.strikeRefusal(model, refusal)
+	carriedCeiling := c.carriedCeiling(model, knobs, request)
+	// THE MEMO IS WRITTEN AT THE REFUSAL, BEFORE ITS RECOVERIES PART.
+	// A funded walk may keep this arm out of the ladder, but its very next arm is
+	// still a request to the same model and must not repeat the ceiling the router
+	// has already refused. The router's STRUCTURED refusal is the evidence; its
+	// sentence is never a gate on this behaviour.
+	if c.velocity != nil && carriedCeiling {
+		c.velocity.refuseCeiling(model)
+	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
 	// once, and the person is told in a sentence that stays.
@@ -519,9 +528,10 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// Relaxing here would answer a question nobody asked (tools taken off a
 	// request that only needed a different endpoint) while an endpoint that
 	// would have taken it whole sat untried. So while the race still has a
-	// gate-passing lane to walk to, the refusal is handed back and the walk
-	// takes the next machine (hedge.go's walk); the ladder runs on the LAST arm,
-	// where the evidence really is about the request rather than the endpoint.
+	// serving lane that the purse will fund, the refusal is handed back and the
+	// walk takes that machine (hedge.go's walk); the ladder runs on the LAST arm
+	// the purse will fund — or on the primary when it will fund none — where the
+	// evidence really is about the request rather than the endpoint.
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
 	if streamWatchFrom(ctx).canWalk() {
@@ -531,7 +541,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
-	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
+	return c.recoverFromRefusal(ctx, request, knobs, stream, peek, carriedCeiling)
 }
 
 // sendRepaired encodes the request and sends it, recovering once from the 400s

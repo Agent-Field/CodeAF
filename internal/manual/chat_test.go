@@ -105,6 +105,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it says coreweave refused", "models-and-cost"},
 		{"a machine will not serve my model", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
+		{"why does it say paid model training violation", "models-and-cost"},
+		{"what does guardrail restrictions and data policy mean", "models-and-cost"},
+		{"0 endpoints out of 1 requested", "models-and-cost"},
 		// The switcher, asked in the words people bring to it: the gesture they
 		// already know from every other program, the thing they are looking for,
 		// and the two spellings of the key.
