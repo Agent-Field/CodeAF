@@ -217,7 +217,7 @@ func TestARoomOpensShowingTheStepTheNodeIsInTheMiddleOf(t *testing.T) {
 	// AND IT IS DRAWN ONCE. The journal's history and the catch-up meet at one
 	// instant and must not overlap: a second copy of the same paragraph is the
 	// failure mode a replay-everything catch-up would have had.
-	if n := strings.Count(page, "Running the tests now."); n != 1 {
+	if n := strings.Count(page, "Running the tests now"); n != 1 {
 		t.Fatalf("the settled reply is drawn %d times:\n%s", n, page)
 	}
 

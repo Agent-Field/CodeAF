@@ -2495,24 +2495,28 @@ unreported, and it thaws at the value it would have had when you leave.
 
 ## Seeing the whole conversation inside a task — what folds and what opens it
 
-**A room holds everything the task said and did, and the settled work is one gesture
-away.** Out in the main thread a finished turn's machinery collapses into one chip —
+**A room holds everything the task said and did, and the settled work's outline is one
+gesture away.** Out in the main thread a finished turn's machinery collapses into one chip —
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
 you asked and the answer you got. A room does the same thing cut differently: a task's
 whole life is one long stretch of work, so folding it by turn would put the entire page
 behind one chip. It folds **by phase** instead — the work before each paragraph the task
 wrote goes behind its own `▸ worked` chip, and every paragraph stays standing.
 
-`ctrl+e` over an empty box opens the newest chip, a click opens any of them, scrolling up
-at the top of the page opens the one nearest the top, and `ui.work = open` opens them all.
-**What the task is doing right now never folds**, and neither do your instruction, your
-corrections, any call that failed, any question it asked you, or the report at the end.
+`ctrl+e` over an empty box opens the newest chip onto its caption outline, a click opens
+any of them, scrolling up at the top of the page opens the one nearest the top, and
+`ui.work = open` opens them all. A caption is a short status line per step (about
+5 to 10 words; wraps on a narrow window); click or select one to
+open its tool rows one level further. **What the task is doing right now keeps its caption
+standing**, and neither your instruction, your corrections, any call that failed, any
+question it asked you, nor the report at the end folds away.
 
 So a room you walk into — a running task, a task that has landed, a piece of a recursive
 task, a harness being designed — reads top to bottom as the story of the work: the
-instruction it was given, its prose between calls, a chip over the machinery behind each
-paragraph, anything you steered into it, and the report at the end. Everything the page
-folded is still there, and one keypress brings it back.
+instruction it was given, its prose between calls, a chip over the caption outline behind
+each paragraph, anything you steered into it, and the report at the end. Everything the
+page folded is still there: one keypress opens the outline and one more opens a caption's
+machinery. A caption can be wrong; its tool rows are the truth.
 
 Three bounded things do still hold something back, and every one of them names itself and
 opens:
@@ -2523,11 +2527,12 @@ opens:
   of a task's page" below;
 - a **thinking block** shows three lines until you press `ctrl+e` or click it —
   `⠿ thought for 6s · 148 tok · ctrl+e`;
-- a run of **more tool calls in a row than fit your window** shows a screenful of the
-  newest ones above a line reading `9 earlier tool calls · scroll up or ctrl+o`; scrolling
-  up at the top of the page, `ctrl+o`, or a click on that line unfolds the run. (The
-  conversation keeps three and its line reads `· ctrl+o`; a task's page keeps as many as
-  the window is tall — see "Reading a task's page".)
+- a live run with **no caption yet and more tool calls than fit your window** shows a
+  screenful of the newest ones above the fallback
+  `9 earlier tool calls · scroll up or ctrl+o`; scrolling up at the top of the page,
+  `ctrl+o`, or a click on that line unfolds the run. (The conversation keeps three in
+  this fallback and its line reads `· ctrl+o`; a task's page keeps as many as the window
+  is tall — see "Reading a task's page".)
 
 ## The long brief at the top of a task's page — `▸ …N more lines`, view more, expanding and collapsing the instruction, a task description that fills the whole screen
 
@@ -2571,8 +2576,9 @@ no preference for it and nothing is written to disk.
 sentence in the box and carry on. The three visible lines are drawn exactly as they would
 be if nothing were folded.
 
-Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
-there is no work chip for it to mean instead.
+Inside a room `ctrl+e` over an empty box opens the newest work chip onto its caption
+outline. Only when there is no work chip does it fall through to the newest thinking
+block.
 
 ## Who started this task, and what it handed out
 

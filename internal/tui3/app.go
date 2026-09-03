@@ -289,7 +289,11 @@ type entry struct {
 	tool   string
 	status toolState
 	detail toolDetail
-	open   bool // this call's expansion is showing inline
+	// caption is the most recent narrator override for the step this call
+	// belongs to. It stays on the call because captions are derived from the
+	// entry list on every page, and the list is the one fact both pages share.
+	caption string
+	open    bool // this call's expansion is showing inline
 	// full lifts the expansion's per-tool cap: it is set by a click on the
 	// "… N more lines" foot, which is the person saying they want the rest.
 	//
@@ -449,6 +453,11 @@ type entry struct {
 	// would keep them ([app.entryRows] hands back the cache unless [entry.stale]
 	// says otherwise).
 	demoted bool
+	// capHead says this demoted block lent its first line to the step heading,
+	// and capCut is the byte immediately after that line. Both are derived with
+	// the hierarchy and invalidate the block when they move.
+	capHead bool
+	capCut  int
 	// cut says THE TURN THIS BLOCK BELONGS TO WAS STOPPED BY THE PERSON, and it
 	// is the one part of the hierarchy that cannot be read off the list's shape:
 	// a stopped turn and a finished one end with exactly the same blocks in
@@ -811,7 +820,11 @@ type app struct {
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of completed-turn workfolds.
 	workOpen map[int]bool
-	// sel is the selected tool entry, or -1. ↑/↓ move it; enter opens it.
+	// capOpen is the second expansion under the outline, keyed by the caption's
+	// start in this page's own entry list.
+	capOpen map[int]bool
+	// sel is the selected entry, a negative caption key, or -1. ↑/↓ move it;
+	// enter opens whichever kind of row supplied it.
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
 	hot hoverAt
@@ -2203,6 +2216,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		echoAt:              -1,
 		sel:                 -1,
 		unfolded:            map[int]bool{},
+		capOpen:             map[int]bool{},
 		stick:               true,
 		width:               80,
 		height:              24,
@@ -5359,6 +5373,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.openTool(r.entry)
 	case hitFold:
 		a.unfold(r.turn)
+	case hitCaption:
+		a.toggleCap(r.turn)
 	case hitWorkFold:
 		a.toggleWorkfold(r.turn)
 	case hitMore:
@@ -5582,11 +5598,15 @@ func (a *app) selectTool(delta int) bool {
 		// make the room a mouse-only place. The walk is also what gives ctrl+o
 		// something to act on: the key a card names is spent on the SELECTED card
 		// (taskdone.go's [app.openDone]).
-		if r.hit != hitTool && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness {
+		if r.hit != hitTool && r.hit != hitCaption && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness {
 			continue
 		}
-		if len(calls) == 0 || calls[len(calls)-1] != r.entry {
-			calls = append(calls, r.entry)
+		key := r.entry
+		if r.hit == hitCaption {
+			key = captionSelection(r.turn)
+		}
+		if len(calls) == 0 || calls[len(calls)-1] != key {
+			calls = append(calls, key)
 		}
 	}
 	if len(calls) == 0 {
@@ -5622,6 +5642,15 @@ func (a *app) selectTool(delta int) bool {
 	a.touch()
 	a.reveal(a.sel)
 	return true
+}
+
+func captionSelection(key int) int { return -key - 2 }
+
+func selectedCaption(sel int) (int, bool) {
+	if sel >= -1 {
+		return 0, false
+	}
+	return -sel - 2, true
 }
 
 // slash consumes a command line. Everything starting with "/" is answered
