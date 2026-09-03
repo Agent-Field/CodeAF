@@ -2305,7 +2305,9 @@ One line per call, and it reads like this:
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
-`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`), which model was asked, **which endpoint
+`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`, `satisfied`, and the errands aforge runs
+for itself — `distill`, `narrate`, `title`, `consolidate`, `reflect`, `sentinel`, `quorum`,
+`morning-brief`, `craft-repair`, `craft-params`), which model was asked, **which endpoint
 was asked for and which one actually answered**, the thinking level and the **ceiling that
 really travelled** — which is larger than the one asked for, because the thinking pass is
 given room in front of the answer — how many messages and tools the request carried, the

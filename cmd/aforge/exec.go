@@ -256,10 +256,21 @@ func buildExecEnvelope(outcome *exec.Outcome) execEnvelope {
 	}
 }
 
+// execNodeKey names the single leaf `aforge exec` runs. It is spelled once so
+// the call log, the artifact bucket and the flight recorder cannot disagree
+// about who did the work.
+const execNodeKey = "task-1"
+
 func execTask(prompt, system, root string) exec.Task {
 	title, _, _ := strings.Cut(prompt, "\n")
 	return exec.Task{
-		NodeID:   1,
+		NodeID: 1,
+		// The one node this command runs, named rather than left to the
+		// number. `aforge exec` has a single leaf, and every model call it
+		// makes is that leaf's work; without a key the call log's node column
+		// was blank for the whole run, so a person reading the record after it
+		// could not tell an exec row from a row with no work behind it at all.
+		NodeKey:  execNodeKey,
 		Title:    strings.TrimSpace(title),
 		Brief:    prompt + "\n\nWorkspace root (your working directory): " + root,
 		Contract: system,

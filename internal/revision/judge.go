@@ -1466,6 +1466,11 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
+	// And the same node on the model-call log, which is a separate carrier from
+	// the spend one above: the bill is keyed by the job that pays, the log by
+	// the work a row belongs to, and a gate row with no node cannot be read
+	// beside the leaf rows for the deliverable it just refused.
+	judgeCtx = provider.WithCallNode(judgeCtx, node.ID)
 	// The answer's shape follows the subject. Over a changed tree a refusal must
 	// name one file of the record and quote the behaviour it fails, which is
 	// what makes a finding about the worker's sentence unsayable rather than
@@ -2179,6 +2184,8 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
+	// And on the log, for the reason the delivery gate names its own node.
+	judgeCtx = provider.WithCallNode(judgeCtx, node.ID)
 	var verdict struct {
 		Done      bool   `json:"done"`
 		Remaining string `json:"remaining"`

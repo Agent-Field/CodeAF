@@ -609,8 +609,15 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// work, and a log of a fanned-out run is unreadable without saying whose.
 	// The tag itself is derived from the routing class the scheduler already
 	// stamped (provider.WithCallTag), so "leaf" is spelled once, not twice.
+	//
+	// It is leafKey rather than NodeKey because NodeKey is empty on every
+	// headless plan leaf — that path carries its plan node's number in NodeID
+	// and sets no key at all — and naming the node from the field that is only
+	// sometimes filled left exactly those rows anonymous. leafKey is already
+	// the one place "who is this leaf, for naming purposes?" is answered, so
+	// the log now agrees with the artifact bucket and the flight recorder.
 	ctx = provider.WithCallTag(ctx, "leaf")
-	ctx = provider.WithCallNode(ctx, task.NodeKey)
+	ctx = provider.WithCallNode(ctx, task.leafKey())
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
 	deadline, _ := ctx.Deadline()

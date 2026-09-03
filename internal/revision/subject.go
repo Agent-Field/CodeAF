@@ -804,6 +804,9 @@ func ReshapeDelivery(ctx context.Context, settings config.Config, client *pool.C
 	// gate's own call is: a repair charged to the day's overhead is a repair
 	// nobody sees on the job that needed it.
 	askCtx = pool.WithSpendNode(askCtx, node.ID)
+	// And on the log, so a reshape is attributable to the deliverable it
+	// reshaped rather than floating free of every node in the run.
+	askCtx = provider.WithCallNode(askCtx, node.ID)
 	return shaped.Prose(askCtx, client, shaped.Ask{Lane: "delivery", Messages: []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: ReshapePrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "What was asked for:\n" +

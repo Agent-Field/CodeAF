@@ -507,6 +507,8 @@ func MapChecks(ctx context.Context, settings config.Config, client *pool.Client,
 	// wants the two beside each other.
 	mapCtx = provider.WithCallTag(mapCtx, "gate")
 	mapCtx = pool.WithSpendNode(mapCtx, node.ID)
+	// And on the log, so this half of the gate's question sits beside the other.
+	mapCtx = provider.WithCallNode(mapCtx, node.ID)
 	var answer struct {
 		Mapped []store.ExercisedPoint `json:"mapped"`
 	}

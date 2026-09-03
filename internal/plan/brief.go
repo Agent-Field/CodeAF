@@ -451,6 +451,10 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 		userMessage(target.String()),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanBrief)
+	// WHICH NODE THIS CALL BELONGS TO, for the reason the contract pass names
+	// its own: the briefs of a stage are written concurrently and are otherwise
+	// indistinguishable in the log.
+	ctx = provider.WithCallNode(ctx, callNodeKey(node.ID))
 	response, err := client.CompleteWithMessages(ctx, messages, options...)
 	if err != nil {
 		provider.Report(ctx, provider.VerdictProviderFailure)

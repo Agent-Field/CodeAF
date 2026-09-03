@@ -734,6 +734,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// wanting to know how long the thing waits before it stops.
 		{"can I pass 5m as the timeout to aforge do", "adaptive-runs"},
 		{"how long does aforge do wait before the timeout stops it", "adaptive-runs"},
+		// And a person standing over a headless run that ended wrong. Two of
+		// these are asked in front of the evidence rather than about it: a
+		// folder they did not expect, and a flag somebody told them about
+		// afterwards. Only the third is the question the section was named for.
+		{"keep the run's files", "adaptive-runs"},
+		{"why is there a folder left behind after aforge do", "adaptive-runs"},
+		{"my headless run failed where is its record", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
 

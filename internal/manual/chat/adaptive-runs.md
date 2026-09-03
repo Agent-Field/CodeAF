@@ -495,7 +495,7 @@ begins `INCOMPLETE: the node's final reply was cut off at the output limit after
 continuation attempts.` The planner reads that warning with the fragment, so it can treat
 the node as unfinished rather than mistaking the prose for a completed deliverable.
 
-## When a run's worker says it wrote a file and did not
+## When a run's worker says it wrote a file and did not — the run said it wrote a file but there is nothing there
 
 A node that was given a write scope and **changed no file** does not land as done, however
 its last sentence reads. Models end turns on lines like "Now I have both files. Let me
@@ -604,6 +604,43 @@ there has never been one it says `nothing this job is about has changed`. A run 
 because its wall could not hold another round of work says `partial — no time left for
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
+
+## My headless run failed — where is its record, why is there a folder left behind after `aforge do`, how do I keep the run's files with `--keep`
+
+`aforge do` works in a private store of its own unless you point it somewhere durable with
+`--db`. What becomes of that store depends on how the run ended:
+
+- **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
+  which is the point of a one-shot.
+- **It did not** — exit 1, or the partial exit 2 above, or a run you stopped with Ctrl+C —
+  and the store is **kept**, with no flag and nothing decided in advance. The last thing the
+  run writes on the error stream is where it is:
+
+  ```
+  record kept at ~/.aforge/runs/aforge-do-3f81c2
+  ```
+
+Kept records live under `runs/` in aforge's own folder — `~/.aforge/runs/`, or wherever
+`AFORGE_HOME` points — and **not** in the machine's temporary directory, so nothing sweeps
+one away before you go looking for it. That directory holds `graph.db`: the journal every
+worker wrote to, the plan as it stood, the deliverables, the receipts and the spend. Hand it
+back with `aforge do --db <that path>/graph.db "…"` to work in it again, and it is an
+ordinary directory otherwise — read it, copy it, delete it when you are done with it.
+
+Stopping a run yourself keeps it too. Ctrl+C — or a `SIGTERM` from whatever launched it —
+lands the run rather than vanishing it: the work in flight is settled, what it produced is
+reported, and the `record kept at` line is printed on the way out. Press Ctrl+C a second time
+and the process dies immediately; the folder is still there, because nothing got as far as
+deleting it.
+
+Two ways to keep it whatever happened: `--keep` on the run, or the environment variable
+`AFORGE_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
+as long as it is set. Neither is needed to keep a failure any more. This used to be the
+other way round — every run's store was deleted on the way out, worked or not — so a person
+discovered they wanted the record after the failure, which was after it was gone.
+
+A run pointed at `--db` never had a private store to keep: that store is yours and is left
+exactly where you put it, whatever the run did.
 
 ## When aforge decides there is nothing left to do — and when it may not
 

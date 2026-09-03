@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1054,6 +1055,13 @@ func RunID(goal string) string {
 }
 
 func trim(value string) string { return strings.TrimSpace(value) }
+
+// callNodeKey spells a plan node's identity for the model-call log
+// (provider.WithCallNode). It is the node's own number, which is what the
+// executor's leaf key falls back to on this same path, so a planning pass about
+// one node and the leaf that ran it name the work the same way and the log can
+// be read one node at a time.
+func callNodeKey(id int) string { return strconv.Itoa(id) }
 
 func userMessage(text string) ai.Message {
 	return ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: text}}}
