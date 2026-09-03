@@ -713,8 +713,20 @@ func TestJSONPrintsAnObjectWhenTheErrandCannotEvenStart(t *testing.T) {
 	if strings.TrimSpace(outcome.Error) == "" {
 		t.Fatalf("the object carries no error: %s", stdout.String())
 	}
-	if !strings.Contains(outcome.Error, "store directory") {
-		t.Fatalf("the error does not say what went wrong: %q", outcome.Error)
+	// WHAT WENT WRONG IS THE PATH AND WHAT TO DO ABOUT IT.
+	//
+	// This used to look for the words `store directory` — the verb do.go wrapped
+	// the fault in on its way up (`create the store directory: mkdir <path>: not
+	// a directory`). That chain is gone: `stat`, `mkdir` and `open` are the
+	// operating system's words and the narration in front of them was the
+	// binary's, while the one fact a person can act on is WHICH PATH is blocked
+	// (plainwords.go). So the needle is the path itself, which the old sentence
+	// also carried, plus the remedy the old one had nothing of.
+	if !strings.Contains(outcome.Error, blocked) {
+		t.Fatalf("the error does not name the path that is in the way: %q", outcome.Error)
+	}
+	if !strings.Contains(outcome.Error, "point it at a folder instead") {
+		t.Fatalf("the error says what went wrong and never what to do: %q", outcome.Error)
 	}
 	if outcome.Settled {
 		t.Fatal("a run that never started reported itself settled")

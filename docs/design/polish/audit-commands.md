@@ -470,3 +470,234 @@ variable on it.
 - **Row 10 (`seat` on stderr)** is in `internal/config/seats.go`, outside this
   lane's files.
 - **Rows 4, 5, 6** were closed earlier in the wave by other lanes.
+
+---
+
+## fixed — the eighty-column help page, and the fourth exit table
+
+A third lane, on what the rename and streams lanes left. Both fixes below were
+checked by reverting them and watching the test fail; what each failure said is
+recorded with it, because five tests in this wave passed against the very defect
+they named.
+
+**The layout law, stated once and enforced once** — `cmd/aforge/main.go`,
+beside `usageText`:
+
+> Nothing this binary prints as help draws wider than **eighty display cells**.
+> A command's synopsis begins at column 2 and folds, when it must, to column 14;
+> its description sits UNDER it at column 6, never beside it.
+
+**The width (`audit-cli.md`'s row seven, closed in that file's own table) —
+`--help` was a designed page laid out to 164 cells, which is not a designed
+page on the terminal anybody reads it in.**
+Files: `cmd/aforge/main.go` (`usageText`, `environmentText`, the `helpWidth` and
+`helpTextColumn` constants and the law above them), `cmd/aforge/envelope.go`
+(`exitLadderHelp`, `foldedExitLadder`), `cmd/aforge/usage.go` (the closing line
+printed under every per-command page).
+
+The grouping, the five examples and the environment door were already right
+(the rename lane, above) and are untouched. What was still wrong was the WIDTH,
+and it was wrong everywhere: the front page's longest line drew 164 cells, the
+environment table's drew 116, and the one line under all twenty-three
+per-command pages drew 83. So every second line was folded by the terminal, at
+a break nobody chose, **inside a word** — `--host host[:` / `path]]`,
+`instea` / `d of attaching`, `res` / `umes` — and the hanging indent stopped
+aligning the moment it happened. `frames/help-before.80x24.txt` is that, folded
+the way a terminal folds it.
+
+- **The front page is 108 lines drawing 167 rows → 110 lines drawing 110.** The
+  page a person scrolls got a third shorter while gaining nothing they have to
+  squint at.
+- **The right-hand description column is gone.** It could not survive eighty
+  cells: these synopses carry whole flag lists, so the text column started at
+  30 on `models` and at 0 on `do`, which is the two conventions the page already
+  had. One column, at 6, under the synopsis.
+- **The environment table is one column too**, at 23 — it had two (23 and 30),
+  and its widest row was an example env assignment nothing could fold. The
+  example is two model ids now instead of three.
+- **The exit ladder folds ON ITS SEPARATOR.** Five rungs spelled in words is 139
+  cells and cannot be one line at any indent, so `exitLadderLine` became
+  `exitLadderHelp` — still built from `exitLadder` and from nowhere else, still
+  the same text on all three verbs, but folded so that a break is only ever
+  taken before a `· `. A rung split across the fold is a rung a reader scanning
+  for their own exit code never finds.
+- `run `aforge --help` for every command, `aforge help env` for the environment
+  table.` — the closing line under every per-command page — drew 83 cells and is
+  now `…for the variables.`
+
+Test: **`TestEveryHelpPageFitsAnEightyColumnTerminal`** (`cmd/aforge/helpwidth_test.go`).
+It reads the DOORS and not the variables — `usageText` is a concatenation, and
+a test measuring the literal would measure a page nobody sees — capturing
+`--help`, `help env` and twelve per-command pages, and measuring every line with
+`ansi.StringWidth` rather than `len`, which is the same byte-versus-cell law
+`wrapAt` already keeps. It reads `cmd/aforge` with `go/parser` to name the FILE
+AND LINE the over-wide text was typed at, which is what puts it on
+`scripts/laws.sh`.
+And **`TestTheHelpPageCostsFewerRowsThanTheOneItReplaced`**, because the obvious
+way to make a 164-cell page fit eighty is to print twice as many lines: it
+counts rows at 80 and refuses anything that is not fewer than the 167 the old
+page drew.
+**Reverted and watched fail:** with `usageText`, `environmentText` and the
+closing line put back as they were at `HEAD`, the first names twenty-odd lines —
+`` `--help` line 24 draws 164 cells in a 80-column terminal, so the terminal
+folds it inside a word `` — with `main.go:273`, `:274`, `:276` … beside each, and
+fails `doctor --help` and `help env` on their own; the second says
+`draws 167 rows … the page it replaced drew 167, so folding it has bought the
+reader nothing`.
+Capture: `frames/help-before.80x24.txt` → `frames/help-after.80x24.txt`,
+`frames/help-env-before.80x24.txt` → `frames/help-env-after.80x24.txt`, each
+folded at eighty so the mid-word breaks are visible rather than described.
+
+**The fourth exit table — the chat manual still taught `exec`'s retired
+six-rung ladder.**
+File: `internal/manual/chat/adaptive-runs.md`.
+Row six said there were three exit tables. There were four, and the last one
+was the worst: `adaptive-runs` — the page about `aforge exec` — still said *"Its
+exit code is a six-rung ladder"* and *"`5` is the one to watch for"*, months
+after the binary stopped returning 5 or 6. That corpus is the ONLY authoritative
+source about aforge for the model, so the running chat answered "what does exit
+5 mean" out of a number the binary no longer publishes. The page now carries the
+one ladder, says that **`1` means nothing ran at all** so a run that started and
+then fell over leaves with `2`, and names `AFORGE_EXIT_CODES=legacy` for the
+script that was pinned to the old numbers. Two smaller stale claims on the same
+page went with it: the envelope's answer field is `answer` and not `text`, and
+`--plan-model` is kept for an old command line rather than "so that every
+command takes the same flags".
+Test: **`TestNoChatPageStillTeachesExecsRetiredExitCodes`**
+(`internal/manual/execladder_test.go`). It reads `exitLadder` out of
+`cmd/aforge/envelope.go` with `go/parser` — the const block for each rung's
+NUMBER, the composite literal for its `Short` clause — and demands the page
+carry every number and the words `envelope.go` spells it with, plus the hatch;
+then it bans the four sentences the retired table was written in, on every page
+in the corpus. **The positive half is what discriminates**: a page that merely
+deleted its stale paragraph satisfies any ban and leaves the chat with nothing
+to say.
+**Reverted and watched fail:** with the old page back, both halves fail
+independently — three rungs missing (`adaptive-runs does not say what exit 2
+means; envelope.go's own words for it are "ran and did not finish"`), the hatch
+unnamed, and four bans tripped.
+No new `## ` heading was added to the corpus: the fix is inside the section that
+already owned the claim, so nothing was put in a position to outrank an
+established page on a generic term.
+
+### NOT FIXED — row ten, `seat` on stderr, is not in this lane's files
+
+The notice is spelled in exactly one place, `internal/config/seats.go:331`:
+
+```go
+return "your crew was set before the " + string(s.Role) + " seat existed · " +
+```
+
+The four headless doors do not spell it themselves — `do.go`, `main.go`,
+`exec.go` and `subharness_run.go` all print `seats.Report()`, which is right and
+is what row fifteen was closed for. **So the fix is one line in a file this lane may
+not touch, and it needs routing.**
+
+Whoever takes it must land three manual edits in the same change, or the corpus
+will quote a sentence the binary no longer prints:
+
+- `internal/manual/chat/models-and-cost.md:461` and `:488` quote the notice
+  **verbatim** — `your crew was set before the work seat existed · it is running
+  on your small work model until you pick a crew again` — and `:480` is a `## `
+  heading built on the word (*inherited work seat in the conversation*).
+- `internal/manual/chat/models-and-cost.md` uses *seat* as the product's own
+  noun about thirteen times (`## What are the six models — the one you talk to
+  and the five crew seats`), so this is a vocabulary decision across a page, not
+  a string swap. `commands.md:1291` and `:1606` are the two the audit already
+  named, and they belong to the same decision.
+- `internal/manual/chat/adaptive-runs.md` had one, and it is gone here — the
+  sentence did not need the noun at all and now reads *"it opens on the error
+  stream naming one model rather than two"*.
+
+`TestEveryPageQuotingAShippedSentenceQuotesItWhole` in `internal/manual` is what
+will catch a half-done version of this.
+
+---
+
+## fixed — row 10, and the two stream rows re-verified
+
+A third lane. Row 10 is the only open row here that was this lane's; rows 14 and
+28 were checked against a rebuilt binary rather than believed, because a
+structural test in this wave once went green against the very defect it named.
+
+**Row 10 — `seat` on stderr on four headless doors.**
+File: `internal/config/seats.go` (`Seat.Notice`, and a new `CrewCommand`).
+
+**The row as written is NOT A DEFECT and was declined on the coordinator's
+ruling.** `seat` is not machinery vocabulary: it is this product's own noun for
+a row of the crew, used about thirteen times on
+`internal/manual/chat/models-and-cost.md` including inside a `## ` heading, and
+spoken by the settings sheet, the model picker and the `/crew` chooser. The
+vocabulary law bans the PROGRAM'S words for its own process — `auditor`,
+`verdict`, `refuted` — not a domain noun the product teaches under that name.
+Renaming it in this one sentence would have left the corpus quoting a line the
+binary no longer printed while the page around it went on saying `seat` a dozen
+more times.
+The row's other premise was checked and is right: the notice is spelled in
+exactly one place and the four doors all print `seats.Report()`, so there is one
+function to change and no call site.
+
+**What IS wrong is the remedy, and it is a real defect of the class "a sentence
+not true of the code around it".** The line ended `until you pick a crew again`,
+and it is printed on four HEADLESS doors — `aforge do`, `aforge plan run`,
+`aforge exec`, `aforge run` — where there is no way to pick a crew at all: a crew
+is written by `/crew` and by the settings sheet's Providers row, both of which are
+the conversation, and no flag and no verb in the binary sets one. The one line
+whose whole job is to explain a surprising model choice told somebody to do
+something and gave them nowhere to do it. Cause plus what to do is the law on
+both surfaces; a cause plus a dead end is the defect.
+
+| | |
+| --- | --- |
+| before | `your crew was set before the work seat existed · it is running on your small work model until you pick a crew again` |
+| after | `your crew was set before the work seat existed · it is running on your small work model until you pick a crew with /crew in the conversation` |
+
+ONE FORM, TRUE FROM BOTH PLACES IT IS PRINTED. `/crew` reads as the next
+keystroke in the conversation and as a destination from a shell, and it is the
+same sentence in both — which is what keeps somebody who has seen one surface
+recognising the other. The door is a constant, `config.CrewCommand`, so a remedy
+cannot go on naming a door that has been renamed.
+`FromWords` was checked and needs nothing: its one caller is the `/crew`
+chooser's own row (`internal/tui3/crew.go`, `your work seat is inherited from
+small work — picking one writes it`), whose remedy is the literal next keystroke
+where it is drawn. That sentence is not a dead end and is not this lane's file.
+Test: `TestTheInheritedSeatNoticeNamesADoorAPersonCanActuallyReach` — the door,
+where the door is, and the three register rules the function's own comment sets
+out (a middle dot, lowercase, no full stop). **Watched to fail** with the old
+promise put back: `the remedy names no door at all, so a person reading it in a
+terminal has nowhere to go`. `TestTheNoticeKeepsTheProductsOwnWordForARowOfTheCrew`
+is a GUARD on the declined half and passes either way, which is said here because
+a test that cannot fail is not evidence.
+No test anywhere asserted the old promise — the three files that mention it
+(`internal/tui3/crewseat_test.go`, `internal/e2e/tuiwords_test.go`,
+`docs/changes/unreleased/503-one-model-status-line.md`) all quote it in prose, and
+the e2e needle stops at `it is running on your ` on purpose. `./internal/config`,
+`./internal/e2e`, `./internal/manual` and the `/crew` tests in `./internal/tui3`
+are green.
+
+**NEEDS ROUTING: the manual quotes the old sentence three times** and
+`internal/manual/` is another lane's this wave. `models-and-cost.md:461` and
+`:488` print the line inside fenced blocks and `:779` quotes its tail; all three
+need `until you pick a crew again` → `until you pick a crew with /crew in the
+conversation`. The prose around them already says `/crew` is how you end it, so
+nothing else on the page moves. No manual gate fails today — the corpus is simply
+quoting a line the binary no longer prints, which is the thing the manual law
+exists to prevent.
+
+**Row 14 — the plan doors' preamble.** Re-verified, not re-fixed. `main.go`'s
+`runPlanNew`/`runRevise`/`runShow` and `run.go`'s `runGraph` all write through
+`aside`; `aforge plan show /nope/p.json > out 2> err` leaves stdout **empty** and
+the whole refusal on stderr. **This was verified by capture and by reading the
+source, and NOT by a revert check**: both files are held by other lanes this wave
+and a temporary edit to `main.go` in a shared checkout would have raced them.
+
+**Row 28 — `cache clean`'s prompt.** Re-verified by revert, which is the one that
+mattered: this is the row whose structural test was once green against it because
+it read only the first operand of a three-part concatenation. Putting the four
+prompt lines back on `os.Stdout` makes
+`TestNoDoorPrintsItsCommentaryToStdout` fail naming `cache.go:102` and the
+concatenated string — `writes a question to STDOUT: "Type \"\x00\" to delete it;
+anything else keeps it: "` — so it now follows `+` and now fails for the right
+reason. `TestTheCacheQuestionIsAskedOffTheAnswerStream` fails beside it.
+Live, on the rebuilt binary with a non-empty cache: stdout carries only `kept —
+nothing was deleted.` and the four question lines are all on stderr.

@@ -253,7 +253,26 @@ func usageForCommand(name string) string {
 			blocks = append(blocks, strings.Join(block, "\n"))
 		}
 	}
+	// AND WHAT THE GROUP SAYS ONCE, EACH OF ITS PAGES SAYS TOO. The exit ladder
+	// lives under the `hand it work` group rather than inside all three of its
+	// verbs, which saved the reader of `aforge --help` from being told the same
+	// thing three times — and took it off `aforge exec --help`, which is where
+	// somebody writing a script goes to find out what a number means. It is read
+	// from the same constant the group prints, so the two cannot disagree.
+	if len(blocks) > 0 && handsWork(name) {
+		blocks = append(blocks, handWorkFooter)
+	}
 	return strings.Join(blocks, "\n")
+}
+
+// handsWork reports whether this command is one of the three that hand work off
+// and report an exit code for how it went.
+func handsWork(name string) bool {
+	switch name {
+	case "do", "exec", "run":
+		return true
+	}
+	return false
 }
 
 // commandLine reports whether one line of the table is this command's own.

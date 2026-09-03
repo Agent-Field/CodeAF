@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -260,8 +263,12 @@ func TestLogsFiltersByRunAndSaysNothingForARowThatHasNoRun(t *testing.T) {
 		t.Errorf("a row with no run of its own is not in any run:\n%s", kept.String())
 	}
 	var missing strings.Builder
-	if err := runLogsWith([]string{"--run", "r-none"}, &missing, path, stoppedClock(t)); err != nil {
-		t.Fatal(err)
+	// A MISS LEAVES ON A NON-ZERO RUNG, which is a different fact from what it
+	// says and is pinned in TestAnIdThatIsNotInTheLogIsNotReportedAsSuccess.
+	// This test is about the sentence, so it reads past the code rather than
+	// treating it as a fault.
+	if err := runLogsWith([]string{"--run", "r-none"}, &missing, path, stoppedClock(t)); !isMissRung(err) {
+		t.Fatalf("a run nothing belongs to ended %v, want the miss rung", err)
 	}
 	if got := strings.TrimSpace(missing.String()); got != "no calls for run r-none" {
 		t.Errorf("a run nothing belongs to says so: %q", got)
@@ -315,8 +322,8 @@ func TestLogsTellsAnEmptySearchApartFromAQuestionItCannotAnswer(t *testing.T) {
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			var out strings.Builder
-			if err := runLogsWith(probe.flags, &out, probe.path, stoppedClock(t)); err != nil {
-				t.Fatal(err)
+			if err := runLogsWith(probe.flags, &out, probe.path, stoppedClock(t)); !isMissRung(err) {
+				t.Fatalf("a lookup that found nothing ended %v, want the miss rung", err)
 			}
 			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 			if len(lines) != 1 || lines[0] != probe.want {
@@ -563,4 +570,129 @@ func TestLogsOnAHeadlessRunShowsBothTokenFiguresOnEveryPricedRow(t *testing.T) {
 	if priced == 0 {
 		t.Fatal("the run left no priced end row at all, so nothing here was tested")
 	}
+}
+
+// ── C20: `--tail notanumber` ANSWERED `parse error` ──────────────────────────
+//
+// Go's own message for a number that would not read is `parse error`, and it
+// reached a person through two layers neither of which wrote it for anybody:
+//
+//	error: invalid value "notanumber" for flag -tail: parse error
+//
+// It names nothing the person can act on, while `do --timeout` in the same
+// binary has always answered `a duration such as 15m or 2h, or a number of
+// seconds`. The refusal now says WHICH FLAG, WHAT WAS GIVEN and WHAT IT TAKES.
+func TestABadCountFlagSaysWhichFlagWhatWasGivenAndWhatItTakes(t *testing.T) {
+	_, errs := captureUsage(t)
+	err := runLogsWith([]string{"--tail", "notanumber"}, io.Discard,
+		filepath.Join(t.TempDir(), "calls.jsonl"), time.Now)
+	if err == nil {
+		t.Fatal("a flag that could not be read was accepted")
+	}
+	refusal := errs.String()
+	if strings.Contains(refusal, "parse error") {
+		t.Fatalf("the number package's own words still reach the reader:\n%s", refusal)
+	}
+	for _, want := range []struct{ what, text string }{
+		{"which flag", "-tail"},
+		{"what was given", `"notanumber"`},
+		{"what it takes", "a whole number of calls to show, such as 40"},
+	} {
+		if !strings.Contains(refusal, want.text) {
+			t.Fatalf("the refusal never says %s.\n  said: %s\n  want it to carry %q",
+				want.what, refusal, want.text)
+		}
+	}
+}
+
+// A NEGATIVE COUNT IS REFUSED AT THE DOOR, where the sentence can still name
+// the flag. Nothing downstream can tell `--tail -5` from an arithmetic mistake.
+func TestANegativeCountIsRefusedWhereTheFlagCanStillBeNamed(t *testing.T) {
+	_, errs := captureUsage(t)
+	if err := runLogsWith([]string{"--tail=-5"}, io.Discard,
+		filepath.Join(t.TempDir(), "calls.jsonl"), time.Now); err == nil {
+		t.Fatal("a negative count was accepted")
+	}
+	if !strings.Contains(errs.String(), "not a negative one") {
+		t.Fatalf("a negative count was not refused in words:\n%s", errs.String())
+	}
+	// AND ZERO IS NOT A TYPO. Asking for none of something is a question.
+	if err := runLogsWith([]string{"--tail", "0"}, io.Discard,
+		filepath.Join(t.TempDir(), "calls.jsonl"), time.Now); err != nil {
+		t.Fatalf("--tail 0 was refused: %v", err)
+	}
+}
+
+// ── C25: A MISS WAS REPORTED AS A SUCCESS ────────────────────────────────────
+//
+// `aforge logs --run <id>` for a run that is not in the log printed a sentence
+// and left with 0. A script asking whether a run exists could not tell "not
+// found" from "found, and it made no calls" without parsing prose — and the two
+// mean opposite things. `aforge notebook retract 999` has always had this right.
+func TestAnIdThatIsNotInTheLogIsNotReportedAsSuccess(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "calls.jsonl")
+	if err := os.WriteFile(path, []byte(`{"call_id":"c1","model":"m","run":"r1"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "a run nobody logged", args: []string{"--run", "r-nosuch"}, want: "no calls for run r-nosuch"},
+		{name: "a call nobody logged", args: []string{"--call", "c-nosuch"}, want: "no call c-nosuch in this log"},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			var answer bytes.Buffer
+			err := runLogsWith(probe.args, &answer, path, time.Now)
+			var status exitStatus
+			if !errors.As(err, &status) {
+				t.Fatalf("a lookup that found nothing left with success.\n"+
+					"  err:  %v\n  said: %q\n  want: a non-zero rung off the ladder", err, answer.String())
+			}
+			if status != exitCannotRun {
+				t.Fatalf("a miss left on rung %d, want %d — the question could not be answered "+
+					"and nothing ran", int(status), int(exitCannotRun))
+			}
+			// AND THE PERSON STILL READS WHY. The code is for the script; the
+			// sentence is for whoever typed it.
+			if !strings.Contains(answer.String(), probe.want) {
+				t.Fatalf("the miss left no sentence behind it.\n  said: %q\n  want: %q",
+					answer.String(), probe.want)
+			}
+		})
+	}
+}
+
+// AND A SEARCH THAT CAME BACK EMPTY IS STILL A SUCCESS. Only an id somebody
+// pasted is a claim that a thing exists; a tag or a model that matched nothing
+// is a question with the answer "none", and a listing with no filter at all on
+// a machine that has made no calls is a quiet day, not a fault.
+func TestASearchThatMatchedNothingIsNotAMiss(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "calls.jsonl")
+	if err := os.WriteFile(path, []byte(`{"call_id":"c1","model":"m"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"--tag", "nosuch"},
+		{"--model", "nosuch/model"},
+		{"--node", "nosuch"},
+		nil,
+		{"--run", "r-nosuch", "--json"},
+	} {
+		if err := runLogsWith(args, io.Discard, path, time.Now); err != nil {
+			t.Fatalf("`aforge logs %s` was reported as a failure: %v", strings.Join(args, " "), err)
+		}
+	}
+}
+
+// isMissRung says whether a lookup ended the way an id that is not there ends:
+// on exitCannotRun, off the one ladder (envelope.go). It is a helper rather than
+// an inline check because three tests here are about the SENTENCE a miss leaves
+// and none of them is about the code — while
+// TestAnIdThatIsNotInTheLogIsNotReportedAsSuccess is about the code and does not
+// use this.
+func isMissRung(err error) bool {
+	var status exitStatus
+	return errors.As(err, &status) && status == exitCannotRun
 }

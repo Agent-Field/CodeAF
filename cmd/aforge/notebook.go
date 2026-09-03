@@ -93,20 +93,20 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(table, "SEQ\tSCOPE\tKIND\tAGE\tUSES\tRIDES\tBAD\tSTATUS\tBELIEF")
-	for _, fact := range facts {
-		canonical, err := graph.ResolveScope(fact.Scope)
-		if err != nil {
+	// A COLUMN HEADER IS NEVER PRINTED WITHOUT A ROW UNDER IT. `SEQ SCOPE KIND
+	// AGE USES RIDES BAD STATUS BELIEF` over nothing was the entire output of
+	// this command on a fresh machine, and nine column names with no rows read
+	// as a table that failed to load rather than as a notebook nothing has been
+	// written in yet. One short sentence instead — and it says what fills the
+	// page, because a person who typed the command wants to know what to do to
+	// see something on it. `aforge why self` answers its own emptiness the same
+	// way (why.go), and `aforge cache` was the model for both.
+	if len(facts) == 0 {
+		fmt.Fprintln(output, "the notebook is empty — hand aforge some work, and what it learns lands here.")
+	} else {
+		if err := writeNotebookRows(output, graph, facts, outcomes, now); err != nil {
 			return err
 		}
-		outcome := outcomes[fact.Seq]
-		fmt.Fprintf(table, "#%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\n",
-			fact.Seq, canonical, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses,
-			outcome.Rides, outcome.Bad, fact.Status, oneLineFact(fact.Body))
-	}
-	if err := table.Flush(); err != nil {
-		return fmt.Errorf("write notebook: %w", err)
 	}
 	dailyBudget, err := config.DailyBudgetUSD()
 	if err != nil {
@@ -137,6 +137,28 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 		for _, alias := range aliases {
 			fmt.Fprintln(output, notebookAliasStyle.Render("  "+alias.From+" → "+alias.To))
 		}
+	}
+	return nil
+}
+
+// writeNotebookRows is the table itself, lifted out so the emptiness answer
+// above reads as one decision rather than as a header guarded in three places.
+func writeNotebookRows(output io.Writer, graph *store.Store, facts []store.Fact,
+	outcomes map[int64]store.FactOutcome, now time.Time) error {
+	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "SEQ\tSCOPE\tKIND\tAGE\tUSES\tRIDES\tBAD\tSTATUS\tBELIEF")
+	for _, fact := range facts {
+		canonical, err := graph.ResolveScope(fact.Scope)
+		if err != nil {
+			return err
+		}
+		outcome := outcomes[fact.Seq]
+		fmt.Fprintf(table, "#%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\n",
+			fact.Seq, canonical, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses,
+			outcome.Rides, outcome.Bad, fact.Status, oneLineFact(fact.Body))
+	}
+	if err := table.Flush(); err != nil {
+		return fmt.Errorf("write notebook: %w", err)
 	}
 	return nil
 }

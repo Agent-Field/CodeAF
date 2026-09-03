@@ -211,11 +211,15 @@ func TestAMissingGoalShowsTheCommandAndNotTheWholeTable(t *testing.T) {
 // ONE SOURCE OF TRUTH: a command's shape is written once, in the table `aforge
 // --help` prints, and every per-command usage is a reading of that table.
 func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
-	// The ladder is interpolated into the table from envelope.go's one rung
-	// list, so this asks for the text that is actually there rather than for a
-	// second spelling of it. It is two lines rather than one because five rungs
-	// spelled in words do not fit an eighty-column terminal (exitLadderHelp).
-	if shape := usageForCommand("do"); !strings.Contains(shape, exitLadderHelp) {
+	// The ladder is interpolated from envelope.go's one rung list, so this asks
+	// for the text that is ACTUALLY THERE rather than for a second spelling of
+	// it — and what is there moved. It used to be printed inside each of `do`,
+	// `exec` and `run`; it is printed once under the group now, and appended to
+	// each of their three pages by [usageForCommand], because the per-command
+	// page is where somebody writing a script goes to find out what a number
+	// means. `handWorkFooter` is the one constant both readers take it from, so
+	// this still cannot pass against a second copy.
+	if shape := usageForCommand("do"); !strings.Contains(shape, handWorkFooter) {
 		t.Fatalf("`do`'s usage lost the exit ladder that is written in usageText:\n%s", shape)
 	}
 	// `aforge run` MEANS ONE THING: run a saved program. It used to mean that

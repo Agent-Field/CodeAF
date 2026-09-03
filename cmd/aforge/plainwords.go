@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // NO GO ERROR CHAIN REACHES A PERSON.
 //
@@ -35,11 +38,158 @@ var machineryVerbs = []string{
 // verbs wherever they stand in the chain, keep everything a person could act
 // on, and add the remedy when the fact is one aforge recognises.
 func plainWords(sentence string) string {
+	// A DISK FAULT IS ANSWERED FIRST AND WHOLE, because it is the one kind of
+	// chain where the tail already carries every fact and the whole front is
+	// the binary narrating what it was doing (see [filesystemFault]).
+	if fault, ok := filesystemFault(sentence); ok {
+		return fault.words()
+	}
 	fact := terminalCause(sentence)
 	if remedy := remedyFor(fact); remedy != "" {
 		return fact + "\n" + remedy
 	}
 	return fact
+}
+
+// ── THE OPERATING SYSTEM'S WORDS ARE NOT AFORGE'S ────────────────────────────
+//
+// A filesystem failure arrives as an [os.PathError] wrapped on every floor it
+// passed on the way up:
+//
+//	open notebook: stat /home/x/.aforge/graph.db: no such file or directory
+//	create chat workspace: mkdir /nope: permission denied
+//
+// `stat`, `mkdir` and `open` are the names of system calls — a library's words
+// written for another library — the path is the only fact in the whole line,
+// and nothing anywhere says what to do about it.
+//
+// THE RULE IS STRUCTURAL AND NOT A LIST OF SITES. A chain that ENDS in a
+// syscall fault is a chain whose front is the binary saying what it was doing
+// when the disk said no; the tail names the path itself, so the front carries
+// nothing a person can act on and is dropped whole. That is why this needs no
+// per-door decision and no per-door edit: every command in this binary reports
+// through one line (main.go), so the doors that spelled `open notebook`, `open
+// receipts`, `open store` and `create chat workspace` are all answered here
+// without any of them being touched.
+//
+// What is deliberately NOT claimed is which flag named the path. Six doors take
+// a path under four different flags, and a sentence that guessed `--dir` at a
+// door whose flag is `--db` would send somebody to the wrong knob with
+// confidence — the same reason [remedies] is short.
+
+// syscallVerbs are the operating-system operations Go puts in front of a path.
+// They are named one by one, like [machineryVerbs] and for the same reason: a
+// rule that took any lower-case word before a path would swallow `splice parent
+// "task-1"` and half the sentences a person can actually act on.
+var syscallVerbs = []string{
+	"open", "openat", "stat", "lstat", "fstat", "mkdir", "mkdirat",
+	"read", "readdir", "readlink", "write", "remove", "removeall",
+	"rename", "chdir", "chmod", "chown", "unlink", "symlink", "link", "truncate",
+}
+
+// creatingVerbs are the ones that were trying to BRING SOMETHING INTO BEING.
+// The distinction earns its keep twice: a missing path under `mkdir` means the
+// folder ABOVE it is missing, which is a different remedy, and "cannot be
+// created" is a truer sentence than "was refused" when a folder is what was
+// wanted.
+var creatingVerbs = map[string]bool{
+	"mkdir": true, "mkdirat": true, "create": true, "write": true,
+	"rename": true, "symlink": true, "link": true, "truncate": true,
+}
+
+// fsFault is one filesystem failure taken apart: what was being done, to what,
+// and what the operating system said about it.
+type fsFault struct {
+	verb   string
+	path   string
+	reason string
+}
+
+// filesystemFault reads the tail of a wrapped chain and says whether it is a
+// disk fault. It looks at the LAST TWO segments only — `<verb> <path>` and the
+// reason — because that pair is exactly what [os.PathError] formats itself as,
+// and anything in front of it is this binary's own narration.
+func filesystemFault(sentence string) (fsFault, bool) {
+	segments := strings.Split(strings.TrimSpace(sentence), ": ")
+	if len(segments) < 2 {
+		return fsFault{}, false
+	}
+	reason := strings.ToLower(strings.TrimSpace(segments[len(segments)-1]))
+	if _, known := filesystemSentences[reason]; !known {
+		return fsFault{}, false
+	}
+	verb, path, cut := strings.Cut(strings.TrimSpace(segments[len(segments)-2]), " ")
+	if !cut || strings.TrimSpace(path) == "" {
+		return fsFault{}, false
+	}
+	verb = strings.ToLower(verb)
+	for _, known := range syscallVerbs {
+		if verb == known {
+			return fsFault{verb: verb, path: strings.TrimSpace(path), reason: reason}, true
+		}
+	}
+	return fsFault{}, false
+}
+
+// filesystemSentences is what aforge says about each thing the operating system
+// can say, and what to do about it. The `created` half is the sentence when the
+// verb was trying to make something ([creatingVerbs]); `found` is the sentence
+// when it was only trying to look.
+//
+// EVERY ONE OF THEM IS A CAUSE AND A REMEDY, which is the whole law this file
+// exists for: somebody reading a failure wants to know what to type next.
+var filesystemSentences = map[string]struct{ found, created, remedy string }{
+	"no such file or directory": {
+		found:   "there is nothing at %s.",
+		created: "%s could not be created — the folder above it does not exist.",
+		remedy:  "check the path, and make the folder above it first if it is meant to be new.",
+	},
+	"permission denied": {
+		found:   "%s cannot be opened by this account.",
+		created: "%s could not be created — this account is not allowed to write there.",
+		remedy:  "choose a path you own, such as one under your home directory.",
+	},
+	"not a directory": {
+		found:   "%s is a file, and a folder was needed there.",
+		created: "%s could not be created — something on the way to it is a file, not a folder.",
+		remedy:  "point it at a folder instead.",
+	},
+	"is a directory": {
+		found:   "%s is a folder, and a file was needed there.",
+		created: "%s could not be written — it is a folder, not a file.",
+		remedy:  "point it at a file instead.",
+	},
+	"file exists": {
+		found:   "%s is already there.",
+		created: "%s is already there.",
+		remedy:  "remove it, or choose another path.",
+	},
+	"no space left on device": {
+		found:   "the disk holding %s is full.",
+		created: "the disk holding %s is full.",
+		remedy:  "free some space and run it again.",
+	},
+	"read-only file system": {
+		found:   "%s is on a disk that cannot be written to.",
+		created: "%s could not be created — it is on a disk that cannot be written to.",
+		remedy:  "choose a path you own, such as one under your home directory.",
+	},
+	"too many levels of symbolic links": {
+		found:   "%s points at itself through a chain of links.",
+		created: "%s points at itself through a chain of links.",
+		remedy:  "point it at a real file or folder.",
+	},
+}
+
+// words is the fault as a person reads it: the cause on one line, what to do on
+// the next, and not one syscall name or wrapping verb between them.
+func (f fsFault) words() string {
+	said := filesystemSentences[f.reason]
+	shape := said.found
+	if creatingVerbs[f.verb] {
+		shape = said.created
+	}
+	return fmt.Sprintf(shape, f.path) + "\n" + said.remedy
 }
 
 // terminalCause is the same sentence with the machinery taken out of it.

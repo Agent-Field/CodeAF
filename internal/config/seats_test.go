@@ -716,3 +716,68 @@ func moduleRoot(t *testing.T) string {
 		dir = parent
 	}
 }
+
+// ── THE INHERITED-SEAT NOTICE ENDED IN A DOOR NOBODY COULD FIND ─────────────
+//
+// The line is printed on four HEADLESS doors — `aforge do`, `aforge plan run`,
+// `aforge exec` and `aforge run` — and it ended `until you pick a crew again`.
+// There is no way to pick a crew from a terminal: a crew is written by `/crew`
+// and by the settings sheet's Providers row, both of which are the
+// conversation, and no flag and no verb in the binary sets one. So the one line
+// whose whole job is to explain a surprising model choice told somebody to do
+// something and gave them nowhere to do it.
+//
+// The law on both surfaces is CAUSE PLUS WHAT TO DO. A cause plus a dead end is
+// the defect, and the fix is the address, not the noun.
+func TestTheInheritedSeatNoticeNamesADoorAPersonCanActuallyReach(t *testing.T) {
+	dir := writeProfileRows(t, map[string]string{KeyTierLowModel: "vendor/my-small-work"})
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	notice := ResolveSeats(dir, "", "").Work.Notice()
+	if notice == "" {
+		t.Fatal("a profile older than the worker seat was told nothing at all")
+	}
+	if !strings.Contains(notice, CrewCommand) {
+		t.Fatalf("the remedy names no door at all, so a person reading it in a terminal "+
+			"has nowhere to go.\n  said: %q\n  want it to name %q", notice, CrewCommand)
+	}
+	// AND IT SAYS WHERE THAT DOOR IS. `/crew` alone is the next keystroke to
+	// somebody already in the conversation and a riddle to somebody in a shell,
+	// and the shell is where four of the five printers of this line stand.
+	if !strings.Contains(notice, CrewCommand+" in the conversation") {
+		t.Fatalf("the door is named without saying where it is.\n  said: %q", notice)
+	}
+	// THE REGISTER THE FUNCTION'S OWN COMMENT SETS OUT: an observation, a middle
+	// dot, a promise, lowercase, no full stop.
+	if !strings.Contains(notice, " · ") {
+		t.Errorf("the observation and the promise are not separated by the middle dot: %q", notice)
+	}
+	if strings.HasSuffix(notice, ".") {
+		t.Errorf("the line ends in a full stop, which nothing else in this register does: %q", notice)
+	}
+	if first := notice[:1]; first != strings.ToLower(first) {
+		t.Errorf("the line opens upper-case: %q", notice)
+	}
+}
+
+// AND `seat` IS THE PRODUCT'S OWN NOUN, NOT MACHINERY.
+//
+// It was proposed for renaming as machinery vocabulary. It is not: the crew and
+// its seats are what the settings sheet, the model picker and the manual's own
+// page all teach a person to say, and the vocabulary law bans the PROGRAM'S
+// words for its own process — `auditor`, `verdict`, `refuted` — not a domain
+// noun the product names things with. Renaming it here would have left every
+// other surface, and the page that explains this exact line, speaking a word the
+// binary no longer printed.
+func TestTheNoticeKeepsTheProductsOwnWordForARowOfTheCrew(t *testing.T) {
+	dir := writeProfileRows(t, map[string]string{KeyTierLowModel: "vendor/my-small-work"})
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	notice := ResolveSeats(dir, "", "").Work.Notice()
+	for _, want := range []string{"crew", "seat"} {
+		if !strings.Contains(notice, want) {
+			t.Fatalf("the notice stopped saying %q, and every other crew surface still does:\n%s",
+				want, notice)
+		}
+	}
+}

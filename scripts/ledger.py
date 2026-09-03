@@ -34,6 +34,10 @@ PREFIX = {
     # And the words pass, which is not a surface either: one read of every
     # person-facing string the wave adds, against every other one.
     "words": "W",
+    # And a developer who met the program for the first time. Not a surface
+    # either, and the only audit here written by somebody who did not already
+    # know the answer.
+    "dev": "D",
 }
 
 ROW = re.compile(r"^(\d+)\. (.*)$")

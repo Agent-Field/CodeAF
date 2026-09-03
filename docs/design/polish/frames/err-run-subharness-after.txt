@@ -1,0 +1,3 @@
+$ ./bin/aforge run nosuchharness --input - </dev/null
+error: there is no subharness called "nosuchharness", and this build has none to offer
+exit=1

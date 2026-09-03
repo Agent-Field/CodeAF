@@ -67,7 +67,7 @@ func runLogs(args []string) error {
 // is measured against now, and a test cannot wait three minutes to see it.
 func runLogsWith(args []string, output io.Writer, path string, now func() time.Time) error {
 	flags := commandFlags("logs")
-	tail := flags.Int("tail", defaultLogTail, "how many calls to show")
+	tail := newCountFlag(flags, "tail", defaultLogTail, "calls to show", "how many calls to show")
 	follow := flags.Bool("follow", false, "keep printing calls as they happen")
 	pathOnly := flags.Bool("path", false, "print where the log is and nothing else")
 	asJSON := flags.Bool("json", false, "print the matching rows exactly as they are on disk")
@@ -123,17 +123,40 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	// second one somebody would spend an afternoon on. --json is exempt: it is a
 	// passthrough, and a sentence in the person's voice on the end of a stream
 	// another program is parsing would be a bug in that program.
+	missed := false
 	if !*asJSON && len(kept) == 0 {
 		if line := filter.nothingKept(calls); line != "" {
 			if _, err := fmt.Fprintln(output, line); err != nil {
 				return err
 			}
+			missed = true
 		}
 	}
-	if !*follow {
-		return nil
+	if *follow {
+		return followCallLog(output, path, *asJSON, filter, now)
 	}
-	return followCallLog(output, path, *asJSON, filter, now)
+	// AN ID THAT IS NOT THERE IS NOT A SUCCESS.
+	//
+	// A lookup that found nothing and left with 0 tells the script that ran it
+	// the run exists and made no calls — which is the same answer it gets for a
+	// run that really did exist and really made none. `aforge notebook retract
+	// 999` has always had this right; this door had not.
+	//
+	// The rung is exitCannotRun, and the sentence above stays on stdout: the
+	// question was asked and could not be answered, nothing ran, and nothing
+	// was spent. The reason for the miss is already written for a person above
+	// this line, so the code is returned bare (envelope.go) rather than as a
+	// second sentence with `error:` in front of it.
+	//
+	// A FILTER THAT MATCHED NOTHING IS NOT A MISS. Only --run and --call earn a
+	// sentence, because only they are ids somebody pasted believing they exist;
+	// a tag or a model that matched nothing is a search that came back empty,
+	// which is an answer. --json never earns one either: it is a passthrough,
+	// and an empty stream is exactly what "no matching rows" looks like there.
+	if missed {
+		return exitCannotRun
+	}
+	return nil
 }
 
 // loggedCall is one row as it was read: the record the reader renders, and the

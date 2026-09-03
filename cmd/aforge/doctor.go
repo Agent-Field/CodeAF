@@ -35,8 +35,30 @@ type doctorSnapshot struct {
 	// CallLog is where the model-call log is and how big it has got
 	// (internal/calllog), or nothing when nothing has ever been written to it.
 	CallLog callLogReport
-	Now     time.Time
+	// Key is whether this machine can talk to a model at all, and where the key
+	// came from. It is the FIRST row doctor prints and the reason doctor was
+	// worth changing: the command exists to tell somebody why nothing works,
+	// and a missing key is the most common answer there is.
+	Key keyReport
+	Now time.Time
 }
+
+// fallbackKeyEnv is the OpenAI-shaped variable [config.Load] accepts when the
+// OpenRouter one is unset. It is spelled here because internal/config has no
+// exported name for it — and [TestDoctorNamesTheSameKeyVariablesTheDoorDoes]
+// pins this spelling against `config.ErrNoAPIKey`, so a rename there fails here
+// rather than leaving doctor pointing at a variable nobody reads any more.
+const fallbackKeyEnv = "OPENAI_API_KEY"
+
+// keyReport is the provider key doctor found, named by WHERE IT CAME FROM and
+// never by what it is: a key is a secret, and a report that printed one would
+// be a report nobody could paste into a defect.
+//
+// An empty Where is a machine with no key on any rung, which is a state and not
+// an absence — so unlike every other figure on this page it is PRINTED. The
+// emptiness law is about a measurement nobody made; this is a measurement that
+// came back "none", and it is the whole reason somebody ran doctor.
+type keyReport struct{ Where string }
 
 // callLogReport is where the model-call log is and how big it has got, or
 // nothing at all. Nothing is the honest answer on a machine that has not called
@@ -109,8 +131,44 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	// `--db` does not move: it is read from the same environment runDoctor read
 	// the budget from.
 	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))))
+	// The key is read from the same profile, and for the same reason: `--db`
+	// moves the store and moves nothing about who this machine can talk to.
+	snapshot.Key = readKeyReport(strings.TrimSpace(os.Getenv(config.ProfileDirEnv)))
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
+}
+
+// readKeyReport climbs the ladder [config.Load] climbs — the OpenRouter
+// variable, the OpenAI one, then the profile file — and reports the rung that
+// answered rather than the key it holds.
+//
+// IT CLIMBS THE RUNGS SEPARATELY RATHER THAN CALLING [config.APIKeyAt], because
+// the whole point of the row is WHICH ONE ANSWERED and that function folds them
+// into one string. [TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey] pins the
+// two together at every rung, so a ladder that grows a step is a red test here
+// and not a doctor that quietly says "none" to a machine that runs fine.
+func readKeyReport(profileDir string) keyReport {
+	if strings.TrimSpace(os.Getenv(config.APIKeyEnv)) != "" {
+		return keyReport{Where: config.APIKeyEnv}
+	}
+	if strings.TrimSpace(os.Getenv(fallbackKeyEnv)) != "" {
+		return keyReport{Where: fallbackKeyEnv}
+	}
+	if config.PersistedAPIKey(profileDir) != "" {
+		return keyReport{Where: config.BudgetConfigPath(profileDir)}
+	}
+	return keyReport{}
+}
+
+// formatKey is the row: where the key came from, or that there is none and what
+// to type. The remedy is [remedyFor]'s own — the same sentence every door
+// answers a keyless run with — so the page a person opens when nothing works
+// and the refusal they just read cannot tell them two different things.
+func formatKey(report keyReport) string {
+	if report.Where == "" {
+		return "none · " + remedyFor(config.ErrNoAPIKey.Error())
+	}
+	return "set · " + report.Where
 }
 
 // readCallLogReport measures the log without opening it for writing. A path
@@ -236,7 +294,16 @@ func formatDoctor(snapshot doctorSnapshot) string {
 	// The label moved and the ban stayed. What this row measures, in a
 	// developer's words, is what is running, since when, and whether it still
 	// answers — which is a background timer, and says so.
-	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
+	//
+	// ── AND THE ROW THAT WAS NOT THERE AT ALL ───────────────────────────────
+	//
+	// Doctor is the command somebody runs when nothing works, and on a machine
+	// with no provider key it used to report six healthy-looking rows and leave
+	// with 0 — saying nothing about the single most common reason nothing
+	// works. The key row goes FIRST because it is the answer to the question
+	// the command was opened with.
+	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
+		"key", formatKey(snapshot.Key),
 		"store", brain,
 		"resident", snapshot.Resident,
 		"background timer", watch,

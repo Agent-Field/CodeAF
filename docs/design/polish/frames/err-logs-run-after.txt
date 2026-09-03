@@ -1,0 +1,4 @@
+$ ./bin/aforge logs --run abc123
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/home/.aforge/logs/calls.jsonl
+no row in this log carries a run id yet
+exit=1

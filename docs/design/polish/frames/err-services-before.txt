@@ -1,0 +1,3 @@
+$ ./bin/aforge services
+nothing is being kept running.
+exit=0

@@ -1,0 +1,9 @@
+$ ./bin/aforge services   (two services running)
+dev-server	running	2h	port:5173	/tmp/dev.log
+docs-preview-server	running	2h	port:8080	/tmp/docs.log
+exit=0
+
+(reproduced from the pre-change source: cmd/aforge/services.go printed
+ "%s	%s	%s	%s	%s\n" per row, with no header — the binary that did it is gone,
+ and TestServicesRowsAreAlignedUnderAHeader fails with exactly these bytes
+ when the Printf is put back.)

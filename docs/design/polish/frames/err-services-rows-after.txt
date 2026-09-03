@@ -1,0 +1,5 @@
+$ ./bin/aforge services   (two services running)
+NAME                 STATUS   AGE  HEALTH     LOG
+dev-server           running  2h   port:5173  /tmp/dev.log
+docs-preview-server  running  2h   port:8080  /tmp/docs.log
+exit=0

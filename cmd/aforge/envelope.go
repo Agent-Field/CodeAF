@@ -150,23 +150,6 @@ var exitLadder = []exitRung{
 	},
 }
 
-// exitLadderHelp is the ladder as the help table prints it. It is BUILT FROM
-// THE TABLE rather than typed out beside each verb, because it used to be typed
-// out beside each verb and the three copies disagreed — which is the defect this
-// whole file exists to close.
-//
-// IT IS FOLDED, AND FOLDED ON THE SEPARATOR. Five rungs spelled in words is a
-// hundred and thirty-nine cells, and `aforge --help` is laid out for an
-// eighty-column terminal, so the one line had to become two. The fold is only
-// ever taken BEFORE a `· `, so every `· <number> ` reads whole on the line it
-// lands on — a rung split across the break would be a rung a reader scanning
-// for their exit code never finds.
-//
-// The first line carries no indent, because the help table's own literal
-// supplies it; every line after it is indented to [helpTextColumn], which is
-// the column that table writes a description at.
-var exitLadderHelp = foldedExitLadder(helpTextColumn, helpWidth)
-
 // foldedExitLadder writes the ladder to fit `width` display cells with `indent`
 // spaces in front of every line, the first excepted.
 func foldedExitLadder(indent, width int) string {

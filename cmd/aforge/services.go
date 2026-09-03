@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -40,12 +42,24 @@ func runServices(args []string) error {
 			_, err := fmt.Println("nothing is being kept running.")
 			return err
 		}
+		// AND WHEN THERE IS SOMETHING, IT IS READABLE.
+		//
+		// These rows used to be five raw tab-separated fields with no header
+		// and no alignment — `dev-server\trunning\t2h\tport:5173\t/tmp/dev.log`
+		// — which is a machine's shape printed at a person, and the only
+		// listing in the binary that had it. `notebook` and `why` have both
+		// drawn a headed, aligned table all along; this one now draws the same
+		// one, from the same tabwriter, so a person reading two listings reads
+		// one shape. There is a header here because there are rows: the rule is
+		// that a header is never drawn WITHOUT one.
 		now := time.Now()
+		table := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(table, "NAME\tSTATUS\tAGE\tHEALTH\tLOG")
 		for _, service := range services {
-			fmt.Printf("%s\t%s\t%s\t%s\t%s\n", service.Name, service.Status,
+			fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", service.Name, service.Status,
 				serviceAge(service.StartedAt, now), service.Health.String(), service.LogPath)
 		}
-		return nil
+		return table.Flush()
 	}
 	if len(remaining) != 2 || remaining[0] != "stop" {
 		return fmt.Errorf("usage: aforge services [--db path] | aforge services stop <name> [--db path]")
@@ -60,7 +74,11 @@ func runServices(args []string) error {
 	if err := resident.NewServiceSupervisor(graph).Stop(service.ID, "stopped from aforge services"); err != nil {
 		return err
 	}
-	fmt.Printf("%s\tstopped\n", service.Name)
+	// The receipt for one service, in the register every other one-line answer
+	// in this binary is written in — a name, a middle dot, what happened —
+	// rather than two fields with a tab between them for a reader that is not
+	// there.
+	fmt.Printf("%s · stopped\n", service.Name)
 	return nil
 }
 

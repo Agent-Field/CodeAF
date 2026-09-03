@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 08:20Z_
+_2026-09-03 08:31Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -42,20 +42,23 @@ _2026-09-03 08:20Z_
 - `C9`    med  CLOSED A missing positional argument dumps the same 127 lines
 - `C10`   med  CLOSED Three commands parse no flags at all and read a flag as a positional
 - `C11`   med  CLOSED A bad flag prints its own message twice
-- `C12`   med  open   Filesystem failures reach the person as Go wrapped chains over raw syscall text
+- `C12`   med  CLOSED Filesystem failures reach the person as Go wrapped chains over raw syscall text
 - `C13`   med  CLOSED The missing-key sentence is right in one command and bare in four
-- `C14`   med  open   `aforge doctor` says nothing about a missing key
+- `C14`   med  CLOSED `aforge doctor` says nothing about a missing key
 - `C15`   med  CLOSED `doctor` and `notebook` print money and counts that are zero
 - `C16`   med  CLOSED `record kept at <path>` is printed for runs that never started
-- `C17`   med  open   A bad subharness name is reported as an empty input
+- `C17`   med  CLOSED A bad subharness name is reported as an empty input
 - `C18`   med  CLOSED `--debug` is absent from `aforge --help`
 - `C19`   med  open   `aforge rebuild` uses machinery vocabulary and runs its prompt into its error
-- `C20`   med  open   `logs --tail notanumber` answers `parse error`
-- `C21`   low  open   Two commands print a column header over no rows
-- `C22`   low  open   `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields
+- `C20`   med  CLOSED `logs --tail notanumber` answers `parse error`
+- `C21`   low  CLOSED Two commands print a column header over no rows
+- `C22`   low  CLOSED `aforge services` prints absolutely nothing, and its rows are raw tab-separated fields
 - `C23`   low  CLOSED The two help surfaces spell the same flags differently
 - `C24`   low  CLOSED The `--json` object is described only in a repository design document
-- `C25`   low  open   Two query commands report a miss as a success
+- `C25`   low  CLOSED Two query commands report a miss as a success
+- `C26`   med  open   `exec --turns` takes a bad count without saying which flag, what was given, or what it takes
+- `C27`   med  open   `aforge why <bad-id>` reports a miss as a success
+- `C28`   med  open   `aforge rebuild` asks its question on stdout, and the structural test cannot see it
 
 ## commands — [audit-commands.md](audit-commands.md)
 
@@ -68,7 +71,7 @@ _2026-09-03 08:20Z_
 - `M7`    high CLOSED `--budget` means tokens while "budget" means dollars everywhere else in the product
 - `M8`    high CLOSED `--timeout` is a duration on `do` and an integer of seconds on `exec`
 - `M9`    high CLOSED `run` names two unrelated commands and help needs a special case to tell them apart
-- `M10`   high open   The word `seat` reaches a person on stderr on four headless doors
+- `M10`   high CLOSED The word `seat` reaches a person on stderr on four headless doors
 - `M11`   med  CLOSED `-w`, `-o` and `-j` have no long spelling at all (extends cli-23: the fix is new names, not a print change)
 - `M12`   med  CLOSED `exec --plan-model` is accepted and documented as doing nothing
 - `M13`   med  CLOSED Nothing-to-show is answered three different ways, and there is no rule (extends cli-21 and cli-22)
@@ -88,6 +91,17 @@ _2026-09-03 08:20Z_
 - `M27`   low  CLOSED `logs` prints its path header on stdout
 - `M28`   low  CLOSED `cache clean` writes its confirmation prompt to stdout
 - `M29`   low  CLOSED `aforge version` prints only `aforge dev`
+
+## dev — [audit-dev.md](audit-dev.md)
+
+- `D1`    high open   The crew banner contradicts itself in two consecutive lines
+- `D2`    high open   Global help calls `OPENROUTER_API_KEY` **required** and it is not
+- `D3`    high open   `--debug` promises a record `in a folder of its own under the state root` and the developer could not find it
+- `D4`    med  open   `do` has no `--yolo`, and a developer coming from the chat types it and gets `error: flag provided but not defined: -yolo` and exit 1. `do` IS unattended by construction, so the flag would be meaningless
+- `D5`    med  open   `do --json` carries spend, nodes, seconds, settled and model but no CALL COUNT and no ROUND COUNT, so the developer went to `~/.aforge/logs/calls.jsonl` to reconstruct them
+- `D6`    low  open   A refused flag is echoed back in a spelling the person did not type: `--nosuchflag` comes back as `error: flag provided but not defined: -nosuchflag`. Go's flag package writes it, and every other door on this surface now spells flags with two dashes. Somebody scanning for their own typo is looking for a string that is not there.
+- `D7`    ?    open   NOT A DEFECT ON THIS BRANCH, and recorded so nobody reopens it: the report says a bad flag and a failed run both exit 1, so a typo and a failure are indistinguishable to a script. That was TRUE ON DEV and is FALSE HERE. `7d6e372c6` moved `exec.StopError` off exit 1
+- `D8`    ?    open   NOT A DEFECT ON THIS BRANCH: the report says the usage banner prints `--db` and `--timeout 900` while `do --help` prints single-dash, and that the banner still shows the bare-seconds form. Both were fixed here
 
 ## eyes — [audit-eyes.md](audit-eyes.md)
 

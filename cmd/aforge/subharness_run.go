@@ -77,6 +77,24 @@ func runSubharnessCommand(args []string) error {
 		return fmt.Errorf("usage: aforge run <program> --input <file.json|->")
 	}
 	name := strings.TrimSpace(rest[0])
+	// THE NAME IS CHECKED BEFORE THE INPUT, because the name is what the person
+	// typed and the input is what they piped.
+	//
+	// `aforge run nosuchharness --input -` used to answer `the input is empty —
+	// there is nothing here for the run to do` and never mention the name at
+	// all, so somebody who had misspelled a program went away and fixed their
+	// input. Two things were wrong and the message named the one they had not
+	// got wrong.
+	//
+	// It costs nothing: the programs a person can name are the bundles in the
+	// two stores below, read off a directory listing with no provider
+	// connection, no toolbox and no workspace. A store that cannot be listed
+	// says nothing here and the run goes on to the full lookup, which is the
+	// authority — this is an earlier reading of the same question, never a
+	// second answer to it.
+	if err := checkSubharnessName(name, *workspace); err != nil {
+		return err
+	}
 	// The input is read before anything is built, because a run with no input is
 	// a program handed nothing and there is no sense in opening a provider
 	// connection to discover it.
@@ -488,10 +506,69 @@ func noSuchSubharness(registry *exec.Registry, name string) error {
 		}
 		names = append(names, manifest.Name)
 	}
+	return noSuchSubharnessNamed(name, names)
+}
+
+// noSuchSubharessNamed is the SENTENCE, apart from the lookup, so the early
+// reading at the door and the full one inside the run cannot say it two ways.
+func noSuchSubharnessNamed(name string, names []string) error {
 	if len(names) == 0 {
 		return fmt.Errorf("there is no subharness called %q, and this build has none to offer", name)
 	}
 	return fmt.Errorf("there is no subharness called %q — this build has: %s", name, strings.Join(names, ", "))
+}
+
+// checkSubharnessName is the cheap half of the lookup, run at the door.
+//
+// It lists the two bundle stores — the person's own and the project's, which is
+// where every nameable program lives — and refuses a name that is in neither.
+// The generalist is reachable BY NAME and is on no list a person reads
+// (registerSubharnessRunners), so it is admitted here and left off the offer.
+//
+// A STORE THAT CANNOT BE READ IS NOT A REFUSAL. Nothing about this reading may
+// stop a run that would otherwise have worked, so a directory that will not
+// list leaves the whole question to the full lookup inside the run, which is
+// still the authority and still answers with the same sentence.
+//
+// AND IT MUST STAY A READING OF THE SAME TWO STORES THE RUN REGISTERS.
+// [TestTheEarlyNameCheckReadsEveryBundleStoreTheRunRegisters] fails the day a
+// third source is added below — the packed trailer the seam comment there
+// anticipates — because an early reading that knew about fewer stores than the
+// run would refuse a program that exists.
+func checkSubharnessName(name, workspace string) error {
+	if name == "" || name == exec.LinearSubharness {
+		return nil
+	}
+	var names []string
+	stores := []*substore.Store{substore.Home()}
+	// The project store is looked for where the run will WORK, resolved by the
+	// same reading the run itself uses, so `--dir` cannot make the door and the
+	// run disagree about which repository's programs are in reach.
+	dir, err := errandWorkspace(workspace)
+	if err != nil {
+		return nil
+	}
+	if root, ok := v3GitRoot(dir); ok {
+		stores = append(stores, substore.At(substore.ProjectDir(root)))
+	}
+	for _, store := range stores {
+		found, err := store.Names()
+		if err != nil {
+			// An unreadable store is a question this reading cannot answer, so
+			// it does not answer it: the run goes on and the full lookup does.
+			return nil
+		}
+		names = append(names, found...)
+	}
+	// A pair of stores that read cleanly and hold nothing is an ANSWER, not a
+	// silence: this build has no programs to offer, and the name is wrong. Only
+	// a store that could not be read at all is left to the full lookup.
+	for _, known := range names {
+		if known == name {
+			return nil
+		}
+	}
+	return noSuchSubharnessNamed(name, names)
 }
 
 // sayArtifacts lists the files a run left, where it left any. Nothing renders as

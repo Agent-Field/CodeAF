@@ -50,11 +50,20 @@ func roadTaken(t *testing.T, args ...string) runRoad {
 	words := wordsOf(failed)
 	saidPlan := strings.Contains(said, "`aforge run <plan.json>` is now `aforge plan run <plan.json>`")
 	readAFile := strings.HasPrefix(words, "open ") || strings.HasPrefix(words, "load graph:")
+	// THE PROGRAM RUNNER HAS TWO FIRST WALLS AND EITHER ONE IDENTIFIES IT.
+	//
+	// It used to have one — the input it was not given — and it now checks the
+	// NAME before it reads the bytes, because `aforge run nosuchprogram --input
+	// -` answered `the input is empty` and never mentioned the name, so the
+	// person went away and fixed the thing they had got right (audit-cli row
+	// 17). Both sentences are the program runner's own and neither can be
+	// forged by the plan road, which never resolves a program name at all.
 	askedForInput := strings.Contains(words, "this run needs its input")
+	refusedTheName := strings.Contains(words, "there is no subharness called")
 	switch {
 	case saidPlan && readAFile:
 		return roadPlan
-	case said == "" && askedForInput:
+	case said == "" && (askedForInput || refusedTheName):
 		return roadProgram
 	}
 	t.Fatalf("`aforge run %s` went down neither road:\n  notice: %q\n  ending: %q",

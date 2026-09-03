@@ -66,6 +66,9 @@ do. The usage list is grouped by what a person is trying to do, not alphabetical
 25. Two query commands report a miss as a success — cmd/aforge/why.go (`bogus-node-id has no transcript…`, exit 0) and logs.go (`no row in this log carries a run id yet`, exit 0) — a script asking whether a node or a run exists cannot tell "not found" from "found and empty" without parsing prose; `notebook retract 999` gets this right with a non-zero exit — sev: low — evidence: docs/design/polish/frames/cli-errors.txt
 
 ---
+26. `exec --turns` takes a bad count without saying which flag, what was given, or what it takes — cmd/aforge/exec.go — THIS IS THE HALF OF ROW 20 THAT IS STILL OPEN, and it is its own row because the ledger has no half-row granularity: a row that reads CLOSED with a live defect inside it is the ledger lying, which is the one thing it may not do. `logs --tail` already took the fix (`newCountFlag` in `count.go`); this is the one-line adoption of it. — sev: med — frames: n/a
+27. `aforge why <bad-id>` reports a miss as a success — cmd/aforge/why.go — THE HALF OF ROW 25 THAT IS STILL OPEN, split out for the same reason. It prints its sentence and returns nil, so a script reads exit 0 and concludes the id exists and has nothing in it. `logs` took the same one-line change (`return exitCannotRun`); this is `why` taking it. — sev: med — frames: n/a
+28. `aforge rebuild` asks its question on stdout, and the structural test cannot see it — cmd/aforge/rebuild.go, cmd/aforge/main.go (`usageText`) — THE REST OF ROW 19. The prompt (`Rebuild every materialized view in <path> from the event journal?` / `[y/N] `) goes to the command's `output` PARAMETER, which is `os.Stdout`, so a question lands in the pipe — the exact defect row M28 was about — and `TestNoDoorPrintsItsCommentaryToStdout` slips it because it scans for named answer streams and this one is a parameter. Two halves: send the question to the aside, and teach the test to follow a writer that arrives as an argument. `materialized view` and `derived table` are machinery vocabulary in both the prompt and `usageText`. — sev: med — frames: n/a
 
 ## fixed
 
@@ -90,6 +93,8 @@ capture. `go build ./...` is clean; `go vet ./cmd/aforge/ ./internal/config/` is
 | 16 | `do.go` — the record is announced only for a run that was admitted (the brain built), and the empty folder is removed | `TestARunThatNeverStartedKeepsNoRecord` | `cli-nokey.txt` → `cli-nokey-after.txt` |
 | 18 | `main.go` — `--debug` and `--no-host` are in `usageText` on the commands that take them | `TestTheUsageNamesEveryFlagAPersonCanType` | `cli-subcommand-help-after.txt` |
 | 23 | `usage.go` (`flagRows`) — two dashes for a word, one for a single letter, which is exactly what the table already spells | `TestEveryFlagIsSpelledTheWayTheUsageSpellsIt` | `cli-subcommand-help-after.txt` |
+| 7 | `cmd/aforge/main.go` (`usageText`, `environmentText`, the `helpWidth`/`helpTextColumn` law), `cmd/aforge/envelope.go` (`exitLadderHelp`, `foldedExitLadder`), `cmd/aforge/usage.go` (the closing line under every per-command page) | `TestEveryHelpPageFitsAnEightyColumnTerminal`, `TestTheHelpPageCostsFewerRowsThanTheOneItReplaced` | `frames/help-before.80x24.txt` (108 lines, **167 rows**, folded mid-word) → `frames/help-after.80x24.txt` (110 lines, **110 rows**); `frames/help-env-before.80x24.txt` (83 rows) → `frames/help-env-after.80x24.txt` (73) |
+| 24 | closed earlier in the wave and **verified here, not assumed**: `internal/manual/chat/running-from-the-terminal.md` documents every key of the one envelope and the exit ladder, and `docs/HEADLESS.md` was rewritten onto both | `TestTheTerminalPageDoesNotSayASavedProgramReportsZeroSteps` (ten keys), `TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas` | the row's own evidence line now answers: `grep -rln 'spend_overhead\|blocked_on' internal/manual/` names `running-from-the-terminal.md` |
 
 The manual was updated in the same change, as the manual law requires:
 `internal/manual/chat/commands.md` gains two sections — `--help` on any command and what a
@@ -103,9 +108,6 @@ The numbers below are SPELLED AS WORDS on purpose: `scripts/ledger.py`
 reads `Row <digit>` or a bold bare digit anywhere under `## fixed` as a closure,
 and every row in this list is one that is NOT closed.
 
-- **Row seven** (`aforge --help` wraps mid-word at 80 columns) — re-laying the whole 127-line block
-  is a typographic pass over text this wave is also editing; it wants doing on its own so
-  the diff is readable.
 - **Row twelve** (filesystem failures reach the person as wrapped syscall text) — `plainWords` now
   keeps the actionable half of those chains, but the row asks for the message to name *which
   flag* was wrong (`-w names /nope/dir, which does not exist`). That needs a per-site
@@ -122,4 +124,283 @@ and every row in this list is one that is NOT closed.
   fix.
 - **Row twenty** (`--tail notanumber` says `parse error`) — wants a `flag.Value` with a sentence on
   each numeric flag across `logs` and `exec`; worth doing, but it is its own small pass.
-- **Rows twenty-one, twenty-two, twenty-four and twenty-five** — all `sev: low`, and outside the brief for this lane.
+- **Rows twenty-one, twenty-two and twenty-five** — all `sev: low`, and outside the brief for this lane.
+  (Rows twenty-one and twenty-two were later closed by the streams lane; see `audit-commands.md`'s
+  row 13.)
+
+---
+
+## fixed — the failures a person meets
+
+A third lane, on the rows the first two left: the ones where somebody has already
+hit a wall and the wall answers in a library's words. Every fix below carries a
+named test that was **watched to fail with the fix reverted** — the check is
+recorded per test because five tests in this wave shipped green against the very
+defect they named. Captures are `frames/err-<command>-{before,after}.txt`, taken
+by running `bin/aforge` against a throwaway home.
+
+**Row 12 — filesystem failures reach a person as Go wrapped chains over raw
+syscall text.**
+File: `cmd/aforge/plainwords.go` (`filesystemFault`, `filesystemSentences`,
+`syscallVerbs`, `creatingVerbs`) — **and no door at all**, which is the point:
+every command in this binary reports its failure through the one line in
+`main.go`, so the five doors the row names are answered without one of them being
+touched.
+The rule is STRUCTURAL rather than a list of sites: a chain that ENDS in a
+syscall fault (`<verb> <path>: <reason>`, which is exactly how `os.PathError`
+formats itself) is a chain whose whole front is the binary narrating what it was
+doing when the disk said no. The tail names the path, so the front carries
+nothing anybody can act on and is dropped whole; the tail is respelled with a
+cause and a remedy.
+
+| before | after |
+| --- | --- |
+| `open notebook: stat /nope/graph.db: no such file or directory` | `there is nothing at /nope/graph.db.` / `check the path, and make the folder above it first if it is meant to be new.` |
+| `open receipts: stat /nope/graph.db: no such file or directory` | the same two lines |
+| `open /nope/graph.json: no such file or directory` | the same two lines |
+| `create chat workspace: mkdir /nope: permission denied` | `/nope could not be created — this account is not allowed to write there.` / `choose a path you own, such as one under your home directory.` |
+| `mkdir /nope: permission denied` (`exec`, which did not even name the flag) | the same two lines |
+
+A LOOKING VERB AND A MAKING VERB ARE DIFFERENT ANSWERS TO ONE REASON: `stat
+/x: no such file or directory` means the thing is not there, and `mkdir /x: no
+such file or directory` means the folder ABOVE it is not — telling somebody to
+check the path they typed would be telling them the wrong thing.
+
+**What is deliberately NOT claimed is which flag named the path.** Six doors take
+a path under four flags, and a sentence that guessed `--dir` at a door whose flag
+is `--db` would send somebody to the wrong knob with confidence. That half of the
+row stays open and is the reason it was skipped once already; what is closed is
+the syscall text, the wrapped chain, and the missing remedy.
+Test: `TestADiskFaultIsSaidInAforgesWordsAndSaysWhatToDo` (five chains,
+sub-tested), `TestAPathThatCouldNotBeMadeIsNotToldItIsSimplyMissing`. **Both
+watched to fail against the defect** — the first names each machinery word still
+reaching the reader, the second names the two sentences that were identical.
+`TestASentenceThatIsNotADiskFaultIsLeftAlone` is a GUARD and passes either way,
+which is said here because a test that cannot fail is not evidence.
+A sibling assertion pinned the old wording and was rewritten:
+`TestJSONPrintsAnObjectWhenTheErrandCannotEvenStart` looked for the words `store
+directory` — `do.go`'s wrapping verb. It now asserts the sentence names the
+blocked PATH and carries the remedy, which is what the row is actually about and
+is a stronger claim than the one it replaced.
+Capture: `frames/err-notebook-{before,after}.txt`, `err-show-{before,after}.txt`,
+`err-do-dir-{before,after}.txt`, `err-exec-dir-{before,after}.txt`.
+
+**Row 14 — `aforge doctor` says nothing about a missing key.**
+Files: `cmd/aforge/doctor.go` (`keyReport`, `readKeyReport`, `formatKey`,
+`fallbackKeyEnv`).
+Doctor is what somebody runs when nothing works, and on a machine with no
+provider key it reported six healthy-looking rows and left with 0. There is now
+a `key` row, and it is **first**, because it is the answer to the question the
+command was opened with:
+
+```
+key              none · export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+key              set · OPENROUTER_API_KEY
+key              set · OPENAI_API_KEY
+key              set · /home/x/.aforge/config.json
+```
+
+It names WHERE the key came from and never what it is — a key is a secret, and a
+page nobody can paste into a defect report is a page that does not get pasted.
+The remedy is `remedyFor(config.ErrNoAPIKey.Error())`, the same sentence every
+door answers a keyless run with, so the page a person opens when nothing works
+and the refusal they just read cannot say two different things.
+**The row is printed when it is empty**, which is the one deliberate exception
+here: the emptiness law is about a measurement nobody made, and this is a
+measurement that came back "none". **The exit code stays 0** — doctor is a
+report, and the row is the answer.
+Test: `TestDoctorSaysThereIsNoKeyAndWhatToTypeAboutIt`,
+`TestDoctorNamesWhereTheKeyCameFrom` (three rungs, and that the key itself never
+appears), `TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey` (the seam:
+`readKeyReport` climbs the rungs one at a time so it can say which answered,
+while `config.APIKeyAt` folds them — this pins the two at every rung so a ladder
+that grows a step is red here rather than a doctor quietly telling a working
+machine it has none), `TestDoctorNamesTheSameKeyVariablesTheDoorDoes`.
+**The first two were watched to fail with the row taken back out** — "doctor has
+no `key` row at all, so a machine that cannot call a model reads as healthy",
+printing the six rows it drew instead. The last two are guards and say so.
+Capture: `frames/err-doctor-{before,after}.txt`.
+
+**Row 17 — a bad subharness name is reported as an empty input.**
+Files: `cmd/aforge/subharness_run.go` (`checkSubharnessName`,
+`noSuchSubharnessNamed`).
+`aforge run nosuchharness --input -` answered `the input is empty — there is
+nothing here for the run to do` and never mentioned the name, so somebody who
+had misspelled a program went away and fixed their input. Two things were wrong
+and the message named the one they had got right.
+The name is checked at the door now, and it costs nothing: the programs a person
+can name are the bundles in two stores, read off a directory listing with no
+provider connection, no toolbox and no workspace. The project store is found
+where the run will WORK — through `errandWorkspace`, the same reading the run
+itself uses — so `--dir` cannot make the door and the run disagree. A store that
+will not list leaves the whole question to the full lookup inside the run, which
+is still the authority; a pair that reads cleanly and holds nothing is an ANSWER
+and refuses. Both readings say it through one function so they cannot say it two
+ways.
+
+| before | after |
+| --- | --- |
+| `error: the input is empty — there is nothing here for the run to do` | `error: there is no subharness called "nosuchharness", and this build has none to offer` |
+| | (with programs saved: `there is no subharness called "nosuchharness" — this build has: formatter, tidy-up`) |
+
+Test: `TestABadProgramNameIsSaidBeforeTheInputIsBlamed` — it makes BOTH things
+wrong at once, so the two refusals are genuinely in a race and the test is about
+which one answers. **Watched to fail**: `the refusal never names what the person
+typed. said: "the input is empty — …"`. Also
+`TestAProgramThatIsReallyThereGetsPastTheNameCheck` (the half that makes the
+check safe to have — a real program, and the generalist, are admitted),
+`TestBothReadingsRefuseAMissingProgramInTheSameWords`, and
+`TestTheEarlyNameCheckReadsEveryBundleStoreTheRunRegisters` — structural, reading
+`subharness_run.go` with `go/ast` and counting `UseBundles` calls, so the day the
+packed trailer the seam comment anticipates is registered, an early reading that
+had not heard of it fails here instead of refusing a program that exists.
+A sibling law had to learn the new wall: `run_road_test.go`'s `roadTaken` told
+the program road from the plan road by the program runner's first wall, `this run
+needs its input`. The program runner has two first walls now and either one
+identifies it — neither can be forged by the plan road, which never resolves a
+program name at all. The law it pins (a bare word is a saved program's name in
+every directory) is unchanged and still green from both directories.
+Capture: `frames/err-run-subharness-{before,after}.txt`.
+
+**Row 20 — `logs --tail notanumber` answers `parse error`.**
+Files: `cmd/aforge/count.go` (new — `countFlag`, `newCountFlag`),
+`cmd/aforge/logs.go`.
+`parse error` is `strconv`'s message reaching a person through two layers
+neither of which wrote it for anybody to read. The flag now says WHICH FLAG,
+WHAT WAS GIVEN and WHAT IT TAKES, which is what `wallFlag` has always done for
+`--timeout` in the same binary.
+
+| before | after |
+| --- | --- |
+| `error: invalid value "notanumber" for flag -tail: parse error` | `error: invalid value "notanumber" for flag -tail: a whole number of calls to show, such as 40` |
+| `--tail -5` was accepted and became a slice-arithmetic surprise | `invalid value "-5" for flag -tail: a whole number of calls to show, and not a negative one` |
+
+The flag carries its own NOUN and not a shared one — what a number means differs
+per flag — and its `example` is the door's own default, so the figure offered is
+one the flag really accepts. **Zero stays legal**: asking for none of something
+is a question, not a typo.
+Test: `TestABadCountFlagSaysWhichFlagWhatWasGivenAndWhatItTakes` (all three
+things by name), `TestANegativeCountIsRefusedWhereTheFlagCanStillBeNamed`.
+**Both watched to fail** with `flags.Int` put back — the first printed `parse
+error` under the whole flag list, the second accepted `-5`.
+**NOT CLOSED HERE: `exec --turns`,** which the row names in the same breath.
+`cmd/aforge/exec.go` is another lane's file this wave. `newCountFlag` is a
+one-line adoption (`flags.Int` → `newCountFlag(flags, "turns", …, "turns", …)`)
+and is waiting for whoever holds it.
+Capture: `frames/err-logs-tail-{before,after}.txt`.
+
+**Row 25 — a query command reports a miss as a success (the `logs` half).**
+File: `cmd/aforge/logs.go`.
+`aforge logs --run <id>` for a run that is not in the log printed a sentence and
+left with 0, so a script asking whether a run exists could not tell "not found"
+from "found, and it made no calls" — and the two mean opposite things.
+The rung is `exitCannotRun` off the one ladder in `envelope.go`, which is where
+the ladder moved to an hour before this lane started: the question was asked and
+could not be answered, nothing ran and nothing was spent. The sentence stays on
+stdout and the code is returned bare, because the reason is already written for a
+person on the line above and `error:` in front of it would be the same fact
+twice. `aforge notebook retract 999` has always had this right.
+
+| before | after |
+| --- | --- |
+| `no row in this log carries a run id yet` · **exit 0** | the same sentence · **exit 1** |
+| `no calls for run r-none` · **exit 0** | the same sentence · **exit 1** |
+| `no call deadbeef in this log` · **exit 0** | the same sentence · **exit 1** |
+
+A FILTER THAT MATCHED NOTHING IS NOT A MISS, and that half is pinned too: only
+`--run` and `--call` are ids somebody pasted believing they exist. A `--tag`, a
+`--model` or a `--node` that matched nothing is a search that came back empty,
+which is an answer; a bare listing on a quiet machine is a quiet day; and
+`--json` never earns a sentence or a rung, because an empty stream is exactly
+what "no matching rows" looks like to a parser.
+Test: `TestAnIdThatIsNotInTheLogIsNotReportedAsSuccess` (both ids, asserting the
+RUNG by name and that the sentence survives), `TestASearchThatMatchedNothingIsNotAMiss`.
+**The first was watched to fail** — `a lookup that found nothing left with
+success. err: <nil>`. The second is the guard.
+Two sibling assertions treated any non-nil return as a fault and were rewritten
+to read past the code, through one `isMissRung` helper that says what it is
+looking for: `TestLogsFiltersByRunAndSaysNothingForARowThatHasNoRun` and
+`TestLogsTellsAnEmptySearchApartFromAQuestionItCannotAnswer`.
+Capture: `frames/err-logs-run-{before,after}.txt`.
+
+**Row 21 — a column header over no rows (the `notebook` half).**
+File: `cmd/aforge/notebook.go` (`writeNotebookRows` lifted out).
+`SEQ SCOPE KIND AGE USES RIDES BAD STATUS BELIEF` over nothing was the entire
+output of this command on a fresh machine. Nine column names with no rows read
+as a table that failed to load. `aforge notebook` now answers
+
+```
+the notebook is empty — hand aforge some work, and what it learns lands here.
+```
+
+— and the empty state says WHAT TO DO NEXT, which is the half a flat "nothing
+here" leaves out. The header returns the moment there is a row: the rule is that
+a header is never drawn WITHOUT one, not that the table went away.
+The `why self` half of this row was closed earlier by the streams lane.
+Test: `TestAnEmptyNotebookSaysSoInsteadOfPrintingAHeader` (**watched to fail** —
+`the column header "SEQ" is drawn over no rows at all`, printing the header and
+the rail line beneath it), `TestTheNotebookHeaderReturnsAsSoonAsThereIsARow`.
+Capture: `frames/err-notebook-empty-{before,after}.txt`.
+
+**Row 22 — `aforge services` prints nothing, and its rows are raw tab-separated
+fields.**
+File: `cmd/aforge/services.go`.
+The first half — silence on a healthy machine — was closed by the streams lane
+and is verified here against a rebuilt binary: `nothing is being kept running.`
+The second half was still open. The rows were five raw tab-separated fields with
+no header and no alignment, which is a machine's shape printed at a person and
+was the only listing in the binary that had it.
+
+```
+dev-server\trunning\t2h\tport:5173\t/tmp/dev.log
+docs-preview-server\trunning\t2h\tport:8080\t/tmp/docs.log
+```
+
+```
+NAME                 STATUS   AGE  HEALTH     LOG
+dev-server           running  2h   port:5173  /tmp/dev.log
+docs-preview-server  running  2h   port:8080  /tmp/docs.log
+```
+
+Same `tabwriter` `notebook` and `why` draw with, so a person reading two
+listings reads one shape. `aforge services stop <name>` gave up its own tab pair
+for the register every other one-line answer speaks in: `dev-server · stopped`.
+Test: `TestServicesRowsAreAlignedUnderAHeader` — it uses two names of very
+different lengths and asserts the STATUS and LOG columns start at the same index
+in both rows, so an alignment that only worked on equal-width names fails.
+**Watched to fail** with the `Printf` put back: `the rows are still raw
+tab-separated fields: "dev-server\trunning\t…"`.
+`TestServicesDrawsNoHeaderWhenNothingIsRunning` is the guard on the streams
+lane's half. `TestServicesCommandListsAndStops` pinned the old stop receipt by
+equality and was updated.
+Capture: `frames/err-services-rows-{before,after}.txt` (the before is
+reconstructed from the pre-change source and the exact bytes the reverted test
+prints — the binary that emitted them is gone), `err-services-{before,after}.txt`.
+
+### Not fixed here, and why
+
+- **Row nineteen — `aforge rebuild`.** Half of it was already closed by another
+  lane: the receipt counts `steps` rather than `nodes`, and the transcript note is
+  signed `aforge` rather than `the harness`. **What remains is entirely inside
+  `cmd/aforge/rebuild.go` and `usageText` in `cmd/aforge/main.go`, both held by
+  other lanes this wave**, so it is reported rather than done. What remains, exactly:
+  the prompt still reads `Rebuild every materialized view in <path> from the event
+  journal?` and `The journal itself is untouched; everything derived from it is
+  discarded and replayed. [y/N] `; `usageText` still says `discard every derived
+  table and replay the journal`; the prompt is written to the command's `output`
+  writer, which is `os.Stdout` — a question in the pipe, exactly the defect M28
+  fixed at `cache clean`, and it slips past
+  `TestNoDoorPrintsItsCommentaryToStdout` because the writer is a parameter rather
+  than a named answer stream; and with stdin closed, declining still returns
+  `fmt.Errorf("rebuild cancelled")`, so saying no is reported as an error with a
+  non-zero exit.
+- **Row twenty-five, the `why` half.** `cmd/aforge/why.go` is another lane's file.
+  `aforge why <node-id>` for an id that has no transcript still prints its
+  sentence and returns nil. The change is the same one `logs` took: `return
+  exitCannotRun` after the sentence.
+- **Row twenty's `exec --turns` half** — `cmd/aforge/exec.go` is another lane's
+  file. `newCountFlag` is there for it.
+- **Row twelve's "which flag was wrong" half** — a per-site decision at six doors
+  about which flag owns which path, which is a design call the audit does not
+  settle. The syscall text, the wrapped chain and the missing remedy are closed.
+- **Rows seven, twenty-three and twenty-four** are other lanes' or other passes'.

@@ -1,0 +1,5 @@
+$ ./bin/aforge notebook
+the notebook is empty — hand aforge some work, and what it learns lands here.
+
+daily rail: $500.00
+exit=0

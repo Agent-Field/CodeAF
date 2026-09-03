@@ -283,6 +283,22 @@ const (
 // is what a command row is written with, so an example beginning `  aforge do`
 // was lifted into `aforge do --help` as though it were part of that command's
 // synopsis — which is what happened the first time they were added.
+// handWorkFooter is what `do`, `exec` and `run` have in common, said ONCE under
+// the group rather than three times inside it — twelve of this page's lines used
+// to be the same ladder printed under each verb, in the page whose own defect
+// row was that half of it was an environment table.
+//
+// IT IS A NAMED CONSTANT BECAUSE TWO READERS NEED IT. `aforge --help` prints it
+// under the group, and [usageForCommand] appends it to each of the three
+// per-command pages — which is where somebody writing a script actually looks,
+// and where taking it out of the group's lines had silently removed it. One
+// source of truth, two places it is read.
+var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
+  the job, exec does not plan, run follows a plan somebody saved. All three
+  end the same way, and why is in --json's stop field:
+  ` + foldedExitLadder(2, helpWidth) + `
+  AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
+
 var usageText = `aforge — an agent you talk to, and hand work to when you walk away
 
 Talk to it — a surface you sit in front of
@@ -312,11 +328,7 @@ Hand it work — nobody is watching, the answer is on stdout
               [--journal path] [--json]
       run one saved program: typed input in, its typed output on stdout. A
       question it was not told how to answer stops it rather than being guessed
-  the three differ by how much thinking happens first: do plans and may split
-  the job, exec does not plan, run follows a plan somebody saved. All three
-  end the same way, and why is in --json's stop field:
-  ` + foldedExitLadder(2, helpWidth) + `
-  AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release
+` + handWorkFooter + `
 
 Look at what happened — read-only, no key, nothing spent
   aforge why self [--db path]
