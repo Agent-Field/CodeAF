@@ -549,26 +549,40 @@ func withinDir(dir, path string) bool {
 }
 
 // scratchDirs are the machine's scratch roots: THE PLACES A PROGRAM IS HANDED
-// TO PUT WORK DOWN IN, never places work is about. One list, read by everything
-// that has to tell the two apart — the write guard below and the ground law in
-// [repositoryRoot] — because two copies of it would drift and one of them would
-// be the copy missing the entry that matters.
-//
-// GOTMPDIR leads because it is the entry a second reader forgets and the one
-// that costs the most: Go roots t.TempDir() at GOTMPDIR when it is set, TMPDIR
-// after that, so a test run's whole scratch tree can sit wherever those two
-// point — including inside somebody's checkout.
+// TO PUT WORK DOWN IN, never places work is about. This is the list [scratchPath]
+// has always read, unchanged, and it is deliberately NOT the list the ground law
+// reads — see [tempRoots] for why the two are separate.
 func scratchDirs() []string {
-	dirs := make([]string, 0, 6)
+	dirs := make([]string, 0, 5)
 	for _, dir := range []string{
-		os.Getenv("GOTMPDIR"), os.TempDir(),
-		"/tmp", "/private/tmp", "/var/folders", "/private/var/folders",
+		os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders",
 	} {
 		if strings.TrimSpace(dir) != "" {
 			dirs = append(dirs, dir)
 		}
 	}
 	return dirs
+}
+
+// tempRoots is [scratchDirs] WITH GOTMPDIR AHEAD OF IT, and it exists because
+// THE TWO LISTS ARE READ IN OPPOSITE DIRECTIONS. That is the whole reason they
+// are not one list: [scratchPath] reads its list to EXEMPT a write — a name on
+// it is somewhere a task standing elsewhere is allowed to write, so a name added
+// there LOOSENS a guard — while [climbsOutOfScratch] reads this one to REFUSE a
+// ground, where a name added TIGHTENS one. One list would have meant every entry
+// doing both, and the entry below doing exactly the wrong one.
+//
+// GOTMPDIR belongs on the tightening side alone. It is set almost only by a
+// developer, and almost always at a directory inside their own checkout: exactly
+// the boundary a ground may not climb out of, and exactly the tree a write
+// should still have to answer for. Go roots t.TempDir() at GOTMPDIR when it is
+// set and TMPDIR after that, so a test run's whole scratch tree can sit wherever
+// those two point — including inside somebody's work.
+func tempRoots() []string {
+	if gotmp := strings.TrimSpace(os.Getenv("GOTMPDIR")); gotmp != "" {
+		return append([]string{gotmp}, scratchDirs()...)
+	}
+	return scratchDirs()
 }
 
 // scratchPath reports whether a path is the machine's scratch rather than

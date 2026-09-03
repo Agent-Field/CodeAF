@@ -91,3 +91,26 @@ func TestATaskInScratchNeverBranchesTheEnclosingRepository(t *testing.T) {
 		t.Fatalf("the enclosing repository's HEAD moved: %q -> %q", before, after)
 	}
 }
+
+// The two lists are read in opposite directions, and merging them would loosen
+// the write guard in exactly the configuration this fix exists to protect: a
+// name on scratchPath's list EXEMPTS a task standing elsewhere from having to
+// answer for a write there. So GOTMPDIR — which a developer points at a folder
+// inside their own checkout — tightens the ground law and must never appear on
+// the permissive side.
+func TestGOTMPDIRTightensTheGroundLawAndNeverTheWriteGuard(t *testing.T) {
+	// A path no temp root contains, so the only way it could read as scratch is
+	// through GOTMPDIR itself.
+	checkout := filepath.Join(string(filepath.Separator), "not-a-temp-root", "checkout")
+	gotmp := filepath.Join(checkout, ".gotmp")
+	t.Setenv("GOTMPDIR", gotmp)
+
+	work := filepath.Join(gotmp, "work")
+	if scratchPath(work) {
+		t.Fatalf("scratchPath(%q) = true — GOTMPDIR is on the write guard's permissive list, which exempts a task from answering for a write into somebody's checkout", work)
+	}
+	// And the ground law, reading the other list, does refuse to climb out of it.
+	if !climbsOutOfScratch(work, checkout) {
+		t.Fatalf("climbsOutOfScratch(%q, %q) = false — the ground law is not reading GOTMPDIR", work, checkout)
+	}
+}

@@ -6884,15 +6884,18 @@ func repositoryRoot(dir string) (string, bool) {
 // what work is ABOUT, and a repository that merely CONTAINS the machine's temp
 // directory is a repository this task was never given.
 //
-// The reading is PER BOUNDARY, never in aggregate: for each scratch root the
+// The reading is PER BOUNDARY, never in aggregate: for each temp root the
 // directory lives in, the answer must live in that same root. Asking instead
 // whether the root is scratch AT ALL would let the whole bug through, because
-// /tmp is itself a scratch root and a checkout at /tmp/somewhere is inside it —
+// /tmp is itself a temp root and a checkout at /tmp/somewhere is inside it —
 // while GOTMPDIR=/tmp/somewhere/.gotmp is the boundary that was actually
 // climbed out of.
+//
+// The list is [tempRoots] and NOT [scratchPath]'s [scratchDirs], which reads the
+// other way round: there a name EXEMPTS a write, here a name REFUSES a ground.
 func climbsOutOfScratch(dir, root string) bool {
 	realDir, realRoot := resolveSymlinks(dir), resolveSymlinks(root)
-	for _, scratch := range scratchDirs() {
+	for _, scratch := range tempRoots() {
 		scratch = resolveSymlinks(scratch)
 		if withinDir(scratch, realDir) && !withinDir(scratch, realRoot) {
 			return true
