@@ -469,6 +469,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// themselves, so that is what they type.
 		{"what does delivered mean after the message I typed into a task", "reading-a-task-page"},
 		{"I steered a task that was waiting on its pieces, what is the line after my words", "tasks"},
+		// AND THE SAME PAGE ONCE IT FOLDS ITS SETTLED WORK (#252, ruling 1). The
+		// chips are new furniture on a page people already knew, so they are asked
+		// the three ways somebody meets one: not knowing what the mark is, not
+		// knowing what the key beside it does, and — the way it is actually
+		// reported — not seeing the calls at all and assuming they are gone.
+		{"what are the little chips on the task page", "reading-a-task-page"},
+		{"what does ctrl+e do on a task page", "reading-a-task-page"},
+		{"why can I not see the tool calls the task made", "reading-a-task-page"},
+		{"my task page is hiding most of the work", "reading-a-task-page"},
+		// And the landing word that stopped being the engine's: a person reading
+		// `in your own folder` off a settled card has to be able to ask what it
+		// means in exactly those words.
+		{"the card says in your own folder, what does that mean", "tasks"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the

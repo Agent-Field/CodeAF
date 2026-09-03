@@ -1006,8 +1006,8 @@ The three reasons a queued task gives for waiting are `slot`, `machine busy` and
 `rate limited`. A named prerequisite outranks any of them, because a name is something you
 can act on and a queue clears itself.
 
-How a branch came home is spelled `merged`, `conflicted`, or `inplace` (the work ran
-directly in your own tree because there was no repository to branch from).
+How a branch came home is spelled `merged`, `in your own folder` (there was no branch to
+bring home — the work edited your own files), or `conflicted · <branch>`.
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
@@ -1035,7 +1035,7 @@ work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
-## How work lands
+## How work lands — what the card means by merged, in your own folder, or conflicted
 
 Every landing writes a card into the conversation, with a blank row on each side, and moves
 the task's row on the roster.
@@ -1060,8 +1060,8 @@ first sentence, quoted because they are its words and not aforge's.
   have set `task.settle` to `auto`, in which case aforge is deciding and the card is quiet.
 
 After the name the card carries the span, the file count, and how the branch came home:
-`merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
-`branch kept · <branch>`.
+`merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
+or `branch kept · <branch>`.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
 branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
@@ -2369,21 +2369,26 @@ The task's elapsed clock freezes while you stand in its room. That number exists
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
 
-## Seeing the whole conversation inside a task — a room never folds its work away
+## Seeing the whole conversation inside a task — what folds and what opens it
 
-**A room shows everything the task said and did, and it stays shown.** Out in the main
-thread a finished turn's machinery collapses into one chip —
+**A room holds everything the task said and did, and the settled work is one gesture
+away.** Out in the main thread a finished turn's machinery collapses into one chip —
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
-you asked and the answer you got. **That never happens inside a room.** A task's whole life
-is one long stretch of work ending in a report, so a chip there would hide the entire page
-and leave you the report you already had. There is no `▸ worked` line in a room, nothing to
-click open, and the `ui.work` setting does not reach one.
+you asked and the answer you got. A room does the same thing cut differently: a task's
+whole life is one long stretch of work, so folding it by turn would put the entire page
+behind one chip. It folds **by phase** instead — the work before each paragraph the task
+wrote goes behind its own `▸ worked` chip, and every paragraph stays standing.
+
+`ctrl+e` over an empty box opens the newest chip, a click opens any of them, scrolling up
+at the top of the page opens the one nearest the top, and `ui.work = open` opens them all.
+**What the task is doing right now never folds**, and neither do your instruction, your
+corrections, any call that failed, any question it asked you, or the report at the end.
 
 So a room you walk into — a running task, a task that has landed, a piece of a recursive
-task, a harness being designed — reads top to bottom as the discussion it was: the
-instruction it was given, its prose between calls, its thinking blocks, every tool call with
-its arguments and result, anything you steered into it, and the report at the end. A landed
-task's room is the whole transcript, not the summary.
+task, a harness being designed — reads top to bottom as the story of the work: the
+instruction it was given, its prose between calls, a chip over the machinery behind each
+paragraph, anything you steered into it, and the report at the end. Everything the page
+folded is still there, and one keypress brings it back.
 
 Three bounded things do still hold something back, and every one of them names itself and
 opens:

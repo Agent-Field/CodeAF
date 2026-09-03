@@ -1,6 +1,11 @@
 package tui3
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -449,4 +454,134 @@ func TestTheStateNobodyCouldJudgeReadsAsNeedingYourLook(t *testing.T) {
 	if railGroupWords[railAttention] != "needs you" {
 		t.Fatalf("the attention group is headed %q", railGroupWords[railAttention])
 	}
+}
+
+// ── NO ENGINE TOKEN REACHES A SCREEN ────────────────────────────────────────
+//
+// THE DEFECT THIS CLOSES, found on a real run: a task started in a folder with
+// no repository lands with `merge: inplace`, and the room's header, the settled
+// card's tail and its expansion, and the roster's row all printed that word —
+// `✓ run these shell · inplace · 55s · $0.0029`. `inplace` is internal/session's
+// note to itself about what it did with a branch it could not cut; it is the
+// machinery's vocabulary on a person's screen, and it was reachable on an
+// ordinary launch rather than on an edge.
+//
+// The fix was not a fifth case. Four readers each had a switch with a
+// fall-through onto [taskNode.merge], so every merge word somebody had not
+// thought about was drawn raw; they now go through one table
+// (task.go's [mergeScreenWords]).
+//
+// THIS TEST IS WHAT MAKES THE TABLE A GUARANTEE. It reads the engine's OWN const
+// block — the four strings [session.TaskNotice].Merge can carry, spelled once in
+// internal/session — and fails when any of them has no line in the table. A
+// fifth outcome added to the engine breaks this test by name on the day it is
+// added, rather than reaching somebody's screen as a word nobody can read.
+func TestEveryMergeWordTheEngineCanPublishHasAScreenWord(t *testing.T) {
+	for _, merge := range engineMergeWords(t) {
+		word, ok := mergeScreenWords[merge]
+		if !ok {
+			t.Errorf("internal/session can publish merge %q and this surface has no screen word for it.\n"+
+				"Add a line to mergeScreenWords (task.go) saying what a PERSON reads when work lands that way.\n"+
+				"Do not draw the engine's word: %q is a note internal/session makes to itself.", merge, merge)
+			continue
+		}
+		if strings.TrimSpace(word) == "" {
+			t.Errorf("merge %q maps to nothing; every landing has something true to say about it", merge)
+		}
+	}
+	// AND THE TABLE HOLDS NOTHING THE ENGINE CANNOT SEND, so a line here is
+	// never a translation of a word that stopped existing.
+	engine := map[string]bool{}
+	for _, merge := range engineMergeWords(t) {
+		engine[merge] = true
+	}
+	for merge := range mergeScreenWords {
+		if !engine[merge] {
+			t.Errorf("mergeScreenWords translates %q, which internal/session no longer publishes — delete the line", merge)
+		}
+	}
+}
+
+// AND NO READER GOES ROUND THE TABLE. The four sites that draw where work landed
+// are asked with the one merge word that is not a screen word, and none of them
+// may say it.
+func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.openRoom(7, "Port the loader")
+	node := a.roomNode()
+	if node == nil {
+		t.Fatal("the roster has no row for the open room")
+	}
+	node.state, node.merge, node.branch = session.TaskDone, mergeWordInPlace, ""
+	node.cost, node.elapsed = 0.03, 55*time.Second
+
+	said := map[string]string{
+		"the room's header": plain(a.roomHeadWord(160)),
+		"the roster's row":  plain(strings.Join(a.railUnder(node, 60), "\n")),
+	}
+	card := &taskDone{merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second}
+	said["the settled card's tail"] = plain(a.doneTail(card))
+	said["the settled card's expansion"] = plain(strings.Join(a.doneDetail(card, 80), "\n"))
+
+	for where, line := range said {
+		if strings.Contains(line, mergeWordInPlace) {
+			t.Errorf("%s draws the engine's own word:\n%s", where, line)
+		}
+		if !strings.Contains(line, taskInPlaceLanding) {
+			t.Errorf("%s does not say where the work landed (%q):\n%s", where, taskInPlaceLanding, line)
+		}
+	}
+}
+
+// engineMergeWords is the FOUR STRINGS [session.TaskNotice].Merge can carry, read
+// out of internal/session's own const block.
+//
+// IT PARSES THE SOURCE rather than importing them, because they are unexported —
+// they are the engine's private vocabulary, which is the whole point — and a
+// list retyped here would be a second source of truth that drifts silently,
+// which is the class of defect this file's test exists to end. The block is
+// found by the value's shape, not by a comment: every `merge…= "word"` constant
+// in that file is one of them.
+func engineMergeWords(t *testing.T) []string {
+	t.Helper()
+	const source = "../session/task_run.go"
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, source, nil, 0)
+	if err != nil {
+		t.Fatalf("%s: %v", source, err)
+	}
+	var words []string
+	for _, decl := range parsed.Decls {
+		block, ok := decl.(*ast.GenDecl)
+		if !ok || block.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range block.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok || len(value.Names) != 1 || len(value.Values) != 1 {
+				continue
+			}
+			if !strings.HasPrefix(value.Names[0].Name, "merge") {
+				continue
+			}
+			literal, ok := value.Values[0].(*ast.BasicLit)
+			if !ok || literal.Kind != token.STRING {
+				continue
+			}
+			word, err := strconv.Unquote(literal.Value)
+			if err != nil {
+				t.Fatalf("%s: %s = %s: %v", source, value.Names[0].Name, literal.Value, err)
+			}
+			words = append(words, word)
+		}
+	}
+	sort.Strings(words)
+	// A READING THAT FOUND NOTHING IS A BROKEN READING, not an empty engine. The
+	// const block moving to another file must fail here loudly rather than pass
+	// this test by having nothing to check.
+	if len(words) < 4 {
+		t.Fatalf("%s: found %v, and internal/session has always published four merge words —\n"+
+			"the const block has moved and this reader has to be pointed at it", source, words)
+	}
+	return words
 }

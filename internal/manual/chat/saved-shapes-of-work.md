@@ -537,8 +537,9 @@ read as the same story — see *What a design writes into its thread* below.
 node's journal, so opening the design tomorrow shows the writing of the page and not only
 the page. Nothing is re-narrated when you walk in: you are handed the reply being typed
 right now, and the rest is read off the file, exactly as it works for a worker. A room
-never folds its work into a `▸ worked` chip the way the main thread does, so a design that
-has already landed still reads as the whole discussion with the outcome at the bottom —
+folds the machinery behind each paragraph into a `▸ worked` chip and leaves the paragraphs
+standing, so a design that has already landed reads as the story of the design with the
+outcome at the bottom, and `ctrl+e` or a click brings back the work behind any of it —
 see *Seeing the whole conversation inside a task* on the tasks page.
 
 **While a reasoning model thinks, there may genuinely be nothing to show.** Some models

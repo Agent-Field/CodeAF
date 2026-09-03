@@ -1067,14 +1067,16 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 
 // orchTranscriptDeck is the node transcript as the deck the renderers and the
 // expansion doors both read — ONE deck, so a click that opens a call and the
-// next paint that draws it are looking at the same entries. showsWork for the
-// reason a room sets it (workfold.go's [app.deckFolds]): somebody descended
-// from a chip into a node's transcript to read what that node did, and a page
-// that collapsed it into "▸ worked · 6 tool calls" would answer that gesture
-// with the one line they already had.
+// next paint that draws it are looking at the same entries.
+//
+// IT TAKES [transcriptLens], WHICH IS THE ONE POSTURE THAT FOLDS NOTHING, and
+// lens.go carries the argument in full: somebody descended from a graph into a
+// node's transcript to read what that node did, and this deck mints its fold
+// state fresh on every read — so a chip here would both answer the gesture
+// with the line they already had and have no door that worked.
 func (a *app) orchTranscriptDeck() deck {
 	run := a.orchOf()
-	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true, toolTail: a.roomToolTail()}
+	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, lens: transcriptLens}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.

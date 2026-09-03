@@ -1025,6 +1025,17 @@ type app struct {
 	// rows, that is the status line costing more than the conversation.
 	hud      hudStats
 	hudStale bool
+	// nodeHud is what each of this session's NODES has added to those same two
+	// questions (docs/design/lens/DESIGN.md, Decision 4). A task's `bash` with
+	// background:true starts a process on this machine exactly as the
+	// conversation's does, and until it was counted the Σ segment and the quit
+	// guard were silent about every one of them.
+	//
+	// IT IS KEYED BY NODE AND KEPT FOR THE SESSION because a room's entries are
+	// dropped when its page closes ([app.closeRoom]), and a count that vanished
+	// when somebody stopped looking would be a count nobody can act on.
+	// [app.tallyNode] is the only writer.
+	nodeHud map[uint64]hudStats
 
 	// stream is the channel being pumped and gen its generation. gen is
 	// bumped by every Submit so that a late event from an abandoned stream can
@@ -2177,8 +2188,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
 	// difference between a chat's transcript and any other (feed.go states the
 	// law the hooks exist to keep). It is built here and not in the literal above
-	// because the hooks dispatch through this app's own methods.
-	a.feed = newFeed(a.feedHooks())
+	// because the hooks dispatch through this app's own methods, and the POSTURE
+	// is named at the same moment for the same reason (lens.go): what a page
+	// does with an event is a fact about the page, so the page says which it is.
+	a.feed = newFeed(a.feedHooks(participantLens))
 	a.gitProbe = gitHead
 	if a.hosted() {
 		// THE BRANCH PROBE IS OFF OVER A CONNECTION, and off rather than wrong:
@@ -3968,41 +3981,22 @@ func (a *app) takeStream(ch <-chan session.Event) tea.Cmd {
 // feedHooks is the conversation's whole declaration of what it is, as far as the
 // reducer that grows its transcript is concerned (feed.go).
 //
-// FOUR OF THESE ARE THE PAGE AND TWO ARE THE CHAT. The clock, the follow and the
-// touch are what any surface with a screen owes the reducer; the spawn card and
-// the ambient counts are things THIS page has and the task room does not, and
-// they are installed here — rather than known in there — so that the room can
-// adopt the same reducer without inheriting a card it has nowhere to draw.
+// THREE OF THESE ARE THE PAGE AND THE REST ARE THE POSTURE. The clock, the
+// follow and the touch are what any surface with a screen owes the reducer; the
+// spawn card is something a page either draws or does not, and THE LENS SAYS
+// WHICH (lens.go's [lens.spawnCards]) — installed here rather than known in
+// there, so that a room can adopt the same reducer without inheriting a card it
+// has nowhere to draw. The event itself is ingested either way: a lens may lower
+// salience and may not drop a fact.
 //
 // It is read once, at construction, and the closures dispatch through the
 // methods rather than capturing what they answer: a test that pins the clock
 // after the app is built still gets its clock ([app.now]).
-func (a *app) feedHooks() feedHooks {
-	return feedHooks{
+func (a *app) feedHooks(l lens) feedHooks {
+	hooks := feedHooks{
 		now:    a.now,
 		follow: a.follow,
 		touch:  a.touch,
-		// A PROPOSAL FORMS AS A BLOCK, not as a row (task.go). Only propose_task
-		// earns one, which is a fact about this page's vocabulary rather than
-		// about the event, so the test for it lives on this side of the seam.
-		forming: func(ev session.Event) {
-			if ev.Tool == taskTool {
-				a.formTask(ev)
-			}
-		},
-		// AND ITS RESULT ARRIVING WITH THE CARD STILL FORMING IS A REFUSAL, for
-		// the reason [feed.closeTool] states: a proposal that landed has already
-		// replaced the block with its question.
-		closing: func(ev session.Event) {
-			if ev.Tool == taskTool {
-				a.refuseFormingCard()
-			}
-		},
-		// AND A CUT ATTEMPT TAKES ITS HALF-ARRIVED PROPOSAL WITH IT: the session
-		// throws away a partial call before it asks again, so keeping the card
-		// would join fragments from two different requests into one proposal
-		// ([feedHooks.retrying], task.go).
-		retrying: a.dropRetryingFormingCard,
 		closed: func(e *entry, ev session.Event) {
 			a.learnBackground(e, ev.Output)
 			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
@@ -4011,6 +4005,36 @@ func (a *app) feedHooks() feedHooks {
 			a.hudStale = true
 		},
 	}
+	if !l.spawnCards {
+		return hooks
+	}
+	// A PROPOSAL FORMS AS A BLOCK, not as a row (task.go). Only propose_task
+	// earns one, which is a fact about this page's vocabulary rather than about
+	// the event, so the test for it lives on this side of the seam.
+	hooks.forming = func(ev session.Event) {
+		if ev.Tool == taskTool {
+			a.formTask(ev)
+		}
+	}
+	// AND ITS RESULT ARRIVING WITH THE CARD STILL FORMING IS A REFUSAL, for the
+	// reason [feed.closeTool] states: a proposal that landed has already replaced
+	// the block with its question.
+	hooks.closing = func(ev session.Event) {
+		if ev.Tool == taskTool {
+			a.refuseFormingCard()
+		}
+	}
+	// AND A CUT ATTEMPT TAKES ITS HALF-ARRIVED PROPOSAL WITH IT: the session
+	// throws away a partial call before it asks again, so keeping the card would
+	// join fragments from two different requests into one proposal
+	// ([feedHooks.retrying], task.go).
+	//
+	// IT IS ONE OF THE CARD'S THREE AND NOT ONE OF THE PAGE'S, which is why it
+	// sits below the gate with the other two: the whole of what it does is throw
+	// a forming CARD away, and a page that never draws one has nothing to throw.
+	// The retry itself is still ingested by the same reducer for everybody.
+	hooks.retrying = a.dropRetryingFormingCard
+	return hooks
 }
 
 // event folds one session event into the conversation and waits on the stream
@@ -7285,54 +7309,153 @@ func (a *app) hudStats() hudStats {
 }
 
 func (a *app) computeStats() hudStats {
-	var out hudStats
-	// live holds the ids of the background jobs this surface watched start, so a
-	// kill can take away the one it names rather than the newest.
-	var live []string
+	var walk statWalk
 	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || e.status != toolOK {
-			continue
-		}
-		fields := argsOf(e.detail.Args)
-		switch e.tool {
-		case "edit":
-			adds, dels, _ := editStat(e.detail.Args)
-			out.adds, out.dels = out.adds+adds, out.dels+dels
-		case "write":
-			content, _ := argBody(argString(fields, "content"))
-			out.adds += lineCount(content)
-		case "bash":
-			if argString(fields, "background") != "true" {
-				continue
-			}
-			out.jobs++
-			live = append(live, jobID(e.detail.Output))
-		case "watch":
-			out.watches++
-		case "jobs":
-			if argString(fields, "action") != "kill" {
-				continue
-			}
-			id := argString(fields, "id")
-			if at := indexOf(live, id); id != "" && at >= 0 {
-				live = append(live[:at], live[at+1:]...)
-				out.jobs--
-				continue
-			}
-			// An id this surface never saw start is a watch's — watches are
-			// jobs too (kind watch) and their start line publishes no id — and
-			// failing that it is a job from before we were looking.
-			if out.watches > 0 {
-				out.watches--
-				continue
-			}
-			if out.jobs > 0 {
-				out.jobs--
-			}
-		}
+		walk.fold(&a.entries[i])
+	}
+	// AND WHAT THE SESSION'S NODES STARTED, which is the other half of the same
+	// sentence (docs/design/lens/DESIGN.md, Decision 4). A node runs `bash` with
+	// background:true exactly as the conversation does, on this machine, out of
+	// this session — and until this landed the Σ segment said nothing about it
+	// and the quit guard let a person walk away from three servers a task had
+	// started ([app.quitArmed]).
+	//
+	// IT IS A TALLY AND NOT A SECOND WALK, and that is the whole of why the
+	// numbers do not flicker. A room's entries live only while its page is open
+	// ([app.closeRoom] drops them), so a walk over them would have counted a
+	// node's jobs on the frames somebody was LOOKING at that node and not on the
+	// others — a count that changes because you opened a page is a count nobody
+	// can act on. The tally is folded once, by the room's reducer, at the instant
+	// a call closes ([app.roomFeedHooks]), and it stays folded.
+	out := walk.out
+	for _, node := range a.nodeHud {
+		out.jobs += node.jobs
+		out.watches += node.watches
+		out.adds += node.adds
+		out.dels += node.dels
 	}
 	return out
+}
+
+// callClosed reports whether this row is A CALL THAT FINISHED, either way — the
+// one event on this surface that can move a count.
+//
+// IT IS ONE FUNCTION BECAUSE TWO COUNTS ASK IT. The ambient sums walk it here
+// ([statWalk.fold]) and a room's header counts calls with it (room.go's
+// [roomWorkOf]), and a header that said `14 tool calls` beside a Σ segment
+// summing a different fourteen would be the surface keeping two clocks about
+// one fact (docs/design/lens/DESIGN.md, Decision 4).
+func callClosed(e *entry) bool {
+	return e.kind == entryTool && (e.status == toolOK || e.status == toolFailed)
+}
+
+// statWalk is the ambient counts being summed, and the state that sum carries
+// between entries. It is a type rather than a loop body because TWO CALLERS FOLD
+// THE SAME ARITHMETIC: the conversation walks its whole list on demand
+// ([app.computeStats]), and a node's page folds one call at a time as its
+// reducer closes it ([app.tallyNode]) — and two spellings of "what a finished
+// call adds to the counts" is two spellings that drift.
+type statWalk struct {
+	out hudStats
+	// live holds the ids of the background jobs this walk watched start, so a
+	// kill can take away the one it names rather than the newest.
+	live []string
+}
+
+// fold adds one entry to the counts, and ignores everything that is not a call
+// that finished cleanly.
+func (w *statWalk) fold(e *entry) {
+	if !callClosed(e) {
+		return
+	}
+	// AND ONLY A CALL THAT WORKED CHANGED ANYTHING. A failed edit wrote no lines
+	// and a failed `bash` started no process, so a finished call still has to
+	// have succeeded before it moves a count — which is the one place these sums
+	// narrow what [callClosed] admits, and it is narrower on purpose rather than
+	// by a second definition of "finished".
+	if e.status != toolOK {
+		return
+	}
+	fields := argsOf(e.detail.Args)
+	switch e.tool {
+	case "edit":
+		adds, dels, _ := editStat(e.detail.Args)
+		w.out.adds, w.out.dels = w.out.adds+adds, w.out.dels+dels
+	case "write":
+		content, _ := argBody(argString(fields, "content"))
+		w.out.adds += lineCount(content)
+	case "bash":
+		if argString(fields, "background") != "true" {
+			return
+		}
+		w.out.jobs++
+		w.live = append(w.live, jobID(e.detail.Output))
+	case "watch":
+		w.out.watches++
+	case "jobs":
+		if argString(fields, "action") != "kill" {
+			return
+		}
+		w.kill(argString(fields, "id"))
+	}
+}
+
+// kill takes one job away from the counts, by name where this walk saw it start.
+func (w *statWalk) kill(id string) {
+	if at := indexOf(w.live, id); id != "" && at >= 0 {
+		w.live = append(w.live[:at], w.live[at+1:]...)
+		w.out.jobs--
+		return
+	}
+	// An id this surface never saw start is a watch's — watches are jobs too
+	// (kind watch) and their start line publishes no id — and failing that it is
+	// a job from before we were looking.
+	if w.out.watches > 0 {
+		w.out.watches--
+		return
+	}
+	if w.out.jobs > 0 {
+		w.out.jobs--
+	}
+}
+
+// tallyNode works out what ONE node has added to the ambient counts, from the
+// rows its page is holding, and remembers the answer.
+//
+// IT RE-COUNTS RATHER THAN ADDING ONE CALL AT A TIME, and that is what makes it
+// safe to call from two places. A room learns its history two ways — the journal
+// it replays when the page opens ([app.roomRecord]) and its lane while the page
+// is up — and only the second goes through the reducer. A tally that folded each
+// closed call as it arrived therefore missed every job the node had already
+// started before anybody looked, which is most of them: the first thing a person
+// does about a task is open it AFTER it has been working. Counting the whole list
+// instead answers for both halves, and re-answering is idempotent — opening the
+// same page twice cannot count the same job twice, which an accumulator could
+// not promise.
+//
+// WHAT IT STILL CANNOT SEE, said plainly: a node whose page nobody has ever
+// opened. Its journal is on disk and this surface has not read it, so its jobs
+// are not in the count. That is the same honesty [hudStats] already states about
+// its own numbers — the count is what this session has SEEN — and it is the
+// right direction to be wrong in: a job that turns up when you open the page is
+// a job you learn about, where a count that guessed at unread journals would be
+// a number nobody could check.
+func (a *app) tallyNode(id uint64, es []entry) {
+	var walk statWalk
+	for i := range es {
+		walk.fold(&es[i])
+	}
+	if a.nodeHud == nil {
+		a.nodeHud = map[uint64]hudStats{}
+	}
+	if was, ok := a.nodeHud[id]; ok && was == walk.out {
+		return
+	}
+	a.nodeHud[id] = walk.out
+	// THE COUNTS THE SURFACE IS SHOWING ARE NOW OLD, and this is the one place a
+	// node's page can say so: the cache is the conversation's and nothing else
+	// drops it on a task's event (see [app.hudStats]).
+	a.hudStale = true
 }
 
 // jobID reads the id out of a background bash call's own answer, which session

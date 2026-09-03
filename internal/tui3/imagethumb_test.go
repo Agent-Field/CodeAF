@@ -230,7 +230,7 @@ func TestARoomJournalledPictureRowDrawsTheSameThumbnail(t *testing.T) {
 				Output: path + " — 64×32 png, 1.2KB, generated on paint/model",
 			},
 		}},
-		unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true,
+		unfolded: map[int]bool{}, workOpen: map[int]bool{}, lens: overseerLens,
 	}
 	rows := a.toolRows(journaled, 0, true, 60)
 	painted := 0

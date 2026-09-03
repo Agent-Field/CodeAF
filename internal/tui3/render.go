@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -142,41 +141,37 @@ const toolWindow = 3
 // The entries are a SLICE and the fold map is a POINTER, which is what makes a
 // deck a view rather than a copy: [app.entryRows] writes each entry's row cache
 // through it, and [app.unfold] writes the map.
-// clock says whether this list carries THE SESSION'S CLOCK — the turn receipts
-// and the seam marks (timestamps.go). Only the conversation does. A room's
-// turns are its own numbering, and [app.stamps] is keyed by the session's, so a
-// page that ran the clock would draw the conversation's receipts against a
-// node's turns and report figures nobody measured.
 //
-// showsWork says this page IS the work rather than a conversation about it, so
-// nothing on it collapses into a "worked" chip (workfold.go's [app.deckFolds]).
-// Only a room sets it.
-//
-// toolTail is how many of a folded turn's calls stay on screen, and zero means
-// [toolWindow]. Only a room sets it, and it sets it from the height of its own
-// view (room.go's [app.roomToolTail]) — because in a room the cluster IS the
-// page, and a fold that kept three calls of a hundred-and-twenty drew four rows
-// over a forty-row void with the history a person came to read nowhere in the
-// row list at all. The conversation leaves it zero on purpose: there the fold
-// sits among prose, and three is the designed compactness.
+// EVERY DIFFERENCE BETWEEN TWO PAGES IS ONE FIELD, and it is [deck.lens]
+// (lens.go). It used to be three bools and an int added one at a time — a
+// clock, a shows-work, a tool tail — so "how does a room differ from the
+// conversation" was a question with no answer short of grepping the files that
+// read them. A posture is now declared in one literal and the renderers read
+// the posture.
 type deck struct {
-	entries     []entry
-	unfolded    map[int]bool
-	workOpen    map[int]bool
-	clock       bool
-	showsWork   bool
+	entries  []entry
+	unfolded map[int]bool
+	workOpen map[int]bool
+	// lens is the page's posture: what folds, where the receipts land, whether
+	// the session's clock runs over this list (lens.go).
+	lens        lens
 	runningTurn int
-	toolTail    int
 }
 
-// window is the number of a folded turn's calls this deck keeps on screen: its
-// own tail where it set one, [toolWindow] otherwise. It is the ONE place the
-// two are reconciled, so a renderer never has to know which list it is drawing.
-func (d deck) window() int {
-	if d.toolTail > 0 {
-		return d.toolTail
+// foldWindow is how many of a folded cluster's calls this deck keeps on screen: the
+// lens's own tail where it declares one, [toolWindow] otherwise. It is the ONE
+// place the two are reconciled, so a renderer never has to know which list it
+// is drawing.
+//
+// It is the app's method rather than the deck's because a room's tail is its
+// VIEW'S HEIGHT and the view is the app's (lens.go's [lens.toolTail]): a number
+// frozen into the deck at build time would be the height of the frame before
+// the resize that is being drawn.
+func (a *app) foldWindow(d deck) int {
+	if d.lens.toolTail == nil {
+		return toolWindow
 	}
-	return toolWindow
+	return d.lens.toolTail(a)
 }
 
 // conversation is the deck the transcript draws.
@@ -185,7 +180,8 @@ func (a *app) conversation() deck {
 	if a.state == stateWorking {
 		running = a.turn
 	}
-	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, clock: true, runningTurn: running}
+	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen,
+		lens: participantLens, runningTurn: running}
 }
 
 // bodyDeck is the deck the BODY REGION is drawing right now — the room's page
@@ -345,7 +341,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// over nothing else (see [deck.clock]).
 	walk := stampWalk{}
 	clock := func(i int) {
-		if !d.clock {
+		if !d.lens.clock {
 			return
 		}
 		drew := false
@@ -357,14 +353,18 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
-			open := a.workMode == config.WorkOpen || d.workOpen[f.turn]
+			// THE CHIP IS NAMED BY ITS OWN KEY AND NOT BY THE TURN
+			// (workfold.go's [workfold.key]): a room's page is one turn holding a
+			// chip per phase, and a row that carried the turn would make every
+			// chip on it one control.
+			open := a.workFoldOpen(d, f.key)
 			// The chip stands where the turn's work stood, so it takes the same
 			// blank the work's first block would have taken — which after the
 			// person's message is the change-of-speaker gap wasUser buys.
 			if wasUser || wasBlock {
 				gap()
 			}
-			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(f)), entry: -1, hit: hitWorkFold, turn: f.turn})
+			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
 			if !open {
 				i = f.answer - 1
 				wasCluster, wasBlock, wasUser = false, false, false
@@ -609,7 +609,9 @@ func (a *app) isHot(r row) bool {
 	case hoverEntry:
 		return r.entry >= 0 && r.entry == a.hot.entry
 	case hoverFold:
-		return (r.hit == hitFold || r.hit == hitWorkFold) && r.turn == a.hot.turn
+		return r.hit == hitFold && r.turn == a.hot.turn
+	case hoverWorkFold:
+		return r.hit == hitWorkFold && r.turn == a.hot.turn
 	case hoverBrief:
 		// THE DOOR AND NOT THE BLOCK (brieffold.go): the lines above it are the
 		// person's own words, and nothing happens when they are pressed.

@@ -460,16 +460,79 @@ func (n *taskNode) spent() float64 {
 // restated here because the surface reads them and internal/session exports
 // them nowhere.
 //
-// THEY ARE THE ENGINE'S WORDS AND NOT THIS SURFACE'S. Three of them are read out
-// as they stand, because "merged" and "conflicted" mean on screen what they mean
-// in the branch. "aborted" does not, and it is translated where it is drawn (see
-// [taskStoppedKept]).
+// THEY ARE THE ENGINE'S WORDS AND NOT THIS SURFACE'S, and nothing draws one:
+// every reader goes through [mergeScreenWord] below.
 const (
 	mergeWordMerged     = "merged"
 	mergeWordConflicted = "conflicted"
 	mergeWordInPlace    = "inplace"
 	mergeWordAborted    = "aborted"
 )
+
+// ── WHERE THE WORK LANDED, IN A PERSON'S WORDS ──────────────────────────────
+//
+// mergeScreenWords is THE TABLE: one screen word for every merge word the
+// engine can publish, and the ONLY place this surface translates them.
+//
+// IT EXISTS BECAUSE THREE READERS WERE EACH PRINTING THE ENGINE'S TOKEN. The
+// room's header, the settled card's tail and the roster's row all reached for
+// [taskNode.merge] and drew whatever string was in it, with a case for the two
+// words that needed translating and a fall-through for the rest — so a person
+// whose task ran in a folder with no repository read `inplace` on all three
+// (`✓ run these shell · inplace · 55s`, seen on a real run). That is the
+// machinery's own vocabulary on a person's screen, which this codebase bans,
+// and it was reachable on a perfectly ordinary launch: every task in a
+// directory that is not a repository lands that way.
+//
+// A TABLE AND NOT A SWITCH, so the guarantee is checkable. A switch says what
+// happens to the words somebody thought of; a table can be walked against the
+// engine's own list, and taskwords_test.go's structural test does exactly that
+// — it reads internal/session's const block and fails when a word in it has no
+// line here. That is what makes "the next token cannot leak" a fact rather than
+// a hope.
+//
+// AND NOBODY FALLS BACK TO THE TOKEN. A word this build has never heard of — an
+// engine newer than the binary reading it — draws the honest [roomDoneWord]
+// instead, because "this work is over" is true of every merge outcome there can
+// be and a token nobody can read is true of nothing.
+var mergeScreenWords = map[string]string{
+	// Two of the four already mean on screen what they mean in the branch.
+	mergeWordMerged:     mergeWordMerged,
+	mergeWordConflicted: mergeWordConflicted,
+	// "aborted" reads as a crash and is almost never one: the commonest way a
+	// node wears it is that a person stopped it or it spent the steps it was
+	// given (see [taskStoppedKept], which adds the branch clause where a row has
+	// the cells for it).
+	mergeWordAborted: taskStoppedWord,
+	// "inplace" is not an outcome at all — it is WHERE the work is. There was no
+	// branch, so nothing had to come home, and the fact a person needs is that
+	// their own files were the ones edited.
+	mergeWordInPlace: taskInPlaceLanding,
+}
+
+// taskInPlaceLanding is what a task with no branch to bring home says: the
+// person's own folder, in the words internal/session already uses for that
+// ground (groundladder.go's [session.GroundWord]).
+//
+// IT IS DERIVED AND NOT TYPED OUT, because the settled card, the project's
+// record and this line all name one place, and a phrase spelled twice is two
+// phrasings a person is asked to reconcile. The lead word is this surface's,
+// because the slot here is a clause about the work and the table's line is a
+// noun.
+var taskInPlaceLanding = "in " + session.GroundWord(session.GroundRungHere, "")
+
+// mergeScreenWord is the door onto the table: what to draw for one merge word,
+// and "" when the engine published none. Every reader of [taskNode.merge] goes
+// through here.
+func mergeScreenWord(merge string) string {
+	if merge == "" {
+		return ""
+	}
+	if word, ok := mergeScreenWords[merge]; ok {
+		return word
+	}
+	return roomDoneWord
+}
 
 // The two words a stopped node is drawn with.
 //
@@ -4887,15 +4950,15 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// THE MERGE WORD ALWAYS SURVIVES. The price is appended only when the
 			// engine published one and only when the row has the cells for both: a
 			// column too narrow for "merged · $0.42" says "merged", never "$0.42".
-			text = node.merge
+			text = mergeScreenWord(node.merge)
 			// A FAILED NODE WITH NO BRANCH TO KEEP — a non-git workspace ran it in
 			// the person's own tree — still leads with why it stopped, when the
-			// engine said (taskending.go): "inplace" alone is a row that names
-			// where the work is and not what happened to it.
+			// engine said (taskending.go): where the work is is not what happened
+			// to it.
 			if word := endingWord(node.ending); word != "" && node.state == session.TaskFailed {
 				text = word
-				if node.merge != "" {
-					text += railSep + node.merge
+				if landed := mergeScreenWord(node.merge); landed != "" {
+					text += railSep + landed
 				}
 				if halted(node.ending) {
 					paint = a.pal.warn
