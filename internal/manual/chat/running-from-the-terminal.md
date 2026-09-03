@@ -1,6 +1,6 @@
 # Commands you type in a terminal
 
-## Can I run this without the chat — every command the terminal answers to
+## Running aforge from the terminal — can I run this without the chat
 
 Typing `aforge` with no arguments opens the conversation. Everything else is a verb after
 it, and there are five kinds:
@@ -15,20 +15,21 @@ plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
 ```
 
-`aforge --help` prints them under those five headings, in that order, then five worked
-examples. **The environment table is not on that page**: it is `aforge help env`, because
-it is a reference somebody consults and it used to be more than half of what `--help`
-printed.
-
 Two more exist and are deliberately kept out of the help text, because nothing types them
 by hand: **`aforge engine`** is the far half of `chat --host`, started by ssh, and
 **`aforge tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
 
-`aforge help`, `--help` and `-h` all print the same thing: every command under its group,
-then the examples. `aforge help env` prints the environment table. Every verb also answers
-`<verb> --help` with its own line and its flags, and `aforge plan --help` answers with all
-four of its subcommands.
+## What aforge --help prints — the five groups, and where the environment table went
+
+`aforge help`, `--help` and `-h` all print the same thing: every command under those five
+headings, in that order, then five worked examples.
+
+**The environment table is not on that page**: it is `aforge help env`, because it is a
+reference somebody consults and it used to be more than half of what `--help` printed.
+
+Every verb also answers `<verb> --help` with its own line and its flags, and `aforge plan
+--help` answers with all four of its subcommands.
 
 ## What $? means after a headless one-shot — the codes it leaves with
 
@@ -522,9 +523,11 @@ model calls      /home/you/.aforge/logs/calls.jsonl · 26 KiB
 the five-minute pass: whether it is installed, when it last woke, when it next checks, and
 `· checks look stalled` when an installed one has not woken for several cadences. `spend`
 is the day against its limit, and `model calls` is where the call log is and what it
-weighs. Two of those labels used to be `brain` and `standing watch`; nobody looking for
-where their data lives searches for a brain, and the other named a piece of a different
-product.
+weighs. A machine with charters or unanswered questions on it prints a `standing` row too.
+
+Both of the first two labels are recent. `store` used to read `brain` — nobody looking for
+where their data lives searches for a brain — and `background timer` used to be named after
+a piece of the *other* product in this binary, which is not a thing the chat has at all.
 
 **It leaves out what it has not measured.** A machine that has spent nothing today prints
 the limit and no figure beside it, rather than `$0.00` — a zero nobody measured reads as a

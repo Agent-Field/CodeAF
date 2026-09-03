@@ -1887,9 +1887,47 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 	// pressed ([app.roomModelMovable] holds the whole of that list). An
 	// affordance that lit up and then apologised would be worse than none.
 	if a.roomOpen() {
-		cluster := a.roomChip()
+		// THE NAME IS WHOLE UNTIL THE LINE CANNOT HOLD IT, and what gives way
+		// first is the fact beside it — which is [rowfit.go]'s first law, said in
+		// this cluster's own two pieces. A node's name arrives here uncut
+		// (taskident.go's [taskTitleOf] stopped cutting on 2026-09-03) and the
+		// cluster used to spend a FIXED cap on it ([roomChipCap], eighteen cells),
+		// which is that law inverted: a cap pays the identity's price at EVERY
+		// width, so `Ship the parser fix` came out `Ship the parser f…` on a
+		// hundred-and-eighty-column row with sixty cells going spare.
+		//
+		// The ladder is three rungs and the last one is the one a cap tried to be:
+		//
+		//   ⠋ Ship the parser fix · task glm-5.2   both, while the row holds both
+		//   ⠋ Ship the parser fix                  the model gives way first
+		//   ⠋ Ship the parser f…                   and only then is the name cut
+		//
+		// THE MODEL IS DROPPED WHOLE RATHER THAN SHORTENED, because its lead word
+		// is part of the fact and not decoration: a bare `glm-5.2` in the one spot
+		// on this surface that has only ever held the CONVERSATION's model is the
+		// exact misreading [roomModelLead] exists to prevent. And a dropped model
+		// takes its press target with it — the press acts on what the row NAMES,
+		// so a segment that is not drawn is not a door.
 		word := a.roomModelWord()
-		if word == "" {
+		fact := ""
+		if word != "" {
+			fact = " · " + word
+		}
+		cluster := a.roomChip(0)
+		if width > 0 && ansi.StringWidth(cluster)+ansi.StringWidth(fact) > width {
+			fact = ""
+			if ansi.StringWidth(cluster) > width {
+				// LAST RESORT. The name is cut to what the row has, and never below
+				// [roomChipFloor] — under that the cluster has stopped saying where
+				// you are and the ladder above has to find its cells somewhere else.
+				room := width
+				if room < roomChipFloor {
+					room = roomChipFloor
+				}
+				cluster = a.roomChip(room)
+			}
+		}
+		if fact == "" {
 			return cluster, hudSpan{}
 		}
 		// The LEAD WORD IS PART OF THE TARGET, exactly as the served rider is part
@@ -1897,7 +1935,7 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 		// a person pressing any of them means the same thing (room.go's
 		// [roomModelLead]).
 		from := ansi.StringWidth(cluster + " · ")
-		cluster += " · " + word
+		cluster += fact
 		if !a.roomModelMovable() {
 			return cluster, hudSpan{}
 		}

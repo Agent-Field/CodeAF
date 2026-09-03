@@ -3031,7 +3031,15 @@ func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	}
 	// THE CARD IS FOUND BY ITS HIT and not by its words: it is a block of two
 	// rows now, and what this test owns is the blank under the LAST of them.
-	if !strings.Contains(taskText(a), "Fix the nil-map · "+doneWord+" 8s · "+mergeWordMerged) {
+	//
+	// THE HEAD IS SPELLED THE WAY THIS WAVE SPELLS IT, and both halves of that
+	// moved on 2026-09-03. The name arrives WHOLE — taskident.go's [taskTitleOf]
+	// stopped cutting to three words, because a fitter cannot give back cells
+	// spent before it was asked (rowfit.go's first law) — and the span is joined
+	// to the state word with ` · ` like every other fact on the row, because
+	// `done 8s` fuses two separate facts into one phrase (taskdone.go's
+	// [app.doneTail] states the whole of it).
+	if !strings.Contains(taskText(a), "Fix the nil-map crash · "+doneWord+" · 8s · "+mergeWordMerged) {
 		t.Fatalf("the landed card is not in the transcript:\n%s", taskText(a))
 	}
 	// The card is the last entry here, so what it owes the next one is asserted
@@ -3195,7 +3203,11 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	drive(t, a, append(runCmd(cmd), streamEventMsg{gen: a.gen, ev: done})...)
 
 	text := taskText(a)
-	want := "Fix the nil-map · " + doneWord + " " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
+	// THE NAME IS WHOLE AND THE SPAN IS A FACT OF ITS OWN, both since 2026-09-03:
+	// taskident.go's [taskTitleOf] no longer cuts a title to three words before
+	// any width is known, and taskdone.go's [app.doneTail] joins the span to the
+	// state word with the row's own separator rather than with a bare space.
+	want := "Fix the nil-map crash · " + doneWord + " · " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
 	if strings.Count(text, want) != 1 {
 		t.Fatalf("the transcript holds %d copies of %q:\n%s", strings.Count(text, want), want, text)
 	}
@@ -3207,7 +3219,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
 	for _, want := range []string{
-		"Collect sources · " + doneFailWord + " " + taskSpanWord(4*time.Second),
+		"Collect sources · " + doneFailWord + " · " + taskSpanWord(4*time.Second),
 		`"the tests did not build"`,
 	} {
 		if !strings.Contains(taskText(a), want) {
@@ -3227,7 +3239,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
 	for _, want := range []string{
-		"Mix audio · " + doneFailWord + " " + taskSpanWord(90*time.Second) +
+		"Mix audio · " + doneFailWord + " · " + taskSpanWord(90*time.Second) +
 			" · " + taskStoppedKept + " · task/mix",
 		`"stopped: 40 steps and no finish"`,
 	} {
@@ -3439,16 +3451,27 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 			}
 		}
 		// The roster opens on the node itself — there are no headings any more, and
-		// a session of one node is one family of one (task.go). The slim rail fits
-		// the title to its column, so the assertion reads the prefix both widths
-		// keep.
+		// a session of one node is one family of one (task.go).
 		// The column opens with its section label now (margin.go), so the node is
 		// the row under it.
+		//
+		// EACH WIDTH IS ASSERTED IN ITS OWN SPELLING rather than in the prefix they
+		// share. The name reaches this column WHOLE now (taskident.go's
+		// [taskTitleOf] stopped cutting to three words on 2026-09-03, so the ROW
+		// decides what it can afford), and twenty-one cells do not fit a slim
+		// rail's title slot — so the full column draws the name and the slim one
+		// draws as much of it as [railTitleFloor] leaves once the id is measured
+		// out. Both are the roster naming the node, which is what this row of the
+		// test is here to say.
+		name := "Fix the nil-map crash"
+		if railColsFor(tc.width) < railCols {
+			name = "Fix the nil-ma"
+		}
 		top := a.bodyTop()
 		if tc.rail && !strings.Contains(lines[top], marginTasksWord) {
 			t.Fatalf("at %d columns the column does not open with its label:\n%q", tc.width, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[top+1], "Fix the nil-map") {
+		if tc.rail && !strings.Contains(lines[top+1], name) {
 			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+1])
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two

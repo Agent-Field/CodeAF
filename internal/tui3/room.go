@@ -2557,7 +2557,11 @@ func (a *app) roomSpend(node *taskNode) string {
 // had no title for read "task · task 7" — a place named after its own id twice.
 // The chip is the same object the header pins at the top of the page, said once
 // more at the bottom, so the two ends of the frame agree about where you are.
-func (a *app) roomChip() string {
+// room is the cells the cluster may spend, and a room of zero or less is NO
+// BOUND AT ALL — the reading every caller that is not laying the status row out
+// wants ([app.identity], and the deck, which fits row 1 to its own width after
+// it has the telemetry beside it).
+func (a *app) roomChip(room int) string {
 	if a.room == nil {
 		return ""
 	}
@@ -2565,25 +2569,25 @@ func (a *app) roomChip() string {
 	// took [app.roomMark]'s answer for a node this surface has never seen — the
 	// queued glyph — which would draw a run that is spending money as work that
 	// has not started.
+	mark := a.roomMark(a.roomNode())
 	if a.room.orch != nil {
-		return a.orchHeadMark() + " " + fit(a.room.title, roomChipCap)
+		mark = a.orchHeadMark()
 	}
-	return a.roomMark(a.roomNode()) + " " + fit(a.room.title, roomChipCap)
+	title := strings.TrimSpace(a.room.title)
+	if room > 0 {
+		title = fit(title, room-ansi.StringWidth(mark)-1)
+	}
+	if title == "" {
+		return mark
+	}
+	return mark + " " + title
 }
 
-// roomChipCap is how much of the node's name the status row's cluster may
-// spend, and it is the composer segment's own figure ([roomLeadCap], which is
-// the strip chip's) for the same reason: past it the cluster stops identifying
-// the work and starts being a sentence.
-//
-// IT IS A CAP AND NOT A FIT, because this caller has no width to fit against —
-// [app.identityParts] asks for the cluster and the ladder above it then decides
-// what the row can afford (render.go). A name that arrived WHOLE (taskident.go's
-// [taskTitleOf] stopped cutting on 2026-09-03) and was handed to that ladder
-// uncut cost the whole status row: at a hundred and twenty columns a
-// hundred-and-one-cell cluster left the ladder nothing to give up but the
-// cluster itself, and the line came out as the single word `idle`.
-const roomChipCap = roomLeadCap
+// roomChipFloor is the fewest cells the name may be cut to before the row has
+// stopped saying where you are. It is [doneTitleFloor]'s figure — the tool
+// line's own — because it is the same question asked about the same kind of
+// string, and a second number here would be a second answer to drift from.
+const roomChipFloor = doneTitleFloor
 
 // roomModelLead is the word in front of a node's model wherever the status line
 // says one, and the space after it is part of it. See [app.roomModelWord].

@@ -3198,6 +3198,14 @@ While you are in a room the status line names that node: `<mark> <task name> · 
 <model>`. Press the `task <model>` part and the ordinary model picker opens, aimed at that
 task. Choose a row and that task moves onto it.
 
+**On a narrow window that line gives way in one order.** The task's *name* is drawn whole
+for as long as the row can hold it; then `task <model>` is dropped **whole** rather than
+shortened, because a bare model id in the one spot that has only ever held the
+conversation's would read as the conversation switching models; and only after that is the
+name itself cut with a `…`. So a window too narrow for both says where you are rather than
+what is answering — and a model that is not drawn cannot be pressed. Widen the window, or
+read the model on the task's own card.
+
 What that does, exactly:
 
 - **It takes effect on the task's next turn.** The call the worker is in the middle of
