@@ -181,7 +181,11 @@ func readMusicStream(stream io.Reader) (*MusicResponse, error) {
 			return nil, fmt.Errorf("music generation failed: %s", videoErrorDetail(chunk.Error))
 		}
 		if chunk.Usage != nil {
-			usage = chunk.Usage
+			// FOLDED IN, NEVER SWAPPED IN, by the one rule the chat stream reads
+			// its own frames with (client.go's [mergeUsage]): USAGE ACCUMULATES
+			// ACROSS THE FRAMES OF ONE CALL, and a frame carrying only the price
+			// does not zero the counts the frame before it carried.
+			usage = mergeUsage(usage, chunk.Usage)
 		}
 		for _, choice := range chunk.Choices {
 			audio := choice.Delta.Audio
