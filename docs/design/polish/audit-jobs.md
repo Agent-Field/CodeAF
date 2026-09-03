@@ -513,3 +513,39 @@ reaches for costs two allocations a frame and fails the second test.
 Frames: `home2-before.120x40.txt` (line 11, `the Cafe Pricing Page`, no U+0301 in
 the bytes) → `home2-after.120x40.txt` (line 11, `the Café Pricing Page`, a
 composed `é`).
+
+## fixed — row 12, closed as NOT A DEFECT, and here is the frame it was judged on
+
+Captured at 70 columns with a room open (`j12-room.70x24.txt`), which is the
+width the row complains about:
+
+```
+aforge-v2 · deepseek-v4-flash-latest
+          2 open · ◦ keeping an eye on 3 ·    $0.00 · 5.2k/1.3M · idle
+```
+
+The hole is real: row 1 leaves thirty-four cells unused on its right while row 2
+is nearly full and carries ten cells of lead. The two rows are a staircase
+rather than a block. **And that is the right shape**, for two reasons that both
+cost exactly this whitespace.
+
+**The cluster stays whole.** `2 open · keeping an eye on 3 · $0.00 · 5.2k/1.3M ·
+idle` is a RANKED SEQUENCE, and the layout that fills the hole is the one that
+puts its first segments up beside the identity and the rest underneath —
+splitting a ranked list across two rows in the middle of itself. A reader
+looking for the third fact would have to check both rows to find out which one
+it is on. A tidy rectangle is not worth that.
+
+**Every segment survives.** The other way to close the gap is to stop wrapping
+and drop segments until one row fits, which is precisely what the law here
+already decided against and what `bundle_test.go` pins at 70 and 60 columns. The
+drop ladder itself is correct and was verified in an earlier pass — `segCrew`
+goes second, `segCost` and `segCtx` last.
+
+Row 2 stays RIGHT-ALIGNED rather than being tucked under row 1's left edge,
+which would make a tidier block. The numbers live on the right of this frame at
+every other width, and a fact that moves to a different side of the screen when
+the window narrows is worse than one that moves down a row.
+
+What the row was really seeing is the two-row status line doing its job at a
+width where nothing else would have. Recorded here so nobody reopens it.

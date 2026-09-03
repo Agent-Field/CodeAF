@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 09:28Z_
+_2026-09-03 09:30Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -171,7 +171,7 @@ _2026-09-03 09:28Z_
 - `J9`    med  CLOSED The room's kin line names a child's state with a word that is neither true nor in the vocabulary
 - `J10`   low  CLOSED At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
 - `J11`   med  CLOSED The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
-- `J12`   low  open   The status line under a room wraps onto two lines and leaves a hole under the left half
+- `J12`   low  CLOSED The status line under a room wraps onto two lines and leaves a hole under the left half
 
 ## narrow — [audit-narrow.md](audit-narrow.md)
 
