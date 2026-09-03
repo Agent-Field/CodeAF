@@ -260,21 +260,3 @@ jobs:
           set -euo pipefail
           echo "light gate: ${{ needs.light.result }}; touched packages: ${{ needs.touched.result }}"
           [ "${{ needs.light.result }}" = "success" ] && [ "${{ needs.touched.result }}" = "success" ]
-
-  # ONE NAME FOR THE TWO. The name of this job is the name of the required
-  # status check in .github/rulesets/dev.json and the name every landing script
-  # and every person reads. Renaming it silently un-protects the branch, so the
-  # two move together or not at all. It is green only when the light gate and
-  # the touched packages both are — the same shape `full tests` and `cross
-  # build` use in ci-full.yml for a matrix a rule cannot spell.
-  check:
-    name: check
-    needs: [light, touched]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Both halves passed
-        run: |
-          set -euo pipefail
-          echo "light gate: ${{ needs.light.result }}; touched packages: ${{ needs.touched.result }}"
-          [ "${{ needs.light.result }}" = "success" ] && [ "${{ needs.touched.result }}" = "success" ]
