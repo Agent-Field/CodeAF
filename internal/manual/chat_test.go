@@ -516,6 +516,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+e do on a task page", "reading-a-task-page"},
 		{"why can I not see the tool calls the task made", "reading-a-task-page"},
 		{"my task page is hiding most of the work", "reading-a-task-page"},
+		{"what is that line over the tool calls", "reading-a-task-page"},
+		{"why did the work collapse into captions", "reading-a-task-page"},
+		{"how do I see what a caption did", "reading-a-task-page"},
 		// And the landing word that stopped being the engine's: a person reading
 		// `in your own folder` off a settled card has to be able to ask what it
 		// means in exactly those words.
