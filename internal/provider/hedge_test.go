@@ -135,10 +135,6 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	}
 	rigLanes.Store(model, names)
 	t.Cleanup(func() {
-		// THE NEGATIVE HALF OF THE SERVING SET IS PACKAGE STATE, so a scenario
-		// that refuses a lane would otherwise hand the refusal to every test
-		// that runs after it (internal/lane's sheet.go).
-		lanes.ForgetRefusals()
 		registry.SetLedger(nil)
 		// PUT BACK WHAT WAS FOUND, and never nil: the shipped factory is
 		// installed at this package's own init, and a rig that cleared it would
@@ -147,6 +143,10 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 		lanes.SetController(shipped)
 		rigLanes.Delete(model)
 		SetHedgeBudget(nil)
+		// The package's learners go back too, beside the registry and the
+		// controller: see resetSharedLearners for why they are a restoration
+		// and not an extra.
+		resetSharedLearners()
 	})
 	return rig
 }
@@ -349,12 +349,10 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
 
-	began := time.Now()
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	took := time.Since(began)
 
 	if !report.Hedged() || report.Reason() != "first token late" {
 		t.Fatalf("report = hedged %v, reason %q; want one hedge for a late first token", report.Hedged(), report.Reason())
@@ -363,6 +361,14 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 	// IS NOT, and that is the attribution law rather than an omission: A was
 	// cancelled before it had said a word, and the request it answered named an
 	// order rather than a lane, so nobody here may put a name to it.
+	//
+	// AND THE EMPTY LOSER IS ALSO THE TIMING CLAIM. That the whole rescue lands
+	// before A would have said its first word used to be spelled as an elapsed
+	// bound — `took < 300ms`, against A's own 300 ms first token — which left
+	// about eighty milliseconds of slack for a starved machine to eat. A lane
+	// names itself on every chunk it writes, so an A that had got one word out
+	// would be sitting right here as the loser. The ordering the transport
+	// guarantees says it at any speed; a wall clock only ever said it by luck.
 	winner, loser := report.Lanes()
 	if winner != "B" || loser != "" {
 		t.Fatalf("winner %q, loser %q; want the answer from B and nobody named as the loser", winner, loser)
@@ -376,16 +382,6 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 	if tokens := answerTokens(response); tokens != 24 {
 		t.Fatalf("the answer is %d tokens, want B's whole answer of 24", tokens)
 	}
-	// THE WHOLE RESCUE LANDS BEFORE A WOULD HAVE SAID ITS FIRST WORD, which is
-	// the claim, and the bound is A's own first token rather than a figure of
-	// its own. The moment it lands moved out when §B's abnormality gate landed:
-	// the controller now waits until A's silence is abnormal FOR A — a belief of
-	// 20 ms at one nat puts that at about 200 ms — before it will pay for a
-	// second arm, where before it acted as soon as the payoff crossed. It still
-	// lands with a third of A's first token to spare.
-	if took >= 300*time.Millisecond {
-		t.Fatalf("the answer took %s (×100 virtual), want it inside A's own 300ms first token", took)
-	}
 	// A never named a lane, so there is nothing honest to write about it.
 	if _, ok := rig.ledger.sightingFor("B"); !ok {
 		t.Fatalf("the hedge was not folded back as a sighting: %+v", rig.ledger.noted())
@@ -393,13 +389,27 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 }
 
 func TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole(t *testing.T) {
+	// A IS HELD BY A SIGNAL AND NOT BY A DURATION. What this test is about is
+	// the rule that a rescue which lands while the primary is still quiet takes
+	// the answer — and the rule the other way round is just as real: a primary
+	// that comes back and finishes first KEEPS the answer, which is what
+	// TestAnAlmostFinishedAnswerIsNeverAbandoned demands. So an A told to resume
+	// after some number of milliseconds is asserting nothing but the slack
+	// between two wall-clock figures, and a starved machine that eats the slack
+	// makes a correct build look broken. Held open until this channel closes —
+	// and it closes only at teardown, never while the call is out — A cannot
+	// finish first, so B winning is the rule and not the luck.
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "stall/mid-answer",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
 			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
-			StallAfter: 30, StallFor: 200 * time.Millisecond,
+			StallAfter: 30, StallUntil: resume,
 		}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	// Released after the assertions and BEFORE the rig closes its server, so a
+	// run that never reached the cancel still lets the handler go.
+	t.Cleanup(func() { close(resume) })
 	// Believed at a quarter of what it really writes at, which is the honest
 	// shape of a belief: ordinary jitter is never a surprise and a twenty-second
 	// silence is nothing else.
@@ -765,13 +775,20 @@ func (c *countingChooser) times() int {
 // and this test holds all three facts at the same time: asked once, on the
 // wire, and in force at the watch.
 func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
+	// A IS HELD BY A SIGNAL AND NOT BY A DURATION, for the reason spelled out
+	// over TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole: the
+	// last assertion here names B as the winner, and a primary told to resume
+	// after a couple of hundred milliseconds can honestly beat the rescue home
+	// on a loaded machine. The channel closes only at teardown.
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "choice/once",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
 			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
-			StallAfter: 30, StallFor: 200 * time.Millisecond,
+			StallAfter: 30, StallUntil: resume,
 		}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	t.Cleanup(func() { close(resume) })
 	rig.believes("A", 2, 250)
 	chooser := &countingChooser{choice: choiceFor(rig.model, 12*time.Millisecond)}
 	lanes.Default().SetChooser(chooser)
@@ -878,13 +895,19 @@ func TestAColdStoreStillActsAtTheCeiling(t *testing.T) {
 	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
 
-	began := time.Now()
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	took := time.Since(began)
 
+	// THE REASON WORD IS THE CLAIM, and it is the only thing here that can
+	// carry it. This used to also assert `took < 500ms`, "acted on at the
+	// ceiling rather than at A's own pace" — but A's own pace is a 300 ms first
+	// token and twelve more for the answer, comfortably inside that bound, so
+	// the figure never separated the two cases it named. What separates them is
+	// that the controller said "ceiling" and that B answered: had the ceiling
+	// not acted, A would have finished and A would be the winner. Those hold at
+	// any speed, and the elapsed figure only ever held on a quiet machine.
 	if !report.Hedged() || report.Reason() != "ceiling" {
 		t.Fatalf("report = hedged %v, reason %q; want the ceiling to have acted with nothing believed",
 			report.Hedged(), report.Reason())
@@ -894,9 +917,6 @@ func TestAColdStoreStillActsAtTheCeiling(t *testing.T) {
 	}
 	if tokens := answerTokens(response); tokens != 24 {
 		t.Fatalf("the answer is %d tokens, want B's 24", tokens)
-	}
-	if took >= 500*time.Millisecond {
-		t.Fatalf("the answer took %s, want it acted on at the ceiling rather than at A's own pace", took)
 	}
 	// AND THE LOSER IS CANCELLED, which is what stops the bill on the lanes
 	// that honour it.
@@ -926,12 +946,27 @@ func TestAHeartbeatNeverResetsTheSilence(t *testing.T) {
 	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
 
-	began := time.Now()
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
-	took := time.Since(began)
 
+	// THAT IT WAS HEDGED AT ALL IS THE WHOLE CLAIM, and the fixture is built so
+	// that it can be.
+	//
+	// The three comment lines are two hundred milliseconds apart and the ceiling
+	// is three hundred, so they come in FASTER than the clock they are alleged to
+	// reset: a build that reset on a keepalive would push its deadline out at
+	// every beat and never reach one before A's own first token at six hundred
+	// milliseconds, after which A is writing and there is no silence left to act
+	// on. So a reset build does not hedge here, ever, and this build does — which
+	// is the difference, said without reading a clock.
+	//
+	// It used to be said with one: `took < 500ms`, "acted on at the ceiling and
+	// not at the beat after it". That reads about a hundred and eighty
+	// milliseconds of slack on a wall clock wrapped around a live round trip, and
+	// a starved machine eats slack. The ceiling is three hundred milliseconds of
+	// the controller's own silence and A cannot finish before six hundred no
+	// matter how the machine is loaded, so the hedge is there at any speed.
 	if !report.Hedged() {
 		t.Fatal("a stream that said nothing but keepalives for twice its ceiling was never acted on")
 	}
@@ -940,11 +975,10 @@ func TestAHeartbeatNeverResetsTheSilence(t *testing.T) {
 	if report.PathFault() {
 		t.Fatal("a stream that was sending keepalives was called a dead path")
 	}
-	// AND IT WAS ACTED ON AT THE CEILING AND NOT AT THE BEAT AFTER IT. The
-	// second comment line lands at four hundred milliseconds; a clock it reset
-	// would have waited for the third.
-	if took >= 500*time.Millisecond {
-		t.Fatalf("the answer took %s, want the ceiling rather than a clock the keepalives kept alive", took)
+	// AND THE RESCUE IS WHAT ANSWERED. A had written nothing but comment lines,
+	// so it never named itself a lane and there is no honest loser to name.
+	if winner, loser := report.Lanes(); winner != "B" || loser != "" {
+		t.Fatalf("winner %q, loser %q; want the answer from B and nobody named as the loser", winner, loser)
 	}
 }
 

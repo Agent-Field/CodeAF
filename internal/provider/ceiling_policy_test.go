@@ -48,6 +48,13 @@ func TestADataPolicyRefusalDropsTheCeilingAndTeachesTheLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// THE LEDGER THIS TEST TEACHES IS THE PROCESS'S. `refuseCeiling` writes into
+	// the velocity ledger every client folds into, and the memo is deliberately
+	// process-lifetime and never expiring (velocity.go's `noCeiling`), so a
+	// second run of this test would open with the ceiling already dropped and
+	// see one request where it demands two. It is the same fault #432 names, in
+	// a rig that is not the hedge rig, so it takes the same one-line answer.
+	t.Cleanup(resetSharedLearners)
 
 	var notices []string
 	if _, err := client.CompleteWithMessages(noticeContext(context.Background(), &notices), userMessages("hi")); err != nil {

@@ -1340,11 +1340,25 @@ func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 	if early.ID.Lane != "Cloudflare" || late.ID.Lane != "Cloudflare" {
 		t.Fatalf("a sighting was credited to %q and %q", early.ID.Lane, late.ID.Lane)
 	}
-	if early.TTFT < 400*time.Millisecond || early.TTFT > 2*time.Second {
+	// A FLOOR AND A RELATIONSHIP, AND DELIBERATELY NO CEILING ON THE EARLY ONE.
+	// The wire runs [e2eSpeedup] times faster than the world it describes, so a
+	// scripted 768 ms first token is a 7.68 ms real sleep that this reader times
+	// with a wall clock across a live round trip — and every millisecond the
+	// scheduler is late by is multiplied by a hundred before it is compared to
+	// anything. A fifteen-millisecond wake is a two-and-a-half-second reading
+	// and a ceiling of two seconds calls a correct instrument broken. The floors
+	// only ever grow under load, and what this check is really for is that the
+	// instrument tells a quick first token apart from a slow one, which is the
+	// relationship rather than either figure.
+	if early.TTFT < 400*time.Millisecond {
 		t.Fatalf("a lane whose median first token is 768 ms was timed at %v", early.TTFT)
 	}
 	if late.TTFT < 3*time.Second {
 		t.Fatalf("a lane scripted to take four seconds was timed at %v", late.TTFT)
+	}
+	if early.TTFT >= late.TTFT {
+		t.Fatalf("the eighth first token was timed at %v and the first at %v; the lane went slow between them",
+			late.TTFT, early.TTFT)
 	}
 	if early.Rate() <= 0 {
 		t.Fatalf("an answer of %d tokens over %v rated at nothing", early.Tokens, early.Gen)
