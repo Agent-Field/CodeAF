@@ -339,6 +339,8 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 	mark := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
 	switch {
+	case card.failed && refused(card.ending):
+		mark = a.pal.warn(glyphHalted)
 	case card.failed:
 		mark = a.pal.bad(a.pal.badGlyph())
 	case card.unverified:
@@ -377,6 +379,8 @@ const doneTitleFloor = 8
 func (a *app) doneTail(card *taskDone) string {
 	verb := doneWord
 	switch {
+	case card.failed && refused(card.ending):
+		verb = taskRecordStoppedWord
 	case card.failed:
 		verb = doneFailWord
 	case card.unverified:

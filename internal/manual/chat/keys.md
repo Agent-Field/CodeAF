@@ -1895,7 +1895,7 @@ task you asked for, or a part of one it handed out itself:
 | --- | --- |
 | `a` | accept — take the work; its branch merges and its dependents unblock |
 | `l` | look again — a fresh check runs; the task keeps waiting until that answers |
-| `n` | not right — the task fails, its branch is kept, its dependents fail with it |
+| `n` | not right — the task becomes incomplete and keeps its branch; its dependents still fail because it did not finish |
 | `d` | decide these for me — hands this one to aforge and sets `task.settle` to `auto` |
 
 **They are held to the same rule `x` is.** The card must be the **selected** one — walk to

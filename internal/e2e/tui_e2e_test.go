@@ -79,6 +79,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("alt_g_groups_the_list_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
+	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
 	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
 }
@@ -149,7 +150,7 @@ func testFreshInstallSetup(t *testing.T) {
 // asked anything, so what this subtest measures is the surface and the engine's
 // settle door and nothing else — which is exactly what went wrong.
 func testNestedGate(t *testing.T) {
-	home := newHome(t, nil)
+	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "gatews", false)
 	seedDecidedFamily(t, home, ws)
 	r := start(t, "afe2e_gate", home, ws, tuiWide, 40)
@@ -179,6 +180,30 @@ func testNestedGate(t *testing.T) {
 	r.lit("a")
 	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
 	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+	r.quit()
+}
+
+// testRefusedLanding is the other answer to the same real engine gate as
+// [testNestedGate]. The graph is deterministic: the person says the work is not
+// right, the engine keeps its failed plus refused state, and the built surface
+// must call that result incomplete rather than turning the useful finding into
+// a generic failure.
+func testRefusedLanding(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "ask"})
+	ws := newWorkspace(t, "refusedgatews", false)
+	seedUndecidedRoot(t, home, ws)
+	r := start(t, "afe2e_refused_gate", home, ws, tuiWide, 40)
+
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
+	r.keys("Escape")
+	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
+	r.keys("Up")
+	r.lit("n")
+	screen := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "taskIncompleteWord"))
+	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
+	if strings.Contains(screen, say(t, "taskFailedWord")) {
+		t.Errorf("the refused landing still says failed:\n%s", screen)
+	}
 	r.quit()
 }
 
@@ -1330,7 +1355,7 @@ func testInheritedWorkSeat(t *testing.T) {
 	})
 	dropWorkerRow(t, home)
 	ws := newWorkspace(t, "seatws", false)
-	r := start(t, "afe2e_seat", home, ws, tuiPlain, 40)
+	r := start(t, "afe2e_seat", home, ws, tuiWide, 40)
 
 	// Whichever door the launch took — home on a machine with several
 	// conversations, and straight into a greeted conversation on a fresh one,

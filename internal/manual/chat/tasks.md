@@ -452,6 +452,8 @@ this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
 
+## Can I give a task a short name?
+
 **What the task is given.** Your own message rides it **word for word** — that is true of
 every task on this page and it is never rewritten. On top of it comes the brief: an
 instruction for whoever picks the work up, saying what is left, what was already found out
@@ -989,7 +991,8 @@ These are the exact words on screen.
 | stopped | `stopped` |
 | stopped, with work on a branch | `stopped — branch kept` |
 | landed clean | `done` |
-| landed short | `failed` |
+| checked and not accepted | `incomplete`, with what is still missing |
+| broke while running | `failed`, with what went wrong |
 | landed, but nobody could judge it | `needs your look` |
 | cut off while it was being checked | `needs your look`, with `incomplete — it was stopped while its work was being checked` |
 | …the same thing on the roster | `finished — look it over` |
@@ -1024,13 +1027,15 @@ check had already said before it was cut off stands under that. Nothing is merge
 tree, and the branch is kept, so the work is still there to read, finish or throw away.
 
 **This is not the same as a task that was checked and came back short.** That one *is* a
-finding — somebody looked and said what is missing — and it lands `failed` with the gaps in
-front of it, exactly as before. The difference is whether anybody actually looked.
+finding — somebody looked and said what is missing — and it lands `incomplete` with the
+gaps in front of it. The difference is whether anybody actually looked: `needs your look`
+means nobody could judge it; `incomplete` means the check did judge it and named the next
+work.
 
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
-## The three ways work lands
+## How work lands
 
 Every landing writes a card into the conversation, with a blank row on each side, and moves
 the task's row on the roster.
@@ -1044,8 +1049,10 @@ The head is what happened. The muted line under it is what came of it, in the ta
 first sentence, quoted because they are its words and not aforge's.
 
 - **`done`** — a tick, muted. It is settled work on the roster.
+- **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
+  report says exactly what is still missing. Its branch is kept.
 - **`failed`** — a cross, in the bad hue, drawn with the word `failed`. It is settled too,
-  not work that needs you: by the time you see the word it is news, not a decision.
+  and means the run actually broke rather than that a check found unfinished work.
 - **`needs your look`** — a `?` in the warn hue. Its family rises above running work on
   the roster. The `?` is deliberately neither a tick nor a cross: it claims neither a
   finding nor a judgement nobody made. This card carries two more rows —
@@ -2456,7 +2463,7 @@ is nothing to say:
   parent this session has had no update for is left unsaid rather than named as a bare id.
 - **`spawned: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
   the session met them. The state is the same word the roster uses: `queued`, `working`,
-  `finishing`, `waiting`, `done`, `failed`, `stopped`, `needs your look`. A piece that is
+  `finishing`, `waiting`, `done`, `incomplete`, `failed`, `stopped`, `needs your look`. A piece that is
   itself queued behind another piece says only `queued` here; open its own room to see what
   it is behind.
 - **what this task waits on** is on the accent line itself, as its state word:
@@ -3325,9 +3332,10 @@ question: answer in either and both show the receipt.
   this answer cannot be taken; the card keeps its choices and says
   `that one could not be taken — try another`. The same line appears for any answer that
   could not be spent — a working copy that has gone, for instance.
-- **`[n] not right`** — you looked and it is not finished. The task fails, its branch is
-  kept, its previous report is kept under the refusal, and its dependents fail with it. The
-  report leads `incomplete — you looked at this yourself and said so`.
+- **`[n] not right`** — you looked and it is not finished. The task becomes `incomplete`,
+  its branch is kept, and its previous report is kept under the refusal. Its dependents do
+  not advance and still land `failed`, as before, saying the work they waited on did not
+  finish. The report leads `incomplete — you looked at this yourself and said so`.
 - **`[d] decide these for me`** — the escape hatch, described in the next section.
 
 **Answered means the choices are gone, not greyed.** The two rows are replaced by one dim
@@ -3336,8 +3344,8 @@ line saying what you did: `you took this as done`, `sent back to be checked agai
 model's own settling, a re-check that finally answered, another window.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
-branch and all. What follows is: the task re-settles into `done` or `failed`, a state it has
-not been in, so a **second** landing card is drawn saying what became of the work. The
+branch and all. What follows is: the task re-settles into `done` or `incomplete`, a state it
+has not been in, so a **second** landing card is drawn saying what became of the work. The
 transcript then reads as what happened: this landed needing a look → you took it as done →
 `task 7 done · merged`.
 

@@ -4983,11 +4983,11 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 //	✗ (bad)     failed;  ? (warn)  finished and needs your look
 //	✓ (muted)   landed — and ACCENT when it landed since you last looked
 //
-// The one departure from the rail: a queued node and an incomplete one share
-// the empty circle here where the rail never shows incomplete at all (its rows
-// vanish when work settles). Both are "started and not turning", the left
-// column already makes the same choice ([homeStuckGlyph]), and a third mark
-// would be a state a person has to be taught.
+// The one departure from the task surfaces: a queued node and an incomplete one
+// share the empty circle here, where the task card and roster use ! for
+// incomplete. Both are "started and not turning", the left column already makes
+// the same choice ([homeStuckGlyph]), and a third home mark would be a state a
+// person has to be taught.
 func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
 	pal := a.pal
 	if row.Runs(entry) && entry.Status == string(session.TaskRunning) {
@@ -5003,6 +5003,12 @@ func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow
 		}
 		return pal.dim(glyphQueued)
 	case string(session.TaskFailed):
+		if refused(entry.Ending) {
+			if pal.ascii {
+				return pal.warn(homeStuckASCII)
+			}
+			return pal.warn(homeStuckGlyph)
+		}
 		return pal.bad(pal.badGlyph())
 	case string(session.TaskUnverified):
 		return pal.warn(glyphUnverified)

@@ -188,6 +188,14 @@ type TaskIndexEntry struct {
 	// live one ("running", "queued") on a row merged in from a graph that is
 	// still turning.
 	Status string `json:"status"`
+	// Ending is why a failed node stopped ([TaskEnding]). It is the existing
+	// engine fact a surface needs to distinguish work a check refused from work
+	// that broke, without guessing from Outcome's prose.
+	//
+	// IT IS ADDITIVE AND ABSENCE IS UNKNOWN. Rows written before this field
+	// existed keep their old failed presentation; only a row that explicitly
+	// carries TaskEndingRefused may be presented as incomplete.
+	Ending TaskEnding `json:"ending,omitempty"`
 	// Outcome is the first sentence of the node's report: what it did, or what
 	// stopped it. Empty for work that has not landed.
 	Outcome string `json:"outcome"`
@@ -716,10 +724,14 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// is what tells a card reading this row a year later whether the
 		// directory it names was a branch of the person's repository or a copy
 		// of their folder (groundladder.go's [GroundWord]).
-		Ground:       strings.TrimSpace(n.Ground),
-		Mode:         n.Mode,
-		Rung:         n.Rung,
-		Status:       string(n.state),
+		Ground: strings.TrimSpace(n.Ground),
+		Mode:   n.Mode,
+		Rung:   n.Rung,
+		Status: string(n.state),
+		// WHY a failed node stopped, when it said so (task_contract.go's
+		// [TaskEnding]): the one fact a surface needs to tell a refusal — work
+		// that ended itself honestly short, "incomplete" — from a real failure.
+		Ending:       n.endingLocked(),
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,
 		Files:        files,

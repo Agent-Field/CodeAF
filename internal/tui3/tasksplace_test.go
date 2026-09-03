@@ -440,26 +440,70 @@ func TestAPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
 	}
 }
 
-// TestAChildWhoseRootIsNotOnThisSectionStandsAlone guards the row that would
-// otherwise vanish: the sections are what a person acts on next, so a worker
-// still running under a root that landed this morning is filed apart from it.
-func TestAChildWhoseRootIsNotOnThisSectionStandsAlone(t *testing.T) {
+// A FAMILY IS ONE PIECE OF WORK even when its members are in different states.
+// The whole tree stands in the most urgent member's section, so a refused child
+// stays visibly under its running parent with the check's concrete reason.
+func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 	world, win, now := tasksFamilyFixture()
 	rows := world.Projects[0].Sessions[0].Tasks.Rows
-	rows[2].Status, rows[2].EndedAt = string(session.TaskRunning), time.Time{}
+	rows[0].Status, rows[0].EndedAt = string(session.TaskRunning), time.Time{}
+	rows[1].Status = string(session.TaskFailed)
+	rows[1].Ending = session.TaskEndingRefused
+	rows[1].Outcome = "incomplete — the corrected diff stayed on the child branch"
 	world.Projects[0].Sessions[0].Open = true
 
 	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	for _, item := range reading.items {
+		if tasksFamilyOf(item.entry) == tasksFamilyOf(rows[0]) && item.section != tasksRunning {
+			t.Fatalf("family member %q was filed under %q, want running", item.entry.Label, tasksSectionWord(item.section))
+		}
+	}
+	reading.open = map[tasksKey]bool{tasksFamilyOf(rows[0]): true}
 	found := false
 	for _, line := range reading.lay(120) {
-		if line.kind == tasksLineTask && line.item.entry.ID == "3" {
+		if line.kind == tasksLineTask && line.item.entry.ID == "2" {
 			found = true
-			if line.kin == tasksKinCont || line.kin == tasksKinLast {
-				t.Fatalf("the running worker was drawn as a child of a root in another section: %q", line.kin)
+			if line.kin != tasksKinCont && line.kin != tasksKinLast {
+				t.Fatalf("the refused worker is no longer under its parent: %q", line.kin)
+			}
+			if got := taskStateWord(line.item.entry, line.item.runs); got != taskRecordStoppedWord {
+				t.Fatalf("refused child state = %q, want %q", got, taskRecordStoppedWord)
+			}
+			if got := tasksMiddle(line.item.entry); got != rows[1].Outcome {
+				t.Fatalf("refused child reason = %q, want %q", got, rows[1].Outcome)
 			}
 		}
 	}
 	if !found {
-		t.Fatal("the running worker is not on the page at all")
+		t.Fatal("the refused child is not on the page at all")
+	}
+}
+
+// A ROOT OUTSIDE THE WINDOW CANNOT HOLD A FOLD. Its visible children stand on
+// their own and keep their own sections; one running sibling must not drag an
+// older sibling under running when the parent row is not there to group them.
+func TestVisibleChildrenKeepTheirOwnSectionsWhenTheRootIsAbsent(t *testing.T) {
+	world, win, now := tasksFamilyFixture()
+	rows := world.Projects[0].Sessions[0].Tasks.Rows
+	world.Projects[0].Sessions[0].Tasks.Rows = rows[1:4]
+	world.Projects[0].Sessions[0].Tasks.Rows[0].Status = string(session.TaskRunning)
+	world.Projects[0].Sessions[0].Tasks.Rows[0].EndedAt = time.Time{}
+	world.Projects[0].Sessions[0].Open = true
+
+	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
+	sections := map[string]tasksSection{}
+	for _, item := range reading.items {
+		sections[item.entry.ID] = item.section
+	}
+	if sections["2"] != tasksRunning {
+		t.Fatalf("running orphan section = %q, want running", tasksSectionWord(sections["2"]))
+	}
+	if sections["3"] != tasksToday {
+		t.Fatalf("landed orphan section = %q, want today", tasksSectionWord(sections["3"]))
+	}
+	for _, line := range reading.lay(120) {
+		if line.kind == tasksLineTask && (line.kin == tasksKinCont || line.kin == tasksKinLast) {
+			t.Fatalf("orphan child %q was drawn under an absent root", line.item.entry.Label)
+		}
 	}
 }

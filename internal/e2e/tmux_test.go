@@ -532,6 +532,12 @@ func seedProject(t *testing.T, home, name string, id int, ago time.Duration) str
 // against the real engine door.
 func seedDecidedFamily(t *testing.T, home, ws string) string {
 	t.Helper()
+	// The binary resolves a macOS /var workspace to /private/var before naming
+	// its project bucket. Seed under that same canonical path or the fixture and
+	// the process describe two different projects and the UI opens an empty one.
+	if canonical, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = canonical
+	}
 	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
 	sid := fmt.Sprintf("%016x", 0x3000000000000001)
 	dir := filepath.Join(home, "v3", "projects", bucket, sid)
@@ -560,6 +566,40 @@ func seedDecidedFamily(t *testing.T, home, ws string) string {
 			"report":  "finished, but needs your look — nobody could check it in 5m0s",
 			"changed": []string{"parser.go"},
 			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
+		}},
+	})
+	return dir
+}
+
+// seedUndecidedRoot writes one top-level landing nobody could check. A person's
+// not-right answer resettles a root through the real engine door and therefore
+// emits the second landing card whose status the tmux acceptance reads.
+func seedUndecidedRoot(t *testing.T, home, ws string) string {
+	t.Helper()
+	if canonical, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = canonical
+	}
+	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
+	sid := fmt.Sprintf("%016x", 0x3000000000000002)
+	dir := filepath.Join(home, "v3", "projects", bucket, sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed undecided root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
+		t.Fatalf("seed undecided root: %v", err)
+	}
+	at := time.Now().Add(-3 * time.Minute)
+	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
+		"id": sid, "title": "The review gate", "workspace": ws,
+		"created": at.Format(time.RFC3339Nano), "lastUserAt": at.Format(time.RFC3339Nano),
+	})
+	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{
+		"type": "tasks", "version": 1, "seq": 1,
+		"nodes": []map[string]any{{
+			"id": 1, "title": "Review the pull request diff", "brief": "review it", "acceptance": "the diff is correct",
+			"state": "unverified", "merge": "inplace",
+			"report": "finished, but needs your look — nobody could check it in 5m0s",
+			"ground": ws, "groundMode": "folder", "elapsed_ms": 42000,
 		}},
 	})
 	return dir

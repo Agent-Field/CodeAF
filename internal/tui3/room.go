@@ -2140,6 +2140,9 @@ func (a *app) roomMark(node *taskNode) string {
 	if node == nil {
 		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
+	if mark, incomplete := a.incompleteGlyph(node); incomplete {
+		return mark
+	}
 	switch node.state {
 	case session.TaskDone:
 		return a.linearMark(glyphDone, glyphDoneASCII)
@@ -2278,6 +2281,9 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// the fault is that they pressed stop (session's TaskNotice.Stopped).
 		if node.stopped {
 			return taskStoppedByPerson
+		}
+		if refused(node.ending) {
+			return taskRecordStoppedWord
 		}
 		return roomFailedWord
 	case session.TaskUnverified:

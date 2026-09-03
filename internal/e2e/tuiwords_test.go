@@ -356,9 +356,28 @@ var tuiWords = map[string]tuiWord{
 		source: " accept",
 		why:    "the answer a person presses, drawn from two constants — the key and the word beside it",
 	},
+	"settleNotRight": {
+		screen: "[n] not right",
+		source: " not right",
+		why:    "the answer that says checked work is not finished, and drives the refused ending",
+	},
 	"settleTookLine": {
 		screen: "you took this as done",
 		why:    "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed",
+	},
+	"settleNotRightLine": {
+		screen: "you said it is not finished",
+		why:    "the receipt proving the not-right answer reached the engine's settle door",
+	},
+	"taskIncompleteWord": {
+		screen: " · incomplete",
+		source: "incomplete",
+		why:    "the person-facing state for work a check refused with concrete gaps still open",
+	},
+	"taskFailedWord": {
+		screen: " · failed",
+		source: "failed",
+		why:    "the state reserved for a runtime error or an older row whose ending is unknown",
 	},
 	"starterTaskWord": {
 		screen: "/task <brief> starts work",
