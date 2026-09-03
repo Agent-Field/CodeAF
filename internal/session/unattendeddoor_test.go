@@ -21,6 +21,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ import (
 // read. What is new is only that the answer is WRITTEN DOWN — a run that carried
 // on and a run that stopped read identically in the journal before this.
 func TestAHandoverWithWorkRunningCarriesOnAndHandsOver(t *testing.T) {
-	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps())
+	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps(), nil)
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	started := make(chan uint64, 4)
@@ -60,50 +61,167 @@ func TestAHandoverWithWorkRunningCarriesOnAndHandsOver(t *testing.T) {
 	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
 		t.Fatalf("the handover never said its line; notices were %q", noticeTexts(collected))
 	}
-	if saidSomething(noticeTexts(collected), checkpointHandoverDoneNote) {
-		t.Fatal("a session with work still running was told the ask was finished")
+	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
+		t.Fatal("a session with work still running was stopped at its handover")
 	}
 	if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"carry on"`) {
 		t.Fatalf("the goal owner's answer to the handover reached no line of the journal:\n%s", lines)
 	}
 }
 
-// AND NOTHING IN FLIGHT WITH NOTHING LEFT IS DONE: THE TURN ENDS AND NO TASK IS
-// STARTED.
+// A TURN IS NOT ENDED OVER RESULTS ITS MODEL HAS NOT READ.
 //
-// This is the whole of the measured failure. The head's only turn was handed to
-// a task inside two minutes, the handover sealed it without asking anybody
-// anything, and the run then had no road back at all — every landing woke a turn
-// that handed over again. Here one unit of work has landed, nothing is moving,
-// and the session says so and stops rather than spending the wall on another
-// task nobody asked for.
-func TestAHandoverWithNothingLeftEndsTheTurnWithoutATask(t *testing.T) {
-	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps())
+// A handover is reached at a step boundary: the batch has run, its results are in
+// the transcript, and the model has not said a word about them. "The ask is
+// finished" is not a claim anybody may make over the top of that — the results
+// may hold the very failure that answers it — so however finished the work looks
+// from outside, the handover hands over. Whether the ask ended is decided at the
+// next stopped turn, where the model HAS read them.
+func TestAHandoverOverResultsTheModelHasNotReadNeverEndsTheTurn(t *testing.T) {
+	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps(), nil)
+	// THE LANDED UNIT IS ADMITTED THROUGH THE GRAPH'S OWN DOOR, because the
+	// handover admits one too and a node placed beside the id space would be
+	// written over by it (principal_audit_test.go's [landOne] says the same).
+	var landed uint64
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		if node.id == landed {
+			node.finish("the parser is ported and its tests pass", nil, "", mergeMerged)
+			node.graph.complete(node, TaskDone)
+			return
+		}
+		ran <- node
+	})
+	landed = graph.reserve()
+	graph.admit(landed, taskSpec{title: "port the parser", brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(landed))
+
+	collected := collect(t, mustSubmit(t, agent, "work through the four things I listed and report back"))
+	ran.await(t)
+
+	// THE WORK MOVED. Nothing was ended, and the person reads the handover's own
+	// line rather than a stop.
+	if count := admitted(graph); count != 2 {
+		t.Fatalf("%d nodes are in the graph, want the landed one and the one the handover started", count)
+	}
+	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+		t.Fatalf("the handover never said its line; notices were %q", noticeTexts(collected))
+	}
+	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
+		t.Fatal("the turn was ended over tool results the model had not read")
+	}
+	// AND THE READING WAS STILL TAKEN AND STILL WRITTEN DOWN: the goal owner said
+	// the ask was met, and the harness handed over anyway.
+	if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"done"`) {
+		t.Fatalf("the goal owner's answer to the handover reached no line of the journal:\n%s", lines)
+	}
+}
+
+// AND WITH THE MODEL'S OWN SENTENCE LAST, THE SAME READING DOES END THE TURN.
+//
+// This is the other half of the law and it is the road that was already there
+// ([Agent.checkpointReopen], #507): the turn stopped, the model has read
+// everything it ran, and a goal owner shown a landed unit of work with nothing
+// unmet says the ask is finished. Nothing is carried on and no task is started.
+func TestAStoppedTurnWithNothingLeftEndsTheRun(t *testing.T) {
+	// THE TURN WRITES AND THEN STOPS, which is what buys it a reading: a small
+	// read-only turn that stops is the person's to carry on and pays no reader,
+	// and a turn whose last call changed the tree and then said nothing is read
+	// whatever it cost ([turnLeftTheTreeUnchecked]).
+	completer := &scriptedCompleter{steps: []step{
+		// A SESSION WITH A CEILING WRITES ITS DONE-WHEN SENTENCE BEFORE ITS FIRST
+		// TURN, on this same lane and out of the ask alone
+		// (principal_acceptance.go). It is one call and it is answered here so the
+		// turn's own script is not read a step out.
+		finalText(`{"acceptance":"the parser is ported and its tests pass"}`),
+		writeCall("call-src", "parser.go", "package parse\n"),
+		finalAnswer("the parser is ported and the tests pass"),
+		finalAnswer("the parser is ported and the tests pass"),
+	}}
+	agent, transcript := stewardCheckpointAgent(t, completer, nil)
 	landOne(agent, TaskDone, "port the parser", "the parser is ported and its tests pass")
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
+
+	collected := collect(t, mustSubmit(t, agent, "port the parser"))
+
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d nodes are in the graph, want only the one that already landed", count)
+	}
+	if said := noticeTexts(collected); saidSomething(said, checkpointCarryOnNote) {
+		t.Fatalf("a finished ask was carried on: %q", said)
+	}
+	if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"done"`) {
+		t.Fatalf("the stopped turn's own decision reached no line of the journal:\n%s", lines)
+	}
+}
+
+// A GOAL OWNER THAT HAS STOPPED ENDS THE TURN AT THE HANDOVER, AND SAYS WHY.
+//
+// This is what the reading at a handover is FOR. The ceiling is gone, so there is
+// no version of this turn worth paying for — not the two model calls the handover
+// itself costs, and not the task it would start — and the run ends here with its
+// reason instead of moving work onto a rail nobody will read.
+func TestAHandoverStopsTheRunWhenTheBudgetIsGone(t *testing.T) {
+	agent, transcript := stewardCheckpointAgent(t, splitSketchSteps(), func(config *Config) {
+		// A ceiling that is already behind us: the run is over on the clock
+		// before its first turn reaches a mark.
+		config.Budget = Budget{Wall: time.Nanosecond}
+	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
 	collected := collect(t, mustSubmit(t, agent, "work through the four things I listed and report back"))
 
-	// NO TASK. The landed node is the only one in the graph, and the line the
-	// person reads is the ending rather than the handover.
-	if count := admitted(graph); count != 1 {
-		t.Fatalf("%d nodes are in the graph, want only the one that already landed", count)
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were started by a run that had already spent its ceiling", count)
 	}
-	if !saidSomething(noticeTexts(collected), checkpointHandoverDoneNote) {
-		t.Fatalf("the session never said why it stopped; notices were %q", noticeTexts(collected))
+	if !saidSomething(noticeTexts(collected), checkpointStoppedNote) {
+		t.Fatalf("the run ended without saying why; notices were %q", noticeTexts(collected))
 	}
-	if saidSomething(noticeTexts(collected), checkpointSplitNote) {
-		t.Fatal("the work was handed over on top of an ask that was finished")
-	}
-	// AND THE TURN IS OVER, with the transcript ending on the line that says so
-	// rather than on a batch of tool results nothing explains.
 	if last := lastMessage(agent); last.Role != "assistant" ||
-		!strings.Contains(messageText(last), checkpointHandoverDoneNote) {
+		!strings.Contains(messageText(last), checkpointStoppedNote) {
 		t.Fatalf("the turn did not end on its own line; the transcript ends with a %s saying %q",
 			last.Role, messageText(last))
 	}
-	if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"done"`) {
-		t.Fatalf("the goal owner's answer to the handover reached no line of the journal:\n%s", lines)
+	if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"stop"`) {
+		t.Fatalf("the goal owner's stop reached no line of the journal:\n%s", lines)
+	}
+}
+
+// AND THE READING AND THE SEAL ARE ONE STEP: WORK THAT IS MOVING KEEPS THE TURN
+// OPEN.
+//
+// A task admitted between the reading and the seal — by a landing, by another
+// window, by the turn's own last batch — is work this session has that the
+// reading did not, and a turn sealed over it would be an ending declared across
+// live work. So the flight is read again under the graph's own lock in the line
+// before the seal, and anything moving sends the work to a task instead. The goal
+// owner has still stopped and says so at the next ending; what it does not get to
+// do is seal a turn over something that is running.
+func TestAHandoverDoesNotSealOverWorkThatIsMoving(t *testing.T) {
+	agent, _ := stewardCheckpointAgent(t, splitSketchSteps(), func(config *Config) {
+		config.Budget = Budget{Wall: time.Nanosecond}
+	})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	started := make(chan uint64, 4)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		started <- node.id
+		<-release
+	})
+	held := graph.reserve()
+	graph.admit(held, taskSpec{title: "write the tests", brief: "b", acceptance: "a"})
+	waitStarted(t, started)
+
+	collected := collect(t, mustSubmit(t, agent, "work through the four things I listed and report back"))
+
+	if count := admitted(graph); count != 2 {
+		t.Fatalf("%d nodes are in the graph, want the running one and the one the handover started", count)
+	}
+	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
+		t.Fatal("the turn was sealed over a unit of work that was still running")
+	}
+	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+		t.Fatalf("the work did not move; notices were %q", noticeTexts(collected))
 	}
 }
 
@@ -132,8 +250,8 @@ func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 	if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
 		t.Fatalf("a person's handover never said its line; notices were %q", noticeTexts(collected))
 	}
-	if saidSomething(noticeTexts(collected), checkpointHandoverDoneNote) {
-		t.Fatal("a person was told their session had decided the ask was finished")
+	if saidSomething(noticeTexts(collected), checkpointStoppedNote) {
+		t.Fatal("a person's own turn was stopped by something that decided for them")
 	}
 	if lines := closedJournal(t, agent, transcript); strings.Contains(lines, `"type":"principal"`) {
 		t.Fatalf("a person's own transcript grew a line about machinery:\n%s", lines)
@@ -152,7 +270,7 @@ func splitSketchSteps() *scriptedCompleter {
 // stewardCheckpointAgent is [checkpointAgent] for a session somebody left
 // running with a ceiling: the one thing in this build that puts a [Steward]
 // behind the roads under test, plus the journal its decisions are written to.
-func stewardCheckpointAgent(t *testing.T, completer Completer) (*Agent, string) {
+func stewardCheckpointAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Agent, string) {
 	t.Helper()
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
@@ -162,6 +280,9 @@ func stewardCheckpointAgent(t *testing.T, completer Completer) (*Agent, string) 
 		config.Unattended = true
 		config.Budget = Budget{Wall: time.Hour}
 		config.Divide = true
+		if mutate != nil {
+			mutate(config)
+		}
 	})
 	if agent.steward() == nil {
 		t.Fatal("the fixture built a session with no goal owner behind it")
@@ -230,6 +351,117 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	}
 }
 
+// AND A TREE REFUSAL IS TOLD FROM A WORK REFUSAL WHERE IT HAPPENS, NEVER BY
+// READING THE SENTENCE AFTERWARDS.
+//
+// [stageTaskWork] asks git whether the place is a repository at all, so the
+// commonest tree refusal of the three measured cells — a working copy with no
+// repository under it — is answered by a question rather than by a phrase. The
+// arm where only git's prose exists is read once, by [refusalFromGit], and
+// everything it does not recognise is the WORK, which keeps a landing on the road
+// it has always taken rather than settling a node on a guess.
+func TestATreeThatIsNoRepositorySettlesTheAcceptWhereItStands(t *testing.T) {
+	repo := newTestRepo(t)
+	// The conversation stands in a repository, exactly as the measured cells did:
+	// what is not a repository is the directory the NODE worked in.
+	agent, node := unverifiedNode(t, func(c *Config) { c.Workspace = repo })
+	// A WORKING COPY WITH NO REPOSITORY UNDER IT ANYWHERE, which is the shape all
+	// three measured cells landed in: the node's own directory, its work in it,
+	// and `git rev-parse` walking every parent and finding nothing.
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "parser.py"), "def parse():\n    return 1\n")
+	tree := taskTree{dir: outside, root: repo, branch: "task/add-the-parser-aaaa1111"}
+	node.setTree(tree)
+	node.finish("wrote the parser", []string{"parser.py"}, tree.branch, tree.merge)
+
+	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+		t.Fatalf("acceptTask: %v", err)
+	}
+
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("state = %q, want the accept to stand: a directory that is no repository will not be one next time", state)
+	}
+	report, _, _, merge := node.leavings()
+	if !strings.HasPrefix(report, keptWhereItIsLead) {
+		t.Fatalf("the report leads with %q, want the words for work that stayed where it is", report)
+	}
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q, want %q", merge, mergeAborted)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "parser.py")); err != nil {
+		t.Fatalf("the accept destroyed the only copy of the work: %v", err)
+	}
+	if !strings.Contains(report, outside) {
+		t.Fatalf("the report never says where the work is:\n%s", report)
+	}
+	if err := agent.ResolveUnverified(node.id, TaskAccept, "again"); !errors.Is(err, ErrTaskDecided) {
+		t.Fatalf("a second accept answered %v, want the already-settled sentence", err)
+	}
+}
+
+// AND A LEDGER THAT NAMES NOTHING IS NOT A REFUSAL AT ALL.
+//
+// An empty diff is the ordinary answer for a node that only read, and for one
+// whose ledger a round before it already committed: there is nothing to commit,
+// no commit is made, and the landing goes on and merges. It must never reach the
+// road above — that road is for a landing that could not be saved, and this one
+// was.
+func TestAnAcceptWithNothingToCommitStillComesHome(t *testing.T) {
+	agent, node := unverifiedNode(t, nil)
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "bbbb3333cccc4444", 37, "read the parser")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	node.setTree(tree)
+	node.finish("read the parser and found nothing to change", nil, tree.branch, tree.merge)
+
+	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+		t.Fatalf("acceptTask: %v", err)
+	}
+
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("state = %q, want done: nothing refused this landing", state)
+	}
+	report, _, _, _ := node.leavings()
+	if strings.Contains(report, keptWhereItIsLead) {
+		t.Fatalf("a landing nothing refused was settled as one that could not come home:\n%s", report)
+	}
+}
+
+// AND THE ONE ARM THAT HAS ONLY GIT'S PROSE IS READ ONCE, HERE.
+//
+// The place refusing is a repository that is not there, a mount that will not be
+// written and a disk with nothing left on it. Everything else — a hook that would
+// not take the commit, a signature it could not make, a rule the repository holds
+// — is about the work, is answerable, and keeps the landing on the road that goes
+// back to somebody.
+func TestGitsOwnWordsAreReadForThePlaceAndNothingElse(t *testing.T) {
+	place := []string{
+		"fatal: not a git repository (or any of the parent directories): .git",
+		"error: unable to write file parser.py: Read-only file system",
+		"fatal: Unable to create '/repo/.git/index.lock': Permission denied",
+		"fatal: write error: No space left on device",
+		"fatal: Disk quota exceeded",
+	}
+	for _, said := range place {
+		if got := refusalFromGit(said); got != refusedByTheTree {
+			t.Errorf("%q was read as %v, want the place refusing", said, got)
+		}
+	}
+	work := []string{
+		"error: gpg failed to sign the data",
+		"pre-commit hook refused the commit",
+		"error: cannot spawn .git/hooks/commit-msg: No such file or directory",
+		"",
+	}
+	for _, said := range work {
+		if got := refusalFromGit(said); got != refusedByTheWork {
+			t.Errorf("%q was read as %v, want the work refusing — an unrecognised refusal is answerable", said, got)
+		}
+	}
+}
+
 // ── 3. the checker's window ─────────────────────────────────────────────────
 
 // A STALLED CALL IS ABANDONED AT ITS OWN BOUND AND THE CHECK IS ASKED AGAIN
@@ -292,6 +524,94 @@ func TestAStalledCheckIsAbandonedAndTheSecondCallAnswers(t *testing.T) {
 	}
 	if strings.Contains(notice.Report, "nobody could check it in") {
 		t.Fatalf("a check that answered still says nobody could check it:\n%s", notice.Report)
+	}
+}
+
+// AND A CALL THAT WOULD GET ALMOST NOTHING IS NOT MADE AT ALL.
+//
+// What is left of the window when the second attempt starts is whatever the
+// first one did not spend, less closing one checker and building another. A bound
+// of a few hundred milliseconds is not a bound — it guarantees the non-answer it
+// then writes down as a call that STALLED, which is a sentence about a call that
+// never had a chance. Below a tenth of the window ([auditCallFloorShare]) the
+// retry is not made and the landing says what actually happened.
+func TestACallWithLessThanTheFloorLeftIsNotMade(t *testing.T) {
+	window := auditDeadline
+	opened := time.Now()
+	pace := newAuditPace(window, opened)
+
+	// A first call, at its share, leaves half — which is worth asking with.
+	bound, worth := pace.bound(opened.Add(window / 2))
+	if !worth || bound != window/2 {
+		t.Fatalf("a retry with half the window left was given %v (worth=%v), want %v", bound, worth, window/2)
+	}
+	// A retry that reaches this line with a twentieth left is not made.
+	if bound, worth := pace.bound(opened.Add(window - window/20)); worth {
+		t.Fatalf("a retry with %v left was made anyway with a bound of %v", window/20, bound)
+	}
+	// Nor is one that arrives after the window has closed altogether.
+	if _, worth := pace.bound(opened.Add(window + time.Second)); worth {
+		t.Fatal("a call was made after the window had closed")
+	}
+	// AND THE FLOOR IS THE WINDOW'S OWN TENTH, interpolated rather than spelled
+	// twice.
+	if pace.floor != window/auditCallFloorShare {
+		t.Fatalf("the floor is %v, want %v", pace.floor, window/auditCallFloorShare)
+	}
+}
+
+// AND WHAT THE LANDING SAYS THEN IS THAT THE WINDOW CLOSED.
+//
+// A window too small to hold a call at all is the same shape as a retry that
+// arrives with nothing left: no call is worth making, and the one thing the
+// landing must not say is that somebody's call ran without answering, because
+// nobody's did.
+func TestAWindowTooSmallToAskInSaysTheWindowClosed(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go with the greeting."),
+		},
+		audit: []step{
+			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		// Small enough that building a checker spends the whole of it.
+		config.auditWindow = time.Millisecond
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if !strings.Contains(notice.Report, "nobody could check it in") {
+		t.Fatalf("the landing does not say the window closed:\n%s", notice.Report)
+	}
+	if strings.Contains(notice.Report, "without answering and was abandoned") {
+		t.Fatalf("the landing blames a call that was never made:\n%s", notice.Report)
+	}
+	if calls := completer.auditCalls(); calls > 1 {
+		t.Fatalf("%d calls were made inside a window nothing fits in", calls)
 	}
 }
 

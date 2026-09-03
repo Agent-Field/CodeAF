@@ -50,7 +50,7 @@ func TestAFolderLandingRefusesToWriteOverThePersonsOwnEdit(t *testing.T) {
 	writeFile(t, filepath.Join(ground, "notes.md"), "the line the person typed\n")
 
 	node := loneTestNode(t, "tidy the notes")
-	ledger, merge, detail := landHome(node, tree, []string{"notes.md"})
+	ledger, merge, detail, _ := landHome(node, tree, []string{"notes.md"})
 	node.finish("tidied the notes", ledger, "", merge)
 
 	if merge != mergeConflicted {
@@ -83,7 +83,7 @@ func TestAFolderLandingOverAnUntouchedFolderSaysNothingExtra(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "under", "deeper.md"), "and the one under it\n")
 
 	node := loneTestNode(t, "tidy the notes")
-	_, merge, detail := landHome(node, tree, []string{"notes.md", "under/deeper.md"})
+	_, merge, detail, _ := landHome(node, tree, []string{"notes.md", "under/deeper.md"})
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q, detail = %q, want an ordinary folder landing", merge, detail)
 	}
@@ -145,7 +145,7 @@ func TestAFileTheFamilyRemovedIsStillTakenOutOfTheFolder(t *testing.T) {
 	}
 
 	node := loneTestNode(t, "tidy the notes")
-	_, merge, detail := landHome(node, tree, []string{"stale.md"})
+	_, merge, detail, _ := landHome(node, tree, []string{"stale.md"})
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q, detail = %q, want the removal to land", merge, detail)
 	}
@@ -165,10 +165,10 @@ func TestAFolderThatAlreadyHoldsTheFamilysWorkLandsAgainQuietly(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the line the task wrote\n")
 
 	node := loneTestNode(t, "tidy the notes")
-	if _, merge, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace {
+	if _, merge, _, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace {
 		t.Fatalf("the first landing answered %q", merge)
 	}
-	if _, merge, detail := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace || detail != "" {
+	if _, merge, detail, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace || detail != "" {
 		t.Fatalf("the second landing answered %q / %q, want it to lay the same bytes again", merge, detail)
 	}
 }
@@ -184,7 +184,7 @@ func TestADirectoryInTheLedgerIsMeasuredAsAWhole(t *testing.T) {
 
 	// Untouched, the whole directory lands.
 	node := loneTestNode(t, "write the section")
-	if _, merge, detail := landHome(node, tree, []string{"under"}); merge != mergeInPlace || detail != "" {
+	if _, merge, detail, _ := landHome(node, tree, []string{"under"}); merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q, detail = %q, want the directory to land", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(ground, "under", "written.md")); got != "what the task wrote\n" {
@@ -194,7 +194,7 @@ func TestADirectoryInTheLedgerIsMeasuredAsAWhole(t *testing.T) {
 	// And a note the person drops into it afterwards is inside what the next
 	// landing would remove, so the next landing stands back and names it.
 	writeFile(t, filepath.Join(ground, "under", "theirs.md"), "the line the person typed\n")
-	if _, merge, detail := landHome(node, tree, []string{"under"}); merge != mergeConflicted ||
+	if _, merge, detail, _ := landHome(node, tree, []string{"under"}); merge != mergeConflicted ||
 		!strings.Contains(detail, "under changed there while this ran") {
 		t.Fatalf("merge = %q, detail = %q, want the directory refused", merge, detail)
 	}
@@ -218,7 +218,7 @@ func TestAFamilyWithNoBaselineLandsTheWayItAlwaysDid(t *testing.T) {
 	}
 
 	node := loneTestNode(t, "tidy the notes")
-	if _, merge, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace {
+	if _, merge, _, _ := landHome(node, tree, []string{"notes.md"}); merge != mergeInPlace {
 		t.Fatalf("merge = %q, want the old road for a folder with no record", merge)
 	}
 	if got := readFile(t, filepath.Join(ground, "notes.md")); got != "the line the task wrote\n" {

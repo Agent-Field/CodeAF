@@ -67,10 +67,14 @@ func absorbedLedger(node *TaskNode, changed []string) []string {
 // down. While the fold lived at the merge alone, an accepted mirror family laid
 // the parent's slice over the person's folder and dropped every part's file —
 // the same loss as before, one road further along.
-func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string, string) {
+func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string, string, landingRefusal) {
 	ledger := absorbedLedger(node, changed)
-	merge, detail := tree.comeHome(node.title(), ledger)
-	return ledger, merge, detail
+	// AND WHY IT DID NOT COME HOME TRAVELS WITH THE OUTCOME. A landing that failed
+	// is answered by somebody, and whether asking them again could change anything
+	// is decided where the refusal happened, not read back out of the sentence
+	// afterwards (task_land_unsaved.go's [landingRefusal]).
+	merge, detail, why := tree.comeHome(node.title(), ledger)
+	return ledger, merge, detail, why
 }
 
 // keepHome is [landHome]'s counterpart for a node that settles WITHOUT merging —
@@ -121,7 +125,7 @@ func (a *Agent) landFinished(node *TaskNode, tree taskTree, changed []string, he
 	if shift := a.groundShift(node, changed); shift != "" {
 		return a.landShifted(node, tree, changed, withReport(head, tail), shift, log)
 	}
-	landed, merge, detail := landHome(node, tree, changed)
+	landed, merge, detail, _ := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
 	// AND THE ONE QUESTION EVERY ROAD ASKS OF THE OUTCOME: did the work get where
 	// the person can see it ([cameHome], task_land_unsaved.go)? A branch that

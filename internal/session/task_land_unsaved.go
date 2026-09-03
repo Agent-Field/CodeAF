@@ -32,29 +32,67 @@ func cameHome(merge string) bool {
 	return merge != mergeConflicted && merge != mergeAborted
 }
 
-// treeRefused tells the two ways a landing fails apart: THE TREE WOULD NOT TAKE
-// THE WORK, or the work and the person's own copy disagree.
+// landingRefusal is WHY a landing could not be saved, in the two kinds that have
+// to be answered differently.
 //
-// [mergeAborted] is the first. It is the mark [taskTree.comeHome] answers when
-// the work could not be saved AT ALL — a directory that is not a repository, a
-// read-only mount, a full disk, a folder ground that would not take the lay — and
-// not one of those is a fact about the deliverable. [mergeConflicted] is the
-// second: the branch is committed and whole, and the same file changed on both
-// sides.
+// ── THE DIFFERENCE IS WHETHER ASKING AGAIN CAN CHANGE ANYTHING ──────────────
 //
-// THE DIFFERENCE IS WHETHER OFFERING IT AGAIN CAN CHANGE ANYTHING. A conflict is
-// two versions of a file and a person deciding between them, so the node goes
-// back to needing a look and the next answer may land. A tree that has no
-// repository in it will have no repository in it the second time either: accepting
-// again re-runs the same `git add` for the same refusal and raises the same card,
-// which is exactly the loop a measured run spent its parent's time on — accept,
+// A landing that failed goes back to somebody to decide, and their answer runs
+// the same commands into the same place. Where what refused was THE WORK — a
+// commit a hook would not take, a change git would not sign — a second answer is
+// worth having: the person can fix the thing that was refused and accept it
+// again. Where what refused was THE PLACE — a directory that is not a repository,
+// a read-only mount, a full disk, a folder with a file where a directory has to
+// go — the second answer gets the same refusal, and the third, which is exactly
+// the loop a measured run spent its parent's remaining minutes on: accept,
 // refuse, offer, accept, refuse, offer (#513).
 //
-// IT IS READ OFF THE MARK AND NEVER OFF THE MESSAGE. The mark is this package's
-// own typed answer, written where the failure happens; matching git's prose for
-// "not a git repository" would be a rule about one program's wording in one
-// language, wrong the day either moves.
-func treeRefused(merge string) bool { return merge == mergeAborted }
+// SO THE PLACE REFUSING SETTLES THE NODE WHERE IT STANDS and the work refusing
+// keeps today's road. Nothing is lost either way: no merge happens, no working
+// copy is released, and the report names the directory the only copy is in.
+//
+// AND IT IS DECIDED WHERE THE REFUSAL HAPPENS, never afterwards from the
+// sentence. [stageTaskWork] asks git whether the place is a repository at all and
+// answers that arm outright; [taskTree.landMirror] knows a folder that would not
+// take the lay is the folder refusing; and the one arm where only git's prose
+// exists is read ONCE, by [refusalFromGit], at the seam that holds it.
+type landingRefusal uint8
+
+const (
+	// refusedNothing is a landing that was not refused at all.
+	refusedNothing landingRefusal = iota
+	// refusedByTheWork is a refusal a second answer could get past.
+	refusedByTheWork
+	// refusedByTheTree is a refusal that will be the same refusal next time.
+	refusedByTheTree
+)
+
+// refusalFromGit reads git's own words for the refusals that are about WHERE the
+// work is rather than about the work, and it is the ONE place in this package
+// that reads them.
+//
+// EVERYTHING IT DOES NOT RECOGNISE IS THE WORK, which is the safe side of the
+// answer: an unrecognised failure keeps the landing on the road it has always
+// taken — back to somebody, with the branch kept and another answer allowed —
+// rather than settling a node on a guess.
+func refusalFromGit(problem string) landingRefusal {
+	said := strings.ToLower(problem)
+	// The place, in the words the tools that refuse it actually use: a directory
+	// that is no repository, a mount that will not be written, a disk with
+	// nothing left on it.
+	for _, mark := range []string{
+		"not a git repository",
+		"read-only file system",
+		"permission denied",
+		"no space left on device",
+		"disk quota exceeded",
+	} {
+		if strings.Contains(said, mark) {
+			return refusedByTheTree
+		}
+	}
+	return refusedByTheWork
+}
 
 // unsavedTail is the phrase BOTH unsaved sentences carry, and it is one constant
 // because [taskNote] reads it back: a branch that was kept with the work

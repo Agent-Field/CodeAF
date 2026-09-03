@@ -54,7 +54,7 @@ func TestALandingThatCouldNotSaveTheWorkKeepsIt(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 	readOnlyGitDir(t, tree)
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py"})
 
 	if cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want a landing that saved nothing to refuse", merge, detail)
@@ -103,7 +103,7 @@ func TestALandingThatCouldSaveTheWorkStillComesHome(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py"})
 
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it merged", merge, detail)
@@ -205,7 +205,7 @@ func TestAFolderLandingThatCannotBeLaidInFullLaysNothing(t *testing.T) {
 	writeFile(t, filepath.Join(folder, "sub"), "not a directory\n")
 	before := folderContents(t, folder)
 
-	merge, detail := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
+	merge, detail, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
 
 	if cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want a half-lay to refuse", merge, detail)
@@ -236,7 +236,7 @@ func TestAnOrdinaryFolderLandingStillLaysEveryFile(t *testing.T) {
 	writeFile(t, filepath.Join(parent.dir, "a.md"), "the first half\n")
 	writeFile(t, filepath.Join(parent.dir, "sub", "b.md"), "the second half\n")
 
-	merge, detail := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
+	merge, detail, _ := parent.comeHome("write the report", []string{"a.md", "sub/b.md"})
 
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("merge = %q (%s), want an ordinary lay saying nothing", merge, detail)
@@ -463,7 +463,7 @@ func TestALandingRefusesWhenOnePathOfTheLedgerCouldNotBeStaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	merge, detail := tree.comeHome("write both halves", []string{"open.md", "closed.md"})
+	merge, detail, _ := tree.comeHome("write both halves", []string{"open.md", "closed.md"})
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse over the path it could not take", merge, detail)
@@ -555,7 +555,7 @@ func TestALandingWhoseCommitGitRefusedKeepsTheWork(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
 
-	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py"})
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse a commit git would not write", merge, detail)
@@ -658,7 +658,7 @@ func TestALandingRefusesWhenATrackedDeletionCouldNotBeStaged(t *testing.T) {
 	}
 	readOnlyGitDir(t, tree)
 
-	merge, detail := tree.comeHome("take the file out", []string{"shared.txt"})
+	merge, detail, _ := tree.comeHome("take the file out", []string{"shared.txt"})
 
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q (%s), want the landing to refuse over a deletion it could not stage", merge, detail)

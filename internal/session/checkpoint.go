@@ -1559,13 +1559,14 @@ const (
 	checkpointCeilingMoved   = "moved"
 	checkpointCeilingNothing = "dropped:nothing-left"
 	checkpointCeilingNoBrief = "dropped:no-brief"
-	// checkpointCeilingDone and checkpointCeilingStopped are the two endings a
-	// handover takes when the session's own goal owner read it and answered
-	// rather than let the work move ([Agent.endTurnUnderSteward]). They are
-	// spelled apart from the three above because they are a different fact: the
-	// road did not fail to hand anything over, it was told not to — and the
-	// steward's own `decided` row says which answer it was and why.
-	checkpointCeilingDone    = "dropped:done"
+	// checkpointCeilingStopped is the ending a handover takes when the session's
+	// own goal owner read it and STOPPED THE RUN rather than let the work move
+	// ([Agent.endTurnUnderSteward]). It is spelled apart from the three above
+	// because it is a different fact: the road did not fail to hand anything
+	// over, it was told not to — and the steward's own `decided` row beside it
+	// says why. There is no word here for a goal owner that said the ask was
+	// finished, because a handover may not end a turn on that: the model has not
+	// read the results its last step returned, and the work moves.
 	checkpointCeilingStopped = "dropped:stopped"
 )
 
@@ -2217,8 +2218,15 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// disk, and a turn that crosses it on round three must not wait until round
 	// ten to be noticed (writeseam.go). It fires once, and past it the marks and
 	// the ceiling govern the turn exactly as they always did.
+	// AND WHETHER THE MODEL HAS SPOKEN SINCE ITS LAST BATCH IS SETTLED HERE, once,
+	// off the one fact that answers it: an empty batch is this function reached
+	// from a turn that STOPPED ([Agent.checkpointReopen] passes none), and every
+	// other call is a step boundary with tool results the model has not read yet.
+	// It rides every road below because an ending is only an ending when the model
+	// has read what its last step returned ([Agent.endTurnUnderSteward]).
+	spoke := len(calls) == 0
 	if a.writeMeterNow().pastAllowance() {
-		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced)
+		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced, spoke)
 	}
 	// AND THE BATCH IS PRICED FOR WHAT IT WAS. A round the turn spent looking at
 	// work it already has out is not a round of work, and the ladder does not move
@@ -2242,13 +2250,13 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 		}
 		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
 		return a.handOverRunningTurn(ctx, hub, turn, started, model,
-			checkpointSplitNote, meter.raced, read).moved
+			checkpointSplitNote, meter.raced, read, spoke).moved
 	}
 	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
 	// did: it decided nothing, and the ceiling line written a moment later is
 	// where what happened to the turn is recorded.
 	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
-	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read)
+	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read, spoke)
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -2835,9 +2843,9 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 // it never fired read identically in the file, which is why the measured failure
 // could not be attributed without re-reading provider logs. So one line, with the
 // round it fired on and what it decided (sessionfile.go's [journalCeiling]).
-func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead) bool {
+func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead, spoke bool) bool {
 	verdict.Wide = true
-	over := a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, read)
+	over := a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, read, spoke)
 	a.file.appendCeiling(journalCeiling{
 		Rounds: rounds, Decision: over.decision, TaskID: over.taskID, Carry: over.carry,
 	})
@@ -2907,12 +2915,12 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // written before the turn began — the race's own, from the request alone — would
 // be the one thing on the table that knows least, which is why it is dropped
 // where the other two fields of that verdict are kept.
-func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead) checkpointHandover {
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead, spoke bool) checkpointHandover {
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
 	// ENDING (see [Agent.endTurnUnderSteward]). It is asked FIRST, before the
 	// name, the phase clock and the two model calls below, because the whole
-	// point of an ending that answers done or stop is that none of them is spent.
-	if handover, ended := a.endTurnUnderSteward(ctx, hub, turn, started, model); ended {
+	// point of an ending that stops the run is that none of them is spent.
+	if handover, ended := a.endTurnUnderSteward(ctx, hub, turn, started, model, spoke); ended {
 		return handover
 	}
 	sketch := read.sketch
@@ -3129,8 +3137,8 @@ type checkpointHandover struct {
 	carry string
 }
 
-// endTurnUnderSteward puts a HANDOVER to the session's goal owner, exactly as a
-// stopped turn is put to it, and reports that the turn ended here.
+// endTurnUnderSteward puts a HANDOVER to the session's goal owner, and ends the
+// turn where the answer is that the run is over.
 //
 // ── THE MEASURED FAILURE ────────────────────────────────────────────────────
 //
@@ -3144,22 +3152,38 @@ type checkpointHandover struct {
 // finished its work, was green on the tree, and still ran to the wall with its
 // top task reading `needs you` (#513).
 //
-// ── SO EVERY ENDING IS READ, AND THE READING IS THE SAME ONE ────────────────
+// ── SO THE HANDOVER IS READ, AND TWO THINGS BOUND WHAT THE READING MAY DO ───
 //
-// [Agent.decideRemains] is called unchanged, which is what makes this a seam
-// rather than a second policy: the same landings, the same checks, the same
-// standstill floor and the same journal row (principal.go). The three answers
-// land where they already mean something:
+// THE FIRST: A TURN IS NOT ENDED OVER RESULTS ITS MODEL HAS NOT READ. This road
+// is reached at a step boundary, with a batch's results in the transcript and
+// the model yet to say a word about them, and "the ask is finished" is not a
+// claim anybody may make over the top of that — the results may hold the failure
+// that answers it. So DONE IS NEVER AN ENDING HERE: the work moves to a task
+// exactly as it did before this existed, and the ask being finished is decided
+// at the next stopped turn, where the model HAS read them and
+// [Agent.checkpointReopen] already asks ([Agent.decideHandover] states what that
+// costs).
 //
-//   - CARRY ON is the ordinary handover. Work in flight is [Remains.Running],
-//     which a steward answers by carrying on with the floor forgotten (#507), so
-//     a turn handing work to a task while a task is running hands over exactly as
-//     it did before this existed.
-//   - DONE ends the turn where it stands. Nothing is in flight, nothing is left
-//     and the session's own checks passed: starting a task on top of that would
-//     be spending the person's money to redo finished work.
-//   - STOP ends it and says why, in the goal owner's own words, on the same line
-//     a stopped turn uses ([checkpointStoppedNote]).
+// THE SECOND: A HANDOVER REACHED FROM A STOPPED TURN HAS ALREADY BEEN READ.
+// [Agent.checkpointReopen] puts the same question to the same principal a few
+// lines before it calls back into this file with no batch, and asking twice over
+// one reading is not a second opinion — it is the standstill floor
+// ([Steward.standstill]) being shown the same unmet set twice and stopping a run
+// that had just been told to carry on. So the reading is taken on the batch road
+// alone, which is the road that had none.
+//
+// WHAT IS LEFT IS THE STOP, and it is the whole of what this buys: a run whose
+// budget has gone, or whose guard has fired, or that is about to write down what
+// it wrote down last time, ends here with its reason instead of paying for a
+// handover and a task nobody will read.
+//
+// AND THE READING AND THE SEAL ARE ONE STEP. The flight is read again, under the
+// graph's own lock, in the line before the turn is sealed: a task admitted in
+// between — by a landing, by another window — is work this session has that the
+// reading did not, and a turn sealed over it would be an ending declared across
+// live work. When there is any, the work moves instead. The goal owner has still
+// stopped and says so at the next ending; what it does not get to do is seal a
+// turn over something that started while it was deciding.
 //
 // AND A PERSON'S SESSION NEVER REACHES ANY OF IT. [Agent.steward] is the gate,
 // so an attended turn hands over precisely as it always has and nothing new is
@@ -3170,46 +3194,58 @@ type checkpointHandover struct {
 // recorded as the turn's last words for [Agent.handOverRunningTurn]'s own
 // reason: the next turn would otherwise open on a batch of tool results with
 // nothing saying why the model stopped talking.
-func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string) (checkpointHandover, bool) {
-	if a.steward() == nil {
+func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, spoke bool) (checkpointHandover, bool) {
+	if a.steward() == nil || spoke {
 		return checkpointHandover{}, false
 	}
 	// THE READER'S LINE IS TAKEN THE WAY A STOPPED TURN TAKES IT, which costs
 	// nothing on an install with no mastermind: [Agent.readRemains] answers ""
 	// without a call when there is nobody to ask, and the decision is then made
-	// on what landed and what the checks said, exactly as #507 makes it.
-	//
-	// AND NOTHING IS SAID THIS TURN. The turn is still running — the model is
-	// mid-grind and has not written its answer — so the `said` a stopped turn
-	// hands over is empty here rather than invented.
-	decision := a.decideRemains(ctx, a.readRemains(ctx), "")
-	var note, word string
-	switch decision.Verb {
-	case DecideDone:
-		note, word = checkpointHandoverDoneNote, checkpointCeilingDone
-	case DecideStop:
-		note, word = checkpointStoppedNote+decision.Reason, checkpointCeilingStopped
-	default:
+	// on what landed and what the checks said, exactly as #507 makes it. What was
+	// said is the model's own last words, so a principal that reads them is shown
+	// what this session said rather than a blank where its voice should be.
+	decision := a.decideHandover(ctx, a.readRemains(ctx), checkpointLastSaid(a.snapshot()))
+	if decision.Verb != DecideStop {
 		return checkpointHandover{}, false
 	}
+	if _, _, flight := a.landings(); len(flight.moving) > 0 {
+		return checkpointHandover{}, false
+	}
+	note := checkpointStoppedNote + decision.Reason
 	hub.send(Event{Kind: EventNotice, Text: note})
 	a.record(textMessage("assistant", note))
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
-	return checkpointHandover{moved: true, decision: word}, true
+	return checkpointHandover{moved: true, decision: checkpointCeilingStopped}, true
 }
 
-// checkpointHandoverDoneNote is the ONE line a person reads when work was about
-// to be moved to a task and the session's goal owner said the ask was already
-// finished.
+// decideHandover puts a handover to the principal, and it is
+// [Agent.decideRemains] with ONE THING TAKEN OUT.
 //
-// It is the seventh in the register ([checkpointCarryOnNote] names four of the
-// others): an observation, a middle dot, a promise, all lowercase, no full stop,
-// no machinery. WHAT IT OBSERVES IS WHAT WAS ACTUALLY READ at that moment —
-// nothing of the work is still moving and nothing the session declared is unmet
-// — and what it promises is the only thing left to do about it, which is stop.
-const checkpointHandoverDoneNote = "nothing is left and nothing is still running · finishing here rather than starting more work"
+// THE SECOND READING IS NOT TAKEN HERE, and neither is the sweep that rides with
+// it. On the stopped-turn road a principal that says the ask is met is answered
+// by re-running the session's declared checks from clean and asking again, and
+// the tidy follows because the session is finished with what it made
+// (principal_audit.go). Neither belongs at a handover: done is not an ending on
+// this road ([Agent.endTurnUnderSteward]), so the checks would be a process each
+// bought to change nothing, and a sweep would delete what the session is working
+// with while it goes on working with it.
+//
+// WHAT IS KEPT IS THE STOP'S OWN TIDY, for [Agent.decideRemains]'s reason: a run
+// that stopped is the ending most likely to leave a mess, and whoever comes to
+// look at the tree afterwards is owed it however the run ended.
+//
+// AND THE ANSWER IS JOURNALED WHICHEVER IT IS, so the file says what the goal
+// owner made of every ending rather than only of the ones it acted on.
+func (a *Agent) decideHandover(ctx context.Context, reader, said string) Decision {
+	decision := a.who().Decide(a.remainsFor(said, reader))
+	if decision.Verb == DecideStop {
+		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
+	}
+	a.journalDecision(decision)
+	return decision
+}
 
 // checkpointBrief is the DRAFT of the dowry: what this turn found out, written
 // down by the one reader that holds it.

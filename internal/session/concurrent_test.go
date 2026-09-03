@@ -61,10 +61,10 @@ func TestTwoSessionsDoNotDestroyEachOthersWorktrees(t *testing.T) {
 
 	// Both come home, and both bring their own work with them.
 	writeFile(t, filepath.Join(second.dir, "the-other.txt"), "all of it\n")
-	if merge, detail := first.comeHome("do the thing", []string{"in-progress.txt"}); merge != mergeMerged {
+	if merge, detail, _ := first.comeHome("do the thing", []string{"in-progress.txt"}); merge != mergeMerged {
 		t.Fatalf("the first session's merge = %q (%s)", merge, detail)
 	}
-	if merge, detail := second.comeHome("do the thing", []string{"the-other.txt"}); merge != mergeMerged {
+	if merge, detail, _ := second.comeHome("do the thing", []string{"the-other.txt"}); merge != mergeMerged {
 		t.Fatalf("the second session's merge = %q (%s)", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(repo, "in-progress.txt")); got != "half of it\n" {
@@ -127,7 +127,7 @@ func TestAMergedWorktreeLeavesNoEmptyDirectoryBehind(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "all of it\n")
-	if merge, detail := tree.comeHome("do the thing", []string{"done.txt"}); merge != mergeMerged {
+	if merge, detail, _ := tree.comeHome("do the thing", []string{"done.txt"}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s)", merge, detail)
 	}
 	if _, err := os.Stat(filepath.Dir(tree.dir)); !os.IsNotExist(err) {

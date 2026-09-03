@@ -1070,7 +1070,7 @@ saying the answer is already in the transcript. Fresh information or a successfu
 resets that streak. The task-level no-progress counter above remains the rule that stops an
 entire task run.
 
-Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
+Being stopped as stuck says **nothing** about the deliverable: a stopped task is still
 checked against its acceptance, and when the check passes it lands finished and merges with
 the `stopped:` line gone. The section below is that whole rule.
 
@@ -1298,7 +1298,7 @@ and the task lands needing your look, which is exactly what was measured. Seeing
 already happened tells it which command the check even is.
 
 It is **not** a shortcut to a pass. The checker is told where those results came from: in a
-restore they came from the task's own copy — the one a verdict may not rest on — so they can
+restore they came from the task's own copy — the one an answer may not rest on — so they can
 settle a refusal outright (a check that failed, or a check nobody ever ran, needs no second
 run to be believed) while anything that could pass there and fail in the restore has to be
 settled in the restore. A task that never ran a tool leaves this out of the packet entirely.
@@ -1574,8 +1574,9 @@ at the end of its evidence saying which try it was:
 checked on the second try
 ```
 
-That is a fact about the evening and not about the work: the verdict is the same verdict,
-reached on the same tree, and nothing about the task is different for having taken two goes.
+That is a fact about the evening and not about the work: the check's answer is the same
+answer, reached on the same tree, and nothing about the task is different for having taken
+two goes.
 
 **Why the bound exists.** Without it, one hung stream could eat the whole five minutes on
 its own — measured at 183 seconds on one call, with no refusal and no error — and the check
@@ -2123,7 +2124,7 @@ A task that did not finish keeps its branch, and the row under its name on the r
     is on the branch; the thinking behind it was never written anywhere, which is why the
     run stopped rather than carried on.
 - `✗` and one of these — **something was found**, and the report says what:
-  - `not accepted — branch kept`: the check named gaps, or you refuted it on its card.
+  - `not accepted — branch kept`: the check named gaps, or you said it was not right on its card.
   - `ended with an error — branch kept`: a working copy could not be made, the worker would
     not start, or an error nobody classified.
 
@@ -2202,7 +2203,7 @@ openai/gpt-5 stopped answering, so this ran again on openai/gpt-5-mini
 
 Three things it deliberately does not do. It never moves for a **tool** that failed — a
 failed call is a result the worker reads and goes on from, and it never ends a task. It
-never moves for work that is merely **incomplete** — that is the check's verdict, and
+never moves for work that is merely **incomplete** — that is what the check said, and
 re-rolling a model on it would be guessing at the answer. And it never moves for a reply
 that kept **going quiet**, because that turn already moved to another model on its own (see
 *Models, context, and what it costs*) and doing it again would spend a whole second worker

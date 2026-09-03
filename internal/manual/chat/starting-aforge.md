@@ -148,11 +148,13 @@ So before the work moves, the same reading a stopped turn gets is taken:
 
 - **Something of yours is still running** — the work moves onto a task exactly as it always
   did, and you read the same line about it.
-- **Nothing is running and nothing is left** — it stops there rather than starting more
-  work, and says so in one dim line:
-  `nothing is left and nothing is still running · finishing here rather than starting more work`
+- **Nothing is left and nothing is running** — the work still moves onto a task, because what
+  reached this point was tool results the reply has not read yet. **A turn is never finished
+  over results its own model has not seen.** Being finished is decided one reply later, at the
+  ordinary end of a reply, where the last thing that happened was the model talking.
 - **The same thing is left as last time** — it stops for good with the reason, on the same
-  `stopping here · ` line every other stop uses.
+  `stopping here · ` line every other stop uses. That one does not wait, because nothing the
+  next reply could say would change it.
 
 None of this applies to a session you are sitting in front of: your turn's work moves onto a
 task exactly as it always has, and nothing is decided for you.

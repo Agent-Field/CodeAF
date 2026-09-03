@@ -1,6 +1,7 @@
 package manual
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -1833,6 +1834,38 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// THE CHAT MANUAL SPEAKS THE PERSON'S WORDS AND NOT THE HARNESS'S.
+//
+// `auditor`, `verdict`, `verified` and `refuted` are the machinery's own
+// vocabulary, and internal/session bans them from every string a person or the
+// chat model reads (task_audit.go's vocabulary law, held there by
+// `assertPlainWords`). The manual is read by both — the chat answers "why did it
+// do that" out of these pages — so the same law holds here, and it needs a gate
+// of its own because a page is written by hand and no landing passes through it.
+//
+// A WORD INSIDE BACKTICKS IS AN ADDRESS AND NOT A FINDING, which is the same
+// carve-out the engine's own test makes for `task.audit` and `reaudit`: the role
+// a spend row is filed under is called `auditor`, a person reading their bill has
+// to be able to find it, and a page that renamed it would be a page whose word
+// their machine does not answer to.
+//
+// AND IT IS THE FOUR WORDS AND NOT THE WHOLE LIST. `audit` is in `task.audit` and
+// in half the sentences about it; `unverified` is what bare's own file rows are
+// called. Those are addresses too, and the four here are the ones that describe
+// WORK — which is what the law is about.
+func TestNoChatPageSpeaksTheHarnessesOwnVocabulary(t *testing.T) {
+	banned := regexp.MustCompile(`(?i)\b(auditors?|verdicts?|verified|refuted)\b`)
+	// Everything inside backticks is a handle somebody types or reads back.
+	handles := regexp.MustCompile("`[^`]*`")
+	for _, section := range Chat().Sections() {
+		scanned := handles.ReplaceAllString(section.Title+"\n"+section.Body, "")
+		if found := banned.FindString(scanned); found != "" {
+			t.Errorf("%s · %q says %q, which is the harness's own vocabulary and not the person's",
+				section.Page, section.Title, found)
 		}
 	}
 }

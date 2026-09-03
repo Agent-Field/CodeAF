@@ -208,7 +208,7 @@ func TestAFolderGroundIsMirroredAndLandsByName(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the written line\n")
 	writeFile(t, filepath.Join(tree.dir, "build.log"), "noise\n")
 
-	merge, detail := tree.comeHome("write it up", []string{"notes.md"})
+	merge, detail, _ := tree.comeHome("write it up", []string{"notes.md"})
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("the mirror landed as %q: %s", merge, detail)
 	}

@@ -550,7 +550,9 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 		// merge rather than from the mode for every road but the mirror's.
 		work.merge = mergeInPlace
 	}
-	merged, note := work.comeHome("changes from this conversation", tree.Wrote)
+	// The refusal is not read here: a standing tree offers nobody a second answer
+	// about a landing, so the two kinds are one outcome on this road.
+	merged, note, _ := work.comeHome("changes from this conversation", tree.Wrote)
 	landing.Merged, landing.Note = merged, note
 	if unsavedLanding(note) {
 		// A LANDING THAT SAVED NOTHING KEEPS THE COPY AND THE RECORD. The work is

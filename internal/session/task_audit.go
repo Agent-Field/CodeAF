@@ -199,6 +199,20 @@ const (
 	// leaving the second attempt nothing to be asked with.
 	auditCallShare = 2
 
+	// auditCallFloorShare is the LEAST a call may be given, as the number of
+	// shares of the window that is, and below it no call is made at all.
+	//
+	// A BOUND SMALL ENOUGH TO GUARANTEE A NON-ANSWER IS NOT A BOUND, IT IS A LIE.
+	// What is left of the window when the second attempt starts is whatever the
+	// first one did not spend, less the time it took to close one checker and
+	// build another — so a first call that ran nearly to its share can leave the
+	// retry a few hundred milliseconds, which it will certainly not answer in and
+	// which would then be written down as a call that STALLED
+	// ([checkerStalled]). A tenth of the window is the line under which asking is
+	// not worth the sentence it produces: below it the retry is not made, and the
+	// landing says the window closed, which is what actually happened.
+	auditCallFloorShare = 10
+
 	// auditEvidenceLines is how much evidence rides the report: what was run,
 	// what was seen, and at most one line more. The verdict is read off a card
 	// and off a dependent's brief, and an auditor writing paragraphs into both
@@ -683,6 +697,9 @@ type auditPace struct {
 	window time.Duration
 	// call is the bound on one attempt inside it ([auditCallShare]).
 	call time.Duration
+	// floor is the least a call may be given before it is not worth making at
+	// all ([auditCallFloorShare]).
+	floor time.Duration
 	// until is when the window closes, read off the clock at the moment the
 	// checking began.
 	until time.Time
@@ -690,22 +707,36 @@ type auditPace struct {
 
 // newAuditPace opens one node's window.
 func newAuditPace(window time.Duration, now time.Time) auditPace {
-	return auditPace{window: window, call: window / auditCallShare, until: now.Add(window)}
+	return auditPace{
+		window: window,
+		call:   window / auditCallShare,
+		floor:  window / auditCallFloorShare,
+		until:  now.Add(window),
+	}
 }
 
 // left is how much of the window is still there, and it goes negative once the
-// window has closed so that a caller can tell "closed" from "nothing left to
-// give this call".
+// window has closed.
 func (p auditPace) left(now time.Time) time.Duration { return p.until.Sub(now) }
 
-// bound is how long the NEXT call may take: its own share, or whatever is left
-// of the window when that is less. A window already closed answers zero or less,
-// which is the caller's signal that there is nothing to ask with.
-func (p auditPace) bound(now time.Time) time.Duration {
-	if left := p.left(now); left < p.call {
-		return left
+// bound is how long the NEXT call may take, READ AT THE MOMENT IT STARTS: its
+// own share, or whatever is left of the window when that is less.
+//
+// The second answer says whether it is worth making at all. What is left when a
+// retry begins has already had the first call, the first checker's close and the
+// second one's build taken out of it, so this is asked with the clock in hand
+// rather than from the share alone — and a call that would get less than
+// [auditPace.floor] is not made, because it could only produce a stall it never
+// had the time to avoid.
+func (p auditPace) bound(now time.Time) (time.Duration, bool) {
+	left := p.left(now)
+	if left < p.floor {
+		return 0, false
 	}
-	return p.call
+	if left < p.call {
+		return left, true
+	}
+	return p.call, true
 }
 
 // noVerdict is the answer to everything that went wrong before a verdict could
@@ -923,12 +954,13 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// a refused command gets the time reading takes ([auditDoor.window]) — and
 	// what is decided here is only how much of it one call may hold.
 	//
-	// A WINDOW WITH NOTHING LEFT IN IT ASKS NOBODY ANYTHING. The retry that got
-	// here arrived after the whole window had gone, and opening a context that is
-	// already expired would buy a call that fails on the wire for the sake of
-	// writing down the sentence this returns.
-	bound := pace.bound(time.Now())
-	if bound <= 0 {
+	// A WINDOW WITH TOO LITTLE LEFT IN IT ASKS NOBODY ANYTHING. It is read HERE,
+	// with the first checker closed and this one already built, so the bound is
+	// measured against the time this call actually has; a retry that would get
+	// less than the floor is not made at all, and what the landing then says is
+	// that the window closed rather than that a call it never made stalled.
+	bound, worthAsking := pace.bound(time.Now())
+	if !worthAsking {
 		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
 	auditCtx, done := context.WithTimeout(ctx, bound)
@@ -1668,7 +1700,7 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -1741,7 +1773,7 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -2228,7 +2260,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// divider that landed unverified and is accepted in the morning must lay the
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
-	changed, merge, detail := landHome(node, tree, changed)
+	changed, merge, detail, refusal := landHome(node, tree, changed)
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
 	// however sure the person was about the work. The node stays where it was —
 	// needing a look — with the conflicting files named, because what is being
@@ -2236,12 +2268,12 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// left is two versions of the same file (task_run.go's [Agent.landConflicted]).
 	if !cameHome(merge) {
 		// AND A TREE THAT WOULD NOT TAKE THE WORK IS NOT ASKED AGAIN
-		// (task_land_unsaved.go's [treeRefused]). Somebody has looked at this work
+		// (task_land_unsaved.go's [landingRefusal]). Somebody has looked at this work
 		// and said it holds; what failed is the disk, and re-offering the same
 		// question buys the same refusal. So it settles as it stands, with the
 		// work where the sentence under it says it is, and the next resolution on
 		// this node is answered as already decided ([settledAlready]).
-		if treeRefused(merge) {
+		if refusal == refusedByTheTree {
 			node.finish(withReport(keptWhereItIsLead+detail, withReport(acceptedLine(why), report)),
 				changed, tree.branch, merge)
 			node.graph.resettle(node, TaskDone)
@@ -2383,7 +2415,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		changed, merged, detail := landHome(node, tree, changed)
+		changed, merged, detail, refusal := landHome(node, tree, changed)
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files
@@ -2394,7 +2426,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 			// for [Agent.acceptTask]'s reason and by the same reading: a late
 			// verdict saying the work holds, over a disk that cannot take it, is
 			// the same pair of facts a person's accept produces.
-			if treeRefused(merged) {
+			if refusal == refusedByTheTree {
 				node.finish(withReport(keptWhereItIsLead+detail, withReport(claim, verdict.doneOutcome())),
 					changed, tree.branch, merged)
 				node.graph.resettle(node, TaskDone)

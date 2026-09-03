@@ -4293,7 +4293,7 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	saved, problem := commitTaskWork(tree.dir, title, changed)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -6153,20 +6153,20 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // land. If git cannot do it — a real conflict, or local changes it would have
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
-func (t taskTree) comeHome(title string, wrote []string) (string, string) {
+func (t taskTree) comeHome(title string, wrote []string) (string, string, landingRefusal) {
 	if t.mode == TaskModeMirror {
 		return t.landMirror(wrote)
 	}
 	if t.merge == mergeInPlace || t.root == "" {
-		return mergeInPlace, ""
+		return mergeInPlace, "", refusedNothing
 	}
 	// A LANDING THAT COULD NOT SAVE THE WORK STOPS HERE. Nothing merges, nothing
 	// is released, and the branch and the working copy both stay exactly where
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem := commitTaskWork(t.dir, title, wrote); problem != "" {
-		return mergeAborted, unsavedSentence(t.dir, problem)
+	if _, problem, why := commitTaskWork(t.dir, title, wrote); problem != "" {
+		return mergeAborted, unsavedSentence(t.dir, problem), why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
 	// off the ground ladder's machine commit holds the parent's uncommitted
@@ -6197,7 +6197,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	if out, err := t.carryBranchHomeLocked(); err != nil {
 		t.releaseKeptLocked()
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
-			leftBehindSentence(left, true))
+			leftBehindSentence(left, true)), refusedByTheWork
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own
@@ -6212,7 +6212,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 		// task folder that a later sweep may remove underneath it.
 		t.releaseKeptLocked()
 		return mergeConflicted, withReport(withReport(said, stranded),
-			leftBehindSentence(left, true))
+			leftBehindSentence(left, true)), refusedByTheWork
 	}
 	// The working copy is given back only once its work is in, and which road
 	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).
@@ -6221,7 +6221,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
 	return mergeMerged, withReport(withReport(said, stranded),
-		leftBehindSentence(left, false))
+		leftBehindSentence(left, false)), refusedNothing
 }
 
 // landMirror brings a mirrored folder home: the files the node wrote, laid over
@@ -6239,9 +6239,9 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 // EXCEPT WHERE THE FOLDER MOVED UNDER IT, which is the one outcome that is not
 // in-place: a file the person edited themselves while the work ran is a file
 // this refuses to write over (task_mirror_manners.go).
-func (t taskTree) landMirror(wrote []string) (string, string) {
+func (t taskTree) landMirror(wrote []string) (string, string, landingRefusal) {
 	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
-		return mergeInPlace, ""
+		return mergeInPlace, "", refusedNothing
 	}
 	// AND IT DOES NOT WRITE OVER A FILE THAT CHANGED UNDER IT
 	// (task_mirror_manners.go). The mark is [mergeConflicted] because that is what
@@ -6251,16 +6251,20 @@ func (t taskTree) landMirror(wrote []string) (string, string) {
 	// the copy is left whole, and what a person does about two versions of their
 	// own file is theirs to decide, exactly as it is on a repository ground.
 	if changed := groundChanged(t.dir, t.ground, wrote); len(changed) > 0 {
-		return mergeConflicted, groundChangedSentence(t.dir, t.ground, changed)
+		return mergeConflicted, groundChangedSentence(t.dir, t.ground, changed), refusedByTheWork
 	}
 	// A LAY THAT COULD NOT HAPPEN IS NOT A LANDING EITHER, and it says so with
 	// the mark every road refuses ([cameHome]): the ledger goes into the folder
 	// whole or not at all (task_lay.go), and the copy it came from is untouched,
 	// so everything the family made is still in the directory this names.
 	if problem := layWork(t.dir, t.ground, wrote); problem != "" {
-		return mergeAborted, unlaidSentence(t.dir, t.ground, problem)
+		// A FOLDER THAT WOULD NOT TAKE THE LAY IS THE FOLDER REFUSING, and it will
+		// refuse the same way next time — a file where a directory has to go, a
+		// mount that will not be written. It is typed here, where the lay was
+		// refused, rather than read back out of the sentence.
+		return mergeAborted, unlaidSentence(t.dir, t.ground, problem), refusedByTheTree
 	}
-	return mergeInPlace, ""
+	return mergeInPlace, "", refusedNothing
 }
 
 // conflictSentence is what a person reads when a branch would not merge: which
@@ -6478,12 +6482,12 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string) ([]string, string) {
-	saved, _, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote)
+func commitTaskWork(dir, title string, wrote []string) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote)
 	if err != nil {
-		return nil, firstLine(err.Error())
+		return nil, firstLine(err.Error()), why
 	}
-	return saved, ""
+	return saved, "", refusedNothing
 }
 
 // commitTaskWorkAs is [commitTaskWork] with the sentence the commit carries
@@ -6508,30 +6512,36 @@ func commitTaskWork(dir, title string, wrote []string) ([]string, string) {
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, error) {
-	if problem := stageTaskWork(dir, wrote); problem != "" {
-		return nil, "", errors.New(problem)
+func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, landingRefusal, error) {
+	if problem, why := stageTaskWork(dir, wrote); problem != "" {
+		return nil, "", why, errors.New(problem)
 	}
 	saved, problem := stagedPaths(dir)
 	if problem != "" {
-		return nil, "", errors.New(problem)
+		return nil, "", refusalFromGit(problem), errors.New(problem)
 	}
 	if len(saved) == 0 {
 		// Nothing the node wrote is different from HEAD, which is the ordinary
 		// answer for a node that only read and for a ledger already committed by a
-		// round before this one. It is not a failure and there is no commit.
-		return nil, "", nil
+		// round before this one. IT IS NOT A FAILURE, there is no commit, and there
+		// is nothing to refuse: the landing goes on and merges a branch that holds
+		// what it always held.
+		return nil, "", refusedNothing, nil
 	}
 	if out, err := git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", message); err != nil {
-		return saved, "", fmt.Errorf("git commit: %s", firstLine(out))
+		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
+		// could not make, a rule the repository holds — and those are refusals a
+		// second answer can get past, so the reading defaults to the work and only
+		// the words that name the PLACE say otherwise ([refusalFromGit]).
+		return saved, "", refusalFromGit(firstLine(out)), fmt.Errorf("git commit: %s", firstLine(out))
 	}
 	head, err := git(dir, "rev-parse", "HEAD")
 	if err != nil {
-		return saved, "", fmt.Errorf("git rev-parse: %s", firstLine(head))
+		return saved, "", refusalFromGit(firstLine(head)), fmt.Errorf("git rev-parse: %s", firstLine(head))
 	}
-	return saved, strings.TrimSpace(head), nil
+	return saved, strings.TrimSpace(head), refusedNothing, nil
 }
 
 // unheldLedgerPaths is every path the node's ledger names that this tree does
@@ -6643,13 +6653,17 @@ func stagedDiffStat(dir string) string {
 // when there is nothing to report. A directory that is not a worktree, an add
 // nothing survived and a refused reset were all silent, and a landing that
 // cannot see them merges an empty branch over the work (task_land_unsaved.go).
-func stageTaskWork(dir string, wrote []string) string {
+func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
-		return firstLine(out)
+		// AND THIS IS THE SEAM THAT KNOWS THE PLACE IS NOT A REPOSITORY. It is a
+		// question asked and answered here, so the refusal it produces is typed
+		// where it happens rather than read back out of anybody's prose
+		// (task_land_unsaved.go's [landingRefusal]).
+		return firstLine(out), refusedByTheTree
 	}
 	paths := stageableWork(dir, wrote)
 	if len(paths) == 0 {
-		return ""
+		return "", refusedNothing
 	}
 	problem := ""
 	if out, err := git(dir, append([]string{"add", "--all", "--"}, paths...)...); err != nil {
@@ -6660,7 +6674,10 @@ func stageTaskWork(dir string, wrote []string) string {
 	if out, err := git(dir, "reset", "--quiet", "--", aforgeDroppings); err != nil && problem == "" {
 		problem = firstLine(out)
 	}
-	return problem
+	if problem == "" {
+		return "", refusedNothing
+	}
+	return problem, refusalFromGit(problem)
 }
 
 // stageableWork turns the run's record of what it wrote into pathspecs git can
