@@ -6,7 +6,7 @@ surface: [engine]
 invalidates:
   - "A request could name a lane in `provider.only` and the same lane in `provider.ignore`: the demand was applied after the ledger's vetoes and never looked at them. It cannot now — the demand outranks the veto, checked on the finished object in `wirePreferences`."
   - "The velocity ledger deliberately sent an ignore list covering every lane it knew, on the plan of paying the router's 404 and letting the ladder's first rung undo it. It now sends one at most once per model per process: the router's own `All providers have been ignored` is the evidence this process cannot count for itself, and after it the lane nearest its cooldown's end is released instead."
-  - "`All providers have been ignored` was filed as the demanded machine's own refusal, so a self-inflicted 404 paced that lane and wrote it out of the serving set. That sentence now names no machine — it is a fact about a list, and a machine that never got the request has said nothing about it."
+  - "`All providers have been ignored` was filed as the demanded machine's own refusal, so a self-inflicted 404 paced that lane and wrote it out of the serving set. A refusal now carries a fourth field, `Unasked`, and the two questions `Terminal` had been answering with one word are separate: the DEMAND is still finished, so a person's pin is retired and narrated exactly as before (#456, #533), while the MACHINE is spared — it never got the request, so it has said nothing, and the ledger reads `Unasked` where the pin path reads `Terminal`."
   - "`internal/manual/chat/lanes.md` said a refusal is final for that machine, immediately, with no exception. There is one, and the page now carries it."
 ---
 
