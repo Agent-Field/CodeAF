@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -545,8 +546,9 @@ func TestATwoWordSpellingMustNameTheFilesOwnInterpreter(t *testing.T) {
 		// The program the line names, and any path that reaches that program.
 		"python3 direct.py",
 		"/usr/bin/python3 ./direct.py",
-		// A line that goes and finds the program names it last, so that is the
-		// word — read by shape, with no knowledge of what does the finding.
+		// A line whose first word is the launcher that GOES AND FINDS a program
+		// names that program next, options and all, so it is the word — read by
+		// shape, with nothing here knowing what does the finding.
 		"bash found.sh",
 		"python3 flagged.py",
 		// And the file on its own, which the executable bit already vouched for.
@@ -636,6 +638,87 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 	for _, refused := range []string{"ranonly.sh", "bash ranonly.sh --flag", "rm ranonly.sh"} {
 		if _, ok := doorRefusal(refused, ran); ok {
 			t.Fatalf("%q was admitted, and the work never ran it that way", refused)
+		}
+	}
+}
+
+// ── #468: how the session's harvest opens what the work named ───────────────
+
+// A FILE THE TREE HOLDS OUTRANKS A PROGRAM OF THE SAME NAME ON PATH.
+//
+// A repository that carries its own `check` or `build` beside the work means THAT
+// file. A lookup that answered first would quietly run somebody else's program of
+// the same name, against somebody else's assumptions, and report on it — which is
+// the exact shape of wrongness this whole reading exists to remove.
+func TestAFileTheTreeHoldsOutranksAProgramOnThePath(t *testing.T) {
+	// `true` is on every PATH this build runs on, so the collision is real rather
+	// than arranged. If it ever is not, there is no ordering to test.
+	if !onThePath("true") {
+		t.Skip("no program called true on this machine, so there is no collision to read")
+	}
+	dir := t.TempDir()
+	mine := writeCheckFile(t, dir, "true", "#!/bin/sh\nexit 0\n", 0o755)
+
+	got := checkCommand(dir, "true")
+	if got != shellQuoted(mine) {
+		t.Fatalf("the tree's own file lost to a program of the same name:\n got %q\nwant %q",
+			got, shellQuoted(mine))
+	}
+	// AND AN ORDINARY COMMAND IS LEFT EXACTLY AS THE WORK WROTE IT. Two words ask
+	// the tree about the SECOND one — the file a program is being handed — and
+	// nothing here is called `--version`, so the program on the path stands.
+	if got := checkCommand(dir, "true --version"); got != "true --version" {
+		t.Fatalf("a command the tree knows nothing about was not left alone: %q", got)
+	}
+}
+
+// EVERY PATH HANDED TO A SHELL IS ONE WORD, WHATEVER IS IN IT.
+//
+// A checkout under a directory with a space in its name split into two words, and
+// the check then ran against neither of them — while reporting, forever, that it
+// did not pass.
+func TestACheckPathWithASpaceRunsWhole(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "a tree with spaces")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("making the tree: %v", err)
+	}
+	writeCheckFile(t, dir, "run.sh", "#!/bin/sh\nexit 0\n", 0o755)
+
+	command := checkCommand(dir, "run.sh")
+	if command == "" {
+		t.Fatal("a script the tree holds was not a check at all")
+	}
+	if ran := runOneCheck(context.Background(), dir, command); !ran.Passed {
+		t.Fatalf("the check split on the space in its own path: %q said %q", command, ran.Tail)
+	}
+}
+
+// THE FIRST WORD OF A SHEBANG IS THE PROGRAM, AND `env` IS THE ONE EXCEPTION.
+//
+// Everything after the first word is an argument handed to that program. Reading
+// the LAST word instead promoted a mode flag to a launcher: `#!/usr/bin/python3
+// isolated` answered `isolated`, so the door would have admitted `isolated <the
+// check>` and refused the interpreter that really starts it.
+func TestTheShebangNamesItsFirstWordAndEnvNamesTheNext(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		what string
+		name string
+		line string
+		want string
+	}{
+		{"a flag after the program is an argument, not the program",
+			"isolated.py", "#!/usr/bin/python3 isolated\n", "python3"},
+		{"the launcher that finds a program names it next",
+			"found.py", "#!/usr/bin/env python3\n", "python3"},
+		{"and its own options are skipped on the way",
+			"flagged.py", "#!/usr/bin/env -S python3 -u\n", "python3"},
+		{"a program alone on the line is the program",
+			"plain.sh", "#!/bin/sh\n", "sh"},
+	} {
+		path := writeCheckFile(t, dir, c.name, c.line+"exit 0\n", 0o644)
+		if got, _ := fileFacts(path); got != c.want {
+			t.Errorf("%s: %q names %q, want %q", c.what, strings.TrimSpace(c.line), got, c.want)
 		}
 	}
 }

@@ -152,6 +152,13 @@ reply cannot start the loop over. There is no number to raise and no setting for
 it. Before this, a run in that state repeated one identical line until its hours
 ran out.
 
+**Work that is still going is never a standstill, and never finished either.** A
+piece of work that has not come home yet is named on the list in its own right —
+`write the tests is still running` — so the ask cannot be called finished over the
+top of it, and a list that has not changed because it is waiting on that work is a
+run waiting rather than a run repeating itself. The count starts again once
+everything has landed.
+
 ## It keeps saying a file does not pass · a check nobody asked for
 
 **A check is a command, never a file.** When your request or its `done when`
@@ -164,6 +171,13 @@ source file quoted in a sentence is something to look at, not something to run.
 Before this, a bare path was handed to a shell, which refused to start it, and the
 run recorded "does not pass" about it for the rest of the evening — a wall no work
 could ever get past. Anything that says `does not pass` now is something that ran.
+
+**A file in your own folder beats a program of the same name.** If the tree you are
+working in holds a file called `check`, `build` or `test`, that file is what a
+check by that name means — not whatever program of the same name your shell would
+have found. And if the tree holds it but nothing can start it, nothing is run at
+all: running a different program of the same name would be worse than running
+nothing.
 
 **What came home outranks what was said about it.** A piece of work that finished
 and covers what you asked for, with every check that ran passing, is finished — a

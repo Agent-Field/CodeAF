@@ -172,13 +172,18 @@ func dollarsWord(usd float64) string {
 // what THIS session finished, and the graph in front of us is the only thing
 // that answers it without filtering somebody else's rows.
 //
-// A node still running or still queued is not a landing and is left out — but
-// it does make [Remains.Landed] false, because a session with work in flight
-// has not finished anything and must never be told it has.
-func (a *Agent) landings() ([]Landing, bool) {
+// A NODE STILL RUNNING OR STILL QUEUED IS NOT A LANDING, AND IT IS NOT SILENCE
+// EITHER. It is left out of the landings — nothing came home — and its title is
+// answered separately, because a session with work in flight has not finished the
+// ask and must never be told it has. Before that third answer existed, a graph
+// holding one finished node and one still working read exactly like a graph
+// holding one finished node, so a stopped turn could be called done over the top
+// of work that was still moving, and a settled failure beside it could look like a
+// standstill while the run was in fact getting somewhere (#468).
+func (a *Agent) landings() ([]Landing, bool, []string) {
 	graph := a.tasker()
 	if graph == nil {
-		return nil, false
+		return nil, false, nil
 	}
 	// THE NODES ARE TAKEN UNDER THE GRAPH LOCK AND READ WITHOUT IT. Every
 	// accessor below takes that same lock for itself (task_run.go), so holding
@@ -193,10 +198,12 @@ func (a *Agent) landings() ([]Landing, bool) {
 	graph.mu.Unlock()
 
 	var out []Landing
+	var running []string
 	settled := 0
 	for _, node := range nodes {
 		state := node.stateNow()
 		if !state.settled() {
+			running = append(running, runningWord(node))
 			continue
 		}
 		settled++
@@ -215,7 +222,16 @@ func (a *Agent) landings() ([]Landing, bool) {
 			Signature: landingSignature(state, report),
 		})
 	}
-	return out, settled > 0
+	return out, settled > 0, running
+}
+
+// runningWord names one unit of work that has not come home, as a person reads
+// it: its own title, and the id when it has not been given one yet.
+func runningWord(node *TaskNode) string {
+	if title := strings.TrimSpace(node.title()); title != "" {
+		return title
+	}
+	return fmt.Sprintf("unit %d", node.id)
 }
 
 // landingSignature is what makes two failures the same failure, until something
@@ -243,13 +259,14 @@ func landingSignature(state TaskState, report string) string {
 // has said the ask is met (principal_audit.go). Everything here is a read of
 // what the session already holds.
 func (a *Agent) remainsFor(said, reader string) Remains {
-	landings, landed := a.landings()
+	landings, landed, running := a.landings()
 	return Remains{
 		Said:       said,
 		Reader:     reader,
 		Acceptance: a.who().Acceptance(),
 		Landings:   landings,
 		Landed:     landed,
+		Running:    running,
 	}
 }
 

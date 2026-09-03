@@ -199,9 +199,14 @@ func TestTheLandingsShownAreThisSessionsSettledWork(t *testing.T) {
 	landOne(agent, TaskFailed, "wire the handlers", "incomplete — no route for PATCH")
 	landOne(agent, TaskRunning, "write the tests", "")
 
-	landings, landed := agent.landings()
+	landings, landed, running := agent.landings()
 	if !landed || len(landings) != 2 {
 		t.Fatalf("the settled work is not what was read: landed=%v %+v", landed, landings)
+	}
+	// AND THE WORK THAT HAS NOT COME HOME IS ANSWERED RATHER THAN DROPPED, by its
+	// own title, so a goal owner can tell a tidy graph from a busy one.
+	if len(running) != 1 || running[0] != "write the tests" {
+		t.Fatalf("the work still going was not carried out of the graph: %v", running)
 	}
 	if landings[1].Signature != "incomplete — no route for PATCH" {
 		t.Fatalf("a failure came back unsigned: %+v", landings[1])
@@ -216,7 +221,7 @@ func TestTheLandingsShownAreThisSessionsSettledWork(t *testing.T) {
 func TestASessionWithOnlyRunningWorkHasFinishedNothing(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	landOne(agent, TaskRunning, "write the tests", "")
-	if _, landed := agent.landings(); landed {
+	if _, landed, _ := agent.landings(); landed {
 		t.Fatal("work still running was counted as finished")
 	}
 }
@@ -426,7 +431,7 @@ func TestASessionsCheckIsACommandAndNeverABarePath(t *testing.T) {
 			t.Fatalf("a file nothing can start was harvested as a check: %v", checks)
 		}
 	}
-	want := "sh " + script
+	want := "sh " + shellQuoted(script)
 	if !containsWord(checks, want) {
 		t.Fatalf("the script was not opened the way its own first line says:\n got %v\nwant %q", checks, want)
 	}

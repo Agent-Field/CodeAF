@@ -224,6 +224,17 @@ type Remains struct {
 	// that has landed nothing has not finished an ask, whatever a reader of its
 	// transcript makes of it, and [Steward.Decide] refuses to call that done.
 	Landed bool
+
+	// Running names the units of work that have NOT come home — still queued,
+	// still going — in the words a person reads them by.
+	//
+	// WORK THAT IS STILL RUNNING IS NEITHER DONE NOR A STANDSTILL, and this is
+	// the field that makes both halves of that sayable. An ask with something
+	// still moving is not finished, however tidy everything that already landed
+	// looks; and a run whose unmet set has not changed BECAUSE it is waiting on
+	// something is not going round in a circle, it is waiting, so the floor under
+	// carrying on ([Steward.standstill]) must not fire on it.
+	Running []string
 }
 
 // unmet lists, in a person's words, what stands between this and finished. An
@@ -232,6 +243,9 @@ func (r Remains) unmet() []string {
 	var out []string
 	if !r.Landed {
 		out = append(out, "nothing has been finished yet")
+	}
+	for _, title := range r.Running {
+		out = append(out, title+" is still running")
 	}
 	for _, landing := range r.Landings {
 		if !landing.unsatisfied() {
@@ -464,6 +478,10 @@ func (s *Steward) hear(ask string) {
 		return
 	}
 	s.ask = ask
+	// AND A GOAL THAT IS BEING RECORDED IS A STRETCH BEGINNING, so the floor
+	// under carrying on starts empty ([Steward.forget]'s reason, said at the
+	// other end).
+	s.carriedUnmet, s.carriedBrief = "", ""
 }
 
 func (s *Steward) Acceptance() string {
@@ -583,7 +601,11 @@ func stewardReason(landing Landing) string {
 //     there are any: the unmet set says THAT work remains and the reader is
 //     usually more specific about WHAT, and a brief is read by a model that has to
 //     act on it.
-//  5. AND THE SAME THING TWICE RUNNING IS A STANDSTILL, not a third go
+//  5. WORK STILL IN FLIGHT IS NEITHER OF THE TWO ENDINGS. An ask with a unit of
+//     work still going is not finished, and it is not going round in a circle
+//     either — it is waiting, so the floor below is not asked about it and what it
+//     remembers is dropped ([Remains.Running]).
+//  6. AND THE SAME THING TWICE RUNNING IS A STANDSTILL, not a third go
 //     ([Steward.standstill]).
 //
 // THE FROZEN DONE-CONDITION IS NEVER EVIDENCE HERE. It is written before any work
@@ -602,16 +624,39 @@ func (s *Steward) Decide(r Remains) Decision {
 	}
 	unmet := r.unmet()
 	if len(unmet) == 0 {
+		// A DONE ANSWER FORGETS WHAT WAS LEFT LAST TIME. The fingerprint below is
+		// about ONE STRETCH of carrying on, and an ask that reached done ended
+		// that stretch: a session that finishes, is asked for more, and meets the
+		// same gap again is meeting it for the first time since — and a floor
+		// that remembered across the finish would stop it on its first carry-on.
+		s.forget()
 		return done()
 	}
 	brief := strings.TrimSpace(r.Reader)
 	if brief == "" {
 		brief = stewardBrief(r, unmet)
 	}
+	// AND NOTHING IS A STANDSTILL WHILE SOMETHING IS STILL MOVING. An unmet set
+	// that has not changed because the work has not come home yet is a session
+	// waiting, not a session repeating itself, and what the floor remembers from
+	// before the wait is about a tree that has since been worked on.
+	if len(r.Running) > 0 {
+		s.forget()
+		return carryOn(brief, unmet...)
+	}
 	if halted := s.standstill(unmet, brief); halted != "" {
 		return stop(halted)
 	}
 	return carryOn(brief, unmet...)
+}
+
+// forget drops what the floor remembers, so the next carry-on is a first one.
+// It is called wherever the STRETCH the fingerprint is about has ended: an ask
+// that finished, and work that is still moving under it.
+func (s *Steward) forget() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.carriedUnmet, s.carriedBrief = "", ""
 }
 
 // standstill is the floor under carrying on: it answers a REASON TO STOP when

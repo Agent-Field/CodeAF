@@ -532,50 +532,77 @@ func declaredChecks(text, ground string) []string {
 // collected exit 126 from a file with no executable bit, and reported "does not
 // pass" about it on every round of a whole evening (#468).
 //
+// THE TREE IS ASKED BEFORE THE PATH, and that order is a law rather than a
+// preference: A FILE THE TREE HOLDS OUTRANKS A PROGRAM OF THE SAME NAME ON PATH.
+// A repository that carries its own `check`, `build` or `test` beside the work
+// means THAT file, and a lookup that answered first would silently run somebody
+// else's program of the same name against somebody else's assumptions — the exact
+// shape of wrongness this whole reading exists to remove.
+//
 // THREE ANSWERS, AND EVERY ONE OF THEM IS A FACT RATHER THAN A LIST:
 //
-//   - THE FIRST WORD IS A PROGRAM THE SHELL WOULD FIND ([onThePath]): the span is
-//     already a command and stands exactly as the work wrote it.
 //   - THE SPAN NAMES A FILE AND THE WORK NAMED THE PROGRAM TOO — two words, a
-//     launcher and its file — so it stands as written for the same reason: the
-//     work is the one citizen entitled to say how its own check is run.
+//     launcher and its file — so it stands as the work wrote it: the work is the
+//     one citizen entitled to say how its own check is run.
 //   - THE SPAN IS THE FILE ALONE: it is opened the way the file itself says it
 //     opens, by its executable bit or by the interpreter its first line names, and
 //     the RESOLVED path is what goes into the command, because a bare word with no
 //     directory in it would send the shell looking down PATH for a file sitting in
 //     the tree.
+//   - THE TREE HOLDS NOTHING BY THAT NAME AND THE FIRST WORD IS A PROGRAM THE
+//     SHELL WOULD FIND ([onThePath]): the span is already a command and stands
+//     exactly as the work wrote it.
 //
 // AND A FILE THAT SAYS NEITHER IS NOT A CHECK. It is data the prose happened to
 // backtick, there is no way to run it, and "does not pass" is a sentence about a
 // check that RAN — so this answers "" and the caller drops it rather than
-// carrying a permanent failure for the life of the session.
+// carrying a permanent failure for the life of the session. It answers "" EVEN
+// WHEN A PROGRAM OF THAT NAME IS ON THE PATH, because the tree said which file
+// was meant and running a different one would be worse than running nothing.
 func checkCommand(ground, check string) string {
 	fields := strings.Fields(check)
 	if len(fields) == 0 {
 		return ""
 	}
+	if files := fileChecksIn(ground, check); len(files) > 0 {
+		if len(fields) > 1 {
+			return check
+		}
+		// A WILDCARD THE WORK WROTE RESOLVES TO WHATEVER IT MATCHES, and the
+		// first match that can be started is the check. The alternative —
+		// running every match — would turn one declared check into eight
+		// processes nobody declared.
+		for _, file := range files {
+			switch {
+			case file.runnable:
+				return shellQuoted(file.path)
+			case file.interpreter != "":
+				return file.interpreter + " " + shellQuoted(file.path)
+			}
+		}
+		return ""
+	}
 	if onThePath(fields[0]) {
 		return check
 	}
-	files := fileChecksIn(ground, check)
-	if len(files) == 0 {
-		return ""
-	}
-	if len(fields) > 1 {
-		return check
-	}
-	// A WILDCARD THE WORK WROTE RESOLVES TO WHATEVER IT MATCHES, and the first
-	// match that can be started is the check. The alternative — running every
-	// match — would turn one declared check into eight processes nobody declared.
-	for _, file := range files {
-		switch {
-		case file.runnable:
-			return file.path
-		case file.interpreter != "":
-			return file.interpreter + " " + file.path
-		}
-	}
 	return ""
+}
+
+// shellQuoted wraps one path so that a shell reads it as ONE WORD, whatever is
+// in it.
+//
+// EVERY PATH THIS FILE HANDS TO A SHELL GOES THROUGH IT, unconditionally. A rule
+// that quoted only the paths that "needed" it would be a second reading of what a
+// shell does with a character, drifting from the first the day somebody meets a
+// bracket — and the measured shape is ordinary: a checkout under a directory with
+// a space in its name split into two words, and the check ran against neither of
+// them.
+//
+// SINGLE QUOTES, WITH THE ONE ESCAPE THEY HAVE. Inside single quotes a shell
+// expands nothing at all, so the only character that has to be handled is the
+// quote itself — closed, escaped, and reopened.
+func shellQuoted(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
 
 // runnableHere is the question the third measured failure at the top of this
@@ -805,12 +832,21 @@ func fileChecksIn(ground, check string) []fileCheck {
 // a spelling of a check and the program the file names is, without this package
 // ever learning a launcher's name.
 //
-// THE LINE IS READ BY SHAPE. A hash and a bang, then words; options are skipped,
-// and THE LAST BARE WORD IS THE PROGRAM — a launcher that goes and finds another
-// program puts that program's name after its own, and a launcher that is itself
-// the interpreter is alone on the line, so the last bare word is the right answer
-// to both without either being named. What comes back is its base name, because a
-// program is the same program down every path that reaches it.
+// THE LINE IS READ BY SHAPE, AND THE PROGRAM IS THE FIRST WORD ON IT. That is
+// what the operating system itself does with the line: everything after the first
+// word is an ARGUMENT handed to that program, not another program. Reading the
+// last word instead made `#!/usr/bin/python3 isolated` answer `isolated` — a mode
+// flag promoted to a launcher, and a door that would then admit `isolated <the
+// check>` and refuse the interpreter that really starts it.
+//
+// THE ONE EXCEPTION IS THE LAUNCHER WHOSE JOB IS TO FIND ANOTHER PROGRAM, and it
+// is recognised by its own name rather than by a list of launchers: a first word
+// whose base name is `env` is a program that runs the next one it is given, so the
+// interpreter is the next word that is not an option — which is what makes both
+// `#!/usr/bin/env python3` and `#!/usr/bin/env -S python3 -u` answer `python3`.
+//
+// What comes back is a base name, because a program is the same program down
+// every path that reaches it.
 //
 // THE EXECUTABLE BIT IS THE SECOND FACT, and it answers a different question: a
 // file with it set states that running it is a thing that happens, which is what
@@ -842,12 +878,20 @@ func fileFacts(path string) (interpreter string, runnable bool) {
 	if !strings.HasPrefix(line, "#!") {
 		return "", runnable
 	}
-	var named string
-	for _, field := range strings.Fields(line[2:]) {
-		if strings.HasPrefix(field, "-") {
-			continue
+	fields := strings.Fields(line[2:])
+	if len(fields) == 0 {
+		return "", runnable
+	}
+	named := fields[0]
+	if filepath.Base(named) == "env" {
+		named = ""
+		for _, field := range fields[1:] {
+			if strings.HasPrefix(field, "-") {
+				continue
+			}
+			named = field
+			break
 		}
-		named = field
 	}
 	if named == "" {
 		return "", runnable
