@@ -1,0 +1,45 @@
+                                                                                                              │ + /task
+  · carrying its own work on: $1                                                                              │
+  · esc interrupts · ctrl+c twice quits                                                                       │ + /standing
+                                                                                                              │
+› [paste 1 · 83 lines]                                                                                        │
+                                                                                                              │
+  · done when · All existing tests pass without modification; the CI suite (including the healthz endpoint te…│
+  shows green; and a new test or manual check demonstrates that requests with 'bearer', 'Bearer', 'BEARER',   │
+  and mixed-case scheme spellings authenticate the same valid token while tokens with different casing fail.  │
+  · error: API error (404): No allowed providers are available for the selected model. Providers serving      │
+  deepseek/deepseek-v4-flash-20260423: digitalocean, streamlake, baidu, deepinfra, but your request's         │
+  provider.only preference permits only: anthropic.                                                           │
+                                                                                   · 16:14 · 1m08s · $0.0001 ·│
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │ Σ $0.0001 · 1.6k tok
+                                                                                                              │ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+work · deepseek-v4-flash · via digitalocean                                               crew custom · $0.0001 · 6.3k/1M · 1% · YOLO · idle

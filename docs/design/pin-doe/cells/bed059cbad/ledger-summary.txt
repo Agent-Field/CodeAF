@@ -1,0 +1,7 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+16:40:29.381 52952667 start -     anthropic      -    -       
+16:40:29.420 52952667 end   -     anthropic      404  39      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:40:29.420 e20af993 start -     DigitalOcean   -    -      hedged arms=2 
+16:40:45.212 e20af993 end   -     DigitalOcean   200  15791  hedged arms=2 
+16:40:45.214 5dfe4454 start turn  anthropic      -    -       
+16:40:45.243 5dfe4454 end   turn  anthropic      404  30      API error (404): No allowed providers are available for the selected model. Providers serving deepse

@@ -1,0 +1,38 @@
+{
+ "id": "python-attrs-attrs-1416",
+ "repo": "python-attrs/attrs",
+ "issue": 1416,
+ "anchor": true,
+ "door": "chat",
+ "pass": false,
+ "reason": "wall \u00b7 tests green",
+ "door_verdict": "wall",
+ "tests_verdict": "green",
+ "ended": "wall",
+ "exit": null,
+ "source": "fresh",
+ "tier": "small",
+ "wall_s": 902,
+ "cost_usd": 0.037562,
+ "ttft_ms": 2539,
+ "calls": 22,
+ "changed_files": 1,
+ "f2p": {
+  "passed": 14,
+  "failed": 0,
+  "errors": 0,
+  "exit": 0,
+  "pass": true
+ },
+ "suite": {
+  "passed": 1389,
+  "failed": 35,
+  "errors": 0,
+  "exit": 1,
+  "capped": false
+ },
+ "regressed": false,
+ "subharness": null,
+ "nodes": null,
+ "load": "1.45 3.61"
+}

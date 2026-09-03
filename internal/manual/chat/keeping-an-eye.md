@@ -348,10 +348,10 @@ whatever it already did stands with it.
 banked already names many separate items — "every night, bring the eleven
 adapters up to the new interface" — the firing starts as one worker that is
 allowed to hand the parts out under itself, exactly as a task you typed can (the
-tasks page, *a task that splits itself*). The same two tests apply and neither is
-skipped because nobody is watching: the parts must be genuinely many, and there
-has to be a lane free for them. A brief that names nothing to count never gets
-the option, and a run that is refused simply carries on as one worker — unless the reading
+tasks page, *a task that splits itself*). The same tests apply and none is
+skipped because nobody is watching: there has to be a lane free for the parts,
+and any width floor you turned on still counts. A brief that names nothing to
+count never gets the option, and a run that is refused simply carries on as one worker — unless the reading
 finds that what is left is work only a person can do, which stops it and leaves the firing
 needing your look in the morning (the tasks page, *a task that landed needing your look
 without doing anything*). The firing

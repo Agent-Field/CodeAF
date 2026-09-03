@@ -467,3 +467,89 @@ func TestTheChecksThisWorkWroteAreTheirOwnFinding(t *testing.T) {
 		t.Error("the two findings still say the same thing")
 	}
 }
+
+// THE GATE DOES NOT PHOTOGRAPH A TREE NOTHING CHANGED.
+//
+// It is the same law the leaf's own second reading is written to, one seam
+// later, because the leaf that did the work and the node that gets judged are
+// routinely not the same node. The run measured in #429 read `go test -json
+// ./...` over 4,587 tests on four "finished" trees that were byte for byte the
+// tree the first reading had already been taken of.
+func TestTheGateInheritsTheReadingOfATreeNothingChanged(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	graph := gateStore(t)
+	root := igelWorkspace(t)
+	job := verify.JobKey("run the suite and report the final line; change no files")
+	verify.RememberBaseline(root, job, verify.TreeState(root, nil), verify.Reading{
+		Taken: true,
+		Before: verify.Result{
+			Strategy: verify.Strategy{
+				Command: "python3 -m pytest -rA", Runner: "pytest", Scope: verify.ScopeWhole},
+			Reported: []string{"test_fit", "test_predict"},
+		},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+
+	// The job changed no file, so the tree in front of the gate is the tree in
+	// the reading it is holding.
+	reading := jobReading(ctx, graph, "task-2", Evidence{Workspace: root}, job)
+	if !reading.AfterTaken {
+		t.Fatal("the gate was left with no reading of the tree it is judging")
+	}
+	if len(reading.After.Reported) != 2 {
+		t.Errorf("the roster that stands is not the one that was read: %#v", reading.After.Reported)
+	}
+	rows, err := graph.VerificationsFor("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || !rows[0].Inherited || !rows[0].Read {
+		t.Fatalf("the gate did not journal one inherited reading: %#v", rows)
+	}
+}
+
+// AN EMPTY ARTIFACT LIST IS NOT AN UNCHANGED TREE, AND THE GATE MAY NOT READ IT
+// AS ONE.
+//
+// A deletion never reaches an artifact list — exec.Workspace.Artifacts holds
+// what the tree still has — so a job whose one change was to REMOVE a file
+// arrives at a gate that nobody photographed for looking exactly like a job that
+// did nothing at all. Answering "nothing to read" there would skip the one
+// reading that could see what the removal broke. Where nothing watched the tree,
+// the tree is read.
+func TestAJobWhoseOnlyChangeIsADeletionIsStillRead(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	graph := gateStore(t)
+	root := igelWorkspace(t)
+	// The job's one change: a source file taken out. It is in no artifact list
+	// and in no focus, which is the whole point.
+	if err := os.Remove(filepath.Join(root, "igel/igel.py")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+
+	reading := jobReading(ctx, graph, "task-2", Evidence{Workspace: root},
+		verify.JobKey("take the dead module out; change nothing else"))
+	rows, err := graph.VerificationsFor("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("the gate journaled %d rows for one reading: %#v", len(rows), rows)
+	}
+	if strings.Contains(rows[0].Why, "nothing to read") {
+		t.Fatalf("a job that deleted a file was told there was nothing to read: %q", rows[0].Why)
+	}
+	// It read, or it said in its own words why it could not — never that there
+	// was nothing worth reading.
+	if !reading.Taken && strings.TrimSpace(rows[0].Why) == "" {
+		t.Error("the gate neither read the tree nor said why not")
+	}
+	if reading.Taken && strings.TrimSpace(rows[0].Command) == "" {
+		t.Error("a reading was taken and the row names no command")
+	}
+}

@@ -152,6 +152,11 @@ type Client struct {
 	// It is a fact about the BASE URL rather than about a model, which is why it
 	// lives on the client and not in the velocity ledger.
 	unstreamable atomic.Bool
+	// prefSent is whether any request from this client has really carried a
+	// routing preference, which is what makes a later answer with no lane
+	// information EVIDENCE about the base rather than a fact about a request
+	// that never asked (prefcarry.go's [Client.prefWentOut]).
+	prefSent atomic.Bool
 }
 
 // ErrNoAPIKey is what a request meets on a client built without a key and not
@@ -289,7 +294,11 @@ func (c *Client) ExecuteToolCallLoop(
 	call ai.CallFunc,
 	options ...ai.Option,
 ) (*ai.Response, *ai.ToolCallTrace, error) {
-	if c.isOpenRouter() {
+	// THE HINT AND NOT THE PREFERENCE ANSWER. Which of two transports drives
+	// the loop is a fact about the SHIPPED ROUTER's own dialect — the
+	// categories header, the refusal ladder — and not about whether some base
+	// carries a `provider` object (prefcarry.go).
+	if c.shippedRouterHint() {
 		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
 	}
 	base := c.sdkClient()
@@ -342,6 +351,18 @@ type callKnobs struct {
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
 	reasoning []MessageReasoning
+	// noProvider takes the `provider` object OFF this one encode entirely, and
+	// it is set by exactly one caller: the single widened retry that asks
+	// whether a base's 400 was about the field at all (endpoints.go's
+	// [Client.widenPastTheUncarriedPreference], issue #433).
+	//
+	// IT IS NOT A LADDER RUNG. [relaxEndpointFilter] takes off everything that
+	// can EXCLUDE an endpoint and leaves the sort word, which is the right rung
+	// when the question is which machine can serve a shape. Here the question is
+	// whether the base understands the field, so the field has to be gone —
+	// otherwise the retry asks the same question again and its answer means
+	// nothing.
+	noProvider bool
 	// hedgeLane is the one lane this request must go to, set only on the second
 	// request of a hedged pair (hedge.go). Empty on every ordinary call, which
 	// is what keeps a healthy request byte-for-byte what it always was.
@@ -412,6 +433,12 @@ func (c *Client) modelFor(request *ai.Request) string {
 // way out rather than at each return so that no future rung can be added past
 // it and quietly keep a dead pin.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	// AND ANYTHING A PERSON IS STILL OWED IS SAID HERE, on the first request of
+	// theirs that goes out after it was learned (lanepin.go's
+	// [tellRetiredPins]). It is one nil check on a call nobody is reading and
+	// on every call after the sentence has been said.
+	tellRetiredPins(ctx)
+	tellUncarriedPins(ctx)
 	response, err := c.sendRecovered(ctx, request, knobs, stream)
 	if err != nil || (response != nil && response.StatusCode >= 400) {
 		c.releaseEndpoint(ctx, c.modelFor(request))
@@ -422,6 +449,10 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 // sendRecovered is sendShaped's two recovery passes — the repairable 400s and
 // the endpoint-refusal ladder — with nothing said about pins.
 func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	// The moment the call really left, kept because the ONE recovery below that
+	// answers a refusal by sending a different request has to write the refused
+	// one down first (calllog.go's logNow, and [Client.widenPastTheRetiredPin]).
+	began := logNow()
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
 		return c.recoverFromPacing(ctx, request, knobs, stream, err)
@@ -429,14 +460,67 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
 	}
+	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	if readErr != nil || !c.routingRefusal(c.modelFor(request), response.StatusCode, peek) {
+	// WHETHER THE BASE UNDERSTANDS THE `provider` FIELD AT ALL IS ASKED BEFORE
+	// ANYTHING ELSE (#433), because until it is answered nothing below this line
+	// is reading the right refusal. It is a QUESTION here and an answer only
+	// after the retry: the same request goes out once without the object, and
+	// whether THAT lands is the whole of the evidence.
+	if readErr == nil && c.prefsMayBeRefused(model, response.StatusCode, peek) {
+		response.Body.Close()
+		return c.widenPastTheUncarriedPreference(ctx, request, knobs, stream, began, response.StatusCode, peek)
+	}
+	if readErr != nil || !c.routingRefusal(model, response.StatusCode, peek) {
 		// Not this class. The body is handed back whole — a peek must never
 		// shorten what the caller goes on to read.
 		response.Body = rewound(peek, response.Body)
 		return response, nil
 	}
+	status := response.StatusCode
 	response.Body.Close()
+	// THE REFUSAL IS CLASSIFIED ONCE, HERE, AND ACTED ON BEFORE EITHER RECOVERY
+	// RUNS. This line is the fork EVERY routing refusal passes through — the
+	// walk takes one road out of it and the ladder the other, and both are
+	// below here — which is why the two things that are true whatever happens
+	// next are true at this line and not on one of the two roads.
+	//
+	// THE STRIKE IS THE FIRST OF THEM, and it was missing (issue #456). It
+	// fired only where a refusal surfaced to a caller as a 4xx
+	// ([Client.refuseUpstream]'s three call sites); a routing refusal the
+	// LADDER absorbed never reached one, so the machine that had just said it
+	// cannot serve this model was left standing in the serving set and the next
+	// turn chose it again. "This machine refused this model" is true whatever
+	// the recovery below does with the request, and it is recorded at the seam
+	// where it is known.
+	refusal := c.refusalObject(request, knobs, apiError(status, peek))
+	c.strikeRefusal(model, refusal)
+	carriedCeiling := c.carriedCeiling(model, knobs, request)
+	// THE MEMO IS WRITTEN AT THE REFUSAL, BEFORE ITS RECOVERIES PART.
+	// A funded walk may keep this arm out of the ladder, but its very next arm is
+	// still a request to the same model and must not repeat the ceiling the router
+	// has already refused. The router's STRUCTURED refusal is the evidence; its
+	// sentence is never a gate on this behaviour.
+	if c.velocity != nil && carriedCeiling {
+		c.velocity.refuseCeiling(model)
+	}
+	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
+	// router says it cannot serve for this model is stood down for that model,
+	// once, and the person is told in a sentence that stays.
+	//
+	// THE CALL THAT RETIRED IT WIDENS AND TRIES AGAIN RATHER THAN WALKING. One
+	// retry, at rung one, which is the rung that takes the whole provider
+	// object off — so the request that goes out is exactly the request `auto`
+	// would have sent. It is not a re-entry into the ladder: the demand has
+	// just been withdrawn, so what was wrong with this request is already
+	// fixed, and climbing on to strip the reasoning knob and the tools would be
+	// paying for a diagnosis nobody needs. And it is not the walk either: the
+	// walk is gated on a purse and on a frontier, and when it declines there is
+	// nothing underneath it — which is how the reported turn died with the
+	// person's brief unanswered and the router's own sentence on the screen.
+	if retirePinnedLane(ctx, model, refusal) {
+		return c.widenPastTheRetiredPin(ctx, request, knobs, stream, began, status, peek)
+	}
 	// THE LANE IS TRIED BEFORE THE REQUEST IS RELAXED. A refusal is a fact
 	// about the MACHINE that made it — one endpoint behind a model drops tool
 	// calls, another has no room for the output cap, a third has the reasoning
@@ -444,9 +528,10 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// Relaxing here would answer a question nobody asked (tools taken off a
 	// request that only needed a different endpoint) while an endpoint that
 	// would have taken it whole sat untried. So while the race still has a
-	// gate-passing lane to walk to, the refusal is handed back and the walk
-	// takes the next machine (hedge.go's walk); the ladder runs on the LAST arm,
-	// where the evidence really is about the request rather than the endpoint.
+	// serving lane that the purse will fund, the refusal is handed back and the
+	// walk takes that machine (hedge.go's walk); the ladder runs on the LAST arm
+	// the purse will fund — or on the primary when it will fund none — where the
+	// evidence really is about the request rather than the endpoint.
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
 	if streamWatchFrom(ctx).canWalk() {
@@ -456,7 +541,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
-	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
+	return c.recoverFromRefusal(ctx, request, knobs, stream, peek, carriedCeiling)
 }
 
 // sendRepaired encodes the request and sends it, recovering once from the 400s
@@ -743,7 +828,14 @@ func (c *Client) completionInOnePiece(
 	// The usage block was decoded through the shadow so the reasoning count
 	// came with it; it goes straight back on the response, where every reader
 	// below and above this adapter expects to find it.
-	response.Usage = decoded.Usage.usage()
+	//
+	// A whole body carries one usage block and so has nothing to accumulate
+	// onto, but it is folded in through the same helper the streamed loop reads
+	// its frames with ([usageWire.mergeInto]) rather than assigned here: two
+	// readers of one wire shape is how one of them ends up with a law the other
+	// has never heard of.
+	var reasoningTokens int
+	response.Usage, reasoningTokens = decoded.Usage.mergeInto(response.Usage, 0)
 	// AND THE SAME SPLIT THE STREAM TAKES, taken over the whole body (answer.go).
 	// A gateway that fences its working in `<think>` does it whether or not the
 	// request asked for a stream, and an answer that carried the model's private
@@ -761,6 +853,11 @@ func (c *Client) completionInOnePiece(
 	// A completion teaches the lane its longest reply just as a stream does;
 	// without this line a lane that only ever answered whole — every headless
 	// worker's — never earned a wall at all.
+	// AND THE BASE ITSELF IS READ, ONCE (#433). Whether it named the lane that
+	// served this answer is what tells this build whether a routing preference
+	// reaches its wire at all — the one reading there is, and prefcarry.go says
+	// what it cannot tell apart.
+	c.notePrefsFromAnswer(ctx, served)
 	c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	c.noteVelocity(
@@ -797,7 +894,7 @@ func (c *Client) completionInOnePiece(
 	c.record(recordFacts{
 		ctx: ctx, request: request, knobs: knobs, stream: stream,
 		began: logBegan, status: status, served: served,
-		response: &response, reasoningTokens: decoded.Usage.reasoningTokens(),
+		response: &response, reasoningTokens: reasoningTokens,
 		learned: relearned, responseBody: payload,
 	})
 	// The money, banked at the same instant the log row is written and for the
@@ -873,6 +970,81 @@ func (u *usageWire) reasoningTokens() int {
 		return 0
 	}
 	return u.CompletionTokensDetails.ReasoningTokens
+}
+
+// mergeInto folds one usage frame into what the call has counted so far, and
+// returns the accumulated block together with the reasoning count that survives
+// the frame. It is how a streamed chat and a whole-body one alike fold a usage
+// block in, so a second reader cannot drift from the first.
+//
+// USAGE ACCUMULATES ACROSS THE FRAMES OF ONE CALL: A LATER FRAME NEVER ZEROES A
+// COUNT AN EARLIER FRAME CARRIED. Every provider aforge drives today sends its
+// token counts and its price together in one terminal frame, so replacing the
+// block wholesale looked right for as long as that held — but that is a property
+// of today's endpoints and not of the protocol. An endpoint that reports the
+// counts when the answer ends and the price a frame later would have left the
+// ledger billing a call whose prompt and completion tokens were both zero, and
+// taken the thinking pass's cost down with it.
+func (u *usageWire) mergeInto(into *ai.Usage, reasoning int) (*ai.Usage, int) {
+	merged := mergeUsage(into, u.usage())
+	// The reasoning count rides alongside rather than inside ai.Usage, which has
+	// no field for it, and it obeys the same law: a frame that does not break the
+	// output down does not erase a breakdown an earlier frame gave.
+	if count := u.reasoningTokens(); count != 0 {
+		reasoning = count
+	}
+	return merged, reasoning
+}
+
+// mergeUsage folds one usage frame into the block a call has accumulated, under
+// the law stated on [usageWire.mergeInto]. It is written over the SDK's own type
+// rather than over the wire shadow so that every reader of a streamed usage
+// block — chat here, music in music.go — folds by the one rule.
+//
+// A field is taken from the frame when the frame states it and kept otherwise,
+// rather than summed: each frame carries the running TOTALS for the call, so
+// adding them would double-count an endpoint that reports twice.
+func mergeUsage(into, frame *ai.Usage) *ai.Usage {
+	if frame == nil {
+		// No usage block on this frame at all, which leaves the call exactly as
+		// it was — including a nil block, because a call that never saw a usage
+		// frame ends "unknown" and never "zero" (the emptiness law).
+		return into
+	}
+	merged := ai.Usage{}
+	if into != nil {
+		merged = *into
+	}
+	takeCount(&merged.PromptTokens, frame.PromptTokens)
+	takeCount(&merged.CompletionTokens, frame.CompletionTokens)
+	takeCount(&merged.TotalTokens, frame.TotalTokens)
+	takeCount(&merged.CacheReadInputTokens, frame.CacheReadInputTokens)
+	takeCount(&merged.CacheCreationInputTokens, frame.CacheCreationInputTokens)
+	// The OpenAI-style nesting is copied rather than aliased: the frame it came
+	// out of is one decode of one event and does not outlive the loop reading it,
+	// while the block being built here is handed to the ledger and the journal.
+	if nested := frame.PromptTokensDetails; nested != nil && nested.CachedTokens != 0 {
+		cached := *nested
+		merged.PromptTokensDetails = &cached
+	}
+	// Cost is a pointer because nil means "unknown" rather than "free", so what
+	// counts as stated here is a pointer that is set. A frame is still allowed to
+	// say a call was free — but only when nothing before it reported a real
+	// price, which is the same law the counts follow.
+	if frame.Cost != nil && (*frame.Cost != 0 || merged.Cost == nil) {
+		cost := *frame.Cost
+		merged.Cost = &cost
+	}
+	return &merged
+}
+
+// takeCount folds one count of a usage frame into the call's own, under the law
+// stated on [usageWire.mergeInto]: a frame that states the figure wins, and a
+// frame that is silent about it leaves what was already there.
+func takeCount(into *int, frame int) {
+	if frame != 0 {
+		*into = frame
+	}
 }
 
 // servedProvider reads the endpoint the router says answered. An absent field is
@@ -1346,8 +1518,11 @@ func (c *Client) completeWithMessagesStreaming(
 			return nil, false, refusal
 		}
 		if chunk.Usage != nil {
-			response.Usage = chunk.Usage.usage()
-			reasoningTokens = chunk.Usage.reasoningTokens()
+			// FOLDED IN, NEVER SWAPPED IN: a frame carrying only the price does
+			// not zero the counts the frame before it carried (see
+			// [usageWire.mergeInto], which both transports read a usage frame
+			// through).
+			response.Usage, reasoningTokens = chunk.Usage.mergeInto(response.Usage, reasoningTokens)
 		}
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
@@ -1564,6 +1739,11 @@ func (c *Client) completeWithMessagesStreaming(
 	// the wait to be served plus the writing — because that is what the wall
 	// bounds, and it is recorded whatever the routing preference says
 	// (velocity.go's [Client.noteRun]).
+	// AND THE BASE ITSELF IS READ, ONCE (#433). Whether it named the lane that
+	// served this answer is what tells this build whether a routing preference
+	// reaches its wire at all — the one reading there is, and prefcarry.go says
+	// what it cannot tell apart.
+	c.notePrefsFromAnswer(ctx, served)
 	c.noteRun(c.modelFor(request), served, generation.Sub(began))
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
 	if !firstToken.IsZero() {
@@ -1767,7 +1947,10 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
-	if c.isOpenRouter() {
+	// THE HINT AND NOT THE PREFERENCE ANSWER. These headers are read by one
+	// machine's ranking page and by nothing else, so the question really is
+	// "is this that machine" (prefcarry.go says why every other site moved).
+	if c.shippedRouterHint() {
 		ApplyAttribution(httpRequest.Header)
 	}
 	// The header half of cache affinity. Routers that ignore the body field
@@ -1779,7 +1962,24 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	return httpRequest, nil
 }
 
-func (c *Client) isOpenRouter() bool {
+// shippedRouterHint reports whether this client is talking to THE SHIPPED
+// ROUTER, recognised by its hostname or by a model spelled `openrouter/…`.
+//
+// IT IS A HINT ABOUT ONE MACHINE AND IT IS NOT A DECISION ABOUT ANY BEHAVIOUR.
+// It was named `isOpenRouter` and it WAS the decision — whether a routing
+// preference went on the wire, whether a lane was measured, whether a probe was
+// bought — and every one of those is now [Client.carriesPreferences], which is
+// what the base itself answered (prefcarry.go, issue #433). A capability
+// decided by where a base lives rather than by what it answers is the defect
+// class #373 and #433 both closed, and a reader who mistakes this for the
+// decision would reopen it.
+//
+// WHAT IS LEFT TO IT IS THE TWO THINGS THAT REALLY ARE ABOUT THAT ONE MACHINE:
+// the attribution headers OpenRouter's own ranking page reads
+// ([Client.newHTTPRequest]), and the choice of this adapter's transport over
+// the SDK's ([Client.ExecuteToolCallLoop]). Neither is a preference and neither
+// is a claim about lanes.
+func (c *Client) shippedRouterHint() bool {
 	return strings.Contains(strings.ToLower(c.config.BaseURL), "openrouter.ai") ||
 		strings.HasPrefix(normalizeModel(c.config.Model), "openrouter/")
 }

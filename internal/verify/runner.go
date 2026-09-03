@@ -354,6 +354,20 @@ type runner struct {
 	// is a directory, so a selection of three test files is a selection of the
 	// one or two packages they live in.
 	selectsDirectories bool
+	// wholeTarget is the argument this runner's own bare invocation uses to mean
+	// EVERYTHING, and it is DROPPED when a selection is appended to it.
+	//
+	// A COMMAND THAT ALREADY NAMES THE WHOLE TREE RUNS THE WHOLE TREE WHATEVER
+	// IS ADDED TO IT. It is the rule the scoped rung is already written to — a
+	// selection appended to a script that names `tests/` selects both — one
+	// level lower down, in the runner's own invocation. `go test -json ./...
+	// ./internal/subharness/...` was measured reading 4,588 checks against a
+	// scope that had correctly chosen seventeen files, and it was killed at its
+	// budget like every whole reading before it.
+	//
+	// Most runners leave it empty: `vitest run`, `jest`, `mocha`, `ava` and
+	// `python3 -m pytest` all mean "everything" by naming nothing.
+	wholeTarget string
 }
 
 // runners is the table, in the order a project declaring two of them should be
@@ -409,7 +423,7 @@ var runners = []runner{{
 	name: "go test", binary: "go", read: FormatGoJSON,
 	machineArgs: []string{}, runArgs: nil,
 	declaredBy: []string{"go.mod"}, invocation: "go test -json ./...",
-	selects: true, selectsDirectories: true,
+	selects: true, selectsDirectories: true, wholeTarget: "./...",
 }, {
 	// Cargo's own machine-readable reporter is nightly-only, and a reading that
 	// needs an unstable toolchain is a reading most repositories cannot take.
@@ -779,10 +793,30 @@ func scopedStrategy(root string, plain Strategy, chosen runner, focus Focus) (St
 	rung := plain
 	rung.Runner, rung.Read = chosen.name, chosen.read
 	rung.Source = "the checks next to what this job touched"
-	rung.Base, rung.Selected, rung.Core = machineReadable(root, chosen.invocation, chosen), selectors, core
+	rung.Base, rung.Selected, rung.Core = withoutWholeTarget(
+		machineReadable(root, chosen.invocation, chosen), chosen.wholeTarget), selectors, core
 	rung.Command = rung.Base + " " + strings.Join(selectors, " ")
 	rung.Scope = fmt.Sprintf("touched packages (%d %s)", len(paths), plural(len(paths), "file"))
 	return rung, true
+}
+
+// withoutWholeTarget is a runner's invocation with its own "everything"
+// argument taken off, so that what is appended to it is the whole of what runs.
+//
+// It is whitespace-delimited equality and never a trim, because the target is an
+// argument rather than a suffix: `go test -json ./...` and a hypothetical
+// invocation that named it first are the same fact about the command line.
+func withoutWholeTarget(command, target string) string {
+	if strings.TrimSpace(target) == "" {
+		return command
+	}
+	kept := make([]string, 0, len(strings.Fields(command)))
+	for _, field := range strings.Fields(command) {
+		if field != target {
+			kept = append(kept, field)
+		}
+	}
+	return strings.Join(kept, " ")
 }
 
 // selectedDirectories turns a selection of files into the packages holding them,

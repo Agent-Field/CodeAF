@@ -334,6 +334,14 @@ func ReadShortfall(graph *store.Store, lineage string) Shortfall {
 	if findings.Unclosed || strings.TrimSpace(findings.Gap) != "" {
 		shortfall.Standing = RemainderDigest(findings.Gap)
 	}
+	// AND A DELIVERY NOTHING JUDGED IS SOMETHING THIS JOB IS STILL SHORT OF. The
+	// gate was declined rather than held, so there is no gap to digest and the
+	// refusal that stood in for the judgement is the whole of what stands. It
+	// cannot manufacture progress: a shortfall only falls when a standing one
+	// goes away (closerThan), and this can only ever put one there.
+	if shortfall.Standing == "" {
+		shortfall.Standing = RemainderDigest(findings.Declined)
+	}
 	return shortfall
 }
 

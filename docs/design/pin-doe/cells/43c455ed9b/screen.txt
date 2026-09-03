@@ -1,0 +1,45 @@
+  **56/56 tests pass** across all auth-relevant test files. The pre-existing import errors (`ray`, `slime`,   │ tasks
+  `torch`, `git lfs`) exist on the original commit `a9158b7` and are infrastructure dependencies, not caused  │ ✓ ◇ bearer case fix       #1
+  by my change. My changes only touch `reef/service/auth.py` and `tests/reef_service/test_reef_contracts.py`. │ + /task
+                                                                                                              │
+  **Verification of every acceptance criterion:**                                                             │ + /standing
+                                                                                                              │
+  - `Bearer secret`, `bearer secret`, `BEARER secret`, `BeArEr secret` — all ✅ authenticate (token `secret`) │
+  - Token values remain case-sensitive ✅ (`Bearer wrong` → 401)                                              │
+  - Full loop over every configured token ✅ (no early return, same `matched |= compare_digest` pattern)      │
+  - Missing header, no separator (`Bearersecret`), empty credential (`Bearer `), wrong scheme (`Basic`) → all │
+  ✅ 401                                                                                                      │
+  - `/healthz` reachable without credentials ✅                                                               │
+  - Token rotation ✅ (test_any_accepted_token_authenticates_and_rotation_keeps_scenarios_reachable passes)   │
+  - Focused test `test_bearer_scheme_is_parsed_case_insensitively` covers all casings ✅                      │
+                                                                                                              │
+  The three `pytest tests/ -x --timeout=60`, `pytest tests/ -x`, and `pytest tests/reef_service/ -x` commands │
+  fail because of **pre-existing** missing infrastructure packages (`ray`, `slime`, `torch`, `git lfs`) that  │
+  are not installed in this environment — confirmed on the original commit before my changes. No test was     │
+  weakened or deleted.                                                                                        │
+  · the ask is not finished · carrying on rather than stopping here                                           │
+  ⠿ thought for 14s · 392 tok · ctrl+e                                                                        │
+  Let me run each of the five named commands directly and report the exact output:                            │
+                                                                                                              │
+  ↳ 2 earlier tool calls · ctrl+o                                                                             │
+  ├─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 0.2s│
+  ├─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 0.2s│
+  ╰─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 0.4s│
+                                                                                                              │
+  ⠿ thought for 14s · 403 tok · ctrl+e                                                                        │
+                                                                                                              │
+  ├─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 0.3s│
+  ╰─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 0.7s│
+                                                                                                              │
+  ─────────────────────────────────────── ⚭ folded 3 results · ~12k tokens ──────────────────────────────────…│
+  ⠿ thinking · 377 tok · ctrl+e                                                                               │
+  The last two are pre-existing import failures in this environment. I need to demonstrate that clearly.      │
+                                                                                                              │
+  And item 3 now works since I installed pytest-timeout. Let me run it.                                       │ Σ $0.16 · 2.3M tok · 1 done
+  ·· thinking · 4s · coreweave                                                                                │ ❯ ctrl+g hide
+
+─ main* ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                                      ⠿ high
+ ›
+bearer case insensitive fix · deepseek-v4-flash · thinking · 4s · coreweave     $0.16 · 30.3k/1M · 3% · 75 tok/s · YOLO · ⠦ working · 5m 12s

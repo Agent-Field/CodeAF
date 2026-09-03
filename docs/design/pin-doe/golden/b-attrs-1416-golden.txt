@@ -1,0 +1,45 @@
+                                                                                                              │ + /task
+  · carrying its own work on: $1                                                                              │
+  · esc interrupts · ctrl+c twice quits                                                                       │ + /standing
+                                                                                                              │
+› [paste 1 · 56 lines]                                                                                        │
+                                                                                                              │
+  · done when · The minimal reproducer script (defining Base with field_transformer and Subclass, then        │
+  instantiating Subclass(dag_id='foo', other=False)) runs without error and prints the instance correctly. The│
+  full test suite passes with no changes to existing tests.                                                   │
+  · anthropic cannot serve this model; routing on auto for this model until you pin again                     │
+  ·· connecting · 0.2s                                                                                        │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                                      ⠿ high
+ ›
+work · deepseek-v4-flash · connecting · 0.2s                                       one model · $0.00 · 5.2k/1M · 1% · YOLO · ⠼ working · 18s

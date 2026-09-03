@@ -2103,6 +2103,11 @@ type Agent struct {
 	// is days old on a resumed conversation, and a budget measured from it would
 	// stop a resumed session before its first turn.
 	startedAt time.Time
+	// readerAbsentNoted says the journal already carries this session's one line
+	// about having no second model to read a mark with (checkpoint.go's
+	// [Agent.noteReaderAbsent]). It is a bit rather than a count because the fact
+	// is about the install and is true for the whole session.
+	readerAbsentNoted bool
 	// createdFiles is EVERYTHING THIS SESSION MADE THAT WAS NOT THERE BEFORE, in
 	// first-touch order (principal_audit.go). It is folded in from the per-turn
 	// ledger recovery.go already keeps — one source of truth for "did this exist

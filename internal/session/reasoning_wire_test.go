@@ -35,6 +35,9 @@ func newReasoningServer(t *testing.T, script ...[]string) *reasoningServer {
 	t.Helper()
 	server := &reasoningServer{}
 	server.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &body); err != nil {

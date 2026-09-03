@@ -71,10 +71,13 @@ type PlannerStartArgs struct {
 	Hint  string `json:"hint,omitempty"`
 }
 
-// TaskStarted is the receipt the existing single-task note draws.
+// TaskStarted is the receipt the existing single-task note draws. Note is the
+// engine's fallback line — "brief kept as you wrote it" — carried to the surface
+// only when the engine's shaper was invoked and came back cut; empty otherwise.
 type TaskStarted struct {
 	ID    uint64 `json:"id,omitempty"`
 	Title string `json:"title,omitempty"`
+	Note  string `json:"note,omitempty"`
 }
 
 // PlannerStarted is the receipt the existing adaptive-task note draws.

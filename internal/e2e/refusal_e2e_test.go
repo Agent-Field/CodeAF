@@ -50,8 +50,14 @@ import (
 )
 
 // refusalModel is the model the staged router serves. It is spelled
-// `openrouter/…` because that is how the transport recognises a router at all
-// when the base URL is a loopback address (lanestub's own header says so).
+// `openrouter/…` because that id is half of what still tells this build it is
+// talking to THE SHIPPED ROUTER, and one of the two things that reading buys is
+// which transport drives the loop ([provider.Client.ExecuteToolCallLoop] takes
+// this adapter's own rather than the SDK's) — the loop whose ladder and whose
+// refusal reading this test is about. IT IS NOT HOW THE RUN GETS LANES: since
+// #419 and #433 the sheet and the routing preference both come from what the
+// base ANSWERS, so the binary is pointed at the stub's plain [lanestub.Server.URL]
+// and everything about the frontier is the product's own doing (#426).
 const refusalModel = "openrouter/refusal-flash"
 
 // refusedLane is the machine this run's own routing demands and the router
@@ -133,7 +139,7 @@ func TestTUIRefusedLane(t *testing.T) {
 	})
 	ws := newWorkspace(t, "refusalws", false)
 	r := startWithEnv(t,
-		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.RouterURL()},
+		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.URL()},
 		"afe2e_refused", home, ws, tuiWide, 40)
 
 	// THE FRONTIER IS WAITED FOR RATHER THAN ASSUMED. A race with fewer than
@@ -322,7 +328,7 @@ func TestTUIRefusedLaneRowAfterTheTurnStops(t *testing.T) {
 	})
 	ws := newWorkspace(t, "voidws", false)
 	r := startWithEnv(t,
-		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.RouterURL()},
+		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.URL()},
 		"afe2e_refused_row", home, ws, tuiWide, 40)
 
 	if !waitForSheetOf(server, voidModel, 30*time.Second) {

@@ -98,6 +98,24 @@ var rigLanes sync.Map
 // `openrouter/…` because the transport only sends a routing preference to
 // something it believes is a router, and a loopback address is not one.
 func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneRig {
+	return newLaneRigWithPrice(t, name, nil, lanesOffered...)
+}
+
+// newPricedLaneRig is the same shipped-wire rig with the list price that put
+// the measured 0.825/2.475 dollars-per-million ceiling on the request.
+func newPricedLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneRig {
+	t.Helper()
+	return newLaneRigWithPrice(t, name, func(string) (float64, float64, bool) {
+		return 0.66e-6, 1.98e-6, true
+	}, lanesOffered...)
+}
+
+func newLaneRigWithPrice(
+	t *testing.T,
+	name string,
+	modelPrice func(string) (prompt, completion float64, known bool),
+	lanesOffered ...lanestub.Lane,
+) *laneRig {
 	t.Helper()
 	// NO TEST WRITES THE REAL HOME. The registry's own store is under it, and a
 	// suite that saved its scripted beliefs into somebody's ledger would be a
@@ -107,7 +125,9 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	server := lanestub.New(model, lanesOffered...)
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model})
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: server.URL(), Model: model, ModelPrice: modelPrice,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +145,16 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	// THE CONTROLLER IS INSTALLED THROUGH THE ONE SEAM, exactly as a shipped
 	// build installs it, so that what these tests exercise is the wiring and
 	// not a second arrangement built for them.
+	// AND THE RIG STATES WHAT THIS STUB IS. A shipped build learns that a base
+	// carries a routing preference from the base itself — the endpoints page the
+	// beat fetches, or the lane an answer names (issue #433) — and neither has
+	// happened here: no beat runs in a test, and the belief below is SCRIPTED
+	// rather than measured. This stub publishes an endpoints page and names its
+	// lane on every answer, so it does carry one; saying so is stating a fact
+	// about the fixture, not turning a law off. A rig that left it unsaid would
+	// send no `provider` object at all until something was pinned, which is
+	// exactly right for a plain endpoint and wrong for a router.
+	lanes.HeardPrefsCarried(server.URL())
 	rig := &laneRig{server: server, client: client, ledger: ledger, model: model}
 	shipped := lanes.SetController(func(plan control.Plan) control.Controller {
 		return ridePolicy(rig.scaled(plan))
@@ -705,13 +735,26 @@ func TestAProbePairAsksTwoLanesForOneTokenEach(t *testing.T) {
 	}
 }
 
-func TestAProbeRefusesAClientThatIsNotTalkingToARouter(t *testing.T) {
+// A PROBE IS REFUSED ON A BASE THAT HAS SAID IT WILL NOT CARRY A DEMAND.
+//
+// WHAT WAS TRUE: the refusal was a hostname test, so a prober was refused to
+// every proxy, mirror and self-hosted router as well (issue #433). WHAT IS TRUE
+// NOW: a base nobody has asked is wired — the asking is the sending, and a
+// frontier with no lane in it buys nothing anyway — and only a base that has
+// answered is refused.
+func TestAProbeRefusesAClientOnABaseThatWillNotCarryADemand(t *testing.T) {
 	client, err := NewClient(Config{APIKey: "test-key", BaseURL: "http://provider.test", Model: "sim/model"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !InstallLaneProber(client, nil) {
+		t.Fatal("a base nobody has asked was refused a prober, so it can never be asked")
+	}
+	if !lanes.HeardPrefsSilent(client.config.BaseURL) {
+		t.Fatal("the answer was not filed against the base the client is talking to")
+	}
 	if InstallLaneProber(client, nil) {
-		t.Fatal("a probe was wired to an endpoint that cannot honour `only`")
+		t.Fatal("a probe was wired to an endpoint that has said it cannot honour `only`")
 	}
 }
 

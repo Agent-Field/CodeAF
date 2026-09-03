@@ -130,6 +130,12 @@ type Spec struct {
 	// predecessor was. Render deliberately omits it — the worker is never shown
 	// the list it will be checked on.
 	Accept []Point `json:"accept,omitempty"`
+	// Constraints are the rules the person stated about what the run may or may
+	// not DO. Unlike Accept, which belongs to the node that delivers, these are
+	// stamped on every node of the job: the person said it about the run, so
+	// every worker the run starts is under it. See constraint.go, and Render
+	// below, which puts them FIRST.
+	Constraints []Constraint `json:"constraints,omitempty"`
 }
 
 // Empty reports whether this spec carries nothing. An empty spec renders to the
@@ -141,16 +147,24 @@ func (s Spec) Empty() bool {
 		strings.TrimSpace(s.Method) == "" &&
 		len(s.Sources) == 0 &&
 		len(s.Accept) == 0 &&
+		len(s.Constraints) == 0 &&
 		s.Done.Empty()
 }
 
 // Render writes the spec as the text a worker or a foreign engine reads.
 //
-// Field order is fixed and Method comes first: it is the half that is stable for
-// the life of a job, so it belongs at the front of a string that will be a cache
-// prefix once this render reaches an engine of its own. Done comes last because
-// it is what a retry rewrites least and an instruction rewrites most — the order
-// puts the churn where a prefix match has already been spent.
+// THE RULES THE PERSON SET COME FIRST, ABOVE EVERYTHING. A rule about what the
+// run may or may not do is not one consideration among several: it is the
+// boundary the rest of the spec is written inside, and a worker that reads its
+// assignment before the boundary has already decided what to do by the time it
+// meets the rule. It costs nothing at the cache seam either — constraints are
+// stamped once per job and are the most stable bytes in the whole object.
+//
+// Field order past them is fixed and Method comes next: it is the half that is
+// stable for the life of a job, so it belongs at the front of a string that will
+// be a cache prefix once this render reaches an engine of its own. Done comes
+// last because it is what a retry rewrites least and an instruction rewrites
+// most — the order puts the churn where a prefix match has already been spent.
 //
 // limit bounds the whole render in bytes; zero or less is unbounded. An empty
 // spec renders to "".
@@ -171,6 +185,7 @@ func (s Spec) Render(limit int) string {
 		out.WriteString(":\n")
 		out.WriteString(body)
 	}
+	section(ConstraintsHeading, strings.Join(ConstraintLines(s.Constraints), "\n"))
 	section("How this kind of work is done well", s.Method)
 	section("The work", s.Instruction)
 	if len(s.Sources) > 0 {
@@ -206,6 +221,57 @@ func (s Spec) Render(limit int) string {
 		section("Done when", done.String())
 	}
 	return clipSpec(out.String(), limit)
+}
+
+// mintedInside puts every node of a sub-graph inside the spec of the node it
+// came out of. It is the one seam a claim-time child passes through, and it
+// takes the parent's whole SPEC rather than a field of it — a division that
+// inherited its constraints and not its criterion is a child minted inside half
+// of what its parent was held to, and which half was a matter of whichever
+// caller was written last.
+//
+// Until it existed, an expansion inherited the graph-level premises — the
+// settled points, the terrain, the invoice — and NOTHING off the node. The
+// children came back with an empty Spec, so a divided node lost its criterion,
+// its working method and (once they existed) the rules the person set, all at
+// once and silently. See expandScoped, its one caller.
+//
+// Each field keeps its own law, and they are different laws for good reasons:
+//
+//   - Done and Method are FILLED WHERE EMPTY AND NEVER OVERWRITTEN. What the
+//     sub-plan wrote about a child is about that child and beats anything
+//     inherited; what it left empty used to be nothing at all, and the parent's
+//     is the only standard in the building that applies. Inside a full build the
+//     brief and contract passes run after this and write their own, which is
+//     the same rule expressed by ordering.
+//   - Constraints go on EVERY child, because a rule the person stated is a
+//     property of the job and dividing a node is not how a job walks out from
+//     under it. See SetConstraints.
+//   - Accept follows the checklist's own law and answers to deliverableOwner:
+//     the request's behaviours belong to whoever hands the finished thing over,
+//     and a sub-graph with several sinks has not gathered yet — stamping all of
+//     them would buy one repair round per sink for one gap. See SetAcceptance.
+//
+// Instruction and Sources are deliberately NOT inherited. A child told its
+// parent's whole instruction does its parent's whole job — the appetite failure
+// the fan-out rule exists to refuse — and its own sources are what the division
+// just decided. A child with no instruction falls back to its brief, which is
+// what every reader downstream already does.
+func (g *Graph) mintedInside(parent Spec) {
+	if g == nil || parent.Empty() {
+		return
+	}
+	for index := range g.Nodes {
+		spec := &g.Nodes[index].Spec
+		if spec.Done.Empty() {
+			spec.Done = parent.Done
+		}
+		if strings.TrimSpace(spec.Method) == "" {
+			spec.Method = parent.Method
+		}
+	}
+	g.SetConstraints(parent.Constraints)
+	g.SetAcceptance(parent.Accept)
 }
 
 // Criterion is the wave's rollback switch. On, the brief call returns an

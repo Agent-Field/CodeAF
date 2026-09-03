@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -275,6 +276,10 @@ func TestAdjacencyReadsBesideAndResolvesRelativeImports(t *testing.T) {
 func TestACutScopedReadingIsRetakenAtTheSizeItsPaceAffords(t *testing.T) {
 	cut := Reading{
 		CutAfter: 113 * time.Second,
+		// The budget it was killed at, which is also the most a retake can be
+		// handed — see Reading.Retakeable, where a retake that could not be
+		// smaller than the reading that was cut is refused.
+		Budget: 113 * time.Second,
 		Strategy: Strategy{
 			Base:     "python3 -m pytest -rA",
 			Selected: make([]string, 40),
@@ -826,5 +831,62 @@ func TestAShortNameIsOnlyASubjectWhenTheRequestSpellsItBothWays(t *testing.T) {
 					probe.text, subjects, probe.want)
 			}
 		})
+	}
+}
+
+// A REQUEST THAT NAMES A PACKAGE IS READ OVER THAT PACKAGE.
+//
+// The errand measured in #429 said `go test ./internal/subharness/ -count=1`,
+// which spells its subject as plainly as a request ever does, and the focus came
+// out EMPTY: the path reader wanted a dot and an extension, the name reader
+// wanted CamelCase or snake_case, and a directory is neither. So the ladder had
+// one whole rung, and a job about seventeen files photographed 4,587 tests nine
+// times, every reading killed at its ceiling.
+func TestARequestThatNamesAPackageIsReadOverThatPackage(t *testing.T) {
+	const errand = "Run the command 'go test ./internal/subharness/ -count=1' in this " +
+		"workspace and report the final line it prints. Change no files."
+	subjects := NamedSubjects(errand)
+	if !slices.Contains(subjects, "internal/subharness") {
+		t.Fatalf("the package the request names is not a subject of it: %#v", subjects)
+	}
+
+	root := project(t, map[string]string{
+		"go.mod":                           "module example.com/thing\n\ngo 1.22\n",
+		"internal/subharness/card.go":      "package subharness\n",
+		"internal/subharness/card_test.go": "package subharness\n\nfunc TestCard(t *testing.T) {}\n",
+		"internal/session/turn.go":         "package session\n",
+		"internal/session/turn_test.go":    "package session\n\nfunc TestTurn(t *testing.T) {}\n",
+	})
+	located := Locate(root, Focus(subjects))
+	if !slices.Contains([]string(located), "internal/subharness") {
+		t.Fatalf("a directory the workspace holds did not survive resolution: %#v", located)
+	}
+	// And prose is not a path because it has a slash in it. A place the
+	// workspace does not hold is dropped, so nothing aims a reading at a
+	// directory called `and`.
+	if kept := Locate(root, Focus{"and/or", "vendor/nothing"}); len(kept) != 0 {
+		t.Errorf("a place the workspace does not hold was kept as a subject: %#v", kept)
+	}
+
+	ladder, ok := ReadingStrategies(root, Discover(root), located)
+	if !ok || len(ladder) == 0 {
+		t.Fatal("a project with a go.mod produced no strategy at all")
+	}
+	first := ladder[0]
+	if first.Scope == ScopeWhole {
+		t.Fatalf("the request named a package and the reading is of everything: %#v", first)
+	}
+	if !strings.Contains(first.Command, "./internal/subharness/") {
+		t.Errorf("the reading is not taken over the package the request named: %q", first.Command)
+	}
+	if strings.Contains(first.Command, "internal/session") {
+		t.Errorf("the reading reached a package the request never named: %q", first.Command)
+	}
+	// AND THE RUNNER'S OWN "EVERYTHING" IS NOT STILL ON THE COMMAND LINE. `go
+	// test -json ./... ./internal/subharness/...` is a reading of the whole
+	// repository wearing a scope's clothes: measured at 4,588 checks against a
+	// selection that had correctly chosen seventeen files.
+	if strings.Contains(first.Command, "./...") {
+		t.Errorf("the scoped reading still names the whole tree: %q", first.Command)
 	}
 }

@@ -2732,7 +2732,19 @@ func (s *sheet) laneWord(item sheetItem) string {
 	// they could disagree would be a panel that is wrong about one of them.
 	if row, ok := s.registry.Row(config.LaneSettingKey(talkSlot)); ok {
 		if word := row.Value(); word != "" && !strings.EqualFold(word, config.LaneAuto) {
-			return strings.ToLower(word)
+			word = strings.ToLower(word)
+			// AND THE ROW SAYS SO WHEN THE CHOICE IS NOT REACHING THE WIRE
+			// (issue #433). A base that has answered that it will not carry a
+			// routing preference — a proxy, a mirror, a plain endpoint — leaves
+			// `pinned: cloudflare` standing on the screen as a claim about a
+			// request that did not carry it, which is the silent substitution
+			// this build forbids. The conversation is told once
+			// ([provider.UncarriedPinLine]); this row keeps saying it, because
+			// it is the row somebody comes back to look at.
+			if !provider.BaseTakesLaneChoice() {
+				word += " (not taken on this base)"
+			}
+			return word
 		}
 	}
 	if best, ok := bestLane(laneViews(s.sessionModel, timeNow())); ok {

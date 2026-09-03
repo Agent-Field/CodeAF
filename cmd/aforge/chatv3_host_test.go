@@ -147,14 +147,19 @@ func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
 }
 
 // The flag exists and is documented in exactly one place: `aforge chat -h`.
+//
+// ASKING FOR HELP IS NOT A FAILURE (usage.go), so the page goes to stdout and
+// the door leaves with 0 rather than handing back the flag package's internal
+// `flag: help requested`. The old shape of this test accepted that string and
+// never read the page at all, which meant it passed whether or not `--host`
+// was on it — the one fact it is named for.
 func TestHostFlagIsOnTheChatUsage(t *testing.T) {
-	// ASKING FOR HELP IS NOT A FAILURE, so this door hands back an exit status
-	// of ZERO rather than the flag package's own internal string, and the usage
-	// has already gone to stdout (usage.go). The old assertion looked for
-	// `flag: help requested`, which is the very sentence that stopped being
-	// printed at anybody.
+	page, _ := captureUsage(t)
 	if code := exitCodeOf(openChatV3("chat", []string{"--help"}, false)); code != 0 {
 		t.Fatalf("`aforge chat --help` left with %d, want 0", code)
+	}
+	if !strings.Contains(page.String(), "--host") {
+		t.Fatalf("`aforge chat --help` does not document --host:\n%s", page)
 	}
 }
 

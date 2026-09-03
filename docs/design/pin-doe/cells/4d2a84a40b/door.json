@@ -1,0 +1,9 @@
+{
+ "door": "chat",
+ "ended": "self",
+ "wall_s": 99,
+ "cost_usd": 0.005327,
+ "ttft_ms": 1358,
+ "calls": 10,
+ "turns": 1
+}

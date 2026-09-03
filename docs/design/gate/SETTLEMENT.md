@@ -611,3 +611,253 @@ funded as one. And when no verdict can be read at all, the gate runs that same
 promised-versus-present check and raises what the filesystem says, journaled
 `subject: fallback`. What it does NOT do is re-ask under the claim contract: that
 was built and it re-admitted the three findings §6 exists to refuse.
+
+
+## Addendum, 2026-09-02: a tree with no diff has nothing to judge and nothing to repair
+
+§8 established that a repair round which moved nothing may not close a finding
+about the world, and it did it by stamping the tree either side of the round. The
+same stamp, taken either side of the LEAF, answers a question one step earlier
+and cheaper: was there ever anything here to judge at all?
+
+The run that made it necessary read a large file to its budget twice over. Its
+growth governor declared a standstill — the sentence went to the stream and the
+journal — and the settlement then paid two gate calls of ~114K tokens whose
+refusal described work that did not exist, ran a full twenty-turn repair round
+against that refusal, re-judged it, printed the standstill again, and resumed the
+same leaf a third time. Every one of those was bought over a tree that was
+byte-for-byte the tree the leaf had started from.
+
+> **ONCE THE HARNESS HAS CONCLUDED NOTHING IS CHANGING, IT STOPS SPENDING ON
+> THAT JOB: no gate on a tree with no diff, no repair round on a tree with no
+> diff, and no resume.**
+
+Three parts, one law. The gate and the repair are skipped on the MEASUREMENT —
+the record stamped as the leaf started against the same record where the gate
+would be asked — because a leaf that wrote and altered nothing has produced
+nothing for a judge to read and nothing for a repair to build on. The resume is
+stopped on the VERDICT: the growth governor's cause word rides out on the leaf's
+result (`resident.ExecResult.RefusedGrowth`) and the scheduler ends the node with
+the governor's own sentence rather than claiming it again. The two are separate
+readings on purpose — a job can be at a standstill while a leaf writes scratch,
+and a leaf can change nothing on a round nobody has refused yet — and the first
+fruitless round is bought by both, because the governor already encodes that
+clause (FAILSAFE clause 5) and nothing here re-derives it.
+
+An unasked gate is journaled as what it was. The row carries the handover
+sentence in `refused` and leaves the delivery `unclosed`, and it never carries a
+pass: a run that changed nothing handed over less than it promised, and the
+ledger a battery reads must not be able to mistake it for work that was checked.
+
+The sibling ruling, at the same seam: **a delivery gate that PASSED settles the
+node, even where the leaf ran out of room getting there.** Running out is a
+statement about the meter; a gate pass is a reading of the work against the words
+the person used, and "is this done" is the work's question. What is still refused
+is the one that produced the defect this document is named after — a remainder
+judge shown the brief and the worker's own last sentence, whose "nothing is left"
+settles nothing at all.
+
+## Addendum, 2026-09-02: a constraint the person states is a law of the run
+
+Every clause above weighs what the work PRODUCED. #427 is the other axis, and
+nothing in this file held it: a rule the person states about what the run may or
+may not **do**.
+
+The measured run is one sentence long.
+
+> Run the command `go test ./internal/subharness/ -count=1` in this workspace and
+> report the final line it prints. **Change no files.**
+
+The first leaf did exactly that — one shell call, the final line reported, its
+own closing words "No files were changed." — and two minutes in the request was
+satisfied. The run then spliced `write-run-command-test`,
+`check-runs-in-workspace`, `check-reports-final-line`, which wrote a new test
+into an existing `_test.go` and a shell script at the workspace root. Measured
+twice on the shipped default: 1 file changed, then 2.
+
+The constraint reached the run only as prose. The compiled brief had no field for
+one, so "Change no files" survived inside the goal and inside the working method.
+The acceptance checklist rightly held two behaviours about the RESULT (the
+command is run; the final line is reported) and — also rightly — did not hold the
+constraint, because it is not a behaviour of the deliverable. So nothing
+structural carried it, and the gate never read it: the judge is asked to name an
+element of the request that is ABSENT, and the workspace's own before-and-after
+list was never held against a rule about what the run may not touch.
+
+Three rules then rewarded the violation, which is why no prompt could have fixed
+it. A repair was judged not to have closed a grounded finding when it "changed
+nothing on disk". The growth governor's standstill reads "nothing was written or
+altered" as no progress. And the overrun journal recorded the two written files
+under `moved` as the evidence that the round had produced something.
+
+> **A CONSTRAINT THE PERSON STATES IS A LAW OF THE RUN: carried on the brief and
+> on the spec of EVERY node, shown to every worker first, held mechanically at
+> the gate against what the run left behind, and never advice. A delivery that
+> broke one FAILS, and a broken constraint NEVER buys a repair round or a
+> remainder.**
+
+Four things follow, and each is a mechanism rather than a sentence.
+
+**It is a field.** `plan.Constraint` carries the person's own words, the
+mechanical reading of them (`no_writes`, `paths_only`, `other`) and the paths
+that reading is about. The compiler extracts it; `head.keepStatedConstraints`
+then drops every constraint whose text it cannot quote out of the instruction,
+because THE GATE MAY ONLY HOLD PEOPLE TO THEIR OWN WORDS — a rule this system
+invented, enforced by arithmetic, would fail deliveries that did exactly what was
+asked. The same guard strips a kept rule out of `Assumptions`, since `aforge do`
+discards those and a rule living only there is a rule that surface drops.
+
+**It lands on every node, not on the one that delivers.** That is the one way
+`SetConstraints` differs from `SetAcceptance` beside it. The checklist is what
+the finished thing must do and belongs to whoever hands it over; the person said
+"change no files" about the RUN, so every worker the run starts is under it —
+including the ones spliced later, which is exactly where the files were written.
+The remainder planner stamps them onto the continuation before it is encoded.
+
+**The gate holds it before a model is bought, and above every other finding.**
+`revision.HoldConstraints` reads the artifact record against the workspace: for
+`no_writes`, any file the run left behind; for `paths_only`, any file outside the
+named places. The harness's own machinery is never counted — it lives outside the
+workspace root by construction, and `verify.SkipTree` names the rest. The
+resulting judgement is `Mechanical` and `Sourced`: mechanical because no ruling
+about a quotation makes a written file unwritten, and sourced because the quote
+IS the person's sentence, so the grounding invariant of §1 is satisfied by
+construction rather than by a check. `other` constraints are shown to the judge
+as the standard beside the request instead.
+
+**And it buys nothing.** `ExtendForGap` refuses before anything is planned —
+`the work broke a rule the person set, and no round is bought to close that` —
+and the repair round is skipped at the wiring seam for the same reason. §8's
+standstill rule is turned OFF for a run under `no_writes`: a run told to change
+nothing that changed nothing has kept its word, and reading that as a repair
+which did nothing is the first of the three rules above, written down.
+
+`store.DeliveryGate.Constraint` records it, and `Whole()` counts it as leaving
+the delivery short — no pass, no closed repair and no overturned refusal covers
+it, because none of the three is about the rule.
+
+Four edges of the same law, each one a place it could have leaked out.
+
+**A claim-time child is minted inside its parent's spec.** An expansion inherits
+the graph's own premises — the settled points, the terrain, the invoice — and
+inherited NOTHING off the node it divided, so a divided node lost its criterion,
+its working method and its rules in one silent step. `plan.Graph.mintedInside`
+takes the parent's whole spec at the single seam every minted child passes
+through: Done and Method fill what the sub-plan left empty and never overwrite
+what it wrote, Constraints go on every child, and Accept answers to
+`deliverableOwner` as it always has, because stamping the checklist on every sink
+buys one repair round per sink for one gap.
+
+**A rule the JUDGE convicts on is a broken rule.** The rules no arithmetic can
+settle are shown to the judge as the standard beside the request, and a verdict
+that quotes one was right about the finding and had no way to say what KIND of
+finding it is — so it bought the repair round and the remainder like any other
+gap. `ConstraintQuoted` stamps it at the gate's one exit, on the containment rule
+this program already uses for a behaviour, and only for `other`: a mechanical
+rule was held above and found KEPT, so a judge convicting on one is convicting on
+an answered question.
+
+**The `no_writes` neutrality is not an amnesty.** It makes an unmoved repair
+neutral about findings only work could close, which is what a run under that rule
+needs. It does not cover a MECHANICAL gap — a file the plan or the person
+promised and the disk does not hold — because no rule about what a run may not
+write makes an absent deliverable appear, and without the guard one rule on the
+record would switch §8 off for everything.
+
+**Deleting is changing, and containment is lexical.** The reading that holds the
+rule is the only one in this package that must not ask the disk whether a file
+still exists: a run told to change nothing that DELETED a file changed the tree in
+the loudest way there is, and a dangling symlink is the same event wearing a stat
+error. A workspace reached through a symlink is not resolved — that is how the
+artifact record spells its paths, and two spellings of one place is drift this
+reading cannot afford. Only a real climb out of the root (`..`, `../…`) is
+outside it; `..config` at the root of somebody's tree is a file they keep there.
+---
+
+## Addendum, 2026-09-02: a run ends when the request is satisfied
+
+Everything above bounds a run negatively — rounds spent, nodes spliced, dollars
+burned, wall left, findings standing. Nothing in it ever asked whether the thing
+the person asked for is in hand. The headless door settles when every node is
+terminal; the growth governor judges the PLAN's own criterion; the gate names
+absences against a checklist. **"Done" was when the plan ran out.**
+
+The measured cost is #428: an errand satisfied by its first leaf at two minutes
+ran into its 700-second wall twice out of two, and a correct fix to a real issue
+was refused three times and delivered as `partial` over tests that were 6 of 6
+green.
+
+### The question, and the one place it is asked
+
+`revision.RequestMet` (internal/revision/satisfied.go). One model call on the
+gate's own client, with a static system prompt first for the cache: the verbatim
+request, the rules the person stated, the deliverable as produced, and the record
+of what the run changed. It answers `{"met": bool, "missing": "<quoted words>"}`
+against a schema.
+
+**It is asked at the moment a round would otherwise be bought, and nowhere
+else** — never per turn, never on the happy path — so its cost is bounded by the
+rounds it replaces. There are three seams:
+
+- `cmd/aforge/chat.go`, `requestSettled`, after both world-doors and before the
+  repair round. A yes sets `gate.Pass`, clears the gap, stamps
+  `revision.RequestMetWords` on the verdict, on `store.DeliveryGate.Receipt` and
+  on the node's own record. Every reader downstream turns on `gate.Pass`, so no
+  repair, no remainder, no continuation and no reservation follow.
+- The same call on the judgement the REPAIR produced, before the extension. A
+  repair round rewrites the deliverable and is judged again, so that is a
+  different verdict over a different text and the answer may have changed with
+  it; without asking, the run buys a whole remainder over a request the repair
+  had just satisfied.
+- `revision.ExtendForGap`, before `ReplanOverrunAs`, through `metExtension`, for
+  the callers that reach the extension without the gate's own caller. The
+  resident's resume path is a fourth door and is not wired here.
+
+`Judgment.RequestAsked` carries the answer between them, so one verdict is never
+paid for twice. `Judgment.Request` is the question itself, bound at
+`JudgeDeliverable`'s single exit beside `Subject` and `HeldPoint` and for the
+identical reason: **a field set by the caller is a field the next caller
+forgets**, and until it was bound there the extension door was dead wiring for
+every caller that is not the chat surface.
+
+### A MODEL'S READING MAY NOT OVERTURN A MEASUREMENT
+
+`revision.MeasuredFinding`, and it is the law this door lives or dies by. The
+question is one model looking at a deliverable and a record. A file the plan
+promised and the disk does not hold, a check that passed before the work and
+fails after it, a name the tree no longer binds, a behaviour nothing exercises,
+a definition its callers no longer fit — each is a fact somebody gathered, and no
+reading of the request is competent to overturn one. The two world-doors above
+this are allowed to acquit only because they weigh a finding against the disk and
+against the delivered text; this weighs it against a sentence, so it may be put
+ONLY of the judge's own prose — "that is a report about the output, not the
+output itself" — which is a reading of the request and is answerable by another
+reading of the request. Without the restriction the door would do exactly what
+§2 spent a whole sweep making impossible.
+
+`revision.RequestQuestionable` is the one predicate both doors read, so neither
+can spell half the law. `revision.ConstraintFinding` is its other half and the
+one-line seam for constraints — a run that produced everything the request asked
+for in a way the request forbade has not met the request as stated.
+
+### The fail-open direction is the existing path
+
+`asked` is false wherever there was no answer to read — no client, a call that
+failed, a reply that could not be parsed — and the caller then buys the round it
+was going to buy. A yes that also names something missing is read as a no. The
+alternative to both is a delivery ended as satisfied on the strength of a
+provider timeout.
+
+### A receipt says why a run stopped, never whether it landed
+
+`store.DeliveryGate.Receipt` is the one positive field on that row and it is
+deliberately **not** read by `Whole()`. Two sentences, each stated once:
+`revision.RequestMetWords` — *the request was met as stated* — and
+`revision.CheckedNotMeasured` — *checked by tests, coverage not measured*, which
+a delivery earns where the coverage question had no measurement to answer from
+and the work's own checks ran and every one of them settled
+(`revision.checkedByItsOwnTests`). The second also clears `Unreadable`, because a
+run whose own checks ran and settled is not a run nothing checked — a person is
+never shown `partial` over green work, and never a silent pass either: the
+receipt says which of the two happened. The fallback reads the worker's
+STRUCTURED account and never the deliverable's prose about its own tests.

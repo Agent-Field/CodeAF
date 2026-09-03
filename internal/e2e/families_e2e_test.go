@@ -271,7 +271,7 @@ func runFamily(t *testing.T, w *world, ground, ask string, attempt int, during f
 	wide, parts, why := agent.JudgeDecomposable(ctx, ask)
 	t.Logf("SIZING attempt %d → wide=%v parts=%v why=%q", attempt, wide, parts, why)
 
-	id, title, err := agent.StartTask(ctx, ask)
+	id, title, _, err := agent.StartTask(ctx, ask)
 	if err != nil {
 		t.Fatalf("start the task: %v", err)
 	}

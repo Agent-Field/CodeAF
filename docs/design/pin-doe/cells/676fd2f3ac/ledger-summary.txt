@@ -1,0 +1,102 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+16:28:14.220 754d266c start -     anthropic      -    -       
+16:28:14.257 754d266c end   -     anthropic      404  37      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:28:14.257 a3f87a8d start -     DigitalOcean   -    -      hedged arms=2 
+16:28:38.709 a3f87a8d end   -     DigitalOcean   200  24451  hedged arms=2 
+16:28:38.711 efbe2ef6 start turn  CoreWeave      -    -       
+16:29:27.762 efbe2ef6 end   turn  CoreWeave      200  49051   
+16:29:27.763 516ed6a1 start turn  CoreWeave      -    -       
+16:29:34.171 516ed6a1 end   turn  CoreWeave      200  6407    
+16:29:34.201 a8a0ba20 start turn  CoreWeave      -    -       
+16:29:36.937 a8a0ba20 end   turn  CoreWeave      200  2736    
+16:29:36.938 6df2d334 start turn  CoreWeave      -    -       
+16:29:41.257 6df2d334 end   turn  CoreWeave      200  4318    
+16:29:41.265 7bd22f9f start turn  CoreWeave      -    -       
+16:29:44.425 7bd22f9f end   turn  CoreWeave      200  3159    
+16:29:44.427 6ac2d3c7 start turn  CoreWeave      -    -       
+16:29:48.435 6ac2d3c7 end   turn  CoreWeave      200  4008    
+16:29:48.443 936cef2c start turn  CoreWeave      -    -       
+16:29:54.616 936cef2c end   turn  CoreWeave      200  6174    
+16:29:54.619 d0b9aa80 start turn  CoreWeave      -    -       
+16:30:05.138 95f9a3c6 start turn  Phala          -    -       
+16:30:08.120 95f9a3c6 end   turn  Phala          200  2983    
+16:30:08.124 0026e3dc start turn  CoreWeave      -    -       
+16:30:18.056 0026e3dc end   turn  CoreWeave      200  9932    
+16:30:18.086 b4625301 start turn  CoreWeave      -    -       
+16:30:22.673 b4625301 end   turn  CoreWeave      200  4587    
+16:30:22.718 984f0ecf start turn  CoreWeave      -    -       
+16:30:28.900 984f0ecf end   turn  CoreWeave      200  6183    
+16:30:28.948 61f73ca4 start turn  CoreWeave      -    -       
+16:30:33.896 61f73ca4 end   turn  CoreWeave      200  4949    
+16:30:33.934 54290ea3 start turn  CoreWeave      -    -       
+16:30:37.542 54290ea3 end   turn  CoreWeave      200  3609    
+16:30:37.573 cbd4300e start turn  CoreWeave      -    -       
+16:30:53.427 6ba8fb6e start turn  CoreWeave      -    -       
+16:30:55.893 7f40a279 start turn  CoreWeave      -    -       
+16:31:13.059 83daeb23 start turn  CoreWeave      -    -       
+16:31:22.568 1a8e3cec start turn  CoreWeave      -    -       
+16:31:30.798 411b77c2 start turn  CoreWeave      -    -       
+16:31:38.248 5cfc7fc7 start turn  CoreWeave      -    -       
+16:31:41.084 3d89c533 start turn  CoreWeave      -    -       
+16:31:44.393 3e0996a6 start turn  CoreWeave      -    -       
+16:31:53.681 e623d14e start turn  CoreWeave      -    -       
+16:31:58.585 13ed6c8d start -     StreamLake     -    -       
+16:31:58.586 e8302157 start -     Baidu          -    -       
+16:31:59.450 13ed6c8d end   -     StreamLake     200  865     
+16:31:59.450 e02cae2f start -     StreamLake     -    -       
+16:32:00.388 e8302157 end   -     Baidu          200  1803    
+16:32:00.397 4d36e889 start -     Baidu          -    -       
+16:32:02.748 4d36e889 end   -     Baidu          200  2350    
+16:32:03.326 e02cae2f end   -     StreamLake     200  3875    
+16:32:13.113 6f22a401 start task  CoreWeave      -    -       
+16:32:15.968 8ae1302f start task  NextBit        -    -      hedged arms=2 
+16:32:15.997 8760dd26 start task  NextBit        -    -      hedged arms=2 
+16:32:19.879 8760dd26 end   task  NextBit        200  3911   hedged arms=2 
+16:32:19.882 5573b89a start task  CoreWeave      -    -       
+16:32:21.856 ca6e7e52 start task  NextBit        -    -      hedged arms=2 
+16:32:22.619 ca6e7e52 end   task  NextBit        -    762    hedged arms=2 Post "https://openrouter.ai/api/v1/chat/completions": context canceled
+16:32:22.625 f2b9469f start task  CoreWeave      -    -       
+16:32:26.827 f2b9469f end   task  CoreWeave      200  4202    
+16:32:26.834 506da94b start task  CoreWeave      -    -       
+16:32:45.362 506da94b end   task  CoreWeave      200  18528   
+16:32:45.406 007f0744 start task  CoreWeave      -    -       
+16:33:05.520 007f0744 end   task  CoreWeave      200  20114   
+16:33:05.525 4e81d837 start task  CoreWeave      -    -       
+16:33:09.514 ab60264f start task  CoreWeave      -    -       
+16:33:38.577 ab60264f end   task  CoreWeave      200  29064   
+16:33:38.582 b4a1f0fb start task  anthropic      -    -       
+16:33:38.646 b4a1f0fb end   task  anthropic      404  66      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:33:38.649 87a669d2 start task  CoreWeave      -    -      hedged arms=2 
+16:33:42.978 d365db8c start task  Phala          -    -      hedged arms=3 
+16:33:43.651 d365db8c end   task  Phala          -    673    hedged arms=3 Post "https://openrouter.ai/api/v1/chat/completions": context canceled
+16:33:43.664 26f58249 start task  CoreWeave      -    -       
+16:33:53.349 26f58249 end   task  CoreWeave      200  9687    
+16:33:53.394 0beb3fc9 start task  CoreWeave      -    -       
+16:34:04.750 0beb3fc9 end   task  CoreWeave      200  11357   
+16:34:04.796 e100644c start task  CoreWeave      -    -       
+16:34:13.724 0496a103 start task  CoreWeave      -    -       
+16:38:23.031 0496a103 end   task  CoreWeave      200  249310  the reply ran past 4m5s without finishing and was cut
+16:38:23.035 1ab1c727 start task  anthropic      -    -       
+16:38:23.092 1ab1c727 end   task  anthropic      404  60      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:38:23.097 ed146222 start task  CoreWeave      -    -      hedged arms=2 
+16:38:23.140 ed146222 end   task  CoreWeave      404  47     hedged arms=2 API error (404): All providers have been ignored. To change your default ignored providers, visit: h
+16:38:23.142 15959295 start task  Phala          -    -      hedged arms=3 
+16:38:23.200 15959295 end   task  Phala          404  59     hedged arms=3 API error (404): All providers have been ignored. To change your default ignored providers, visit: h
+16:38:23.221 afaa8222 start turn  Azure          -    -       
+16:38:25.817 afaa8222 end   turn  Azure          200  2600    
+16:38:25.831 af6390a7 start turn  Azure          -    -       
+16:38:33.245 8c5423fa start turn  Azure          -    -       
+16:38:36.158 f23297eb start turn  Azure          -    -       
+16:38:41.041 efa3a7e2 start turn  Azure          -    -       
+16:38:50.863 4f4406f3 start turn  Azure          -    -       
+16:38:54.926 c9c9a1d0 start turn  Azure          -    -       
+16:38:57.659 c9c9a1d0 end   turn  Azure          200  2735    
+16:38:57.666 94ee6b7f start turn  Azure          -    -       
+16:39:02.210 1fdb7898 start turn  Azure          -    -       
+16:39:08.991 6b107620 start turn  Azure          -    -       
+16:39:11.355 6b107620 end   turn  Azure          200  2369    
+16:39:11.364 1e1170b4 start turn  Azure          -    -       
+16:39:19.213 090ccbe5 start turn  Azure          -    -       
+16:39:23.037 6f51b649 start turn  Azure          -    -       
+16:39:26.116 ec873cd8 start reflex Baidu          -    -       
+16:39:33.833 ec873cd8 end   reflex Baidu          200  7717    

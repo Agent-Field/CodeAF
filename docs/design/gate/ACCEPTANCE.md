@@ -744,3 +744,88 @@ declares. One trailing word is never tried: that is a coincidence, not a case.
 **Journaled.** `store.ExercisedPoint.Observables` records what each point was
 weighed against, beside the `Unasserted` conclusion — the resolution is the half
 an autopsy cannot reconstruct, because the tree it was read from has moved on.
+
+---
+
+## What #428 proved: a coverage finding is raised only where a check could exist
+
+Two measured runs, one synthetic errand and one real issue, and the same defect
+underneath both: the gate asked which repository test exercises something no test
+could ever exercise, and bought the rounds that went looking.
+
+**The errand.** "Run the command '…' in this workspace and report the final line
+it prints. Change no files." Its acceptance points came back as two ACTIONS of
+the run — *the command is run in this workspace*, *the final line it prints is
+reported* — and the finding asked which check exercises them. None can, by
+construction, on a run that changes nothing. The run was satisfied by its first
+leaf two minutes in and hit its 700-second wall twice out of two, at 4 nodes and
+$0.048 the first time and 5 nodes and $0.057 the second; the two
+coverage-mapping calls, each carrying ~127k prompt tokens of roster, were $0.022
+of it on their own. More than 97% of the money was spent after the answer
+existed.
+
+**The issue.** Human-Agent-Society/reef#145, both doors, deepseek-v4-flash. The
+headless door's fix was correct at 4m17s — the issue's own fail-to-pass tests 6
+of 6 green, nothing regressed — and the gate refused it three times on "6
+behaviours the request states have no check that exercises them". The run ended
+at 753s, $0.0855 and exit 2 with the closing word `partial`; the chat door passed
+the same issue at 483s and $0.0163.
+
+### 1. A point is a behaviour or an action, and only behaviours are mapped
+
+`plan.Point.Kind`, `plan.PointBehaviour`, `plan.PointAction`, read by the same
+call that reads the checklist and written down in the same journal row
+(`store.AcceptancePoint.Kind`). A behaviour is observably true of the finished
+work; an action is something the RUN does. `plan.Behaviours` is the filter, and
+`settleAcceptance` maps what it returns and counts it for the score line. Actions
+stay on the checklist — they are the person's words — and are never mapped and
+never named uncovered. **An unknown or absent kind is a behaviour**: the cost of
+reading an action as a behaviour is one false finding, and the cost of reading a
+behaviour as an action is a stated requirement nothing ever checks.
+
+### 2. A run that changed no code is asked for no check
+
+`revision.codeChanged`. A patch, or a record path that `verify.ChangedSources` or
+`verify.OwnChecks` places inside the workspace. A path outside the workspace is
+in neither list, which is what keeps a run's own sidecars from reading as a
+change to the project. **It answers yes wherever it cannot tell** — an
+unobserved run is mapped exactly as it was — because an empty record is only a
+fact where somebody was recording (`Evidence.Observed`).
+
+### 3. An empty or unreadable roster is not evidence that no check exists
+
+This is §2's "a reading that named nothing is still a reading" with the case it
+did not separate. `revision.rosterSpeaks` is asked only where the check list came
+back EMPTY, and it distinguishes a project with a runner and no tests — a
+measurement, and a finding — from a suite that could not collect, was killed at
+its ceiling, or printed nothing a reader recognised. The second answers nothing,
+and mapping against it declares every stated behaviour unexercised. The verdict
+then carries `revision.CoverageUnread` and no finding is raised.
+
+### 4. The work's own checks are read off the tree
+
+The exhibit's mapping call carried 1,598 tokens of roster while a 195-line pytest
+file with ten named tests sat in the run's own record. `Evidence.Patch` is filled
+from `outcome.Account.Patch`, and **nothing in this tree sets `Outcome.Account`**
+— the only writer was deleted with `internal/exec/swe.go` in `05b99537` — so the
+diff half of `checkEvidence` has been dead on every belt since. `declaredByTheRun`
+is the same source reached the one way that still works: `verify.OwnChecks` over
+the record settled against the filesystem, `verify.DeclaredChecks` over each
+file, bounded by the mapping's own two budgets. THE WORK'S OWN CHECKS ARE THE ONE
+SOURCE THAT DOES NOT NEED THE PROJECT TO COLLECT.
+
+The account plumbing itself is not restored here, and until it is, `Evidence.Patch`,
+`patchBlock`, `removedChecks` and `Compose`'s patch remain unreachable.
+
+### 5. Unreadable is settled after the classification, not before it
+
+`settleUnmeasured` runs at the top of `settleAcceptance`, before anything has
+asked what the request even wanted — so a read-only errand failed `Whole()`
+because an unrelated whole-suite reading had been cut at its ceiling, and left as
+`partial` over work that was complete. **A run with no coverage question to
+answer may not be charged for a silence that could not have acquitted it
+either.** `revision.unaskable` takes `Unreadable` back off on the two exits above
+— no behaviour stated, no code changed — and states the reason instead. The third
+silence is untouched: where the request states behaviours over a change that was
+made, an unreadable suite leaves a real question unanswered and `Unreadable`
+stands, which is FAILSAFE clause 5 and where ink s7 exited 0 at 13 of 25.

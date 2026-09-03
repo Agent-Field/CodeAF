@@ -1,0 +1,266 @@
+package plan
+
+import (
+	"strings"
+	"testing"
+)
+
+// THE RULE IS THE FIRST THING A WORKER READS, AND IT IS THE PERSON'S OWN
+// SENTENCE. A rule below the assignment is a rule the assignment has already
+// argued with, which is the whole of what #427 measured: "Change no files"
+// reached the run inside a paragraph of goal, and the work that closed a
+// reviewer's finding wrote two files over the top of it.
+func TestTheRulesThePersonSetAreTheFirstThingASpecRenders(t *testing.T) {
+	spec := Spec{
+		Instruction: "run the named command and report its final line",
+		Method:      "read what exists before writing anything",
+		Constraints: []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}},
+	}
+	rendered := spec.Render(0)
+	if !strings.HasPrefix(rendered, ConstraintsHeading+":\n- Change no files.") {
+		t.Fatalf("the rules are not the first thing in the render:\n%s", rendered)
+	}
+	if strings.Index(rendered, "Change no files.") > strings.Index(rendered, "How this kind of work") {
+		t.Fatalf("the method was read before the rule:\n%s", rendered)
+	}
+	// Verbatim, not paraphrased: the gate quotes this text back at the person
+	// and may only ever quote what they wrote.
+	if !strings.Contains(rendered, "Change no files.") {
+		t.Fatalf("the rule was not carried word for word:\n%s", rendered)
+	}
+	// And a spec that carries nothing but a rule is not an empty spec, or the
+	// rule would render to nothing at all.
+	rule := Spec{Constraints: spec.Constraints}
+	if rule.Empty() || rule.Render(0) == "" {
+		t.Fatalf("a spec carrying only a rule reads as empty: %q", rule.Render(0))
+	}
+}
+
+// A CONSTRAINT IS A PROPERTY OF THE JOB AND THE CHECKLIST IS A PROPERTY OF THE
+// DELIVERY, and that is the one way the two stampings differ. The person said
+// "change no files" about the run, so every worker the run starts is under it;
+// they did not ask a contributing worker for the whole request's behaviours.
+func TestSetConstraintsStampsEveryNodeAndTheChecklistDoesNot(t *testing.T) {
+	graph := &Graph{Nodes: []Node{
+		{ID: 1, Stage: 1, Kind: KindWork, Title: "Gather A", Brief: "gather a"},
+		{ID: 2, Stage: 1, Kind: KindWork, Title: "Gather B", Brief: "gather b"},
+		{ID: 3, Stage: 2, Kind: KindSynthesis, Title: "Report", Brief: "write it", Needs: []int{1, 2}},
+	}}
+	rules := []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}}
+	graph.SetConstraints(rules)
+	graph.SetAcceptance([]Point{{Behaviour: "the final line is reported", Quote: "report the final line"}})
+
+	stamped := 0
+	for _, node := range graph.Nodes {
+		if len(node.Spec.Constraints) == 1 && node.Spec.Constraints[0].Text == "Change no files." {
+			stamped++
+		}
+	}
+	if stamped != len(graph.Nodes) {
+		t.Fatalf("the rule reached %d of %d nodes", stamped, len(graph.Nodes))
+	}
+	held := 0
+	for _, node := range graph.Nodes {
+		if len(node.Spec.Accept) > 0 {
+			held++
+		}
+	}
+	if held != 1 {
+		t.Fatalf("the checklist reached %d nodes, want the one that delivers", held)
+	}
+	// An empty list changes nothing, which is the whole compatibility story: a
+	// job whose request stated no rule is the job this system already ran.
+	clean := &Graph{Nodes: []Node{{ID: 1}}}
+	clean.SetConstraints(nil)
+	if !clean.Nodes[0].Spec.Empty() {
+		t.Fatalf("no rules still wrote something onto the spec: %+v", clean.Nodes[0].Spec)
+	}
+}
+
+// What normalization is for: a rule that cannot be READ is dropped rather than
+// refused, and a reading that cannot be HELD falls back to the weaker one. Both
+// directions are fail-safe, because the failure they guard is a delivery failed
+// by arithmetic over a rule nobody could settle.
+func TestNormalizeConstraintsKeepsOnlyWhatCanBeRead(t *testing.T) {
+	clean := NormalizeConstraints([]Constraint{
+		{Text: "  Change no files.  ", Kind: "NO_WRITES", Paths: []string{"ignored"}},
+		{Text: "", Kind: ConstraintNoWrites},
+		{Text: "Only touch ./docs/", Kind: ConstraintPathsOnly, Paths: []string{" ./docs/ ", ""}},
+		{Text: "Only these", Kind: ConstraintPathsOnly},
+		{Text: "Do not use the network.", Kind: "no-network"},
+		{Text: "change no files.", Kind: ConstraintNoWrites},
+	})
+	if len(clean) != 4 {
+		t.Fatalf("normalize kept %d rules: %+v", len(clean), clean)
+	}
+	if clean[0].Text != "Change no files." || clean[0].Kind != ConstraintNoWrites || clean[0].Paths != nil {
+		t.Fatalf("the no-writes rule was not read: %+v", clean[0])
+	}
+	if clean[1].Kind != ConstraintPathsOnly || len(clean[1].Paths) != 1 || clean[1].Paths[0] != "docs" {
+		t.Fatalf("the paths were not cleaned to what the record spells: %+v", clean[1])
+	}
+	// "only these paths" with no paths reads mechanically as "no paths at all",
+	// which would fail every delivery of a job whose model forgot the list.
+	if clean[2].Kind != ConstraintOther {
+		t.Fatalf("a paths-only rule with no paths is still held mechanically: %+v", clean[2])
+	}
+	// An unrecognised kind is a rule a reader settles, never one no reader sees.
+	if clean[3].Kind != ConstraintOther || clean[3].Text != "Do not use the network." {
+		t.Fatalf("an unknown reading did not fall back to other: %+v", clean[3])
+	}
+	if NormalizeConstraints(nil) != nil {
+		t.Fatal("no rules normalized into something")
+	}
+}
+
+// The two headings are one law said to two audiences, and RulesAbove is where
+// the placement is decided for every renderer that is not the spec's own.
+func TestRulesAboveKeepsTheRuleInFrontOfTheOrder(t *testing.T) {
+	rules := []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}}
+	above := RulesAbove(rules, "a reviewer found gaps that must be closed")
+	if !strings.HasPrefix(above, ConstraintsHeading+":\n- Change no files.\n\na reviewer") {
+		t.Fatalf("the rule is not above the order:\n%s", above)
+	}
+	outranking := RulesOutranking(rules, "Write the check for each, and make it pass.")
+	if !strings.HasPrefix(outranking, ConstraintsOutrankHeading+":") {
+		t.Fatalf("the repair round was not told which of the two wins:\n%s", outranking)
+	}
+	// No rules is the ordinary case and must send the bytes it always sent.
+	if RulesAbove(nil, "unchanged") != "unchanged" {
+		t.Fatal("a job with no rules had its order rewritten")
+	}
+}
+
+// A CLAIM-TIME CHILD IS MINTED INSIDE ITS PARENT'S SPEC, AS ONE OBJECT.
+//
+// An expansion inherits the graph's own premises — the settled points, the
+// terrain, the invoice — and until this it inherited nothing whatever off the
+// node it divided. So a divided node lost its criterion, its working method and
+// the rules the person set in one silent step, and dividing was how a job walked
+// out from under the one thing it was forbidden to do. Each field keeps its own
+// law and they are asserted here beside each other, because the failure was that
+// they were settled one at a time by whichever caller was written last.
+func TestAClaimTimeChildIsMintedInsideItsParentsSpec(t *testing.T) {
+	graph, parent := claimableGraph()
+	graph.Node(parent).Spec = Spec{
+		Instruction: "own every unit the gather listed",
+		Method:      "read what exists before writing anything",
+		Done:        Done{Produces: []string{"a per-unit note"}},
+		Constraints: []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}},
+		Accept:      []Point{{Behaviour: "every unit has a note", Quote: "a note for each unit"}},
+	}
+
+	sub, _, err := ExpandOne(t.Context(), &capturingClient{reply: splitReply}, graph, parent,
+		Options{MaxDepth: 4, NodeBudget: 40}, ClaimContext{})
+	if err != nil {
+		t.Fatalf("ExpandOne: %v", err)
+	}
+	if len(sub.Nodes) < 2 {
+		t.Fatalf("the expansion produced %d nodes; the fixture divides into two", len(sub.Nodes))
+	}
+	for _, node := range sub.Nodes {
+		if len(node.Spec.Constraints) != 1 || node.Spec.Constraints[0].Text != "Change no files." {
+			t.Fatalf("%q was minted outside the rule: %+v", node.Title, node.Spec.Constraints)
+		}
+		// The criterion and the method the sub-plan wrote nothing about. The
+		// parent's is the only standard in the building that applies to them.
+		if len(node.Spec.Done.Produces) != 1 || node.Spec.Done.Produces[0] != "a per-unit note" {
+			t.Fatalf("%q was minted with no criterion: %+v", node.Title, node.Spec.Done)
+		}
+		if node.Spec.Method != "read what exists before writing anything" {
+			t.Fatalf("%q was minted with no working method: %q", node.Title, node.Spec.Method)
+		}
+		// And never the parent's instruction: a child told the whole of it does
+		// the whole of it, which is the division undone.
+		if strings.Contains(node.Spec.Instruction, "own every unit") {
+			t.Fatalf("%q inherited its parent's whole assignment: %q", node.Title, node.Spec.Instruction)
+		}
+	}
+	// THE CHECKLIST FOLLOWS ITS OWN LAW AND NOT THE RULE'S. Two parts running at
+	// once are two sinks, the sub-graph has not gathered, and stamping the
+	// request's behaviours on both would buy one repair round per sink for one
+	// gap. It is deliberately on neither.
+	for _, node := range sub.Nodes {
+		if len(node.Spec.Accept) != 0 {
+			t.Fatalf("%q was held to the whole request's behaviours: %+v", node.Title, node.Spec.Accept)
+		}
+	}
+	// And where the sub-graph DOES gather, it lands on the one node that hands
+	// the finished thing over, exactly as it does on a whole plan.
+	gathered := &Graph{NextID: 1}
+	first := gathered.Add(Node{Stage: 1, Kind: KindWork, Title: "First"})
+	gathered.Add(Node{Stage: 2, Kind: KindSynthesis, Title: "Gather", Needs: []int{first}})
+	gathered.mintedInside(graph.Node(parent).Spec)
+	if len(gathered.Nodes[0].Spec.Accept) != 0 || len(gathered.Nodes[1].Spec.Accept) != 1 {
+		t.Fatalf("the checklist did not land on the node that delivers: %+v", gathered.Nodes)
+	}
+	// And a child the sub-plan DID write a method or a criterion for keeps its
+	// own: what the division decided about a child beats anything inherited.
+	written := &Graph{NextID: 1}
+	written.Add(Node{Stage: 1, Kind: KindWork, Title: "Its own",
+		Spec: Spec{Method: "its own method", Done: Done{Produces: []string{"its own product"}}}})
+	written.mintedInside(graph.Node(parent).Spec)
+	if written.Nodes[0].Spec.Method != "its own method" ||
+		written.Nodes[0].Spec.Done.Produces[0] != "its own product" {
+		t.Fatalf("the parent overwrote what the division decided: %+v", written.Nodes[0].Spec)
+	}
+}
+
+// A CHAIN OF STAGES IS MINTED INSIDE ITS PARENT'S SPEC LIKE ANY OTHER
+// DIVISION. The direct stage branch returns before the ordinary fan-out seam,
+// so this keeps that earlier return from becoming a way for a sequential job
+// to lose the rules, criterion and method its parent already settled.
+func TestAStagedChildIsMintedInsideItsParentsSpec(t *testing.T) {
+	client := &stagePlanner{
+		stages: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+			`{"title":"Change","summary":"Make the change.","needs":[1]}]}`,
+		sizes: `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`,
+	}
+	graph := &Graph{Goal: "carry the whole thing to an end", Stages: []Stage{{Title: "Work"}}, NextID: 1}
+	parent := graph.Add(Node{Stage: 1, Title: "Work", Summary: "Carry the whole thing to an end",
+		Size: SizeOversized})
+	graph.Node(parent).Spec = Spec{
+		Instruction: "own every unit the gather listed",
+		Method:      "read what exists before writing anything",
+		Done:        Done{Produces: []string{"a per-unit note"}},
+		Constraints: []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}},
+		Accept:      []Point{{Behaviour: "every unit has a note", Quote: "a note for each unit"}},
+	}
+
+	sub, _, err := ExpandOne(t.Context(), client, graph, parent,
+		Options{MaxDepth: 4, NodeBudget: 40}, ClaimContext{})
+	if err != nil {
+		t.Fatalf("ExpandOne: %v", err)
+	}
+	if len(sub.Nodes) < 2 {
+		t.Fatalf("the expansion produced %d nodes; the fixture draws two stages", len(sub.Nodes))
+	}
+	for _, node := range sub.Nodes {
+		if len(node.Spec.Constraints) != 1 || node.Spec.Constraints[0].Text != "Change no files." {
+			t.Fatalf("%q was minted outside the rule: %+v", node.Title, node.Spec.Constraints)
+		}
+		if len(node.Spec.Done.Produces) != 1 || node.Spec.Done.Produces[0] != "a per-unit note" {
+			t.Fatalf("%q was minted with no criterion: %+v", node.Title, node.Spec.Done)
+		}
+		if node.Spec.Method != "read what exists before writing anything" {
+			t.Fatalf("%q was minted with no working method: %q", node.Title, node.Spec.Method)
+		}
+		if strings.Contains(node.Spec.Instruction, "own every unit") {
+			t.Fatalf("%q inherited its parent's whole assignment: %q", node.Title, node.Spec.Instruction)
+		}
+	}
+	// THE CHECKLIST STILL ANSWERS TO THE NODE THAT DELIVERS. A chain has one
+	// sink, its last link, and that is the one difference from the fan-out
+	// above: the request's behaviours land on "Change" alone, never on the
+	// reading stage before it, so one gap buys one repair round and not one per
+	// link.
+	for _, node := range sub.Nodes {
+		held := len(node.Spec.Accept) != 0
+		if node.Title == "Change" && !held {
+			t.Fatalf("the last link delivers and was minted with no checklist: %+v", node.Spec)
+		}
+		if node.Title != "Change" && held {
+			t.Fatalf("%q was held to the whole request's behaviours: %+v", node.Title, node.Spec.Accept)
+		}
+	}
+}

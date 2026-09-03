@@ -322,7 +322,8 @@ func (r Reading) Pace() Pace {
 }
 
 // Retakeable says this remembered answer is one a later round should NOT simply
-// inherit: a scoped reading cut at its ceiling having named nothing.
+// inherit: a scoped reading cut at its ceiling having named nothing, WHERE THE
+// PACE IT MEASURED AFFORDS A STRICTLY SMALLER READING.
 //
 // Everything else about a failed reading is a fact about the tree, the project
 // and the wall, and none of those move between rounds — that is why the refusal
@@ -330,8 +331,46 @@ func (r Reading) Pace() Pace {
 // one of them: it is a fact about a size, the cut measured the pace that would
 // have chosen a better one, and inheriting it is how textual s8 spent its one
 // reading on forty files and then declined to look again.
+//
+// AND A SECOND IDENTICAL ATTEMPT CANNOT FINISH WHERE THE FIRST DID NOT. The
+// retake is worth buying only where there is a smaller selection to buy: a
+// reading of everything the entrypoint covers has no narrower scope to fall to,
+// and a scoped one whose pace affords no fewer files than it already ran would
+// spend another eighth of the wall on the same command. Both of those are the
+// same reading again, and this is where they are refused rather than in each of
+// the two callers that would otherwise have to know it.
+//
+// The budget the retake is weighed against is the one this reading was taken on,
+// which is the most generous a retake can be handed: the gate takes its own
+// share of whatever wall is left, and that is smaller. So a size this refuses
+// was never affordable.
 func (r Reading) Retakeable() bool {
-	return !r.Taken && r.Pace().Known()
+	if r.Taken || !r.Pace().Known() {
+		return false
+	}
+	_, narrower := r.Strategy.narrowedTo(r.Strategy.retakeSize(r.Pace().Affords(r.Budget)))
+	return narrower
+}
+
+// OnAnUnchangedTree is this photograph with the reading before the work standing
+// as the reading of the finished tree.
+//
+// IT IS NOT AN ASSUMPTION, IT IS THE SAME TREE. The caller has established that
+// the job changed no file since the first reading was taken — the workspace's
+// own record of what the work produced is the same list it was then — so the
+// suite would be run a second time over the identical bytes to produce the
+// identical roster. The measured errand paid for that four times: `go test
+// -json ./...` over 4,587 tests, killed at its ceiling, on a tree the leaf had
+// been told to change nothing in.
+//
+// ok is false where there is nothing to stand: a reading that was never taken,
+// and one whose after half a real run has already filled in.
+func (r Reading) OnAnUnchangedTree() (Reading, bool) {
+	if !r.Taken || r.AfterTaken {
+		return r, false
+	}
+	r.After, r.AfterTaken = r.Before, true
+	return r, true
 }
 
 // Declared says the project SAID how it is checked, whether or not a reading was

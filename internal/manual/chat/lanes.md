@@ -80,6 +80,35 @@ means "no opinion from me — let the router balance it".
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
 
+**There is exactly one thing that ends a pin without you: the machine you named
+saying it will not serve that model at all.** That is not a wait and not a bad
+afternoon — the router answers `No allowed providers are available for the
+selected model. … but your request's provider.only preference permits only:
+coreweave`, which is the wire saying this machine and this model do not go
+together. Asking again buys the same 404, so aforge stops asking, and says so
+once, in the conversation, at the moment it happens:
+
+```
+coreweave cannot serve this model; routing on auto for this model until you pin again
+```
+
+What that means, exactly:
+
+- **for that model**, every later request in this run goes out with no machine
+  demanded at all — routed the way `auto` routes;
+- **the request that collected the refusal is widened and sent again**, once, so
+  your answer still arrives. If that is refused too the turn ends, and says so;
+- **your settings row is not touched.** It still reads `pinned: coreweave`;
+- **every other model still goes to that machine.** The refusal was about one
+  pairing;
+- **pinning again puts it straight back**, on the very next request — and that
+  includes choosing the machine you already had, which is a row that did not
+  change and an instruction that did;
+- it lasts until you pin again or you close the window, and a task the
+  conversation starts inherits it rather than paying for the refusal again.
+
+The sentence is said **once** per machine and model, for the whole run.
+
 ## When a pinned lane goes quiet — the `switch to auto?` question, and how to say no to it
 
 It still has to do something about a wait, and what it does is **ask you**:
@@ -161,6 +190,7 @@ it is asking you to sit through.
 | `parasail refused` | the machine that second request went to said no as well |
 | `via parasail · rescued` | it worked, for this answer only |
 | `coreweave is slow · switch to auto? (y)` | your pinned machine is quiet, and you can end the wait |
+| `coreweave cannot serve this model; routing on auto for this model until you pin again` | the machine you pinned said no, so the pin is retired for this model |
 | `all lanes slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
 
 ## When a machine refuses to serve the model
@@ -168,9 +198,10 @@ it is asking you to sit through.
 `slow` and `refused` are two different facts and the row says which. **Slow** is
 a wait: the machine is answering and taking its time. **Refused** is a machine
 saying it will not serve this model at all — the router answers
-`no endpoints found … your request's provider.only preference permits only:
-coreweave`, which means the machine aforge asked for is not in the set that
-serves this model right now.
+`No allowed providers are available for the selected model. Providers serving
+<model>: digitalocean, deepinfra, … but your request's provider.only preference
+permits only: coreweave`, which means the machine aforge asked for is not in the
+set that serves this model right now.
 
 A refusal is final for that machine, immediately:
 
@@ -187,6 +218,59 @@ is moving, and if parasail refuses too the promise is **taken back** rather than
 left standing: the row reads `parasail refused`, which is what actually
 happened. A row still saying `trying …` about a request that has already failed
 is the one thing it will not do.
+
+**And one refusal is about the base rather than about a machine.** Some bases
+take no lane choice at all — a plain OpenAI-compatible endpoint behind
+`AFORGE_BASE_URL`, a proxy that strips the field, a gateway that never heard of
+it. aforge finds out by asking: your pin goes out on a real request, once, and
+if that is refused the same request is sent again without it — whether *that*
+lands is the answer, so an unrelated bad request never costs you your pin. If
+the base will not take the choice, you are told once, in the conversation:
+
+```
+api.example.com does not take a lane choice; coreweave is not being asked for, and your requests still go out
+```
+
+Your work still goes out; only the choice is left off. The settings row says it
+too, so `pinned:` never stands as a claim about a request that did not carry it:
+`pinned: coreweave (not taken on this base)`.
+
+## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
+
+Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
+`AFORGE_BASE_URL` — a proxy in front of the router, a mirror, a router of your
+own, the router by its IP — and it **asks that base whether it publishes an
+endpoints page**: the first background fetch of a model's sheet is the question.
+A base that answers with a page has lanes exactly as the built-in endpoint does,
+with the same auto ranking, pins, hedges and status line. Nothing about the
+address is inspected; a router is recognised by what it answers.
+
+A base with **no endpoints page at all** — it answers with a not-found page
+rather than the router's own error message, the way a plain proxy does — is
+remembered as having none for five minutes, then asked again in the background.
+A router that has the page but **does not publish that one model** says so in
+its own words, about the model, and nothing is remembered about the base. A 500,
+a timeout or a rate limit is a bad afternoon rather than an answer.
+
+**Whether a base honours a lane choice is learned the same way**, never from
+its address. A base that served an endpoints page takes one. Any other base is
+asked once, and only once you have **pinned** something — a pin is the only
+thing there is to ask with, so a base nobody pinned anything on is sent no lane
+opinion at all, exactly as before. Your pin goes out on a real request; if the
+base refuses it, aforge sends that request again once without it, and whether
+*that* lands is the answer. A base that refuses the choice, or that answers
+without ever naming the machine that served, is remembered as not taking one and
+**says so** (the refusal section above has the sentence).
+
+**A proxy that forwards to the router but strips the lane name out of its
+answers is read as not taking your choice**, deliberately. aforge cannot tell
+that proxy from one honouring your pin silently — nothing in the answer says
+which machine served — so it tells you, sends later requests bare, and the proxy
+then routes your model however it likes. Your work still goes out; your pin is
+not honoured there, and you know rather than guess.
+
+Neither question costs an extra call of its own, and pointing `AFORGE_BASE_URL`
+somewhere else asks the new address afresh about both.
 
 ## Turning lane routing off
 

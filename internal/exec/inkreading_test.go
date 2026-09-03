@@ -61,7 +61,7 @@ func TestACutSecondReadingKeepsWhatItNamed(t *testing.T) {
 	}
 	outcome := &Outcome{}
 	PhotographAfter(context.Background(), workspace, nil, time.Hour,
-		Task{Goal: t.Name()}, reading, true, false, outcome)
+		Task{Goal: t.Name()}, Opening{Reading: reading}, true, outcome)
 
 	after := outcome.Verification
 	if !after.AfterTaken {
@@ -95,7 +95,7 @@ func TestACommandThatRanAndNamedNothingSaysSo(t *testing.T) {
 	}
 	outcome := &Outcome{}
 	PhotographAfter(context.Background(), workspace, nil, time.Hour,
-		Task{Goal: t.Name()}, reading, true, false, outcome)
+		Task{Goal: t.Name()}, Opening{Reading: reading}, true, outcome)
 
 	why := outcome.Verification.Unread
 	if outcome.Verification.AfterTaken {
@@ -183,7 +183,7 @@ func TestAnAfterReadingWhoseSuiteDidNotCollectSaysSo(t *testing.T) {
 	}
 	outcome := &Outcome{}
 	PhotographAfter(context.Background(), workspace, nil, time.Hour,
-		Task{Goal: t.Name()}, reading, true, false, outcome)
+		Task{Goal: t.Name()}, Opening{Reading: reading}, true, outcome)
 
 	if outcome.Verification.AfterTaken {
 		t.Fatal("a suite that never ran a check was taken as a reading of the finished tree")
@@ -198,5 +198,149 @@ func TestAnAfterReadingWhoseSuiteDidNotCollectSaysSo(t *testing.T) {
 	}
 	if !strings.Contains(why, "Failed to load url") {
 		t.Errorf("the record does not carry the runner's own words: %q", why)
+	}
+}
+
+// countingSuite stages a project whose declared suite RECORDS EVERY TIME IT IS
+// RUN, in a file outside the tree so that running it changes nothing.
+//
+// Counting invocations is the only honest way to test a rule about not looking
+// twice: what is under test is whether the command ran, and a roster cannot say
+// whether it was read or reproduced.
+func countingSuite(t *testing.T) (*Workspace, string) {
+	t.Helper()
+	root, log := t.TempDir(), filepath.Join(t.TempDir(), "runs.log")
+	files := map[string]string{
+		"go.mod":   "module example.com/thing\n\ngo 1.22\n",
+		"Makefile": "test:\n\t@echo run >> " + log + "\n\t@echo 'ok 1 - a check'\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workspace, log
+}
+
+// readings is how many times the staged suite has been run.
+func readings(t *testing.T, log string) int {
+	t.Helper()
+	body, err := os.ReadFile(log)
+	if err != nil {
+		return 0
+	}
+	return len(strings.Fields(string(body)))
+}
+
+// A READING IS RETAKEN ONLY WHEN THE TREE CHANGED.
+//
+// The errand measured in #429 was ordered to change no files, and it read the
+// repository five times: once before its first leaf, and once on the "finished"
+// tree of every leaf after it — each `go test -json ./...` over 4,587 tests,
+// each killed at its two-minute ceiling, 82% of an 11m40s wall. Every one of
+// those after-readings was bought by a leaf having INHERITED the job's reading,
+// which every leaf after the first does whatever it touched.
+func TestATreeNothingChangedIsNotReadTwice(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	workspace, log := countingSuite(t)
+	ctx := context.Background()
+	task := Task{Goal: "Run the command 'make test' in this workspace and report the " +
+		"final line it prints. Change no files."}
+
+	opening := PhotographBefore(ctx, workspace, nil, time.Hour, task)
+	if !opening.Reading.Taken {
+		t.Fatalf("the first leaf of the job took no reading: %q", opening.Reading.Unread)
+	}
+	if opening.Moved {
+		t.Error("the first leaf of a job was told the job had already changed the tree")
+	}
+	if count := readings(t, log); count != 1 {
+		t.Fatalf("the first reading ran the suite %d times, want 1", count)
+	}
+
+	// A second leaf of the same job, standing in the same tree. It inherits,
+	// which it always did — and it is told the tree has not moved, which is what
+	// decides whether it pays for a second reading.
+	second := PhotographBefore(ctx, workspace, nil, time.Hour, task)
+	if !second.Reading.Taken || second.Moved {
+		t.Fatalf("a leaf standing in an unchanged tree was told otherwise: %#v", second.Moved)
+	}
+	outcome := &Outcome{}
+	PhotographAfter(ctx, workspace, nil, time.Hour, task, second, false, outcome)
+	if count := readings(t, log); count != 1 {
+		t.Errorf("the suite was run %d times over a tree nothing changed, want 1", count)
+	}
+	// AND THE FINISHED TREE IS STILL MEASURED, because it is the tree that was
+	// already read. A gate handed no after-reading cannot ask what the work
+	// covered; this one is handed the roster that stands.
+	if !outcome.Verification.AfterTaken {
+		t.Fatal("an unchanged tree was left with no reading of it at all")
+	}
+	if len(outcome.Verification.After.Reported) != len(second.Reading.Before.Reported) {
+		t.Errorf("the roster that stands is not the one that was read: %#v",
+			outcome.Verification.After.Reported)
+	}
+
+	// AND A LEAF THAT DID CHANGE SOMETHING IS READ AGAIN. The rule is about a
+	// tree that did not move, and nothing else.
+	PhotographAfter(ctx, workspace, nil, time.Hour, task, second, true, outcome)
+	if count := readings(t, log); count != 2 {
+		t.Errorf("a leaf that changed the tree was not read again: %d readings", count)
+	}
+
+	// And a continuation that arrives holding what an earlier round produced is
+	// told the tree moved, which is what buys it the second reading.
+	continuation := task
+	continuation.Inputs = []Input{{Artifacts: []string{"cmd/main.go"}}}
+	if !PhotographBefore(ctx, workspace, nil, time.Hour, continuation).Moved {
+		t.Error("a round standing on an earlier round's files was told the tree had not moved")
+	}
+}
+
+// A DELETION IS A CHANGE, AND THE ARTIFACT LIST CANNOT SAY SO.
+//
+// Workspace.Artifacts holds what the tree STILL has — deliberately, because that
+// list is also what the person is shown — so a leaf whose whole job was to take
+// a file out reported an empty list. Read as "this leaf changed nothing", it
+// skipped the second reading, which is the one that would have caught what the
+// removal broke.
+func TestALeafThatOnlyDeletedAFileIsStillRead(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	workspace, log := countingSuite(t)
+	ctx, leaf := context.Background(), "task-2"
+	doomed := filepath.Join(workspace.Root(), "doomed.go")
+	if err := os.WriteFile(doomed, []byte("package thing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := Task{Goal: "Take the dead file out. Change nothing else.", NodeKey: leaf}
+
+	opening := PhotographBefore(ctx, workspace, nil, time.Hour, task)
+	if !opening.Reading.Taken {
+		t.Fatalf("the leaf took no reading: %q", opening.Reading.Unread)
+	}
+	workspace.WatchTree(task.leafKey())
+	if err := os.Remove(doomed); err != nil {
+		t.Fatal(err)
+	}
+	workspace.RecordChanges(task.leafKey())
+
+	if artifacts := workspace.Artifacts(task.leafKey()); len(artifacts) != 0 {
+		t.Fatalf("a deletion reached the artifact list, so this test measures nothing: %#v",
+			artifacts)
+	}
+	if !leafMovedTheTree(workspace, task.leafKey()) {
+		t.Fatal("a leaf that deleted a file was read as a leaf that changed nothing")
+	}
+	outcome := &Outcome{Artifacts: workspace.Artifacts(task.leafKey())}
+	PhotographAfter(ctx, workspace, nil, time.Hour, task, opening,
+		leafMovedTheTree(workspace, task.leafKey()), outcome)
+	if count := readings(t, log); count != 2 {
+		t.Errorf("the tree lost a file and was read %d times, want the second reading", count)
 	}
 }

@@ -104,12 +104,13 @@ func storedLanes(t *testing.T) []string {
 // and the chooser therefore has something to rank.
 func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T) {
 	// The alias is spelled without OpenRouter's "~" marker for one reason that
-	// is worth writing down: [Client.isOpenRouter] reads `config.Model` RAW,
-	// with no normalisation, so a configured "~openrouter/…" behind a base that
-	// is not openrouter.ai turns the whole lane path off. It costs nothing in
-	// production, where the base URL answers that question, and it is a separate
-	// defect from this one. Both spellings reach the same fold — the catalog and
-	// the lane seam are each held to that by their own tests.
+	// is worth writing down: [Client.shippedRouterHint] reads `config.Model`
+	// RAW, with no normalisation, so a configured "~openrouter/…" behind a base
+	// that is not openrouter.ai answers differently from the bare spelling.
+	// Since issue #433 that hint decides nothing about lanes — the base's own
+	// answer does — but the two spellings must still agree, and both reach the
+	// same fold: the catalog and the lane seam are each held to that by their
+	// own tests.
 	const alias = "openrouter/flash-latest"
 	const servable = "openrouter/flash-0731"
 
@@ -145,7 +146,7 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 	)
 	t.Cleanup(server.Close)
 	server.Alias(alias, servable)
-	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}) {
+	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}, false) {
 		t.Fatal("the sheet would not take a base to fetch from")
 	}
 
@@ -348,7 +349,7 @@ func TestAPickerSpellingReachesTheBeatAsTheModelTheRouterServes(t *testing.T) {
 	)
 	t.Cleanup(server.Close)
 	server.Alias(alias, servable)
-	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}) {
+	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}, false) {
 		t.Fatal("the sheet would not take a base to fetch from")
 	}
 
@@ -370,25 +371,25 @@ func TestAPickerSpellingReachesTheBeatAsTheModelTheRouterServes(t *testing.T) {
 	}
 }
 
-// TestIsOpenRouterReadsTheAliasMarkerOffTheModel is issue #319: the Model half
-// of [Client.isOpenRouter] used to read `config.Model` raw, so a model spelled
-// with the alias marker — "~openrouter/…", the same marker normalizeModel strips
-// before every other decision in this package — failed the prefix check behind
-// a non-openrouter base and the lane path silently turned off. Both spellings
-// name the same model, so they must get the same answer; a model nobody serves
-// through OpenRouter stays false.
-func TestIsOpenRouterReadsTheAliasMarkerOffTheModel(t *testing.T) {
-	decision := func(model string) bool {
-		return (&Client{config: Config{BaseURL: "https://my-router.example/v1", Model: model}}).isOpenRouter()
+// TestTheShippedRouterHintReadsTheAliasMarkerOffTheModel is issue #319: the
+// Model half of the hint — named `isOpenRouter` then, [Client.shippedRouterHint]
+// since issue #433 — used to read `config.Model` raw, so a model spelled with
+// the alias marker "~openrouter/…", the same marker normalizeModel strips before
+// every other decision in this package, failed the prefix check behind a
+// non-openrouter base. Both spellings name the same model, so they must get the
+// same answer; a model nobody serves through OpenRouter stays false.
+func TestTheShippedRouterHintReadsTheAliasMarkerOffTheModel(t *testing.T) {
+	hint := func(model string) bool {
+		return (&Client{config: Config{BaseURL: "https://my-router.example/v1", Model: model}}).shippedRouterHint()
 	}
 
-	if !decision("openrouter/anything") {
-		t.Fatal("the bare spelling stopped routing through OpenRouter")
+	if !hint("openrouter/anything") {
+		t.Fatal("the bare spelling stopped reading as the shipped router")
 	}
-	if !decision("~openrouter/anything") {
-		t.Fatal("the alias-marked spelling answers differently from the bare one; the lane path turns off behind a non-openrouter base")
+	if !hint("~openrouter/anything") {
+		t.Fatal("the alias-marked spelling answers differently from the bare one")
 	}
-	if decision("vendor/some-model") {
+	if hint("vendor/some-model") {
 		t.Fatal("a model nobody serves through OpenRouter answers true")
 	}
 }

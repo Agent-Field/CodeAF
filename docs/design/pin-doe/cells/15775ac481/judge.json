@@ -1,0 +1,18 @@
+{
+ "changed_files": 3,
+ "f2p": {
+  "passed": 10,
+  "failed": 0,
+  "errors": 0,
+  "exit": 0,
+  "pass": true
+ },
+ "suite": {
+  "passed": 0,
+  "failed": 0,
+  "errors": 1,
+  "exit": 2,
+  "capped": false
+ },
+ "regressed": false
+}

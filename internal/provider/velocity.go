@@ -309,11 +309,35 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // ago applies to the request now being written, without anything having to
 // carry it forward.
 //
-// It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
-// compatible endpoint that is not a router either ignores it or 400s on it —
-// neither of which is worth risking for a preference it could not honour.
+// IT IS THE DECISION SITE OF ISSUE #433, and the gate on it is what the BASE
+// ANSWERED rather than what its hostname says. The field is a router's dialect
+// and an endpoint that is not a router either ignores it or 400s on it — but
+// which of the two a base does is a thing only the base can say, so it is asked
+// once and remembered, and only a base that has answered "no" is left off
+// (prefcarry.go's [Client.carriesPreferences]).
+//
+// ── AND AN UNASKED BASE SENDS ONLY WHAT A PERSON ASKED FOR ──────────────────
+//
+// THE LAW IS ABOUT A PREFERENCE THE PERSON HAS, NOT ABOUT THIS ADAPTER'S OWN
+// DEFAULT KNOBS. `sort`, `allow_fallbacks` and `require_parameters` are nobody's
+// instruction: they are how this build asks a ROUTER to break a tie among
+// machines it already knows about, and putting them on a plain endpoint's every
+// request would be a field that every plain-base user suddenly carries, for a
+// tie there is nothing to break. So on a base that has not yet SHOWN it carries
+// a preference, the object goes out only when there is something to ask WITH,
+// and there is exactly one such thing: a lane the person pinned. A ranking
+// cannot be the reason, because a ranking only exists once a sheet arrived —
+// and a sheet arriving is the base proving it carries.
+//
+// The consequence, stated so nobody has to derive it: a plain base with nobody
+// pinning anything is never asked, never answers, and its requests are
+// byte-for-byte the requests it got before this law existed. The moment somebody
+// pins a lane, that pin IS the asking.
 func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
-	if !c.isOpenRouter() {
+	if !c.carriesPreferences() {
+		return nil
+	}
+	if !c.prefsProven() && c.pinnedLaneFor(model) == "" {
 		return nil
 	}
 	strategy := c.routingFor(knobs.intent)
@@ -385,6 +409,12 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 // request was offered no first rung and climbed every other one still pinned to
 // the machine that had refused it (issue #266).
 func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+	if knobs.noProvider {
+		// THE ONE ENCODE THAT ASKS THE OPPOSITE QUESTION. See [callKnobs] —
+		// this is the widened retry that finds out whether a base's 400 was
+		// about the field, and it can only find out by sending none.
+		return nil
+	}
 	prefs := hedgePreference(c.providerPreferences(model, knobs, request), knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)
@@ -601,7 +631,10 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 // joining the queue behind it — the retries of the call that drew the 429
 // still wait it out, because their body is already written.
 func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433): a pace is written against a NAMED lane, and lane
+	// names come back only from a base that carries a preference. `pace` itself
+	// refuses an unnamed one, which is the attribution law and the real floor.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return
 	}
 	c.velocity.pace(model, served, wait)
@@ -620,7 +653,9 @@ func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
 // provider — and in every one of those the next attempt goes back to the same
 // lane. See [StreamCut.Rerouted] for what is decided from it.
 func (c *Client) noteCutProvider(model, served string) bool {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433), under [Client.notePacedProvider]'s gate word for
+	// word: a strike against a named lane, on a base that carries a preference.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
 	}
 	return c.velocity.pace(model, served, 0)
@@ -720,11 +755,30 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 // is both paced here and written out of the serving set, because a pin the
 // frontier can still choose is a pin that comes back on the next turn.
 func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error) bool {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	return c.strikeRefusal(c.modelFor(request), c.refusalObject(request, knobs, err))
+}
+
+// strikeRefusal is the strike itself, asked by a caller that has already
+// classified the refusal.
+//
+// IT IS AN ENTRANCE AND NOT A SECOND STRIKE, for [Client.laneRefusalFor]'s
+// reason exactly: the fork every routing refusal passes through
+// (client.go's [Client.sendRecovered]) holds the object already, and asking the
+// classifier a second time from there would be the classification happening
+// twice — which is the whole defect refusalobject.go closed. Everything a
+// strike DOES is here, once, and [Client.refuseUpstream] is this function with
+// the classification in front of it.
+//
+// STRIKING TWICE IS HARMLESS AND IS RELIED ON. A refusal that reaches a caller
+// as a 4xx is struck at this seam and struck again by whoever reads the status;
+// both halves are writes of a state rather than counters ([lane.RefuseServing]
+// files a moment, [velocityLedger.pace] sets strikes rather than incrementing
+// them), so the second is the first said again.
+func (c *Client) strikeRefusal(model string, refusal laneRefusal) bool {
+	// A BELIEF SITE (#433), under the same gate as the two paces above.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
 	}
-	model := c.modelFor(request)
-	refusal := c.refusalObject(request, knobs, err)
 	if !refusal.struck() {
 		return false
 	}

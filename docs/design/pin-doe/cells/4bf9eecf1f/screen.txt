@@ -1,0 +1,45 @@
+  The same behavior affects automatic discovery and `-c <directory>`.                                         │ + /task
+                                                                                                              │
+  ## Environment                                                                                              │ + /standing
+                                                                                                              │
+  - OS: Linux                                                                                                 │
+  - Python: CPython 3.13.13                                                                                   │
+  - tox: `4.60.1.dev2+g4115dd3cf`                                                                             │
+                                                                                                              │
+  ## Minimal example                                                                                          │
+                                                                                                              │
+  ```ini                                                                                                      │
+  [tox]                                                                                                       │
+  env_list = py                                                                                               │
+                                                                                                              │
+  [testenv]                                                                                                   │
+  commands = python -c "print(42)"                                                                            │
+  ```                                                                                                         │
+                                                                                                              │
+  Save this as `tox.ini`, remove its read permission, and run `tox list` or `tox -c tox.ini list`.            │
+                                                                                                              │
+  ## Root cause                                                                                               │
+                                                                                                              │
+  The three source-loading paths in `tox.config.source.discover` translate `ValueError` into `HandledError`,  │
+  but file reads can also raise `OSError` subclasses such as `PermissionError`. This is adjacent to #4027,    │
+  which made malformed INI parse errors follow the handled-error path.                                        │
+                                                                                                              │
+  ## Expected behavior                                                                                        │
+                                                                                                              │
+  Report that the configuration source failed to load, without a Python traceback. I can submit a focused fix │
+  with tests covering automatic, directory, and exact-file discovery.                                         │
+                                                                                                              │
+  Work in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete│
+  tests to make them pass.                                                                                    │
+                                                                                                              │
+  ```                                                                                                         │
+  · error: API error (404): No allowed providers are available for the selected model. Providers serving      │
+  deepseek/deepseek-v4-flash-20260423: digitalocean, baidu, streamlake, deepinfra, but your request's         │
+  provider.only preference permits only: anthropic.                                                           │
+                                                                                               · 17:59 · 18s ·│ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+work · deepseek-v4-flash · via streamlake                                                   crew custom · $0.00 · 5.7k/1M · 1% · YOLO · idle

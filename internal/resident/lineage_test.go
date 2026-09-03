@@ -164,6 +164,91 @@ func TestTheOpenFindingsAreReadFromTheRecordAndNotFromProse(t *testing.T) {
 	}
 }
 
+// A DELIVERY NOTHING JUDGED IS NOT A DELIVERY THAT PASSED, AND THE ROW SAYS SO
+// IN Refused.
+//
+// The harness stops spending on a job once nothing is changing, so no gate is
+// asked and the row it journals carries the refusal that stood in for the
+// judgement and no gap at all. A reader that asked such a row for a gap fell
+// through it in silence: a job that produced nothing and was judged by nothing
+// read as a job with nothing outstanding. What it must not do instead is
+// overwrite the last finding a review DID raise, which nothing since has
+// answered.
+func TestADeclinedJudgementStandsBesideTheGapAndNeverInsideIt(t *testing.T) {
+	graph := openLineageStore(t)
+	const declined = "nothing here was written or altered while this ran, so it is handed " +
+		"over as it stands. Nothing further was started."
+
+	if err := graph.RecordDeliveryGate("task-2", store.DeliveryGate{
+		Refused: declined, Unclosed: true,
+	}); err != nil {
+		t.Fatalf("record the unasked gate: %v", err)
+	}
+	findings := ReadOpenFindings(graph, "task-2")
+	if findings.Empty() {
+		t.Fatal("a delivery nothing judged read as a job with nothing outstanding")
+	}
+	if findings.Declined != declined || findings.Gap != "" {
+		t.Fatalf("read %+v, want the refusal standing on its own with no gap", findings)
+	}
+	words := findings.Words()
+	if !strings.Contains(words, declined) {
+		t.Fatalf("the section does not carry the refusal verbatim:\n%s", words)
+	}
+	// And it is not dressed up as a review's finding, because no review happened.
+	if strings.Contains(words, "What the last review found missing") ||
+		strings.Contains(words, "That finding was never answered") {
+		t.Fatalf("a declined judgement was composed as a review's finding:\n%s", words)
+	}
+	// The job is short of something, and a battery reading the shortfall must
+	// see it.
+	if ReadShortfall(graph, "task-2").Standing == "" {
+		t.Fatal("a delivery nothing judged left nothing standing against the job")
+	}
+
+	// THE GAP A REVIEW DID RAISE OUTLIVES THE ROUND THAT WAS NEVER JUDGED. The
+	// standstill row says nothing about it, so it stands, and both facts are
+	// told.
+	const gap = "the deliverable describes the work rather than carrying it"
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-2-x1", Brief: "Synthesis", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginSelf, SessionID: "s1", Intent: "richlog follow state"}); err != nil {
+		t.Fatalf("splice the round: %v", err)
+	}
+	if err := graph.RecordDeliveryGate("task-2-x1", store.DeliveryGate{
+		Gap: gap, Unclosed: true,
+	}); err != nil {
+		t.Fatalf("record the judged gate: %v", err)
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-2-x2", Brief: "Synthesis", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginSelf, SessionID: "s1", Intent: "richlog follow state"}); err != nil {
+		t.Fatalf("splice the standstill round: %v", err)
+	}
+	if err := graph.RecordDeliveryGate("task-2-x2", store.DeliveryGate{
+		Refused: declined, Unclosed: true,
+	}); err != nil {
+		t.Fatalf("record the second unasked gate: %v", err)
+	}
+	both := ReadOpenFindings(graph, "task-2")
+	if both.Gap != gap || both.Declined != declined || !both.Unclosed {
+		t.Fatalf("read %+v, want the review's gap and the declined judgement together", both)
+	}
+	// And a judgement, having happened, answers the news that an earlier round
+	// was never judged.
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-2-x3", Brief: "Synthesis", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginSelf, SessionID: "s1", Intent: "richlog follow state"}); err != nil {
+		t.Fatalf("splice the passing round: %v", err)
+	}
+	if err := graph.RecordDeliveryGate("task-2-x3", store.DeliveryGate{Pass: true}); err != nil {
+		t.Fatalf("record the passing gate: %v", err)
+	}
+	if after := ReadOpenFindings(graph, "task-2"); after.Declined != "" || after.Gap != "" {
+		t.Fatalf("a passing gate left %+v standing", after)
+	}
+}
+
 func firstBytes(text string, limit int) string {
 	if len(text) <= limit {
 		return text

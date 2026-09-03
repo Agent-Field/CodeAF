@@ -104,9 +104,16 @@ const EventNodeBrief EventKind = "node_briefed"
 // sufficiency sentence (Spec.Done), the one statement a reader holding only
 // the result can test.
 type NodeBrief struct {
-	Node       int    `json:"node"`
-	Brief      string `json:"brief"`
-	Criterion  string `json:"criterion"`
+	Node      int    `json:"node"`
+	Brief     string `json:"brief"`
+	Criterion string `json:"criterion"`
+	// Fault names why the model did not write this brief, on the nodes where it
+	// did not. The brief beside it is then composed from what the plan already
+	// knew about the node rather than absent, so the only way an autopsy can
+	// tell a written instruction from a composed one is this field — and
+	// without it a plan that quietly briefed itself reads exactly like a plan
+	// every call answered. Empty is the ordinary case.
+	Fault      string `json:"fault,omitempty"`
 	Subharness string `json:"subharness,omitempty"`
 }
 

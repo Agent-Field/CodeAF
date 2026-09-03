@@ -2044,6 +2044,23 @@ Setting **routing** yourself overrides all of that everywhere: `latency` asks fo
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
+## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
+
+This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
+then excluded that endpoint under your OpenRouter account's privacy setting because its
+provider may train on prompts. It does not mean the model disappeared or that your prompt
+was rejected.
+
+aforge drops the cap and asks the same model again on the same turn. The attempt line says
+`dropped the price ceiling and relaxed the endpoint filter`. A rescue request or a request
+pinned to one lane never carries the cap, because that lane has already passed aforge's
+price choice. Once a capped request to this model is refused, the cap stays off that model
+for the rest of this session, including the next rescue.
+
+You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
+another model, or pin a lane that serves this model. Pinning chooses the provider for this
+conversation; it does not change your OpenRouter privacy setting.
+
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
 One model id is served by a dozen different endpoints, and they are not alike: on one
@@ -2091,7 +2108,11 @@ the uptime because `no tools` changes the answer you get. `←` or `tab` closes 
 again.
 
 `enter` on a lane **pins** it: every request for this conversation goes to that lane
-and nowhere else. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
+and nowhere else — unless the router says that lane cannot serve that model at all, which
+is the one thing that ends a pin without you. It says so once, in the conversation
+(`coreweave cannot serve this model; routing on auto for this model until you pin again`),
+routes that one model on auto for the rest of the run, and leaves your row and every other
+model alone. *Lanes → Pinning one lane yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
 at all and lets the router balance on price. If the lanes were open under a model you are
 not talking to, `enter` switches to that model as well — choosing a lane under a name
 means you want that name served from there.
@@ -2210,7 +2231,8 @@ something is already being done about it.
 
 **A machine that REFUSED is not a machine that was slow, and the line says so.** When the
 router answers that the machine aforge asked for is not one that serves this model —
-`your request's provider.only preference permits only: coreweave` — the same spot reads
+`No allowed providers are available for the selected model. … but your request's
+provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That machine is then finished for this model: it is not asked
 again, and it leaves the set aforge chooses from for thirty minutes. If the
 machine the answer moved to refuses as well, the promise is withdrawn rather than left on
@@ -2272,7 +2294,7 @@ Settings → Providers has two rows under **routing**:
 | Value | What it does |
 |---|---|
 | `auto` | aforge picks the fastest lane each answer |
-| `pinned: cloudflare` | every request goes to that lane and nowhere else |
+| `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
 | `openrouter` | no lane is asked for; the router balances on price |
 

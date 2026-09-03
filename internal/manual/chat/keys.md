@@ -1611,6 +1611,19 @@ the box has words in it, and it is not a paste: text pasted with two leading spa
 spaces. A machine with one conversation, or none, opens an empty home; so does a session
 over `--host`, where what opens is the **far machine's** home.
 
+**It answers from every place as well as from a conversation.** Wherever a place is
+standing, the two spaces are read against that place's own box — the tasks filter, the
+memory filter, the search and spend composers — and open home just as they do from a
+draft. On home itself the door is a no-op: the page is already open, and two spaces type
+into home's own filter. It also does not answer from under a layer that owns the
+keyboard: on the settings panel space is the drawn verb on a row (`activate`),
+memory's card editor keeps every key while it is open, and inside a task's
+record — the room the roster opens on `enter` — `space` pages the card the way
+`pgdown` and `ctrl+f` do, so the door yields there and the key scrolls. Standing
+cannot arm the door — its own keys never type into its box — but the box is the
+shared composer, so a space left in it on another place still opens home from
+standing.
+
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
 `alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
 draw nothing on the frame — and the gesture reads the box the same way the frame does, so

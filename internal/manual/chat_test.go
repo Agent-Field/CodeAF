@@ -24,6 +24,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		// Lanes behind a base of the person's own: the question the hostname gate
+		// (issue #373) used to answer wrongly, in the three ways it gets asked.
+		{"do lanes work with a custom base url", "lanes"},
+		{"AFORGE_BASE_URL proxy no lanes", "lanes"},
+		{"self-hosted router endpoints page", "lanes"},
 		// The model-call log: the file every outbound call writes a line to.
 		// Both spellings people actually use — one asks for the file, the other
 		// asks what was on the wire.
@@ -100,6 +105,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it says coreweave refused", "models-and-cost"},
 		{"a machine will not serve my model", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
+		{"why does it say paid model training violation", "models-and-cost"},
+		{"what does guardrail restrictions and data policy mean", "models-and-cost"},
+		{"0 endpoints out of 1 requested", "models-and-cost"},
 		// The switcher, asked in the words people bring to it: the gesture they
 		// already know from every other program, the thing they are looking for,
 		// and the two spellings of the key.
@@ -406,6 +414,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
 		{"the run said empty goal and did nothing", "adaptive-runs"},
+		// A rule the person stated about what the run may DO, asked the four ways
+		// somebody meets it: before they run, and after the run broke it.
+		{"I said change no files and it changed files", "adaptive-runs"},
+		{"can I tell it not to touch anything", "adaptive-runs"},
+		{"how do I stop a run writing outside one folder", "adaptive-runs"},
+		{"it broke a rule I set", "adaptive-runs"},
 		{"what is a harness", "saved-shapes-of-work"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
@@ -416,6 +430,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		// The unattended run that would not finish, asked the four ways somebody
+		// meets it: the line it stopped on, the loop they watched, the note at
+		// the cap, and the check it kept failing over a file they never wrote a
+		// check for (#468).
+		{"it stopped and said the same thing was still left", "starting-aforge"},
+		{"it kept repeating the same thing", "starting-aforge"},
+		{"why does it say carry on", "tasks"},
+		{"it said a file does not pass", "starting-aforge"},
+		{"a task waiting on one that did not finish", "starting-aforge"},
 		// The isolation people meet as a bug: the task read the committed file
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},
@@ -638,6 +661,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I get back to home with one chat", "home"},
 		{"why is home empty", "home"},
 		{"can I open home with only one conversation", "home"},
+		// The gesture widened: two spaces answer from every place, not only
+		// from a conversation, and these are asked from where a person is
+		// standing when they want out of it.
+		{"how do I get back to the home screen from the tasks page", "home"},
+		{"double space does not go home from the memory page", "home"},
 		{"does closing one conversation quit aforge", "commands"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},
@@ -752,6 +780,22 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a run if aforge restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		{"the run said the brief could not be written, what happened", "adaptive-runs"},
+		// The run that had the answer and kept going, asked the two ways it was
+		// actually reported: as time and money spent after the fact, and as the
+		// word `partial` printed over tests that were green.
+		{"why did it keep going after it had the answer", "adaptive-runs"},
+		{"it said partial but the tests were green", "adaptive-runs"},
+		{"the request was met as stated", "adaptive-runs"},
+		// And the same ending arriving the other way round: the work is done,
+		// the checks are green, and the run reports a failure because the
+		// worker's last call to the model never came back. Both are asked in
+		// the words a person has in front of them — the exit code and the
+		// provider's own sentence.
+		{"it failed but the tests were green", "adaptive-runs"},
+		{"the model dropped out after finishing", "adaptive-runs"},
+		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
+		{"why did it run the tests nine times", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
 		// person watching a run that has not drawn anything yet. Both are asked
 		// with the screen in front of them, in the words the screen gave them.
@@ -908,6 +952,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// And the shaping call that was cut: the one dim line under the started
+		// row is the whole of what a person has to go on, so they type it back
+		// verbatim, or they describe what they noticed — a task that started on
+		// their own sentence with nothing added to it.
+		{"why does my task say brief kept as you wrote it", "tasks"},
+		{"my brief was not shaped", "tasks"},
 		// The proposal's own forming card is a different block from `/task`'s
 		// shaping line. Its still head mark is deliberate; the row below must move.
 		{"the proposal card is frozen", "tasks"},
@@ -1010,6 +1060,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// And the pin the width floor moved onto. On 2026-09-02 a designed
+		// experiment took that floor out of the default, so the two questions
+		// people now bring are the one asked by somebody who WANTS the splitting
+		// ("can I make it always split the work") and the one asked by somebody
+		// who did not expect it ("why did it split my task into parts") — the
+		// second of which nobody asked while a floor was refusing most of them.
+		{"can I make it always split the work", "tasks"},
+		{"why did it split my task into parts", "tasks"},
 		// And the refusal a person meets in the transcript rather than in a
 		// design: the split did not happen because two of the parts wanted the
 		// same file. The words are the ones they read there.
@@ -1062,6 +1120,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"run one task from a script", "adaptive-runs"},
 		{"what flags does aforge do take", "adaptive-runs"},
 		{"what does the last line of aforge do mean", "adaptive-runs"},
+		{"the plan said not settled, what do I do", "adaptive-runs"},
 		// And the door below that one: a single worker with no plan behind it,
 		// asked either by its name or by what it does.
 		{"what is aforge exec for", "adaptive-runs"},
@@ -1687,6 +1746,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
+		// And the one thing that ends a pin without the person: the router
+		// saying that machine cannot serve that model at all (issue #456). It
+		// is asked as somebody reads it on the screen and wants to know what it
+		// costs them.
+		{"I pinned a provider and it says it cannot serve this model, what happens now", "lanes"},
+		// And the base that will not carry the pin at all, which is the #433
+		// question in the words somebody on a proxy actually types.
+		{"I pinned a lane but I am on a proxy, does the pin still work", "lanes"},
 		{"what does via cloudflare mean on the status line", "lanes"},
 		// The offer, from the side the page owns: what the answer NO would be.
 		// The key itself is the keys page's, because that is where somebody

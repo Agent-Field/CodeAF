@@ -268,8 +268,8 @@ func (w *streamWatch) consequence() (time.Time, string) {
 	return w.deadline, alt
 }
 
-// canWalk reports whether this request still has another machine behind the
-// same model that it may be sent to.
+// canWalk reports whether this request will start another machine behind the
+// same model when its refusal reaches the race.
 //
 // It is what stops the relax ladder from running too early: a refusal is
 // evidence about ONE endpoint, and the ladder's rungs are about the request
@@ -278,7 +278,7 @@ func (w *streamWatch) canWalk() bool {
 	if w == nil || w.race == nil {
 		return false
 	}
-	return w.race.hasUntriedLane()
+	return w.race.canWalk()
 }
 
 // speaking reports whether this arm is the one the person is hearing.

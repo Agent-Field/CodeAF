@@ -102,15 +102,27 @@ Either number alone is enough; both together means whichever runs out first. You
 can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
 `AFORGE_MAX_COST`, and the flag always beats the variable.
 
+Without a budget none of that happens, and it tells you so in one line when it
+starts. If you are sitting there watching it, none of this applies to you: your
+session is exactly what it has always been, and nothing is ever deleted on your
+behalf.
+
+`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
+built on the far machine, so set them there.
+
+## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
+
 With a budget, four things change, and only with a budget:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
-  for the whole session — nothing it does later can rewrite it.
+  for the whole session — nothing it does later can rewrite it. It is context for
+  the work and never evidence about it: what says the work is done is the work.
 - **A stopped turn is looked at rather than taken at its word.** When it stops
   talking, it checks whether any piece of work came home unfinished, and whether
-  the checks your work names still pass. If any of that is unmet it carries on by
-  itself instead of going quiet.
+  the checks your work names passed when they ran. If any of that is unmet it
+  carries on by itself instead of going quiet — and if none of it is, the ask is
+  finished, whatever else was said about it.
 - **A piece of work that came home unfinished starts its own next go.** You used
   to be offered a follow-up in your own words — with nobody there, that offer went
   nowhere. Now what was missing becomes the next brief. If the same thing stops it
@@ -121,14 +133,75 @@ With a budget, four things change, and only with a budget:
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
 
-Without a budget none of that happens, and it tells you so in one line when it
-starts.
+## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
-If you are sitting there watching it, nothing above applies to you: your session
-is exactly what it has always been, and nothing is ever deleted on your behalf.
+An unattended run with a budget looks at the work at the end of every reply: which
+pieces of work came home finished, and what the checks your work names said when
+they ran. If something is left, it carries on by itself with that as the brief.
 
-`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
-built on the far machine, so set them there.
+**The same thing left twice running stops the run.** The evidence that a run is
+getting anywhere is that what is left CHANGES. When it reaches the end of a reply
+holding exactly the list it held last time, it stops and tells you, on one line:
+
+```
+stopping here · nothing moved since the last look and what is left is the same — wire the handlers did not finish · saying it again would not change it
+```
+
+That is the whole message: what is still left, and that it stopped rather than say
+it again. Nothing crashed and nothing is wrong with your machine — the list in the
+middle is where to pick the work up.
+
+**It holds for the rest of the session.** The floor belongs to the thing that
+decides, not to the reply it stopped, so a piece of work landing and waking a fresh
+reply cannot start the loop over. There is no number to raise and no setting for
+it. Before this, a run in that state repeated one identical line until its hours
+ran out.
+
+## A task waiting on one that did not finish · work that will never start · it says something is still running
+
+**Work that is still going is never a standstill, and never finished either.** A
+piece of work that is actually moving — started, or queued behind something that
+is — is named on the list in its own right, `write the tests is still running`, so
+the ask cannot be called finished over the top of it. And a list that has not
+changed because it is waiting on that work is a run waiting rather than a run
+repeating itself, so the count above starts again once everything has landed.
+
+**Work that cannot start is not waiting, it is left.** A piece of work queued
+behind one that did not finish, or behind one that came home and needs your look,
+has nothing coming to start it — nobody is going to look at it while the run is
+unattended. So it is said whole, with what it waits on and what became of that:
+
+```
+wire the handlers is waiting on port the parser, which needs your look
+```
+
+That counts as part of what is left rather than as a reason to keep going, which
+is what lets a run in that state reach the standstill above and stop — instead of
+carrying on for the rest of its hours over work nothing was ever going to start.
+
+## It keeps saying a file does not pass · a check nobody asked for
+
+**A check is a command, never a file.** When your request or its `done when`
+sentence names something in backticks, aforge runs it in a fresh shell to see
+whether the work stands up. A file is opened the way the file itself says it opens:
+if it is executable, or its first line names the program that runs it, that is what
+gets run. **A file that says neither is not a check at all** and is left out — a
+source file quoted in a sentence is something to look at, not something to run.
+
+Before this, a bare path was handed to a shell, which refused to start it, and the
+run recorded "does not pass" about it for the rest of the evening — a wall no work
+could ever get past. Anything that says `does not pass` now is something that ran.
+
+**A file in your own folder beats a program of the same name.** If the tree you are
+working in holds a file called `check`, `build` or `test`, that file is what a
+check by that name means — not whatever program of the same name your shell would
+have found. And if the tree holds it but nothing can start it, nothing is run at
+all: running a different program of the same name would be worse than running
+nothing.
+
+**What came home outranks what was said about it.** A piece of work that finished
+and covers what you asked for, with every check that ran passing, is finished — a
+reader's opinion about the transcript cannot carry the run on over the top of it.
 
 ## Which folder does aforge work in, and where do my files go
 

@@ -137,6 +137,15 @@ func TestGrainAndBurdenCoexist(t *testing.T) {
 // JudgeSplit is the burden as a predicate, and every refusal it can reach must
 // come back with words on it. Atomic-and-run is what it answers whenever
 // nothing argues for dividing.
+//
+// One pin MOVED, and only one. An oversized node that named no pieces used to be
+// refused here as unnamed — which read an empty part list as "there is nothing to
+// divide" when the sizing prompt itself tells the model that a node whose inside
+// is a sequence has stages to name rather than simultaneous pieces, and had
+// already said this one cannot be carried to an end inside one worker. So an
+// empty list on an OVERSIZED node is evidence of a sequence and goes to the
+// stage question. Nothing else moved: unnamed is still the answer for borderline
+// and for atomic, and a node within one worker's reach is never staged.
 func TestJudgeSplitIsAtomicUntilProven(t *testing.T) {
 	options := Options{MaxDepth: 3, NodeBudget: 40}
 	for _, test := range []struct {
@@ -146,19 +155,29 @@ func TestJudgeSplitIsAtomicUntilProven(t *testing.T) {
 		reason string
 	}{
 		{
-			name:   "nothing named, nothing to weigh",
-			node:   Node{Kind: KindWork, Size: SizeOversized},
+			name:   "nothing named, and nothing to weigh it against",
+			node:   Node{Kind: KindWork, Size: SizeBorderline},
 			reason: RefusalUnnamed,
 		},
 		{
 			name:   "one piece named is no split",
-			node:   Node{Kind: KindWork, Size: SizeOversized, Parts: []string{"one"}},
+			node:   Node{Kind: KindWork, Size: SizeBorderline, Parts: []string{"one"}},
 			reason: RefusalUnnamed,
+		},
+		{
+			name:   "nothing named is not a leaf when nothing can hold it",
+			node:   Node{Kind: KindWork, Size: SizeOversized},
+			divide: true,
 		},
 		{
 			name:   "already within one worker's reach",
 			node:   Node{Kind: KindWork, Size: SizeAtomic, Parts: []string{"one", "two"}},
 			reason: RefusalWithinReach,
+		},
+		{
+			name:   "nothing named and within reach is still a leaf",
+			node:   Node{Kind: KindWork, Size: SizeAtomic},
+			reason: RefusalUnnamed,
 		},
 		{
 			name:   "unsized is not evidence of anything",
@@ -216,7 +235,10 @@ func TestJudgeSplitUsesMeasuredCapacityOnlyAtTheAtomicBoundary(t *testing.T) {
 // nobody ever considered.
 func TestSelectionJournalsEveryRefusal(t *testing.T) {
 	graph := &Graph{Goal: "the whole of it", NextID: 1}
-	unnamed := graph.Add(Node{Kind: KindWork, Size: SizeOversized, State: StatePending})
+	// Borderline rather than oversized: an oversized node that names nothing is
+	// a sequence to be staged now, and this is the leaf that named no pieces and
+	// is not past one worker's reach either.
+	unnamed := graph.Add(Node{Kind: KindWork, Size: SizeBorderline, State: StatePending})
 	small := graph.Add(Node{Kind: KindWork, Size: SizeAtomic, State: StatePending,
 		Parts: []string{"one", "two"}})
 	deep := graph.Add(Node{Kind: KindWork, Size: SizeOversized, State: StatePending,
@@ -242,6 +264,26 @@ func TestSelectionJournalsEveryRefusal(t *testing.T) {
 		if got := graph.Node(want.id).Undivided; got != want.reason {
 			t.Errorf("node %d undivided = %q, want %q", want.id, got, want.reason)
 		}
+	}
+}
+
+// An admission that lands in no list is a node nothing divides and nothing
+// explains. The measured-capacity branch admits an ATOMIC node, which the
+// selection's size switch used to have no case for, so the admission fell
+// through the floor: no expansion, and no refusal written to say why not.
+func TestAMeasuredAdmissionIsActuallySelected(t *testing.T) {
+	graph := &Graph{Goal: "the whole of it", NextID: 1}
+	measured := graph.Add(Node{Kind: KindWork, Size: SizeAtomic, State: StatePending,
+		Parts: []string{"one", "two"}})
+
+	options := Options{MaxDepth: 2, NodeBudget: 40,
+		CapacitySamples: capacityEvidenceFloor, CapacityOverrunRate: capacityOverrunThreshold + .01}
+	selected := selectForExpansion(graph, options)
+	if len(selected) != 1 || selected[0] != measured {
+		t.Fatalf("selected %v, want the node measured capacity admitted (%d)", selected, measured)
+	}
+	if got := graph.Node(measured).Undivided; got != "" {
+		t.Errorf("an admitted node carries the refusal %q", got)
 	}
 }
 

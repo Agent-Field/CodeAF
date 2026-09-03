@@ -103,6 +103,27 @@ up, or lost.
 The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
 a turn. It runs on the `shaper` role, which follows the careful-work model.
 
+## Why my task says brief kept as you wrote it — the line under a started task, my brief was not shaped
+
+`brief kept as you wrote it` is one dim line aforge prints under `single task 12 started ·
+…` when the shaping call was made and did not come back. It says exactly what it says: the
+worker was handed the sentence you typed, word for word, with the plain done-condition
+`Complete the brief and report the result and checks run.` and no shaped document around it.
+
+It is not an error, and no part of your request was dropped. The task is running, it has
+its name, and it sits on the roster like every other one. What it does not have is the
+longer document described under *Why my task's brief is longer than what I typed* — so the
+room shows your own sentence, and a worker alone with a short brief settles fewer of the
+things a shaped brief would have settled in advance. If you were relying on that pass to
+spell out the format or the done-condition, say it yourself and start the work again.
+
+You see the line only when a shaper genuinely ran and was cut — the 25-second wait ran out,
+or the call failed. The other ways shaping does not happen stay silent, because in those
+no call was made that could be cut: a `shaper` role with no model resolved for it, and an
+answer that came back whole but could not be parsed, both admit the task on your words and
+say no such line. **An ordinary start is silent here**, which is how you can trust the line
+when it does appear.
+
 ## Does aforge change my task, or rewrite what I asked for?
 
 No. The shaping pass adds around your words; it never replaces them.
@@ -709,11 +730,16 @@ already owns it. A measured run read a broken reply three times in fifteen secon
 thinking-tier call each time, and re-opened a reply that could not move. See *Models,
 crews and what things cost* for what the error line says now.
 
-**And if nobody can be reached, the reply just ends.** No second model configured, a reader
-that faults, a reader that takes too long: each of those ends the reply as it would have
-ended before this existed.
+**With no second model set, nobody is asked at all.** The reader is a crew job, so an install
+with no thinking-tier model configured has none — and rather than call, fail in two
+milliseconds and write a failed reading into the session file on every round, aforge does not
+ask, and notes the absence once. A reader that faults or takes too long is different: the call
+was made and it came back with nothing, and the reply then ends as it would have ended before
+any of this existed. In an unattended run with a budget the decision carries on without a
+reader either way, on what came home and what the checks said — see *Leaving it running on its
+own* in *starting aforge*.
 
-## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say "carried on 3 times", it turned my wait into a task
+## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
 
 **A reply that ends while something IT started is still running is never carried on.** A
 background command, a watch, a video or music render, a forked hand — while any of those is
@@ -748,15 +774,18 @@ written for.
 
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything
-new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen:
+new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen —
+with what was actually read in the middle of it:
 
 ```
-carried on 3 times and it is still not finished · stopping here rather than carrying on again
+carried on 3 times · the last reading showed: the checks have not landed · stopping here rather than carrying on again
 ```
 
-**You are being told the truth when you read that.** aforge asks before it says it, so the
-reply really is unfinished — it is simply yours to pick up now rather than aforge's to push a
-fourth time. There is no number to raise and no setting that turns it off.
+**The line quotes a reading and never asserts a conclusion.** What sits after `the last
+reading showed:` is what the reader said, or — in an unattended run — the list of things that
+came home unfinished and the checks that did not pass. The line used to say "and it is still
+not finished", which was a claim about your work that nothing had taken a reading of. There is
+no number to raise and no setting that turns it off.
 
 **Three carry-ons can never reach the running-long point by themselves.** That point stands at
 forty rounds and carrying on can add three, so a reply that gets handed to a task got there on
@@ -2790,22 +2819,14 @@ task says so in one line.
 because a second model read it and drew its parts, that drawing is put to this same road
 before the new task's worker is asked anything — so the task starts already divided rather
 than being asked to find parts somebody has already named. Everything below applies to it
-without exception: the same two tests, the same reading by the mastermind, the same refusals.
+without exception: the same tests, the same reading by the mastermind, the same refusals.
 The receipt reads the same too, and the worker is told the parts are already running so it
 does not do them again. *An answer that runs long is read and moved* is where that happens.
 
-## Why it refused to split the work — it would not break the job into pieces, and the two tests a division has to pass
+## Why it refused to split the work — it would not break the job into pieces, and the tests a division has to pass
 
-**Two things have to be true, and neither is the worker's confidence.**
+**One test always decides, and it is not the worker's confidence.**
 
-- **There must be enough separate items.** Below six, one worker doing them in order beats
-  paying for a working copy, a check and a wait for each part. This was measured,
-  not guessed: twelve image files won, four modules and three bugs lost. This count reads
-  what the worker says it saw, and it counts a number standing beside a pile of things —
-  "11 adapter files", "nine sections", "34 people" — whatever the domain calls its things.
-  What never counts is a number that measures or budgets one thing: "250 words",
-  "90 seconds", "3 retries" and "status 500" are parameters, not piles, and evidence that
-  names no pile at all counts zero.
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
@@ -2814,18 +2835,60 @@ does not do them again. *An answer that runs long is read and moved* is where th
   set to exactly **1** there is no second pair of hands at all, and the worker is told
   plainly that asking again will not change it.
 
-If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
-the worker carries straight on as one worker. That is why this costs nothing on ordinary
-work: a task that is not wide is never split, and finding that out is free.
+**The other test — enough separate items — is off unless you turn it on.** Until September
+2026 a division also had to name at least six separate things, on a measurement that below
+six, one worker doing them in order beats paying for a working copy, a check and a wait for
+each part. Then the question was measured properly, four ways of planning against four
+readings of that floor over 273 plans drawn and judged, and the floor lost: it folded real
+divisions more often than it saved you a pointless one. Three lanes written out by hand over
+one file name no pile of things at all, so the count read them as nothing and refused them.
+It no longer decides anything unless you ask for it — *Can I make it always split the work*
+is how you ask, and what the count reads when you do.
 
-**With one exception, and it is about the count only.** If the work was started because a
-model read your request and judged it broad — the wide line before a `/task`, a proposal I
-marked wide, a message the harness moved to a task — and the count then says the evidence
-names too few items, those are two readings of the same work disagreeing. So the count is
-not the last word there: the division goes to the mastermind below, which decides it on the
-parts themselves. That is the whole of the exception. A count that says no on work nobody
-read for width is final and free, exactly as it always was, and the free-lane test is never
-waived by anything.
+If a test says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
+the worker carries straight on as one worker. Finding out that a split will not happen is
+free, and always was.
+
+**And what did not change is which work is offered the split at all.** A worker is only
+handed the verb when something already read the work as wide: I marked it wide, the sizing
+call at `/task` said so, or its own brief names six or more separate things. That last
+reading is the same counting described below and it is always on. So turning the floor off
+did not make everything divide — it stopped a second reading of the same evidence refusing
+what the first reading had already invited.
+
+## Can I make it always split the work — turning the width floor back on, why did it split my task into parts, AFORGE_SPLITGATE
+
+**Why did it split my task into parts?** Because the work was read as wide, a worker asked
+to hand its parts out, a lane was free, and — by default — nothing else stood in the way.
+The parts are listed in the task column under their parent and each one says what it owns.
+
+**The width floor is off by default. `AFORGE_SPLITGATE` in the environment turns it back
+on**, and it is the only way to; there is no setting for it, because it picks how the
+machine decides rather than anything you have a preference about.
+
+- **unset** — off. Every division that is asked for is kept. This is what you have.
+- **`AFORGE_SPLITGATE=1`** — the floor as it worked before September 2026: the work has to
+  name at least six separate things or the split is refused, free, on the spot.
+- **`AFORGE_SPLITGATE=judgment`** — asks the plan instead of your words. If every part is
+  already the size of one sitting and none of them waits on another, the parts stand
+  whatever your brief counted; where the plan has no opinion, the six-item count decides.
+- **`AFORGE_SPLITGATE=0`** — off, spelled out. The same as leaving it alone.
+- **anything else** — off, because off is what you get by default and a typo must not put a
+  floor back under your work without your knowing.
+
+**What the count reads, when you have turned it on.** It reads what the worker says it saw,
+and counts a number standing beside a pile of things — "11 adapter files", "nine sections",
+"34 people" — whatever the domain calls its things. What never counts is a number that
+measures or budgets one thing: "250 words", "90 seconds", "3 retries" and "status 500" are
+parameters, not piles, and evidence that names no pile at all counts zero.
+
+**With the count on there is one exception to it.** If the work was started because a model
+read your request and judged it broad — the wide line before a `/task`, a proposal I marked
+wide, a message the harness moved to a task — and the count then says the evidence names too
+few items, those are two readings of the same work disagreeing. The count is not the last
+word there: the division goes to the mastermind, which decides it on the parts themselves.
+That is the whole of the exception, it exists only while the count is on, and the free-lane
+test is never waived by anything.
 
 ## What each part is told — the brief a part opens on, and how it knows what its siblings own
 
@@ -2840,16 +2903,16 @@ worker split out and a part a second model drew — so a part never depends on t
 doing the splitting remembering to restate the job once per part. Your own sentence still
 appears exactly once, at the top, where it appears on every task.
 
-**And then the plan itself is read once, by your `mastermind` model.** Both tests above are
+**And then the plan itself is read once, by your `mastermind` model.** The tests above are
 about whether a split is worth it; neither of them reads the parts. But what a part owns is
 everything that worker will act on — it is not handed your conversation and cannot
 ask anybody anything, though the brief names the journal path and line of your original
 words so it can read them if the restatement was cut — and the scopes were written by whatever model the task itself runs on.
-So once the two tests have passed, the whole division goes to the mastermind at once: the
+So once those have passed, the whole division goes to the mastermind at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
 scope, fix a boundary two parts share, fold two parts into one, or say the parts are really
 stages of one procedure and not a division at all — in which case nothing is split and the
-worker carries on, exactly as a no from either test above. So the parts you see may be fewer
+worker carries on, exactly as a no from a test above. So the parts you see may be fewer
 than the worker asked for, and what they own may not be word for word what it wrote.
 
 **And it has one more answer, which is not about the split at all.** The mastermind may
@@ -2902,8 +2965,8 @@ is one part owning a folder while another owns a file inside it.
 
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
-worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
-cannot be had is not a reason to throw work away.
+worker wrote it**. It had already passed everything that was going to refuse it, and a second
+opinion that cannot be had is not a reason to throw work away.
 
 **Except on the one division it is deciding rather than sharpening** — the exception above,
 where the count said too few items and a model's reading of your request said broad. There
@@ -2941,7 +3004,7 @@ so, and no extra model call is made to grade it. A part the worker itself graded
 is never moved back down, and an install with no class rows set never moves anything,
 because there is nowhere dearer to move it to.
 
-**A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
+**A busy machine is not one of these tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
 and the parts simply **wait** — the same wait any queued task does, drawn as
 `waiting · machine busy` — and they start themselves as soon as the machine clears. The
@@ -2950,7 +3013,7 @@ worker is told so in its receipt and has nothing to come back for.
 **You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
 than one job in your words writes one dim line before the work starts —
 `the work looks wide · one worker starts, and it can split as it goes` — and that line is
-what this section is about. It promises nothing: the two tests below still have to pass.
+what this section is about. It promises nothing: the tests below still have to pass.
 
 **And this is what I do with wide work too.** When I hand work off myself rather than you
 typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
@@ -2967,7 +3030,7 @@ already names.
 **And so can work that runs while you are asleep.** A standing order that fires and starts
 work is on this road too, armed the same last way — off the items its own brief names,
 with no sizing call, because a firing runs on a rhythm you set once and a model call every
-night to re-read the same sentence is a bill nobody agreed to. The two tests still decide and
+night to re-read the same sentence is a bill nobody agreed to. The tests still decide and
 the plan is still read once before the parts exist, and the machine is still respected: a
 division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
 own cost row. The standing orders page has the rest of what an unattended run is.
@@ -2982,9 +3045,10 @@ in; walk into a part and its header says `part of: <the parent's title>`.
 **Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
 
 It is on by default and there is no setting for it. `AFORGE_SWARM=0` in the environment
-turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and lets a
-worker's request to split be taken at its word — both are for somebody rolling something
-back, not preferences, which is why neither is in the settings panel.
+turns the whole road off — no task splits at all — and `AFORGE_SPLITGATE` decides whether a
+width floor stands under the splits that do happen, which is off unless you set it
+(*Can I make it always split the work*). Both are environment pins rather than preferences,
+which is why neither is in the settings panel.
 
 ## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
 

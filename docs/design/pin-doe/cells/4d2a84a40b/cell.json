@@ -1,0 +1,38 @@
+{
+ "id": "pallets-click-3740",
+ "repo": "pallets/click",
+ "issue": 3740,
+ "anchor": true,
+ "door": "chat",
+ "pass": true,
+ "reason": "",
+ "door_verdict": "ok",
+ "tests_verdict": "green",
+ "ended": "self",
+ "exit": null,
+ "source": "fresh",
+ "tier": "small",
+ "wall_s": 99,
+ "cost_usd": 0.005327,
+ "ttft_ms": 1358,
+ "calls": 10,
+ "changed_files": 1,
+ "f2p": {
+  "passed": 225,
+  "failed": 0,
+  "errors": 0,
+  "exit": 0,
+  "pass": true
+ },
+ "suite": {
+  "passed": 1957,
+  "failed": 0,
+  "errors": 0,
+  "exit": 0,
+  "capped": false
+ },
+ "regressed": false,
+ "subharness": null,
+ "nodes": null,
+ "load": "9.31 5.41"
+}

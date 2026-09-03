@@ -55,10 +55,13 @@ import (
 //
 // WHERE IT IS CALLED FROM MATTERS. A case added to input.go's plain switch is
 // invisible to every place, because each place's handler returns above it. So
-// this function is the FIRST LINE of each place's own key handler — five call
-// sites, each keeping its right of first refusal — which is also what leaves the
-// task page's "every printable key is the filter" law untouched: `alt+` and
-// `shift+` chords carry no text and never reach a default arm.
+// the router is read twice, by design: once inside [app.placeKeyPress] —
+// reached from one place only, the conversation router's pageShowing branch
+// (input.go) — and once more as the first line of the handlers that kept the
+// old convention (tasks, home), which costs nothing: it is idempotent for a
+// key it did not take. That is also what leaves the task page's
+// "every printable key is the filter" law untouched: `alt+` and `shift+`
+// chords carry no text and never reach a default arm.
 
 // placeKeyPress is every key on whatever place is standing: the router's own six
 // classes first, and then that place's own reading of whatever is left.
@@ -86,6 +89,16 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	if cmd, took := a.placeKey(msg); took {
+		return cmd
+	}
+	// THE DOOR HOME IS READ HERE, at the bottom of the place router, because it
+	// must lose to every other meaning a space could have where a person is
+	// standing: the whole-keyboard layers above it, the router's six classes, and
+	// every key a place claims for its own rows. What is left — a plain space
+	// falling toward the place's box — is exactly what the door is made of
+	// ([app.placeHomeGesture]). It stands beside the conversation's own reading
+	// at the bottom of [app.key], one law about the box, two doors in.
+	if cmd, took := a.placeHomeGesture(msg); took {
 		return cmd
 	}
 	return pl.key(a, msg)
@@ -372,6 +385,38 @@ func (a *app) placeBox() *editor {
 		return nil
 	}
 	return pl.box(a)
+}
+
+// placeHomeGesture is the door home read from WHATEVER PLACE IS STANDING: two
+// spaces typed into that place's own box, the same two keystrokes that open it
+// from inside a conversation (home.go's [app.homeGesture]).
+//
+// THE DOOR USED TO BE A CONVERSATION'S DOOR ONLY. The gesture lived at the
+// bottom of [app.key], past the rung where a standing place takes the whole
+// keyboard — so a place never saw the check, and a person standing on the
+// search place, or the tasks place, or settings, had `space space` die under
+// their hands while the tab bar sat one walk away. The person's words were
+// `universal`, and this is what makes it so: the same guard
+// ([app.homeDoorOpen] — anywhere but home itself, where the gesture is a no-op
+// and the foot draws nothing), the same law about the box
+// ([app.homeDoorArmed]), the same box the place was already typing into
+// ([app.placeBox]).
+//
+// A PLACE WITH NO BOX HAS NO DOOR, and that is right rather than a gap: the
+// gesture is a thing typed into a box, and where there is no box the key does
+// nothing and always did. The box is RESET before home opens, because the two
+// spaces were two spaces somebody typed and not a draft anybody meant to keep
+// — the conversation's door empties its draft the same way ([app.key]).
+func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.homeDoorOpen() {
+		return nil, false
+	}
+	box := a.placeBox()
+	if !a.homeDoorArmed(box, msg) {
+		return nil, false
+	}
+	box.reset()
+	return a.openHome(), true
 }
 
 // placeSend is `alt+enter` over a composer with something in it: THE COMPOSER

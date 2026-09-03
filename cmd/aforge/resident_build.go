@@ -143,6 +143,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 		}
 		return resident.Compiled{
 			Accept:          acceptanceChecklist(ctx, settings, planClient, plans, graph, instruction),
+			Constraints:     brief.Constraints,
 			Goal:            brief.Goal,
 			Title:           brief.Title,
 			Contract:        brief.Contract,

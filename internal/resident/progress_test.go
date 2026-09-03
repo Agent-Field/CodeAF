@@ -455,3 +455,48 @@ func TestRoundsThatChangeTheNamedFileAreNeverAStandstill(t *testing.T) {
 		t.Fatalf("last change = %q, want the file the request names", line)
 	}
 }
+
+// A ROUND THAT CHANGED A FILE THE REQUEST ITSELF NAMES IS A ROUND THAT MOVED THE
+// WORK, and no reading of the world may call it a standstill. The standstill
+// sentence is now an ending — the job stops gating, repairing and resuming on it
+// — so a round misread as fruitless does not cost a wasted gate any more, it
+// costs the work.
+func TestAChangeToAFileTheRequestNamesIsNeverAStandstill(t *testing.T) {
+	root := inkWorkspace(t)
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { graph.Close() })
+	asked := "Read notes/RULINGS.md in full, then write the three lanes into report.md."
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-2", Brief: asked},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: asked}); err != nil {
+		t.Fatal(err)
+	}
+	node, _, _ := graph.Node("task-2")
+	forgetJobWorkspaces()
+	t.Cleanup(forgetJobWorkspaces)
+	RememberJobWorkspace(graph, node, root)
+
+	// Two rounds that really did write only scratch, so the job is one round
+	// away from the standstill and the third round is the one being weighed.
+	for _, name := range []string{"debug-one.ts", "debug-two.ts"} {
+		request := GrowRequest{JobRoot: "task-2", Node: node, Lineage: "task-2",
+			Reason: GrowOverrun, Round: 1, Measured: true, Artifacts: scratchRun(t, root, name)}
+		admitGrowth(graph, request, GrowVerdict{Allow: true, Round: 1}, 1)
+	}
+	wrote := scratchRun(t, root, "report.md")
+	if change := MeasureRound(graph, "task-2", root, wrote); !change.Moved() {
+		t.Fatalf("the file the request names was read as scratch: %+v", change)
+	}
+	verdict, err := growJob(context.Background(), graph, nil, GrowRequest{
+		JobRoot: "task-2", Node: node, Lineage: "task-2", Reason: GrowOverrun,
+		Round: 3, Measured: true, Artifacts: wrote})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, stopped := GrowthStopped(verdict.Cause); stopped {
+		t.Fatalf("a round that wrote the file the request names was refused: %+v", verdict)
+	}
+}

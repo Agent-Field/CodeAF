@@ -251,6 +251,44 @@ type DeliveryGate struct {
 	// Empty on a claim-subject gate, where there is no such list, and on every
 	// gate journaled before this existed.
 	HeldPoint string `json:"held_point,omitempty"`
+
+	// Constraint is the rules the person SET that this work broke, one entry
+	// per rule: their own words, then the files the run changed in spite of
+	// them. It is the finding of a gate law rather than of a review — the words
+	// are the person's by construction, so there is no citation to weigh — and
+	// it is a list of its own for the reason Unexercised is one: a finding that
+	// travels as prose inside somebody else's gap is journaled by nothing and
+	// reachable by nothing.
+	//
+	// A delivery carrying one is not whole, and no round is bought to close it:
+	// the work did the thing it was told not to do, and more work is not the
+	// answer to that. See revision.HoldConstraints and revision.ExtendForGap.
+	Constraint []string `json:"constraint,omitempty"`
+
+	// Receipt is the positive sentence this delivery earned, in the words the
+	// person reads: that the request was met as stated, or that the work's own
+	// checks were green and coverage could not be measured.
+	//
+	// IT IS THE OPPOSITE OF EVERY OTHER FIELD ON THIS ROW, which is why it is
+	// one. Everything else here says what a gate found wanting; a run that ends
+	// because the thing that was asked for is in hand has a fact of its own to
+	// record, and without it a delivery that stopped for the right reason and
+	// one that stopped because the rounds ran out are the same event. It is
+	// deliberately NOT read by Whole below: a receipt is a statement about why
+	// the run ended, and whether the delivery is whole is still settled by the
+	// pass, the repair and the world-doors exactly as it was.
+	Receipt string `json:"receipt,omitempty"`
+
+	// Missing is what the request asked for that the request-met question found
+	// absent, in the request's own words, on a run where that question was put
+	// and answered no.
+	//
+	// It rides beside the gap rather than inside it. The gap is the judge's
+	// finding and a repair round is briefed with it verbatim; folding a second
+	// reader's sentence into that string would hand the round a requirement
+	// nobody weighed against the person's words, which is the laundering the
+	// admission rules exist to prevent.
+	Missing string `json:"missing,omitempty"`
 }
 
 // ExercisedPoint is one row of that mapping: a behaviour the request stated and
@@ -360,6 +398,16 @@ func (g DeliveryGate) Whole() bool {
 	if len(g.Unbound) > 0 {
 		return false
 	}
+	// AND A RULE THE PERSON SET THAT THE WORK BROKE IS THE ONE FINDING NOTHING
+	// CAN ARGUE WITH AT ALL. The others are measurements of a repository; this
+	// is the person's own sentence held against the files the run changed, so
+	// there is nothing here for an acquittal to be about — a pass on the
+	// deliverable's substance says only that the work was good at doing what it
+	// was forbidden to do. It empties the one way it can: the run does not do
+	// it. See revision.HoldConstraints.
+	if len(g.Constraint) > 0 {
+		return false
+	}
 	return g.Pass || g.PolishClosed || g.Overturned
 }
 
@@ -389,15 +437,36 @@ func (g DeliveryGate) Cited() []string {
 func (s *Store) RecordDeliveryGate(nodeID string, gate DeliveryGate) error {
 	nodeID = strings.TrimSpace(nodeID)
 	gate.Gap = strings.TrimSpace(gate.Gap)
+	gate.Refused = strings.TrimSpace(gate.Refused)
 	if nodeID == "" {
 		return fmt.Errorf("record delivery gate: %w: empty node id", ErrInvalid)
 	}
-	if !gate.Pass && gate.Gap == "" {
-		return fmt.Errorf("record delivery gate: %w: a failed gate must name the gap", ErrInvalid)
+	// A GATE THAT DID NOT PASS MUST SAY WHY, AND THERE ARE TWO WAYS TO SAY IT.
+	// One is the gap a judgement found. The other is the refusal that stood in
+	// for the judgement — a gate that was never asked at all — and that row says
+	// so in Refused with Unclosed set, which is the shape every reader here and
+	// the exit code already spend.
+	//
+	// Demanding a gap of the second rejected it on every real run. The harness
+	// stops spending on a job once nothing is changing, journals the unasked
+	// gate as `{Refused: …, Unclosed: true}` (cmd/aforge/chat.go), and got back
+	// `record delivery gate: invalid graph mutation: a failed gate must name the
+	// gap` — so the row a battery reads to tell an unjudged delivery from a
+	// checked one never landed, and the only trace was a note in the log.
+	//
+	// A row that says neither is still refused: a gate that recorded nothing at
+	// all is a gate no autopsy can read.
+	if !gate.Pass && gate.Gap == "" && !(gate.Refused != "" && gate.Unclosed) {
+		return fmt.Errorf("record delivery gate: %w: a gate that did not pass must name the gap "+
+			"it found, or the refusal that stood in for the judgement", ErrInvalid)
 	}
 	gate.Gap = bounded(gate.Gap, MaxDigestBytes)
 	gate.Quote = bounded(strings.TrimSpace(gate.Quote), MaxDigestBytes)
 	gate.Refused = bounded(strings.TrimSpace(gate.Refused), MaxDigestBytes)
+	// The two positive fields are bounded like every other sentence on this row:
+	// one event may not carry an unbounded string, whichever direction it points.
+	gate.Receipt = bounded(strings.TrimSpace(gate.Receipt), MaxDigestBytes)
+	gate.Missing = bounded(strings.TrimSpace(gate.Missing), MaxDigestBytes)
 	// Per citation, not on the list as a whole. The bound exists so one event
 	// cannot carry an unbounded string, and a citation clipped to a share of a
 	// budget it does not know the size of would be clipped mid-word — which is
@@ -561,8 +630,8 @@ func (s *Store) DeliveryGateLineage(baseID string) ([]DeliveryGate, error) {
 // (docs/design/failsafe/FAILSAFE.md clause 3).
 const EventAcceptance EventKind = "acceptance"
 
-// AcceptancePoint is one behaviour the request states, and the words of the
-// request it is a reading of.
+// AcceptancePoint is one thing the request states, the words of the request it
+// is a reading of, and which of the two kinds it is.
 //
 // The store learns no more about a point than that, and deliberately: Quote is
 // what the grounding rule weighs and Behaviour is what a person reads, and the
@@ -570,6 +639,13 @@ const EventAcceptance EventKind = "acceptance"
 type AcceptancePoint struct {
 	Behaviour string `json:"behaviour"`
 	Quote     string `json:"quote"`
+	// Kind is "behaviour" or "action" — whether this point is something the
+	// finished work must be, or something the RUN does on the way. It is the
+	// classification the settlement acts on, and it is journaled so an autopsy
+	// of a run whose coverage finding fired on nothing checkable can see which
+	// way each point was read. Empty on a row written before the reading
+	// existed, which every reader takes as behaviour.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Acceptance is the whole checklist for one piece of work.

@@ -38,8 +38,44 @@ import (
 // readers of one cap is how a number in this repository drifts. See PERF.md,
 // "The verification photograph's budget".
 
+// Opening is everything the seam BEFORE the work took away with it, carried in
+// one value to the seam after it.
+//
+// It is one value rather than three parameters because the three are one fact —
+// what this leaf found when it arrived — and the belt that carries them threads
+// them through ten separate exits. Two of them were carried that way and the
+// third was not carried at all: nothing anywhere remembered where the
+// repository stood when the tree was photographed, so [Account.Range] had no
+// commit to be measured from and [Account.Landed] answered no for every run in
+// the world. A fact that has to be added to ten call sites is a fact that gets
+// added to nine.
+type Opening struct {
+	// Reading is the project's own account of whether it still works, read
+	// while the tree was still pristine.
+	Reading verify.Reading
+	// Moved says THE JOB HAS CHANGED FILES SINCE THIS READING WAS TAKEN, and it
+	// is what the second reading is bought with. See verify.TreeState.
+	//
+	// This field carried "did this leaf inherit a reading" when it was first
+	// written, and that was the wrong question in the way #460 measured: every
+	// leaf after the first inherits, so a job whose leaves were ordered to
+	// change nothing bought a whole second reading at every one of them — four
+	// of them, two minutes each, over a tree that never moved. Inheriting is a
+	// fact about a lookup; this is a fact about the tree, and the tree is what
+	// the reading is of.
+	Moved bool
+	// Base is the commit the repository was standing on at that moment, and it
+	// is the only one of the three that cannot be recovered later — by the time
+	// a leaf lands, HEAD is wherever the leaf left it. Empty for every root that
+	// is not a git work tree, which reads downstream as no claim.
+	Base string
+}
+
 // PhotographBefore is the reading the whole comparison is subtracted from, and
-// it is the JOB's reading rather than this leaf's.
+// it is the JOB's reading rather than this leaf's. What it hands back is the
+// whole [Opening] — the reading, whether the job has moved the tree since it was
+// taken, and where the repository's history stood — because all three are
+// carried to the same seam.
 //
 // A repair round is a new leaf, in a new workspace object, standing in a tree
 // its own job has already changed. A leaf that photographed what IT found took
@@ -68,16 +104,39 @@ import (
 // not have to know which one it is standing in. A nil history is ordinary — a
 // leaf run outside a graph has no journal to write into — and the reading is
 // taken and weighed identically with or without one.
+//
+// The opening's own Moved is the other half of the answer, and it is what the
+// second reading is bought with: THE JOB HAS CHANGED FILES SINCE THIS READING
+// WAS TAKEN. It used
+// to say "this leaf inherited a reading", which is a fact about a lookup and not
+// about a tree — every leaf after the first inherits — so a job whose leaves
+// were ordered to change nothing bought a whole second reading at every one of
+// them. The measured errand spent four of them, two minutes each, on a tree that
+// never moved. See verify.TreeState.
 func PhotographBefore(
 	ctx context.Context, workspace *Workspace, history *store.Store,
 	wall time.Duration, task Task,
-) (reading verify.Reading, inherited bool) {
+) (opening Opening) {
 	if workspace == nil {
-		return verify.Reading{}, false
+		return Opening{}
 	}
+	// AND THE REPOSITORY'S OWN MARK FOR WHERE THIS LEAF STARTED, taken on this
+	// seam because this is the seam that runs immediately before the tree is
+	// photographed. It is deferred so it is read LAST, as close to
+	// [Workspace.WatchTree] as anything in this function can be: the reading
+	// above can take an eighth of the leaf's wall, and a base captured before it
+	// would be a base for a different tree. Every way of failing to read it —
+	// no git, no repository, a cancelled context — leaves it empty, which is
+	// what [Range.Derived] answers no to.
+	defer func() { opening.Base = gitHead(ctx, workspace.Root()) }()
 	job := verify.JobKey(task.Goal)
+	// What the job has produced or changed by the time this leaf starts. It is
+	// the same record focusOf reads for the same reason: the rounds this leaf
+	// continues are the only account of the work that exists yet.
+	tree := verify.TreeState(workspace.Root(), changedSoFar(task))
 	pace := verify.Pace{}
 	if held, ok := verify.BaselineFor(workspace.Root(), job); ok {
+		opening.Moved = !verify.TreeUnchangedSince(workspace.Root(), job, tree)
 		// ONE ANSWER IS NOT INHERITED: a scoped reading killed at its ceiling
 		// having named nothing. Every other refusal is a fact about the tree,
 		// the project or the wall, and none of those move between rounds. That
@@ -88,14 +147,52 @@ func PhotographBefore(
 		// after it inherited the silence.
 		if !held.Retakeable() {
 			journalReading(history, task, held, held.Before, "before the job's first change", true)
-			return held, true
+			opening.Reading = held
+			return opening
 		}
 		pace = held.Pace()
 	}
-	reading = verify.Photograph(ctx, workspace.Root(), wall, focusOf(task), pace)
-	verify.RememberBaseline(workspace.Root(), job, reading)
+	reading := verify.Photograph(ctx, workspace.Root(), wall, focusOf(task), pace)
+	verify.RememberBaseline(workspace.Root(), job, tree, reading)
 	journalReading(history, task, reading, reading.Before, "before the job's first change", false)
-	return reading, false
+	// A READING JUST TAKEN IS A READING OF THIS TREE, so nothing has moved since
+	// it: whatever the job had already changed when this leaf arrived is inside
+	// the photograph rather than after it. Only this leaf's own work can move
+	// the tree from here, and that is what changed says at the other end.
+	opening.Reading, opening.Moved = reading, false
+	return opening
+}
+
+// leafMovedTheTree says this leaf changed the tree it was standing in, AND IT
+// COUNTS A DELETION.
+//
+// The artifact list cannot: Workspace.Artifacts holds what the tree still has,
+// deliberately, because that list is also what the person is shown and a
+// deletion is not a file anybody can open. So a leaf whose whole job was to take
+// a file out reported an empty list, which read here as a leaf that changed
+// nothing — and the second reading, the one that would have caught what the
+// removal broke, was never taken. The workspace's own before-and-after record
+// knows the difference and is asked for it (Workspace.ArtifactFacts).
+func leafMovedTheTree(workspace *Workspace, leaf string) bool {
+	// The facts are the artifact list PLUS the deletions — Artifacts is these
+	// with ArtifactDeleted taken out — so this is the older `len(Artifacts) > 0`
+	// widened by exactly the one thing it could not see.
+	return workspace != nil && len(workspace.ArtifactFacts(leaf)) > 0
+}
+
+// changedSoFar is the job's own account of what it has produced or changed
+// before this leaf has done anything: the artifacts the rounds it continues left
+// behind.
+//
+// It is the world's record and not a worker's claim — the same list the focus is
+// widened by, and the same list the delivery gate holds — because the question
+// it answers is whether the TREE moved, and only the tree can say.
+func changedSoFar(task Task) []string {
+	var record []string
+	for _, input := range task.Inputs {
+		record = append(record, input.Artifacts...)
+	}
+	return record
 }
 
 // focusOf is what this job is about, as paths: the files the person's own request
@@ -128,36 +225,57 @@ func PhotographBefore(
 func focusOf(task Task) verify.Focus {
 	focus := verify.Focus(verify.NamedSubjects(
 		strings.Join([]string{task.Title, task.Goal, task.Brief}, "\n")))
-	for _, input := range task.Inputs {
-		focus = append(focus, input.Artifacts...)
-	}
-	return focus
+	return append(focus, changedSoFar(task)...)
 }
 
 // PhotographAfter takes the second reading and writes what the two readings say
 // onto the outcome.
 //
 // changed is the workspace's own account of whether THIS leaf moved anything.
-// inherited says an earlier round of the same job already did. Either is reason
-// enough to take the second reading: a continuation that only rewrote its
-// account still hands over a tree an earlier round may have broken, and the
-// whole reason the baseline is the job's is so that breakage is still visible
-// here. A first leaf that changed nothing cannot have regressed anything, and
-// re-running a suite to prove it costs an eighth of the wall for an answer that
-// is already known.
+// The opening's own Moved says the JOB had already moved the tree before this
+// leaf's reading was taken (verify.TreeState, by way of PhotographBefore).
+// Either is reason enough to take the second reading: a continuation that only
+// rewrote its account still hands over a tree an earlier round may have broken,
+// and the whole reason the baseline is the job's is so that breakage is still
+// visible here. Neither is the case for a leaf that changed nothing in a tree
+// nothing had changed — it cannot have regressed anything, and the reading it is
+// holding is a reading of the very bytes in front of it, so it stands rather
+// than being taken again for an eighth of the wall.
 //
 // It belongs at whatever single point a belt lands through, and it runs on an
 // EXHAUSTED landing exactly as on a chosen one: a leaf ordered to stop still
 // changed the tree it was standing in, and a reading nobody took is the silence
 // this whole file exists to end.
+//
+// Being that one point, it is also where the leaf's own account of its change is
+// taken — see [AccountFor], which it defers so that no exit from here can skip
+// it.
 func PhotographAfter(
 	ctx context.Context, workspace *Workspace, history *store.Store,
-	wall time.Duration, task Task, reading verify.Reading,
-	changed, inherited bool, outcome *Outcome,
+	wall time.Duration, task Task, opening Opening, changed bool, outcome *Outcome,
 ) {
 	if outcome == nil || workspace == nil {
 		return
 	}
+	reading := opening.Reading
+	// THE RETAKE LAW, SETTLED ONCE AND READ TWICE. A leaf that moved the tree, or
+	// that stands in a tree its own job has already moved, buys a reading of the
+	// finished tree; a leaf that changed nothing in a tree nothing changed keeps
+	// the reading it is holding, because that reading is of the very bytes in
+	// front of it.
+	//
+	// It is one variable rather than the same condition written in two places
+	// because the account below turns on it too — a roster nobody re-ran is not
+	// this leaf's claim to have checked anything — and two spellings of one law
+	// is how the two answers come to disagree.
+	secondReading := changed || opening.Moved
+	// AND THE LEAF ACCOUNTS FOR ITS OWN CHANGE, HERE AND IN NO BELT. It is
+	// deferred because this function has six exits and the accounting is owed on
+	// every one of them — a leaf whose second reading could not be taken still
+	// changed the files it changed. See accountfor.go for what left with the belt
+	// that used to do this, and account_writer_test.go for what keeps this the
+	// only place it is done.
+	defer AccountFor(ctx, workspace, task, opening.Base, secondReading, outcome)
 	// A SECOND READING REPLACES THE FIRST; IT DOES NOT ADD TO IT.
 	//
 	// A leaf can now be photographed twice — once when it offers an answer, so
@@ -205,7 +323,22 @@ func PhotographAfter(
 			describeChecks(reading.Before.Failing)+"). This is the repository's pre-existing "+
 			"state, not this change's doing.")
 	}
-	if !changed && !inherited {
+	if !secondReading {
+		// THE TREE IS THE TREE THAT WAS READ, SO THE READING BEFORE THE WORK IS
+		// THE READING OF THE FINISHED TREE. Nothing the job has done has reached
+		// a file, so the suite would be run a second time over the identical
+		// bytes for the identical roster — and the run is already holding it.
+		// The measured errand bought that four times over 4,587 tests, two
+		// minutes each, and every one of them was killed at its ceiling.
+		//
+		// It is journaled as inherited rather than passed over in silence,
+		// because an absence in the record is never a diagnosis: a reading
+		// nobody needed and a reading nobody took were the same missing row.
+		if settled, ok := reading.OnAnUnchangedTree(); ok {
+			reading = settled
+			outcome.Verification = reading
+			journalReading(history, task, reading, reading.Before, "on the finished tree", true)
+		}
 		return
 	}
 	// The SAME rung of the ladder the baseline was taken on, pinned rather than

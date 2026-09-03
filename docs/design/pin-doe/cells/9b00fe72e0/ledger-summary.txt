@@ -1,0 +1,48 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:19:54.065 915c77b0 start -     anthropic      -    -       
+17:19:54.099 915c77b0 end   -     anthropic      404  34      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:19:54.099 f80e445a start -     DigitalOcean   -    -      hedged arms=2 
+17:19:54.254 f80e445a end   -     DigitalOcean   429  154    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+17:19:55.010 ff042e2c start -     DigitalOcean   -    -      hedged arms=2 
+17:19:55.212 ff042e2c end   -     DigitalOcean   429  202    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+17:19:56.918 8c600e0b start -     DigitalOcean   -    -      hedged arms=2 
+17:20:32.086 8c600e0b end   -     DigitalOcean   200  37987  hedged arms=2 
+17:20:32.089 f6239a5f start turn  CoreWeave      -    -       
+17:20:35.110 f6239a5f end   turn  CoreWeave      200  3022    
+17:20:35.112 a16b8cad start turn  CoreWeave      -    -       
+17:20:38.454 a16b8cad end   turn  CoreWeave      200  3341    
+17:20:38.456 6fd4f529 start turn  CoreWeave      -    -       
+17:20:42.146 6fd4f529 end   turn  CoreWeave      200  3690    
+17:20:42.150 bdd9e0ef start turn  CoreWeave      -    -       
+17:20:45.410 bdd9e0ef end   turn  CoreWeave      200  3260    
+17:20:45.413 479a7e57 start turn  CoreWeave      -    -       
+17:20:48.917 479a7e57 end   turn  CoreWeave      200  3504    
+17:20:48.920 285be0a6 start turn  CoreWeave      -    -       
+17:20:52.457 285be0a6 end   turn  CoreWeave      200  3537    
+17:20:52.459 ac9df066 start turn  CoreWeave      -    -       
+17:21:59.789 ac9df066 end   turn  CoreWeave      200  67329   
+17:21:59.797 db5c4d07 start turn  CoreWeave      -    -       
+17:22:05.158 db5c4d07 end   turn  CoreWeave      200  5362    
+17:22:05.160 c18b6945 start turn  CoreWeave      -    -       
+17:22:20.431 f2798bb5 start turn  CoreWeave      -    -       
+17:22:28.752 3a9d89cc start turn  CoreWeave      -    -       
+17:22:32.593 343ed343 start turn  CoreWeave      -    -       
+17:22:37.110 22b30c68 start turn  CoreWeave      -    -       
+17:22:52.319 a5dc2f66 start turn  CoreWeave      -    -       
+17:22:57.462 9a1ed809 start turn  CoreWeave      -    -       
+17:23:07.056 5f70ed2d start turn  CoreWeave      -    -       
+17:23:16.876 05439362 start turn  CoreWeave      -    -       
+17:23:27.704 494d8d89 start turn  CoreWeave      -    -       
+17:23:31.076 c035b7ab start turn  CoreWeave      -    -       
+17:23:39.653 f463f12a start turn  CoreWeave      -    -       
+17:23:42.232 f463f12a end   turn  CoreWeave      200  2582    
+17:23:42.236 f7e50bc0 start turn  CoreWeave      -    -       
+17:23:59.842 8a114c84 start turn  CoreWeave      -    -       
+17:24:26.465 6ddcdafe start turn  CoreWeave      -    -       
+17:24:39.700 dbb74a7f start turn  CoreWeave      -    -       
+17:24:46.187 6d20e002 start -     Alibaba        -    -       
+17:24:56.024 6d20e002 end   -     Alibaba        200  9836    
+17:24:56.025 8a1b5308 start reflex anthropic      -    -       
+17:24:56.042 8a1b5308 end   reflex anthropic      404  17      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:24:56.042 539b985d start reflex StreamLake     -    -      hedged arms=2 
+17:24:58.991 539b985d end   reflex StreamLake     200  2949   hedged arms=2 

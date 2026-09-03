@@ -1201,6 +1201,17 @@ type scriptedBrain struct {
 	inventedGap bool
 	// writeFile makes the first leaf write a real artifact.
 	writeFile bool
+	// leafDropsAfterWriting is the one ending the tree-settlement law is about:
+	// the worker's calls answer normally until it has written a file, and the
+	// next one never comes back. It is a provider refusal and not a hang, so
+	// the leaf ends on the wire with finished work already on disk.
+	leafDropsAfterWriting bool
+	// requestMet, when set, is the answer the request-met question gets: "met",
+	// or the words for the one thing the request asked for that is absent. The
+	// arm exists only for the tests that set this, because a run that answers
+	// the question at all behaves differently from one whose question nobody
+	// could answer — and every other test in this package is the second kind.
+	requestMet string
 	// editPath names a file already in the workspace that the first leaf edits
 	// in place, which is what a coding errand actually does.
 	editPath string
@@ -1334,6 +1345,17 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 			http.StatusBadRequest)
 		return
 	}
+	// The wire dropping, after the work landed. The count of writes is what
+	// makes it "after": the first leaf call reaches the script and writes the
+	// file, and every call from then on is refused by the transport — which is
+	// how a leaf comes to be marked failed over a tree that holds finished work.
+	if s.leafDropsAfterWriting && s.count("wrote") > 0 &&
+		strings.Contains(body, "You complete one piece of work, alone, using tools") {
+		s.tally("leaf-dropped")
+		http.Error(writer, `{"error":{"message":"All providers have been ignored.","code":404}}`,
+			http.StatusNotFound)
+		return
+	}
 	writer.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(writer, s.reply(body))
 }
@@ -1380,6 +1402,14 @@ func (s *scriptedBrain) reply(body string) string {
 		// see this one row in a sum (TestTheAcceptancePassIsBilledToTheSpine).
 		return strings.Replace(s.say(points), `"completion_tokens":10`,
 			fmt.Sprintf(`"completion_tokens":%d`, acceptanceCompletionTokens), 1)
+
+	case s.requestMet != "" &&
+		strings.Contains(body, "You decide whether a request, exactly as the person wrote it"):
+		s.tally("request-met")
+		if s.requestMet == "met" {
+			return s.say(`{"met":true,"missing":""}`)
+		}
+		return s.say(fmt.Sprintf(`{"met":false,"missing":%q}`, s.requestMet))
 
 	case strings.Contains(body, "You decide whether a job still needs work added to it"):
 		s.tally("satisfied")
