@@ -1701,8 +1701,17 @@ could be checked.
 | `spent()` vs the grant | uncached prompt + cached at `cachedTokenWeightPercent` (10, the provider's own discount) + completion — **what the job pays** | **yes** |
 | `maxTurnBackstop` (400) | iterations | **yes** |
 | the no-progress guard | repeated calls, a stagnant window, `noProgressTurnFloor` (60) | **yes** |
+| the landing reserve | `landingTurns` (4) turns or `landingTokenShare` (0.2) of the grant, whichever arrives first | it **ends** a leaf the grant already landed |
 | `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
+
+The effective ceiling a caller gets is therefore the grant, plus
+`landingTokenShare` of that grant, plus the one turn already in flight when the
+ceiling is crossed. It cannot be exactly the grant because the loop learns a
+turn's bill only after the turn is complete, and that last turn is what keeps a
+mid-edit workspace whole. The token half exists because four leaves in the
+2026-09-03 worker trial reached 1.18×, 1.28×, 1.74× and 2.04× their grants; one
+reserve alone billed 122,392 tokens against a 150,000-token grant.
 
 **The two cumulative bounds were retired as stops, and the arithmetic is why.**
 Σ over turns of the prompt is `turns × mean-context` wearing a token name: a
