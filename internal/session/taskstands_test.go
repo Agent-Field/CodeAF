@@ -159,6 +159,46 @@ func TestC3WhereInsideARepositoryIsBranchedAndPlainFoldersStayInPlace(t *testing
 	}
 }
 
+// C3b: A CONTRACT THAT SPELLS ITS GROUND ANOTHER WAY IS STILL A CONTRACT ABOUT
+// THAT GROUND.
+//
+// The ground is resolved to git's own spelling while the paths in a brief are
+// spelled the way whoever wrote them was standing, and on a Mac those differ by
+// a `/private` on every task whose repository sits in a temp directory. Read as
+// bytes, a contract that named the ground three times looked like a contract
+// that named nothing under it — so [groundMode] made the work a read-only
+// reference, and a reference deliberately binds none of its addresses to the
+// copy it was given ([taskCopyFor]). The worker was then handed the person's own
+// checkout to write in, which is the isolation this whole file exists for.
+func TestC3bAContractSpellingTheGroundThroughAnAliasStillWritesInIt(t *testing.T) {
+	repo := newTestRepo(t)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = t.TempDir() })
+
+	writes := agent.resolveTaskGround(taskSpec{
+		ground:      alias,
+		brief:       "change " + filepath.Join(alias, "internal", "widget.go") + " so it says new",
+		deliverable: filepath.Join(alias, "internal", "widget.go"),
+		acceptance:  filepath.Join(alias, "internal", "widget.go") + " says new",
+	})
+	if writes.dir != canonicalPath(repo) || writes.mode != TaskModeWorktree {
+		t.Fatalf("stand = %+v, want a worktree of %s", writes, canonicalPath(repo))
+	}
+	// AND THE READ-ONLY CASE IS UNCHANGED, which is what says the reading above
+	// grew no more generous than the alias: work whose contract names no file in
+	// the ground at all still gets the reference it always got.
+	reads := agent.resolveTaskGround(taskSpec{
+		ground: alias, brief: "say what the widget does", deliverable: "a concise answer",
+		acceptance: "the question is answered",
+	})
+	if reads.dir != canonicalPath(repo) || reads.mode != TaskModeReference {
+		t.Fatalf("stand = %+v, want a reference to %s", reads, canonicalPath(repo))
+	}
+}
+
 // C4: an in-place mode the person put on a referred repository remains the one
 // authority that deliberately writes that repository directly.
 func TestC4APersonsInPlaceModeOnAReferredRepositoryIsHonoured(t *testing.T) {

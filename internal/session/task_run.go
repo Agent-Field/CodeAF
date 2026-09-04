@@ -6343,6 +6343,16 @@ func standingInOwnSpace(place Place, dir string) bool {
 //
 // IT READS THE DISK AND NEVER WRITES IT, because the proposal card resolves the
 // same words for display before the person has said yes ([taskWhereNotice]).
+//
+// AND IT ANSWERS IN THE ONE SPELLING ([canonicalPath]), because this is the
+// boundary where somebody's words become a directory this engine will compare
+// against every other directory it holds. A `where` of /var/… on a Mac names the
+// folder git, the guard and every checkpoint here call /private/var/…, and a
+// stand kept in the typed spelling made one folder look like two: the ground
+// stopped matching the copy cut from it, and a contract written against it
+// stopped binding to that copy. A path still to be made is canonicalized the
+// same way — its nearest existing parent resolved, its missing suffix put back —
+// so the spelling is settled before the caller that places work creates it.
 func resolveTaskWhere(where, workspace string) (string, error) {
 	if where == "~" || strings.HasPrefix(where, "~/") {
 		home, err := os.UserHomeDir()
@@ -6368,7 +6378,7 @@ func resolveTaskWhere(where, workspace string) (string, error) {
 	case !info.IsDir():
 		return "", fmt.Errorf("%s is not a directory", dir)
 	}
-	return filepath.Clean(dir), nil
+	return canonicalPath(dir), nil
 }
 
 // taskTreeSession is the path segment that keeps one window's worktrees away
