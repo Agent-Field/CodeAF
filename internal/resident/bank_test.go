@@ -257,6 +257,28 @@ func TestLeafStateDerivesFromAccountAndRan(t *testing.T) {
 	}
 }
 
+// A FINDING THE LEAF LANDED HOLDING REACHES WHOEVER PICKS THE WORK UP. The
+// handover names the fact its finished-tree reading found without addressing a
+// repair instruction to the worker that has already stopped.
+func TestLeafStateNamesTheFindingTheLeafLandedHolding(t *testing.T) {
+	fact := "the checks this work wrote are red — TestParser"
+	outcome := &executor.Outcome{Standing: []executor.SelfCloseFinding{{
+		Kind:     executor.SelfCloseOwnChecks,
+		Fact:     fact,
+		Sentence: fact + ". Get them passing, or say in your delivery which of them the request does not ask for.",
+	}}}
+	state := LeafState(outcome)
+	if !strings.Contains(state, "What its own reading of the finished tree found, and it landed holding:") {
+		t.Fatalf("the handover has no standing-finding block:\n%s", state)
+	}
+	if !strings.Contains(state, "  - "+fact) {
+		t.Fatalf("the handover does not name what the leaf's own reading found:\n%s", state)
+	}
+	if strings.Contains(state, "Get them passing") {
+		t.Fatalf("the handover addresses an instruction to a worker that stopped:\n%s", state)
+	}
+}
+
 // A worker with no account — the ordinary generalist — still contributes its
 // last calls, which is the one structured record every worker leaves.
 func TestLeafStateDerivesFromRanAlone(t *testing.T) {

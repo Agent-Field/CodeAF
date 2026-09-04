@@ -1350,7 +1350,10 @@ func safeName(id string) string {
 	return cleaned
 }
 
-func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
+// shellCommand is the one place that reads the command a shell call will run.
+// The landing record and the tool must agree about that text without parsing a
+// second answer back out of the raw call later.
+func shellCommand(args map[string]any) string {
 	command := stringArg(args, "cmd")
 	if command == "" {
 		// An array is an explicit serial script: each step runs only when
@@ -1365,6 +1368,25 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 			command = strings.Join(steps, " && ")
 		}
 	}
+	return command
+}
+
+// shellCommandOf reads a command from a raw shell call. A different tool or
+// malformed arguments ran no shell command and therefore leaves no command in
+// the landing record.
+func shellCommandOf(call ai.ToolCall) string {
+	if call.Function.Name != "sh" {
+		return ""
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+		return ""
+	}
+	return shellCommand(args)
+}
+
+func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
+	command := shellCommand(args)
 	if command == "" {
 		return errorf("sh needs cmd")
 	}

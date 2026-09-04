@@ -848,6 +848,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// word `partial` printed over tests that were green.
 		{"why did it keep going after it had the answer", "adaptive-runs"},
 		{"it said partial but the tests were green", "adaptive-runs"},
+		{"it said done but never ran the tests", "adaptive-runs"},
 		{"the request was met as stated", "adaptive-runs"},
 		// And the same ending arriving the other way round: the work is done,
 		// the checks are green, and the run reports a failure because the

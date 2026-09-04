@@ -20,12 +20,12 @@ import (
 // cost was measured going into that re-investigation.
 //
 // So the account is structural rather than prose: the files the work changed
-// with the kind of change and its size, the checks it ran with what each one
-// found, and the last thing the worker said for itself. Nothing here is
-// interpreted — every field is a fact the worker observed and no reader further
-// down could observe for itself — and nothing here is worker-specific. Any
-// subharness that owns a verifier can fill it in, which is why it is named for
-// what it is rather than for who writes it first.
+// with the kind of change and its size, the commands it issued itself, the
+// checks the closing photograph ran with what each one found, and the last thing
+// the worker said for itself. Nothing here is interpreted — every field is a
+// measured fact no reader further down could observe for itself — and nothing
+// here is worker-specific. Any subharness that owns a verifier can fill it in,
+// which is why it is named for what it is rather than for who writes it first.
 //
 // A nil Account is the ordinary case: a worker that photographs nothing leaves
 // it empty, and an empty account reads as "no claim" everywhere it is rendered.
@@ -38,8 +38,26 @@ type Account struct {
 	// suite that ran four times reports the state of the fourth run, and the
 	// three before it are history rather than evidence.
 	Checks []Check
+	// Commands is the bounded list of shell commands the leaf ITSELF ran. It is
+	// distinct from Checks, which is the closing photograph's reading of the
+	// finished tree: no command here is evidence that anything passed because
+	// nothing parsed its output, and Verified does not read this field.
+	Commands []string
+	// CommandsRun is how many commands the leaf itself ran in total, including
+	// the earlier commands omitted from the bounded list above.
+	CommandsRun int
 	// Final is the last thing the worker said about the whole job, verbatim.
 	Final string
+	// Unread is why the finished tree could not be read, when something was
+	// asked of it and the answer could not be understood — a strategy that
+	// would not start a second time, a suite that failed to collect, a command
+	// killed at its ceiling before it named a check. Empty when nothing was
+	// attempted, and that emptiness is what tells [Account.rows] apart the two
+	// worlds an absent Checks list used to collapse. It is
+	// Verification.Unread's own sentence, carried rather than recomposed, so
+	// the account and the reading cannot come to say different things about the
+	// same failure.
+	Unread string
 
 	// Range is the two commits this account's change set was measured between,
 	// when it was measured from the repository rather than narrated by the
@@ -221,6 +239,8 @@ func (c Check) settled() bool { return c.Passed || c.Known }
 // Empty reports that there is nothing here to show. A nil account is empty, so
 // every caller can ask without guarding first.
 func (a *Account) Empty() bool {
+	// AN ACCOUNT EXISTS BECAUSE THERE WERE FILES OR CHECKS. Commands ride one
+	// that already exists and never turn an otherwise empty account into a claim.
 	return a == nil || (len(a.Files) == 0 && len(a.Checks) == 0 && strings.TrimSpace(a.Final) == "")
 }
 
@@ -339,6 +359,23 @@ func (a *Account) FileLines() []string {
 	return lines
 }
 
+// CommandLines renders what the leaf itself ran, separately from the closing
+// photograph's checks. The total names any earlier commands the bounded record
+// left out, so its tail cannot be mistaken for the whole run.
+func (a *Account) CommandLines() []string {
+	if a == nil || len(a.Commands) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, len(a.Commands)+1)
+	for _, command := range a.Commands {
+		lines = append(lines, "  "+command)
+	}
+	if earlier := a.CommandsRun - len(a.Commands); earlier > 0 {
+		lines = append(lines, fmt.Sprintf("  and %d earlier commands, in the run's own record", earlier))
+	}
+	return lines
+}
+
 // CheckLines renders the verification story as evidence rows: one line per
 // command, the verdict first so a reader scanning the left edge sees what
 // happened before it sees what was run.
@@ -400,6 +437,10 @@ func (a *Account) Report() string {
 // of it is the deliverable itself; this is the copy that rides beside the diff.
 const accountFinalBytes = 600
 
+// noCheckWords is the one spelling of the measured fact that nothing checked
+// work which changed the tree.
+const noCheckWords = "no check was run on the finished tree"
+
 // rows is the one renderer both readers share, differing only in whether the
 // worker's sign-off belongs in this particular copy.
 func (a *Account) rows(signoff bool) []string {
@@ -411,12 +452,43 @@ func (a *Account) rows(signoff bool) []string {
 		lines = append(lines, "What the work changed:")
 		lines = append(lines, files...)
 	}
+	if commands := a.CommandLines(); len(commands) > 0 {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "What the work ran itself:")
+		lines = append(lines, commands...)
+	}
 	if checks := a.CheckLines(); len(checks) > 0 {
 		if len(lines) > 0 {
 			lines = append(lines, "")
 		}
 		lines = append(lines, "What the work ran to check itself, and what each one found:")
 		lines = append(lines, checks...)
+	} else if len(a.Files) > 0 {
+		// AN ABSENT CHECKS LIST IS TWO DIFFERENT WORLDS AND THEY GET DIFFERENT
+		// SENTENCES. Nothing was asked of the finished tree — no suite, no
+		// strategy — and that is a measured absence: the work changed the tree,
+		// nothing checked it, and omitting that would make the deliverable the
+		// same claim with the evidence removed. This is the one deliberate
+		// exception to the emptiness law in this file.
+		//
+		// But something asked and could not be read is an UNKNOWN, and saying
+		// "no check was run" of it is the failure the emptiness law exists to
+		// prevent, inverted — a guess wearing the words of a measurement. Worse,
+		// the same outcome carries Verification.Unread, and a reader gets both:
+		// the revision pass renders that sentence while the gate renders these
+		// lines, so the record would say nothing checked it beside the thing
+		// that checked it could not be read. Unread's own sentence is said
+		// here instead, once.
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		words := noCheckWords
+		if unread := strings.TrimSpace(a.Unread); unread != "" {
+			words = unread
+		}
+		lines = append(lines, "What was run to check this work:", "  "+words)
 	}
 	if final := strings.TrimSpace(a.Final); signoff && final != "" {
 		if len(lines) > 0 {
@@ -449,6 +521,14 @@ func (a *Account) Summary() string {
 			parts = append(parts, "its own checks passed: "+strings.Join(commands, ", "))
 		} else {
 			parts = append(parts, "its own checks did not pass: "+strings.Join(commands, ", "))
+		}
+	} else if len(a.Files) > 0 {
+		// [Account.rows]'s rule, in a clause: the measured absence is said as
+		// itself, and a reading that could not be read says so instead.
+		if unread := strings.TrimSpace(a.Unread); unread != "" {
+			parts = append(parts, unread)
+		} else {
+			parts = append(parts, noCheckWords)
 		}
 	}
 	return strings.Join(parts, "; ")

@@ -17,10 +17,11 @@ import (
 // scriptedCompleter plays back a fixed sequence of model turns and records
 // every message list it was shown, so a test can assert what the model saw.
 type scriptedCompleter struct {
-	turns  [][]ai.ToolCall
-	errors []error
-	delays []time.Duration
-	seen   [][]ai.Message
+	turns    [][]ai.ToolCall
+	finishes []string
+	errors   []error
+	delays   []time.Duration
+	seen     [][]ai.Message
 }
 
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -45,8 +46,12 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	} else {
 		message.Content = []ai.ContentPart{{Type: "text", Text: "done"}}
 	}
+	finish := "stop"
+	if index < len(s.finishes) && strings.TrimSpace(s.finishes[index]) != "" {
+		finish = s.finishes[index]
+	}
 	return &ai.Response{
-		Choices: []ai.Choice{{Message: message, FinishReason: "stop"}},
+		Choices: []ai.Choice{{Message: message, FinishReason: finish}},
 		Usage:   &ai.Usage{PromptTokens: 10, CompletionTokens: 5},
 	}, nil
 }
@@ -550,6 +555,131 @@ func TestTheRunRecordsWhatItActuallyRan(t *testing.T) {
 	}
 	if !strings.HasSuffix(outcome.Ran[1], "→ error") {
 		t.Errorf("a call that failed is recorded as though it worked: %q", outcome.Ran[1])
+	}
+}
+
+// A LEAF'S DONE CARRIES THE COMMANDS IT ACTUALLY ISSUED. A write is not a
+// command, and a batch refused at the output limit never executed, so neither
+// is allowed to look like shell work the leaf performed.
+func TestALandingCarriesTheCommandsTheLeafRan(t *testing.T) {
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "sh", `{"cmd":"go build ./..."}`)},
+	}}
+	outcome, err := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute).
+		Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.CommandsRun != 1 || len(outcome.Commands) != 1 || outcome.Commands[0] != "go build ./..." {
+		t.Fatalf("commands = %v of %d run, want the one command the leaf issued",
+			outcome.Commands, outcome.CommandsRun)
+	}
+
+	writeOnly := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "write", `{"path":"result.txt","text":"done"}`)},
+	}}
+	written, err := NewLinear(writeOnly, workspace(t), nil, 10, 1_000_000, time.Minute).
+		Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written.CommandsRun != 0 || len(written.Commands) != 0 {
+		t.Fatalf("a write was recorded as commands = %v of %d run", written.Commands, written.CommandsRun)
+	}
+
+	refusedSpace := workspace(t)
+	refused := &scriptedCompleter{
+		turns:    [][]ai.ToolCall{{call("c1", "sh", `{"cmd":"touch refused.txt"}`)}},
+		finishes: []string{"length"},
+	}
+	notRun, err := NewLinear(refused, refusedSpace, nil, 10, 1_000_000, time.Minute).
+		Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if notRun.CommandsRun != 0 || len(notRun.Commands) != 0 {
+		t.Fatalf("an unexecuted batch was recorded as commands = %v of %d run",
+			notRun.Commands, notRun.CommandsRun)
+	}
+	if _, err := os.Stat(filepath.Join(refusedSpace.Root(), "refused.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the refused shell batch ran anyway: %v", err)
+	}
+}
+
+// A leaf recorded done after changing the tree, but its account named no check
+// and no absence of one; naming only the build it ran made that unchecked
+// landing read like checked work.
+func TestALeafThatChangedFilesAndRanNoCheckSaysSoWhenItLands(t *testing.T) {
+	writeOnly := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "write", `{"path":"result.txt","text":"done"}`)},
+	}}
+	outcome, err := NewLinear(writeOnly, workspace(t), nil, 10, 1_000_000, time.Minute).
+		Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Account == nil {
+		t.Fatal("a leaf that changed the tree landed with no account")
+	}
+	if report := outcome.Account.Report(); !strings.Contains(report, noCheckWords) {
+		t.Fatalf("landing account did not say no check was run:\n%s", report)
+	}
+	if summary := outcome.Account.Summary(); !strings.Contains(summary, noCheckWords) {
+		t.Fatalf("landing summary did not say no check was run: %q", summary)
+	}
+	if outcome.Account.CommandsRun != 0 || len(outcome.Account.Commands) != 0 {
+		t.Fatalf("landing account claims commands = %v of %d run",
+			outcome.Account.Commands, outcome.Account.CommandsRun)
+	}
+
+	withBuild := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "write", `{"path":"result.txt","text":"done"}`)},
+		{call("c2", "sh", `{"cmd":"go build ./..."}`)},
+	}}
+	built, err := NewLinear(withBuild, workspace(t), nil, 10, 1_000_000, time.Minute).
+		Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if built.Account == nil {
+		t.Fatal("a leaf that changed the tree and ran a build landed with no account")
+	}
+	report := built.Account.Report()
+	if !strings.Contains(report, "What the work ran itself:\n  go build ./...") {
+		t.Fatalf("landing account did not name the build the leaf ran:\n%s", report)
+	}
+	if !strings.Contains(report, noCheckWords) {
+		t.Fatalf("landing account treated the leaf's build as a check:\n%s", report)
+	}
+}
+
+// THE COMMAND RECORD IS A BOUNDED TAIL AND SAYS HOW MUCH PRECEDED IT. That
+// keeps a long run from filling the next reader's context without presenting
+// the newest commands as the whole history.
+func TestTheCommandRecordIsBoundedAndSaysWhatItLeftOut(t *testing.T) {
+	var outcome Outcome
+	total := commandsKept + 7
+	for index := 0; index < total; index++ {
+		outcome.noteCommand(call("c", "sh", fmt.Sprintf(`{"cmd":"step %d"}`, index)))
+	}
+	if len(outcome.Commands) != commandsKept {
+		t.Fatalf("command record kept %d commands, want the newest %d", len(outcome.Commands), commandsKept)
+	}
+	if outcome.CommandsRun != total {
+		t.Fatalf("CommandsRun = %d, want all %d issued commands", outcome.CommandsRun, total)
+	}
+	if outcome.Commands[0] != fmt.Sprintf("step %d", total-commandsKept) {
+		t.Errorf("oldest kept command = %q, want the first command after the cut", outcome.Commands[0])
+	}
+	if outcome.Commands[len(outcome.Commands)-1] != fmt.Sprintf("step %d", total-1) {
+		t.Errorf("newest command was dropped: %q", outcome.Commands[len(outcome.Commands)-1])
+	}
+
+	var clipped Outcome
+	clipped.noteCommand(call("c", "sh", `{"cmd":"`+strings.Repeat("x", ranArgumentBytes*3)+`"}`))
+	if len(clipped.Commands) != 1 || len(clipped.Commands[0]) > ranArgumentBytes+len("…") {
+		t.Fatalf("clipped command = %q (%d bytes), want at most %d bytes plus the cut mark",
+			clipped.Commands[0], len(clipped.Commands[0]), ranArgumentBytes)
 	}
 }
 

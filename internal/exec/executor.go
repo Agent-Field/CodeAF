@@ -318,6 +318,20 @@ type Outcome struct {
 	// check. It is a tail and not a transcript: absence in it is evidence, not
 	// proof, and whatever reads it must say so.
 	Ran []string
+	// Commands is the bounded tail of shell commands this leaf issued itself,
+	// in the order it issued them, with each command clipped so a pasted heredoc
+	// cannot ride into a judge's context. Ran cannot answer this question: it is
+	// a tail of ALL calls, so forty edits can displace a check that ran first,
+	// and parsing its JSON here would create a second answer to the question the
+	// shell tool already answers.
+	Commands []string
+	// CommandsRun is how many shell commands this leaf issued in total. It says
+	// when Commands was cut, so a bounded list can never read as the whole run.
+	CommandsRun int
+	// Standing is what this leaf's own closing photograph found and the leaf
+	// still held when it landed. It is empty after the leaf settles its finding
+	// and whenever that reading found nothing.
+	Standing []SelfCloseFinding
 
 	// Baseline is what was already broken before this work began: the checks
 	// that came back red, and were red in exactly the same places before the
@@ -416,8 +430,9 @@ type Outcome struct {
 	Verification verify.Reading
 
 	// Account is the worker's structured account of the work itself: the files
-	// it changed, the checks it ran, and what each one found. See [Account] for
-	// why a leaf that reports only prose is expensive.
+	// it changed, the commands it issued itself, and the checks the closing
+	// photograph ran with what each one found. See [Account] for why a leaf that
+	// reports only prose is expensive.
 	//
 	// It is a pointer and it is usually nil. Only a worker that can observe its
 	// own change set and run its own verifier has anything to put here; every
@@ -532,6 +547,10 @@ func (r *SplitRequest) Valid() bool {
 const (
 	ranLimit         = 40
 	ranArgumentBytes = 200
+	// commandsKept is smaller than ranLimit because it holds one kind of call,
+	// so much more of a leaf's checking fits inside it; CommandsRun says when
+	// even this bounded record was cut.
+	commandsKept = 20
 )
 
 // record appends one executed call to the bounded tail.
@@ -543,6 +562,19 @@ func (o *Outcome) record(call ai.ToolCall, failed bool) {
 	o.Ran = append(o.Ran, line)
 	if len(o.Ran) > ranLimit {
 		o.Ran = o.Ran[len(o.Ran)-ranLimit:]
+	}
+}
+
+// noteCommand records one shell command after its call has executed.
+func (o *Outcome) noteCommand(call ai.ToolCall) {
+	command := shellCommandOf(call)
+	if command == "" {
+		return
+	}
+	o.CommandsRun++
+	o.Commands = append(o.Commands, snip(command, ranArgumentBytes))
+	if len(o.Commands) > commandsKept {
+		o.Commands = o.Commands[len(o.Commands)-commandsKept:]
 	}
 }
 
