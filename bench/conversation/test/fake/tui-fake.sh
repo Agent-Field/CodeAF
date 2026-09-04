@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
-# tui-fake — a terminal program that behaves like a chat TUI, so the tmux door
-# can be tested without a model.
+# tui-fake — a terminal program that behaves like a chat TUI, so the interactive
+# door can be tested without a model.
 #
-# It draws the markers the real pi TUI draws — a status line carrying
-# "(openrouter)" and a "⠙ Working..." line with an "Elapsed Ns" counter while
-# something is in flight — because the driver is then exercised against the SAME
-# regexes it uses in production rather than against ones written for the test.
+# It draws the markers the real pi TUI draws, so the driver is exercised against
+# the SAME regexes it uses in production. What it does with a message typed
+# while work is running is the point, and FAKE_TUI_MODE chooses:
 #
-# It reads what is typed at it, which is the whole point: a followup sent while
-# it is working has to arrive, and the test proves it arrived by what the fake
-# prints in response. Two modes are failures the driver has to notice:
-#
-#   neverbusy   it answers instantly and never shows a busy window, so a
-#               scenario that depends on interrupting work did not happen and
-#               must not be recorded as though it did
-#   deaf        it shows a busy window and ignores anything typed during it —
-#               the dropped-followup failure, which must fail the cell
+#   ok          answers the followup WHILE the build runs, and lets the build
+#               finish. This is the behaviour the cell is meant to pass.
+#   blocking    reads nothing until the build has finished, then answers
+#               correctly and reports the build. A transcript-only check calls
+#               this a pass; it is the false green root found, and this cell
+#               must FAIL it.
+#   neverbusy   answers instantly and never runs the build at all, so no
+#               mid-work window ever exists — unexercised, which is a failure
+#               and not a success.
+#   deaf        runs the build and ignores anything typed during it.
 set -uo pipefail
 
 MODE="${FAKE_TUI_MODE:-ok}"
-BUSY_SECONDS="${FAKE_TUI_BUSY:-8}"
+# How long the fake holds the turn. It must outlast the build, so that the
+# blocking mode is genuinely still holding the turn when the work ends.
+BUSY_SECONDS="${FAKE_TUI_BUSY:-12}"
 
 # The rig asks every binary its version and asks its catalog about the pin
 # before it opens any door. Both questions are answered and exited here: a fake
@@ -51,6 +53,25 @@ clean() { printf '%s' "$1" | tr -d '\033' | sed 's/\[200~//g; s/\[201~//g'; }
 # happened, which is a property of this fake and not of any harness.
 repaint() { printf '\033[2J\033[H'; }
 
+# answer_followup replies the way the scenarios ask: the checksum word reversed
+# (which an echo of the file cannot produce), or the CSV the revision wants.
+answer_followup() {
+  local asked="$1"
+  printf 'you asked while working: %s\n' "$asked"
+  if printf '%s' "$asked" | grep -qiE 'backwards|reversed|checksum'; then
+    local word
+    word="$(grep -oE '[A-Z]{6,}' NOTES.txt 2>/dev/null | head -1)"
+    printf 'the reversed checksum word is %s\n' \
+      "$(printf '%s' "$word" | rev)"
+  fi
+  if printf '%s' "$asked" | grep -qi 'csv'; then
+    printf 'service,port\n' > report.csv
+    sed 's/ /,/' services.txt >> report.csv 2>/dev/null
+    rm -f report.md
+    printf 'rewrote it as report.csv\n'
+  fi
+}
+
 echo "fake TUI ready"
 status
 
@@ -78,26 +99,31 @@ while :; do
     while [ $(( $(date +%s) - started )) -lt "$BUSY_SECONDS" ]; do
       repaint
       printf '⠙ Working...\nElapsed %ss\n' "$(( $(date +%s) - started ))"
+      if [ "$MODE" = "blocking" ]; then
+        # A foreground agent: nothing typed is even read until the work ends.
+        sleep 1
+        continue
+      fi
       # Anything typed during the busy window is picked up here — this is the
       # behaviour under test.
       if IFS= read -r -t 1 typed; then
         typed="$(clean "$typed")"
-        [ -n "$typed" ] && followup="$typed"
+        if [ -n "$typed" ]; then
+          followup="$typed"
+          # Answered WHILE the build is still running, which is what separates
+          # this from the blocking mode below.
+          [ "$MODE" != "deaf" ] && answer_followup "$followup"
+        fi
       fi
     done
     wait 2>/dev/null || true
     repaint
-    if [ -n "$followup" ] && [ "$MODE" != "deaf" ]; then
-      printf 'while working, you asked: %s\n' "$followup"
-      # Answer it from the fixture, the way a harness would have to.
-      if printf '%s' "$followup" | grep -qi 'checksum'; then
-        printf 'the checksum word is %s\n' "$(grep -oE '[A-Z]{6,}' NOTES.txt 2>/dev/null | head -1)"
-      fi
-      if printf '%s' "$followup" | grep -qi 'csv'; then
-        printf 'service,port\n' > report.csv
-        sed 's/ /,/' services.txt >> report.csv 2>/dev/null
-        rm -f report.md
-        printf 'rewrote it as CSV\n'
+    if [ "$MODE" = "blocking" ]; then
+      # Now that the work is over, read what was queued and answer it. Correct
+      # word, correct build marker, and far too late.
+      if IFS= read -r -t 2 typed; then
+        typed="$(clean "$typed")"
+        [ -n "$typed" ] && answer_followup "$typed"
       fi
     fi
     [ -f build.log ] && printf 'the build finished: %s\n' "$(cat build.log)"

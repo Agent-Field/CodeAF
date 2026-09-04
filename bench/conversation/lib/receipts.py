@@ -51,6 +51,44 @@ def jsonl(path):
         return
 
 
+def read_guard_usage(path):
+    """What the provider said it charged, for every call in this cell.
+
+    This outranks a harness's self-report, which is that harness's arithmetic
+    over its own price table — and a custom provider config can put zeroes in
+    that table, which is how a paid pilot reported $0.00. Tokens without a cost
+    stay tokens: no price is invented from them here."""
+    rows = [row for row in jsonl(path) if isinstance(row, dict)]
+    if not rows:
+        return None
+    calls = [row for row in rows if row.get("path", "").find("chat/completions") >= 0
+             or row.get("prompt_tokens") is not None]
+    if not calls:
+        return None
+    priced = [row for row in calls if isinstance(row.get("cost_usd"), (int, float))]
+    got = {
+        "calls": len(calls),
+        "models": [],
+        "tokens_in": sum(int(row.get("prompt_tokens") or 0) for row in calls) or None,
+        "tokens_out": sum(int(row.get("completion_tokens") or 0) for row in calls) or None,
+        "cost_usd": None,
+        "cost_source": "none",
+        "notes": [],
+    }
+    for row in calls:
+        model = row.get("model")
+        if model and model not in got["models"]:
+            got["models"].append(model)
+    if len(priced) == len(calls):
+        got["cost_usd"] = sum(float(row["cost_usd"]) for row in priced)
+        got["cost_source"] = "guard-upstream"
+    else:
+        got["notes"].append(
+            "upstream priced %d of %d calls — cost left unknown rather than part-counted"
+            % (len(priced), len(calls)))
+    return got
+
+
 def blank():
     return {
         "cost_usd": None,
@@ -291,12 +329,44 @@ def main():
     parser.add_argument("--kind", required=True, choices=sorted(READERS))
     parser.add_argument("--path", required=True, help="stdout log, or the cell's aforge home")
     parser.add_argument("--stdout", default="", help="stdout log, when --path is a home")
+    parser.add_argument("--guard-usage", default="", help="the cell guard's usage log")
     parser.add_argument("--out", required=True, help="where to write receipt.json")
     parser.add_argument("--reply", default="", help="where to write the reply text")
     args = parser.parse_args()
 
     got = READERS[args.kind](args.path, args.stdout)
     got["kind"] = args.kind
+
+    # A self-reported figure is kept for comparison, never as the answer when
+    # the guard has one. A zero self-report against non-zero tokens is not
+    # evidence of a free call — it is a price table with zeroes in it.
+    got["self_reported_cost_usd"] = got["cost_usd"]
+    got["self_reported_source"] = got["cost_source"]
+    if (got["cost_source"] == "self-reported" and got["cost_usd"] == 0
+            and (got.get("tokens_in") or got.get("tokens_out"))):
+        got["cost_usd"] = None
+        got["cost_source"] = "none"
+        got["notes"].append(
+            "self-reported cost was 0 with %s/%s tokens — a zero price table, not a free call"
+            % (got.get("tokens_in"), got.get("tokens_out")))
+
+    measured = read_guard_usage(args.guard_usage) if args.guard_usage else None
+    if measured:
+        got["guard_calls"] = measured["calls"]
+        got["guard_models"] = measured["models"]
+        got["notes"].extend(measured["notes"])
+        if measured["cost_source"] == "guard-upstream":
+            got["cost_usd"] = measured["cost_usd"]
+            got["cost_source"] = "guard-upstream"
+        if measured["tokens_in"] or measured["tokens_out"]:
+            got["tokens_in"] = measured["tokens_in"]
+            got["tokens_out"] = measured["tokens_out"]
+        # The guard sees every call, including the auxiliary ones a harness may
+        # not put in its own transcript, so its model list is the one the
+        # allowlist is judged on.
+        for model in measured["models"]:
+            if model not in got["models"]:
+                got["models"].append(model)
     with open(args.out, "w") as handle:
         json.dump(got, handle, indent=1, sort_keys=True)
         handle.write("\n")

@@ -366,12 +366,16 @@ arm_print_argv() {
       # --one-model is not optional: without it a chat session resolves titles,
       # reflexes and other auxiliary calls through role pins that this run never
       # named, and the open-model law would be enforced against a machine's
-      # profile rather than against this run. --no-host keeps the session in
-      # this process rather than attaching to a workspace host shared with other
-      # cells. --yolo because nobody is watching: consent is refused rather than
-      # assumed, and a cell without it changes no files while looking healthy.
+      # profile rather than against this run. --yolo because nobody is watching:
+      # consent is refused rather than assumed, and a cell without it changes no
+      # files while looking healthy.
+      #
+      # --no-host is deliberately NOT passed. A conversation is hosted by
+      # default, so a benchmark that opted out would be measuring a path people
+      # do not use. Each cell gets its own workspace, so the host it starts is
+      # its own, and run.sh stops that one host when the cell ends.
       ARGV=("$AFORGE_BIN" chat --once "$text"
-            --model "$model" --one-model --no-host --yolo "${ARM_EFFORT_FLAGS[@]}")
+            --model "$model" --one-model --yolo "${ARM_EFFORT_FLAGS[@]}")
       ;;
     omp)
       ARGV=("$OMP_BIN" -p --mode json --model "$model" --cwd "$work"
@@ -435,7 +439,11 @@ arm_tui_argv() {
       ARM_BUSY_RE='[0-9]+ running'
       ARM_ASK_RE='\[a\] accept'
       ARM_DOOR_NOTE='markers from bench/canary/lib/chat.sh (in-repo, production use)'
-      ARGV=("$AFORGE_BIN" chat --model "$model" --one-model --no-host --yolo
+      # Hosted, like any other conversation: the interactive door is the one
+      # place this suite can measure the product's actual default, and passing
+      # --no-host here would quietly measure something else. The cell's own
+      # host is stopped by name when the cell ends (run.sh: arm_host_stop).
+      ARGV=("$AFORGE_BIN" chat --model "$model" --one-model --yolo
             --max-cost "${CONV_MAX_COST:-1}" --max-hours "$hours" "${ARM_EFFORT_FLAGS[@]}")
       ;;
     pi)

@@ -14,7 +14,7 @@ SCENARIO_GUARDS="exact arithmetic over a handed file"
 # shellcheck source=../fixtures/ledger.sh
 source "$CONV_ROOT/fixtures/ledger.sh"
 
-scenario_fixture() { fixture_ledger "$1"; }
+scenario_fixture() { fixture_ledger "$1" "$2"; }
 
 scenario_prompt() {
   cat <<'TXT'
@@ -52,8 +52,8 @@ print("(%s|%s)\\.%s" % (re.escape(whole), re.escape(grouped), cents))
 }
 
 scenario_check() {
-  local work="$1" reply="$2"
-  local key="$work/expected.json"
+  local reply="$2" judge="$4"
+  local key="$judge/expected.json"
   local revenue region region_revenue refunds
   revenue="$(expect_field "$key" net_revenue_usd)"
   region="$(expect_field "$key" top_region)"

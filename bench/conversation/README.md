@@ -50,9 +50,13 @@ These are not the same thing and the suite does not treat them as such.
 
 **Prevention (before the call).** A live run puts `lib/guard.py` on loopback
 between the harness and OpenRouter. The guard holds the real key; each harness
-gets a sentinel and a base URL pointing at the guard. It reads the `model` out
-of each request body and, if it is not on the allowlist, answers 403 **without
-opening a socket upstream**. Two consequences matter:
+gets a sentinel and a base URL pointing at the guard. It reads **every** model id
+a request could route to — the `model` field and each entry of OpenRouter's
+`models` fallback array, since a request naming an allowlisted model with a
+commercial fallback bills the fallback the moment the first is unavailable — and
+if any of them is off the allowlist it answers 403 **without opening a socket
+upstream**. It forwards only the paths this suite needs, so it is not a general
+proxy to the provider. Two consequences matter:
 
 - a model off the allowlist cannot be reached, whoever asked for it — a role, a
   fallback, a reused setting, or a task the model itself generated;
@@ -116,7 +120,28 @@ guard in front and the receipts behind.
 
 ## Cost, and what unknown means
 
-Cost is self-reported usage only, read from each harness's own receipts:
+**Measured at the guard first.** A harness's cost is its own arithmetic over its
+own price table, and a custom provider config — the very thing this suite writes
+to route an arm through the guard — can carry a zero price table. That is not a
+hypothetical: in the first live pilot pi reported `$0.0` for a call that billed
+real tokens, because its `models.json` entry priced them at zero
+(`notes/pilot-01.md`). So the guard asks the provider to account for every call
+it forwards (`usage: {include: true}`) and writes what came back to the cell's
+own `guard-usage.jsonl`. One guard per cell means the attribution is
+unambiguous: those rows are that cell's calls and no others.
+
+| source | `cost_source` | when |
+|---|---|---|
+| the provider, through the guard | `guard-upstream` | any guarded run — includes auxiliary calls, and is the same measurement for every arm |
+| the harness's own receipts | `self-reported` | unguarded runs, and guarded ones where upstream returned no usage block |
+| nothing | `none` | neither had a figure — recorded `null`, never `0` |
+
+A self-reported `$0` alongside a non-zero token count is treated as an **absence,
+not a price**: it is a zero price table, not a free call, and the cell comes back
+cost-unknown and not comparable.
+
+Receipts are still read for every cell, because they name the billed model and
+the guard's audit names what was asked for:
 
 | arm | receipt | names the billed model? |
 |---|---|---|
@@ -182,9 +207,43 @@ the runner's exit code moves for `fail`, `timeout` and `crash` only. A skipped
 cell that quietly read as a pass is the failure this whole suite is built to
 prevent.
 
-The interactive door adds one more: if the harness never went visibly busy,
-`no-busy-window` is recorded and the cell **fails** — the scenario did not
+The interactive door adds one more: if the mid-work window never opened,
+`no-midwork-window` is recorded and the cell **fails** — the scenario did not
 happen, so there is nothing to pass.
+
+### When "answered while working" is allowed to be claimed
+
+A transcript that ends with the right answer says nothing about *when* it was
+given. A harness that queues the followup, finishes the build, and only then
+answers produces a final screen indistinguishable from one that answered
+immediately — and an earlier version of this cell passed exactly that. So the
+mid-work cells judge order, from four timestamps on one clock:
+
+```
+work_started_at      the fixture's own build-started marker
+midwork_sent_at      when the driver pressed Enter on the second message
+answer_first_seen_at when the answer first appeared on screen (sampled)
+work_finished_at     the fixture's own build-finished marker
+```
+
+The message is sent only after the work says it started and before it says it
+finished, and the answer must be **seen before the work's finish marker**. The
+markers are written by the slow job itself, to an absolute path baked in when
+the fixture is generated, so they hold even if the agent copies the script
+somewhere else.
+
+Two weaknesses are named rather than papered over, and travel in `door.json` as
+`witness`:
+
+- `work-markers` (the mid-work cells): the answer is a **screen** witness
+  sampled every `CONV_POLL` seconds, not an assistant-message event. Sampling
+  puts an error bar of one poll on `answer_first_seen_at`. What it cannot be is
+  an echo: the followup asks for a word from a file **reversed**
+  (`CINNABAR` → `RABANNIC`), so a tool call that prints the file does not
+  produce the answer.
+- `screen-busy`: the weaker witness, used only where a scenario has no work of
+  its own to mark. A spinner means a model request is in flight, which can be
+  true before any work has begun.
 
 ## Reading a run
 
@@ -206,16 +265,32 @@ the tool says so *and* says how few workloads, rungs and samples that is.
 Per run under `bench-results/conversation/<run-id>/`, per cell:
 
 ```
-config.txt      binary, version, pins, allowlist, effort, isolation, cap, paths
-argv.txt        the exact invocation
-prompt.txt      the message every arm was given, byte for byte
-stdout.log      what the harness streamed
-receipt.json    normalised cost, tokens, models, turns
-reply.txt       the reply, extracted from whichever shape it arrived in
-scrollback.txt  the whole conversation (interactive door)
-door.json       what the driver observed: ended, turns sent, busy seen, markers
-results.jsonl   one row per cell, with every assertion and its outcome
+config.txt        binary, version, pins, allowlist, effort, isolation, cap, paths
+argv.txt          the exact invocation
+prompt.txt        the message every arm was given, byte for byte
+stdout.log        what the harness streamed
+guard-audit.jsonl every request the guard allowed or refused, and why
+guard-usage.jsonl what the provider said each of this cell's calls cost
+receipt.json      normalised cost, tokens, models, turns
+reply.txt         the reply, extracted from whichever shape it arrived in
+scrollback.txt    the whole conversation (interactive door)
+frames.log        timestamped screen samples, and a full frame per turn
+door.json         what the driver observed: ended, turns sent, witness, timings
+host-stop.log     the cell's own session host being stopped
+judge/            answer keys — outside the workspace the model can see
+results.jsonl     one row per cell, with every assertion and its outcome
 ```
+
+Answer keys live in `judge/`, never in the workspace: a scenario that hands the
+model the file it is being marked against is marking the model on reading.
+
+**The workspace is a real one.** aforge is run the way people run it —
+conversations are hosted by default, and `--no-host` is not passed, because a
+benchmark that opts out of the product's default is measuring something else.
+Each cell has its own workspace, so the host it starts is its own, and when the
+cell ends that host is stopped by workspace (`aforge engine --workspace <cell>
+--stop`) before the guard closes. Nothing global is killed and no other
+session, benchmark or human, is touched.
 
 `config.txt` records the *names* of credentials present, never a value, and is a
 curated list rather than an environment dump: a redaction regex over everything
@@ -230,10 +305,11 @@ record of what they were. A cell whose directory already exists refuses too, and
 records a skip. `--overwrite` is the deliberate way, and `--out` gives a run a
 directory of its own.
 
-No live comparison has been run through this suite yet: the shell's
-`OPENROUTER_API_KEY` on the machine it was built on is stale (a direct call to
-the upstream with no guard involved returns 401), so the key preflight stops the
-run before any cell. Nothing was spent, and no unguarded fallback was taken.
+One live pilot has been run through this suite, by the owner, on the print door
+only: three arms on `data-tally`, all passing quality, with the guard audit
+showing the pinned model and nothing else. Its numbers and the reason one of its
+three costs is not usable are in `notes/pilot-01.md`. No interactive cell has
+been run live yet.
 
 State is isolated per cell: `AFORGE_HOME` for aforge, `PI_CODING_AGENT_DIR` plus
 `--session-dir` for pi, `XDG_*` for opencode (declared, not documented by
@@ -257,18 +333,30 @@ known, and fails if the rig does not catch it: a dropped exit code, a fluent
 wrong answer, a harness that hangs, usage that was never reported, a model off
 the allowlist (including one reached only by an auxiliary role), a catalog that
 cannot pin the id, a scenario an arm has no door for, a followup that never
-arrives, a busy window that never happens, an existing omp profile, a second run
-that would overwrite the first's evidence or truncate its summary, and
-credentials leaking into a child process or onto its command line. It also checks the receipt reader counts a repeated message once — all
-three peers emit the same assistant message three times.
+arrives, a mid-work window that never opens, an existing omp profile, a second
+run that would overwrite the first's evidence or truncate its summary, and
+credentials leaking into a child process or onto its command line. It also
+checks the receipt reader counts a repeated message once — all three peers emit
+the same assistant message three times — and that a self-reported `$0` beside
+real tokens is read as unknown rather than free.
+
+The interactive counterexample is the one to keep: a fake TUI that **blocks**,
+finishes the build, and then answers correctly, with the right derived token and
+the right build marker, must FAIL. Its final transcript is a passing one; only
+the timestamps say otherwise. The responsive fake must pass, the deaf one must
+fail, and a run where the window never opened must not be a pass.
 
 It also drives the guard against a stand-in upstream: a commercial model is
-refused with nothing reaching the upstream, an allowlisted one is forwarded and
-its streamed chunks relayed untouched, a caller without the sentinel is refused,
-an unreadable body is refused, and the audit log carries the decisions and no
-credential.
+refused with nothing reaching the upstream, an off-allowlist id in a `models`
+fallback array is refused the same way, an allowlisted one is forwarded and its
+streamed chunks relayed untouched, a caller without the sentinel is refused, an
+unreadable body is refused, and the audit log carries the decisions and no
+credential. Relaying is timed, not assumed: with the stand-in holding its second
+event back for two seconds, the first must reach the client before the second is
+sent — a guard that buffered a whole response would leave a live TUI blank for
+the length of a generation.
 
-At the time of writing it is 71 checks, all passing, and it needs `tmux` and
+At the time of writing it is 88 checks, all passing, and it needs `tmux` and
 `curl`; a missing dependency is reported as skipped and exits non-zero rather
 than green.
 

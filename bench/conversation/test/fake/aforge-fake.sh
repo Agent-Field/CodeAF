@@ -42,15 +42,15 @@ mkdir -p "$home/v3/projects/fake/session" "$home/logs"
 
 if [ "$MODE" = "badoutput" ]; then
   echo "Net revenue is \$1.00, the leading region is atlantis, and 99 rows were refunded."
-elif [ -f expected.json ]; then
-  python3 -c '
-import json
-key = json.load(open("expected.json"))
+elif key="$(ls "${FAKE_ANSWER_ROOT:-/nonexistent}"/*/judge/expected.json 2>/dev/null | head -1)"; [ -n "$key" ]; then
+  FAKE_KEY="$key" python3 -c '
+import json, os
+key = json.load(open(os.environ["FAKE_KEY"]))
 print("Net revenue is $%.2f. The top region is %s with $%.2f. %d rows were refunded."
       % (key["net_revenue_usd"], key["top_region"], key["top_region_revenue_usd"], key["refunded_rows"]))
 '
 else
-  echo "no expected.json in this directory"
+  echo "no answer key was reachable"
 fi
 
 if [ "$MODE" != "nocost" ]; then

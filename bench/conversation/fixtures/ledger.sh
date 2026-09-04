@@ -8,9 +8,11 @@
 # beside it: a benchmark whose answer key is typed by hand drifts away from its
 # own fixture the first time the fixture is edited.
 
+# fixture_ledger <workspace> <judge-dir>. The CSV goes where the model can read
+# it; the answer key goes where it cannot.
 fixture_ledger() {
-  local work="$1"
-  mkdir -p "$work"
+  local work="$1" judge="${2:-$1}"
+  mkdir -p "$work" "$judge"
   cat > "$work/ledger.csv" <<'CSV'
 date,region,product,units,unit_price_usd,refunded
 2026-01-04,north,widget,12,19.50,no
@@ -27,12 +29,13 @@ date,region,product,units,unit_price_usd,refunded
 2026-03-17,west,widget,11,19.50,no
 CSV
 
-  # The answer key, computed from the file just written. Revenue counts only the
-  # rows that were not refunded, which is the one place a careless reader of the
-  # question can go wrong and the reason the question is worth asking.
-  python3 - "$work" <<'PY'
+  # The answer key, computed from the file just written, and written to the
+  # judge's directory: a checker file inside the workspace is a benchmark that
+  # hands out its own solutions. Revenue counts only the rows that were not
+  # refunded, which is the one place a careless reader can go wrong.
+  python3 - "$work" "$judge" <<'PY'
 import csv, json, sys, collections
-work = sys.argv[1]
+work, judge = sys.argv[1], sys.argv[2]
 rows = list(csv.DictReader(open(work + "/ledger.csv")))
 kept = [r for r in rows if r["refunded"] == "no"]
 revenue = sum(int(r["units"]) * float(r["unit_price_usd"]) for r in kept)
@@ -46,6 +49,6 @@ json.dump({
     "top_region_revenue_usd": round(top_revenue, 2),
     "refunded_rows": len(rows) - len(kept),
     "units_sold_net": sum(int(r["units"]) for r in kept),
-}, open(work + "/expected.json", "w"), indent=1, sort_keys=True)
+}, open(judge + "/expected.json", "w"), indent=1, sort_keys=True)
 PY
 }

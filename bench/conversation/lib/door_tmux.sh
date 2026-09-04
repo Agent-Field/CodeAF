@@ -18,10 +18,18 @@
 # THE TURN PLAN IS THE SCENARIO'S SCRIPT. One line per message:
 #
 #   ready<TAB>text    send once the composer is up (the opening message)
-#   busy<TAB>text     send WHILE the harness is working — the followup case.
-#                     If no busy window is ever observed, the cell records
-#                     `no-busy-window` and fails: the thing under test did not
-#                     happen, so there is nothing to pass.
+#   midwork<TAB>text  send while the SCENARIO'S OWN WORK is running — after its
+#                     work-start marker appears and before its work-done marker
+#                     does. This is the followup and steering case, and the
+#                     window is the scenario's, not the screen's: a spinner only
+#                     says a model request is in flight, which can be true
+#                     before any work has begun. If the window never opens, or
+#                     closes before the message could be sent, the cell records
+#                     `no-midwork-window` and FAILS — the thing under test did
+#                     not happen, so there is nothing to pass.
+#   busy<TAB>text     send when the screen looks busy. A weaker witness, kept
+#                     for scenarios with no work of their own to mark, and
+#                     labelled as such in door.json.
 #   idle<TAB>text     send after the harness has settled (the next-turn case)
 #
 # Evidence written to <out>:
@@ -43,6 +51,25 @@ DOOR_WALL_S=0
 DOOR_TURNS_SENT=0
 DOOR_BUSY_OBSERVED=0
 DOOR_ASK_OBSERVED=0
+# Epoch seconds, so they can be ordered against the fixture's own markers.
+DOOR_MIDWORK_SENT_AT=""
+DOOR_ANSWER_SEEN_AT=""
+DOOR_WITNESS="screen"
+
+# now_f is the same clock the fixture's phase markers use.
+now_f() { python3 -c 'import time; print("%.3f" % time.time())'; }
+
+# door_phase prints the epoch time in a scenario phase marker, or nothing.
+door_phase() {
+  [ -s "$1" ] || return 1
+  tr -d '[:space:]' < "$1"
+}
+
+# door_before compares two epoch stamps.
+door_before() {
+  [ -n "$1" ] && [ -n "$2" ] || return 1
+  awk -v a="$1" -v b="$2" 'BEGIN { exit !(a < b) }'
+}
 
 # pane_text prints what is on the screen right now.
 pane_text() { tmux capture-pane -p -t "=$1:" 2>/dev/null; }
@@ -87,6 +114,26 @@ door_wait_busy() {
   return 1
 }
 
+# door_wait_work_start waits for the scenario's work-start marker to appear.
+# It returns 1 when the work never starts, or finishes before it could be
+# interrupted — both of which mean the window under test never existed.
+door_wait_work_start() {
+  local name="$1" deadline=$(( $(now_s) + CONV_BUSY_WAIT ))
+  [ -n "${SCENARIO_WORK_START:-}" ] || return 1
+  while [ "$(now_s)" -lt "$deadline" ]; do
+    if [ -s "$SCENARIO_WORK_START" ]; then
+      DOOR_BUSY_OBSERVED=1
+      return 0
+    fi
+    if [ -n "${SCENARIO_WORK_DONE:-}" ] && [ -s "$SCENARIO_WORK_DONE" ]; then
+      return 1
+    fi
+    pane_dead "$name" && return 1
+    sleep 1
+  done
+  return 1
+}
+
 # door_wait_idle waits until the busy marker has been gone for CONV_QUIET
 # seconds and a composer is back. A single quiet poll is not enough: every one
 # of these TUIs has gaps between a model call and the tool call it asked for.
@@ -97,7 +144,13 @@ door_wait_idle() {
     [ "$now" -ge "$cap_at" ] && { DOOR_ENDED="cap"; return 1; }
     pane_dead "$name" && { DOOR_ENDED="crash"; return 1; }
     screen="$(pane_text "$name")"
-    printf '%s\n' "$screen" | tail -1 >> "$DOOR_OUT/frames.log"
+    printf '[%s] %s\n' "$(now_f)" "$(printf '%s\n' "$screen" | tail -1)" >> "$DOOR_OUT/frames.log"
+    if [ -z "$DOOR_ANSWER_SEEN_AT" ] && [ -n "${SCENARIO_ANSWER_RE:-}" ] &&
+       screen_matches "$SCENARIO_ANSWER_RE" "$(pane_scrollback "$name")"; then
+      DOOR_ANSWER_SEEN_AT="$(now_f)"
+      printf '=== answer first seen at %s ===\n%s\n' "$DOOR_ANSWER_SEEN_AT" "$screen" \
+        >> "$DOOR_OUT/frames.log"
+    fi
     if [ -n "$ARM_ASK_RE" ] && screen_matches "$ARM_ASK_RE" "$screen"; then
       DOOR_ASK_OBSERVED=1
     fi
@@ -126,6 +179,9 @@ tmux_door_run() {
   DOOR_TURNS_SENT=0
   DOOR_BUSY_OBSERVED=0
   DOOR_ASK_OBSERVED=0
+  DOOR_MIDWORK_SENT_AT=""
+  DOOR_ANSWER_SEEN_AT=""
+  DOOR_WITNESS="screen"
   mkdir -p "$out"
   : > "$out/frames.log"
 
@@ -171,15 +227,36 @@ tmux_door_run() {
         ready)
           door_send "$name" "$text"
           ;;
+        midwork)
+          # The window belongs to the scenario's own work, not to the screen.
+          # It opens when the work says it started and closes when the work
+          # says it finished; a message sent outside it is not mid-work
+          # steering, however busy the spinner looked.
+          DOOR_WITNESS="work-markers"
+          if ! door_wait_work_start "$name"; then
+            DOOR_ENDED="no-midwork-window"
+            break
+          fi
+          if [ -n "${SCENARIO_WORK_DONE:-}" ] && [ -s "$SCENARIO_WORK_DONE" ]; then
+            # The work was already over before anything could be typed.
+            DOOR_ENDED="no-midwork-window"
+            break
+          fi
+          printf '=== midwork frame at %s ===\n%s\n' "$(now_f)" "$(pane_text "$name")" \
+            >> "$out/frames.log"
+          DOOR_MIDWORK_SENT_AT="$(now_f)"
+          door_send "$name" "$text"
+          ;;
         busy)
-          # The followup case: wait until it is demonstrably working, then type.
+          # The weaker witness: the screen looks busy. Kept for scenarios with
+          # no work of their own to mark, and recorded as such.
+          DOOR_WITNESS="screen-busy"
           if door_wait_busy "$name"; then
-            printf '=== busy frame ===\n%s\n' "$(pane_text "$name")" >> "$out/frames.log"
+            printf '=== busy frame at %s ===\n%s\n' "$(now_f)" "$(pane_text "$name")" >> "$out/frames.log"
+            DOOR_MIDWORK_SENT_AT="$(now_f)"
             door_send "$name" "$text"
           else
-            # Nothing was in flight to interrupt, so the scenario did not
-            # happen. Send nothing, and say so.
-            DOOR_ENDED="no-busy-window"
+            DOOR_ENDED="no-midwork-window"
             break
           fi
           ;;
@@ -218,6 +295,11 @@ tmux_door_run() {
  "turns_sent": $DOOR_TURNS_SENT,
  "busy_observed": $DOOR_BUSY_OBSERVED,
  "ask_observed": $DOOR_ASK_OBSERVED,
+ "witness": $(json_str "$DOOR_WITNESS"),
+ "midwork_sent_at": $(json_str "$DOOR_MIDWORK_SENT_AT"),
+ "answer_first_seen_at": $(json_str "$DOOR_ANSWER_SEEN_AT"),
+ "work_started_at": $(json_str "$(door_phase "${SCENARIO_WORK_START:-}" || true)"),
+ "work_finished_at": $(json_str "$(door_phase "${SCENARIO_WORK_DONE:-}" || true)"),
  "ready_re": $(json_str "$ARM_READY_RE"),
  "busy_re": $(json_str "$ARM_BUSY_RE"),
  "marker_provenance": $(json_str "$ARM_DOOR_NOTE")

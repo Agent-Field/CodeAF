@@ -28,32 +28,49 @@ source "$CONV_ROOT/fixtures/slowwork.sh"
 scenario_fixture() { fixture_slowwork "$1"; }
 
 scenario_turns() {
-  local plan="$2"
+  local work="$1" plan="$2"
+  SCENARIO_WORK_START="$work/.phases/build-started"
+  SCENARIO_WORK_DONE="$work/.phases/build-finished"
+  SCENARIO_ANSWER_RE="report\\.csv"
   {
     printf 'ready\tFirst run ./slow-build.sh here — it takes about a minute and I want it done. While it runs, start writing report.md: one markdown bullet per service in services.txt, each naming the service and its port.\n'
-    printf 'busy\tChange of plan: I need that as CSV, not markdown. Write report.csv with a header line service,port and one row per service, and make sure report.md does not exist at the end.\n'
+    printf 'midwork\tChange of plan: I need that as CSV, not markdown. Write report.csv with a header line service,port and one row per service, and make sure report.md does not exist at the end.\n'
   } > "$plan"
 }
 
 scenario_check() {
-  local work="$1" transcript="$2"
+  local work="$1" transcript="$2" cell="$3"
+  local door="$cell/door.json"
+  local sent started finished
+  sent="$(door_field "$door" midwork_sent_at)"
+  started="$(door_field "$door" work_started_at)"
+  finished="$(door_field "$door" work_finished_at)"
+  record "witness" "$(door_field "$door" witness)"
+
+  # The steer has to have landed inside the work, not before it began.
+  check "the work actually started" "$([ -n "$started" ] && echo 1 || echo 0)"
+  check "the revision was sent after the work started" "$(stamps_ordered "$started" "$sent")"
+  check "and before the work finished" \
+    "$([ -z "$finished" ] && echo 1 || stamps_ordered "$sent" "$finished")"
+
   check_file "the revised deliverable exists (report.csv)" "$work/report.csv"
   if [ -s "$work/report.csv" ]; then
+    # The file has to be the answer to the REVISION, so it must not predate it.
+    check "report.csv was written after the revision was sent" \
+      "$(stamps_ordered "$sent" "$(file_mtime "$work/report.csv")")"
     check_grep "report.csv has the asked-for header" "^ *service *, *port" "$work/report.csv"
     check_grep_all "report.csv carries every service and port" "$work/report.csv" \
       "kestrel *, *8431" "gasket *, *9002" "flange *, *7710"
     local rows; rows="$(grep -acE '^[a-z]+ *, *[0-9]+' "$work/report.csv" 2>/dev/null || echo 0)"
     check_eq "report.csv has one row per service" 3 "$rows"
   fi
-  # The revision was to REPLACE the deliverable. A run that leaves both files
-  # has answered "yes" to both instructions and resolved nothing.
+
+  # A run that leaves both files has answered both instructions and resolved
+  # nothing.
   if [ -e "$work/report.md" ]; then
     fail "the superseded report.md was left behind"
   else
     pass "the superseded report.md is gone"
   fi
-  # The revision must not have cost the job that was already running.
   check_file "the slow job still finished" "$work/build.log"
-  record "revision_acknowledged_on_screen" \
-    "$(grep -acE '(csv|CSV)' "$transcript" 2>/dev/null || echo 0)"
 }

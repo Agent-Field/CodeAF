@@ -176,8 +176,8 @@ echo
 TOTAL_PASS=0; TOTAL_FAIL=0; TOTAL_SKIP=0; TOTAL_UNSUP=0; TOTAL_TIMEOUT=0; TOTAL_CRASH=0
 CLEANUP_PATHS=()
 
-# One guard for the run. The real key goes into its environment and into no
-# harness process; every arm is handed a sentinel and a loopback base URL.
+# The key is checked once for the run; the guard itself is started per cell, so
+# that what it meters belongs to exactly one cell.
 if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ]; then
   # The guard is the only process that gets the real key, so it has to be in
   # this shell's environment. Nothing here reads a credential out of a config
@@ -187,16 +187,11 @@ if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ]; then
     conv_warn "Run from a shell that has it (a login shell, or export it for this command)."
     exit 1
   fi
-  if ! guard_start "$CONV_OUT/guard-audit.jsonl"; then
-    conv_warn "no guard, no live run"
-    exit 1
-  fi
   if ! guard_check_key; then
-    guard_stop
     exit 1
   fi
-  echo "guard:      $GUARD_URL  (upstream openrouter, allowlist enforced before forwarding)"
-  echo "audit:      $CONV_OUT/guard-audit.jsonl"
+  echo "guard:      one per cell, upstream openrouter, allowlist enforced before forwarding"
+  echo "audit:      <cell>/guard-audit.jsonl and <cell>/guard-usage.jsonl"
   echo
 fi
 trap 'guard_stop' EXIT
@@ -314,6 +309,16 @@ for scenario in $SCENARIOS; do
     [ -n "$ARM_CLEANUP_PATH" ] && CLEANUP_PATHS+=("$ARM_CLEANUP_PATH")
     child_env_array "${ARM_ENV[@]}"
 
+    if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ]; then
+      if ! guard_start "$cell/guard-audit.jsonl" "$cell/guard-usage.jsonl" "$scenario-$arm"; then
+        printf '    ✗  the cell'"'"'s guard did not start\n'
+        emit_row "$scenario" "$SCENARIO_WORKLOAD" "$SCENARIO_DOOR" "$arm" "" "" unknown none unknown unknown "" \
+                 fail no "guard did not start"
+        echo
+        continue
+      fi
+    fi
+
     # Route this arm through the guard before anything else touches the network.
     # An arm that cannot be routed is unsupported for a live run: its calls
     # would leave with the real key and no model gate in front of them.
@@ -343,7 +348,11 @@ for scenario in $SCENARIOS; do
     fi
     record "model_pin" "$ARM_PIN_NOTE"
 
-    if ! scenario_fixture "$work"; then
+    # The answer key is built where the model cannot read it. A checker file in
+    # the workspace is a benchmark that hands out its own solutions.
+    judge="$cell/judge"
+    mkdir -p "$judge"
+    if ! scenario_fixture "$work" "$judge"; then
       printf '    ✗  the fixture did not generate\n'
       emit_row "$scenario" "$SCENARIO_WORKLOAD" "$SCENARIO_DOOR" "$arm" "" "" unknown none unknown unknown "" \
                fail no "fixture failed"
@@ -415,11 +424,21 @@ for scenario in $SCENARIOS; do
     fi
     wall=$(( $(now_s) - started ))
 
+    # The conversation is hosted by default, so a cell that ends without
+    # stopping its host leaves a daemon behind. This stops that host and only
+    # that one, and it happens before the guard closes so nothing outlives the
+    # thing that keeps it on the allowlist.
+    if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ]; then
+      arm_host_stop "$arm" "$cell" "$work"
+    fi
+
     # ── receipts ──────────────────────────────────────────────────────────
     receipt="$cell/receipt.json"
     python3 "$CONV_LIB/receipts.py" --kind "$(arm_receipt_kind "$arm")" \
       --path "$(arm_receipt_path "$arm" "$cell" "$SCENARIO_DOOR")" --stdout "$cell/stdout.log" \
+      --guard-usage "$cell/guard-usage.jsonl" \
       --out "$receipt" --reply "$cell/reply.txt" 2>> "$cell/stderr.log"
+    guard_stop
 
     read -r cost cost_source tokens_in tokens_out turns models <<EOF
 $(CONV_RECEIPT="$receipt" python3 -c '
@@ -456,8 +475,11 @@ EOF
       record "door_markers" "${ARM_DOOR_NOTE:-none}"
       case "$DOOR_ENDED" in
         idle) pass "the conversation settled on its own" ;;
-        no-busy-window)
-          fail "no window of work to interrupt was ever observed — the scenario did not happen"
+        no-midwork-window)
+          # The mid-work turn was never sent, because there was no mid-work to
+          # send it into. The cell is unexercised, and an unexercised cell is a
+          # failure: the only other option is to call "nothing happened" a pass.
+          fail "no window of work to steer was ever observed — the scenario did not happen"
           ;;
         noframe) fail "the composer never came up (see tmux.err)"; verdict="crash" ;;
         crash)   fail "the session died"; verdict="crash" ;;
@@ -486,7 +508,15 @@ EOF
     fi
 
     if [ "$cost_source" = "none" ]; then
-      record "cost" "unknown (this harness reported no usage)"
+      # The receipt knows WHY there is no figure — no usage at all, or a
+      # self-reported zero against real tokens — and a row that only says
+      # "unknown" leaves the reader to guess which.
+      receipt_note="$(CONV_RECEIPT="$receipt" python3 -c '
+import json, os
+got = json.load(open(os.environ["CONV_RECEIPT"]))
+print("; ".join(got.get("notes") or []))
+')"
+      record "cost" "unknown${receipt_note:+ — $receipt_note}"
       comparable="no"
       comparable_reason="${comparable_reason:+$comparable_reason; }cost not self-reported"
     else
@@ -494,7 +524,7 @@ EOF
     fi
     record "tokens" "in=$tokens_in out=$tokens_out"
 
-    scenario_check "$work" "$reply" "$cell"
+    scenario_check "$work" "$reply" "$cell" "$judge"
 
     # A cap or a dead session is the most specific thing that can be said about
     # a cell, and it keeps its word: everything downstream of a killed harness

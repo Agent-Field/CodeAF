@@ -26,7 +26,12 @@
 #   nopin          an arm whose catalog cannot pin the id is SKIPPED, not run
 #   unsupported    a scenario an arm has no door for is UNSUPPORTED, not passed
 #   interactive    the tmux door delivers a followup typed while work is running
-#   neverbusy      no window of work to interrupt is a FAILURE, not a pass
+#                  AND the answer is seen before the work's own finish marker
+#   blocking       the counterexample: a harness that queues the followup,
+#                  finishes the work, then answers correctly is a FAILURE. Its
+#                  final transcript is indistinguishable from a pass, which is
+#                  why the cell judges timestamps and not text
+#   neverbusy      no window of work to steer is a FAILURE, not a pass
 #   deaf           a followup that is ignored is a FAILURE
 set -uo pipefail
 
@@ -42,7 +47,7 @@ mkdir -p "$LOGDIR"
 # inherits what this suite carries on purpose (lib/common.sh). Naming the FAKE_*
 # variables here is what lets them through — and the credential scrubbing test
 # below still holds, because nothing in this list is a credential.
-export CONV_PASS_ENV="FAKE_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID"
+export CONV_PASS_ENV="FAKE_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID FAKE_ANSWER_ROOT"
 
 # These cases drive fake binaries that reach no network, so they run without the
 # forwarding guard — and say so the only way run.sh accepts, which is what keeps
@@ -76,6 +81,14 @@ else:
 '
 }
 
+# door_witness prints which witness a cell's interactive door used.
+door_witness() {
+  CONV_DOOR="$1" python3 -c '
+import json, os
+print(json.load(open(os.environ["CONV_DOOR"])).get("witness") or "")
+'
+}
+
 # case_run drives one whole run of the battery against the fakes and prints
 # where its results landed. Every case gets its own output directory, its own
 # CSV and its own marker file.
@@ -84,7 +97,7 @@ case_run() {
   local out="$WORKDIR/$name"
   mkdir -p "$out"
   CONV_OUT="$out/evidence" CONV_CSV="$out/results.csv" CONV_RUN_ID="$name" \
-  FAKE_MARKER="$out/marker" \
+  FAKE_MARKER="$out/marker" FAKE_ANSWER_ROOT="$out/evidence" \
     "$RUN" "$@" > "$LOGDIR/$name.log" 2>&1
   CASE_EXIT=$?
   CASE_OUT="$out"
@@ -135,6 +148,28 @@ python3 -c "import sys; sys.exit(0 if abs(float('$COST') - 6.34e-05) < 1e-9 else
   || bad "the receipt reader double-counted repeated messages (got $COST)"
 [ "$(field "$CASE_RESULTS" cost_source)" = "self-reported" ] \
   && ok "cost is recorded as self-reported" || bad "cost source is wrong"
+say
+
+# ── the answer key is not in the model's workspace ──────────────────────────
+say "judge (the workspace holds the question, not the answer):"
+[ -f "$CASE_OUT/evidence/data-tally-pi/work/ledger.csv" ] \
+  && ok "the fixture the model reads is in the workspace" || bad "the fixture is missing"
+[ ! -e "$CASE_OUT/evidence/data-tally-pi/work/expected.json" ] \
+  && ok "and the answer key is not" || bad "the answer key is sitting in the model's workspace"
+[ -s "$CASE_OUT/evidence/data-tally-pi/judge/expected.json" ] \
+  && ok "it is in the judge's directory beside the cell" || bad "the judge has no answer key"
+say
+
+# ── a price table of zeroes is not a free call ──────────────────────────────
+say "zeroprice (positive usage, zero self-reported price):"
+FAKE_MODE=zeroprice PI_BIN="$FAKE/pi-fake.sh" print_case zeroprice
+[ "$(field "$CASE_RESULTS" cost_usd)" = "null" ] \
+  && ok "a zero price against real tokens is not recorded as \$0" \
+  || bad "a zero-priced paid call was recorded as $(field "$CASE_RESULTS" cost_usd)"
+[ "$(field "$CASE_RESULTS" comparable)" = "no" ] \
+  && ok "and the cell is not comparable" || bad "a fabricated-zero cell stayed comparable"
+grep -q 'zero price table' "$CASE_RESULTS" \
+  && ok "and the row says why" || bad "the row does not explain the zero"
 say
 
 # ── a dropped exit code ─────────────────────────────────────────────────────
@@ -226,39 +261,82 @@ grep -q 'unsupported 1' "$LOGDIR/unsupported.log" \
 say
 
 # ── the interactive door ────────────────────────────────────────────────────
-say "interactive (a followup typed while work is running):"
+say "interactive (a followup ANSWERED WHILE the work ran):"
 if ! command -v tmux >/dev/null 2>&1; then
   skip "the tmux door tests need tmux(1)"
 else
-  FAKE_TUI_MODE=ok FAKE_TUI_BUSY=10 CONV_SLOW_SECONDS=4 \
-  CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=25 \
-  PI_BIN="$FAKE/tui-fake.sh" \
-    case_run door --unguarded --arms pi --scenarios followup-while-working --cap 90
+  # One knob for every interactive case, so the only difference between a pass
+  # and the counterexample below is what the harness does with what is typed.
+  # The busy window outlasts the build on purpose: the blocking mode has to be
+  # still holding the turn when the work ends, or it would not be a
+  # counterexample at all.
+  tui_case() {
+    local name="$1" mode="$2"
+    FAKE_TUI_MODE="$mode" FAKE_TUI_BUSY=14 CONV_SLOW_SECONDS=5 \
+    CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=25 \
+    PI_BIN="$FAKE/tui-fake.sh" \
+      case_run "$name" --unguarded --arms pi --scenarios followup-while-working --cap 120
+    CASE_DOOR="$CASE_OUT/evidence/followup-while-working-pi/door.json"
+  }
+
+  # ordered_stamps exits 0 when both fields are present in door.json and the
+  # first is strictly earlier. The selftest checks the door's own numbers, not
+  # only the verdict derived from them.
+  ordered_stamps() {
+    CONV_DOOR="$1" CONV_A="$2" CONV_B="$3" python3 -c '
+import json, os, sys
+got = json.load(open(os.environ["CONV_DOOR"]))
+a, b = got.get(os.environ["CONV_A"]), got.get(os.environ["CONV_B"])
+sys.exit(0 if a and b and float(a) < float(b) else 1)
+'
+  }
+
+  tui_case door ok
   [ "$(field "$CASE_RESULTS" door)" = "interactive" ] \
     && ok "the cell is recorded as the interactive door" || bad "the door was not recorded as interactive"
-  if grep -q '"outcome":"pass","check":"the followup was answered while the build ran"' "$CASE_RESULTS"; then
-    ok "a followup typed during work reached the harness and was answered"
-  else
-    bad "the followup did not arrive while work was in flight"
-  fi
+  grep -q '"outcome":"pass","check":"and answered BEFORE the build finished"' "$CASE_RESULTS" \
+    && ok "a harness that answers during the build satisfies the ordering check" \
+    || bad "the ordering check did not pass for a responsive harness"
   [ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
     && ok "and the whole interactive cell passes" || bad "the interactive cell did not pass: $(field "$CASE_RESULTS" verdict)"
+  ordered_stamps "$CASE_DOOR" work_started_at midwork_sent_at \
+    && ok "the door recorded the followup going in after the work began" \
+    || bad "door.json does not show the followup landing inside the work"
+  ordered_stamps "$CASE_DOOR" answer_first_seen_at work_finished_at \
+    && ok "and the answer appearing before the work ended" \
+    || bad "door.json does not show the answer preceding the build's finish marker"
+  [ "$(door_witness "$CASE_DOOR")" = "work-markers" ] \
+    && ok "the witness is the fixture's own phase markers, not a spinner" \
+    || bad "the cell used a weaker witness than it claims: $(door_witness "$CASE_DOOR")"
 
-  say "neverbusy (nothing was ever in flight to interrupt):"
+  # THE COUNTEREXAMPLE. This run is what used to pass: the harness reads
+  # nothing until the build is over, then answers correctly, with the right
+  # derived token and the right build marker, in a final transcript that looks
+  # perfect. Steering that arrives after the work is not steering.
+  say "blocking (the right answer, given only after the build finished):"
+  tui_case blocking blocking
+  grep -q 'RABANNIC' "$CASE_OUT/evidence/followup-while-working-pi/scrollback.txt" \
+    && ok "the transcript does end with the correct answer" \
+    || bad "the counterexample never produced the answer at all"
+  grep -q '"outcome":"fail","check":"and answered BEFORE the build finished"' "$CASE_RESULTS" \
+    && ok "and the cell FAILS it anyway, on the ordering" \
+    || bad "the false green is back: a blocking harness was not caught by the ordering check"
+  [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
+    && ok "a blocking harness fails the mid-work cell" \
+    || bad "a blocking harness was recorded $(field "$CASE_RESULTS" verdict)"
+
+  say "neverbusy (no window of work ever opened):"
   FAKE_TUI_MODE=neverbusy CONV_SLOW_SECONDS=4 \
   CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=8 \
   PI_BIN="$FAKE/tui-fake.sh" \
     case_run neverbusy --unguarded --arms pi --scenarios followup-while-working --cap 60
   [ "$(field "$CASE_RESULTS" verdict)" != "pass" ] \
-    && ok "a scenario that did not happen is not a pass" || bad "a cell with no busy window passed"
-  grep -q 'no-busy-window' "$CASE_RESULTS" \
-    && ok "and the reason is on the row" || bad "no-busy-window is not recorded"
+    && ok "a scenario that did not happen is not a pass" || bad "a cell with no mid-work window passed"
+  grep -q 'no-midwork-window' "$CASE_RESULTS" \
+    && ok "and the reason is on the row" || bad "no-midwork-window is not recorded"
 
   say "deaf (the followup is ignored):"
-  FAKE_TUI_MODE=deaf FAKE_TUI_BUSY=10 CONV_SLOW_SECONDS=4 \
-  CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=25 \
-  PI_BIN="$FAKE/tui-fake.sh" \
-    case_run deaf --unguarded --arms pi --scenarios followup-while-working --cap 90
+  tui_case deaf deaf
   [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
     && ok "a dropped followup fails the cell" || bad "a dropped followup was $(field "$CASE_RESULTS" verdict)"
 fi
@@ -336,7 +414,7 @@ say
 say "evidence (a second run erases nothing the first left):"
 SHARED="$WORKDIR/shared-evidence"
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
-  CONV_RUN_ID=first "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
+  FAKE_ANSWER_ROOT="$SHARED" CONV_RUN_ID=first "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-first.log" 2>&1
 FIRST_ROWS="$(grep -c "" "$SHARED/results.jsonl" 2>/dev/null || echo 0)"
 [ "$FIRST_ROWS" -ge 1 ] \
@@ -347,7 +425,7 @@ echo '{"sentinel":"first-run-row-that-must-survive"}' >> "$SHARED/results.jsonl"
 echo 'first-run artifact' > "$SHARED/data-tally-pi/sentinel.txt"
 
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
-  CONV_RUN_ID=second "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
+  FAKE_ANSWER_ROOT="$SHARED" CONV_RUN_ID=second "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-second.log" 2>&1
 SECOND_EXIT=$?
 [ "$SECOND_EXIT" -ne 0 ] \
@@ -366,7 +444,7 @@ grep -q 'refusing to write over an existing run summary' "$LOGDIR/evidence-secon
 
 # --overwrite is the deliberate way, and it is the only way.
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
-  CONV_RUN_ID=third "$RUN" --unguarded --overwrite --arms pi --scenarios data-tally --cap 60 \
+  FAKE_ANSWER_ROOT="$SHARED" CONV_RUN_ID=third "$RUN" --unguarded --overwrite --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-third.log" 2>&1
 [ $? -eq 0 ] && ok "--overwrite replaces a run deliberately" || bad "--overwrite did not run"
 say
@@ -432,6 +510,66 @@ else
     && ok "a body whose model cannot be read is refused" || bad "an uncheckable body got $CODE"
   [ "$(wc -l < "$HITS")" -eq "$HITS_BEFORE" ] \
     && ok "and it too reached no upstream" || bad "an uncheckable body was forwarded"
+
+  # A fallback array is a second way to name a model, and a request that lists
+  # a commercial id there would have been billed for it the moment the first
+  # choice was unavailable. Every id in the request is checked, not the first.
+  post() {
+    curl -s -o "$2" -w '%{http_code}' -X POST "http://127.0.0.1:$G_PORT/v1/chat/completions" \
+      -H 'Authorization: Bearer test-sentinel' -H 'Content-Type: application/json' -d "$1"
+  }
+  HITS_BEFORE="$(wc -l < "$HITS")"
+  CODE="$(post '{"model":"deepseek/deepseek-v4-flash-0731","models":["deepseek/deepseek-v4-flash-0731","openai/gpt-4o"],"messages":[{"role":"user","content":"hi"}]}' "$GUARD_DIR/fallback.body")"
+  [ "$CODE" = "403" ] \
+    && ok "an off-allowlist id in the fallback array is refused (403)" \
+    || bad "a commercial fallback got $CODE"
+  [ "$(wc -l < "$HITS")" -eq "$HITS_BEFORE" ] \
+    && ok "and that request reached no upstream either" \
+    || bad "a request with a commercial fallback was forwarded"
+  CODE="$(post '{"model":"deepseek/deepseek-v4-flash-0731","models":["deepseek/deepseek-v4-flash-0731"],"messages":[{"role":"user","content":"hi"}]}' "$GUARD_DIR/fallback-ok.body")"
+  [ "$CODE" = "200" ] \
+    && ok "a fallback array of allowlisted ids still goes through" \
+    || bad "an allowlisted fallback array got $CODE"
+
+  # Relay, not buffer. The upstream holds the second event back for two
+  # seconds; a guard that read the response to completion before answering
+  # would deliver both at once, and a TUI behind it would sit blank for the
+  # whole generation.
+  GUARD_PORT="$G_PORT" python3 - "$GUARD_DIR/stream-timing.json" <<'PYCLIENT'
+import http.client, json, os, sys, time
+body = json.dumps({
+    "model": "deepseek/deepseek-v4-flash-0731",
+    "messages": [{"role": "user", "content": "hi"}],
+    "stream": True,
+    "stream_delay": 2,
+})
+conn = http.client.HTTPConnection("127.0.0.1", int(os.environ["GUARD_PORT"]), timeout=30)
+started = time.time()
+conn.request("POST", "/v1/chat/completions", body=body,
+             headers={"Authorization": "Bearer test-sentinel",
+                      "Content-Type": "application/json"})
+response = conn.getresponse()
+seen = {}
+buffered = b""
+while len(seen) < 2:
+    piece = response.read1(4096)
+    if not piece:
+        break
+    buffered += piece
+    for n in (1, 2):
+        marker = b"UPSTREAM-CHUNK-%d" % n
+        if n not in seen and marker in buffered:
+            seen[n] = time.time() - started
+json.dump({"first": seen.get(1), "second": seen.get(2)}, open(sys.argv[1], "w"))
+PYCLIENT
+  FIRST="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["first"] or -1)' "$GUARD_DIR/stream-timing.json")"
+  SECOND="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["second"] or -1)' "$GUARD_DIR/stream-timing.json")"
+  awk -v a="$FIRST" 'BEGIN{exit !(a >= 0 && a < 1.5)}' \
+    && ok "the first event reaches the client before the second is even sent (${FIRST}s)" \
+    || bad "the first event was held until the stream ended (${FIRST}s) — the guard buffers"
+  awk -v a="$FIRST" -v b="$SECOND" 'BEGIN{exit !(b >= 1.5 && b > a)}' \
+    && ok "and the second arrives when the upstream sends it (${SECOND}s)" \
+    || bad "the second event did not arrive after its upstream delay (${SECOND}s)"
 
   grep -q '"decision": "deny"' "$GUARD_DIR/audit.jsonl" \
     && ok "the audit log records the refusals" || bad "the audit log has no denial"

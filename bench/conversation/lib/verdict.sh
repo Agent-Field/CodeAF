@@ -163,3 +163,32 @@ go_suite_green() {
 cell_verdict() {
   if [ "$CELL_FAILURES" -eq 0 ] && [ "$CELL_CHECKS" -gt 0 ]; then echo "pass"; else echo "fail"; fi
 }
+
+# ── reading the interactive door's own record ───────────────────────────────
+
+# door_field prints one value from a cell's door.json, or nothing.
+door_field() {
+  CONV_DOOR="$1" CONV_FIELD="$2" python3 -c '
+import json, os
+try:
+    got = json.load(open(os.environ["CONV_DOOR"]))
+except Exception:
+    raise SystemExit(0)
+value = got.get(os.environ["CONV_FIELD"])
+print("" if value is None else value)
+'
+}
+
+# stamps_ordered prints 1 when both stamps exist and the first is not after the
+# second. A missing stamp is 0: an ordering that cannot be shown is not one that
+# happened, which is the whole lesson of the cell this was written for.
+stamps_ordered() {
+  [ -n "${1:-}" ] && [ -n "${2:-}" ] || { echo 0; return; }
+  awk -v a="$1" -v b="$2" 'BEGIN { print (a <= b) ? 1 : 0 }'
+}
+
+# stamp_gap prints the seconds between two stamps, or "unknown".
+stamp_gap() {
+  [ -n "${1:-}" ] && [ -n "${2:-}" ] || { echo unknown; return; }
+  awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f", b - a }'
+}

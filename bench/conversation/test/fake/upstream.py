@@ -12,6 +12,7 @@ checked at the same time.
 import argparse
 import http.server
 import json
+import time
 
 
 class Upstream(http.server.BaseHTTPRequestHandler):
@@ -34,13 +35,26 @@ class Upstream(http.server.BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
         self.record(body)
+        # `stream_delay` seconds between the two events, which is how a client
+        # can tell a relay from a buffer: with a gap upstream, a client that
+        # sees the first event only when the second arrives was waiting on a
+        # proxy holding the whole response.
+        try:
+            delay = float(json.loads(body or b"{}").get("stream_delay") or 0)
+        except (ValueError, TypeError):
+            delay = 0
+        delay = max(0.0, min(delay, 10.0))
         # Two chunks with a marker in each, so a proxy that buffers the whole
         # response instead of relaying it is still visible in the bytes.
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
+        first = True
         for part in (b"data: UPSTREAM-CHUNK-1\n\n", b"data: UPSTREAM-CHUNK-2\n\ndata: [DONE]\n\n"):
+            if not first and delay:
+                time.sleep(delay)
+            first = False
             self.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
             self.wfile.flush()
         self.wfile.write(b"0\r\n\r\n")

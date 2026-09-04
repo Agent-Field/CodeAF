@@ -12,11 +12,21 @@ GUARD_URL=""
 GUARD_SENTINEL=""
 GUARD_PID=""
 GUARD_AUDIT=""
+GUARD_USAGE=""
 
 # guard_start brings the proxy up and waits for the port it chose. The real key
 # is handed to the guard's own environment and to nothing else.
+#
+# ONE GUARD PER CELL. The guard is also the run's meter, and a meter shared
+# between cells cannot say which cell a late call belonged to: a session host
+# that keeps working after a cell ends would smear its spend onto the next one.
+# A cell's own guard closes with the cell, so a straggler reaches a closed port
+# and is visible as a failure rather than counted as somebody else's cost.
+#
+#   guard_start <audit-path> <usage-path> <scope>
 guard_start() {
-  local audit="$1" out
+  local audit="$1" usage="${2:-}" scope="${3:-}" out
+  GUARD_USAGE="$usage"
   GUARD_AUDIT="$audit"
   GUARD_SENTINEL="afconv-sentinel-$$-$RANDOM"
   out="$(mktemp)"
@@ -26,7 +36,8 @@ guard_start() {
 
   GUARD_UPSTREAM_KEY="${OPENROUTER_API_KEY:-}" \
     python3 "$CONV_LIB/guard.py" "${allow[@]}" --audit "$audit" \
-      --sentinel "$GUARD_SENTINEL" > "$out" 2>"$audit.err" &
+      ${usage:+--usage "$usage"} ${scope:+--scope "$scope"} \
+      --sentinel "$GUARD_SENTINEL" > "$out" 2>>"$audit.err" &
   GUARD_PID=$!
 
   local waited=0
@@ -116,8 +127,7 @@ json.dump({"providers": {"guard": {
     "baseUrl": os.environ["CONV_URL"],
     "apiKey": os.environ["CONV_KEY"],
     "api": "openai-completions",
-    "models": [{"id": os.environ["CONV_ID"], "reasoning": True,
-                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}}],
+    "models": [{"id": os.environ["CONV_ID"], "reasoning": True}],
 }}}, open(sys.argv[1], "w"), indent=1)
 ' "$home/models.json"
       ARM_ENV+=("OPENROUTER_API_KEY=$GUARD_SENTINEL")
@@ -185,4 +195,27 @@ arm_guard_model() {
     pi)  printf '%s' "$CONV_MODEL" ;;
     *)   printf '%s' "$CONV_MODEL" ;;
   esac
+}
+
+# arm_host_stop ends whatever this cell's own conversation left running, using
+# the product's own door and the cell's own state root.
+#
+# aforge conversations are hosted by default, so a cell that just detaches from
+# tmux leaves a session host behind — a benchmark must not litter the machine
+# with daemons, and it must not stop anybody else's either. `aforge engine
+# --stop` is scoped to one workspace, and the cell's AFORGE_HOME scopes it
+# again, so this can only reach the host this cell started. Nothing is killed
+# by pattern and no global process is touched.
+#
+# Order matters: the host is stopped BEFORE the cell's guard, so a session that
+# is still finishing cannot outlive the thing that keeps it on the allowlist.
+arm_host_stop() {
+  local arm="$1" cell="$2" work="$3"
+  [ "$arm" = "aforge" ] || return 0
+  local bin; bin="$(arm_bin aforge)"
+  [ -n "$bin" ] || return 0
+  [ -d "$cell/state/aforge-home" ] || return 0
+  "${CHILD_ENV[@]}" "$bin" engine --workspace "$work" --stop \
+    > "$cell/host-stop.log" 2>&1
+  printf 'exit:%s\n' "$?" >> "$cell/host-stop.log"
 }

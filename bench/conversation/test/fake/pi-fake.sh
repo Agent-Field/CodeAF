@@ -17,6 +17,8 @@
 #   nocost       a correct answer with no usage block at all: cost is unknown,
 #                which is not the same as zero
 #   wrongmodel   a correct answer billed to a model outside the allowlist
+#   zeroprice    real tokens and a self-reported cost of zero, which is a price
+#                table of zeroes rather than a free call
 #
 # Running it leaves FAKE_MARKER behind, which is how the dry-run test proves
 # that composing an invocation did not execute one.
@@ -101,15 +103,16 @@ answer() {
     printf 'The net revenue is $1.00, the leading region is atlantis with $0.50, and 99 rows were refunded.'
     return
   fi
-  if [ -f expected.json ]; then
-    python3 -c '
-import json
-key = json.load(open("expected.json"))
+  key="$(ls "${FAKE_ANSWER_ROOT:-/nonexistent}"/*/judge/expected.json 2>/dev/null | head -1)"
+  if [ -n "$key" ]; then
+    FAKE_KEY="$key" python3 -c '
+import json, os
+key = json.load(open(os.environ["FAKE_KEY"]))
 print("Net revenue is $%.2f. The top region is %s with $%.2f. %d rows were refunded."
       % (key["net_revenue_usd"], key["top_region"], key["top_region_revenue_usd"], key["refunded_rows"]))
 '
   else
-    printf 'There is no expected.json here, so this fake has nothing to answer with.'
+    printf 'no answer key was reachable, so this fake has nothing to answer with.'
   fi
 }
 
@@ -123,6 +126,10 @@ model = os.environ["FAKE_MODEL"].removeprefix("openrouter/")
 usage = {"input": 412, "output": 44, "cacheRead": 0, "cacheWrite": 0,
          "totalTokens": 456,
          "cost": {"input": 5.5e-05, "output": 8.4e-06, "total": 6.34e-05}}
+if os.environ["FAKE_MODE"] == "zeroprice":
+    # What a custom provider config with a zero price table produces: real
+    # tokens, a $0.00 total. The pilot run reported exactly this.
+    usage["cost"] = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}
 message = {"role": "assistant", "content": [{"type": "text", "text": text}],
            "provider": "openrouter", "model": model, "responseId": "fake-1",
            "stopReason": "stop"}
