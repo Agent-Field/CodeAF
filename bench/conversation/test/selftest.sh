@@ -466,7 +466,8 @@ done
 G_OUT="$GUARD_DIR/guard.out"
 GUARD_TEST=1 GUARD_UPSTREAM_KEY="test-upstream-key-not-real" \
   python3 "$CONV_ROOT/lib/guard.py" --allow deepseek/deepseek-v4-flash-0731 \
-    --audit "$GUARD_DIR/audit.jsonl" --sentinel "test-sentinel" \
+    --audit "$GUARD_DIR/audit.jsonl" --usage "$GUARD_DIR/usage.jsonl" \
+    --scope selftest --sentinel "test-sentinel" \
     --upstream "http://127.0.0.1:${UP_PORT:-0}/v1" > "$G_OUT" 2>&1 &
 G_PID=$!
 for _ in $(seq 1 50); do
@@ -551,7 +552,7 @@ conn.request("POST", "/v1/chat/completions", body=body,
 response = conn.getresponse()
 seen = {}
 buffered = b""
-while len(seen) < 2:
+while True:
     piece = response.read1(4096)
     if not piece:
         break
@@ -560,6 +561,8 @@ while len(seen) < 2:
         marker = b"UPSTREAM-CHUNK-%d" % n
         if n not in seen and marker in buffered:
             seen[n] = time.time() - started
+# Read to the end rather than walking away: an unfinished read is a client
+# disconnect, and the ledger test below wants this call to have settled.
 json.dump({"first": seen.get(1), "second": seen.get(2)}, open(sys.argv[1], "w"))
 PYCLIENT
   FIRST="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["first"] or -1)' "$GUARD_DIR/stream-timing.json")"
@@ -570,6 +573,73 @@ PYCLIENT
   awk -v a="$FIRST" -v b="$SECOND" 'BEGIN{exit !(b >= 1.5 && b > a)}' \
     && ok "and the second arrives when the upstream sends it (${SECOND}s)" \
     || bad "the second event did not arrive after its upstream delay (${SECOND}s)"
+
+  # Accounting. A call that is admitted has been paid for whatever happens
+  # next, so the ledger must close every admission — and where it cannot, the
+  # cell's cost has to go unknown rather than be totalled from the calls that
+  # happened to finish.
+  cost_of() {
+    python3 "$CONV_ROOT/lib/receipts.py" --kind pi-events --path /dev/null \
+      --guard-usage "$1" --out "$GUARD_DIR/receipt.json" >/dev/null 2>&1
+    python3 -c '
+import json, sys
+got = json.load(open(sys.argv[1]))
+print(got["cost_source"], "null" if got["cost_usd"] is None else got["cost_usd"])
+' "$GUARD_DIR/receipt.json"
+  }
+  read -r ACC_SOURCE ACC_COST <<< "$(cost_of "$GUARD_DIR/usage.jsonl")"
+  [ "$ACC_SOURCE" = "guard-upstream" ] \
+    && ok "the calls so far are priced from the provider's own usage ($ACC_COST)" \
+    || bad "the guard did not price completed calls: $ACC_SOURCE"
+  grep -q '"phase": "admitted"' "$GUARD_DIR/usage.jsonl" \
+    && ok "and each was booked before it was forwarded, not only after" \
+    || bad "no admission row was written before forwarding"
+
+  # The client hangs up mid-stream. The call was made, the provider may bill
+  # it, and its usage block never arrives — the guard must record that quietly
+  # and not answer a request whose headers it has already sent.
+  GUARD_PORT="$G_PORT" python3 - <<'PYDROP'
+import http.client, json, os
+body = json.dumps({"model": "deepseek/deepseek-v4-flash-0731",
+                   "messages": [{"role": "user", "content": "hi"}],
+                   "stream": True, "stream_delay": 3})
+conn = http.client.HTTPConnection("127.0.0.1", int(os.environ["GUARD_PORT"]), timeout=30)
+conn.request("POST", "/v1/chat/completions", body=body,
+             headers={"Authorization": "Bearer test-sentinel",
+                      "Content-Type": "application/json"})
+response = conn.getresponse()
+response.read1(64)      # take the first event, then walk away
+conn.close()
+PYDROP
+  for _ in $(seq 1 60); do
+    grep -q 'client disconnected mid-stream' "$GUARD_DIR/usage.jsonl" && break
+    sleep 0.2
+  done
+  python3 -c '
+import json, sys
+rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+last = [row for row in rows if row.get("phase") == "settled"][-1]
+sys.exit(0 if last["cost_usd"] is None and "disconnect" in (last.get("note") or "") else 1)
+' "$GUARD_DIR/usage.jsonl" \
+    && ok "a dropped call is settled as unknown, not left out of the ledger" \
+    || bad "the dropped call has no unpriced settlement"
+  read -r ACC_SOURCE ACC_COST <<< "$(cost_of "$GUARD_DIR/usage.jsonl")"
+  [ "$ACC_COST" = "null" ] \
+    && ok "and one priced call beside it is NOT reported as the total" \
+    || bad "a partial total was reported as known: $ACC_COST"
+  kill -0 "$G_PID" 2>/dev/null \
+    && ok "the guard survived the disconnect" || bad "the guard died on a client disconnect"
+
+  # And the abrupt case: the guard is killed with a call in flight, so an
+  # admission exists that nothing will ever close.
+  grep '"phase": "admitted"' "$GUARD_DIR/usage.jsonl" | head -1 > "$GUARD_DIR/orphan.jsonl"
+  read -r ACC_SOURCE ACC_COST <<< "$(cost_of "$GUARD_DIR/orphan.jsonl")"
+  [ "$ACC_COST" = "null" ] \
+    && ok "an admission nothing settled reads as unknown, not as nothing" \
+    || bad "an unsettled admission was priced: $ACC_COST"
+  grep -q 'never settled' "$GUARD_DIR/receipt.json" \
+    && ok "and the receipt says which calls went unaccounted" \
+    || bad "the receipt does not name the unsettled calls"
 
   grep -q '"decision": "deny"' "$GUARD_DIR/audit.jsonl" \
     && ok "the audit log records the refusals" || bad "the audit log has no denial"

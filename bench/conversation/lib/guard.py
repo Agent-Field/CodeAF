@@ -16,6 +16,14 @@ which is exactly how a paid pilot run reported $0.00. What the provider says it
 charged is upstream's `usage`, and this is the only place that sees it for every
 call including the auxiliary ones.
 
+How the meter cannot quietly under-count. Every request that is ADMITTED gets a
+`phase: "admitted"` row with a request id before a socket upstream is opened,
+and a `phase: "settled"` row when it ends — priced, or explicitly unknown. A
+call that is billed and then lost (the client hangs up mid-stream, the upstream
+fails after generating, this process is killed) leaves an admission nothing
+closed, and the reader turns that into an unknown cost for the whole cell rather
+than a total that silently omits it.
+
   guard.py --allow <id> [--allow <id>] --audit <path> --usage <path>
            --sentinel <token> --scope <name>
 
@@ -77,13 +85,18 @@ def requested_models(payload):
         for entry in fallbacks:
             if isinstance(entry, str):
                 found.append(entry)
-            elif isinstance(entry, dict):
+                continue
+            named = ""
+            if isinstance(entry, dict):
                 for key in ("model", "id", "name"):
                     if isinstance(entry.get(key), str):
-                        found.append(entry[key])
+                        named = entry[key]
                         break
-            else:
-                found.append("")   # unreadable entry: cannot be cleared
+            # An entry whose model cannot be read — an empty object, a number,
+            # a nested shape this does not know — is recorded as unreadable and
+            # therefore unclearable. Skipping it would let a request route
+            # somewhere no check ever saw.
+            found.append(named)
     elif fallbacks is not None:
         found.append("")
     return found
@@ -134,6 +147,7 @@ class Guard(http.server.BaseHTTPRequestHandler):
     timeout = 300.0
     measure = True
     lock = threading.Lock()
+    calls_admitted = 0
 
     def log_message(self, *_args):
         """Silence the default logger: it prints request lines, and nothing
@@ -164,11 +178,25 @@ class Guard(http.server.BaseHTTPRequestHandler):
             path = path[3:]
         return path.split("?", 1)[0]
 
+    def sentinel_ok(self, model=None):
+        """Checked before anything is admitted, so a refused caller never opens
+        an accounting row that nothing would ever close."""
+        if not self.sentinel:
+            return True
+        presented = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+        if presented == self.sentinel:
+            return True
+        self.refuse(401, "caller did not present this run's sentinel token",
+                    path=self.path, model=model)
+        return False
+
     def do_GET(self):
         path = self.api_path()
         if not path.startswith(GET_PREFIXES):
             self.refuse(403, "path %s is not one this guard forwards" % path,
                         path=self.path, model=None)
+            return
+        if not self.sentinel_ok():
             return
         self.relay(b"", None)
 
@@ -197,6 +225,22 @@ class Guard(http.server.BaseHTTPRequestHandler):
                 self.refuse(403, "model %s is not on the open-model allowlist" % (model or "<unreadable>"),
                             path=self.path, model=model, considered=wanted)
                 return
+        if not self.sentinel_ok(payload.get("model")):
+            return
+
+        # The id the request was checked under is the id that goes upstream. A
+        # harness may address the guard through a provider alias (`guard/…`),
+        # and forwarding that alias asks OpenRouter for a model it has never
+        # heard of; the checked form is the real one.
+        rewritten = False
+        if isinstance(payload.get("model"), str) and normalise(payload["model"]) != payload["model"]:
+            payload["model"] = normalise(payload["model"])
+            rewritten = True
+        if isinstance(payload.get("models"), list):
+            fallbacks = [normalise(entry) if isinstance(entry, str) else entry
+                         for entry in payload["models"]]
+            rewritten = rewritten or fallbacks != payload["models"]
+            payload["models"] = fallbacks
 
         # Ask the provider to account for the call. This changes the REQUEST,
         # never the response bytes: without it a streamed call reports no usage
@@ -205,19 +249,33 @@ class Guard(http.server.BaseHTTPRequestHandler):
         added_usage = False
         if self.measure and isinstance(payload, dict) and "usage" not in payload:
             payload["usage"] = {"include": True}
-            body = json.dumps(payload).encode()
             added_usage = True
+        if added_usage or rewritten:
+            body = json.dumps(payload).encode()
 
-        self.relay(body, payload.get("model"), added_usage=added_usage)
+        # ADMISSION IS THE ACCOUNTING EVENT, not completion. From here the call
+        # may be billed whatever happens next — the client can hang up, the
+        # upstream can fail after streaming half a reply, this process can be
+        # killed — so the row is opened now and closed later. An admission with
+        # no settlement is what an unknown cost looks like, and the reader
+        # treats it as one.
+        request_id = self.open_account(payload.get("model"),
+                                       normalised=rewritten, usage_include_added=added_usage)
+        self.relay(body, payload.get("model"), added_usage=added_usage, request_id=request_id)
 
-    def relay(self, body, model, added_usage=False):
-        if self.sentinel:
-            presented = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
-            if presented != self.sentinel:
-                self.refuse(401, "caller did not present this run's sentinel token",
-                            path=self.path, model=model)
-                return
+    def open_account(self, model, **fields):
+        with self.lock:
+            Guard.calls_admitted += 1
+            number = Guard.calls_admitted
+        request_id = "%s-%d" % (self.scope or "call", number)
+        self.write_line(self.usage_path, dict(
+            fields, scope=self.scope, request_id=request_id, phase="admitted",
+            model=model, path=self.path))
+        self.audit(decision="allow", phase="admitted", request_id=request_id,
+                   path=self.path, model=model, **fields)
+        return request_id
 
+    def relay(self, body, model, added_usage=False, request_id=None):
         url = self.upstream.rstrip("/") + "/" + self.path.lstrip("/").removeprefix("v1/")
         headers = {name: value for name, value in self.headers.items()
                    if name.lower() not in HOP_BY_HOP}
@@ -228,6 +286,7 @@ class Guard(http.server.BaseHTTPRequestHandler):
         request = urllib.request.Request(url, data=body or None, headers=headers,
                                          method=self.command)
         tail = bytearray()
+        sent_headers = False
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 self.send_response(response.status)
@@ -236,6 +295,7 @@ class Guard(http.server.BaseHTTPRequestHandler):
                         self.send_header(name, value)
                 self.send_header("Transfer-Encoding", "chunked")
                 self.end_headers()
+                sent_headers = True
                 # read1 returns what has arrived rather than waiting for a full
                 # buffer: with read(1024) a token stream is held back until 1 KiB
                 # exists, which turns a live conversation into a batch and makes
@@ -245,50 +305,85 @@ class Guard(http.server.BaseHTTPRequestHandler):
                     chunk = reader(65536) if reader else response.read(1)
                     if not chunk:
                         break
-                    self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
-                    self.wfile.flush()
+                    try:
+                        self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        # The caller hung up. Nothing more can be said to it —
+                        # a second response after headers is a protocol error —
+                        # but the call was still made, and may still be billed.
+                        self.close_connection = True
+                        self.settle(request_id, model, bytes(tail),
+                                    "client disconnected mid-stream")
+                        self.audit(decision="allow", phase="ended", request_id=request_id,
+                                   path=self.path, model=model, ended="client-disconnect")
+                        return
                     tail.extend(chunk)
                     if len(tail) > TAIL_BYTES:
                         del tail[:len(tail) - TAIL_BYTES]
                 self.wfile.write(b"0\r\n\r\n")
-                self.record_usage(model, bytes(tail))
-                self.audit(decision="allow", path=self.path, model=model,
+                self.settle(request_id, model, bytes(tail), "")
+                self.audit(decision="allow", phase="ended", request_id=request_id,
+                           path=self.path, model=model,
                            upstream_status=response.status, usage_include_added=added_usage)
         except urllib.error.HTTPError as error:
             payload = error.read()
-            self.send_response(error.code)
-            self.send_header("Content-Type", error.headers.get("Content-Type", "application/json"))
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-            self.audit(decision="allow", path=self.path, model=model, upstream_status=error.code)
+            if not sent_headers:
+                self.send_response(error.code)
+                self.send_header("Content-Type", error.headers.get("Content-Type", "application/json"))
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            else:
+                self.close_connection = True
+            # An error status is not proof of a free call: a provider can fail
+            # after generating. Whatever usage came back is read; otherwise the
+            # row settles unknown.
+            self.settle(request_id, model, payload,
+                        "upstream returned HTTP %d" % error.code)
+            self.audit(decision="allow", phase="ended", request_id=request_id,
+                       path=self.path, model=model, upstream_status=error.code)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            self.settle(request_id, model, bytes(tail), "connection lost")
+            self.audit(decision="allow", phase="ended", request_id=request_id,
+                       path=self.path, model=model, ended="connection-lost")
         except Exception as error:
-            self.refuse(502, "upstream failed: %s" % type(error).__name__,
-                        path=self.path, model=model)
+            reason = "upstream failed: %s" % type(error).__name__
+            if not sent_headers:
+                self.refuse(502, reason, path=self.path, model=model)
+            else:
+                self.close_connection = True
+                self.audit(decision="allow", phase="ended", request_id=request_id,
+                           path=self.path, model=model, ended=type(error).__name__)
+            self.settle(request_id, model, bytes(tail), reason)
 
-    def record_usage(self, model, tail):
-        """Write what the provider said it charged. No usage block means no
-        figure — never a zero, which would read as a free call."""
-        if not self.usage_path:
+    def settle(self, request_id, model, tail, note):
+        """Close an admitted call's accounting row with what the provider said
+        it charged — or with an explicit unknown. No usage block means no
+        figure; never a zero, which would read as a free call, and never
+        silence, which would read as a call that did not happen."""
+        if not request_id or not self.usage_path:
             return
-        usage = usage_in_tail(tail)
+        usage = usage_in_tail(tail) if tail else None
+        row = {"scope": self.scope, "request_id": request_id, "phase": "settled",
+               "model": model, "path": self.path, "cost_usd": None, "note": note}
         if usage is None:
-            self.write_line(self.usage_path, {
-                "scope": self.scope, "model": model, "path": self.path,
-                "cost_usd": None, "note": "upstream returned no usage block",
-            })
+            row["note"] = "; ".join(part for part in
+                                    (note, "upstream returned no usage block") if part)
+            self.write_line(self.usage_path, row)
             return
         cost = usage.get("cost")
-        self.write_line(self.usage_path, {
-            "scope": self.scope,
-            "model": model,
-            "path": self.path,
+        row.update({
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
             "total_tokens": usage.get("total_tokens"),
             "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
-            "note": "" if isinstance(cost, (int, float)) else "upstream usage carried no cost",
         })
+        if not isinstance(cost, (int, float)):
+            row["note"] = "; ".join(part for part in
+                                    (note, "upstream usage carried no cost") if part)
+        self.write_line(self.usage_path, row)
 
 
 def main():

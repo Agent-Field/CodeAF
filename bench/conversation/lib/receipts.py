@@ -57,35 +57,52 @@ def read_guard_usage(path):
     This outranks a harness's self-report, which is that harness's arithmetic
     over its own price table — and a custom provider config can put zeroes in
     that table, which is how a paid pilot reported $0.00. Tokens without a cost
-    stay tokens: no price is invented from them here."""
+    stay tokens: no price is invented from them here.
+
+    The guard opens a row when it ADMITS a request and closes one when the
+    request ends. Both are read, and they must agree: an admission with no
+    settlement is a call that was made and never accounted for — the client
+    hung up, the upstream failed after generating, the guard was killed — and
+    a total that just leaves it out is a smaller number than what was spent.
+    So it makes the whole cell's cost unknown."""
     rows = [row for row in jsonl(path) if isinstance(row, dict)]
     if not rows:
         return None
-    calls = [row for row in rows if row.get("path", "").find("chat/completions") >= 0
-             or row.get("prompt_tokens") is not None]
-    if not calls:
+    inference = [row for row in rows if row.get("path", "").find("chat/completions") >= 0
+                 or row.get("prompt_tokens") is not None]
+    if not inference:
         return None
-    priced = [row for row in calls if isinstance(row.get("cost_usd"), (int, float))]
+    # A row with no phase is a settlement: that is the shape the guard wrote
+    # before admissions were recorded, and evidence from those runs still reads.
+    admitted = [row for row in inference if row.get("phase") == "admitted"]
+    settled = [row for row in inference if row.get("phase") != "admitted"]
+    priced = [row for row in settled if isinstance(row.get("cost_usd"), (int, float))]
+    unsettled = len(admitted) - len(settled)
     got = {
-        "calls": len(calls),
+        "calls": max(len(admitted), len(settled)),
         "models": [],
-        "tokens_in": sum(int(row.get("prompt_tokens") or 0) for row in calls) or None,
-        "tokens_out": sum(int(row.get("completion_tokens") or 0) for row in calls) or None,
+        "tokens_in": sum(int(row.get("prompt_tokens") or 0) for row in settled) or None,
+        "tokens_out": sum(int(row.get("completion_tokens") or 0) for row in settled) or None,
         "cost_usd": None,
         "cost_source": "none",
         "notes": [],
     }
-    for row in calls:
+    for row in inference:
         model = row.get("model")
         if model and model not in got["models"]:
             got["models"].append(model)
-    if len(priced) == len(calls):
+    if unsettled > 0:
+        got["notes"].append(
+            "%d of %d admitted calls never settled — billed and unaccounted, so the "
+            "cell's cost is unknown rather than part-counted"
+            % (unsettled, len(admitted)))
+    elif len(priced) == len(settled) and settled:
         got["cost_usd"] = sum(float(row["cost_usd"]) for row in priced)
         got["cost_source"] = "guard-upstream"
     else:
         got["notes"].append(
             "upstream priced %d of %d calls — cost left unknown rather than part-counted"
-            % (len(priced), len(calls)))
+            % (len(priced), len(settled)))
     return got
 
 
@@ -358,6 +375,13 @@ def main():
         if measured["cost_source"] == "guard-upstream":
             got["cost_usd"] = measured["cost_usd"]
             got["cost_source"] = "guard-upstream"
+        else:
+            # The guard admitted calls and could not price all of them. The
+            # harness's own figure covers the calls it knows about, so quoting
+            # it here would report a total for a cell where a billed call went
+            # unaccounted — the most confident possible under-count.
+            got["cost_usd"] = None
+            got["cost_source"] = "none"
         if measured["tokens_in"] or measured["tokens_out"]:
             got["tokens_in"] = measured["tokens_in"]
             got["tokens_out"] = measured["tokens_out"]
