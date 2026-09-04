@@ -10,7 +10,7 @@ This is a proposed product direction, not a description of shipped behavior. It 
 - The person can enter a task or subtask conversation to inspect and steer it, then return to the main discussion.
 - Tasks continue when the terminal closes; the owner explicitly confirmed this.
 - Quality, completion time and cost matter together. The product should handle work beyond coding.
-- This deliverable is a product/design plan; application implementation is not requested in this wave.
+- The owner subsequently authorized implementation and refactoring on a local integration branch. The design below remains a target; `IMPLEMENTATION.md` distinguishes landed changes from work still in progress.
 
 ## Proposed product promise
 
