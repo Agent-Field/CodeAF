@@ -127,8 +127,9 @@ With a budget, four things change, and only with a budget:
   to be offered a follow-up in your own words — with nobody there, that offer went
   nowhere. Now what was missing becomes the next brief. If the same thing stops it
   three times in a row it stops for good and says so.
-- **It tidies up after itself before it says it is done.** It re-runs the checks
-  in a fresh shell, then looks at every file it made: anything inside the folder
+- **It tidies up after itself before it says it is done.** It reads the checks in
+  a fresh shell, reusing an answer already taken over the same unchanged tree, then
+  looks at every file it made: anything inside the folder
   it is working in is part of the answer and is left alone, and anything it wrote
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
@@ -253,8 +254,9 @@ the checks its acceptance names once at the start — before it has touched anyt
 writes down which were already failing. Only the acceptance it wrote for the work and each
 task's own brief supply checks; a command pasted into your ask (the steps you took to see a
 bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
-longer is. At the end it runs them again, and only a check that was
-**green before and red after** counts as work still to do.
+longer is. At the end, only a check that was **green before and red after** counts as work
+still to do. The answer already taken is used when the tree has not moved, so one command
+runs once for one state of the tree; when it has moved, aforge runs the check again.
 
 That first reading runs **in the background**, so nothing waits for it: your first turn
 starts straight away. It gets one window for the whole set rather than one per check, and
@@ -285,6 +287,25 @@ says so plainly, so nothing goes off to fix it by accident:
 
 A session you are sitting in front of runs none of this: your tree is in front of you, and
 nothing is checked or decided on your behalf.
+
+## It ran the same tests three times · it ran out of time running the tests · why did it say unchecked at the end
+
+A declared check runs once for one state of the tree. When a later reader looks at the same
+unchanged tree, it gets the answer already taken instead of starting the command again. If
+the tree has moved underneath that answer, aforge runs the check again, because the old
+answer describes a tree that no longer exists.
+
+With a budget that names hours, one check is given the smaller of five minutes and what is
+left of those hours. A check that cannot fit the time left is **not started**. A run that
+finishes in that shape says, for example:
+
+```
+finishing here · what was asked is done · unchecked: there was not enough time left to run tox -e py
+```
+
+That means the work is finished and nothing has confirmed the named command. Ending there
+is better than spending the remaining hours re-running a suite over a green tree and then
+running out of time.
 
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
