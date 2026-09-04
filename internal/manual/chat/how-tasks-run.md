@@ -1228,9 +1228,12 @@ in aforge, and no setting that holds one. The commands its `bash` will accept co
 places, and nothing else gets through:
 
 - **the check your task declares** — every command named in the brief or the acceptance,
-  read out of the text: a span in backticks (`` `bash verify.sh` ``, `` `make check` ``) or a
-  line that opens with a shell prompt (`$ ./verify --quiet`). A wildcard you wrote is
-  honoured, so a brief naming `` `verify.*` `` admits `verify.sh`;
+  read out of the text. A span in backticks (`` `bash verify.sh` ``, `` `make check` ``)
+  names a check in either half of the brief. A line that opens with a shell prompt
+  (`$ ./verify --quiet`) names one only in the work's own half or in a `done when` sentence
+  somebody actually wrote, never in your words quoted above it: a pasted terminal session
+  shows how you saw a bug; it is not a list of commands to run against your tree. A wildcard
+  you wrote is honoured, so a brief naming `` `verify.*` `` admits `verify.sh`;
 - **the check the task itself used** — any command its worker issued, taken from the same
   tool results the checker is shown, read for **the one command that line runs**. A leading
   `cd <a directory in your tree> &&` is dropped — that only states the directory the task was
@@ -1261,6 +1264,14 @@ going to open. That was measured on a Rust deliverable: the allowlist used to be
 of Go verbs plus git, so on a project that was not Go the checker could confirm nothing at
 all, exhausted its five minutes on all six attempts, and every one of them landed the task
 needing your look.
+
+## Why did it run chmod or reproduction steps from the issue I pasted
+
+It does not harvest a `$ ` prompt line from your pasted request, including when nobody could
+write a separate `done when` sentence and your words have to stand as that sentence: a
+terminal transcript is evidence of how you saw the bug, not a check to run against the
+finished tree. A command you name in backticks still counts, and so does a `$ ` line in a
+`done when` sentence somebody actually wrote or in a piece of work's own half of its brief.
 
 ## How the check is spelled — one file, and the ways that really start it
 

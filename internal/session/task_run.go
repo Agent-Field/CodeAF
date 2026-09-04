@@ -1953,6 +1953,43 @@ func taskCopyFor(tree taskTree) taskCopy {
 	return taskCopy{}
 }
 
+// checkTexts hands [declaredChecks] each account in a node's document beside
+// its source because a prompt line in the person's pasted words is a story
+// about seeing the bug, while the same line in the work's account is a promise
+// about how to check it. An acceptance nobody could write is those same words
+// with a sentence in front of them, and that sentence does not turn a pasted
+// transcript into a promise. The work's half still uses [composeBrief] so this
+// reader cannot invent a second layout for the worker's document.
+func (n *TaskNode) checkTexts() []checkText {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	ask := briefAskText(n.spec.request)
+	work := briefWorkText(ask, n.brief)
+	// THE DONE-CONDITION IS THE ONE THE WORKER READS, family checks and all
+	// ([withFamilyChecks]), because a document that harvested a different
+	// sentence from the one it hands out would be two documents.
+	acceptance := withFamilyChecks(n.spec.acceptance, n.Family)
+	texts := make([]checkText, 0, 3)
+	if ask != "" {
+		texts = append(texts, checkText{text: ask, from: checksFromAsk})
+	}
+	if acceptanceIsAsk(n.spec.acceptance) {
+		// The frame carries the person's words and the family's checks carry the
+		// work's, so only the first half moves across; the checks stay in the
+		// account below, where they were written.
+		texts = append(texts, checkText{text: n.spec.acceptance, from: checksFromAsk})
+		acceptance = withFamilyChecks("", n.Family)
+	}
+	// THE ZERO COPY, for [TaskNode.instruction]'s reason: the harvest resolves
+	// against the clean restore rather than against any worker's own folder.
+	account := composeBrief("", work, n.spec.deliverable, acceptance,
+		expectsSection(n.spec.expects), n.spec.origin, taskCopy{})
+	if account != "" {
+		texts = append(texts, checkText{text: account, from: checksFromWork})
+	}
+	return texts
+}
+
 // request is the person's own words, frozen with the rest of the spec. It is
 // read by [Agent.taskRequest] so that a sub-task a node hands out inherits the
 // sentence that started the family rather than the paraphrase in the middle.
