@@ -159,6 +159,40 @@ func TestC3WhereInsideARepositoryIsBranchedAndPlainFoldersStayInPlace(t *testing
 	}
 }
 
+// C3b: a contract that spells its ground another way is still a contract about
+// that ground. Read as bytes, one that named the ground three times looked like
+// one that named nothing under it, so the work became a read-only reference —
+// and a reference binds none of its addresses to the copy it was given, which
+// left the worker writing in the person's own checkout.
+func TestC3bAContractSpellingTheGroundThroughAnAliasStillWritesInIt(t *testing.T) {
+	repo := newTestRepo(t)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = t.TempDir() })
+
+	writes := agent.resolveTaskGround(taskSpec{
+		ground:      alias,
+		brief:       "change " + filepath.Join(alias, "internal", "widget.go") + " so it says new",
+		deliverable: filepath.Join(alias, "internal", "widget.go"),
+		acceptance:  filepath.Join(alias, "internal", "widget.go") + " says new",
+	})
+	if writes.dir != canonicalPath(repo) || writes.mode != TaskModeWorktree {
+		t.Fatalf("stand = %+v, want a worktree of %s", writes, canonicalPath(repo))
+	}
+	// AND THE READ-ONLY CASE IS UNCHANGED, which is what says the reading above
+	// grew no more generous than the alias: work whose contract names no file in
+	// the ground at all still gets the reference it always got.
+	reads := agent.resolveTaskGround(taskSpec{
+		ground: alias, brief: "say what the widget does", deliverable: "a concise answer",
+		acceptance: "the question is answered",
+	})
+	if reads.dir != canonicalPath(repo) || reads.mode != TaskModeReference {
+		t.Fatalf("stand = %+v, want a reference to %s", reads, canonicalPath(repo))
+	}
+}
+
 // C4: an in-place mode the person put on a referred repository remains the one
 // authority that deliberately writes that repository directly.
 func TestC4APersonsInPlaceModeOnAReferredRepositoryIsHonoured(t *testing.T) {

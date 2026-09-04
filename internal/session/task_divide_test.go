@@ -2130,6 +2130,72 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 	}
 }
 
+// AND ONE PHYSICAL FILE IS ONE CLAIM WHATEVER PATH REACHES IT. A part spells
+// its output the way it was standing, so two parts can name one file through a
+// symlinked ancestor and agree on nothing but the disk — /var and /private/var
+// on a Mac. Compared as words they owned two files, and two workers were sent to
+// write one.
+func TestPartsThatClaimOneFileThroughAnAliasCollide(t *testing.T) {
+	root := t.TempDir()
+	tree := filepath.Join(root, "real")
+	if err := os.MkdirAll(filepath.Join(tree, "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A sibling whose name begins the same way, so that the alias is read at
+	// component boundaries rather than as a prefix.
+	if err := os.MkdirAll(filepath.Join(root, "real-old", "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(tree, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real-old"), alias+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	aliased := filepath.Join(alias, "reports", "a.md")
+
+	for _, test := range []struct {
+		name  string
+		parts []dividePart
+		want  []string
+	}{
+		// The relative name is the file this division's own tree would hold and
+		// it is not there yet, which is what a part's output normally is.
+		{"one output named relative and through an alias", []dividePart{
+			{Acceptance: "reports/a.md holds the north"},
+			{Acceptance: aliased + " holds the south"},
+		}, []string{aliased}},
+		{"one output named two ways in the same part", []dividePart{
+			{Acceptance: "reports/a.md is written, and " + aliased + " holds the figures"},
+			{Acceptance: "reports/b.md holds the figures"},
+		}, nil},
+		// READING IS NOT OWNING, through an alias as through any other spelling:
+		// the material both parts work from is named in the brief, and the brief
+		// claims nothing.
+		{"a shared input through an alias is not a claim", []dividePart{
+			{Brief: "read " + filepath.Join(alias, "reports", "plan.md"), Acceptance: "reports/a.md holds the north"},
+			{Brief: "read " + filepath.Join(alias, "reports", "plan.md"), Acceptance: "reports/b.md holds the south"},
+		}, nil},
+		{"a sibling reached through a lookalike alias is a different file", []dividePart{
+			{Acceptance: "reports/a.md holds the north"},
+			{Acceptance: filepath.Join(alias+"-old", "reports", "a.md") + " holds the south"},
+		}, nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := scopeCollisions(test.parts, tree)
+			if len(got) != len(test.want) {
+				t.Fatalf("the parts collide on %v, want %v", got, test.want)
+			}
+			for i, want := range test.want {
+				if got[i] != want {
+					t.Fatalf("the parts collide on %v, want %v", got, test.want)
+				}
+			}
+		})
+	}
+}
+
 // TWO PARTS THAT READ ONE FILE AND WRITE THEIR OWN ARE ADMITTED, which is the
 // ordinary shape of divided work and was refused until #281: a folder holding
 // one plan, two parts told to read it, and a division that could not be made at

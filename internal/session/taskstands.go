@@ -724,16 +724,28 @@ func groundNamesWorkUnder(ground string, spec taskSpec) bool {
 }
 
 // groundHolds reports whether one written path lands under the ground. An
-// absolute path is compared as it stands; a relative one is a name inside the
+// absolute path is compared canonically; a relative one is a name inside the
 // project and counts when the file or the directory that would hold it is really
 // there, which keeps ordinary prose from reading as a path.
+//
+// THE ABSOLUTE COMPARISON IS BETWEEN TWO CANONICAL SPELLINGS, as [placeNamedIn]'s
+// is: the ground arrives spelled the way git resolves it while a contract's paths
+// are spelled the way their author was standing, and on macOS the two differ by a
+// `/private` nobody typed. Read as written, a contract that named the ground three
+// times looked like one that named nothing under it, so [groundMode] made the work
+// a reference — and a reference binds no addresses to its copy ([taskCopyFor]),
+// which sent the worker to the person's checkout.
+//
+// Both sides are resolved here rather than left to callers, because some hold a
+// canonical ground and some a raw workspace ([scopeCollisions]); resolving one
+// side only turns paths that agree into paths that do not.
 func groundHolds(ground, token string) bool {
 	if strings.HasPrefix(token, "~") || filepath.IsAbs(token) {
-		full := groundDirOf(token, "")
+		full := canonicalPath(groundDirOf(token, ""))
 		if full == "" {
 			return false
 		}
-		_, inside := insideWorkspace(ground, full)
+		_, inside := insideWorkspace(canonicalPath(ground), full)
 		return inside
 	}
 	full := filepath.Join(ground, filepath.FromSlash(token))

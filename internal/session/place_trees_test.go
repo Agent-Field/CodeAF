@@ -185,8 +185,12 @@ func TestAnExplicitTaskPlaceIsTheWorkersExactDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tree.dir != named || tree.merge != mergeInPlace || tree.branch != "" {
-		t.Fatalf("explicit tree = %+v, want exact in-place directory %s", tree, named)
+	// THE EXACT DIRECTORY, IN THE ONE SPELLING. What this test is about is that
+	// the worker stands in the folder somebody named rather than in a task
+	// folder; the spelling of it is [canonicalPath]'s, because that is what every
+	// other directory this engine compares it against is spelled as.
+	if tree.dir != canonicalPath(named) || tree.merge != mergeInPlace || tree.branch != "" {
+		t.Fatalf("explicit tree = %+v, want exact in-place directory %s", tree, canonicalPath(named))
 	}
 	if _, err := os.Stat(filepath.Join(place.Trees(), "3")); !os.IsNotExist(err) {
 		t.Fatalf("an explicit place also created a task-folder worktree (%v)", err)
@@ -205,8 +209,9 @@ func TestANamedPlaceThatIsNotThereYetIsCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareTaskTreeAt: %v", err)
 	}
-	if tree.dir != fresh || tree.merge != mergeInPlace {
-		t.Fatalf("fresh tree = %+v, want the named directory %s in place", tree, fresh)
+	// The folder that was made, in the one spelling — see the test above.
+	if tree.dir != canonicalPath(fresh) || tree.merge != mergeInPlace {
+		t.Fatalf("fresh tree = %+v, want the named directory %s in place", tree, canonicalPath(fresh))
 	}
 	if info, err := os.Stat(fresh); err != nil || !info.IsDir() {
 		t.Fatalf("the named place was not made: %v", err)
