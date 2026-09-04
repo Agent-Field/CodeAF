@@ -456,6 +456,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
 		{"the run said empty goal and did nothing", "adaptive-runs"},
+		// A file the review called a change even though the run only read it,
+		// asked in the three ways the person meets the false account.
+		{"it said I only changed one file and I changed none", "adaptive-runs"},
+		{"why did it name a file I only told it to read", "adaptive-runs"},
+		{"the review complained about a file I never wrote", "adaptive-runs"},
 		// A rule the person stated about what the run may DO, asked the four ways
 		// somebody meets it: before they run, and after the run broke it.
 		{"I said change no files and it changed files", "adaptive-runs"},
