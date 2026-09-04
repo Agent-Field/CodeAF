@@ -880,6 +880,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// provider's own sentence.
 		{"it failed but the tests were green", "adaptive-runs"},
 		{"the model dropped out after finishing", "adaptive-runs"},
+		// A faulted review's new tail, asked by somebody reading the quoted
+		// answer and by somebody comparing two unchecked endings.
+		{"why does my unchecked line quote the model's reply", "adaptive-runs"},
+		{"why do two unchecked runs end with different reasons", "adaptive-runs"},
 		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
 		{"why did it run the tests nine times", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
