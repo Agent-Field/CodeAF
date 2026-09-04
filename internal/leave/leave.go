@@ -62,6 +62,16 @@ func On(leaving func(), handBack func()) (stop func()) {
 		// THE SECOND WATCH IS ARMED BEFORE LEAVING STARTS. Leaving is allowed
 		// to block while sessions and their work settle, and the second signal
 		// is precisely the door out when that wait will not finish.
+		//
+		// WHAT ACTUALLY MAKES THAT SAFE IS THE BUFFER, NOT THIS ORDERING, and
+		// the difference matters to anybody rearranging these lines. Starting a
+		// goroutine is not running it, so a second signal can arrive before the
+		// watcher below is scheduled — it is lost by nothing, because `signals`
+		// is buffered and was registered with signal.Notify before either
+		// watcher existed, and os/signal delivers into that buffer without
+		// blocking. The ordering is still written this way because leaving()
+		// blocking before the watcher is even created would be a real hole; the
+		// buffer is what covers the window the ordering cannot.
 		go func() {
 			select {
 			case next := <-signals:
