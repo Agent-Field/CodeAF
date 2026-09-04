@@ -532,6 +532,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"set up my api key", "getting-started"},
 		{"openrouter key", "getting-started"},
 		{"change what I picked during setup", "getting-started"},
+		{"first prompt hung", "getting-started"},
+		{"/model switches", "getting-started"},
 
 		// The empty screen, asked the ways somebody meets it: an opening frame
 		// with nothing on it, a column they expected and cannot see, a box that

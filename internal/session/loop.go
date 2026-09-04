@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -486,6 +487,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	ctx = provider.WithRole(ctx, a.laneRole())
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
+	}
+	// A FIRST PROMPT HAS NO SAVED TALK MODEL. The stall rescue that fires
+	// before a word arrives used to say nothing, and a fresh profile sat
+	// ninety seconds discovering `/model` on its own (F42).
+	if !a.config.InTask && config.FirstPrompt(a.config.ProfileDir) {
+		ctx = provider.WithFirstPrompt(ctx)
 	}
 	ctx = provider.WithValueOfTime(ctx, a.turnLambda())
 

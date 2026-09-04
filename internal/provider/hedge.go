@@ -80,6 +80,12 @@ const heldEvents = 512
 // fires before the first token replaces nothing and says nothing.
 const hedgeNotice = "that lane went quiet — this answer is coming from another one"
 
+// firstPromptNotice is the missing half of that silence. A first prompt has
+// nothing on the screen yet, so [hedgeNotice] never fires, and a stall sat
+// through the ninety-second first-token cut with no door named (F42). `/model`
+// is the switch a person would otherwise have to discover.
+const firstPromptNotice = "still no answer — trying another lane · /model switches"
+
 // waitNow is the clock the waiting controller runs on, and it is deliberately
 // NOT the client's seamed [Client.clock].
 //
@@ -92,6 +98,26 @@ const hedgeNotice = "that lane went quiet — this answer is coming from another
 // [logNow] makes about the model-call log, and the two are deliberately the
 // same shape.
 func waitNow() time.Time { return time.Now() }
+
+type firstPromptContextKey struct{}
+
+// WithFirstPrompt marks this call as a profile's first prompt: nobody has
+// chosen a talk model yet, so a stall must name `/model` instead of sitting
+// silent. Set by the session when [config.FirstPrompt] is true.
+func WithFirstPrompt(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, firstPromptContextKey{}, true)
+}
+
+func firstPromptFrom(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	marked, _ := ctx.Value(firstPromptContextKey{}).(bool)
+	return marked
+}
 
 // ── THE RACE ────────────────────────────────────────────────────────────────
 
@@ -166,6 +192,10 @@ type hedgeRace struct {
 	// empty on all but the handful that decide something with nobody watching.
 	note    string
 	decided chan struct{}
+	// firstPromptTold is whether this race has already named the first-prompt
+	// switch path. One notice per question: a second line about the same stall
+	// is nagging.
+	firstPromptTold bool
 }
 
 // raceFor builds the watched call, which is every call.
@@ -496,6 +526,12 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		if r.rescueOnStall(from, act) {
 			return
 		}
+		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
+		// start. Saying nothing here is the 90s hang: the stream guard is
+		// the next thing that acts, and `/model` is never named.
+		if r.tellFirstPrompt("", quietWords(act.Silence)) {
+			return
+		}
 		r.tellTheWait(act)
 	case control.Escalate:
 		// THE CONTROLLER NEVER CHANGES A MODEL. Rung four of the ladder is
@@ -542,7 +578,9 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	// AND THE CLOCK SAYS SO IN THE SAME BREATH. "stalled 9s · switching to
 	// parasail" is one sentence: the first half is why, and a person shown only
 	// the second half would not know what it was about (phase.go).
-	r.phase.switching(strings.ToLower(alt), primary.watch.quietFor(waitNow()))
+	quiet := primary.watch.quietFor(waitNow())
+	r.phase.switching(strings.ToLower(alt), quiet)
+	r.tellFirstPrompt(alt, quiet)
 	r.start(index, alt)
 }
 
@@ -598,7 +636,41 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	} else {
 		r.report.started(RescueNews{Reason: RescueSlow})
 	}
+	r.tellFirstPrompt(alt, quiet)
 	r.start(index, alt)
+	return true
+}
+
+// tellFirstPrompt is the visible half of a first-prompt stall. [hedgeNotice]
+// waits for text already on the screen; a first prompt has none, so the
+// rescue has to say itself — and name `/model` — or the person sits through
+// the first-token cut discovering nothing (F42).
+//
+// IT IS ONCE PER QUESTION. A stall that re-announces on every beat is nagging.
+func (r *hedgeRace) tellFirstPrompt(alt, quiet string) bool {
+	if r == nil || !firstPromptFrom(r.base) {
+		return false
+	}
+	r.mu.Lock()
+	already := r.firstPromptTold
+	r.firstPromptTold = true
+	session := r.session
+	r.mu.Unlock()
+	if already {
+		return true
+	}
+	then := strings.TrimSpace(alt)
+	if then == "" {
+		then = "/model"
+	}
+	// A named alt already moved the phase in the caller. An empty one is
+	// the cold first-run rescue: nowhere named, so the door itself is Then.
+	if strings.TrimSpace(alt) == "" {
+		r.phase.switching(then, quiet)
+	}
+	if r.observer != nil {
+		r.observer(StreamEvent{Kind: StreamNotice, Delta: firstPromptNotice, Session: session})
+	}
 	return true
 }
 

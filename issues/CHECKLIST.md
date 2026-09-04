@@ -23,6 +23,6 @@ then trust/correctness, then deeper architecture. Do not reorder without a reaso
 
 ## Wave 4 — hygiene / DX
 - [x] 12 [raise debug call-log cap when bodies are on](12-calllog-cap.md)
-- [ ] 13 [default first-run model must answer](13-first-run-model.md)
+- [x] 13 [default first-run model must answer](13-first-run-model.md)
 
 See audit-notes/perf-debug-2026-09-03.md for the evidence behind each (F-numbers).
