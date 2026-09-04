@@ -930,23 +930,23 @@ this page says what that looks like.
 ## It spent the whole time reading and produced nothing — does the worker know how long it has
 
 Yes. Before its first turn, every worker's brief says how much wall-clock time that task
-has, in the same spelling as `-timeout`, such as `15m`, `2h` or `90s`. Partway through its
+has, in the same spelling as `--timeout`, such as `15m`, `2h` or `90s`. Partway through its
 own wall, well before it has to finish, it gets one live reading saying how much time has
 gone and how much is left. That reading appears once; after the worker has been asked to
 finish, it is never added and never competes with the reason the worker is finishing.
 
-A second safeguard watches what the work leaves behind. When consecutive turns carry tool
-calls but change nothing on disk, the worker is told how many such turns there have been
-and asked to produce the result now. If another equal span passes with nothing saved, it is
-told again with the larger live count and asked to finish, with a few last calls to do it
-in. Saving with a write tool or leaving a file behind through a shell command clears the
-count, so a worker that is producing never sees either notice.
+A second safeguard watches what the work leaves behind. When turn after turn runs tools
+and nothing on disk changes, the worker is told how many such turns there have been
+and asked to produce the result now — and that is all that happens. It is a reminder, not a
+deadline: nothing is stopped and nothing is taken away. If the reading goes on, the reminder
+comes again with the larger count. Saving a file with a write tool or a shell command clears
+the count, so a worker that is producing never sees it.
 
-**Reading is never by itself a reason a worker is stopped.** The finding is that a run of
-tool-calling turns left the files as it found them and still supplied no result after being
-asked. When the result is the answer itself — research, an explanation, a review — the
-notice asks the worker to state that answer in its reply rather than killing it for not
-writing a file.
+**Reading is never by itself a reason a worker is stopped.** What does stop a worker is
+repeating itself: the same call returning the same answer over and over, or turns that keep
+coming back with nothing the worker has not already seen. A worker whose result is the answer
+itself — research, an explanation, a review — may read for its whole time and finish by giving
+that answer.
 
 ## When the wall gets close — the work is checked before the clock stops
 
