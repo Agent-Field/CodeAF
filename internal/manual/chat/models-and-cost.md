@@ -959,6 +959,24 @@ nothing is being routed around and the next attempt lands in exactly the same pl
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 switches off **endpoint** steering; it does not switch off moving to another model.
 
+## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
+
+Yes, a provider may still charge for the prompt and the tokens it produced before a stream
+was cut. The last usage block never arrives in that case, so aforge does not guess from the
+text it happened to receive. When the stream named the provider's generation id, aforge asks
+for that generation's own receipt in the background. Your reply does not wait for this.
+
+When the receipt arrives, its own cost and token counts move the conversation's meter and add
+one late line to the machine's usage ledger. That line is marked `reconciled`, meaning its
+figures came from the receipt rather than the cut stream. A losing rescue arm is recorded as
+hedged waste from its own receipt too; it is real provider money, but it is not added twice.
+
+When no generation id arrived, the base has no receipt route, or the receipt still cannot be
+had after the short retry schedule, aforge invents no figure and writes no zero-cost line.
+Instead it increases the `unbilled` count. Settings→Spending and the `/cost` spend place say,
+for example, `2 calls the provider charged for and could not be priced`. When that count is
+zero, neither surface says anything about it.
+
 ## A reply that never finished — the turn ran for half an hour, aforge looked frozen, nothing happened for ages, the model kept writing and never stopped
 
 The two clocks above are both about **silence**. A reply that keeps producing a token every
@@ -1431,7 +1449,7 @@ how many requests and how many tokens in and out, what it cost, the conversation
 in, the piece of work or the standing promise it was made for, and the project directory it
 ran against.
 
-Four things are worth knowing about it:
+Five things are worth knowing about it:
 
 - **The figures are the bill, not an estimate.** Until this file existed, "what did opus cost
   me this month" could only be answered by opening every transcript on the machine, and "what
@@ -1440,6 +1458,11 @@ Four things are worth knowing about it:
 - **A call that cost nothing writes no line.** So a day with no lines is a day
   nothing was spent, rather than a day of zeroes. The place obeys the same law and draws
   nothing for an unpriced call rather than calling it free.
+- **A call the provider charged for and the stream never priced is asked about late.** A
+  cut stream that named its generation is matched to the provider's own receipt in the
+  background. A found receipt writes its exact cost and token counts on a row marked
+  `reconciled`; when no receipt can be had, no figure is invented and the `unbilled` count is
+  said instead. The reply never waits for this accounting.
 - **A record that could not be written is counted and said.** Writing this file never makes a
   reply wait: if the disk stops answering, the row is dropped rather than the turn. When that
   happens the spend place's top line and the Spending tab both grow a reading — `3 spending
@@ -1453,10 +1476,9 @@ Four things are worth knowing about it:
   both were on this file twice, so a day that included a fork or a run read high, and the
   daily limit was reached before that much had actually been spent.
 
-`/cost` and the status line are **this conversation's** own running total, kept by the same
-step that writes the line above — so the two cannot drift apart. The spend place is the whole
-machine; `/cost` is this conversation. They answer two different questions and neither is a
-correction of the other.
+The status line is **this conversation's** own running total, kept by the same step that
+writes the line above. `/cost` is an alias of `/spend` and opens the spend place for the whole
+machine. They answer two different questions and neither is a correction of the other.
 
 ## The spend place — what days and models cost, and what the money was for
 
