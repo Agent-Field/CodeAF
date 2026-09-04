@@ -85,6 +85,26 @@ func TestTheSpawnFloorIsTheKnownTrivialVerbsAndNothingElse(t *testing.T) {
 	}
 }
 
+// AN EXPLICIT ASK FOR A TASK LIFTS THE FLOOR. "as a task: fix the one-file bug"
+// is the person over-ruling the trivial matcher (R1) — otherwise the work runs
+// inline, no task forms, and "continue task N" has nothing to continue.
+func TestAnExplicitTaskAskIsNotTrivial(t *testing.T) {
+	for _, asked := range []string{
+		"as a task: fix the mul bug in m.py",
+		"make this a task: fix the crash",
+		"spin it off as a task",
+		"hand off the fix to a task",
+	} {
+		if trivialAsk(asked) {
+			t.Errorf("%q asked for a task and the floor ate it", asked)
+		}
+	}
+	// A bare one-file fix with no task intent still stays inline.
+	if !trivialAsk("fix this one file") {
+		t.Error("a bare one-file fix lost the floor")
+	}
+}
+
 // assertAskNeverSpawns drives the three conversation doors — propose_task,
 // the post-turn judge, and the checkpoint handover — and fails if any of
 // them started a task.

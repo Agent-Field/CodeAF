@@ -75,6 +75,14 @@ func trivialAsk(asked string) bool {
 	if len(words) == 0 {
 		return false
 	}
+	// An explicit ask for a task lifts the floor. "as a task", "make this a
+	// task", "spin it off", "hand it to a task" is the person OVER RULING the
+	// trivial matcher, exactly as `/task` does. Without this, "as a task: fix
+	// the one-file bug" ran inline and "continue task N" had no task to
+	// continue (R1).
+	if wantsTask(normalizedWords(asked)) {
+		return false
+	}
 	if hasWideSignal(words) {
 		return false
 	}
@@ -113,6 +121,23 @@ func dropAskLeadIn(words []string) []string {
 		return words
 	}
 	return words
+}
+
+// wantsTask reports whether the person's words explicitly asked for a task:
+// "as a task", "make this a task", "spin it off", "hand-off/hand it to a task",
+// "as a subtask". A one-file fix is still a task when the person said so.
+func wantsTask(words []string) bool {
+	joined := strings.Join(words, " ")
+	for _, phrase := range []string{
+		"as a task", "as task", "make it a task", "make this a task",
+		"spin off", "spin-off", "spin it off", "hand off", "hand-off",
+		"hand it to a task", "as a subtask",
+	} {
+		if strings.Contains(joined, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasWideSignal(words []string) bool {
