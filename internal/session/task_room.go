@@ -154,16 +154,14 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 // `tasks … say` from this conversation or from a parent node
 // (tools_tasks.go's [Agent.oneTask]).
 //
-// IT TAKES THE SAME ROAD AND NOT THE SAME AUTHORSHIP. The mechanics are one
-// thing — a line onto a running node's queue, read at its next step boundary,
-// waking it if it was parked — and every one of those is about DELIVERY. Who
-// said it is a separate fact, and it used to be lost here: the model's
-// coordination arrived through [Agent.SteerTask] wearing the person's own mark,
-// so the worker's journal drew it as the person's correction, the session's
-// folder recorded that the person had spoken, and a sentence like "you may
-// change the schema" read as authority nobody with authority had given. A
-// descendant cannot raise its own authority by phrasing a request as an
-// instruction, so the origin travels with the words ([relayNote] frames them).
+// IT TAKES THE SAME ROAD AND NOT THE SAME AUTHORSHIP. Delivery is one thing — a
+// line onto a running node's queue, read at its next step boundary, waking it if
+// it was parked. Who said it is another, and it used to be lost here: the
+// model's coordination came through [Agent.SteerTask], so the worker's journal
+// drew it as the person's correction and "you may change the schema" read as
+// authority nobody with authority had given. A descendant cannot raise its own
+// authority by phrasing a request as an instruction, so the origin travels with
+// the words ([relayNote] frames them).
 func (a *Agent) relayToTask(id uint64, text string) (bool, error) {
 	return a.sayToTask(id, text, fromAgent)
 }

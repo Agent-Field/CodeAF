@@ -42,7 +42,7 @@ func TestDeliveredTaskNoteCarriesTheVerbatimOriginalRequest(t *testing.T) {
 		request: "find more details about agentfield parrallely",
 		brief:   "A polished worker brief that must never appear in the tag.",
 	}}
-	agent.deliverTaskNote(node, "task 12 finished")
+	agent.deliverTaskNote(node, node.attemptNow(), "task 12 finished")
 	agent.mu.Lock()
 	queued := append([]userMessage(nil), agent.steering...)
 	agent.mu.Unlock()

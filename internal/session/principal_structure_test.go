@@ -57,9 +57,11 @@ var wakeRoads = map[string]string{
 		"and nobody else — a worker's turns are its runner's to start ([Agent.wakeLocked] " +
 		"declines inside a task) — so it never reaches the wake a person would have to be " +
 		"there for, and it is marked as the session's own words rather than as theirs",
-	"deliverTaskNote": "THE ONE THAT MATTERED. The note is built by [taskNote] out of a " +
-		"[landingAddress], which is what the session's goal owner answered about that landing " +
-		"([Agent.addressLanding] → [Principal.Report])",
+	"postTaskMessage": "THE ONE THAT MATTERED, and the seam both roads into a landed node's " +
+		"news take ([Agent.deliverTaskNote] announces the ending, " +
+		"[Agent.bubbleUnverifiedChildren] re-addresses what is still owed). The note is built " +
+		"by [taskNote] out of a [landingAddress], which is what the session's goal owner " +
+		"answered about that landing ([Agent.addressLanding] → [Principal.Report])",
 }
 
 // TestEveryWakeRoadSaysWhoItIsAddressedTo fails when a new road into the wake

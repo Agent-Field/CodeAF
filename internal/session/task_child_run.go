@@ -155,7 +155,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		seen:          map[string]bool{},
 		ledger:        newProgressLedger(),
 		effects:       newEffectLedger(),
-		deadline:      time.Now().Add(limits.deadline),
+		deadline:      child.taskClockNow().Add(limits.deadline),
 		reportedParts: child.reportedChildren(),
 	}
 	if err := run.open(instruction); err != nil {
@@ -482,7 +482,7 @@ func (r *childRun) trip() {
 	switch {
 	case r.steps >= r.limits.maxSteps*(r.extensions+1):
 		r.checkpoint(fmt.Sprintf("%d-step checkpoint", r.limits.maxSteps*(r.extensions+1)), true)
-	case !time.Now().Before(r.deadline):
+	case !r.now().Before(r.deadline):
 		r.checkpoint("deadline checkpoint", true)
 	case r.idle >= r.limits.noProgress:
 		r.stopped = fmt.Sprintf("stopped: %d steps without progress", r.limits.noProgress)
@@ -693,15 +693,12 @@ func (r *childRun) foldParts() {
 			// who is owed the report). The next pass through this gate takes
 			// the speaker away again.
 			r.room.speaking(nil)
-			// BOTH QUEUES ARE ASKED AGAIN, because both roads into this worker
-			// go through the room's lock and either can have won the race with
-			// the withdrawal. A person's line and another agent's are held on
-			// the steering mark; a sub-task's report is not marked at all and is
-			// owed news instead ([Agent.deliverTaskNote]), and asking only about
-			// the mark left exactly that report queued on a worker about to stop
-			// reading — the delivery that lost this race by an instant is now
-			// refused at the seat and goes to the conversation instead, and the
-			// one that won it is answered here by one more turn.
+			// BOTH QUEUES ARE ASKED AGAIN. A line said into the room wears the
+			// steering mark; a sub-task's report does not and is owed news
+			// instead ([Agent.deliverTaskNote]), so asking only about the mark
+			// left exactly that report queued on a worker about to stop reading.
+			// A delivery that lost the race is refused at the seat and reaches
+			// the conversation; one that won it is answered by this turn.
 			owed, working = r.child.taskNewsStanding()
 			held = r.child.steeringHeld()
 			if owed == 0 && !held && !working {
@@ -782,13 +779,19 @@ func (r *childRun) foldParts() {
 func (r *childRun) park(news <-chan struct{}) {
 	// The lane goes back for exactly as long as the wait lasts
 	// ([TaskGraph.park]).
-	since := time.Now()
+	since := r.now()
 	r.node.park()
 	select {
 	case <-news:
 	case <-r.runCtx.Done():
 	}
 	r.node.unpark()
-	r.deadline = r.deadline.Add(time.Since(since))
+	r.deadline = r.deadline.Add(r.now().Sub(since))
 	r.idle = 0
 }
+
+// now is this run's clock. It is the agent's ([Agent.taskClockNow]) so that the
+// deadline a run is measured against, and the parked stretch deducted from it,
+// move together and can be driven from a test without a sleep standing in for
+// causality. Production leaves the seam nil and takes the real clock.
+func (r *childRun) now() time.Time { return r.child.taskClockNow() }

@@ -357,9 +357,26 @@ func TestAParentThatSpinsAfterItsPartReportsIsStillStopped(t *testing.T) {
 // parts took twenty minutes tripped the deadline checkpoint on its first step of
 // integration and was audited for spinning while holding three finished reports
 // it had not been given a chance to read.
+// THE WAIT IS MEASURED RATHER THAN SLEPT THROUGH. The run's deadline, its
+// checks and the stretch a park gives back all read one clock
+// ([childRun.now] → [Agent.taskClockNow]), which production leaves as the real
+// one and this test drives by hand — so what is pinned is the causal law and not
+// how much wall time nine scripted steps happened to take on a loaded machine.
+// Timed with real sleeps it failed under a full-package run for exactly that
+// reason: the setup itself spent the 150ms allowance before the park began.
 func TestTheWaitOnItsPartsSpendsNoneOfTheParentsClock(t *testing.T) {
 	release := make(chan struct{})
-	completer := &scriptedCompleter{steps: handOutThree("folded them in")}
+	// THE INTEGRATION TURN TAKES A TOOL STEP, because a step is where a run reads
+	// its deadline ([childRun.trip]). A fold that only says a sentence never asks
+	// the clock anything, so it cannot show whether the clock was right.
+	steps := handOutThree("folded them in")
+	steps[len(steps)-1] = func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse("fold", "read", `{"path":"pyproject.toml"}`), nil
+	}
+	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("folded them in"), nil
+	})
+	completer := &scriptedCompleter{steps: steps}
 	nest := newNest(t, completer, parkedParts(release, nil, nil))
 	// If the deadline is ever reached the checkpoint asks whether the node is
 	// working; this answers no, so a clock that kept running produces a stop with
@@ -367,15 +384,21 @@ func TestTheWaitOnItsPartsSpendsNoneOfTheParentsClock(t *testing.T) {
 	nest.session.config.TaskProgressCheck = func(string, []string) (bool, string) {
 		return false, "it read the same file five times"
 	}
+	// The clock stands still through the setup, so every step below happens
+	// inside the allowance whatever the machine is doing.
+	clock := newFakeClock()
+	nest.node.taskNow = clock.now
 
-	// A deadline far shorter than the wait: any clock that keeps running through
-	// a park has expired several times over by the time the parts report.
 	done, stopped := runParent(t, nest, taskLimits{
 		maxSteps: 200, noProgress: 6, deadline: 150 * time.Millisecond,
 	})
 	waitRequests(t, completer, 9)
 	waitQuiet(t, nest.node)
-	time.Sleep(600 * time.Millisecond)
+	// AND THE ADVANCE HAPPENS INSIDE THE PARK, which is the only stretch this law
+	// is about. Four times the whole allowance passes: a clock that kept running
+	// through it has expired several times over by the time the parts report.
+	waitParked(t, nest.parent, 0)
+	clock.advance(600 * time.Millisecond)
 
 	close(release)
 	select {
@@ -386,6 +409,65 @@ func TestTheWaitOnItsPartsSpendsNoneOfTheParentsClock(t *testing.T) {
 	if *stopped != "" {
 		t.Fatalf("the parent was stopped with %q, want the parked stretch not to have spent its deadline", *stopped)
 	}
+}
+
+// AND THE SAME TIME SPENT WORKING DOES END THE RUN. The park's deduction is a
+// statement about waiting, not a way of making the deadline unreachable, so the
+// companion to the law above is that a node which spends its allowance at its
+// own work is stopped exactly as it always was.
+func TestAWorkerThatSpendsItsAllowanceWorkingIsStillStopped(t *testing.T) {
+	clock := newFakeClock()
+	// Every step this node takes moves the clock, which is what working costs.
+	var steps []step
+	for index := 0; index < 6; index++ {
+		id := fmt.Sprintf("look-%d", index)
+		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+			clock.advance(80 * time.Millisecond)
+			return toolResponse(id, "read", `{"path":"pyproject.toml"}`), nil
+		})
+	}
+	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("that is everything"), nil
+	})
+	completer := &scriptedCompleter{steps: steps}
+	nest := newNest(t, completer, nil)
+	nest.session.config.TaskProgressCheck = func(string, []string) (bool, string) {
+		return false, "it read the same file five times"
+	}
+	nest.node.taskNow = clock.now
+
+	done, stopped := runParent(t, nest, taskLimits{
+		maxSteps: 200, noProgress: 6, deadline: 150 * time.Millisecond,
+	})
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the parent never stopped after spending its whole allowance working")
+	}
+	if *stopped == "" {
+		t.Fatal("a parent that spent its deadline at its own work was not stopped")
+	}
+}
+
+// fakeClock is a clock a test moves on purpose. Its two calls are locked because
+// the run reads it from the runner's goroutine while the test writes it.
+type fakeClock struct {
+	mu sync.Mutex
+	at time.Time
+}
+
+func newFakeClock() *fakeClock { return &fakeClock{at: time.Now()} }
+
+func (c *fakeClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.at
+}
+
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	c.at = c.at.Add(d)
+	c.mu.Unlock()
 }
 
 // AND THE HARNESS'S OWN CEILING NEVER STOOD OVER A NODE AT ALL, parked or
@@ -799,7 +881,7 @@ func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 	delivered.Add(1)
 	go func() {
 		defer delivered.Done()
-		here.node.deliverTaskNote(landing[0], "task 2 finished: currency\ncurrency is done")
+		here.node.deliverTaskNote(landing[0], landing[0].attemptNow(), "task 2 finished: currency\ncurrency is done")
 	}()
 	waitReported(t, landing[0])
 

@@ -1207,33 +1207,30 @@ func steerNote(text string, waiting bool) userMessage {
 // model calling `tasks … say` from the conversation, or a parent talking to a
 // piece it handed out ([Agent.relayToTask]).
 //
-// It travels the same lane a person's line does, for the same reason — a node's
-// turns are its runner's to start and this is the only way into one — and it
-// carries the same two delivery marks: `wake`, so a parked runner is released
-// and re-enters the model with it, and `steered`, so no runner closes the agent
-// on top of a line no request has carried.
+// It carries the two DELIVERY marks a person's line carries, because the
+// mechanics are the same: `wake` releases a parked runner, and `steered` keeps a
+// runner from closing the agent on top of a line no request has carried.
 //
-// EVERYTHING ABOUT AUTHORSHIP IS THE OPPOSITE. It is `authored`, which is the
-// session's own bit: the journal writes it in the session's lane rather than as
-// the person's correction, the folder does not record that the person spoke,
-// and the ask a later proposal quotes is untouched. It carries NO [SteerMark],
-// because a mark is the account of a correction somebody typed.
+// Authorship is the opposite. It is `authored` — the session's own bit — so the
+// journal writes it in the session's lane rather than as the person's
+// correction, the folder does not record that the person spoke, and a later
+// proposal's quoted ask is untouched. It carries no [SteerMark], which is the
+// account of a correction somebody typed.
 //
-// AND IT SAYS WHOSE WORDS THEY ARE, IN THE WORDS. The worker reads one queue;
-// an unframed sentence there is indistinguishable from the person's own, and a
-// model that cannot tell them apart will treat "you may change the schema" as a
-// grant. So the line names the conversation it came from and states plainly
-// that it is not the person — readable and actionable as coordination, and
-// useless as authority.
+// AND IT SAYS WHOSE WORDS THEY ARE, IN THE WORDS. A worker reads one queue, and
+// an unframed sentence there is indistinguishable from the person's own — so a
+// model that cannot tell them apart reads "you may change the schema" as a
+// grant. The line names the conversation it came from: actionable as
+// coordination, useless as authority.
 func relayNote(text string, from conversationID) userMessage {
 	note := wakeNote(relaySaid(text, from))
-	// Set here and not left to [Agent.enqueueNote], which only marks the notes
-	// that are NOT steered: this one is both, and the two marks answer different
-	// questions — steered is about the queue, authored is about who spoke.
+	// Set here rather than left to [Agent.enqueueNote], which only marks the
+	// notes that are not steered: this one is both, and the two marks answer
+	// different questions — steered is about the queue, authored about who spoke.
 	note.authored = true
 	note.steered = true
 	// And it is not batched into "while you worked": a sentence somebody is
-	// waiting for an answer to keeps its own shape and its own opening word.
+	// waiting for an answer to keeps its own shape.
 	note.batch = false
 	return note
 }

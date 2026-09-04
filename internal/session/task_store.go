@@ -341,9 +341,15 @@ type taskRecord struct {
 	// NotedState is the ending that announcement was made for, so that work which
 	// later ends somewhere else — a person deciding about a landing nobody could
 	// check — is news again while the same landing is not announced twice
-	// ([TaskNode.notedEnding]). It is absent from every checkpoint written before
+	// ([TaskNode.notedLocked]). It is absent from every checkpoint written before
 	// it existed, and an absent one reads as "announced, whatever it said".
 	NotedState TaskState `json:"noted_state,omitempty"`
+
+	// Attempt is which life of this node's work the row describes, raised each
+	// time the node is re-armed ([TaskGraph.reopen]). Absent from older
+	// checkpoints, which restore as attempt 0 — the life they were written in —
+	// and from every node that has only ever run once.
+	Attempt int `json:"attempt,omitempty"`
 
 	// Interrupted says this node was RUNNING when a session ended and that a
 	// recovery has consumed that fact. It is the consume-once receipt.
@@ -743,6 +749,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		CacheWrite:    n.cacheWrite,
 		Noted:         n.noted,
 		NotedState:    n.notedState,
+		Attempt:       n.attempt,
 		Interrupted:   n.interrupted,
 		Kind:          n.kind,
 		Offer:         n.offer,
@@ -1228,6 +1235,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		cacheWrite:  record.CacheWrite,
 		noted:       record.Noted,
 		notedState:  record.NotedState,
+		attempt:     record.Attempt,
 		interrupted: record.Interrupted,
 		offer:       record.Offer,
 	}

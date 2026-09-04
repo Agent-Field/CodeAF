@@ -4,36 +4,38 @@ package session
 // what happened to it.
 //
 // A task is an addressable conversation: an assignment, an owner, and a queue
-// somebody drains. The main chat is the same shape with different
-// responsibilities. Four callers already put words on one of those queues — a
-// person's line steered into a node's room ([Agent.SteerTask]), a landed node's
-// report ([Agent.deliverTaskNote]), a background job's ending, a watch's tick —
-// and each picked its own reader, its own idea of "was it taken", and its own
-// answer when nobody was there. Two of them were wrong in the same way: the
-// reader was chosen at one instant and handed the message at another, so a
-// worker that stopped reading in between swallowed the message while the caller
-// wrote down that it had been delivered.
+// somebody drains; the main chat is the same shape with different
+// responsibilities. The callers that already shared that path — a person's line
+// into a room ([Agent.SteerTask]), the model's ([Agent.relayToTask]), a landed
+// node's report ([Agent.deliverTaskNote]), a watch's tick — each used to pick
+// its own reader, judge for itself whether it had been taken, and invent its own
+// answer when nobody was there.
 //
-// What lives here is the delivery and nothing else: who is addressed, what kind
-// of message it is, who is speaking, and one hand-over that resolves the live
-// reader and appends UNDER THE SAME LOCK — so "accepted" means a reader that
-// was still listening took it. Scheduling, admission, assignment state, source
-// control and everything a surface draws stay where they are.
+// What lives here is the delivery: who is addressed, what kind of message it is,
+// who is speaking, and one hand-over that resolves the live reader and appends
+// under the same lock. Scheduling, admission, assignment state and everything a
+// surface draws stay where they are.
 //
-// IT IS LOCAL AND DELIBERATELY SMALL. [conversationID] carries a session
-// because a task number is minted per session and repeats across them, so a
-// number alone stops meaning anything the moment two transcripts are read
-// together. A later cross-session router would resolve one to a mailbox the
-// same way this file resolves the local ones, and would additionally need
-// authenticated authority, admission policy and replay protection. None of that
-// is here, implied, or usable yet: there is no discovery, no registry, no bus.
+// Two invariants the rest of the package relies on:
 //
-// WHAT IT DOES NOT CARRY YET, stated so nobody reads more into a receipt than
-// it says: an assignment revision. A person's correction and a worker's
-// finalization remain two independent races on one node — the correction is
-// accepted here and read at the worker's next step boundary, and a worker that
-// lands in between finishes against the older request. A receipt says the words
-// reached a live reader. It does not say the work has been re-aimed.
+//   - ACCEPTED IS NOT READ. A receipt says a reader that was still listening has
+//     the message on its queue, and nothing more.
+//   - THE ORIGIN IS NOT THE KIND. Delivery mechanics are shared; authorship is
+//     not. Whether the words are journaled as the person's correction, whether
+//     the folder records that the person spoke, and whether the recipient may
+//     read the message as authority all follow [messageOrigin].
+//
+// It is local. [conversationID] carries a session because a task number is
+// minted per session and repeats across them; a later cross-session router would
+// resolve one to a mailbox the same way this file resolves the local ones, and
+// would additionally need authenticated authority, admission policy and replay
+// protection. None of that is here or implied: no discovery, no registry, no bus.
+//
+// AND NO ASSIGNMENT REVISION TRAVELS WITH A DELIVERY YET. A correction and a
+// worker's finalization remain two independent races on one node: a worker that
+// lands before reading an accepted correction finishes against the older
+// request. Accepted means a live reader has the words, not that the work has
+// been re-aimed.
 
 import "fmt"
 
@@ -51,6 +53,8 @@ func (c conversationID) String() string {
 	return fmt.Sprintf("session %s task %d", c.sessionName(), c.task)
 }
 
+// sessionName is the id as a person reads it. The empty session is a
+// conversation with no journal, and "unfiled" is this file's word for it.
 func (c conversationID) sessionName() string {
 	if c.session == "" {
 		return "unfiled"
@@ -58,90 +62,79 @@ func (c conversationID) sessionName() string {
 	return c.session
 }
 
-// messageOrigin is WHO IS SPEAKING, and it is the fact a recipient cannot infer
-// from the words. A person at this keyboard, another agent in this session, and
-// the runtime's own account of a state change all arrive on one queue as
-// user-role text, and only the origin tells them apart again where it matters:
-// whether the line is journaled as the person's own correction, whether the
-// session's folder learns the person was here, and whether the recipient may
-// read it as authority over its own assignment.
-//
-// NO ORIGIN GRANTS ANYTHING BY ITSELF. It is the honest label on a message, and
-// the policies that read it live with those policies. A descendant cannot raise
-// its own authority by writing a sentence that sounds like the person.
+// messageOrigin is who is speaking, which a recipient cannot infer from the
+// words: a person, another conversation in this session, and the runtime all
+// arrive on one queue as user-role text. No origin grants anything by itself —
+// it is the honest label, and the policies that read it live with those
+// policies. A descendant cannot raise its own authority by writing a sentence
+// that sounds like the person.
 type messageOrigin uint8
 
 const (
 	// fromRuntime is the program's own account of something that happened: a
 	// job's ending, a node landing, a watch's tick. Nobody typed it.
 	fromRuntime messageOrigin = iota
-	// fromPerson is the authenticated person at this keyboard, reaching a
-	// conversation through a surface door.
+	// fromPerson is the authenticated person at this keyboard, through a surface
+	// door.
 	fromPerson
-	// fromAgent is another conversation in this session speaking through a
-	// tool — the model in the main chat, or a parent task, talking to a worker.
+	// fromAgent is another conversation in this session speaking through a tool.
 	// It is coordination, and it is not the person however it is phrased.
 	fromAgent
 )
 
 // messageKind is the small set of real differences between messages, and it
-// decides which queue a message lands on and whether it may start a turn.
-//
-// The kinds absent from it are absent on purpose. A work request goes through
-// admission (task.go) and is not a message; a question and its answer ride the
-// result road today, correlated by the node they are about.
+// decides which queue a message lands on and whether it may start a turn. The
+// kinds absent from it are absent on purpose: a work request goes through
+// admission (task.go) and is not a message, and a question and its answer ride
+// the result road today, correlated by the node they are about.
 type messageKind uint8
 
 const (
 	// msgNotice is a typed state change: real, carried, read by whatever the
 	// recipient does next, and never a person speaking.
 	msgNotice messageKind = iota
-	// msgDirection is words aimed at a running conversation — a correction, an
-	// instruction, coordination. Its authority is its origin's, not its kind's.
+	// msgDirection is words aimed at a running conversation. Its authority is its
+	// origin's, not its kind's.
 	msgDirection
 	// msgResult is a durable answer owed to whoever asked for the work.
 	msgResult
-	// msgProgress is a replaceable observation for people. It is coalesced, it
-	// never wakes a model, and it never becomes an established fact.
+	// msgProgress is a replaceable observation for people: coalesced, never a
+	// wake, never an established fact.
 	msgProgress
 )
 
 // delivery is one message on its way to a conversation. The body is already the
-// queue's own shape, because the queue is where it is going and a second
-// envelope around it would be one more thing to keep in step.
+// queue's own shape, because the queue is where it is going.
 type delivery struct {
 	origin messageOrigin
 	kind   messageKind
 	note   userMessage
 }
 
-// deliveryState is what became of a delivery, and the three answers are
-// genuinely different things to tell a caller.
+// deliveryState is what became of a delivery. The three answers are different
+// things to tell a caller, and a caller that treats any of them as "sent" loses
+// messages.
 type deliveryState uint8
 
 const (
-	// deliveryNobody: there is no reader in that conversation right now. A node
+	// deliveryNobody: no reader in that conversation right now — a node
 	// mid-check, a room whose worker has finished reading, a settled node.
 	deliveryNobody deliveryState = iota
-	// deliveryClosed: a reader was addressed and cannot take anything any more.
-	// Nothing drains a closed agent's queue, so this is a refusal and never a
-	// silent drop.
+	// deliveryClosed: a reader was addressed and can take nothing more. Nothing
+	// drains a closed agent's queue, so this is a refusal and never a drop.
 	deliveryClosed
-	// deliveryAccepted: a live reader has the message on its queue. It does not
-	// say the message has been read.
+	// deliveryAccepted: a live reader has it on its queue. Not read.
 	deliveryAccepted
 )
 
-// deliveryReceipt is the one answer a caller gets. Accepted is not read, and no
-// state here claims an assignment was changed.
+// deliveryReceipt is the one answer a caller gets.
 type deliveryReceipt struct {
 	to    conversationID
 	state deliveryState
-	// reader is the agent that actually took the message, and it is nil for
-	// every other outcome. It is a pointer because a local delivery owes the
-	// SAME agent two further writes — the news count and the wake
-	// ([Agent.handOverTaskNews]) — and handing the caller an address it would
-	// have to resolve again is the race this file exists to close. A
+	// reader is the agent that took the message, and nil for every other
+	// outcome. It is a pointer because a local delivery owes the SAME agent two
+	// further writes — the news count and the wake ([Agent.handOverTaskNews]) —
+	// and resolving an address a second time is the race this file closes. A
 	// cross-session delivery would settle those on the recipient's own side.
 	reader *Agent
 }
@@ -155,14 +148,14 @@ type mailbox interface {
 	accept(delivery) deliveryReceipt
 }
 
-// deliverTo hands one message to the first mailbox that takes it, and answers
-// with what actually happened rather than with what was attempted.
+// deliverTo hands one message to the first mailbox that takes it and answers
+// what happened rather than what was attempted.
 //
-// THE ORDER IS THE CALLER'S POLICY. A landed node's report tries the parent's
+// The order is the caller's policy: a landed node's report tries the parent's
 // worker and then the person's conversation, because news with nowhere to go
-// belongs in front of a person; a person's line into a room has ONE mailbox and
-// falls back to nobody, because redirecting somebody's words to a reader they
-// did not address is worse than telling them it could not be said.
+// still belongs to somebody, while a line said INTO a room has one mailbox and
+// no fallback — redirecting somebody's words to a reader they did not address is
+// worse than saying nobody was there.
 func deliverTo(message delivery, boxes ...mailbox) deliveryReceipt {
 	answer := deliveryReceipt{state: deliveryNobody}
 	for _, box := range boxes {
@@ -177,11 +170,10 @@ func deliverTo(message delivery, boxes ...mailbox) deliveryReceipt {
 	return answer
 }
 
-// address is this agent's own conversation identity. The session is read from
-// the journal the same way [TaskGraph.sessionName] reads it — empty when there
-// is no file rather than the word "unfiled", which is a rendering and belongs
-// with the rendering ([conversationID.sessionName]) — so an agent and the graph
-// it belongs to cannot disagree about which session this is.
+// address is this agent's own conversation identity. The session is read the
+// way [TaskGraph.sessionName] reads it — empty for a conversation with no
+// journal — so an agent and its graph cannot disagree about which session this
+// is.
 func (a *Agent) address() conversationID {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -195,12 +187,11 @@ func (a *Agent) address() conversationID {
 // accept puts one message on this agent's queue and answers whether a reader
 // that can still drain it took it.
 //
-// THE KIND CHOOSES THE QUEUE AND NOTHING ELSE DOES. Progress goes on the
-// ambient queue, which no step drain takes and no wake reads, so telemetry
-// cannot start a turn however it was addressed ([Agent.enqueueAmbient]).
-// Everything else goes on the steering queue with the marks its own constructor
-// put on it: the wake, the release of a parked runner and the journal lane are
-// facts about the message, decided where the message was built.
+// THE KIND CHOOSES THE QUEUE. Progress goes on the ambient queue, which no step
+// drain takes and no wake reads, so telemetry cannot start a turn however it was
+// addressed. Everything else goes on the steering queue wearing the marks its
+// own constructor put on it: the wake, the release of a parked runner and the
+// journal lane are facts about the message, decided where it was built.
 func (a *Agent) accept(message delivery) deliveryReceipt {
 	at := a.address()
 	taken := false
@@ -216,10 +207,9 @@ func (a *Agent) accept(message delivery) deliveryReceipt {
 }
 
 // roomSeat is whoever is standing in a task room right now. It is a mailbox
-// rather than an agent because the reader inside a room is not a fixed thing:
-// the runner withdraws it the moment its reading is over (task_child_run.go),
-// and a caller holding a pointer it read a moment ago is holding a reader that
-// may already have stopped listening.
+// rather than an agent because that reader is not fixed: the runner withdraws it
+// the moment its reading is over (task_child_run.go), so a pointer read a moment
+// ago may already have stopped listening.
 type roomSeat struct {
 	at   conversationID
 	room *taskRoom
@@ -231,16 +221,12 @@ func (s roomSeat) accept(message delivery) deliveryReceipt {
 	return s.room.handIn(s.at, message)
 }
 
-// handIn resolves the live reader and appends UNDER ONE HOLD of the room's
-// lock. The runner's withdrawal takes the same lock, so the two cannot
-// interleave into a swallow: either the message lands while the seat is still
-// filled — and then it lands before the runner's final queue check, which
-// answers it with one more turn — or the withdrawal won and this refuses, words
-// kept and the caller free to put them somewhere they will be read.
-//
-// Split across two locks it was a race with a narrower window, not a fix: that
-// is #273's finding for a person's steered line, and a landed sub-task's report
-// took the same road with no room lock at all.
+// handIn resolves the live reader and appends under ONE hold of the room's lock.
+// The runner's withdrawal takes the same lock, so the two cannot interleave into
+// a swallow: either the message lands while the seat is filled — and then it
+// lands before the runner's final queue check, which answers it with one more
+// turn — or the withdrawal won and this refuses, words kept. Split across two
+// locks it was #273's race with a narrower window, not a fix.
 func (r *taskRoom) handIn(at conversationID, message delivery) deliveryReceipt {
 	if r == nil {
 		return deliveryReceipt{to: at, state: deliveryNobody}
@@ -250,9 +236,8 @@ func (r *taskRoom) handIn(at conversationID, message delivery) deliveryReceipt {
 	if r.closed || r.child == nil {
 		return deliveryReceipt{to: at, state: deliveryNobody}
 	}
-	// The child's own address is taken from the child, so a receipt names the
-	// conversation that really took the message rather than the one this seat
-	// was built for.
+	// The address comes from the child, so a receipt names the conversation that
+	// really took the message rather than the one this seat was built for.
 	return r.child.accept(message)
 }
 
@@ -265,9 +250,9 @@ func conversationOf(node *TaskNode) conversationID {
 }
 
 // sessionName is the id of the session this graph belongs to, and empty for a
-// graph built with no conversation behind it — every test that assembles one by
-// hand. It is read without the graph's lock because it asks the home agent, and
-// a delivery must never take an agent's lock under the graph's.
+// graph with no conversation behind it. It takes no graph lock because it asks
+// the home agent, and a delivery must never take an agent's lock under the
+// graph's.
 func (g *TaskGraph) sessionName() string {
 	if g == nil || g.home == nil {
 		return ""

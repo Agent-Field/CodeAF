@@ -53,7 +53,7 @@ func TestAPartsReportGoesToTheWorkerThatAskedForIt(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 
 	if got := queuedText(nest.node); len(got) != 1 || !strings.Contains(got[0], "currency") {
 		t.Fatalf("the parent's worker holds %#v, want the report it asked for", got)
@@ -76,7 +76,7 @@ func TestAPartsReportReachesThePersonWhenTheSeatIsEmpty(t *testing.T) {
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 	nest.parent.openRoom().speaking(nil)
 
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 
 	if got := queuedText(nest.node); len(got) != 0 {
 		t.Fatalf("the withdrawn worker was handed %#v, and nothing will ever drain it", got)
@@ -100,7 +100,7 @@ func TestAPartsReportSkipsAWorkerThatHasClosed(t *testing.T) {
 		t.Fatalf("closing the worker: %v", err)
 	}
 
-	nest.session.deliverTaskNote(part, "task 2 finished: arithmetic")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: arithmetic")
 
 	if got := queuedText(nest.session); len(got) != 1 || !strings.Contains(got[0], "arithmetic") {
 		t.Fatalf("the conversation holds %#v, want the report a closed worker could not take", got)
@@ -173,7 +173,7 @@ func TestAReportThatRacesTheWithdrawalIsNotSwallowed(t *testing.T) {
 	delivered := make(chan struct{})
 	go func() {
 		defer close(delivered)
-		nest.session.deliverTaskNote(part, "task 2 finished: currency")
+		nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 	}()
 	// The delivery is now blocked on the room's lock with its reader unresolved.
 	// The withdrawal wins the race, under the same lock, exactly as the runner's
@@ -202,7 +202,7 @@ func TestAReportThatWinsTheRaceIsOwedNewsAfterTheWithdrawal(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 	nest.parent.openRoom().speaking(nil)
 
 	owed, _ := nest.node.taskNewsStanding()
@@ -238,8 +238,8 @@ func TestOneEndingAnnouncedTwiceIsOneNote(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
 
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 
 	if got := queuedText(nest.node); len(got) != 1 {
 		t.Fatalf("the worker holds %#v, want the one announcement of one ending", got)
@@ -257,15 +257,110 @@ func TestANodeThatEndsSomewhereElseIsAnnouncedAgain(t *testing.T) {
 	part.state = TaskUnverified
 	part.graph.mu.Unlock()
 
-	nest.session.deliverTaskNote(part, "task 2 needs your look: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 needs your look: currency")
 	part.graph.mu.Lock()
 	part.state = TaskDone
 	part.graph.mu.Unlock()
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 
 	if got := queuedText(nest.node); len(got) != 2 {
 		t.Fatalf("the worker holds %#v, want both endings", got)
 	}
+}
+
+// ── and once per LIFE of the work ───────────────────────────────────────────
+
+// A DELIVERY OF THE ENDING THAT JUST CLOSED CANNOT SPEAK FOR THE RUN THAT
+// STARTED AFTER IT.
+//
+// Continuing a task re-arms the same node: it clears the announcement marks and
+// its next ending is genuinely new news. A delivery of the OLD ending can still
+// be in flight across that, and keyed on the state alone it did two wrong things
+// — a late hand-over marked the new life announced (suppressing the ending it
+// was about to reach), and a late release cleared the claim the new delivery was
+// holding.
+//
+// The order below is written out rather than raced: each step is the instant the
+// next one has to survive, so the interleaving is the test rather than the
+// machine's timing.
+func TestAnOldAttemptsDeliveryCannotAnnounceTheNewOne(t *testing.T) {
+	nest := newNest(t, nil, nil)
+	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
+	endWith(t, part, TaskFailed)
+
+	// The first attempt's delivery gets as far as its claim and is held there.
+	stale, claimed := part.claimNote(part.attemptNow())
+	if !claimed {
+		t.Fatal("the first attempt could not claim its own ending")
+	}
+
+	// The person continues the task: same node, next life of the work.
+	if err := nest.graph.reopen(part, "try the other table"); err != nil {
+		t.Fatalf("continuing the task: %v", err)
+	}
+	if part.attemptNow() == stale.attempt {
+		t.Fatal("re-arming the node left it on the same attempt")
+	}
+
+	// The stale delivery finishes now. It reached a reader — its words are not
+	// lost — but it speaks for a life of the work that is over.
+	if part.noteHandedOver(stale) {
+		t.Fatal("a delivery of the last attempt's ending was recorded as this attempt's announcement")
+	}
+	if part.reported() {
+		t.Fatal("the new attempt is marked as announced by the old one's hand-over")
+	}
+
+	// The new attempt ends differently, and that ending is news.
+	endWith(t, part, TaskDone)
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
+	if got := queuedText(nest.node); len(got) != 1 || !strings.Contains(got[0], "finished") {
+		t.Fatalf("the worker holds %#v, want the new attempt's own ending", got)
+	}
+	if !part.reported() {
+		t.Fatal("the new attempt's announcement was not marked")
+	}
+
+	// And the stale delivery's release does not take the live claim away with it.
+	fresh, held := part.claimNote(part.attemptNow())
+	if held {
+		t.Fatal("this attempt's ending can be announced twice")
+	}
+	part.releaseNote(stale)
+	if _, again := part.claimNote(fresh.attempt); again {
+		t.Fatal("an old attempt's release cleared the claim standing now")
+	}
+}
+
+// AND A REPORT COMPOSED BEFORE THE RE-ARM IS NOT ANNOUNCED AFTER IT. The payload
+// and the attempt it describes are read together ([TaskNode.noticeFor]), so a
+// landing that lost the race is refused rather than told as this life's news.
+func TestAReportComposedForAnEarlierAttemptIsRefused(t *testing.T) {
+	nest := newNest(t, nil, nil)
+	part := pieceUnder(t, nest.graph, nest.parent.id, "currency")
+	endWith(t, part, TaskFailed)
+	was := part.attemptNow()
+
+	if err := nest.graph.reopen(part, "try the other table"); err != nil {
+		t.Fatalf("continuing the task: %v", err)
+	}
+	nest.session.deliverTaskNote(part, was, "task 2 failed: currency")
+
+	if got := queuedText(nest.node); len(got) != 0 {
+		t.Fatalf("the worker was told %#v about a life of the node that is over", got)
+	}
+	if part.reported() {
+		t.Fatal("the re-armed node is marked announced by the attempt before it")
+	}
+}
+
+// endWith puts a node in one final state, the way a landing leaves it.
+func endWith(t *testing.T, node *TaskNode, state TaskState) {
+	t.Helper()
+	node.graph.mu.Lock()
+	node.state = state
+	node.report = "what it came to"
+	node.graph.mu.Unlock()
 }
 
 // AND NEWS NOBODY TOOK IS NOT WRITTEN DOWN AS ANNOUNCED. The mark is what stops
@@ -279,7 +374,7 @@ func TestAReportNobodyTookIsNotMarkedAsAnnounced(t *testing.T) {
 		t.Fatalf("closing the conversation: %v", err)
 	}
 
-	nest.session.deliverTaskNote(part, "task 2 finished: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), "task 2 finished: currency")
 
 	if part.reported() {
 		t.Fatal("a report that reached nobody is marked as handed over, so nothing will ever say it again")
