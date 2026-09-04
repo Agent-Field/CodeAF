@@ -43,15 +43,13 @@ package tui3
 import (
 	"context"
 	"io"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/leave"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -838,8 +836,8 @@ type ErrandOrders struct {
 	CapUSD float64
 }
 
-// sigQuitMsg is a SIGINT or a SIGTERM, on its way to [app.quit]. See
-// [forwardSignals] for why this surface catches them itself.
+// sigQuitMsg is an outside request to leave, on its way to [app.quit]. See
+// [forwardSignals] for why this surface catches those requests itself.
 type sigQuitMsg struct{}
 
 // StandingSeam is everything this surface needs from internal/standing, as
@@ -1052,8 +1050,8 @@ func Run(ctx context.Context, opts Options) error {
 	return err
 }
 
-// forwardSignals turns SIGINT and SIGTERM into a message the surface can act on,
-// and returns the function that stops listening.
+// forwardSignals turns an outside request to leave into a message the surface
+// can act on, and returns the function that stops listening.
 //
 // WHY THIS EXISTS AT ALL. Bubble Tea's own handler (its tea.go) answers SIGINT
 // by pushing a tea.InterruptMsg into the program, and the loop answers THAT by
@@ -1077,19 +1075,18 @@ func Run(ctx context.Context, opts Options) error {
 // that can be struck by accident (quitarm.go); a signal is somebody naming this
 // process and asking it to stop, and asking twice is not something a person can
 // do from the other end of a `kill`.
+//
+// SIGHUP IS ON THE SET TOO. It is what arrives when a terminal window closes or
+// an ssh connection drops, and it must reach the same draft-writing, session-
+// closing road instead of ending the process underneath every defer.
+//
+// A SECOND SIGNAL ENDS THE PROCESS AT ONCE. Before that forced exit, this door
+// hands the screen back on a bounded best effort; putting a tidy terminal ahead
+// of a person who has asked twice to leave would turn the escape hatch into the
+// same trap it is there to break.
 func forwardSignals(p *tea.Program) func() {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ch:
-			p.Send(sigQuitMsg{})
-		case <-done:
-		}
-	}()
-	return func() {
-		signal.Stop(ch)
-		close(done)
-	}
+	return leave.On(
+		func() { p.Send(sigQuitMsg{}) },
+		func() { _ = p.ReleaseTerminal() },
+	)
 }

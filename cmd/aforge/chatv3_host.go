@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/leave"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -1107,10 +1109,45 @@ func hostSessions(client *remote.Client) []tui3.Session {
 // everything else on stderr. It is [runChatV3Once] with a remote agent, and it
 // is deliberately the same shape — a probe that compares stdout with the
 // sentence it asked for must not have to know which machine answered.
+//
+// THAT SAMENESS INCLUDES THE LEAVING ROAD, and it is why this door does not
+// spell the signal set itself. A door reached over a connection is the one most
+// likely to be stopped from outside — the ssh session it rode in on going away
+// is a SIGHUP — and the work it would orphan is on somebody else's machine,
+// where nothing local can see it still spending. So it takes [leave.On] with
+// the closure [runChatV3Once] takes, and the set lives in one place still.
+//
+// THE CANCEL IS NOT ENOUGH HERE AND [remote.Agent.Interrupt] IS THE OTHER HALF.
+// [remote.Agent.Submit]'s own comment says the context bounds the CALL and not
+// the turn: cancelling it stops the round trip that starts the work, and the
+// work is on another machine. Measured over a real ssh pipe, a SIGHUP with the
+// cancel alone left the far turn running for another sixty-nine seconds,
+// spending, with nobody attached. Interrupt is a frame and travels, so it is
+// what actually reaches the turn; the cancel stays because it is what unblocks
+// this side if the link is already gone.
 func runHostOnce(agent *remote.Agent, text string) error {
-	events, err := agent.Submit(context.Background(), text)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var leaving atomic.Bool
+	// [runChatV3Once]'s rule, for its reason: a person who typed kill -INT is
+	// not owed an "error: context canceled" line, and the manual promises the
+	// same clean status-0 exit whichever machine answered.
+	reported := func(failure error) error {
+		if leaving.Load() {
+			return nil
+		}
+		return failure
+	}
+	stopLeaving := leave.On(func() {
+		leaving.Store(true)
+		agent.Interrupt()
+		cancel()
+	}, nil)
+	defer stopLeaving()
+
+	events, err := agent.Submit(ctx, text)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	wrote := false
 	newline := func() {
@@ -1150,7 +1187,7 @@ func runHostOnce(agent *remote.Agent, text string) error {
 	}
 	newline()
 	_ = agent.Close()
-	return failure
+	return reported(failure)
 }
 
 // ── the places over a connection ────────────────────────────────────────────

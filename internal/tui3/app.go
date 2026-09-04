@@ -2643,13 +2643,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case sigQuitMsg:
-		// A REAL SIGINT OR SIGTERM, forwarded by this package's own handler
-		// (tui3.go's [forwardSignals]) because Bubble Tea's answers SIGINT by
-		// returning an error without ever calling this function. It takes the
-		// ordinary door: the draft and anything parked go to disk, the session
-		// closes, and the program exits zero. NO SECOND PRESS IS ASKED FOR — the
-		// two-press rule is about a keystroke that can be struck by accident, and
-		// a signal is somebody naming this process on purpose.
+		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
+		// [forwardSignals]) because Bubble Tea answers an interrupt by returning
+		// an error without ever calling this function. It takes the ordinary
+		// door: the draft and anything parked go to disk, the session closes, and
+		// the program exits zero. NO SECOND PRESS IS ASKED FOR — the two-press
+		// rule is about a keystroke that can be struck by accident, and a signal
+		// is somebody naming this process on purpose.
 		return a, a.quit()
 
 	case tea.KeyPressMsg:
