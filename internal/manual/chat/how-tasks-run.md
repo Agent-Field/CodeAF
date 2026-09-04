@@ -849,8 +849,13 @@ thing it had just built.
 
 ## How a task reports back to you
 
-When a task lands, its **report** is its final assistant message, cut to the first **3
-non-empty lines**, each clipped to **300 characters**.
+When a task lands, its **report** begins with the first **3 non-empty lines** of its final
+assistant message, each clipped to **300 characters**. If those lines open a fenced code
+block, the report can carry up to **8 extra non-empty lines** beyond that ordinary room to
+include its contents and closing fence. A report never ends on a bare opening fence. When
+any non-empty line is left out — or when the report had to close a block the task left open,
+because that closing line is the report's and not the task's — it ends with `…` on a line of
+its own; a report that carries the whole message unaltered has no such mark.
 
 A task is told to make those lines the **substance** of the work — what it found or made,
 the key findings, the decisions it took, with every file named by its full path — and not
@@ -899,6 +904,22 @@ that could not be made at all stops the landing before the merge — nothing is 
 nothing is given back, and the task needs your look (*My task could not save what it wrote*
 above). Two tasks finishing at
 once are serialized, so a merge is never lost.
+
+## My task's report is cut off or ends at a code block — where the rest of the report went
+
+If a **report is cut off**, it ends with `…` on a line of its own. When one of its first **3
+non-empty lines** opens a fenced code block, the report carries up to **8 extra non-empty
+lines** beyond its ordinary room to keep the quoted content and its closing fence; it never
+ends in a bare opening fence. If that block cannot close within the extra room — or the task
+itself never closed it — the report closes it and then marks the cut, because that closing
+line is the report's own. This is why a current report does not end in three backticks with
+the code block missing from the report.
+
+The missing lines were not discarded. The task's journal keeps the whole final message,
+and its page shows that message under `what it said at the end`. Open the task from
+`/history` or `ctrl+.`, then press `enter` on its row. That is where the rest of the report
+went; the short report on the landing card, and the one the task's row keeps for later,
+stay bounded.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
 
