@@ -373,6 +373,11 @@ func TestJobsKillEndsSleeperWithoutSelfReport(t *testing.T) {
 // and when the model reads it is the loop's law (wake_test.go owns that half).
 func TestExitingJobLandsSteeringNote(t *testing.T) {
 	agent, _ := jobsAgent(t)
+	// Hold the session before its public opening so this remains an assertion
+	// about the steering note itself rather than the boundary batch around it.
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
 
 	id := startJob(t, agent, "echo build finished; exit 3")
 	waitFor(t, "the completion note", func() bool {
@@ -392,14 +397,64 @@ func TestExitingJobLandsSteeringNote(t *testing.T) {
 	if length := len(headline); length > 160 {
 		t.Fatalf("headline is %d bytes; it is a sentence, not the log", length)
 	}
-	// THE NOTE IS ONLY THE HEADLINE. The complete output remains behind the
-	// jobs tool, so a long build cannot interrupt a turn with fifty log lines.
-	if strings.Contains(queued[0], "\n") {
-		t.Fatalf("completion note carried the output tail: %q", queued[0])
+	// THE NOTE CARRIES THE OUTPUT UNDER ITS HEADLINE and names the whole log, so
+	// the ending itself never costs another tool call.
+	if !strings.Contains(queued[0], "\n\nbuild finished") {
+		t.Fatalf("completion note lost the output tail: %q", queued[0])
+	}
+	footer := fmt.Sprintf("[job %d · last %d lines · full log: ", id, jobExitTailLines)
+	if !strings.Contains(queued[0], footer) {
+		t.Fatalf("completion note does not name the full log: %q", queued[0])
 	}
 	output, isError := runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d}`, id))
 	if isError || !strings.Contains(output, "build finished") || !strings.Contains(output, "full log: ") {
 		t.Fatalf("jobs output lost the completion detail: %q", output)
+	}
+}
+
+// An ordinary background job's ending reaches both the steering lane and the
+// model's boundary batch whole: headline, output tail and path to the full log.
+func TestAnOrdinaryJobsEndingArrivesWhole(t *testing.T) {
+	agent, _ := jobsAgent(t)
+	// Hold the session before its public opening so the test can inspect the
+	// steering lane before taking the same boundary the model reads.
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
+
+	id := startJob(t, agent, "printf 'a\nb\nc\n'")
+	waitFor(t, "the completion note", func() bool {
+		return notesContain(agent, fmt.Sprintf("job %d exited 0", id))
+	})
+
+	queued := steeringQueue(agent)
+	if len(queued) != 1 {
+		t.Fatalf("want exactly one queued note, got %v", queued)
+	}
+	headline, _, _ := strings.Cut(queued[0], "\n")
+	if want := fmt.Sprintf("job %d exited 0: c", id); headline != want {
+		t.Fatalf("completion headline is %q, want %q", headline, want)
+	}
+	tail := "\n\na\nb\nc"
+	if !strings.Contains(queued[0], tail) {
+		t.Fatalf("completion note lost its whole output tail: %q", queued[0])
+	}
+	job := agent.jobs.find(id)
+	footer := fmt.Sprintf("[job %d · last %d lines · full log: %s]", id, jobExitTailLines, job.logPath)
+	if !strings.Contains(queued[0], footer) {
+		t.Fatalf("completion note lost its log path: %q", queued[0])
+	}
+
+	agent.drainSteering(nil)
+	var users []string
+	for _, message := range agent.snapshot() {
+		if message.Role == "user" {
+			users = append(users, messageText(message))
+		}
+	}
+	if len(users) != 1 || !strings.Contains(users[0], "while you worked:") ||
+		!strings.Contains(users[0], tail) || !strings.Contains(users[0], footer) {
+		t.Fatalf("the whole ending did not survive its boundary batch: %v", users)
 	}
 }
 
