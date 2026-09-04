@@ -26,6 +26,7 @@ area are the pre-existing package lines: `internal/session` (engine), `internal/
 | **Assignment and revision** | `assignment.go`, `assignment_tool.go` | the frozen admitted spec plus a revision overlay; which origins may move the done-condition | implemented |
 | **Admission context** | `admission.go`, `admission_compile.go` | one bounded, attributed selection of conversation excerpts and tool-output handles per admission door | implemented |
 | **Result** | `task_result.go` | the full answer kept apart from the compact card, with a retrievable overflow reference | implemented |
+| **Context window** | `toolcompact.go`, `stub.go`, `turnfold.go` | the bounded *view* of frozen history sent to the provider: reduced tool results with retrievable pointers, a fold to a headroom target, a linear budget walk | implemented |
 | **End-of-turn handoff** | `turnhandoff.go` | whether the current request's work was handed to a task that is still live, so the turn can end without polling | implemented |
 | **Projection** | `task_status.go`; adapters in `internal/tui3/taskstatus.go` | one pure `ProjectTask(TaskFacts) TaskStatus`: presence, wait-on, change disposition, fault, attention | implemented |
 | **Lifetime of a view** | `internal/remote/client.go` (`WorkOutlivesExit`, `Detach`), `internal/tui3/keeper.go` | whether closing a window ends the conversation, asked as a capability rather than guessed from a hostname | implemented |
@@ -102,7 +103,24 @@ The full answer is kept apart from the compact card, with a bounded excerpt and 
 overflow reference, and the outcome qualification is retained rather than flattened into
 "done". Delivery of a result is recorded separately from whether the work merged.
 
-### 2.6 End-of-turn handoff (`turnhandoff.go`)
+### 2.6 Context window (`toolcompact.go`, `stub.go`, `turnfold.go`)
+
+Compaction rewrites the snapshot leaving for the provider, never the transcript. The system
+prompt and the newest frozen batch stay verbatim; everything earlier is replaced by a reduced
+view of itself — the head that says what ran, the tail a checkpoint digest already proved
+keeps a verdict, the exact count of bytes cut, and a pointer to where the whole of it can be
+read back (`Agent.fullResultPointer`), which falls back to the journal and then to saying
+plainly that it cannot be read. Nothing reads a result and decides what it meant; head, tail
+and counts are mechanical. A result may be shortened and is never dropped, because the
+provider pairs every call with its result. A pass folds to a headroom target below the
+threshold rather than re-firing at each step, and the budget walk carries a running total
+instead of recomputing one.
+
+**Not guaranteed:** the model sees less than the whole history by construction, and a pointer
+is only useful because the read tool can open it. This bounds resend cost; it is not a claim
+about answer quality.
+
+### 2.7 End-of-turn handoff (`turnhandoff.go`)
 
 The measured failure this answers: a turn that correctly *handed work to a live task* was
 re-opened by an end-of-turn reader asking whether the outcome had arrived, and the model,
@@ -111,7 +129,7 @@ put the current request's work into a task that is still live — and lets the n
 landing start the next turn, at wake prices, with the report in front of it. It is
 request-scoped and does not poll.
 
-### 2.7 Projection (`task_status.go`)
+### 2.8 Projection (`task_status.go`)
 
 One pure function over facts. It separates presence (`queued`, `working`, `waiting`,
 `finishing`, `done`, `incomplete`, `needs-look`, `stopped`, and a zero value for a state this
@@ -124,7 +142,7 @@ instead of becoming "dead". Wire enums and checkpoint formats are unchanged.
 record row cannot raise the unlanded-edits demand a live row raises. Harness phases are
 strings with no typed lifecycle; exactly one (`HarnessPhaseAsking`) is interpreted by name.
 
-### 2.8 Lifetime of a view (`internal/remote`, `internal/tui3`)
+### 2.9 Lifetime of a view (`internal/remote`, `internal/tui3`)
 
 `Welcome.Persistent` is the engine's own statement about whether it outlives the connection.
 `Agent.WorkOutlivesExit()` reports that fact; `Agent.Detach()` sends `MethodDetach` when it is
@@ -137,7 +155,7 @@ quit hint promises "keeps running" only for conversations that will actually kee
 
 1. **The main chat is for thinking, not for waiting.** A person describes what they want and
    keeps talking. The turn ends when the request has been handed off, not when the outcome
-   exists (§2.6).
+   exists (§2.7).
 2. **Workers own their results.** A task holds its own assignment, evidence and answer, and
    reports when it has one. The main chat does not poll it, and a progress tick is not a
    reason to pay for a turn (§2.1).
@@ -146,7 +164,7 @@ quit hint promises "keeps running" only for conversations that will actually kee
    an agent's does not (§2.3).
 4. **The surface says what is true and no more.** A stop is not a failure, a queued node is
    not running, an unknown liveness is not death, and a window closing is not an ending
-   (§2.7, §2.8).
+   (§2.8, §2.9).
 
 ## 4. What is NOT achieved
 
@@ -154,13 +172,16 @@ Stated plainly, because each of these is easy to read into the sections above.
 
 - **No distributed runtime and no exactly-once external effects.** Everything here is local
   and in-process. The durable acknowledgement bounds *re-telling*, not *re-doing* (§2.2).
-- **No automatic main-chat steering broadcast.** A correction typed in the main chat is not
-  fanned out to running tasks. Steering is per-room today; routing a main-chat line to the
-  tasks it concerns would require deciding which tasks it concerns, which nothing here does.
+- **No main-chat correction addressed at a task.** Steering *inside a task room* works
+  (§2.3). A correction typed in the main chat is not routed or broadcast to running tasks,
+  because nothing decides which tasks such a line concerns. This is the live UX gap.
 - **No universal durable constraint ledger.** Admission context is a bounded selection, not a
   record of every constraint a person has ever stated (§2.4).
-- **No universal performance superiority.** See `IMPLEMENTATION.md`; the available
-  comparisons do not establish that this runtime is faster or cheaper in general.
+- **No general Pareto superiority.** Specific costs are measurably reduced and covered by
+  tests — a long frozen tool history compacts to a sub-linear prompt, a fold reaches its
+  headroom target, the budget walk is linear (§2.6). That is not the same as being faster or
+  cheaper than another harness overall, which the available comparisons do not establish; see
+  `IMPLEMENTATION.md`.
 - **No extracted packages.** §1's seams are files, not import boundaries.
 
 ## 5. How addresses, origins and messages extend later without cross-session infrastructure
