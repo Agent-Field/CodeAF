@@ -327,22 +327,30 @@ outdirs=$(find . -maxdepth 3 -name 'tsconfig*.json' -not -path '*/node_modules/*
 # what wins the choice, or a build-output diff beats a clean source one.
 for f in "$out"/*.patch; do
   [ -f "$f" ] || continue
+  # A binary hunk is never source, whatever path it sits at: igel committed a
+  # 502 KB model.joblib and that one file made a three-file branch "richer"
+  # than the whole worktree, so the grader was handed the wrong patch. The
+  # marker is git's own — "GIT binary patch" under --binary, "Binary files"
+  # without it — and a few extensions that are binary by nature.
   awk '
     /^diff --git / { if (p != "") sizes[p] += n; p = $3; sub(/^a\//, "", p); n = 0 }
+    /^GIT binary patch/ || /^Binary files / { binf[p] = 1 }
     { n += length($0) + 1 }
-    END { if (p != "") sizes[p] += n; for (k in sizes) printf "%s\t%d\n", k, sizes[k] }
+    END { if (p != "") sizes[p] += n; for (k in sizes) printf "%s\t%d\t%d\n", k, sizes[k], binf[k] + 0 }
   ' "$f" > "$out/.files"
   # --no-index so a path the repo tracks is still reported when .gitignore names it.
   cut -f1 "$out/.files" | git check-ignore --no-index --stdin 2>/dev/null | sort -u > "$out/.ignored"
   src=0; gen=0
-  while IFS='	' read -r path bytes; do
+  while IFS='	' read -r path bytes isbin; do
     [ -n "$path" ] || continue
     g=0
+    [ "${isbin:-0}" = 1 ] && g=1
     grep -qxF "$path" "$out/.ignored" 2>/dev/null && g=1
     case "$path" in
       dist/*|build/*|coverage/*|__pycache__/*) g=1 ;;
       */dist/*|*/build/*|*/coverage/*|*/__pycache__/*) g=1 ;;
       *.map|*.pyc) g=1 ;;
+      *.joblib|*.pkl|*.pickle|*.npy|*.npz|*.h5|*.hdf5|*.bin|*.so|*.dylib|*.png|*.jpg|*.jpeg|*.gif|*.ico|*.zip|*.gz|*.tar|*.woff|*.woff2|*.pdf) g=1 ;;
     esac
     if [ "$g" = 0 ] && [ -n "$outdirs" ]; then
       for d in $outdirs; do
@@ -362,6 +370,9 @@ docker exec "$NAME" /bench/collect.sh "$TASK_BASE" > "$OUT/candidates.tsv" 2>> "
 BEST=$(sort -t"$(printf '\t')" -k2,2nr -k1,1nr "$OUT/candidates.tsv" 2>/dev/null | head -1 | cut -f4)
 BEST="${BEST:-worktree.patch}"
 docker exec "$NAME" cat "/bench/candidates/$BEST" > "$OUT/model.patch" 2>> "$OUT/docker.log"
+# Every candidate comes out beside the result, so a pick that turns out wrong
+# can be regraded from the record instead of being lost with the container.
+rm -rf "$OUT/candidates"; docker cp "$NAME:/bench/candidates" "$OUT/candidates" >> "$OUT/docker.log" 2>&1
 log "$TASK: graded diff taken from $BEST"
 python3 - "$OUT/meta.json" "$OUT/candidates.tsv" "$BEST" <<'CANDS'
 import json, os, sys
