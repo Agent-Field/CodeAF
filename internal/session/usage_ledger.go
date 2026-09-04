@@ -19,7 +19,7 @@ package session
 // artifacts.jsonl's reason: "what has this machine been spending on" is a
 // cross-project question, and a per-project answer to it is not an answer.
 //
-// ── FIVE RULES ──
+// ── SIX RULES ──
 //
 //   - ONE ROW PER CALL, WRITTEN AS THE CALL IS DECODED. The provider's usage
 //     block is in hand at exactly one moment — [Agent.addUsage], the same line
@@ -56,9 +56,16 @@ package session
 //     see is a bill that reads as smaller than it was: the spend surfaces say
 //     how many records went missing rather than quietly under-reporting.
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
-//     file: a call cut before its final chunk, and every request a provider
-//     reported nothing about, leave no row — so a day with no line in it is a
-//     day nothing was spent, rather than a day whose rows all say zero.
+//     file: a call whose usage block or later receipt carries no cost and no
+//     tokens leaves no row — so a day with no line in it is a day nothing was
+//     measured as spent, rather than a day whose rows all say zero.
+//   - A CALL THE WIRE NEVER PRICED IS ASKED ABOUT LATE, NEVER GUESSED. A cut
+//     stream that named its generation can be matched to the provider's own
+//     receipt after the turn has already moved on. A found receipt enters
+//     through [Agent.bank] and marks its row reconciled; no id, no route, or no
+//     receipt leaves no invented row and moves [UnbilledCalls] instead. The
+//     fetch is background work in internal/provider, so neither the request nor
+//     this ledger may make a reply wait.
 //   - IT IS READ THROUGH A CACHE THAT READS THE TAIL. Home's clock beats every
 //     three seconds and this file grows by a line per call, so a reader that
 //     re-parsed the whole file whenever it changed would re-parse it after every
@@ -153,6 +160,10 @@ type UsageLine struct {
 	// USD is what it cost, and zero means nobody could price it rather than that
 	// it was free — the same reading [TaskIndexEntry.Cost] has.
 	USD float64 `json:"usd,omitempty"`
+	// Reconciled marks a row whose figures came from the provider's own receipt
+	// after the stream ended without a usage block. It is additive and omitted
+	// from every ordinary row and every row written before this field existed.
+	Reconciled bool `json:"reconciled,omitempty"`
 	// Empty marks a paid request that returned no answer at its output ceiling.
 	// The role beside it names the reflex, so the row remains useful even to a
 	// reader that does not know this build's aggregate counters.
@@ -490,17 +501,35 @@ type usageWriter struct {
 // earned it, so the row gives way. But a ledger that quietly loses rows reads
 // as a machine that spent less, which is the flattering direction and the one
 // direction a bill must never be wrong in. So the drop is counted and the spend
-// surfaces say so ([UsageDrops], and issue #161's unbilled-call marker, which is
-// the same sentence about a different gap).
+// surfaces say so ([UsageDrops]). [UnbilledCalls] makes the same sentence about
+// calls whose provider receipt could not be had.
 var usageDropped atomic.Int64
+
+// unbilledCalls is process-wide for the same reason [usageDropped] is: every
+// reader asks whether the machine's figures are short, not which conversation
+// first learned that one call could not be priced.
+var unbilledCalls atomic.Int64
 
 // UsageDrops is how many spending records this process failed to write down.
 // Zero is the ordinary answer and a surface says nothing about it; anything
 // else means every total taken off a ledger is short by that many calls.
 func UsageDrops() int64 { return usageDropped.Load() }
 
+// UnbilledCalls is how many calls this process knows the provider charged for
+// and could not put a figure on. Zero is the ordinary answer and is rendered as
+// nothing; a nonzero answer says every ledger total may be short by those calls.
+func UnbilledCalls() int64 { return unbilledCalls.Load() }
+
 // dropUsageRow counts one row that never reached a file.
 func dropUsageRow() { usageDropped.Add(1) }
+
+// countUnbilledCall records one charged call for which no receipt could be had.
+func countUnbilledCall() { unbilledCalls.Add(1) }
+
+// CountUnbilledCall lets a provider consumer outside a session agent report
+// the same missing price. The resident leaf path is such a consumer: it has a
+// node banker but no [Agent] method to receive the reconciliation.
+func CountUnbilledCall() { countUnbilledCall() }
 
 // usageWriters is the writer per path, and usageWritersMu guards the map ALONE.
 // It is never held across a file operation, so [RecordUsage] can never be made
@@ -770,7 +799,7 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // now happens on a writer goroutine ([RecordUsage]), the lock is still released
 // before the hand-off so no reader of the session's totals ever queues behind
 // the ledger at all.
-func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts) {
+func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts, reconciled bool) {
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
@@ -783,15 +812,16 @@ func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts) 
 	a.mu.Unlock()
 	now := time.Now()
 	line := UsageLine{
-		At:     now,
-		Day:    now.Local().Format(usageDayLayout),
-		Model:  strings.TrimSpace(model),
-		Role:   strings.TrimSpace(role),
-		Calls:  used.Calls,
-		Input:  used.Input,
-		Output: used.Output,
-		USD:    used.CostUSD,
-		Empty:  used.EmptyReflex > 0,
+		At:         now,
+		Day:        now.Local().Format(usageDayLayout),
+		Model:      strings.TrimSpace(model),
+		Role:       strings.TrimSpace(role),
+		Calls:      used.Calls,
+		Input:      used.Input,
+		Output:     used.Output,
+		USD:        used.CostUSD,
+		Empty:      used.EmptyReflex > 0,
+		Reconciled: reconciled,
 
 		Session: session,
 		// The node this agent IS, and nothing for a conversation — the same
