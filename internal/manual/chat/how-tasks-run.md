@@ -355,6 +355,24 @@ clear by hand.
 the second is refused its writes and told which task to wait for. When the first lands, the
 second gets the directory.
 
+## A task that has written a file holds that file — I cannot edit a file while a task runs, chat edit blocked, single writer
+
+When a task has a checkout of its own, you can still write files it has not touched. **A
+file it has already written is its file until it lands.** A chat `edit` or `write` of that
+file is refused with the task named:
+
+```
+cart.py is held by task 2 (discount code entry), so nothing was written.
+```
+
+The hold is one file at a time, not the directory. A second task that tries the same file
+is refused the same way: one owner per file. The write is not routed into the task — it is
+refused so the two copies cannot drift. You can still edit that file yourself in your own
+editor; this is a rule about the chat's tools, not a lock on disk.
+
+The hold ends the moment the task does: it lands, fails, or is stopped, and the next write
+goes straight through. A task that has written nothing yet owns nothing.
+
 ## What a finished task brings home, and what it leaves behind — where does the finished work end up
 
 A task lands **the files it wrote** — every path it handed to its `write` or `edit` hand,
@@ -432,6 +450,10 @@ The task then lands as **needs your look** rather than finished, and the report 
 files that changed on both sides:
 
 `finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
+
+The landing note the model reads does **not** say the work finished or that the branch
+merged. It names the kept branch. A merge that did not fasten the branch to yours is not
+a landing, even if the task's own report said the work arrived.
 
 **A landing never ends in a sentence that names nothing.** There is one shape of refusal
 where git will not start the merge at all — you have uncommitted changes in the very files
@@ -2223,7 +2245,11 @@ A task that did not finish keeps its branch, and the row under its name on the r
 - `stopped — branch kept`, with a `⊘` — **you stopped it** (`x` on its room, `jobs kill`).
   Nothing is wrong with the work; it is on that branch.
 - `!` and one of these — **it was halted, and nothing is known to be wrong**. The work can go
-  on from its branch: say `continue task 7` or start a task that builds on that branch.
+  on from its branch: say `continue task 7`. That is how you continue a task
+  instead of running it again: it re-arms the **same** task — same id, same brief,
+  same working copy, the last report handed back as this round's finding — rather
+  than proposing a new one. Start a new task that builds on that branch only if
+  the objective itself changed.
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.

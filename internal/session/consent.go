@@ -80,6 +80,12 @@ const (
 	ConsentRule ConsentScope = "rule"
 )
 
+// ConsentWaiting is the only silence the gate has: an unanswered question
+// stays a question. A surface clock that recorded "denied" after ~10s and
+// cancelled the call was F41; the engine never does that, and every
+// EventConsentRequest says so in Wait.
+const ConsentWaiting = "waiting"
+
 // consentAnswer is one resolution travelling from the surface to the blocked
 // call.
 type consentAnswer struct {
@@ -370,6 +376,9 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// And whether the memo is even available, so a surface can leave the
 		// "always" key off a question it would be dropped on (see Event.Memo).
 		Memo: memo,
+		// Silence is not a no. The card draws this so the wait mode is not a
+		// hidden deny timer (F41).
+		Wait: ConsentWaiting,
 	})
 
 	select {

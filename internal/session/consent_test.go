@@ -283,6 +283,76 @@ func TestConsentIsNeverJournaled(t *testing.T) {
 	}
 }
 
+// An unanswered approval is not a no. The surface used to arm a hidden ~10s
+// clock that recorded "denied" and cancelled the call (F41). The engine never
+// does that: silence keeps the question up, the work stays blocked — not
+// refused — and a late yes still runs it.
+func TestAnUnansweredApprovalPastTheTimeoutDoesNotDeny(t *testing.T) {
+	completer := &scriptedCompleter{steps: toolCallTurn("touch")}
+	agent, runs := consentAgent(t, completer, promptAll(), true)
+
+	stream := mustSubmit(t, agent, "touch the file")
+	var seen []Event
+	var request Event
+	deadline := time.After(2 * time.Second)
+	for request.Kind != EventConsentRequest {
+		select {
+		case event, open := <-stream:
+			if !open {
+				t.Fatalf("the turn ended unanswered; events: %v", kinds(seen))
+			}
+			seen = append(seen, event)
+			if event.Kind == EventToolFailed {
+				t.Fatalf("silence recorded a denial: %q", event.Output)
+			}
+			if event.Kind == EventConsentRequest {
+				request = event
+			}
+		case <-deadline:
+			t.Fatalf("no consent request; events: %v", kinds(seen))
+		}
+	}
+	if request.Wait != ConsentWaiting {
+		t.Fatalf("Wait = %q, want %q — the question must say silence is not a no", request.Wait, ConsentWaiting)
+	}
+	if len(runs) != 0 {
+		t.Fatal("the tool ran before anyone answered")
+	}
+
+	// Past any instant deny, and past a slice of the old hidden timer, with
+	// nobody answering: the engine has no such clock.
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case event, open := <-stream:
+		if !open {
+			t.Fatal("silence ended the turn")
+		}
+		seen = append(seen, event)
+		if event.Kind == EventToolFailed || event.Kind == EventTurnDone {
+			t.Fatalf("silence cancelled the work: %v %q", event.Kind, event.Output)
+		}
+	default:
+	}
+	pending := agent.PendingConsent()
+	if len(pending) != 1 || pending[0] != request.ID {
+		t.Fatalf("pending = %v, want the unanswered question still registered", pending)
+	}
+	if len(runs) != 0 {
+		t.Fatal("the unanswered call ran")
+	}
+
+	// The work is still there to approve.
+	agent.ResolveConsent(request.ID, true)
+	rest := drainAnswering(t, stream, nil)
+	seen = append(seen, rest...)
+	if len(runs) != 1 {
+		t.Fatalf("the tool ran %d times after the late yes, want 1", len(runs))
+	}
+	if failed, ok := firstOfKind(seen, EventToolFailed); ok {
+		t.Fatalf("the late yes still recorded a denial: %q", failed.Output)
+	}
+}
+
 func lastToolMessage(t *testing.T, a *Agent) ai.Message {
 	t.Helper()
 	a.mu.Lock()

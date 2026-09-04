@@ -321,6 +321,9 @@ different about it: a row, a room, a report, and everything else on this page.
   asking whether work should have been work has no useful answer.
 - **Nothing on a short message.** Under six words it is not read at all — "thanks", "run
   the tests", "what does this key do" are answered in words by construction.
+- **Nothing on a one-command ask.** A commit, an undo, a one-line or one-file edit, a
+  single read: those stay in the conversation, whatever a judge would have said. See
+  *A commit or an undo is never a task*.
 - **Nothing where there is no screen.** `--once`, a task's own worker, and a session with
   no router model to ask are all silent.
 - **Two models have to agree.** The cheap one can only screen; the thinking model confirms
@@ -678,6 +681,26 @@ reply for seven minutes and forty-six seconds — forty-eight tool calls, `sed -
 somebody's live checkout — before the round ceiling finally moved it. Nothing in between was
 watching what those rounds did to the disk.
 
+**A commit, an undo, a one-line edit or a single read is never moved**, whatever the write
+count. Those stay in the conversation — see *A commit or an undo is never a task*.
+
+## A commit or an undo is never a task — commit became a task, undo started a task, why did a small ask become a task, fix this one line, commit everything
+
+**A one-command ask is never handed to a task.** "commit everything", "undo that", "fix this
+one line", a single file read: those are answered here, in this conversation. They are not
+converted mid-reply, they are not proposed with `propose_task`, and they do not start a task
+on their own — even if the reply has already staged several files, even if a judge said the
+message looked like work.
+
+**Why.** "commit everything with a sensible message" was measured becoming task 5, and the
+commit then never happened. Handing a one-command ask to a worktree is how the deliverable
+gets dropped. The floor is the words you typed, not how much the reply has already touched.
+
+**What still becomes a task.** Several independent pieces in one message, a sweep across
+many files, a rewrite you would sit and watch: those can still be handed over, proposed, or
+started with `/task`. Typing `/task commit everything` still starts a task, because you
+asked for one.
+
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
 
 **A reply ends when the model stops calling tools, and that happens for two different
@@ -977,26 +1000,34 @@ another window has work out in this project · it has not said which files yet
 
 ## Can I keep editing while a task is running — who may write while work is out
 
-**Almost always, yes.** A task gets its own checkout of the repository on its own branch, so
-you and it are in different directories: keep editing, keep saving, keep running things.
-Anything you change lands in yours and anything it changes lands in its own, and the two
-meet only when the work comes home.
+**Yes, except the files a running task has already written, and except a task running in
+place.** A task gets its own checkout of the repository on its own branch, so you and it
+are in different directories. A file it has not touched yet is still yours: keep editing,
+keep saving. A file it has already written is **held by that task** until it lands. A chat
+`edit` or `write` of that file is refused with the task named:
 
-**The one exception is a task running in place.** When the directory is not a git repository
-— or is one with nothing to branch from — there is no second checkout to give the task, so
-it works in your directory. While that is happening the chat becomes a **reader** of that
-directory: it can read anything, and a `write` or an `edit` there is refused with the task
-named:
+```
+cart.py is held by task 2 (discount code entry), so nothing was written.
+```
+
+The hold is that one file, not the directory. The write is not routed into the task. You
+are not stopped from editing the file yourself in your own editor or shell — this is a
+rule about what the chat's own tools will do on your behalf.
+
+**A task running in place is the other exception.** When the directory is not a git
+repository — or is one with nothing to branch from — there is no second checkout to give
+the task, so it works in your directory. While that is happening the chat becomes a
+**reader** of that directory: it can read anything, and a `write` or an `edit` there is
+refused with the task named:
 
 ```
 src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
 nothing was written.
 ```
 
-You are not stopped from doing anything yourself in your own editor or shell — this is a
-rule about what the chat's own tools will do on your behalf, not a lock on the files. It
-ends when the task lands, fails or is stopped. *How work runs* has the whole of it, under
-*A task working in place holds the directory*.
+Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
+it, under *A task that has written a file holds that file* and *A task working in place
+holds the directory*.
 
 ## What the other-window warning can and cannot see — and why it stayed quiet
 
@@ -3518,7 +3549,8 @@ What else you can do yourself, on a task that is running:
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
 | stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
-| change its brief or its done-condition | **cannot** — frozen; propose the work again |
+| change its brief or its done-condition | **cannot** — frozen; continue with your words as a finding, or propose new work |
+| continue a failed or finished one | say `continue task 7`, or `tasks` with `id` and `continue` — same node, same copy |
 
 Steering sends your words into the task's own loop verbatim, and they land in its room as
 your own line. If nobody is listening any more — it landed, it was stopped, its worker is
@@ -3863,7 +3895,10 @@ only then does `s` mean anything, which is two deliberate presses with the verb 
 you. The card is also not available here: it is drawn in the conversation's chrome, and a
 question raised over a full-screen place would be one nobody could see.
 
-**There is no `run it again`, and no key is bound to one.** Nothing on this machine re-runs
-a finished task — a row here is an account of work that happened — and starting the same
-brief again is `/task <brief>`, which is new work with a new id. A capability that cannot
-work is left off rather than drawn dead, so the verb is named nowhere.
+**`continue` re-arms the same task.** There is still no `run it again` key on this place —
+a row here is an account of work that happened — but a failed or finished task is
+continued by saying `continue task 7`, or by the `tasks` tool with `id` and `continue`.
+That is the same node: same id, same brief, same working copy and journal, the last
+report as this round's finding. Starting the same brief again with `/task` or
+`propose_task` is new work with a new id, and it is the wrong door when the person
+means keep going.

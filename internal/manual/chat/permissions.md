@@ -12,7 +12,9 @@ The offer line reads, literally:
 allow? [y] yes · [n] no · [a] always, this command · [esc] cancel
 ```
 
-with a countdown on the end — ` · 7s`, or ` · paused` once you have touched it.
+with the wait mode on the end — ` · 7s`, or ` · paused` once you have touched
+it or the reminder expired, or ` · waiting` when the countdown is off. Silence
+is never a no.
 
 - `y` — allow this one call. The transcript row is annotated `allowed`.
 - `n` — refuse this one call. The row is annotated `denied`. The model is handed
@@ -61,26 +63,30 @@ rules' own words. It can read:
 
 The same sentence is what the model is told when a call is refused.
 
-## The countdown: silence denies
+## The countdown: silence waits — why an unanswered approval is not denied
 
-A question that is not answered answers itself, and the answer is **no**.
+A question that is not answered stays a question. Silence is never a **no**.
 
-The wait is **10 seconds** by default. The setting is
+The reminder is **10 seconds** by default. The setting is
 `approval.timeout_seconds`, labelled "approval countdown" in `/settings`.
 
-At expiry aforge **denies** the call — it never allows it — and the transcript
-row keeps the words `denied · no answer`.
+At expiry aforge **pauses** and keeps waiting — it never denies the call, and
+it never allows it. The offer tail reads `paused` (or `waiting` when the
+countdown is off) and the work stays blocked until you answer. The transcript
+row is not annotated `denied · no answer`; that wording was a previous build
+answering no for you.
 
 Any key press, and any mouse press inside the block, pauses the clock
 **permanently**. There is no way to start it again; the tail then reads
 ` · paused` and the question waits for you. Setting the countdown to `0` turns
-the clock off entirely, and every question waits forever.
+the clock off from the start, and every question waits forever.
 
 The clock **only runs while that terminal window has the keyboard**. Switch to
 another window and it stops where it is; come back and it starts again from the
 full 10 seconds. See "Does my other window keep working when I switch away".
 
-The clock is drawn in whole seconds.
+The clock is drawn in whole seconds. The wait mode is on the tail so what
+silence will do is not hidden.
 
 ## Does my other window keep working when I switch away — why my other session looked frozen
 
@@ -121,8 +127,9 @@ Two things tell you a window is waiting while you are elsewhere:
   says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
 
 If your terminal does not report focus to the programs inside it, aforge
-assumes the window is focused — so the countdown runs as it always did and no
-banner is sent. There is no setting for either; both are on.
+assumes the window is focused — so the countdown runs, and at expiry it pauses
+rather than answering no, and no banner is sent. There is no setting for
+either; both are on.
 
 ## Why did my session stop after I switched windows — what to check
 
@@ -132,9 +139,10 @@ nowhere, it is one of these:
 - **A question is up.** The most common one. The row it is about says
   `allow?`; the session is blocked until you answer, and the countdown is held
   while you are away rather than answering for you.
-- **A call was already denied while you were gone** on a build from before this
-  changed. The row says `denied · no answer`. Say so and the model will ask
-  again.
+- **A call was already denied while you were gone** on a build from before
+  silence stopped answering no. The row says `denied · no answer`. Say so and
+  the model will ask again. A current build does not write that; the question
+  is still up.
 - **The turn finished.** A turn that ends on an unfocused window sends its own
   desktop banner, `<conversation> · turn done`.
 
@@ -471,8 +479,8 @@ The whole list, by settings key:
 - **What may run without asking you** — `tools.approvalMode`,
   `tools.approval`, `tools.bashPatterns`, `approval.guardian`,
   `approval.timeout_seconds`, `task.autoapprove_seconds`. The gate, the two rule
-  rows, the model that answers in your place, and the two clocks that answer when
-  you do not.
+  rows, the model that answers in your place, the reminder that pauses rather
+  than answering no, and the task clock that starts work if you say nothing.
 - **What may be spent without asking you** — `daily_budget_usd`,
   `plan_consent_usd`, `practice_budget_usd`, `session.spendRailUSD`,
   `task.repair_rounds`, `working_set_tokens`, `context_reuse_pct`. The last three

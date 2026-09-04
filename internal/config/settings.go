@@ -144,16 +144,15 @@ const (
 	// model standing in for them — and grouping it with the rule rows would file
 	// it as one more exception in a list of exceptions.
 	KeyGuardian = "approval.guardian"
-	// KeyConsentTimeout is how long an approval question waits for a keystroke
-	// before it answers itself. It answers DENY — never allow — so the clock can
-	// only ever be the cautious one, and it stops the moment a key is pressed,
-	// because a person who has started reading is a person who is going to
-	// answer.
+	// KeyConsentTimeout is how long an approval question counts down before it
+	// PAUSES and keeps waiting. It never answers for the person — silence is
+	// not a no (F41) — and it stops the moment a key is pressed, because a
+	// person who has started reading is a person who is going to answer.
 	//
 	// Seconds, not a duration string, for the reason [KeyTaskAutoApprove] is
 	// spelled that way: the number is small and read at a glance off a line that
-	// is counting it down. 0 turns the clock off and the question waits forever,
-	// which is what a person who reads every prompt wants.
+	// is counting it down. 0 turns the clock off and the question waits from
+	// the start, which is what a person who reads every prompt wants.
 	KeyConsentTimeout = "approval.timeout_seconds"
 	KeyTierLowModel   = "models.tiers.low"
 	KeyTierHighModel  = "models.tiers.high"
@@ -1185,14 +1184,13 @@ const (
 	// developer's machine is usually theirs.
 	DefaultTaskMinFreeMB = 1536
 
-	// DefaultConsentTimeout is ten seconds, and it is a different number from
-	// the one above because it is a different KIND of clock. The task countdown
-	// runs toward the permissive answer, so it is kept short enough to notice.
-	// This one runs toward the refusal: at expiry the call is denied, the model
-	// is handed a refusal it can act on, and nothing has happened to the disk.
-	// So it can afford to be the longer of the two — ten seconds is long enough
-	// to read a command and a rule — and its cost when it fires is one call the
-	// model has to ask for again.
+	// DefaultConsentTimeout is ten seconds of reminder, and it is a different
+	// number from the one above because it is a different KIND of clock. The
+	// task countdown runs toward the permissive answer, so it is kept short
+	// enough to notice. This one used to run toward the refusal (F41) and
+	// does not: at expiry the question pauses and keeps waiting. Ten seconds
+	// is long enough to read a command and a rule; after that the card stays
+	// up until somebody answers.
 	DefaultConsentTimeout = 10
 
 	// DefaultSearchProvider pins nothing. Auto is the only default that stays
@@ -1817,9 +1815,9 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyConsentTimeout, Category: CategorySafety, Kind: SettingCount,
 			Label: "approval countdown", Unit: "s",
-			Hint: "how many seconds an approval question waits for you before it answers itself. " +
-				"It answers no — the call is refused and the model is told, never approved — " +
-				"and the clock stops the moment you press any key. 0 waits for you forever.",
+			Hint: "how many seconds an approval question counts down before it pauses and keeps waiting. " +
+				"It never answers no for you — the call stays blocked until you answer — " +
+				"and the clock stops the moment you press any key. 0 waits from the start.",
 			read:  func() string { return strconv.Itoa(ConsentTimeoutAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
 		},
@@ -3728,7 +3726,8 @@ func TaskModelAt(profileDir string) string {
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock
-// that is off: the question waits for an answer and never answers itself.
+// that is off: the question waits from the start. A positive number is how
+// long the reminder runs before the card pauses; it never answers no.
 //
 // It tests ok before it tests the number for the reason [TaskAutoApproveAt]
 // does: a persisted 0 is a person who turned the clock off, not an absence.

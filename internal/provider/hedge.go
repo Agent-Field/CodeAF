@@ -243,6 +243,19 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 			}
 		case result := <-r.results:
 			seen[result.index] = result
+			if result.err == nil {
+				// FINISHING IS NOT ALWAYS COMMITTING. A rescued or hedged
+				// stream can close cleanly and still be mojibake (F20): the
+				// bytes arrived, finish_reason was set, and the garbage was
+				// persisted as the assistant turn. Sanity is applied here,
+				// before the race names a winner, so a corrupt arm is a
+				// failed arm — walk, or say so — and never the transcript.
+				if err := r.refuseCorrupt(result); err != nil {
+					result.err = err
+					result.response = nil
+					seen[result.index] = result
+				}
+			}
 			if result.err != nil {
 				// THE VOICE MOVES OFF A DEAD ARM. An arm that has failed will
 				// never speak again, and leaving it as the speaker holds every
@@ -254,10 +267,7 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				// machine behind this model is a cheaper answer than relaxing
 				// the request or changing the model would be.
 				r.walk(result.index, result.err)
-			}
-			if result.err == nil {
-				// FINISHING IS COMMITTING. An arm that reached the end of its
-				// stream has the whole answer, whatever its token count said.
+			} else {
 				r.commit(result.index)
 			}
 			if won := r.won(); won >= 0 {
@@ -907,6 +917,20 @@ func (r *hedgeRace) passVoice(seen map[int]armResult) {
 		r.flip(arm.index)
 		return
 	}
+}
+
+// refuseCorrupt is the last gate before a finished arm becomes the turn.
+//
+// Ordinary one-arm calls are left alone: their finish is the answer they
+// always were. A rescue (any arm after the primary) or a hedged race
+// (more than one request on the wire) is the F20 shape — the stream that
+// "won" after another lane died — and those are read before they are
+// kept. Failure here is a failed arm, not a winner.
+func (r *hedgeRace) refuseCorrupt(result armResult) error {
+	if result.index == 0 && r.count() < 2 {
+		return nil
+	}
+	return rescuedStreamError(result.response)
 }
 
 // commit hands the answer to one arm and cancels the others. It is idempotent:

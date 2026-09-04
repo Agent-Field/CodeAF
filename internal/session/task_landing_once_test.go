@@ -97,6 +97,51 @@ func TestTheOneRoadHomeStillRefusesToCallAConflictDone(t *testing.T) {
 	}
 }
 
+// A REAL CONFLICT'S NOTICE NAMES THE KEPT BRANCH AND DOES NOT CLAIM SUCCESS.
+// comeHome can strand a commit (F31/F32) and the model then tells the person
+// the work "arrived as a merge result". The merge mark is a hard precondition
+// of the sentence the model reads: if the branch did not fasten, that sentence
+// names the branch and never says the work finished or merged.
+func TestAConflictedMergeNoticeNamesTheBranchAndDoesNotClaimSuccess(t *testing.T) {
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "eeee5555eeee5555", 1, "edit the shared file")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	node := loneTestNode(t, "edit the shared file")
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "the person's edit")
+	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
+
+	agent := &Agent{}
+	state := agent.landFinished(node, tree, []string{"shared.txt"},
+		"the shared line now carries the flag", "checked against the acceptance", "", io.Discard)
+	if state != TaskUnverified {
+		t.Fatalf("a conflicted landing is %q, want it to need a look", state)
+	}
+	// landFinished writes the leavings; complete is what stamps the state the
+	// notice reads. The production path does both before the model sees this.
+	node.graph.mu.Lock()
+	node.state = state
+	node.graph.mu.Unlock()
+
+	note := taskNote(node.notice(), "", TaskSettleAsk, landingAddress{person: true})
+	if !strings.Contains(note, tree.branch) {
+		t.Fatalf("the notice does not name the kept branch %s:\n%s", tree.branch, note)
+	}
+	for _, success := range []string{
+		"task 1 finished",
+		"merged into yours",
+		"arrived as a merge",
+		needsLookLead,
+	} {
+		if strings.Contains(note, success) {
+			t.Fatalf("the notice claims success (%q):\n%s", success, note)
+		}
+	}
+}
+
 // ── THE REFUSAL SETTLEMENT ──
 
 // A REFUSAL NOBODY ANSWERED GIVES THE ADJUDICATION BACK; AN ANSWERED ONE DOES
@@ -176,4 +221,33 @@ func adjudicatingTestNode(t *testing.T) *TaskNode {
 		t.Fatal("a fresh node would not give up its one adjudication")
 	}
 	return node
+}
+
+// THE F31 CASE THE CONFLICT TEST CANNOT REACH: a merge that exits zero while the
+// branch never fastens (a stale ref, a fetch that did not move the tip). The notice
+// reads branchFastened, so the unit of truth is that check itself: a merged branch is
+// fastened, an un-merged branch is not, and a missing root or branch is never home.
+func TestBranchFastenedIsTrueOnlyWhenTheBranchIsOnHEAD(t *testing.T) {
+	repo := newTestRepo(t)
+
+	// A branch cut and committed but NOT merged is not fastened.
+	mustGit(t, repo, "checkout", "-b", "task/unmerged")
+	writeFile(t, filepath.Join(repo, "b.txt"), "two\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "node work")
+	mustGit(t, repo, "checkout", "work")
+	if branchFastened(repo, "task/unmerged") {
+		t.Fatalf("an un-merged branch reported fastened")
+	}
+
+	// Merged into HEAD, it is fastened.
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "--no-edit", "task/unmerged")
+	if !branchFastened(repo, "task/unmerged") {
+		t.Fatalf("a merged branch reported unfastened")
+	}
+
+	// No root, or no branch, is never a landing.
+	if branchFastened("", "task/unmerged") || branchFastened(repo, "") {
+		t.Fatalf("an empty root or branch reported fastened")
+	}
 }

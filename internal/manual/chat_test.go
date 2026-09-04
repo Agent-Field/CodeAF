@@ -1225,6 +1225,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"aforge started work I did not ask for", "tasks"},
 		{"how do I stop it starting tasks by itself", "tasks"},
 		{"what happened to the card asking whether to run it", "tasks"},
+		// The spawn floor: a one-command ask that used to become a task and
+		// drop the deliverable. Asked in the words the person typed.
+		{"why did commit become a task", "tasks"},
+		{"undo started a task", "tasks"},
+		{"fix this one line became a task", "tasks"},
 
 		// And the shape that reads strangest of all, because the reply had
 		// already started: a reply can stop halfway and hand itself over, when a
