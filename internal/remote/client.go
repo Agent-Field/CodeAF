@@ -158,6 +158,11 @@ type Client struct {
 	// no tasks or a connection that has ended.
 	tasks *stream
 
+	// designs is version 11's harness lane, held on exactly the terms tasks is:
+	// one at a time, replaced rather than added to, and nil for a surface that
+	// draws no cards or a connection that has ended (clientlanes.go).
+	designs *stream
+
 	// following carries the turns this surface did not start, so the screen can
 	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
 	// never block, and a surface that is not draining this is one that does not
@@ -714,6 +719,12 @@ func (c *Client) read() {
 			if err := json.Unmarshal(frame.Payload, &note); err == nil {
 				c.drives(note)
 			}
+		case string(laneDesign):
+			// One event off the harness lane: a design card, a subharness intake
+			// card, or a note about one. Queued for the surface's loop for the
+			// reason a task frame is — the surface DRAWS them — and a lane nobody
+			// is holding drops its frames (clientlanes.go).
+			c.laneFrame(laneName(frame.Kind), frame.Payload)
 		case "task":
 			// One task update off the far conversation's standing lane — a node
 			// admitted, running, or come home. It is the one push that is NOT
@@ -836,6 +847,7 @@ func (c *Client) bury(cause error) {
 	// to the connection and is already being drawn. So it simply closes, and the
 	// surface reads that as the lane it no longer has (tasklane.go).
 	c.buryTasks()
+	c.buryLanes()
 }
 
 // call is one round trip: a frame out, a result back, or the deadline.

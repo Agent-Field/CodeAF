@@ -140,6 +140,10 @@ type Engine struct {
 	// started a new one" travels here, the same words the local door puts on
 	// the surface's entry notice.
 	Note string
+	// Launch is the shape this conversation was built with, echoed on every
+	// welcome so a surface can tell the conversation it asked for from the one
+	// it joined ([LaunchShape]). Nil is the engine's own defaults.
+	Launch *LaunchShape
 
 	// ApprovalMode is this machine's own answer to "does a tool run without
 	// asking", read once at boot off the profile the boot closure resolved
@@ -374,6 +378,13 @@ type Session struct {
 	// (tasklane.go states the whole of it).
 	tasklanes map[*server]*taskFeed
 
+	// lanes is the same arrangement for the harness subscription version 11
+	// added, keyed by lane and then by the surface holding it
+	// (standinglane.go). It is a map by lane rather than one field because
+	// every road that ends a subscription ends all of them: a surface leaving,
+	// a session swap, a conversation closing.
+	lanes map[laneName]map[*server]*laneFeed
+
 	// driver is the one surface that may put words into this conversation, and
 	// arrivals is what "newest" means when the keyboard has to find one. Both
 	// are driver.go's, and that file is the whole of the rule.
@@ -409,6 +420,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		held:       newHeldSet(),
 		surfaces:   map[*server]struct{}{},
 		tasklanes:  map[*server]*taskFeed{},
+		lanes:      map[laneName]map[*server]*laneFeed{},
 		empty:      time.Now(),
 	}
 }
@@ -438,19 +450,65 @@ func (sess *Session) Ended() bool {
 }
 
 // IdleSince is when this conversation went quiet, and the zero time when it has
-// not: a surface is attached, a turn is still running, or a question is waiting
-// for somebody to come back and answer it.
+// not. Four things make it busy: a surface attached, a turn still streaming, a
+// question waiting to be answered, and WORK THE CONVERSATION HANDED OFF.
 //
-// A TURN WITH NOBODY WATCHING IS NOT IDLE, which is the entire point of the
-// persistent engine — the long refactor asked for from a café keeps the session
-// alive while it runs, and a held card keeps it alive until it is answered.
+// The fourth was missing and it had a clock on it. A task, an adaptive run and a
+// background job outlive the turn that started them; the turn ends, its ring is
+// dropped, and the session read as idle while the workers ran on — thirty minutes
+// later the sweep closed it and took the work. So the agent is asked, and
+// [session.Agent.WorkingNow] is the authoritative reading: tasks, runs and jobs
+// together.
+//
+// The agent is asked off this lock, because that walk takes locks of its own and
+// holding sess.mu across it would put the sweep in front of every event a turn
+// records. The answer can age while it is read, so the state is re-checked
+// afterwards and a conversation that changed under the reading is reported busy
+// for this pass: one sweep too many costs a minute of memory, one too few costs
+// somebody's work. [Session.RetireIfIdle] is where that re-check becomes a
+// decision.
 func (sess *Session) IdleSince() time.Time {
 	sess.mu.Lock()
+	agent, generation := sess.agent, sess.generation
+	idle := sess.idleSinceLocked()
+	sess.mu.Unlock()
+	if idle.IsZero() || agent == nil {
+		return idle
+	}
+	if workingNow(agent) {
+		return time.Time{}
+	}
+	// The re-check. A surface may have arrived, a turn opened, a card raised or
+	// the whole conversation swapped while the walk above ran; a swap makes the
+	// reading about an agent this session no longer has, so it is discarded.
+	sess.mu.Lock()
 	defer sess.mu.Unlock()
+	if sess.agent != agent || sess.generation != generation {
+		return time.Time{}
+	}
+	return sess.idleSinceLocked()
+}
+
+// idleSinceLocked is the half of the reading this package can answer itself.
+func (sess *Session) idleSinceLocked() time.Time {
 	if len(sess.surfaces) > 0 || len(sess.rings) > 0 || len(sess.held.waiting()) > 0 {
 		return time.Time{}
 	}
 	return sess.empty
+}
+
+// workingNow asks a conversation whether anything it started is still going.
+//
+// It is asserted rather than required of [WrappedAgent] on tasklane.go's terms:
+// a scripted agent with no graph has no work, and an engine that cannot answer
+// is not one to be kept alive on suspicion. Any live root counts — a queued node
+// is work that has not started YET, not work that is over.
+func workingNow(agent WrappedAgent) bool {
+	door, ok := agent.(interface{ WorkingNow() []session.WorkNode })
+	if !ok {
+		return false
+	}
+	return len(door.WorkingNow()) > 0
 }
 
 // Close ends the conversation: the turn in flight stops where it is and keeps
@@ -466,9 +524,54 @@ func (sess *Session) Close() error {
 	agent, already := sess.agent, sess.closed
 	sess.closed = true
 	sess.mu.Unlock()
+	return sess.shutDown(agent, already)
+}
+
+// RetireIfIdle ends this conversation if it has been idle for longer than the
+// policy allows, and answers whether it is now over.
+//
+// IT EXISTS FOR THE GAP BETWEEN ASKING AND ACTING. A caller that read
+// [Session.IdleSince] and then called Close would be deciding on a photograph:
+// a surface can attach, a turn can open and a card can be raised in between, and
+// closing then would take down a conversation somebody had just come back to.
+// Here the last look and the decision to end it happen under ONE acquisition of
+// the session lock, so anything that goes through that lock either arrives
+// before the look — and cancels the retirement — or finds the conversation
+// already ended and is handed a fresh one (internal/enginehost's open).
+//
+// WHAT IS STILL A PHOTOGRAPH is the work reading inside IdleSince, which cannot
+// be taken under this lock (it walks the graph). The guarantee is therefore:
+// nothing that reaches this session's own state can be lost, and a background
+// worker that starts something new in the microseconds after the walk is
+// interrupted with its journal flushed, exactly as a person's own /quit would.
+// The window is that walk, not the whole idle span.
+func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
+	idle := sess.IdleSince()
+	if idle.IsZero() || time.Since(idle) <= olderThan {
+		return false
+	}
+	sess.mu.Lock()
+	if again := sess.idleSinceLocked(); again.IsZero() || time.Since(again) <= olderThan {
+		// Somebody came back, a turn opened, or a card was raised while the
+		// question was being asked. The conversation stays.
+		sess.mu.Unlock()
+		return false
+	}
+	agent, already := sess.agent, sess.closed
+	sess.closed = true
+	sess.mu.Unlock()
+	_ = sess.shutDown(agent, already)
+	return true
+}
+
+// shutDown is what ending a conversation does once the caller has won the
+// closed flag: every lane left, the turn interrupted, the journal flushed.
+func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
-	// a conversation that is being flushed and shut (tasklane.go).
+	// a conversation that is being flushed and shut (tasklane.go), and version
+	// 11's subscription goes the same way (standinglane.go).
 	sess.closeTaskLanes()
+	sess.closeLanes()
 	if agent == nil || already {
 		return nil
 	}
@@ -588,6 +691,7 @@ func (sess *Session) detach(s *server) {
 	// else because leaving it is what ends the goroutine pumping frames at a
 	// pipe that is closing (tasklane.go).
 	sess.dropTaskLane(s)
+	sess.dropLanes(s)
 	sess.mu.Lock()
 	delete(sess.surfaces, s)
 	// THE KEYBOARD IS NEVER LEFT ON A WINDOW THAT HAS GONE. It goes to the
@@ -634,6 +738,7 @@ func (sess *Session) welcomeLocked() Welcome {
 		Live:                       sess.liveLocked(),
 		Held:                       sess.held.waiting(),
 		Persistent:                 sess.persistent,
+		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 	}
 }
@@ -923,6 +1028,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	// (tasklane.go). It happens after the close so no lane can be handed rows
 	// from a conversation on its way out.
 	sess.retakeTaskLanes()
+	sess.retakeLanes()
 	return json.Marshal(welcome)
 }
 
@@ -1284,6 +1390,26 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// update from here on arriving as a "task" frame, including the roster
 		// replayed the moment the subscription opens (tasklane.go).
 		sess.watchTasks(s)
+		return nil, nil
+	case MethodDesignWatch:
+		// THE HARNESS LANE, SUBSCRIBED. Like the rail's own, it answers nothing:
+		// what it buys is every design card, every note around one, and every
+		// subharness intake card arriving as a "design" frame from here on
+		// (standinglane.go).
+		sess.watchLane(s, laneDesign)
+		return nil, nil
+	case MethodSubharnessResolve:
+		args, err := arg[SubharnessResolveArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			ResolveSubharness(uint64, bool, json.RawMessage)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no saved programs to offer")
+		}
+		door.ResolveSubharness(args.ID, args.Run, args.Input)
 		return nil, nil
 	case MethodTaskResolve:
 		args, err := arg[TaskResolveArgs](call)

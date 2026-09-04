@@ -14,13 +14,13 @@ package remote
 // and hanging. With a persistent engine the room is no longer empty, it is
 // merely unattended, and the difference is this file.
 //
-// WHAT IS HELD IS EVERY QUESTION THIS WIRE CAN ANSWER, AND NOTHING ELSE. The
-// four kinds below are exactly the four resolve-doors [WrappedAgent] carries,
-// because a question nobody can answer over this connection is not a question
-// worth remembering — it is a card that would be drawn, pressed, and resolve
-// nothing. The subharness intake card is the one that is deliberately absent:
-// its answer goes back through ResolveSubharness, which is not on this wire at
-// all, so holding one would be offering a person a key that does nothing.
+// WHAT IS HELD IS EVERY QUESTION THAT ARRIVES ON A TURN'S STREAM AND CAN BE
+// ANSWERED OVER THIS WIRE. The four kinds below are four of the resolve-doors
+// [WrappedAgent] carries. The harness lane's two cards — a design, a subharness
+// intake — are deliberately absent: they never travel a stream, and the session
+// replays whichever of them is still standing onto every new subscription
+// (standinglane.go), so remembering them here would hand one question over
+// twice.
 
 import (
 	"time"
@@ -202,14 +202,13 @@ func heldKeyOf(event session.Event) (heldKey, bool) {
 		// they share a kind here (internal/session's harness.go and its
 		// EventHarnessDesignDone both name that method).
 		//
-		// ONLY THE OFFER ACTUALLY ARRIVES HERE TODAY. A design card is sent
-		// through emitHarness, which reaches the watchers of
-		// [session.Agent.HarnessDesigns] and no turn's stream — a lane this wire
-		// has no door for, which is why building a harness is switched off over
-		// a connection at all (cmd/aforge's engine.go says so in prose). The
-		// kind is named beside the offer because the two are ONE QUESTION with
-		// one answer, and a classifier that knew about half of a door would be
-		// the thing that quietly broke on the day the other half arrives.
+		// ONLY THE OFFER ARRIVES HERE. A design card is sent through
+		// emitHarness, which reaches the harness lane's watchers and no turn's
+		// stream, so it never passes this classifier — and it does not need to:
+		// internal/session replays a card that is still standing onto every new
+		// subscription, so the window that comes back is handed it there
+		// (standinglane.go). Holding it here as well would draw one question
+		// twice.
 		if event.ID == 0 {
 			return heldKey{}, false
 		}

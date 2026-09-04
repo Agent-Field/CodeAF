@@ -55,10 +55,14 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // two lifetimes are deliberately NOT married: standing work already keeps a
 // machine warm on its own terms, and a host that stayed up forever to guard it
 // would be a second answer to a question that already has one.
+// sessionIdle is a var rather than a const so a test can ask what the policy
+// DECIDES without waiting half an hour to find out. Nothing in the product
+// writes it.
+var sessionIdle = 30 * time.Minute
+
 const (
-	sessionIdle = 30 * time.Minute
-	hostIdle    = 2 * time.Minute
-	sweepEvery  = 30 * time.Second
+	hostIdle   = 2 * time.Minute
+	sweepEvery = 30 * time.Second
 )
 
 // The two numbers a stand-down is measured in.
@@ -384,13 +388,37 @@ func (h *Host) sweep() {
 // last one. It is a function rather than the body of the loop above so that a
 // test can ask what the policy decides without waiting out a clock.
 func (h *Host) sweepOnce() bool {
-	var retiring []*remote.Session
+	// THE DECISION IS MADE OFF THIS HOST'S LOCK. Retiring a conversation flushes
+	// its journal and may walk its graph, and doing that with the sessions map
+	// held would stall every connection arriving meanwhile.
+	type held struct {
+		key  string
+		sess *remote.Session
+	}
 	h.mu.Lock()
+	holding := make([]held, 0, len(h.sessions))
 	for key, sess := range h.sessions {
-		idle := sess.IdleSince()
-		if sess.Ended() || (!idle.IsZero() && time.Since(idle) > sessionIdle) {
-			delete(h.sessions, key)
-			retiring = append(retiring, sess)
+		holding = append(holding, held{key: key, sess: sess})
+	}
+	h.mu.Unlock()
+
+	var gone []held
+	for _, one := range holding {
+		// RetireIfIdle takes its last look and ends the conversation under one
+		// acquisition of the session's own lock, so a surface that arrived while
+		// this pass was thinking cancels the retirement rather than losing the
+		// conversation it just joined.
+		if one.sess.Ended() || one.sess.RetireIfIdle(sessionIdle) {
+			gone = append(gone, one)
+		}
+	}
+
+	h.mu.Lock()
+	for _, one := range gone {
+		// Only if it is still the SAME conversation under that key: a hello may
+		// have opened a fresh one there while this pass was retiring the old.
+		if h.sessions[one.key] == one.sess {
+			delete(h.sessions, one.key)
 		}
 	}
 	if h.live == 0 && len(h.sessions) == 0 && h.quiet.IsZero() {
@@ -398,14 +426,6 @@ func (h *Host) sweepOnce() bool {
 	}
 	leaving := h.live == 0 && len(h.sessions) == 0 &&
 		!h.quiet.IsZero() && time.Since(h.quiet) > hostIdle
-	// AND A HOST WHOSE BINARY WAS REPLACED LEAVES AS SOON AS IT IS HOLDING
-	// NOTHING, without waiting out either clock. The clocks exist to keep a
-	// conversation warm for somebody who will come back to it; there is nothing
-	// warm about a build nobody is running any more, and staying is how a stale
-	// host comes to be spliced onto a surface an hour later (binary.go). The
-	// conversations it is holding are NOT taken down for this — idleLocked is
-	// the same "nothing in flight" the version exchange answers with, and a
-	// journal is flushed on the way out either way.
 	replaced := !leaving && h.binary.replaced() && h.idleLocked()
 	if replaced {
 		// The door closes under the same lock that decided, so a surface
@@ -417,11 +437,6 @@ func (h *Host) sweepOnce() bool {
 
 	if replaced {
 		h.note("the file this host was started from has been replaced; retiring so the next connection starts the current one")
-	}
-	for _, sess := range retiring {
-		// Closing flushes the journal, which is the only thing that has to
-		// happen before a conversation is let go of.
-		_ = sess.Close()
 	}
 	return leaving
 }

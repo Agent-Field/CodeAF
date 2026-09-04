@@ -215,27 +215,51 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		})
 	}
 
-	// THE FOURTH DOOR, AND THE ONLY ONE WITH NO MACHINE IN IT: this workspace's
-	// own session host, on a unix socket, when a conversation here is already
-	// running in one. It is never STARTED from here — [v3HostRoad] is the whole
-	// of the rule and chatv3_local.go states why a plain local launch stays in
-	// its own process.
+	// The fourth door, and the only one with no machine in it: this workspace's
+	// own session host, on a unix socket. It is the ordinary road for an
+	// interactive launch — the work outlives this terminal and the next window
+	// here joins the same conversation — and [v3HostRoad] names the launches
+	// that keep the in-process door instead.
 	//
 	// It forks HERE, beside the other two, and for their reason: the launch
 	// below assembles this machine's models, keys, gate and session files, and
 	// the process on the other end of that socket has already assembled its own.
+	//
+	// The per-launch postures travel with it. --yolo and its neighbours are how
+	// the session is BUILT, so they ride the hello and the engine builds with
+	// them; a conversation that is ALREADY open keeps the shape it was opened
+	// with, and this launch is told so and comes back here rather than running
+	// under a posture nobody asked for.
+	//
+	// entryNotice is that sentence, or the reason no host could be used. Either
+	// way it is shown on the surface's own notice line below rather than printed
+	// into a terminal the surface is about to take over.
+	entryNotice := ""
 	if workspace, take := v3HostRoad(v3HostChoice{
 		noHost: *noHost,
-		shaped: *yolo || *noCompact || *oneModel || chatBudget(*maxHours, *maxCost).Set(),
+		once:   strings.TrimSpace(*once) != "",
+		debug:  *debug,
+		setup:  !v3MachineIsSetUp(),
 	}); take {
-		return openChatV3Local(localLaunch{
+		err := openChatV3Local(localLaunch{
 			workspace: workspace,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
 			level:     level,
 			once:      strings.TrimSpace(*once),
 			pick:      pickSession,
+			shape:     v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost),
 		})
+		var taken *hostShapeTaken
+		var unreachable *hostUnreachable
+		switch {
+		case errors.As(err, &taken):
+			entryNotice = taken.sentence
+		case errors.As(err, &unreachable):
+			entryNotice = "this conversation opened in this terminal instead, and ends with it: " + unreachable.reason
+		default:
+			return err
+		}
 	}
 
 	// Everything both v3 doors assemble the same way: the settings, the model
@@ -311,16 +335,17 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
-	// AND THAT SURFACE HOLDS THE HARNESS LANE, which is a second fact and not the
-	// same one: the lane is a standing subscription opened on the agent itself
-	// (internal/tui3's watchDesigns), so it exists only where the surface and the
-	// session are in one process. It is what lets chat offer a saved program with
-	// an intake card (internal/session's canProposeSubharness); a conversation
-	// held over a connection sets AskConsent and NOT this, because the card has no
-	// road to the far end (engine.go says the same about the design card).
-	cfg.HarnessCards = true
+	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
+	// the same one: a design card, a subharness intake card and an adaptive
+	// run's fuel gate each arrive on a subscription opened on the agent itself
+	// (internal/tui3's watchDesigns and watchRuns), and here the surface and the
+	// session are one process, so all three reach a person by construction. The
+	// three are set together, in the one place that decides them for every door
+	// (chatv3_lanes.go), so this launch and a hosted one differ in what the road
+	// carries rather than in what two files remembered to say.
+	cfg, open := v3Shape(cfg, v3LanesHere())
 
-	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	// LAUNCH-ON-LOCK. The conversation this terminal asked for is open in
 	// another window, and this door has a screen — so it offers that
 	// conversation rather than refusing or, as it once did, quietly handing over
@@ -577,7 +602,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        joinV3Notices(notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
+		Notice:        joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,

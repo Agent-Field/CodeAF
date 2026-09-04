@@ -459,12 +459,12 @@ The task roster lists this far conversation's work. Its rows come from the far
     That is a fact about `/export` alone and no longer a fact about the connection — files do
     cross, both ways (*Attaching files*).
 
-12. **Building a new sub-harness is switched off**, and not for the reason it used to be. A
-    question raised while nobody is attached now *waits* for the next window — but a design's
-    card never reaches this connection at all, because it is announced on a subscription this
-    protocol has no door for rather than on a turn's stream. So there is nothing to hold. The
-    designer is not offered over `--host` and aforge says it cannot build one from here.
-    Running a harness that already exists is unaffected.
+12. **Building a new sub-harness works over a connection.** It did not use to: a design's
+    card is announced on a subscription rather than on a turn's stream, and this protocol had
+    no door for one, so the designer was switched off at the engine rather than left to raise
+    a page nobody would ever see. The wire carries that subscription now, and your answer —
+    keep it, or drop it — goes back the same way. Running a harness that already exists was
+    never affected.
 
 13. **Three of the seven places still read this machine.** Spend adds up the ledger every
     model call on the machine this window runs on writes into, search reads the index of what
@@ -496,11 +496,10 @@ The task roster lists this far conversation's work. Its rows come from the far
 
 ## Reminders and watches over --host — they work, and they belong to that machine
 
-**Standing items are the one ambient capability a connection does not take away.** A
-sub-harness design is switched off at the engine because its card would arrive in an empty
-room, and an adaptive run cannot be started from a conversation at all; this card is
-neither — it crosses the wire as an ordinary event and your answer crosses back as its own
-frame.
+**Standing items cross this wire as ordinary events**, and your answer crosses back as its
+own frame — which is why they were the one ambient capability a connection never took away,
+back when a design card and an adaptive run's gate had no road here at all. The design card
+has one now (*Building a new sub-harness*, above); the run's gate still does not.
 
 So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host`. What to know is **whose machine they are on**:
@@ -598,22 +597,22 @@ harnesses are unavailable here
 
 It does not list this machine's harnesses and offer to run them over there.
 
-**Building a new sub-harness is switched off over a remote connection.** The tools that
-design one are not on the far session's belt at all, so asking for one gets you a plain
-answer that it cannot be done from here — nothing starts and nothing is spent. The reason is
-that the card asking whether to keep the finished page is announced on a subscription this
-protocol has no door for, so it never crosses at all. A question that *does* cross and finds
-nobody attached is held for the next window; this one is not one of those. Build harnesses in a
-session running on that machine directly.
+**Building a new sub-harness works over a remote connection.** The tools that design one
+are on the far session's belt, the card asking whether to keep the finished page reaches
+this window on a subscription the wire now carries, and your answer goes back to the far
+machine. It runs there, on that machine's models and under that machine's rules, and the
+page it writes is saved there — which is where you would want it, since that is where the
+work is. The page is not copied to this laptop.
 
 **Adaptive runs are not something you can start here — and not because of the wire.** No
 conversation opens an adaptive run any more, on this machine or the far one: there is no
 command, no setting, no tool and no sentence that does it (*adaptive runs*, under *How do I
 start an adaptive run*). So a message beginning `orchestrate …` is an ordinary turn over
 `--host` for exactly the reason it is an ordinary turn locally. The remote session is also
-built with no adaptive runner at all, which is belt and braces rather than the reason: a
-run's fuel gate would arrive on the standing lane a connection does not carry, and a run
-that stopped at its cap would wait four hours for an answer nobody could give it.
+built with no adaptive runner, and that has not changed: a run's notes, its gauge and its
+spending gate arrive on a standing subscription this wire does not carry, and one that —
+unlike the harness lane's — replays nothing, so a gate raised while you were away would be
+lost rather than waiting for you.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering

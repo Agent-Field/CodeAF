@@ -15,18 +15,28 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 )
 
-// TestMain switches the model-call log OFF for this package.
+// TestMain switches the model-call log OFF for this package and gives the
+// binary a machine of its own to run on.
 //
 // The log is always on in the product, so a test binary that says nothing about
 // it appends a row for every call these tests make — including the ones that
 // deliberately dial a host that does not exist — into the developer's own
 // ~/.aforge/logs/calls.jsonl, where it is noise in the one file somebody is
 // reading to debug a real run. The tests below read fixtures instead.
+//
+// AND THE SAME ARGUMENT IS TRUE OF THE CREDENTIALS AND THE STATE ROOT, which is
+// what [isolateTestEnvironment] answers: several doors here are driven end to
+// end in the belief that they stop at a missing key, and on a developer's laptop
+// they stopped at a live provider instead (testenv_test.go carries the whole
+// case).
 func TestMain(m *testing.M) {
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
-	os.Exit(m.Run())
+	restore := isolateTestEnvironment()
+	code := m.Run()
+	restore()
+	os.Exit(code)
 }
 
 // fixtureRows is the log a person could actually have, as it sits on disk: a
