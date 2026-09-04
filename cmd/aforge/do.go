@@ -167,6 +167,22 @@ type headlessOutcome struct {
 	// log (#514). `stop` says "unchecked"; this says why, and the two travel
 	// together.
 	Unjudged string `json:"unjudged,omitempty"`
+	// JudgedBy is the name of the thing that read this delivery, on the runs
+	// where something did. Empty on every run nothing judged, and the key is
+	// dropped there — so its presence is the whole answer to "was this
+	// checked?", the way `unjudged`'s presence is the whole answer to "why was
+	// it not?". The two are the same question from opposite sides and never
+	// appear on one object.
+	//
+	// It exists because THE ERRAND ROAD'S OWN POSTURE WAS UNDISCOVERABLE FROM
+	// OUTSIDE IT. `task.audit` is the row that governs a task the conversation
+	// hands out (internal/session's task_audit.go), it is the only audit row
+	// this program has, and it does not reach here — an errand's delivery is
+	// judged by internal/revision's gate instead. A reviewer holding a settled
+	// `--json` object had no field naming either, so the honest reading of a
+	// clean envelope was "nothing is listed, so perhaps nothing checked it"
+	// (#618).
+	JudgedBy string `json:"judged_by,omitempty"`
 	// Error is the sentence a run that never reached an outcome left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
@@ -2215,6 +2231,10 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 				w.sayStanding(*final)
 			}
 		}
+		// Every ending above is still an answer to the same question about the
+		// same settled root, so ask it once after the roads join rather than let
+		// one ending silently miss the name.
+		outcome.JudgedBy = w.judgedBy(*final)
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
 		// One list, once. Grounding has had its look at the narration as the
 		// worker wrote it, so the worker's own file list has done its job and
@@ -2324,6 +2344,32 @@ func (w *settlementWatch) unjudgedReason(node store.Node) string {
 		return ""
 	}
 	return firstLine(strings.TrimSpace(gate.Refused))
+}
+
+// judgedBy is the name of what read this delivery, off the gate's own row, and
+// empty where nothing read it.
+//
+// It asks the row for the same reason unjudgedReason above it does: the
+// judgement was made in another process's turn loop and the journal is the only
+// thing that crosses that seam. A ROW THAT IS NOT Unjudged IS A GATE THAT
+// ANSWERED — including one whose answer no reader could parse, which is
+// journaled as an unclosed gap and which the exit code already spends. A gate
+// that was never asked writes no row at all and is absent here, which is the
+// correct answer rather than a missing one.
+//
+// It reads the settled root, as both readers beside it do, and shares that
+// road's one limitation: a job the planner broke into several leaves journals
+// its gate against the leaf that delivered rather than against the root that
+// settles them, so this reports nothing there.
+//
+// An unreadable store answers empty, on the same terms: this decides how a run
+// is described, and a failed read is not evidence about the run.
+func (w *settlementWatch) judgedBy(node store.Node) string {
+	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
+	if err != nil || !ok || gate.Unjudged {
+		return ""
+	}
+	return revision.GateName
 }
 
 // unjudgedWords is the last line a person reads when the delivery went out and

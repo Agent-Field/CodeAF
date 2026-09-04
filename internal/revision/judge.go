@@ -1813,6 +1813,16 @@ func unjudged(node store.Node, why string, err error) Judgment {
 // because a sentence in two places is two sentences.
 const GateUnreached = "the gate could not be reached"
 
+// GateName is what the thing that judges a delivery is called, in the words a
+// person reads and a machine reads back.
+//
+// Spelled once here for the reason GateUnreached above it is: a name in two
+// places is two names, and the second one drifts. cmd/aforge's `--json`
+// envelope publishes it as `judged_by`, docs/HEADLESS.md's contract table
+// quotes it, and the chat manual answers "what checked my unattended run" with
+// it — three readers, one string.
+const GateName = "delivery gate"
+
 // The three answers to "and what was done about it", which is the question a
 // person reading an unchecked delivery asks second. One of them is always on the
 // note: the gate was asked again, or there was no wall left to ask inside, or
