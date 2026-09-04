@@ -49,3 +49,25 @@ func TestWritingTheChatModelLeavesTheOtherRowsAlone(t *testing.T) {
 		t.Fatalf("the approvals row reads %q (ok=%v) after a model was chosen", got, ok)
 	}
 }
+
+// A fresh profile has never chosen a talk model, so its first prompt is still
+// on the shipped default. Choosing one is what ends that — not finishing setup,
+// not pasting a key.
+func TestAFreshProfileIsAFirstPromptUntilAModelIsChosen(t *testing.T) {
+	dir := t.TempDir()
+	if !FirstPrompt(dir) {
+		t.Fatal("a profile nobody has touched is still on its first prompt")
+	}
+	if ChatModelAt(dir) != "" {
+		t.Fatal("a first prompt must not invent a saved talk model")
+	}
+	if DefaultModel == "" {
+		t.Fatal("the shipped default talk model is empty, so a first prompt has nowhere to open")
+	}
+	if err := WriteChatModel(dir, "vendor/chosen"); err != nil {
+		t.Fatal(err)
+	}
+	if FirstPrompt(dir) {
+		t.Fatal("a profile that chose a model is no longer a first prompt")
+	}
+}

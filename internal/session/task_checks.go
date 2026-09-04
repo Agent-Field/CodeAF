@@ -867,6 +867,29 @@ func dropStandingIn(line, ran string) (string, bool) {
 	return strings.TrimSpace(rest), true
 }
 
+// preparedAuditCommand is the command the gate will actually run: the first
+// stage of what the model typed, with trailing pipes and redirections taken
+// off. THE MODEL OFTEN ADDS THOSE ITSELF — `python3 -m pytest … 2>&1`,
+// `go test ./... > /tmp/out` — and the gate used to refuse the whole line
+// because '>' is composition, then the auditor retried the same shape on
+// the dear tier (F40). What the line RUNS is its first stage; that is
+// already the law for receipts ([firstStage]), and it is the law here so
+// the auditor never emits a command its own contract then rejects.
+//
+// A LINE THAT IS NOT A PIPELINE IS LEFT ALONE. `go test ./... && rm -rf .`
+// is still two commands, still refused, and a shorter reading of it would
+// be a wider door.
+func preparedAuditCommand(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return command
+	}
+	if stage, ok := firstStage(command); ok {
+		return strings.TrimSpace(stage)
+	}
+	return command
+}
+
 // firstStage keeps the command a line RUNS and drops what only reads its output:
 // the stages after the first pipe, and the redirections of stdout and stderr that
 // trail the end of it.

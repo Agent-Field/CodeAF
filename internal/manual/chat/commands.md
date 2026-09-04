@@ -1594,7 +1594,7 @@ without moving the cursor onto each row. The unit is part of the value:
 | ssh reuse | `300s` | seconds a connection stays reusable after its channel closes |
 | ssh heartbeat | `3s` | seconds of silence before ssh asks whether the far machine is there |
 | ssh missed heartbeats | `3` | unanswered heartbeats — the label says what is counted |
-| approval countdown | `10s` | seconds an approval question waits before it answers no |
+| approval countdown | `10s` | seconds an approval question counts down before it pauses and keeps waiting |
 | background after | `30s` | seconds a foreground command runs before it becomes a job |
 | task countdown | `15s` | seconds a proposed task waits for you before it starts |
 | compact at | `60%` | how much of the model's window is filled before compaction |
