@@ -48,6 +48,16 @@ type Account struct {
 	CommandsRun int
 	// Final is the last thing the worker said about the whole job, verbatim.
 	Final string
+	// Unread is why the finished tree could not be read, when something was
+	// asked of it and the answer could not be understood — a strategy that
+	// would not start a second time, a suite that failed to collect, a command
+	// killed at its ceiling before it named a check. Empty when nothing was
+	// attempted, and that emptiness is what tells [Account.rows] apart the two
+	// worlds an absent Checks list used to collapse. It is
+	// Verification.Unread's own sentence, carried rather than recomposed, so
+	// the account and the reading cannot come to say different things about the
+	// same failure.
+	Unread string
 
 	// Range is the two commits this account's change set was measured between,
 	// when it was measured from the repository rather than narrated by the
@@ -456,13 +466,29 @@ func (a *Account) rows(signoff bool) []string {
 		lines = append(lines, "What the work ran to check itself, and what each one found:")
 		lines = append(lines, checks...)
 	} else if len(a.Files) > 0 {
-		// This deliberately does not apply the emptiness law to a known fact.
-		// The work changed the tree and nothing checked it; omitting that measured
-		// absence would make the deliverable the same claim with evidence removed.
+		// AN ABSENT CHECKS LIST IS TWO DIFFERENT WORLDS AND THEY GET DIFFERENT
+		// SENTENCES. Nothing was asked of the finished tree — no suite, no
+		// strategy — and that is a measured absence: the work changed the tree,
+		// nothing checked it, and omitting that would make the deliverable the
+		// same claim with the evidence removed. This is the one deliberate
+		// exception to the emptiness law in this file.
+		//
+		// But something asked and could not be read is an UNKNOWN, and saying
+		// "no check was run" of it is the failure the emptiness law exists to
+		// prevent, inverted — a guess wearing the words of a measurement. Worse,
+		// the same outcome carries Verification.Unread, and a reader gets both:
+		// the revision pass renders that sentence while the gate renders these
+		// lines, so the record would say nothing checked it beside the thing
+		// that checked it could not be read. Unread's own sentence is said
+		// here instead, once.
 		if len(lines) > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, "What was run to check this work:", "  "+noCheckWords)
+		words := noCheckWords
+		if unread := strings.TrimSpace(a.Unread); unread != "" {
+			words = unread
+		}
+		lines = append(lines, "What was run to check this work:", "  "+words)
 	}
 	if final := strings.TrimSpace(a.Final); signoff && final != "" {
 		if len(lines) > 0 {
@@ -497,7 +523,13 @@ func (a *Account) Summary() string {
 			parts = append(parts, "its own checks did not pass: "+strings.Join(commands, ", "))
 		}
 	} else if len(a.Files) > 0 {
-		parts = append(parts, noCheckWords)
+		// [Account.rows]'s rule, in a clause: the measured absence is said as
+		// itself, and a reading that could not be read says so instead.
+		if unread := strings.TrimSpace(a.Unread); unread != "" {
+			parts = append(parts, unread)
+		} else {
+			parts = append(parts, noCheckWords)
+		}
 	}
 	return strings.Join(parts, "; ")
 }

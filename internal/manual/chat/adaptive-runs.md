@@ -805,11 +805,20 @@ aforge takes of the finished tree: a command the worker ran is a fact about what
 and its output was never read as proof that a check passed. The list is bounded, and where
 its beginning was left out it says how many earlier commands are in the run's own record.
 
-Where the work changed files and no check was run on the finished tree, the account says
-exactly `no check was run on the finished tree`, and the same words are the one clause the
-plan carries for that node. It does not leave the block out: a deliverable naming no check
-otherwise reads exactly like one whose checks had nothing to report, which is the same
-claim with the evidence taken out of it.
+Where the work changed files and nothing was ever asked of the finished tree, the account
+says exactly `no check was run on the finished tree`, and the same words are the one clause
+the plan carries for that node. It does not leave the block out: a deliverable naming no
+check otherwise reads exactly like one whose checks had nothing to report, which is the
+same claim with the evidence taken out of it.
+
+That covers a project that declares no way of checking itself, and a wall too short to
+afford a reading worth taking: nothing was going to be read, and the account says so.
+
+Where a reading WAS taken and the finished tree could not be read, you get that reason
+instead — the check that could not be started a second time, the suite that failed to
+collect, the command killed at its ceiling before it named anything. Those are not the same
+fact and aforge does not spell them the same way: nobody looked is not everything passed,
+and a reading that broke is not a tree that went unchecked.
 
 A red that aforge's own reading finds on the finished tree does not stop there either when
 the worker had already been told to land and so was never asked to settle it. The finding

@@ -99,6 +99,20 @@ func AccountFor(
 	}
 	account.Commands = append([]string(nil), outcome.Commands...)
 	account.CommandsRun = outcome.CommandsRun
+	// ONLY WHERE A READING WAS ACTUALLY ATTEMPTED ON THE TREE, which is what
+	// Taken says: a baseline was read, so this project has a way of checking
+	// itself and the wall could afford to use it.
+	//
+	// verify.Reading.Unread carries two different kinds of sentence and the
+	// account must not confuse them. Before a baseline exists it explains why
+	// nothing WILL be read — "this project declares no way of checking itself",
+	// a wall too short to afford a reading — and those are the measured absence
+	// [Account.rows] already has words for. After one exists, it explains why
+	// the finished tree could not be read (exec/photograph.go), and that is an
+	// unknown that must not be spelled as an absence.
+	if outcome.Verification.Taken {
+		account.Unread = strings.TrimSpace(outcome.Verification.Unread)
+	}
 	if len(checks) > 0 {
 		account.Checks = checks
 	}

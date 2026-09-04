@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -470,10 +471,26 @@ func hitPercent(cached, prompt int) int {
 	return cached * 100 / prompt
 }
 
+// snip folds a value onto one line and cuts it to a byte ceiling WITHOUT
+// SPLITTING A CHARACTER.
+//
+// The back-off is here rather than borrowed because every package in this tree
+// keeps its own — internal/plan's clipRunes, internal/search, internal/tui3's
+// reveal, internal/resident's revise, and five more in internal/session all
+// spell these two lines locally rather than depend on each other for them.
+//
+// It matters more than it did: this cut used to reach only the call tail in a
+// trace, and now reaches [Account.Commands], which is rendered under "What the
+// work ran itself:" and read by a person. A command clipped mid-rune put
+// invalid bytes in front of them.
 func snip(text string, limit int) string {
 	text = strings.ReplaceAll(text, "\n", "⏎")
 	if len(text) <= limit {
 		return text
 	}
-	return text[:limit] + "…"
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
 }
