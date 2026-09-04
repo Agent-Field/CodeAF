@@ -247,6 +247,26 @@ Your work still goes out; only the choice is left off. The settings row says it
 too, so `pinned:` never stands as a claim about a request that did not carry it:
 `pinned: coreweave (not taken on this base)`.
 
+## Providers switched off on your account — OpenRouter's ignored-providers list, and the one refused round trip it costs
+
+Your OpenRouter account can carry its own ignored-providers list: providers you
+switched off and OpenRouter will not use. aforge cannot read that list.
+Separately, aforge keeps its own running list of machines that are slow or have
+refused. The two lists can leave no machine to ask even though neither list
+emptied the set alone. OpenRouter then says `All providers have been ignored`
+before any machine is asked.
+
+That sentence is the only thing that tells aforge which machines your account
+will not reach. Every machine aforge has timed for this model that aforge was
+not itself refusing at that moment stops being counted as somewhere the request
+can land. On the next request, aforge drops the machine on its own list that is
+nearest returning, and the request lands. A switched-off provider therefore
+costs one refused round trip per model in a session, rather than one on every
+request.
+
+If a machine later answers, aforge counts it again immediately. Switching a
+provider back on needs nothing from you.
+
 ## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
 
 Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
