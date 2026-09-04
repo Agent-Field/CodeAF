@@ -115,11 +115,21 @@ const (
 	// else's repository.
 	tasksDirName = ".aforge-v3/tasks"
 
-	// taskReportLines and taskReportLineLimit bound the report. Two or three
-	// lines is what a person reads off a finished card and what a dependent's
-	// brief can afford to carry; the whole story is in the node's journal.
+	// taskReportLines and taskReportLineLimit bound the ordinary report. Two or
+	// three lines is what a person reads off a finished card and what a
+	// dependent's brief can afford to carry; the whole story is in the node's
+	// journal.
 	taskReportLines     = 3
 	taskReportLineLimit = 300
+
+	// taskReportFenceLines is how much further a report may run to finish a
+	// fenced block it opened. A REPORT CARRIES WHAT IT PROMISES, but only a short
+	// quoted tail belongs on the finished card rather than in the node's journal.
+	taskReportFenceLines = 8
+
+	// taskReportCut tells the reader that the node said more than the bounded
+	// report could carry. It stands alone so it cannot become part of a fence.
+	taskReportCut = "…"
 
 	// taskSlugLimit keeps a branch name readable in `git branch`.
 	taskSlugLimit = 32
@@ -5250,18 +5260,19 @@ func insideWorktree(dir, name string) (string, bool) {
 	return clean, true
 }
 
-// taskReport is the node's last word: the final assistant message, cut to three
-// lines. It is read off the child's transcript rather than accumulated from its
-// deltas because both paths — a streaming provider and a non-streaming one —
-// end with the same recorded message, and only one of them emits deltas.
+// taskReport is the node's short last word: the final assistant message, with a
+// fenced block allowed enough room to keep the words it promises. It is read
+// off the child's transcript rather than accumulated from its deltas because
+// both paths — a streaming provider and a non-streaming one — end with the same
+// recorded message, and only one of them emits deltas.
 func taskReport(child *Agent) string {
-	return firstLines(lastSaid(child), taskReportLines)
+	return composeTaskReport(lastSaid(child))
 }
 
 // lastSaid is an agent's final assistant message, whole. It is what taskReport
-// clips and what the auditor's verdict is parsed out of (task_audit.go) — a
-// verdict is four lines and a report is three, and cutting before the parse
-// would be the harness deciding a verdict was too long to read.
+// composes and what the auditor's verdict is parsed out of (task_audit.go) — a
+// verdict is four lines and an ordinary report is three, and cutting before the
+// parse would be the harness deciding a verdict was too long to read.
 func lastSaid(child *Agent) string {
 	entries := child.Transcript()
 	for index := len(entries) - 1; index >= 0; index-- {
@@ -5272,6 +5283,74 @@ func lastSaid(child *Agent) string {
 		return entry.Text
 	}
 	return ""
+}
+
+// composeTaskReport keeps the ordinary three-line report small while carrying
+// a fenced block that begins there. A REPORT NEVER LEAVES AN OPENING FENCE
+// HANGING: a block that overruns its small allowance is closed here, and every
+// report that leaves a line behind says so on a line of its own.
+func composeTaskReport(text string) string {
+	var kept []string
+	var fence string
+	openedAt := -1
+	dropped := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		room := taskReportLines
+		if fence != "" {
+			room += taskReportFenceLines
+		}
+		if len(kept) >= room {
+			dropped = true
+			break
+		}
+
+		marker, bare := taskReportFenceMarker(line)
+		switch {
+		case fence == "" && marker != "":
+			fence = marker
+			openedAt = len(kept)
+		case fence != "" && bare && marker[0] == fence[0] && len(marker) >= len(fence):
+			fence = ""
+			openedAt = -1
+		}
+		kept = append(kept, clip(line, taskReportLineLimit))
+	}
+
+	if fence != "" {
+		if len(kept) == openedAt+1 {
+			kept = kept[:openedAt]
+			dropped = true
+		} else {
+			kept = append(kept, clip(fence, taskReportLineLimit))
+			dropped = true
+		}
+	}
+	if dropped {
+		kept = append(kept, taskReportCut)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// taskReportFenceMarker reads only the delimiter at the start of a trimmed
+// line. The rest is an opening fence's information string; a closing fence is
+// bare, and its caller still has to match its character and length to the one
+// that opened the block.
+func taskReportFenceMarker(line string) (marker string, bare bool) {
+	if len(line) < 3 || (line[0] != '`' && line[0] != '~') {
+		return "", false
+	}
+	end := 1
+	for end < len(line) && line[end] == line[0] {
+		end++
+	}
+	if end < 3 {
+		return "", false
+	}
+	return line[:end], end == len(line)
 }
 
 // firstLines is the first n non-empty lines, each clipped.
