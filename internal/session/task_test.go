@@ -1903,7 +1903,10 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 			config.TaskAudit = false
 		})
 		graph := agent.graph()
-		collect(t, mustSubmit(t, agent, "read"))
+		// THE ASK READS THE WHOLE DOCUMENT, not one page: the spawn floor
+		// (spawnfloor.go) keeps a one-page read in the conversation, and a
+		// node exists here because the person asked for the sweep.
+		collect(t, mustSubmit(t, agent, "read every line of the long document"))
 		node := graph.node(1)
 		waitDoneNode(t, node)
 		if notice := node.notice(); notice.State != TaskDone {

@@ -1627,6 +1627,9 @@ const (
 	// the two send whoever reads the file to different places — one to a writer
 	// that produced nothing, this one to a turn that was only ever coordinating.
 	checkpointCeilingHeldWork = "dropped:work-already-out"
+	// checkpointCeilingTrivial is the spawn floor (spawnfloor.go): the ask
+	// itself is one command, so nothing moves, whatever the work has cost.
+	checkpointCeilingTrivial = "dropped:trivial-ask"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -2405,6 +2408,13 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	if ctx.Err() != nil {
 		return false
 	}
+	// A TRIVIAL ASK IS NEVER LOOKED AT FOR CONVERSION. The write seam, the
+	// marks and the ceiling all start a task through this gate; a commit
+	// that has already staged five files is still a commit, and looking at
+	// the work is how F26 converted it.
+	if trivialAsk(a.taskRequest()) {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.closed
@@ -3121,6 +3131,16 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			Reason: over.reason, TaskID: over.taskID, Carry: over.carry,
 		})
 	}()
+	// THE FLOOR STANDS IN FRONT OF EVERYTHING. A caller that reached here
+	// through [Agent.checkpoints] already asked, but looped.go's looping
+	// handoff and any future door share this function, and a handover that
+	// paid for the goal owner's reading, a name and a brief before being
+	// declined would still have converted the ask in every way that costs
+	// money. So the ask is read first and nothing is spent: the ending row
+	// above writes the drop, and the turn carries on.
+	if trivialAsk(a.taskRequest()) {
+		return checkpointHandover{decision: checkpointCeilingTrivial}
+	}
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
 	// ENDING (see [Agent.endTurnUnderSteward]). It is asked FIRST, before the
 	// name, the phase clock and the two model calls below, because the whole
