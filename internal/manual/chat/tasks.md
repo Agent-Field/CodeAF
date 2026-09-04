@@ -1107,9 +1107,10 @@ made the reason it was asking read as part of a duration.
 
 **`started 14:02` is when the work began**, and the word is `started` — it said `spawned`
 until 2026-09-03, which is the machinery's own verb for launching a process and not a word
-anybody reads on a screen here. Where nothing knows when the work started — a task
-replayed out of a checkpoint, which keeps how long it ran and not when it began — the
-stamp is **absent** rather than invented.
+anybody reads on a screen here. A task replayed out of a checkpoint carries the instant it
+began, so it says the same `started 14:02` after a restart that it said before one. Where
+nothing knows when the work started — a checkpoint written before the record carried the
+instant — the stamp is **absent** rather than invented.
 
 - **`done`** — a tick, muted. It is settled work on the roster.
 - **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
@@ -1743,6 +1744,9 @@ A click that hits no task still belongs to the column and does nothing. A click 
 cursor but does not hand the roster the keyboard.
 
 ## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
+
+This is where **task history** lives — every **old and past task**, and **work from other
+sessions**, on one page.
 
 `/history`, or `ctrl+.`, opens the machine-wide **tasks** place holding work from every project
 run** — this conversation's and every conversation's before it. It is the answer the roster

@@ -68,10 +68,15 @@ const groundListNamed = 2
 // cannot have written over anybody, and it is answered without a single read.
 //
 // IT READS THE FILE AND NOT [Agent.TaskIndex]. The merged view replaces a landed
-// row with one rebuilt out of the live graph, and a rebuilt row's EndedAt is
-// NOW — so every task this session has ever finished would look like it landed
-// during this run. The durable rows carry the stamps that were true when they
-// were written, which is the only reading a window question can be asked of.
+// row with one rebuilt out of the live graph, and a rebuilt row answers from
+// whatever the node in memory holds — which is now the recorded landing instant
+// where the record carries one, and NOTHING where it does not. Neither is what
+// a window question wants: it wants the stamp that was true when the row was
+// written, which is what the durable rows carry.
+//
+// This comment used to say the rebuilt row's EndedAt is NOW, and it was right
+// until the record started carrying the instant. The conclusion did not move;
+// the reason did.
 func (a *Agent) groundShift(node *TaskNode, wrote []string) string {
 	if node == nil || len(wrote) == 0 {
 		return ""

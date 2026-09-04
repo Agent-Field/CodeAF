@@ -1264,6 +1264,28 @@ const harnessInterruptedReport = "the design did not finish before aforge closed
 // merged, deleted or pruned by the person in between, and a report promising
 // work on a branch that is gone is worse than no report: it is the harness
 // telling somebody their work is safe when it is not.
+// interruptedAt is when a node that SETTLES on interruption ended, which is
+// now: the process is closing and this is the last moment anything knew about
+// this node.
+//
+// AN INTERRUPT IS AN ENDING FOR THE KINDS THAT SETTLE ON IT. A design still
+// writing and a run that cannot be re-entered are both handed back as failed
+// and never return to the frontier, so this is the only instant anything will
+// ever have for them — and without it their rows rebuild undated while
+// [Agent.TaskIndex] has the live graph row REPLACE the durable one, discarding
+// the better stamp closeInflightTaskIndexRows had written. An ordinary task
+// takes none of this: it goes back on the frontier queued, has not ended, and
+// must not be stamped as though it had.
+//
+// A record that already carries one keeps it, because a node that landed and
+// was then caught by the close ended when it landed.
+func interruptedAt(record taskRecord) time.Time {
+	if !record.EndedAt.IsZero() {
+		return record.EndedAt
+	}
+	return time.Now()
+}
+
 func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	record.Interrupted = true
 	// The completion note is owed: nobody ever announced this node, because
@@ -1303,6 +1325,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// was still being written and nothing was kept.
 		record.State = TaskFailed
 		record.Report = harnessInterruptedReport
+		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}
 
@@ -1322,6 +1345,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// finish, and what it got through is in its journal.
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
+		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}
 

@@ -84,8 +84,11 @@ func TestARestoredSettledNodesZeroAgeStaysFrozen(t *testing.T) {
 		}
 	}
 
+	// READ TWICE, BECAUSE THE BUG WAS A READ THAT MOVED THE ANSWER. No sleep
+	// between them: [TaskNode.ageLocked] returns the frozen elapsed for a
+	// settled node without consulting a clock, so a wait would prove nothing
+	// about it and would only make this file look load-sensitive.
 	assertZero("first")
-	time.Sleep(time.Millisecond)
 	assertZero("later")
 }
 
@@ -225,5 +228,52 @@ func TestTheGroundOverlapReadsTheRestoredStart(t *testing.T) {
 	})
 	if got := node.runStart(); !got.Equal(started) {
 		t.Fatalf("the restored run starts at %s, want the recorded %s", got, started)
+	}
+}
+
+// C9 — AN INTERRUPT IS AN ENDING FOR THE KINDS THAT SETTLE ON IT, so a restored
+// interrupted design carries the instant it stopped.
+//
+// A design still writing and a run that cannot be re-entered are handed back
+// failed and never return to the frontier, so the interrupt is the last moment
+// anything knows about them. Without a stamp their rows rebuild undated — and
+// [Agent.TaskIndex] has the live graph row REPLACE the durable one, so the
+// better stamp closeInflightTaskIndexRows wrote is discarded in favour of
+// nothing. An ordinary task must NOT be stamped: it goes back on the frontier
+// queued and has not ended.
+func TestARestoredInterruptedDesignCarriesTheMomentItStopped(t *testing.T) {
+	before := time.Now()
+
+	design, _ := interrupt(taskRecord{Kind: TaskKindHarness, State: TaskRunning}, "")
+	if design.State != TaskFailed {
+		t.Fatalf("a half-written design did not settle: %s", design.State)
+	}
+	if design.EndedAt.IsZero() {
+		t.Error("a settled design carries no landing instant, so its row rebuilds undated")
+	}
+	if design.EndedAt.Before(before) {
+		t.Errorf("the design's ending predates the interrupt: %s before %s", design.EndedAt, before)
+	}
+
+	run, _ := interrupt(taskRecord{Kind: TaskKindSubharness, State: TaskRunning}, "")
+	if run.EndedAt.IsZero() {
+		t.Error("a settled run carries no landing instant, so its row rebuilds undated")
+	}
+
+	// A RECORD THAT ALREADY HAS ONE KEEPS IT. A node that landed and was then
+	// caught by the close ended when it landed, not when the process did.
+	landed := time.Now().Add(-time.Hour)
+	kept, _ := interrupt(taskRecord{Kind: TaskKindHarness, State: TaskRunning, EndedAt: landed}, "")
+	if !kept.EndedAt.Equal(landed) {
+		t.Errorf("the interrupt overwrote a landing instant the record already had: %s, want %s", kept.EndedAt, landed)
+	}
+
+	// AND AN ORDINARY TASK IS UNTOUCHED. It resumes, so it has not ended.
+	ordinary, _ := interrupt(taskRecord{Kind: TaskKindJob, State: TaskRunning}, "")
+	if ordinary.State != TaskQueued {
+		t.Fatalf("an ordinary task did not go back on the frontier: %s", ordinary.State)
+	}
+	if !ordinary.EndedAt.IsZero() {
+		t.Errorf("a paused task was stamped as though it had ended: %s", ordinary.EndedAt)
 	}
 }
