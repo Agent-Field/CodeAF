@@ -246,6 +246,33 @@ finished work. A stash the run took itself and never popped is said out loud as 
 finishing over it; a stash you already had before the run started is yours and is never
 counted, and neither is the one a landing takes to set your uncommitted work aside.
 
+## The git an unattended run left on its own will not run · why it refused to stash, checkout, pull or reset --hard
+
+**A session left running on its own with a budget answers to the same git list as a
+task.** It decides on its own word that the work is done, and a stash can make that word
+false by taking the work out of the tree it judges. The refusal happens before the shell
+runs.
+
+It will not run `stash` in any form except `stash list` and `stash show`; `merge`,
+`rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`,
+`update-ref`, or `symbolic-ref`; `pull`, `fetch`, `clone`, `remote`, or `submodule`;
+`push`; `reset --hard`, `reset --merge`, or `reset --keep`; or `restore --source`.
+These are one list: they take the working copy away, put it onto work the session did not
+do, bring in remote work, or send the session's work to a shared remote on its own word.
+
+**Reading is still allowed.** `git status`, `diff`, `log`, `show`, `branch --list`,
+`stash list`, and `stash show` can look at any branch. Plain `git reset` can unstage,
+plain `git restore <path>` can restore the session's own path, and `git add` and
+`git commit` are allowed. For a stash, the session reads exactly:
+
+> git stash is not yours to run here: it takes your working copy away, and what is in it is the work this session will be judged on. Leave the change in the tree, or commit it.
+
+The `1 stash entry holds work that is not in the tree` reading in the section above says
+the stash out loud after the fact; this refusal is why there is now usually nothing for
+that reading to say. None of these refusals applies to a session you are sitting in front
+of, or to an unattended run that named no ceiling: nothing is deciding on its own that
+the work is done then, and your git is your own.
+
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
 **A check is yours only if your run turned it red.** On a run with a budget, aforge runs
