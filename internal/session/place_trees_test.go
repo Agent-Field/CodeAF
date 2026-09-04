@@ -89,15 +89,17 @@ func TestATaskInAConversationWithNoProjectBranchesFromItsOwnWorkspace(t *testing
 		t.Fatalf("the work did not land in the conversation's own workspace: %v", err)
 	}
 
-	// The other two roads are untouched: explicitly non-code work still stays in
-	// the conversation's directory and says so.
+	// C1: A model-authored in-place request inside that repository takes the same
+	// branch road. Owned changes still merge below because this is aforge's own
+	// working repository rather than the person's checkout.
 	inPlace, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 2, "write notes", "in place", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inPlace.dir != work || inPlace.merge != mergeInPlace {
-		t.Fatalf("in-place tree = %+v, want the owned workspace itself", inPlace)
+	if inPlace.dir == work || inPlace.root != canonicalPath(work) || !strings.HasPrefix(inPlace.branch, "task/") {
+		t.Fatalf("in-place tree = %+v, want a branch of the owned workspace", inPlace)
 	}
+	inPlace.releaseKept()
 }
 
 // AN OWNED WORKSPACE THAT IS NOT A REPOSITORY STILL HAS SOMEWHERE TO STAND. It
@@ -210,14 +212,20 @@ func TestANamedPlaceThatIsNotThereYetIsCreated(t *testing.T) {
 		t.Fatalf("the named place was not made: %v", err)
 	}
 
-	// A relative name still hangs off the conversation's own workspace, and it
-	// is made there and nowhere else.
-	if _, err := prepareTaskTreeAt(context.Background(), place, repo, "fresh", 6, "write more", "notes/out", ""); err != nil {
+	// C3: A relative name still hangs off the conversation's own workspace, but
+	// because that path is inside a committed repository it gets a branch and the
+	// real checkout is not made to hold the new folder.
+	relative, err := prepareTaskTreeAt(context.Background(), place, repo, "fresh", 6, "write more", "notes/out", "")
+	if err != nil {
 		t.Fatalf("relative fresh place: %v", err)
 	}
-	if info, err := os.Stat(filepath.Join(repo, "notes", "out")); err != nil || !info.IsDir() {
-		t.Fatalf("the relative place was not made under the workspace: %v", err)
+	if relative.root != canonicalPath(repo) || !strings.HasPrefix(relative.branch, "task/") {
+		t.Fatalf("relative repository place made %+v", relative)
 	}
+	if _, err := os.Stat(filepath.Join(repo, "notes", "out")); !os.IsNotExist(err) {
+		t.Fatalf("the relative place was made in the person's checkout: %v", err)
+	}
+	relative.releaseKept()
 }
 
 // The one refusal that survives: something IS there and it is not a directory.

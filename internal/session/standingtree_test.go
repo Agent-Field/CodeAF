@@ -201,6 +201,58 @@ func TestLandingAReferredRepositoryMergesTheWorkHome(t *testing.T) {
 	}
 }
 
+// C10: a referred repository follows the same protected-branch law as task
+// work: main keeps the chat branch, while an ordinary work branch still merges.
+func TestC10LandingAReferredRepositoryProtectsMainAndMergesWork(t *testing.T) {
+	t.Run("main is protected", func(t *testing.T) {
+		repo := newTestRepo(t)
+		mustGit(t, repo, "checkout", "-b", "main")
+		beforeHead := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main"))
+		beforeStatus := gitOut(t, repo, "status", "--porcelain")
+		agent, _, _ := standingLab(t, repo)
+		writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "the protected change\n")
+		trees := agent.StandingTrees()
+		if len(trees) != 1 || trees[0].Home != "main" {
+			t.Fatalf("standing tree = %+v, want its home branch recorded", trees)
+		}
+		branch, dir := trees[0].Branch, trees[0].Dir
+
+		landing, err := agent.Land(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "its branch " + branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+		if landing.Merged != mergeKept || !landing.Kept() || !strings.Contains(landing.Note, want) {
+			t.Fatalf("landing = %+v, want the protected chat branch kept", landing)
+		}
+		if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main")); got != beforeHead {
+			t.Fatalf("main moved from %s to %s", beforeHead, got)
+		}
+		if got := gitOut(t, repo, "status", "--porcelain"); got != beforeStatus {
+			t.Fatalf("checkout status changed from %q to %q", beforeStatus, got)
+		}
+		if got := gitOut(t, repo, "show", branch+":shared.txt"); got != "the protected change\n" {
+			t.Fatalf("kept chat branch holds %q", got)
+		}
+		if list := gitOut(t, repo, "worktree", "list"); strings.Contains(list, dir) {
+			t.Fatalf("the standing copy stayed registered:\n%s", list)
+		}
+	})
+
+	t.Run("work still merges", func(t *testing.T) {
+		repo := newTestRepo(t)
+		agent, _, _ := standingLab(t, repo)
+		writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "the ordinary change\n")
+		landing, err := agent.Land(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if landing.Merged != mergeMerged || landing.Kept() {
+			t.Fatalf("landing = %+v, want work to merge", landing)
+		}
+	})
+}
+
 // AND A PLAIN FOLDER IS LAID BACK BY NAME. No history to branch from is not a
 // reason to leave somebody without the isolation a repository gets for free.
 func TestLandingAPlainFolderLaysTheWorkBackByName(t *testing.T) {
@@ -248,6 +300,9 @@ func TestUnlandedWorkSurvivesTheConversationClosing(t *testing.T) {
 	waiting := second.UnlandedChanges()
 	if len(waiting) != 1 || waiting[0].Files != 1 || waiting[0].Folder != canonicalPath(repo) {
 		t.Fatalf("the reopened conversation is holding %+v", waiting)
+	}
+	if trees := second.StandingTrees(); len(trees) != 1 || trees[0].Home != "work" {
+		t.Fatalf("the reopened standing tree forgot its home branch: %+v", trees)
 	}
 	landing, err := second.Land("")
 	if err != nil {

@@ -417,6 +417,10 @@ func (a *app) doneTail(card *taskDone) string {
 		tail += " · " + files
 	}
 	switch card.merge {
+	case mergeWordKept:
+		// THE WORK IS DONE AND THE BRANCH IS WAITING. This is not a stop or a
+		// conflict, so the plain branch sentence is the whole landing.
+		tail += " · " + taskBranchKept + " · " + card.branch
 	case mergeWordConflicted:
 		// A FOLDER FAMILY WEARS THIS WORD WITHOUT A BRANCH. Its landing refuses
 		// over the person's own edit to a file it was going to lay, which is the

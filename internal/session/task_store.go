@@ -179,6 +179,10 @@ type taskRecord struct {
 	// the road it took when it was written.
 	Ground string   `json:"ground,omitempty"`
 	Mode   TaskMode `json:"groundMode,omitempty"`
+	// Home is the root checkout's branch when the task branch was cut. It is
+	// additive: an older record without it still gets the detached and protected
+	// checks at landing, and simply cannot detect that the checkout moved.
+	Home string `json:"home,omitempty"`
 
 	// Rung, Seal, Base and Universe are WHICH COPY OF THE GROUND the work
 	// actually happened in (session/groundladder.go): which rung of the ground
@@ -692,6 +696,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Where:         n.spec.where,
 		Ground:        n.Ground,
 		Mode:          n.Mode,
+		Home:          n.Home,
 		Rung:          n.Rung,
 		Seal:          n.Seal,
 		Base:          n.Base,
@@ -860,7 +865,7 @@ func validTaskState(state TaskState) bool {
 
 func validMergeOutcome(merge string) bool {
 	switch merge {
-	case "", mergeMerged, mergeConflicted, mergeInPlace, mergeAborted:
+	case "", mergeMerged, mergeConflicted, mergeInPlace, mergeAborted, mergeKept:
 		return true
 	}
 	return false
@@ -1182,6 +1187,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		},
 		Ground:      record.Ground,
 		Mode:        record.Mode,
+		Home:        record.Home,
 		Rung:        record.Rung,
 		Seal:        record.Seal,
 		Base:        record.Base,

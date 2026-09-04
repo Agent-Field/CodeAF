@@ -755,7 +755,7 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		Tokens:        n.input + n.output,
 		DurationMS:    elapsed.Milliseconds(),
 		SessionID:     session,
-		ArtifactURI:   taskArtifactURI(n.worktree, n.branch),
+		ArtifactURI:   taskArtifactURI(n.worktree, n.branch, n.merge),
 		TranscriptURI: taskURI(n.journal),
 	}
 	if entry.Where == "" {
@@ -805,7 +805,13 @@ func taskIndexParent(parent uint64) string {
 // [interrupt] checks a branch: a worktree that was merged and pruned is a
 // directory that is not there, and a row promising one would send both readers
 // of this index at a path that does not exist.
-func taskArtifactURI(worktree, branch string) string {
+func taskArtifactURI(worktree, branch, merge string) string {
+	// A KEPT LANDING'S RESULT IS THE BRANCH. The released task folder may still
+	// exist to hold files the task did not write, but it is not the checked work
+	// this finished row promises to open.
+	if branch = strings.TrimSpace(branch); merge == mergeKept && branch != "" {
+		return "git:" + branch
+	}
 	if worktree = strings.TrimSpace(worktree); worktree != "" {
 		if info, err := os.Stat(worktree); err == nil && info.IsDir() {
 			return taskURI(worktree)

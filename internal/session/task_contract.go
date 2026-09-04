@@ -144,9 +144,11 @@ type TaskMode string
 
 const (
 	// TaskModeWorktree is a branch cut FROM THE GROUND off its HEAD, worked in a
-	// directory of the task's own and merged back when it lands. It is what
-	// ordinary work in a repository gets, and the person's uncommitted changes
-	// are not carried into it — the branch comes off HEAD and nothing else.
+	// directory of the task's own and merged back when the destination is an
+	// ordinary branch. A protected, moved or detached checkout leaves the task
+	// branch kept instead. It is what ordinary work in a repository gets, and
+	// the person's uncommitted changes are not carried into it — the branch comes
+	// off HEAD and nothing else.
 	TaskModeWorktree TaskMode = "worktree"
 	// TaskModeReference is work that only READS its ground: the task gets a
 	// folder of its own to write in and the ground stays read-only for it.
@@ -154,9 +156,10 @@ const (
 	// TaskModeMirror is a plain folder — no history to branch from — copied into
 	// the task's own directory, worked in there, and landed back by name.
 	TaskModeMirror TaskMode = "mirror"
-	// TaskModeInPlace is the person saying "here": the work happens in the ground
-	// itself, with nothing isolating it and the turn's file ledger (recovery.go)
-	// as the only undo there is.
+	// TaskModeInPlace is the person saying "here" about a referred place: the
+	// work happens in the ground itself, with nothing isolating it and the turn's
+	// file ledger (recovery.go) as the only undo there is. A model cannot choose
+	// this mode inside a repository; its `where` is redirected to a branch.
 	TaskModeInPlace TaskMode = "in place"
 	// TaskModeFolder is the honest nothing — the conversation's own folder, with
 	// no repository anywhere under it. The work happens there because there is
@@ -452,12 +455,12 @@ type TaskNotice struct {
 	Report string
 	// Changed lists the files the node wrote, repo-relative.
 	Changed []string
-	// Branch is the worktree's branch ("task/fix-nil-map"), kept after a
-	// conflict or a kill so the work is never silently thrown away.
+	// Branch is the task's branch ("task/fix-nil-map"), kept after a protected
+	// landing, a conflict or a kill so the work is never silently thrown away.
 	Branch string
-	// Merge is how the branch came home: "merged", "conflicted" (branch
-	// kept), "inplace" (a non-git workspace ran in the person's tree), or ""
-	// while running.
+	// Merge is how the branch came home: "merged", "kept" (finished but left
+	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
+	// workspace ran in the person's tree), or "" while running.
 	Merge string
 	// Doing is the PHASE a running node of a named kind is in, in that kind's
 	// own plain words — "designing", "awaiting your look" for a subharness

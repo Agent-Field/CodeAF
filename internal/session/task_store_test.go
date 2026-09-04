@@ -167,6 +167,37 @@ func TestCheckpointIsWrittenAfterEveryTransition(t *testing.T) {
 	}
 }
 
+// C12: the branch a task was cut from survives its checkpoint, while a record
+// written before that field existed still restores with an ordinary empty home.
+func TestC12CheckpointRoundTripsHomeAndAcceptsItsAbsence(t *testing.T) {
+	graph := newTaskGraph()
+	node := &TaskNode{
+		graph: graph, id: 1, done: make(chan struct{}), state: TaskDone,
+		spec: taskSpec{title: "Remember the cut branch"}, Home: "work",
+	}
+	graph.mu.Lock()
+	record := node.recordLocked()
+	graph.mu.Unlock()
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"home":"work"`) {
+		t.Fatalf("checkpoint record omitted home: %s", encoded)
+	}
+	if got := restoreNode(graph, record).Home; got != "work" {
+		t.Fatalf("restored home = %q, want work", got)
+	}
+
+	var old taskRecord
+	if err := json.Unmarshal([]byte(`{"id":2,"title":"old record","state":"done"}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if got := restoreNode(graph, old).Home; got != "" {
+		t.Fatalf("old record restored home %q, want empty", got)
+	}
+}
+
 // THE ORIGIN SURVIVES THE CHECKPOINT, because a resumed worker still needs
 // the address of the person's original words. A checkpoint written before
 // origins were carried decodes empty and draws nothing, which is the

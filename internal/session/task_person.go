@@ -129,6 +129,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 	// takes the rung below rather than stopping.
 	stand := a.taskGroundOrStandingIn(spec)
 	spec.ground, spec.mode = stand.dir, stand.mode
+	note = withReport(note, stand.redirect)
 	graph.admit(id, spec)
 	return id, title, note, nil
 }

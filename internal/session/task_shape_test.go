@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,40 @@ var shapedAnswer = `{"title":"` + shapedTitle +
 	`\". Write it for people who already use the product. No opening that restates the ` +
 	`question, no three-item lists, no sentence that would be true of any launch.",` +
 	`"acceptance":"` + shapedAcceptance + `"}`
+
+// C2: a /task shape that asks to work in place inside a repository is given the
+// same branch isolation as a model proposal, and its start note says so once.
+func TestC2APersonsShapedTaskCannotBePutInARepositoryCheckoutByTheShaper(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	answer := `{"title":"isolated note","brief":"write isolated.txt","acceptance":"isolated.txt exists","where":"in place"}`
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+		config.RolesSource = shaperSettings()
+	})
+	world, release := heldTaskWorld(t, agent, "isolated.txt", "only in the task copy\n")
+	id, _, note, err := agent.StartTask(t.Context(), "write the isolated note")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := <-world
+	want := whereRedirectSentence("in place", canonicalPath(repo))
+	if strings.Count(note, want) != 1 {
+		t.Fatalf("start note does not carry the redirect once: %q", note)
+	}
+	if tree.root != canonicalPath(repo) || !withinDir(place.Trees(), tree.dir) || !strings.HasPrefix(tree.branch, "task/") {
+		t.Fatalf("tree = %+v, want a task branch under the session trees", tree)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "isolated.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the repository checkout was written: %v", err)
+	}
+	release()
+	waitDoneNode(t, agent.graph().node(id))
+}
 
 // THE NODE IS ADMITTED WITH THE SHAPED BRIEF AND THE SHAPED NAME, and the two
 // things a person reads underneath are still their own words: the summary under

@@ -198,13 +198,15 @@ const (
 	waitingOnItsParts = "its parts"
 )
 
-// The three merge outcomes, and the fourth that says a branch never came home.
+// The three merge outcomes, the kept landing, and the mark that says a run
+// stopped before its branch came home.
 // They are the strings [TaskNotice.Merge] carries, spelled once.
 const (
 	mergeMerged     = "merged"
 	mergeConflicted = "conflicted"
 	mergeInPlace    = "inplace"
 	mergeAborted    = "aborted"
+	mergeKept       = "kept"
 )
 
 // ── the graph ───────────────────────────────────────────────────────────────
@@ -297,6 +299,10 @@ type TaskNode struct {
 	// guarded by the graph's lock and written once.
 	Ground string
 	Mode   TaskMode
+	// Home is the branch the root checkout was on when this node's branch was
+	// cut. It is the fixed side of the moved-checkout question at landing time;
+	// absence is ordinary for a checkpoint written before this field existed.
+	Home string
 	// Rung is which rung of the ground ladder made this node's world and Seal is
 	// the one string that names that world — furrow's sealed snapshot, or the
 	// machine commit's sha (groundladder.go). They are written beside Ground and
@@ -2300,6 +2306,7 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
+	tree.home = n.Home
 	return tree
 }
 
@@ -2630,6 +2637,7 @@ func (n *TaskNode) setTree(tree taskTree) {
 	if tree.ground != "" {
 		n.Ground, n.Mode = tree.ground, tree.mode
 	}
+	n.Home = tree.home
 	// AND WHICH RUNG OF THE GROUND LADDER MADE THE WORLD (groundladder.go). It
 	// travels with the ground because it is the other half of the same fact: the
 	// ground says which folder the work is about, and this says which copy of it
@@ -3248,9 +3256,22 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	if len(notice.Changed) > 0 {
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
 	}
+	note.WriteString(taskMergeNote(notice))
+	return note.String()
+}
+
+// taskMergeNote is the landing's one branch sentence, kept outside [taskNote]
+// because adding an outcome must not make the already-long delivery road grow.
+func taskMergeNote(notice TaskNotice) string {
 	switch notice.Merge {
 	case mergeMerged:
-		note.WriteString("\nits branch " + notice.Branch + " merged into yours")
+		return "\nits branch " + notice.Branch + " merged into yours"
+	case mergeKept:
+		// THE REASON IS ALREADY THE REPORT'S FIRST SENTENCE. Protected, moved and
+		// detached checkouts each need different words, and comeHome wrote the one
+		// it observed before the node settled; repeating a generic branch line here
+		// would say the same landing twice.
+		return ""
 	case mergeConflicted:
 		// A FOLDER FAMILY HAS NO BRANCH TO OFFER. Its landing refuses the same way
 		// a merge does and for the same reason — the same file changed on both
@@ -3259,8 +3280,9 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// of this report. The emptiness law is why nothing is written here rather
 		// than a line with a hole where a branch name would go.
 		if notice.Branch != "" {
-			note.WriteString("\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready")
+			return "\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready"
 		}
+		return ""
 	case mergeAborted:
 		// WHAT IT MADE IS ON THAT BRANCH, and saying so is the difference
 		// between a person going to look and a person assuming an ending they
@@ -3274,16 +3296,17 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// a branch would send the person past it (task_land_unsaved.go).
 		switch {
 		case unsavedLanding(notice.Report):
+			return ""
 		case len(notice.Changed) > 0:
-			note.WriteString("\nit was stopped; what it made is committed on its branch " +
-				notice.Branch + ", which was kept — merge that branch to take the work")
+			return "\nit was stopped; what it made is committed on its branch " +
+				notice.Branch + ", which was kept — merge that branch to take the work"
 		default:
-			note.WriteString("\nit was stopped; its branch " + notice.Branch + " was kept")
+			return "\nit was stopped; its branch " + notice.Branch + " was kept"
 		}
 	case mergeInPlace:
-		note.WriteString("\nit worked directly in the workspace: there was no repository to branch")
+		return "\nit worked directly in the workspace: there was no repository to branch"
 	}
-	return note.String()
+	return ""
 }
 
 // emitTaskUpdate puts one update in front of whoever is watching.
@@ -3790,7 +3813,7 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTreeOn(ctx, place, a.config.Workspace, a.journalID(), node.id, node.title(), node.stand())
+		tree, err = prepareTaskTreeForNode(ctx, place, a.config.Workspace, a.journalID(), node)
 	}
 	if err != nil {
 		node.end(TaskEndingError)
@@ -5843,6 +5866,10 @@ type taskTree struct {
 	root string
 	// branch is the node's branch, empty in place.
 	branch string
+	// home is the root checkout's branch at the moment this task branch was cut.
+	// The landing compares it with the branch there now so work never follows a
+	// person who moved their checkout somewhere else while the task ran.
+	home string
 	// merge is the outcome so far: "inplace" for a non-repository, and empty
 	// while a branch is still out.
 	merge string
@@ -5932,6 +5959,9 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 // that is not a part, which is almost every task.
 func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (taskTree, error) {
 	where = strings.TrimSpace(where)
+	if root, ok := whereInsideRepository(where, workspace); where != "" && ok {
+		return cutTaskWorktree(ctx, place, root, session, id, title, frozen)
+	}
 	if strings.EqualFold(where, "in place") {
 		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeInPlace}, nil
 	}
@@ -6055,6 +6085,7 @@ func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (tas
 // asks for HEAD and gets exactly what it always got.
 func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, from string) (taskTree, error) {
 	defer lockGitRoot(place, root)()
+	home := currentBranch(root)
 	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err
 	}
@@ -6079,7 +6110,7 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 	if out, err := git(root, "worktree", "add", "-b", branch, dir, from); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
-	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: root, mode: TaskModeWorktree}, nil
+	return taskTree{dir: dir, root: root, branch: branch, home: home, place: place, ground: root, mode: TaskModeWorktree}, nil
 }
 
 // prepareTaskTreeOn gives one node a place to work ON ITS GROUND, which is the
@@ -6382,6 +6413,21 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, landin
 		t.releaseKeptLocked()
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
 			leftBehindSentence(left, true)), refusedByTheWork
+	}
+	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT. The branch is
+	// already committed and present in the ground repository at this point, so
+	// keeping it gives the person a durable result and gives the working copy
+	// back without changing a byte of the checkout they are using.
+	if t.landsInThePersonsRepository() {
+		if kept := t.keptLandingSentence(); kept != "" {
+			t.releaseKeptLocked()
+			// refusedNothing: the landing was not refused, it was HONOURED. The
+			// work is committed on its branch and the person has been told which
+			// one — a refusal here would put a policy keep on the unsaved road
+			// (task_land_unsaved.go) and offer to try it again, which is the one
+			// thing that must not happen to a checkout aforge will not write.
+			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), refusedNothing
+		}
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own

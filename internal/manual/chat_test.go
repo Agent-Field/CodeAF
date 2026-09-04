@@ -1,7 +1,11 @@
 package manual
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -259,6 +263,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// C14: repository placement, protected landings and kept dependency
+		// inheritance are reachable in the words a person uses after meeting them.
+		{"why didn't my task merge", "how-tasks-run"},
+		{"aforge committed to dev", "how-tasks-run"},
+		{"my checkout is on main where did the work go", "how-tasks-run"},
+		{"I said in place but it made a branch", "how-tasks-run"},
+		{"does a task that depends on kept work see it", "how-tasks-run"},
+		{"which branches does aforge refuse to write", "how-tasks-run"},
 		// WHAT A WORKER'S BELT DOES NOT CARRY, asked the way people meet it: as a
 		// thing they want done from inside a task, and as the sentence a worker
 		// says back when it cannot.
@@ -1939,6 +1951,56 @@ func TestNoChatPageSpeaksTheHarnessesOwnVocabulary(t *testing.T) {
 		if found := banned.FindString(scanned); found != "" {
 			t.Errorf("%s · %q says %q, which is the harness's own vocabulary and not the person's",
 				section.Page, section.Title, found)
+		}
+	}
+}
+
+// C14: the manual's protected-name list is held against the engine's one policy
+// list, so changing a branch name cannot leave the person reading stale advice.
+func TestC14TheChatManualNamesEveryProtectedBranch(t *testing.T) {
+	const source = "../session/task_branch_protection.go"
+	parsed, err := parser.ParseFile(token.NewFileSet(), source, nil, 0)
+	if err != nil {
+		t.Fatalf("%s: %v", source, err)
+	}
+	var names []string
+	for _, decl := range parsed.Decls {
+		block, ok := decl.(*ast.GenDecl)
+		if !ok || block.Tok != token.VAR {
+			continue
+		}
+		for _, item := range block.Specs {
+			value, ok := item.(*ast.ValueSpec)
+			if !ok || len(value.Names) != 1 || value.Names[0].Name != "protectedBranchNames" || len(value.Values) != 1 {
+				continue
+			}
+			literal, ok := value.Values[0].(*ast.CompositeLit)
+			if !ok {
+				t.Fatalf("%s: protectedBranchNames is not one literal list", source)
+			}
+			for _, element := range literal.Elts {
+				word, ok := element.(*ast.BasicLit)
+				if !ok || word.Kind != token.STRING {
+					t.Fatalf("%s: protectedBranchNames contains a non-string entry", source)
+				}
+				name, err := strconv.Unquote(word.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				names = append(names, name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		t.Fatalf("%s: protectedBranchNames was not found", source)
+	}
+	page, ok := Chat().Page("how-tasks-run")
+	if !ok {
+		t.Fatal("the chat manual has no how-tasks-run page")
+	}
+	for _, name := range names {
+		if !strings.Contains(page, "`"+name+"`") {
+			t.Errorf("how-tasks-run does not name protected branch %q", name)
 		}
 	}
 }
