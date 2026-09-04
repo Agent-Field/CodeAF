@@ -39,6 +39,8 @@ source "$CONV_LIB/verdict.sh"
 source "$CONV_LIB/adapters.sh"
 # shellcheck source=lib/door_tmux.sh
 source "$CONV_LIB/door_tmux.sh"
+# shellcheck source=lib/guarded.sh
+source "$CONV_LIB/guarded.sh"
 
 ALL_SCENARIOS="data-tally research-brief writing-memo code-fix followup-while-working revision-midwork task-result-delivered"
 
@@ -56,10 +58,14 @@ KEEP_STATE="${CONV_KEEP:-0}"
 # deterministic tests, which need a cell to hit the cap in seconds rather than
 # minutes, and for anybody who wants a cheaper sweep than the scenarios ask for.
 CAP_OVERRIDE="${CONV_CAP:-}"
-# An arm whose auxiliary calls cannot be pinned to the model under test is
-# skipped rather than run: an unpinned role is a paid call to a model nobody
-# chose. `--role-pin off` accepts that risk deliberately.
-ROLE_PIN_GATE="${CONV_ROLE_PIN:-required}"
+# Every live call goes through the forwarding guard (lib/guard.py), which holds
+# the real key and refuses a model off the allowlist before opening any socket
+# upstream. An arm that cannot be routed through it is unsupported here.
+#
+# UNGUARDED IS NOT A WORKAROUND. It exists so the deterministic tests can drive
+# fake binaries that talk to nobody, and it refuses to run unless the caller has
+# declared that with CONV_FAKE_HARNESS=1.
+UNGUARDED=0
 # Evidence is never overwritten by accident: a run whose cell directory already
 # exists refuses rather than deleting whatever a previous run left there.
 OVERWRITE="${CONV_OVERWRITE:-0}"
@@ -80,8 +86,7 @@ while [ $# -gt 0 ]; do
     --model=*)     CONV_MODEL="${1#*=}"; shift ;;
     --allowlist)   CONV_ALLOWLIST="${2:?--allowlist needs a value}"; CONV_ALLOWLIST_EXPLICIT=yes; shift 2 ;;
     --allowlist=*) CONV_ALLOWLIST="${1#*=}"; CONV_ALLOWLIST_EXPLICIT=yes; shift ;;
-    --role-pin)    ROLE_PIN_GATE="${2:?--role-pin needs required or off}"; shift 2 ;;
-    --role-pin=*)  ROLE_PIN_GATE="${1#*=}"; shift ;;
+    --unguarded)   UNGUARDED=1; shift ;;
     --overwrite)   OVERWRITE=1; shift ;;
     --out)         CONV_OUT="${2:?--out needs a value}"; shift 2 ;;
     --out=*)       CONV_OUT="${1#*=}"; shift ;;
@@ -93,6 +98,12 @@ while [ $# -gt 0 ]; do
 done
 
 allowlist_follow_model
+
+if [ "$UNGUARDED" = "1" ] && [ "${CONV_FAKE_HARNESS:-0}" != "1" ]; then
+  conv_warn "--unguarded runs harnesses with the real key and no model gate; it is for fake"
+  conv_warn "binaries only and needs CONV_FAKE_HARNESS=1. Refusing."
+  exit 1
+fi
 
 # The run id carries the process id as well as the clock so that two runs
 # started in the same second do not share an evidence directory.
@@ -133,11 +144,19 @@ echo
 # Versions are recorded before anything runs, because "which build produced this
 # row" is the first question anybody asks of a comparison and the peers move
 # their flags between releases.
-declare -A ARM_VERSIONS=()
+# A plain table rather than an associative array: /bin/bash on macOS is 3.2 and
+# has none, and a rig that only runs under the shell its author happened to have
+# is not portable.
+ARM_VERSION_TABLE=""
+version_of() {
+  printf '%s' "$ARM_VERSION_TABLE" | awk -v arm="$1" -F'\t' '$1 == arm { print $2; found = 1 }
+    END { if (!found) print "unknown" }'
+}
 for arm in $ARMS; do
   if arm_known "$arm"; then
-    ARM_VERSIONS[$arm]="$(arm_version "$arm")"
-    printf 'version:    %-9s %s\n' "$arm" "${ARM_VERSIONS[$arm]}"
+    ARM_VERSION_TABLE="$ARM_VERSION_TABLE$arm	$(arm_version "$arm" | tr -d '\t')
+"
+    printf 'version:    %-9s %s\n' "$arm" "$(version_of "$arm")"
   else
     conv_warn "unknown arm: $arm"
   fi
@@ -147,6 +166,31 @@ echo
 TOTAL_PASS=0; TOTAL_FAIL=0; TOTAL_SKIP=0; TOTAL_UNSUP=0; TOTAL_TIMEOUT=0; TOTAL_CRASH=0
 CLEANUP_PATHS=()
 
+# One guard for the run. The real key goes into its environment and into no
+# harness process; every arm is handed a sentinel and a loopback base URL.
+if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ]; then
+  # The guard is the only process that gets the real key, so it has to be in
+  # this shell's environment. Nothing here reads a credential out of a config
+  # file: whose key this is stays the operator's decision, made explicitly.
+  if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+    conv_warn "OPENROUTER_API_KEY is not set in this shell, so the guard has no upstream key."
+    conv_warn "Run from a shell that has it (a login shell, or export it for this command)."
+    exit 1
+  fi
+  if ! guard_start "$CONV_OUT/guard-audit.jsonl"; then
+    conv_warn "no guard, no live run"
+    exit 1
+  fi
+  if ! guard_check_key; then
+    guard_stop
+    exit 1
+  fi
+  echo "guard:      $GUARD_URL  (upstream openrouter, allowlist enforced before forwarding)"
+  echo "audit:      $CONV_OUT/guard-audit.jsonl"
+  echo
+fi
+trap 'guard_stop' EXIT
+
 # emit_row writes one cell's outcome to both files. Every caller goes through
 # it, including the ones that never ran a harness: a scenario an arm cannot do
 # leaves a row saying so, because a missing row is indistinguishable from a
@@ -155,7 +199,7 @@ emit_row() {
   local scenario="$1" workload="$2" door="$3" arm="$4" wall="$5" code="$6" \
         cost="$7" cost_source="$8" tokens_in="$9" tokens_out="${10}" turns="${11}" \
         verdict="${12}" comparable="${13}" reason="${14}"
-  local version="${ARM_VERSIONS[$arm]:-unknown}"
+  local version; version="$(version_of "$arm")"
   echo "$TODAY,$CONV_RUN_ID,$GIT_SHA,$scenario,$workload,$door,$arm,$(csv_field "$version"),$(csv_field "$CONV_MODEL"),$EFFORT,${ARM_EFFORT_SENT:-n/a},$wall,$code,$cost,$cost_source,$tokens_in,$tokens_out,$turns,$verdict,$comparable,$(csv_field "${CELL_NOTES:-}${reason:+;$reason}")" >> "$CSV"
   cat >> "$RESULTS_JSONL" <<JSON
 {"date":$(json_str "$TODAY"),"run_id":$(json_str "$CONV_RUN_ID"),"git_sha":$(json_str "$GIT_SHA"),"scenario":$(json_str "$scenario"),"workload":$(json_str "$workload"),"door":$(json_str "$door"),"arm":$(json_str "$arm"),"arm_version":$(json_str "$version"),"model_pin":$(json_str "$CONV_MODEL"),"effort_requested":$(json_str "$EFFORT"),"effort_sent":$(json_str "${ARM_EFFORT_SENT:-n/a}"),"effort_supported":$(json_str "${ARM_EFFORT_SUPPORTED:-n/a}"),"wall_s":$(json_str "$wall"),"exit":$(json_str "$code"),"cost_usd":$([ "$cost" = "unknown" ] && echo null || echo "$cost"),"cost_source":$(json_str "$cost_source"),"tokens_in":$([ "$tokens_in" = "unknown" ] && echo null || echo "${tokens_in:-null}"),"tokens_out":$([ "$tokens_out" = "unknown" ] && echo null || echo "${tokens_out:-null}"),"turns":$(json_str "$turns"),"verdict":$(json_str "$verdict"),"comparable":$(json_str "$comparable"),"reason":$(json_str "$reason"),"notes":$(json_str "${CELL_NOTES:-}"),"checks":[${CELL_CHECK_JSON:-}]}
@@ -230,16 +274,9 @@ for scenario in $SCENARIOS; do
       printf '    !  effort unverifiable: %s\n' "$ARM_EFFORT_NOTE"
     fi
 
-    # Always asked, because the answer also carries the flags that do the
-    # pinning; the gate only decides what to do when the answer is no.
+    # Recorded, not relied on: role pins are configuration and the guard is the
+    # enforcement. Both belong on the row.
     arm_role_pin "$arm"
-    if [ "$ROLE_PIN_GATE" = "required" ] && [ "$ARM_ROLE_PIN" != "yes" ]; then
-      printf '    ⊘  skipped: auxiliary calls cannot be pinned (%s)\n' "$ARM_ROLE_NOTE"
-      emit_row "$scenario" "$SCENARIO_WORKLOAD" "$SCENARIO_DOOR" "$arm" "" "" unknown none unknown unknown "" \
-               skipped no "role pin $ARM_ROLE_PIN: $ARM_ROLE_NOTE"
-      echo
-      continue
-    fi
     record "role_pin" "$ARM_ROLE_PIN"
 
     cell="$CONV_OUT/$scenario-$arm"
@@ -256,6 +293,7 @@ for scenario in $SCENARIOS; do
     fi
     [ "$OVERWRITE" = "1" ] && rm -rf "$cell"
     mkdir -p "$cell" "$work"
+    CONV_OMP_PROFILE_ACTIVE=""
     if ! arm_isolate "$arm" "$cell"; then
       printf '    ⊘  skipped: %s\n' "$ARM_ISOLATION"
       emit_row "$scenario" "$SCENARIO_WORKLOAD" "$SCENARIO_DOOR" "$arm" "" "" unknown none unknown unknown "" \
@@ -264,6 +302,21 @@ for scenario in $SCENARIOS; do
       continue
     fi
     [ -n "$ARM_CLEANUP_PATH" ] && CLEANUP_PATHS+=("$ARM_CLEANUP_PATH")
+    child_env_array "${ARM_ENV[@]}"
+
+    # Route this arm through the guard before anything else touches the network.
+    # An arm that cannot be routed is unsupported for a live run: its calls
+    # would leave with the real key and no model gate in front of them.
+    if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ]; then
+      if ! arm_guard_wire "$arm" "$cell"; then
+        printf '    ⊘  unsupported: not routable through the guard (%s)\n' "$ARM_GUARD_NOTE"
+        emit_row "$scenario" "$SCENARIO_WORKLOAD" "$SCENARIO_DOOR" "$arm" "" "" unknown none unknown unknown "" \
+                 unsupported no "no guard route: $ARM_GUARD_NOTE"
+        echo
+        continue
+      fi
+      record "guard" "$ARM_GUARD_NOTE"
+    fi
 
     # The child environment is built now because the pin check below has to ask
     # the catalog in the same state root the cell will run in. Asked in the
@@ -319,10 +372,11 @@ for scenario in $SCENARIOS; do
     record_config "$cell/config.txt" \
       "run_id:$CONV_RUN_ID" "scenario:$scenario" "workload:$SCENARIO_WORKLOAD" \
       "door:$SCENARIO_DOOR" "arm:$arm" "binary:$(arm_bin "$arm")" \
-      "version:${ARM_VERSIONS[$arm]:-unknown}" "model_pin:$CONV_MODEL" \
+      "version:$(version_of "$arm")" "model_pin:$CONV_MODEL" \
       "model_arg:$(arm_model_arg "$arm")" "allowlist:$CONV_ALLOWLIST" \
       "effort_requested:$EFFORT" "effort_sent:$ARM_EFFORT_SENT" \
-      "role_pin:$ARM_ROLE_PIN ($ARM_ROLE_NOTE)" "isolation:$ARM_ISOLATION" \
+      "role_pin:$ARM_ROLE_PIN ($ARM_ROLE_NOTE)" "guard:${ARM_GUARD:-off} ${ARM_GUARD_NOTE:-}" \
+      "isolation:$ARM_ISOLATION" \
       "arm_env:${ARM_ENV[*]:-none}" "carried_env:$CONV_CARRIED" \
       "cap_s:$SCENARIO_CAP_S" "workspace:$work"
 
@@ -384,6 +438,9 @@ EOF
       # failure even when the reply looks fine: a script downstream branches on
       # it, and a suite that ignores it would never notice it being dropped.
       [ "$timed_out" = "1" ] || check_eq "the harness exited 0" 0 "$code"
+      # Exit 0 with an empty reply is what a refused upstream call looks like:
+      # the CLI streams its ceremony, gets nothing back, and leaves quietly.
+      check_ge "the harness produced a reply" 1 "$(wc -c < "$cell/reply.txt" | tr -d ' ')"
     else
       record "door_ended" "$DOOR_ENDED"
       record "door_markers" "${ARM_DOOR_NOTE:-none}"

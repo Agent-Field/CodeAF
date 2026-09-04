@@ -44,6 +44,11 @@ mkdir -p "$LOGDIR"
 # below still holds, because nothing in this list is a credential.
 export CONV_PASS_ENV="FAKE_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID"
 
+# These cases drive fake binaries that reach no network, so they run without the
+# forwarding guard — and say so the only way run.sh accepts, which is what keeps
+# --unguarded from being usable as a workaround for a real run.
+export CONV_FAKE_HARNESS=1
+
 PASSED=0
 FAILED=0
 SKIPPED=0
@@ -87,12 +92,10 @@ case_run() {
   return 0
 }
 
-# The fakes stand in for arms whose auxiliary calls this suite cannot pin in
-# advance, so the cases that are about something else turn the role-pin gate
-# off explicitly. The gate itself is tested on its own, below.
+# Fake binaries reach no network, so these cases run without the guard.
 print_case() {
   local name="$1"; shift
-  case_run "$name" --arms pi --scenarios data-tally --cap 60 --role-pin off "$@"
+  case_run "$name" --arms pi --scenarios data-tally --cap 60 --unguarded "$@"
 }
 
 say "bench/conversation selftest — fake binaries, no model, no spend"
@@ -102,7 +105,7 @@ say
 # ── the dry run must not run anything ───────────────────────────────────────
 say "dry-run:"
 PI_BIN="$FAKE/pi-fake.sh" AFORGE_BIN="$FAKE/aforge-fake.sh" \
-  case_run dryrun --role-pin off --arms pi,aforge --scenarios data-tally --dry-run
+  case_run dryrun --unguarded --arms pi,aforge --scenarios data-tally --dry-run
 [ "$CASE_EXIT" -eq 0 ] && ok "a dry run exits 0" || bad "a dry run should exit 0 (got $CASE_EXIT)"
 if [ -e "$CASE_OUT/marker" ]; then
   bad "the dry run EXECUTED a harness — the marker file exists"
@@ -157,7 +160,7 @@ say
 # ── a harness that never returns ────────────────────────────────────────────
 say "hang (the cap has to stop it):"
 FAKE_MODE=hang PI_BIN="$FAKE/pi-fake.sh" \
-  case_run hang --role-pin off --arms pi --scenarios data-tally --cap 5
+  case_run hang --unguarded --arms pi --scenarios data-tally --cap 5
 [ "$(field "$CASE_RESULTS" verdict)" = "timeout" ] \
   && ok "a hung harness is a timeout" || bad "a hung harness was recorded as $(field "$CASE_RESULTS" verdict)"
 [ "$(field "$CASE_RESULTS" verdict)" != "pass" ] \
@@ -187,13 +190,13 @@ grep -q 'allowlist' "$LOGDIR/wrongmodel.log" \
 
 say "wrongmodel (aforge, an auxiliary role billed elsewhere):"
 FAKE_MODE=wrongmodel AFORGE_BIN="$FAKE/aforge-fake.sh" \
-  case_run auxmodel --arms aforge --scenarios data-tally --cap 60
+  case_run auxmodel --unguarded --arms aforge --scenarios data-tally --cap 60
 [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
   && ok "a role call off the allowlist fails the cell" || bad "an auxiliary call escaped the allowlist"
 
 say "ok (aforge, home-shaped receipts):"
 FAKE_MODE=ok AFORGE_BIN="$FAKE/aforge-fake.sh" \
-  case_run aforgeok --arms aforge --scenarios data-tally --cap 60
+  case_run aforgeok --unguarded --arms aforge --scenarios data-tally --cap 60
 [ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
   && ok "the aforge receipt reader works end to end" || bad "a healthy aforge cell did not pass"
 python3 -c "import sys; sys.exit(0 if abs(float('$(field "$CASE_RESULTS" cost_usd)') - 0.000796) < 1e-9 else 1)" \
@@ -215,7 +218,7 @@ say
 # ── a scenario an arm has no door for ───────────────────────────────────────
 say "unsupported (a scenario this arm has no door for):"
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" \
-  case_run unsupported --role-pin off --arms pi --scenarios task-result-delivered --cap 30
+  case_run unsupported --unguarded --arms pi --scenarios task-result-delivered --cap 30
 [ "$(field "$CASE_RESULTS" verdict)" = "unsupported" ] \
   && ok "an undefined scenario is unsupported" || bad "an undefined scenario was $(field "$CASE_RESULTS" verdict)"
 grep -q 'unsupported 1' "$LOGDIR/unsupported.log" \
@@ -230,7 +233,7 @@ else
   FAKE_TUI_MODE=ok FAKE_TUI_BUSY=10 CONV_SLOW_SECONDS=4 \
   CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=25 \
   PI_BIN="$FAKE/tui-fake.sh" \
-    case_run door --role-pin off --arms pi --scenarios followup-while-working --cap 90
+    case_run door --unguarded --arms pi --scenarios followup-while-working --cap 90
   [ "$(field "$CASE_RESULTS" door)" = "interactive" ] \
     && ok "the cell is recorded as the interactive door" || bad "the door was not recorded as interactive"
   if grep -q '"outcome":"pass","check":"the followup was answered while the build ran"' "$CASE_RESULTS"; then
@@ -245,7 +248,7 @@ else
   FAKE_TUI_MODE=neverbusy CONV_SLOW_SECONDS=4 \
   CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=8 \
   PI_BIN="$FAKE/tui-fake.sh" \
-    case_run neverbusy --role-pin off --arms pi --scenarios followup-while-working --cap 60
+    case_run neverbusy --unguarded --arms pi --scenarios followup-while-working --cap 60
   [ "$(field "$CASE_RESULTS" verdict)" != "pass" ] \
     && ok "a scenario that did not happen is not a pass" || bad "a cell with no busy window passed"
   grep -q 'no-busy-window' "$CASE_RESULTS" \
@@ -255,24 +258,21 @@ else
   FAKE_TUI_MODE=deaf FAKE_TUI_BUSY=10 CONV_SLOW_SECONDS=4 \
   CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=25 \
   PI_BIN="$FAKE/tui-fake.sh" \
-    case_run deaf --role-pin off --arms pi --scenarios followup-while-working --cap 90
+    case_run deaf --unguarded --arms pi --scenarios followup-while-working --cap 90
   [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
     && ok "a dropped followup fails the cell" || bad "a dropped followup was $(field "$CASE_RESULTS" verdict)"
 fi
 say
 
 # ── spending only where the model is pinned all the way down ────────────────
-say "role-pin gate (an arm whose auxiliary calls cannot be pinned):"
-FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" \
-  case_run rolepin --arms pi --scenarios data-tally --cap 60
-[ "$(field "$CASE_RESULTS" verdict)" = "skipped" ] \
-  && ok "an unpinnable arm is skipped before it is paid for" \
-  || bad "an unpinnable arm was $(field "$CASE_RESULTS" verdict)"
-if [ -e "$CASE_OUT/marker" ]; then
-  bad "the gate skipped the cell but the harness ran anyway"
-else
-  ok "and no harness process was started"
-fi
+say "role pin (recorded as configuration, not trusted as enforcement):"
+FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" print_case rolepin
+grep -q 'role_pin=unverified' "$CASE_RESULTS" \
+  && ok "an arm whose auxiliary roles cannot be pinned says so on its row" \
+  || bad "the row does not record the role-pin state"
+[ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
+  && ok "and that alone does not fail the cell — the guard is the enforcement" \
+  || bad "role-pin state changed the verdict: $(field "$CASE_RESULTS" verdict)"
 say
 
 # ── the child environment carries one credential ────────────────────────────
@@ -311,21 +311,21 @@ else
   mkdir -p "$PROFILE_DIR/agent"
   printf 'this file belongs to somebody else\n' > "$PROFILE_DIR/agent/sentinel.txt"
   FAKE_MODE=ok OMP_BIN="$FAKE/pi-fake.sh" CONV_OMP_PROFILE="$EXISTING" \
-    case_run ompprofile --role-pin off --arms omp --scenarios data-tally --cap 60
+    case_run ompprofile --unguarded --arms omp --scenarios data-tally --cap 60
   if [ -f "$PROFILE_DIR/agent/sentinel.txt" ]; then
     ok "an existing omp profile survives the run"
   else
     bad "the run DELETED a profile it did not create"
   fi
-  grep -q 'reused as-is' "$CASE_OUT/evidence"/data-tally-omp/config.txt 2>/dev/null \
-    && ok "and the evidence says it was reused rather than created" \
-    || bad "the isolation record does not say the profile was pre-existing"
+  [ "$(field "$CASE_RESULTS" verdict)" = "skipped" ] \
+    && ok "and the cell is skipped rather than run inside settings it did not write" \
+    || bad "the run used a profile it did not create: $(field "$CASE_RESULTS" verdict)"
   rm -rf "$PROFILE_DIR"
 
   # A profile this run creates is its own to clean up, and the name is checked
   # before it is ever joined into a path.
   FAKE_MODE=ok OMP_BIN="$FAKE/pi-fake.sh" CONV_OMP_PROFILE="../escape" \
-    case_run ompescape --role-pin off --arms omp --scenarios data-tally --cap 60
+    case_run ompescape --unguarded --arms omp --scenarios data-tally --cap 60
   [ "$(field "$CASE_RESULTS" verdict)" = "skipped" ] \
     && ok "a profile name with a path escape is refused" \
     || bad "a profile name containing .. was accepted"
@@ -336,11 +336,11 @@ say
 say "evidence (a second run does not erase the first):"
 SHARED="$WORKDIR/shared-evidence"
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
-  CONV_RUN_ID=first "$RUN" --role-pin off --arms pi --scenarios data-tally --cap 60 \
+  CONV_RUN_ID=first "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-first.log" 2>&1
 cp "$SHARED/results.jsonl" "$WORKDIR/first-results.jsonl" 2>/dev/null
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
-  CONV_RUN_ID=second "$RUN" --role-pin off --arms pi --scenarios data-tally --cap 60 \
+  CONV_RUN_ID=second "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-second.log" 2>&1
 SECOND_EXIT=$?
 [ "$(field "$SHARED/results.jsonl" verdict)" = "skipped" ] \
@@ -350,6 +350,91 @@ SECOND_EXIT=$?
   && ok "and the first run's receipt is still there" || bad "the first run's receipt is gone"
 [ "$SECOND_EXIT" -eq 0 ] \
   && ok "the refusal is a skip, not a failure" || bad "the refusal moved the exit code"
+say
+
+
+# ── the guard: prevention, not detection ────────────────────────────────────
+say "guard (a disallowed model must never reach an upstream):"
+GUARD_DIR="$WORKDIR/guard"
+mkdir -p "$GUARD_DIR"
+HITS="$GUARD_DIR/upstream-hits.jsonl"
+UP_OUT="$GUARD_DIR/upstream.out"
+python3 "$FAKE/upstream.py" --hits "$HITS" > "$UP_OUT" 2>&1 &
+UP_PID=$!
+for _ in $(seq 1 50); do
+  UP_PORT="$(awk '/^PORT /{print $2; exit}' "$UP_OUT" 2>/dev/null)"
+  [ -n "${UP_PORT:-}" ] && break
+  sleep 0.1
+done
+
+G_OUT="$GUARD_DIR/guard.out"
+GUARD_TEST=1 GUARD_UPSTREAM_KEY="test-upstream-key-not-real" \
+  python3 "$CONV_ROOT/lib/guard.py" --allow deepseek/deepseek-v4-flash-0731 \
+    --audit "$GUARD_DIR/audit.jsonl" --sentinel "test-sentinel" \
+    --upstream "http://127.0.0.1:${UP_PORT:-0}/v1" > "$G_OUT" 2>&1 &
+G_PID=$!
+for _ in $(seq 1 50); do
+  G_PORT="$(awk '/^PORT /{print $2; exit}' "$G_OUT" 2>/dev/null)"
+  [ -n "${G_PORT:-}" ] && break
+  sleep 0.1
+done
+
+if [ -z "${G_PORT:-}" ] || [ -z "${UP_PORT:-}" ]; then
+  bad "the guard or its stand-in upstream did not come up"
+else
+  ask() {
+    curl -s -o "$2" -w '%{http_code}' -X POST "http://127.0.0.1:$G_PORT/v1/chat/completions" \
+      -H "Authorization: Bearer ${3:-test-sentinel}" -H 'Content-Type: application/json' \
+      -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true}"
+  }
+
+  CODE="$(ask "anthropic/claude-sonnet-4" "$GUARD_DIR/denied.body")"
+  [ "$CODE" = "403" ] \
+    && ok "a commercial model is refused (403)" || bad "a commercial model got $CODE"
+  [ ! -s "$HITS" ] \
+    && ok "and the upstream was never contacted" \
+    || bad "the refused request REACHED the upstream: $(cat "$HITS")"
+
+  CODE="$(ask "deepseek/deepseek-v4-flash-0731" "$GUARD_DIR/allowed.body")"
+  [ "$CODE" = "200" ] \
+    && ok "the allowlisted model is forwarded (200)" || bad "the allowed model got $CODE"
+  grep -q '"model": "deepseek/deepseek-v4-flash-0731"' "$HITS" \
+    && ok "and the upstream saw exactly that model" || bad "the upstream saw something else"
+  grep -q 'UPSTREAM-CHUNK-1' "$GUARD_DIR/allowed.body" && grep -q 'UPSTREAM-CHUNK-2' "$GUARD_DIR/allowed.body" \
+    && ok "streamed chunks are relayed through untouched" || bad "the stream did not come through"
+
+  CODE="$(ask "deepseek/deepseek-v4-flash-0731" "$GUARD_DIR/nosentinel.body" "wrong-token")"
+  [ "$CODE" = "401" ] \
+    && ok "a caller without this run's sentinel is refused" || bad "a wrong sentinel got $CODE"
+
+  HITS_BEFORE="$(wc -l < "$HITS")"
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$G_PORT/v1/chat/completions" \
+    -H 'Authorization: Bearer test-sentinel' -H 'Content-Type: application/json' -d 'not json')"
+  [ "$CODE" = "400" ] \
+    && ok "a body whose model cannot be read is refused" || bad "an uncheckable body got $CODE"
+  [ "$(wc -l < "$HITS")" -eq "$HITS_BEFORE" ] \
+    && ok "and it too reached no upstream" || bad "an uncheckable body was forwarded"
+
+  grep -q '"decision": "deny"' "$GUARD_DIR/audit.jsonl" \
+    && ok "the audit log records the refusals" || bad "the audit log has no denial"
+  if grep -qE 'test-upstream-key-not-real|test-sentinel|Authorization' "$GUARD_DIR/audit.jsonl"; then
+    bad "the audit log contains a credential"
+  else
+    ok "and it contains no credential"
+  fi
+fi
+kill "$G_PID" "$UP_PID" 2>/dev/null; wait "$G_PID" "$UP_PID" 2>/dev/null
+say
+
+say "guard gate (unguarded is not a workaround):"
+CONV_FAKE_HARNESS=0 CONV_OUT="$WORKDIR/gate/evidence" CONV_CSV="$WORKDIR/gate.csv" \
+  PI_BIN="$FAKE/pi-fake.sh" "$RUN" --unguarded --arms pi --scenarios data-tally \
+  > "$LOGDIR/gate.log" 2>&1
+[ $? -ne 0 ] \
+  && ok "--unguarded refuses to run without a declared fake harness" \
+  || bad "--unguarded ran with real binaries allowed"
+grep -q 'CONV_FAKE_HARNESS=1' "$LOGDIR/gate.log" \
+  && ok "and says what it would need" || bad "the refusal does not say why"
 say
 
 # ── the summary tool ────────────────────────────────────────────────────────

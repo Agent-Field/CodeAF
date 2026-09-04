@@ -158,12 +158,17 @@ def read_pi_events(path, _stdout):
     got["calls"] = len(messages)
     got["turns"] = len(messages)
     got["reply"] = last_text
-    if saw_usage:
+    if saw_usage and (tokens_in or tokens_out or tokens_total):
         got["cost_usd"] = cost
         got["cost_source"] = "self-reported"
         got["tokens_in"] = tokens_in
         got["tokens_out"] = tokens_out
         got["tokens_total"] = tokens_total or (tokens_in + tokens_out)
+    elif saw_usage:
+        # An all-zero usage block is what a refused or failed call leaves
+        # behind. Recording it as a $0 run would put a harness that never
+        # reached the provider at the cheap end of the frontier.
+        got["notes"].append("usage block was all zeros — nothing was billed")
     else:
         got["notes"].append("assistant messages carried no usage block")
     return got
@@ -260,12 +265,14 @@ def read_aforge_home(home, stdout_path):
     got["models"] = models
     got["aux_models"] = aux_models
     got["turns"] = seals
-    if rows:
+    if rows and (tokens_in or tokens_out):
         got["cost_usd"] = cost
         got["cost_source"] = "self-reported"
         got["tokens_in"] = tokens_in
         got["tokens_out"] = tokens_out
         got["tokens_total"] = tokens_in + tokens_out
+    elif rows:
+        got["notes"].append("usage rows were all zeros — nothing was billed")
     if stdout_path and os.path.exists(stdout_path):
         with open(stdout_path, errors="replace") as handle:
             got["reply"] = handle.read()

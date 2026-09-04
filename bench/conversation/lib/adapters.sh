@@ -80,10 +80,17 @@ arm_version() {
 # is how a grid ends up comparing two models.
 arm_model_arg() {
   case "$1" in
-    aforge)          printf '%s' "$CONV_MODEL" ;;
-    pi)              printf '%s' "$CONV_MODEL" ;;
-    omp|opencode)    printf 'openrouter/%s' "$CONV_MODEL" ;;
+    aforge|pi)    printf '%s' "$CONV_MODEL" ;;
+    omp)          [ "${ARM_GUARD:-no}" = "yes" ] && printf 'guard/%s' "$CONV_MODEL" \
+                                                 || printf 'openrouter/%s' "$CONV_MODEL" ;;
+    opencode)     printf 'openrouter/%s' "$CONV_MODEL" ;;
   esac
+}
+
+# arm_provider_name is the provider pi is told to use. Wired through the guard,
+# that is the guard's own provider entry rather than openrouter directly.
+arm_provider_name() {
+  [ "${ARM_GUARD:-no}" = "yes" ] && printf 'guard' || printf 'openrouter'
 }
 
 # arm_pin_check asks the arm's own catalog whether the exact id exists, before
@@ -114,12 +121,12 @@ arm_pin_check() {
       # arm is run with --provider openrouter, so another provider's row
       # carrying the same id is not evidence that this arm can pin it.
       if "${ask[@]}" "$bin" --list-models "$pattern" 2>/dev/null |
-           awk -v prov="openrouter" -v want="$CONV_MODEL" \
+           awk -v prov="$(arm_provider_name)" -v want="$CONV_MODEL" \
                'NF >= 2 && $1 == prov && $2 == want { hit = 1 } END { exit !hit }'; then
-        ARM_PIN_NOTE="pi catalog: exact (openrouter/$CONV_MODEL)"
+        ARM_PIN_NOTE="pi catalog: exact ($(arm_provider_name)/$CONV_MODEL)"
         return 0
       fi
-      ARM_PIN_NOTE="pi cannot pin openrouter/$CONV_MODEL exactly"
+      ARM_PIN_NOTE="pi cannot pin $(arm_provider_name)/$CONV_MODEL exactly"
       return 1
       ;;
     omp)
@@ -308,8 +315,11 @@ arm_isolate() {
       esac
       local profile_root="$HOME/.omp/profiles/$profile"
       if [ -e "$profile_root" ]; then
-        # Pre-existing: use it, seed nothing, delete nothing.
-        ARM_ISOLATION="existing omp profile $profile reused as-is (not created here, not removed)"
+        # A profile this run did not create carries settings this run did not
+        # write — including model roles. It is neither used nor touched.
+        conv_warn "omp profile $profile already exists; refusing to run inside settings this run did not write"
+        ARM_ISOLATION="refused: omp profile $profile already exists (left untouched)"
+        return 1
       else
         # A fresh profile opens omp's five-step setup wizard and the TUI never
         # reaches a composer (observed on 18.1.2), so the one key that says
@@ -317,6 +327,7 @@ arm_isolate() {
         mkdir -p "$profile_root/agent"
         printf 'setupVersion: 2\n' > "$profile_root/agent/config.yml"
         ARM_CLEANUP_PATH="$profile_root"
+        CONV_OMP_PROFILE_ACTIVE="$profile"
         ARM_ISOLATION="omp profile $profile created by this run under \$HOME/.omp/profiles"
       fi
       ARM_ENV=("OMP_PROFILE=$profile")
@@ -370,7 +381,7 @@ arm_print_argv() {
     pi)
       # pi has no --cwd: it works in the directory it is started in, so run.sh
       # starts it inside the fixture.
-      ARGV=("$PI_BIN" -p --mode json --provider openrouter --model "$model"
+      ARGV=("$PI_BIN" -p --mode json --provider "$(arm_provider_name)" --model "$model"
             --session-dir "$ARM_STATE_DIR/pi-sessions" "${ARM_EFFORT_FLAGS[@]}" "$text")
       ;;
     opencode)
@@ -440,7 +451,7 @@ arm_tui_argv() {
       ARM_BUSY_RE='Working\.\.\.'
       ARM_ASK_RE='(\[y\]|approve|Allow\?)'
       ARM_DOOR_NOTE='markers calibrated on pi 0.84.2 (bench/conversation lane, live pane capture)'
-      ARGV=("$PI_BIN" --provider openrouter --model "$model"
+      ARGV=("$PI_BIN" --provider "$(arm_provider_name)" --model "$model"
             --session-dir "$ARM_STATE_DIR/pi-sessions" "${ARM_EFFORT_FLAGS[@]}")
       ;;
     omp)

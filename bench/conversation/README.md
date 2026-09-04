@@ -44,31 +44,72 @@ no particular id — but the shape is fixed: exact ids, no wildcards, no family
 names, and `:batch`-style variants count as different entries because they are
 a different queue with a different price and latency.
 
-Three gates, because none of them is sufficient alone:
+### Prevention, and separately, detection
 
-1. **Environment.** A harness process inherits `PATH`, `HOME`, `TERM`, `LANG`,
-   `TMPDIR` and `OPENROUTER_API_KEY`, and nothing else (`lib/common.sh`,
-   `CONV_CARRIED`). A peer that never sees an Anthropic or OpenAI key cannot
-   bill one. `CONV_PASS_ENV` names anything extra to carry, so what got through
-   is always visible in the cell's `config.txt`.
-2. **Before the call.** The arm is handed the exact id; its own catalog is
-   asked whether that id exists; and an arm that cannot pin its *auxiliary*
-   calls — titles, planners, "smol" helper roles — is **skipped rather than
-   run**. aforge pins them with `--one-model`, omp with `--smol/--slow/--plan`.
-   pi 0.84.2 and opencode document no such pin, so they are skipped by default;
-   `--role-pin off` runs them anyway and says so on every row.
+These are not the same thing and the suite does not treat them as such.
 
-   The catalog is asked in the state root the cell will use, not the
-   operator's, because they answer differently: on the machine this was built
-   on, pi's default profile lists no openrouter models at all while a fresh
-   `PI_CODING_AGENT_DIR` does. The query pattern is loose and the match is
-   exact — provider **and** id for pi, the full selector for omp, since another
-   provider's row carrying the same id is not evidence that this arm can pin
-   it. aforge has no offline catalog query, so its pin is enforced on receipts
-   only, which is the stronger check anyway: it sees the roles.
-3. **After the call.** Every model id in the cell's own receipts is checked
-   against the allowlist. This is what catches a role or a fallback that
-   resolved elsewhere, and a cell that billed one fails.
+**Prevention (before the call).** A live run puts `lib/guard.py` on loopback
+between the harness and OpenRouter. The guard holds the real key; each harness
+gets a sentinel and a base URL pointing at the guard. It reads the `model` out
+of each request body and, if it is not on the allowlist, answers 403 **without
+opening a socket upstream**. Two consequences matter:
+
+- a model off the allowlist cannot be reached, whoever asked for it — a role, a
+  fallback, a reused setting, or a task the model itself generated;
+- a call that goes around the guard carries only the sentinel, so it cannot buy
+  anything from anybody.
+
+The upstream is fixed in the source. It can be moved only under `GUARD_TEST=1`,
+which is how the deterministic test proves a refusal never reaches an upstream:
+a stand-in upstream records everything it receives, and stays empty.
+
+An arm is live-runnable only if every call it makes can be pointed at the guard
+through a mechanism that CLI actually implements:
+
+| arm | how it is routed | source of that knowledge |
+|---|---|---|
+| aforge | `AFORGE_BASE_URL` | `internal/config/config.go` in this repository |
+| pi | a `guard` provider in `$PI_CODING_AGENT_DIR/models.json` | `core/model-runtime.js` loads it from the agent dir |
+| omp | a `guard` provider in the run's own `<profile>/agent/models.yml`, then **verified** by asking omp's catalog whether it loaded | omp disables custom providers wholesale on a validation failure, so writing the file is not evidence it took effect |
+| opencode | not routed | no custom-provider mechanism verified for it — unsupported for live runs |
+
+`--unguarded` exists only so the deterministic tests can drive fake binaries
+that talk to nobody. It refuses to run unless the caller sets
+`CONV_FAKE_HARNESS=1`, and it is not a way to run a real harness.
+
+**Configuration is not prevention.** `--one-model` on aforge and
+`--smol/--slow/--plan` on omp are still passed, and the role-pin state is still
+recorded on every row — but they are settings, not guarantees. omp alone also
+carries `providers.tinyModel`, `memoryModel`, `autoThinkingModel` and
+`unexpectedStopModel`; a reused profile can hold settings this run never wrote;
+and a generated task can name a model. That is why the guard exists and why the
+row says `role_pin: unverified` rather than pretending otherwise.
+
+**Detection (after the call).** Every model id in the cell's own receipts is
+checked against the allowlist, and a cell that billed one outside it fails.
+This is the backstop, not the barrier: by the time it fires, the call has
+happened. It is kept because it sees what a request body cannot — which model
+the provider says it actually billed.
+
+**Environment.** A harness process inherits `PATH`, `HOME`, `TERM`, `LANG`,
+`TMPDIR` and an `OPENROUTER_API_KEY` set to the sentinel — never the real key,
+and never another provider's. `CONV_PASS_ENV` names anything extra to carry, so
+what got through is visible in the cell's `config.txt`.
+
+**The key.** The guard needs a live `OPENROUTER_API_KEY` in the shell that
+starts the run, and checks it against the upstream's `/key` endpoint before any
+cell runs (no model call, no spend). This suite deliberately does **not** read
+credentials out of a CLI's own store: whose key pays for a benchmark stays an
+explicit decision. A stale key therefore stops the run with one message rather
+than producing a grid of cells that billed nothing.
+
+**Pinning, per arm.** The arm is also handed the exact id and its catalog is
+asked whether that id exists, in the state root the cell will use — they answer
+differently: on the machine this was built on, pi's default profile lists no
+openrouter models at all while a fresh `PI_CODING_AGENT_DIR` does. The query
+pattern is loose and the match is exact (provider **and** id for pi, the full
+selector for omp). aforge has no offline catalog query, so its pin rests on the
+guard in front and the receipts behind.
 
 ## Cost, and what unknown means
 
@@ -86,6 +127,11 @@ one, and a frontier that reads an absence as a zero puts the quietest harness on
 top. Cells without a cost, and cells whose billed model cannot be named, are
 marked `comparable: no` and are excluded from every comparison with their
 reason attached.
+
+An all-zero usage block is also an absence, not a zero: a refused or failed
+call still emits one, and recording it as a $0 run would put a harness that
+never reached the provider at the cheap end of the frontier. A print-door cell
+that produced no reply at all fails on that alone.
 
 Known gap: through the interactive door, pi and omp stream nothing to stdout, so
 their receipts are read opportunistically from the session files in their
@@ -176,14 +222,20 @@ secret.
 Evidence is never overwritten by accident — a run whose cell directory already
 exists refuses and records a skip. `--overwrite` is the deliberate way.
 
+No live comparison has been run through this suite yet: the shell's
+`OPENROUTER_API_KEY` on the machine it was built on is stale (a direct call to
+the upstream with no guard involved returns 401), so the key preflight stops the
+run before any cell. Nothing was spent, and no unguarded fallback was taken.
+
 State is isolated per cell: `AFORGE_HOME` for aforge, `PI_CODING_AGENT_DIR` plus
 `--session-dir` for pi, `XDG_*` for opencode (declared, not documented by
 opencode, and recorded as unverified). omp's documented isolation is a named
 profile under `$HOME/.omp/profiles`; this suite creates its own per-cell profile
 (and seeds `setupVersion: 2`, without which a fresh profile opens a setup wizard
 and the TUI never reaches a composer) and removes **only** a profile it created.
-An existing profile named with `CONV_OMP_PROFILE` is used as-is and never
-deleted, and a name that is not a plain path component is refused.
+A profile that already exists is **refused**, not reused: it carries settings
+this run did not write, including model roles. A name that is not a plain path
+component is refused too.
 
 ## Testing the rig
 
@@ -202,8 +254,15 @@ that would overwrite the first's evidence, and credentials leaking into a child
 process. It also checks the receipt reader counts a repeated message once — all
 three peers emit the same assistant message three times.
 
-At the time of writing it is 50 checks, all passing, and it needs `tmux`; a
-missing dependency is reported as skipped and exits non-zero rather than green.
+It also drives the guard against a stand-in upstream: a commercial model is
+refused with nothing reaching the upstream, an allowlisted one is forwarded and
+its streamed chunks relayed untouched, a caller without the sentinel is refused,
+an unreadable body is refused, and the audit log carries the decisions and no
+credential.
+
+At the time of writing it is 62 checks, all passing, and it needs `tmux` and
+`curl`; a missing dependency is reported as skipped and exits non-zero rather
+than green.
 
 ## What this does not establish
 
