@@ -739,13 +739,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	landing := 0
 	landingStop := StopReason("")
 	// The no-progress guard catches a leaf that is spending turns without
-	// advancing: repeating the same tool call, going many turns without
-	// writing anything or learning anything new, gathering forever without
-	// changing the workspace, or simply running past any honest leaf's measured
-	// need. The recon signal first asks for the result; every concluding signal
-	// then uses the same landing shape as the budget and deadline reserves, so
-	// the workspace is left consistent and the partial goes out whole. See
-	// noprogress.go for the signals and thresholds.
+	// advancing: repeating the same tool call, going many turns without writing
+	// anything or learning anything new, or simply running past any honest
+	// leaf's measured need. The recon signal asks for the result and does nothing
+	// else; the other three signals conclude through the same landing shape as
+	// the budget and deadline reserves, so the workspace is left consistent and
+	// the partial goes out whole. See noprogress.go for the signals and thresholds.
 	progress := newProgressGuard()
 	// The leaf's own closing. It is armed here, beside the other once-only
 	// questions above, because it is one of them: a finding this leaf's own
@@ -1264,14 +1263,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		if landing == 0 {
 			switch progress.observe(calls, results, mutationsBefore, mutationsAfter) {
 			case progressPace:
-				trace.note(progress.reconReason() + " — result asked for")
+				trace.note(progress.reconNote())
 				messages = append(messages, ai.Message{Role: "user", Content: text(progress.reconNotice())})
 			case progressConclude:
 				progress.markConcluded()
 				trace.note(progress.noProgressReason() + " — conclude directive injected")
-				if progress.reconNoticeDue() {
-					messages = append(messages, ai.Message{Role: "user", Content: text(progress.reconNotice())})
-				}
 				messages = append(messages, ai.Message{Role: "user", Content: text(noProgressConcludeDirective)})
 			case progressTerminate:
 				outcome.Stop = StopNoProgress

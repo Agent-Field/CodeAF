@@ -124,29 +124,27 @@ func TestTheLeafIsPacedAgainstItsWallBeforeTheLandingReserve(t *testing.T) {
 }
 
 func TestAReadOnlyLeafIsAskedForItsResultAndAskedAgain(t *testing.T) {
-	turns := distinctReadTurns(noProgressReconConclude)
+	turns := distinctReadTurns(2 * noProgressReconTurns)
 	turns = append(turns, nil)
 	client := &scriptedCompleter{turns: turns}
 	linear := NewLinear(client, workspace(t), nil, 100, 1_000_000, time.Minute)
-	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "research"}); err != nil {
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "research"})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if outcome.Stop != StopDone {
+		t.Fatalf("stop = %s, want %s", outcome.Stop, StopDone)
 	}
 
 	final := client.seen[len(client.seen)-1]
-	var notices []string
-	for _, message := range final {
-		if message.Role == "user" && len(message.Content) > 0 &&
-			strings.Contains(message.Content[0].Text, "consecutive tool-calling turns without changing the workspace") {
-			notices = append(notices, message.Content[0].Text)
-		}
-	}
+	notices := messagesContaining(final, "consecutive tool-calling turns without changing the workspace")
 	if len(notices) != 2 {
 		t.Fatalf("read-only notices = %d, want two: %+v", len(notices), notices)
 	}
 	if !strings.Contains(notices[0], itoa(noProgressReconTurns)) {
 		t.Fatalf("first notice does not carry its turn count: %q", notices[0])
 	}
-	if !strings.Contains(notices[1], itoa(noProgressReconConclude)) {
+	if !strings.Contains(notices[1], itoa(2*noProgressReconTurns)) {
 		t.Fatalf("second notice does not carry its larger turn count: %q", notices[1])
 	}
 	for _, notice := range notices {
@@ -154,77 +152,184 @@ func TestAReadOnlyLeafIsAskedForItsResultAndAskedAgain(t *testing.T) {
 			t.Fatalf("notice does not ask for the result: %q", notice)
 		}
 	}
+	if transcriptContains(client, noProgressConcludeDirective) {
+		t.Fatalf("read-only leaf received a conclude directive: %+v", final)
+	}
 }
 
 func TestAProducingLeafIsNeverPaced(t *testing.T) {
-	turns := make([][]ai.ToolCall, noProgressReconConclude+2)
-	for index := range turns {
-		turns[index] = []ai.ToolCall{call(
+	run := func(t *testing.T, turns [][]ai.ToolCall, brief string) (*scriptedCompleter, *Outcome) {
+		t.Helper()
+		client := &scriptedCompleter{turns: turns}
+		linear := NewLinear(client, workspace(t), nil, 100, 1_000_000, time.Minute)
+		outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: brief})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return client, outcome
+	}
+
+	turnCount := 2*noProgressReconTurns + 2
+	producingTurns := make([][]ai.ToolCall, turnCount)
+	for index := range producingTurns {
+		producingTurns[index] = []ai.ToolCall{call(
 			fmt.Sprintf("write-%d", index), "sh",
 			fmt.Sprintf(`{"cmd":"printf 'step %d' > result-%d.txt"}`, index, index),
 		)}
 	}
+	client, outcome := run(t, producingTurns, "produce")
+	if outcome.Stop != StopDone {
+		t.Fatalf("stop = %s, want %s", outcome.Stop, StopDone)
+	}
+	if transcriptContains(client, "consecutive tool-calling turns without changing the workspace") {
+		t.Fatalf("a producing leaf received a recon notice: %+v", client.seen[len(client.seen)-1])
+	}
+
+	// The read-only control binds the absence above to the production signal:
+	// without the notice in production, this half fails instead of passing vacuously.
+	readOnly, readOutcome := run(t, distinctReadTurns(turnCount), "research")
+	if readOutcome.Stop != StopDone {
+		t.Fatalf("read-only control stop = %s, want %s", readOutcome.Stop, StopDone)
+	}
+	if !transcriptContains(readOnly, "You have made "+itoa(noProgressReconTurns)+
+		" consecutive tool-calling turns without changing the workspace") {
+		t.Fatalf("read-only control did not receive the recon notice: %+v", readOnly.seen[len(readOnly.seen)-1])
+	}
+}
+
+// A leaf whose deliverable is its answer reads and mutates nothing by design,
+// so the guard may ask for that answer but may never stop it for reading.
+func TestALeafWhoseEveryReadIsFreshIsNeverConcluded(t *testing.T) {
+	turns := distinctReadTurns(3 * noProgressReconTurns)
+	turns = append(turns, nil)
 	client := &scriptedCompleter{turns: turns}
-	linear := NewLinear(client, workspace(t), nil, 100, 1_000_000, time.Minute)
-	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "produce"})
+	space := workspace(t)
+	linear := NewLinear(client, space, nil, len(turns)+landingTurns+2, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "research"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if outcome.Stop != StopDone {
 		t.Fatalf("stop = %s, want %s", outcome.Stop, StopDone)
 	}
-	for _, messages := range client.seen {
-		for _, message := range messages {
-			if message.Role == "user" && len(message.Content) > 0 &&
-				strings.Contains(message.Content[0].Text, "consecutive tool-calling turns without changing the workspace") {
-				t.Fatalf("a producing leaf received a recon notice: %q", message.Content[0].Text)
-			}
-		}
+	if outcome.Exhausted != "" {
+		t.Fatalf("exhausted = %q, want empty", outcome.Exhausted)
 	}
-}
-
-func TestALeafThatOnlyReadsIsConcludedThoughEveryResultIsNew(t *testing.T) {
-	turns := distinctReadTurns(noProgressReconConclude + landingTurns + 2)
-	client := &scriptedCompleter{turns: turns}
-	space := workspace(t)
-	linear := NewLinear(client, space, nil, len(turns), 1_000_000, time.Minute)
-	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "research"})
-	if err != nil {
-		t.Fatal(err)
+	if outcome.Turns <= 2*noProgressReconTurns {
+		t.Fatalf("read-only leaf took %d turns, want more than %d", outcome.Turns, 2*noProgressReconTurns)
 	}
-	if outcome.Stop != StopNoProgress {
-		t.Fatalf("stop = %s, want %s", outcome.Stop, StopNoProgress)
-	}
-	if outcome.Exhausted != StopNoProgress {
-		t.Fatalf("exhausted = %q, want %q", outcome.Exhausted, StopNoProgress)
-	}
-	if outcome.Turns > noProgressReconConclude+landingTurns {
-		t.Fatalf("read-only leaf took %d turns, want at most %d", outcome.Turns, noProgressReconConclude+landingTurns)
-	}
-
-	directiveSeen := false
-	for _, message := range client.seen[len(client.seen)-1] {
-		if message.Role == "user" && len(message.Content) > 0 &&
-			message.Content[0].Text == noProgressConcludeDirective {
-			directiveSeen = true
-		}
-	}
-	if !directiveSeen {
-		t.Fatalf("the exact conclude directive did not reach the transcript: %+v", client.seen[len(client.seen)-1])
+	if transcriptContains(client, noProgressConcludeDirective) {
+		t.Fatalf("a fresh-reading leaf received a conclude directive: %+v", client.seen[len(client.seen)-1])
 	}
 
 	record, err := os.ReadFile(TraceFile(space.Root(), "1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantReason := "no-progress guard: " + itoa(noProgressReconConclude) +
-		" consecutive tool-calling turns with no workspace mutation — conclude directive injected"
-	if !strings.Contains(string(record), wantReason) {
-		t.Fatalf("the recorder does not name mutation-free recon as the cause: %q", record)
+	recorded := string(record)
+	if strings.Contains(recorded, "conclude directive injected") {
+		t.Fatalf("the recorder contains a conclude directive: %q", record)
 	}
-	if strings.Contains(string(record), "consecutive turns with no filesystem mutations and no new information") {
-		t.Fatalf("the recorder says the stagnant signal fired despite distinct results: %q", record)
+	if strings.Contains(recorded, string(StopNoProgress)) {
+		t.Fatalf("the recorder says a fresh-reading leaf stopped for no progress: %q", record)
 	}
+
+	notices := messagesContaining(client.seen[len(client.seen)-1],
+		"consecutive tool-calling turns without changing the workspace")
+	if len(notices) < 2 {
+		t.Fatalf("read-only notices = %d, want at least two: %+v", len(notices), notices)
+	}
+	if !strings.Contains(notices[0], itoa(noProgressReconTurns)) {
+		t.Fatalf("first notice does not carry its turn count: %q", notices[0])
+	}
+	if !strings.Contains(notices[1], itoa(2*noProgressReconTurns)) {
+		t.Fatalf("second notice does not carry its larger turn count: %q", notices[1])
+	}
+}
+
+func TestALeafAlreadyLandingIsNeverPaced(t *testing.T) {
+	space := workspace(t)
+	client := &scriptedCompleter{
+		turns:  [][]ai.ToolCall{{call("read", "sh", `{"cmd":"printf result"}`)}},
+		delays: []time.Duration{1100 * time.Millisecond},
+	}
+	linear := NewLinear(client, space, nil, 8, 12, 2*time.Second)
+	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "research"}); err != nil {
+		t.Fatal(err)
+	}
+
+	final := client.seen[len(client.seen)-1]
+	if len(messagesContaining(final, "The budget for this task is spent.")) == 0 {
+		t.Fatalf("the budget landing was not active in the final transcript: %+v", final)
+	}
+	if transcriptContains(client, "clock for this task now reads") {
+		t.Fatalf("a leaf already landing received a clock reading: %+v", final)
+	}
+	record, err := os.ReadFile(TraceFile(space.Root(), "1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(record), "budget exhausted — landing reserve granted") {
+		t.Fatalf("the recorder does not show the budget landing: %q", record)
+	}
+	if strings.Contains(string(record), "wall pace —") {
+		t.Fatalf("the recorder paced a leaf already landing: %q", record)
+	}
+}
+
+func TestALeafRepeatingItselfIsStillConcluded(t *testing.T) {
+	t.Run("the same call and the same result", func(t *testing.T) {
+		space := workspace(t)
+		turns := make([][]ai.ToolCall, noProgressRepeatCap+landingTurns+2)
+		repeated := call("same", "sh", `{"cmd":"printf same"}`)
+		for index := range turns {
+			turns[index] = []ai.ToolCall{repeated}
+		}
+		client := &scriptedCompleter{turns: turns}
+		linear := NewLinear(client, space, nil, len(turns), 1_000_000, time.Minute)
+		outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if outcome.Stop != StopNoProgress {
+			t.Fatalf("stop = %s, want %s", outcome.Stop, StopNoProgress)
+		}
+		record, err := os.ReadFile(TraceFile(space.Root(), "1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(record), "same tool call repeated") {
+			t.Fatalf("the recorder does not name the repeat signal: %q", record)
+		}
+	})
+
+	t.Run("content it has already seen", func(t *testing.T) {
+		space := workspace(t)
+		turns := make([][]ai.ToolCall, noProgressStagnantCap+landingTurns+2)
+		alternating := []ai.ToolCall{
+			call("one", "sh", `{"cmd":"printf one"}`),
+			call("two", "sh", `{"cmd":"printf two"}`),
+		}
+		for index := range turns {
+			turns[index] = []ai.ToolCall{alternating[index%len(alternating)]}
+		}
+		client := &scriptedCompleter{turns: turns}
+		linear := NewLinear(client, space, nil, len(turns), 1_000_000, time.Minute)
+		outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if outcome.Stop != StopNoProgress {
+			t.Fatalf("stop = %s, want %s", outcome.Stop, StopNoProgress)
+		}
+		record, err := os.ReadFile(TraceFile(space.Root(), "1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(record), "consecutive turns with no filesystem mutations and no new information") {
+			t.Fatalf("the recorder does not name the stagnant signal: %q", record)
+		}
+	})
 }
 
 func TestThePacingIsInTheRunsOwnRecord(t *testing.T) {
@@ -241,10 +346,13 @@ func TestThePacingIsInTheRunsOwnRecord(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "no-progress guard: " + itoa(noProgressReconTurns) +
-			" consecutive tool-calling turns with no workspace mutation — result asked for"
+		want := "reading pace — " + itoa(noProgressReconTurns) +
+			" consecutive tool-calling turns with no workspace mutation, result asked for"
 		if !strings.Contains(string(record), want) {
 			t.Fatalf("the recorder does not name the recon count: %q", record)
+		}
+		if strings.Contains(string(record), "conclude directive injected") {
+			t.Fatalf("the recon notice was recorded as a conclusion: %q", record)
 		}
 	})
 
@@ -296,4 +404,25 @@ func distinctReadTurns(count int) [][]ai.ToolCall {
 		)}
 	}
 	return turns
+}
+
+func messagesContaining(messages []ai.Message, fragment string) []string {
+	var matches []string
+	for _, message := range messages {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, fragment) {
+				matches = append(matches, part.Text)
+			}
+		}
+	}
+	return matches
+}
+
+func transcriptContains(client *scriptedCompleter, fragment string) bool {
+	for _, messages := range client.seen {
+		if len(messagesContaining(messages, fragment)) > 0 {
+			return true
+		}
+	}
+	return false
 }

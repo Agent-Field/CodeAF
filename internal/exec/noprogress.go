@@ -47,20 +47,23 @@ import (
 //     400-turn hard cap, and it fires into a conclude directive rather than a
 //     guillotine.
 //   - A mutation-free recon run: tool-calling turns that leave the workspace
-//     unchanged, even when every result is new. Three measured runs reached
-//     their 45-minute walls this way; one made 156 distinct shell calls and
-//     wrote nothing. Those calls produced 156 distinct hashes, so newInfo
-//     called every turn progress while the deliverable never began. The guard
-//     first asks for the result, asks again if the reading continues, and then
-//     uses the same conclude-and-grace landing as the other signals.
+//     unchanged. THIS ONE ONLY EVER ASKS. A leaf whose deliverable is its
+//     answer — a research errand, a review, a question answered out of a
+//     repository — reads and mutates nothing by design, so the absence of a
+//     write is not evidence of a stall and may never be the reason a leaf is
+//     stopped. Each complete span asks for the result and asks again at the
+//     next; the measured 45-minute reader is landed by its own wall, with the
+//     wall reading telling it where it stands, and a leaf genuinely repeating
+//     itself is caught by the first two signals four and six turns in, long
+//     before a span completes.
 //
-// The first recon span is advisory. On any concluding signal the guard first
-// injects a conclude-now directive — one chance to land the work — and then,
-// if the leaf is still spinning, terminates it with its partial result and a
-// journaled reason. The two-stage exit is the same shape the budget landing
-// and the straggler hand-back already take: the workspace is left consistent
-// and the partial goes out whole, because the work is being returned rather
-// than thrown away.
+// Mutation-free recon spans are advisory only. On any of the other three
+// concluding signals the guard first injects a conclude-now directive — one
+// chance to land the work — and then, if the leaf is still spinning, terminates
+// it with its partial result and a journaled reason. The two-stage exit is the
+// same shape the budget landing and the straggler hand-back already take: the
+// workspace is left consistent and the partial goes out whole, because the
+// work is being returned rather than thrown away.
 //
 // The thresholds are deliberately generous. This is a tail-risk bound, not a
 // budget: it exists to catch the one-in-a-hundred runaway, and it must never
@@ -109,11 +112,6 @@ const noProgressStagnantCap = 6
 // the first notice arrives with a leaf's worth of turns still available to act
 // on it.
 const noProgressReconTurns = 10
-
-// noProgressReconConclude is the second mutation-free recon span, where the
-// first span's request for a result has gone unanswered and the guard must
-// conclude the leaf through the existing landing ladder.
-const noProgressReconConclude = 2 * noProgressReconTurns
 
 // noProgressTurnFloor is the turn count past which the guard stops needing
 // the stagnant signal to fire — but only against a leaf whose recent window
@@ -177,8 +175,8 @@ type progressGuard struct {
 	stagnantTurns int
 
 	// Signal 4: how many consecutive tool-calling turns have left the
-	// workspace unchanged. Unlike stagnantTurns, new information does not
-	// reset this signal: gathering forever is not producing.
+	// workspace unchanged. New information does not clear the count because it
+	// measures production rather than learning, and the count is advisory only.
 	reconTurns int
 
 	// Signal 3: total turns observed.
@@ -345,10 +343,12 @@ func (g *progressGuard) observe(
 	} else {
 		g.stagnantTurns++
 	}
-	// Signal 4: mutation-free recon. A tool-calling turn advances the count
-	// whenever it leaves the workspace unchanged, even when its result is new;
-	// a mutation resets the whole run. Turns with no calls returned above, so
-	// they neither advance nor clear it.
+	// Signal 4: mutation-free recon. A tool-calling turn that leaves the
+	// workspace unchanged advances the count, and a mutation clears it. The
+	// count is read only to ask for the result: a fresh read is progress and can
+	// never conclude the leaf, while Signals 1 and 2 catch a leaf going in
+	// circles before a recon span completes. Turns with no calls returned above,
+	// so they neither advance nor clear it.
 	if mutated {
 		g.reconTurns = 0
 	} else {
@@ -400,12 +400,8 @@ func (g *progressGuard) observe(
 	if g.turns >= noProgressTurnFloor && g.productiveCount < noProgressFloorMinProductive {
 		return progressConclude
 	}
-	// Signal 4: a leaf may gather new material for a generous span, but not
-	// without bound. The first span asks for the result; the second concludes
-	// through the same grace ladder as every other no-progress finding.
-	if g.reconTurns >= noProgressReconConclude {
-		return progressConclude
-	}
+	// Signal 4: each complete mutation-free span asks for the result and does
+	// nothing else. A leaf whose result is its answer may read for its whole wall.
 	if g.reconTurns > 0 && g.reconTurns%noProgressReconTurns == 0 {
 		return progressPace
 	}
@@ -423,19 +419,17 @@ func (g *progressGuard) reconNotice() string {
 		"reply if the answer itself is the result."
 }
 
-// reconReason is the run record for a mutation-free recon span. Its count
-// comes from the same counter as the notice, so the leaf and a later reader of
-// the run cannot be told two different measurements.
-func (g *progressGuard) reconReason() string {
-	return "no-progress guard: " + itoa(g.reconTurns) +
-		" consecutive tool-calling turns with no workspace mutation"
-}
-
-// reconNoticeDue reports whether the current observation completed a recon
-// span. The conclude observation asks for the result and orders the landing in
-// the same transcript turn, so the second notice is not lost behind escalation.
-func (g *progressGuard) reconNoticeDue() bool {
-	return g.reconTurns > 0 && g.reconTurns%noProgressReconTurns == 0
+// reconNote is what a mutation-free span writes into the run's own record. Its
+// count comes from the same counter as the notice, so the leaf and a later
+// reader of the run cannot be told two different measurements.
+//
+// It is deliberately NOT spelled in the no-progress guard's voice, though the
+// guard is what observed it: the note records that a leaf was asked for its
+// result, and a leaf reading twenty different files is making progress. A line
+// beginning "no-progress" would say the opposite to whoever reads the run.
+func (g *progressGuard) reconNote() string {
+	return "reading pace — " + itoa(g.reconTurns) +
+		" consecutive tool-calling turns with no workspace mutation, result asked for"
 }
 
 // markConcluded sets the conclude state: the directive has been injected,
@@ -467,8 +461,6 @@ func (g *progressGuard) noProgressReason() string {
 	case g.stagnantTurns >= noProgressStagnantCap:
 		reason.WriteString(itoa(g.stagnantTurns))
 		reason.WriteString(" consecutive turns with no filesystem mutations and no new information")
-	case g.reconTurns >= noProgressReconConclude:
-		return g.reconReason()
 	default:
 		reason.WriteString("ran past ")
 		reason.WriteString(itoa(noProgressTurnFloor))
