@@ -2189,9 +2189,15 @@ re-tell the model about a landing its model has already read.
 terminal is attached, its note waits for a step boundary that never comes, and the session
 is closed later without one. That landing is not written off as announced: the next time
 you open the session it appears under `recovered task graph: …` with the others, so work
-that finished while you were away is told to you rather than lost. The narrow cost is the
-other direction — a machine that dies in the moment between the model reading a landing and
-the checkpoint being written may mention that one twice.
+that finished while you were away is told to you rather than lost.
+
+**It stays owed for as many lives as it takes.** Opening the session and closing it again
+without the model reading that note does not spend it either — the debt is settled when the
+landing reaches the conversation's own transcript, not when a session merely offers it — so
+a note can be re-told on the second, third and fourth open and is only written off once it
+has actually been read. The narrow cost is the other direction: a machine that dies in the
+moment between the model reading a landing and the checkpoint being written may mention
+that one twice.
 
 ## Where task state is written on disk
 

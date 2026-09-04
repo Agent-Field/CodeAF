@@ -77,7 +77,7 @@ func TestTaskReplyTagSurvivesSessionResume(t *testing.T) {
 	}
 	want := []TaskReplyTag{{ID: 9, Title: "Trace retries", Request: "keep MY wording exactly"}}
 	note := textMessage("user", "task 9 finished")
-	journal.appendNote(note, want)
+	journal.appendNote(note, noteMarks{tags: want})
 	journal.appendMessage(textMessage("assistant", "The retry trace landed."))
 	if err := journal.Close(); err != nil {
 		t.Fatal(err)

@@ -1960,13 +1960,19 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
-	// AND WHOEVER SENT IT IS OWED THE ANSWER THAT IT LANDED. It is deferred so
-	// that every road below has written the record first — the transcript on all
-	// of them, and the journal on the two that reach a file — because the promise
-	// a durable delivery makes is about the record and not about the queue
-	// ([durableDelivery]). The senders are told outside this lock
+	// AND WHOEVER SENT IT IS OWED AN ANSWER ONLY IF THE RECORD REALLY HOLDS IT.
+	// `durable` is set by each road below: the journal write answers whether the
+	// line reached the file, and a write that failed may not settle a delivery —
+	// nothing would ever say that landing again ([durableDelivery]). A session
+	// with no journal at all settles on its transcript, which is the whole of the
+	// record it has. The senders are told outside this lock
 	// ([Agent.settleDeliveries]), which is where a checkpoint may be written.
-	defer a.holdSettledLocked(user)
+	durable := false
+	defer func() {
+		if durable {
+			a.holdSettledLocked(user)
+		}
+	}()
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, user.message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
@@ -1983,6 +1989,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	// words are the last thing that should depend on which layout they opened in.
 	a.chatlog.post(kept)
 	if a.file == nil {
+		durable = true
 		return
 	}
 	if user.authored {
@@ -1991,7 +1998,10 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// the one bit that says nobody typed it, so a resume can draw it where the
 		// live surface drew it (sessionfile.go's [sessionEntry.Note]). A note
 		// carries no pictures, which is why this door takes none.
-		a.file.appendNote(user.message, user.replyTags)
+		durable = a.file.appendNote(user.message, noteMarks{
+			tags:       user.replyTags,
+			deliveries: deliveryIDs(user.delivered),
+		})
 		return
 	}
 	if mark := user.steerRecord(); mark != nil {
@@ -2001,11 +2011,11 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// sits in, plus the instant and the landing account, so a page reopened
 		// tomorrow draws it as the person's own correction rather than as a new
 		// question (steer.go, task_room.go, sessionfile.go's [sessionEntry.Steer]).
-		a.file.appendSteer(kept, *mark)
+		durable = a.file.appendSteer(kept, *mark)
 		a.stampUserLocked(messageContentText(kept))
 		return
 	}
-	a.file.appendMessage(kept, user.refs...)
+	durable = a.file.appendMessage(kept, user.refs...)
 	// AND THE FOLDER LEARNS THE PERSON WAS HERE. Resume order is on when the
 	// person last spoke and not on file mtime (place.go's [Meta.LastUserAt]),
 	// and this line — the one place the person's own words reach the journal —

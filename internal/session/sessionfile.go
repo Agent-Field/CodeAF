@@ -140,6 +140,14 @@ type sessionEntry struct {
 	Note      bool           `json:"note,omitempty"`
 	ReplyTags []TaskReplyTag `json:"replyTags,omitempty"`
 
+	// Deliveries names the durable deliveries this line is the record of
+	// ([durableDelivery]): a landing's news, identified by session, task,
+	// attempt and ending. It is what lets a resumed session tell a landing it
+	// already recorded from one it still owes, without trusting a checkpoint
+	// that may not have been written. Absent from every line that is not one,
+	// and from every file written before it existed.
+	Deliveries []string `json:"deliveries,omitempty"`
+
 	// Steer marks the two lines that belong to STEERING — a sentence the person
 	// typed into a turn that was already running (steer.go).
 	//
@@ -916,6 +924,14 @@ type sessionFile struct {
 	// [shapeEntries]).
 	notes     map[string]bool
 	replyTags map[string][]TaskReplyTag
+	// delivered is the set of durable delivery ids this file has recorded, from
+	// the replay at open and from every note appended since. It answers one
+	// question — has this conversation already been told this landing — for a
+	// resume deciding what it still owes (task_store.go). noteDeliveries is the
+	// same ids under their line's own fingerprint, so a compaction re-journals a
+	// note with what it was the record of.
+	delivered      map[string]bool
+	noteDeliveries map[string][]string
 
 	// steers is WHICH user-role messages were spliced into a turn that was
 	// already running (steer.go), under the same fingerprint the notes use.
@@ -1143,6 +1159,54 @@ func rememberNote(notes map[string]bool, message ai.Message) {
 	}
 }
 
+// rememberDeliveries adds the durable delivery ids one recorded line carries, in
+// a map the caller owns.
+func rememberDeliveries(delivered map[string]bool, ids []string) {
+	for _, id := range ids {
+		if id = strings.TrimSpace(id); id != "" && delivered != nil {
+			delivered[id] = true
+		}
+	}
+}
+
+// rememberNoteDeliveries files one line's ids under the line's own fingerprint.
+func rememberNoteDeliveries(index map[string][]string, message ai.Message, ids []string) {
+	if index == nil || len(ids) == 0 {
+		return
+	}
+	if key := noteKey(message); key != "" {
+		index[key] = append([]string(nil), ids...)
+	}
+}
+
+// noteDeliveriesOf is what one recorded note was the record of, for the
+// compaction that writes it again.
+func (s *sessionFile) noteDeliveriesOf(message ai.Message) []deliveryID {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []deliveryID
+	for _, id := range s.noteDeliveries[noteKey(message)] {
+		out = append(out, deliveryID(id))
+	}
+	return out
+}
+
+// recorded answers whether this journal already holds the line that carried one
+// durable delivery. It is the record's own answer, so a resume can tell a
+// landing it has already told from one it still owes even when the checkpoint
+// that would have said so was never written ([durableDelivery]).
+func (s *sessionFile) recorded(id deliveryID) bool {
+	if s == nil || id == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.delivered[string(id)]
+}
+
 // noteKey fingerprints a session-authored line: its role and its text, through
 // the same [partKey] the pictures are indexed by.
 //
@@ -1261,6 +1325,8 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.images = replayed.images
 	journal.notes = replayed.notes
 	journal.replyTags = replayed.replyTags
+	journal.delivered = replayed.delivered
+	journal.noteDeliveries = replayed.noteDeliveries
 	journal.steers = replayed.steers
 	journal.restored = replayed.usage
 
@@ -1413,6 +1479,8 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// there is nothing left to read it off (see [sessionFile.notes]).
 	notes := make(map[string]bool)
 	replyTags := make(map[string][]TaskReplyTag)
+	delivered := make(map[string]bool)
+	noteDeliveries := make(map[string][]string)
 	// And the splice index, in the same pass and for the same reason: a steer is
 	// an ordinary user message once it has been rebuilt, and the mark that says
 	// it was typed INTO the turn above it is on the line (steer.go).
@@ -1471,6 +1539,8 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if entry.Note {
 				rememberNote(notes, message)
 				rememberReplyTags(replyTags, message, entry.ReplyTags)
+				rememberDeliveries(delivered, entry.Deliveries)
+				rememberNoteDeliveries(noteDeliveries, message, entry.Deliveries)
 			}
 			if entry.Steer != nil {
 				rememberSteer(steers, message, SteerMark{
@@ -1658,20 +1728,22 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		unread = scanned + 1
 	}
 	return replayedSession{
-		messages:  messages,
-		unread:    unread,
-		reasoning: reasoning,
-		earlier:   earlier,
-		overlap:   overlap,
-		title:     title,
-		id:        id,
-		images:    images,
-		notes:     notes,
-		replyTags: replyTags,
-		steers:    steers,
-		usage:     spent,
-		created:   created,
-		existed:   lines > 0,
+		messages:       messages,
+		unread:         unread,
+		reasoning:      reasoning,
+		earlier:        earlier,
+		overlap:        overlap,
+		title:          title,
+		id:             id,
+		images:         images,
+		notes:          notes,
+		replyTags:      replyTags,
+		delivered:      delivered,
+		noteDeliveries: noteDeliveries,
+		steers:         steers,
+		usage:          spent,
+		created:        created,
+		existed:        lines > 0,
 	}, nil
 }
 
@@ -1846,6 +1918,10 @@ type replayedSession struct {
 	notes map[string]bool
 	// replyTags is the typed identity stored on task completion notes.
 	replyTags map[string][]TaskReplyTag
+	// delivered is the set of durable delivery ids this file already recorded,
+	// and noteDeliveries the same ids under their line's fingerprint.
+	delivered      map[string]bool
+	noteDeliveries map[string][]string
 	// steers is which of those messages were spliced into a turn that was
 	// already running, keyed by [noteKey] — the index [sessionFile.steers] is
 	// opened holding (steer.go).
@@ -1963,8 +2039,8 @@ func reasoningAfterRepair(repaired, original []ai.Message, reasoning []provider.
 // in a part is bytes with no provenance, and by the time a message reaches the
 // journal there is no way to recover the path it was read from (see
 // [userMessage]).
-func (s *sessionFile) appendMessage(message ai.Message, refs ...journalPart) {
-	s.append(message, false, refs)
+func (s *sessionFile) appendMessage(message ai.Message, refs ...journalPart) bool {
+	return s.append(message, false, refs)
 }
 
 func (s *sessionFile) appendReasonedMessage(message ai.Message, reasoning provider.MessageReasoning) {
@@ -2054,8 +2130,16 @@ func (s *sessionFile) messageLines(first, last ai.Message) (journal string, from
 // one because exactly one caller has the answer — [Agent.recordUserLocked],
 // which is holding the [userMessage] the mark comes off — and every other call
 // site should stay the call it was.
-func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
-	s.append(message, true, nil, tags...)
+// noteMarks is what a session-authored line carries besides its words: the
+// identity of the task it is about, and the durable deliveries it is the record
+// of ([durableDelivery]).
+type noteMarks struct {
+	tags       []TaskReplyTag
+	deliveries []deliveryID
+}
+
+func (s *sessionFile) appendNote(message ai.Message, marks noteMarks) bool {
+	return s.append(message, true, nil, marks)
 }
 
 // appendSteer is appendMessage for a person's line that was typed INTO work
@@ -2077,9 +2161,9 @@ func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
 //
 // A steer carries no pictures (neither door takes any), which is why this takes
 // no references.
-func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) {
+func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) bool {
 	if s == nil {
-		return
+		return false
 	}
 	s.mu.Lock()
 	if s.steers == nil {
@@ -2087,7 +2171,7 @@ func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) {
 	}
 	rememberSteer(s.steers, message, mark)
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{
+	return s.writeLine(sessionEntry{
 		Type:      "message",
 		Role:      message.Role,
 		Content:   messageContentText(message),
@@ -2123,11 +2207,13 @@ func (s *sessionFile) appendSteerFellThrough(note SteerNote) {
 	})
 }
 
-func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart, tagSets ...[]TaskReplyTag) {
-	s.appendWithReasoning(message, note, refs, provider.MessageReasoning{}, tagSets...)
+func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart, marks ...noteMarks) bool {
+	return s.appendWithReasoning(message, note, refs, provider.MessageReasoning{}, marks...)
 }
 
-func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []journalPart, reasoning provider.MessageReasoning, tagSets ...[]TaskReplyTag) {
+// appendWithReasoning answers whether the line reached the file, for the one
+// caller that may not act on a write that did not happen ([writeLine]).
+func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []journalPart, reasoning provider.MessageReasoning, marks ...noteMarks) bool {
 	// Indexed as it is written, not only as it is replayed: a picture attached
 	// an hour ago is one a rewind or a /compact can put back through the display
 	// shaping in THIS process, long before anybody resumes the file. The same is
@@ -2140,11 +2226,11 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 			s.notes = make(map[string]bool, 4)
 		}
 		rememberNote(s.notes, message)
-		if len(tagSets) > 0 && len(tagSets[0]) > 0 {
+		if len(marks) > 0 && len(marks[0].tags) > 0 {
 			if s.replyTags == nil {
 				s.replyTags = make(map[string][]TaskReplyTag)
 			}
-			rememberReplyTags(s.replyTags, message, tagSets[0])
+			rememberReplyTags(s.replyTags, message, marks[0].tags)
 		}
 		s.mu.Unlock()
 	}
@@ -2163,7 +2249,17 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		}
 		text = flattened.String()
 	}
-	s.writeLine(sessionEntry{
+	var (
+		tags       []TaskReplyTag
+		deliveries []string
+	)
+	if len(marks) > 0 {
+		tags = marks[0].tags
+		for _, id := range marks[0].deliveries {
+			deliveries = append(deliveries, string(id))
+		}
+	}
+	wrote := s.writeLine(sessionEntry{
 		Type:             "message",
 		Role:             message.Role,
 		Content:          text,
@@ -2175,16 +2271,25 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		ReasoningModel:   reasoning.Model,
 		Parts:            refs,
 		Note:             note,
-		ReplyTags:        firstReplyTags(tagSets),
+		ReplyTags:        tags,
+		Deliveries:       deliveries,
 		Timestamp:        stamp(),
 	})
-}
-
-func firstReplyTags(tagSets [][]TaskReplyTag) []TaskReplyTag {
-	if len(tagSets) == 0 {
-		return nil
+	// The ids are indexed only once the line is really on disk: this index is
+	// what a resume trusts to say a landing has already been told.
+	if wrote && len(deliveries) > 0 {
+		s.mu.Lock()
+		if s.delivered == nil {
+			s.delivered = make(map[string]bool, len(deliveries))
+		}
+		if s.noteDeliveries == nil {
+			s.noteDeliveries = make(map[string][]string, 1)
+		}
+		rememberDeliveries(s.delivered, deliveries)
+		rememberNoteDeliveries(s.noteDeliveries, message, deliveries)
+		s.mu.Unlock()
 	}
-	return tagSets[0]
+	return wrote
 }
 
 // appendCompaction journals one pass: the marker, then the whole rebuilt window
@@ -2225,7 +2330,10 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		// mark would come back from the next resume as the person's words — this
 		// pass is the one place a message is journaled twice.
 		if s.isNote(message) {
-			s.appendNote(message, s.taskReplyTags(message))
+			s.appendNote(message, noteMarks{
+				tags:       s.taskReplyTags(message),
+				deliveries: s.noteDeliveriesOf(message),
+			})
 			continue
 		}
 		// AND SO IS A SPLICED ONE, for the same reason: a steer re-written without
@@ -2465,18 +2573,25 @@ func (s *sessionFile) appendCreated(made journalCreated) {
 // rather than raised: the journal is a record of the conversation, and a
 // person mid-turn cannot act on "the transcript did not save" — the next
 // Close reports the state of the file.
-func (s *sessionFile) writeLine(entry any) {
+// writeLine answers whether the line REACHED THE FILE. Nearly every caller
+// ignores it — a journal that cannot be written is not a reason to stop the
+// conversation — but a durable delivery may not be acknowledged on a write that
+// did not happen ([Agent.recordUserLocked]), so the failure has to be sayable.
+func (s *sessionFile) writeLine(entry any) bool {
 	payload, err := json.Marshal(entry)
 	if err != nil {
-		return
+		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return
+		return false
 	}
 	payload = append(payload, '\n')
-	_, _ = s.file.Write(payload)
+	if _, err := s.file.Write(payload); err != nil {
+		return false
+	}
+	return true
 }
 
 // Close flushes the file, releases the claim, and closes the descriptor.

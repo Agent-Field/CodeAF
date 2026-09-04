@@ -724,7 +724,7 @@ func TestATranscriptWithNoSteersLoadsExactlyAsItAlwaysDid(t *testing.T) {
 	}
 	journal.appendMessage(textMessage("user", "what does this do"))
 	journal.appendMessage(textMessage("assistant", "it reads the file"))
-	journal.appendNote(textMessage("user", "task 3 finished"))
+	journal.appendNote(textMessage("user", "task 3 finished"), noteMarks{})
 	if err := journal.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}

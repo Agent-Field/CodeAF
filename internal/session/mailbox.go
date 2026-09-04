@@ -163,13 +163,42 @@ type deliveryID string
 // own record holds it ([Agent.recordUserLocked]). Only the second is written
 // down as announced.
 //
-// IT IS NOT EXACTLY ONCE AND DOES NOT CLAIM TO BE. A process killed between the
-// record and the checkpoint re-tells the landing on resume: a duplicate, which
-// is the direction this must fail in. Nothing here makes an external effect
-// idempotent.
+// THE ID IS WRITTEN INTO THE RECORD, so a replay is checked against the record
+// rather than against a checkpoint that may not have been written: a resume
+// asks the recipient's journal whether it already holds this delivery before
+// telling the landing again (task_store.go, [sessionFile.recorded]).
+//
+// IT IS STILL NOT EXACTLY ONCE AND DOES NOT CLAIM TO BE. The dedupe covers what
+// the journal holds; a note recorded only in memory — a session with no journal
+// — or a journal line that never reached the disk is told again on resume, which
+// is the direction this must fail in. And nothing here makes an external effect
+// idempotent: a task that already sent an email has sent it.
 type durableDelivery struct {
 	id      deliveryID
 	settled func()
+}
+
+// deliveryIDs is the ids of a message's durable deliveries, for the record that
+// is about to hold them.
+func deliveryIDs(carried []durableDelivery) []deliveryID {
+	var ids []deliveryID
+	for _, delivery := range carried {
+		if delivery.id != "" {
+			ids = append(ids, delivery.id)
+		}
+	}
+	return ids
+}
+
+// hasRecorded answers whether this conversation's own journal already holds the
+// line that carried one delivery. It is what a resume asks before re-telling a
+// landing: the checkpoint may not have been written, and the journal is the
+// record that was ([sessionFile.recorded]).
+func (a *Agent) hasRecorded(id deliveryID) bool {
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	return file.recorded(id)
 }
 
 // mailbox is a conversation that can be handed a message. Both implementations

@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -460,6 +461,161 @@ func TestAStaleAcknowledgementDoesNotSettleTheNewAttempt(t *testing.T) {
 	// settle would have written off.
 	if retold := sitting.reopen(t); strings.Contains(retold, "announced") {
 		t.Fatalf("the resumed session reads %q", retold)
+	}
+}
+
+// AND IT IS STILL OWED AFTER THE SECOND CLOSE, AND THE THIRD. A resume used to
+// mark its own re-telling as said the moment it composed it, so the second life
+// of a session lost the landing exactly as the first one did — the same defect,
+// one door along. The re-telling is a delivery like any other now: queued, and
+// announced only when a reader's record holds it.
+func TestALandingUnreadAcrossLivesIsToldAgainUntilItIsRead(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+
+	// The first life: the work lands with nobody there, and nothing reads it.
+	first := openIdleSession(t, journal)
+	node := first.land(t, "the currency table is written")
+	if got := queuedText(first.agent); len(got) != 1 {
+		t.Fatalf("the first life holds %#v, want the landing note", got)
+	}
+	if err := first.agent.Close(); err != nil {
+		t.Fatalf("closing the first life: %v", err)
+	}
+
+	// The second life re-tells it, and nobody reads it there either.
+	second := openIdleSession(t, journal)
+	if got := queuedText(second.agent); len(got) != 1 || !strings.Contains(got[0], "currency") {
+		t.Fatalf("the second life holds %#v, want the landing nobody read", got)
+	}
+	if err := second.agent.Close(); err != nil {
+		t.Fatalf("closing the second life: %v", err)
+	}
+
+	// The third life is told the same thing, and this time the model reads it.
+	third := openIdleSession(t, journal)
+	if got := queuedText(third.agent); len(got) != 1 || !strings.Contains(got[0], "currency") {
+		t.Fatalf("the third life holds %#v, want the landing still owed", got)
+	}
+	if landed := third.agent.drainSteering(nil); landed != 1 {
+		t.Fatalf("%d notes drained, want the one that was owed", landed)
+	}
+	if err := third.agent.Close(); err != nil {
+		t.Fatalf("closing the third life: %v", err)
+	}
+
+	// And the fourth is told nothing: the record holds it, and the checkpoint
+	// says so.
+	fourth := openIdleSession(t, journal)
+	// The recovery still opens with its own summary of the graph; what it must
+	// not carry is the landing.
+	for _, said := range queuedText(fourth.agent) {
+		if strings.Contains(said, "currency") {
+			t.Fatalf("the fourth life is told %q about work its own record already holds", said)
+		}
+	}
+	// And the checkpoint says so in its own words: the node the fourth life
+	// restored is announced, on the strength of a record that holds it.
+	document, found := loadTaskCheckpoint(taskCheckpointPath(journal))
+	if !found || len(document.Nodes) != 1 {
+		t.Fatalf("checkpoint found=%v with %d nodes", found, len(document.Nodes))
+	}
+	if !document.Nodes[0].Noted {
+		t.Fatal("the landing the model read is not written down as announced")
+	}
+	_ = node
+}
+
+// AND THE RECORD ITSELF IS WHAT THE REPLAY IS CHECKED AGAINST. The checkpoint is
+// written after the record, so a machine that dies between them comes back with
+// the landing still marked owed — and the journal line that carried its delivery
+// id is the evidence that it was already told.
+func TestALandingTheJournalRecordedIsNotToldAgainWithoutTheCheckpoint(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	first := openIdleSession(t, journal)
+	first.land(t, "the currency table is written")
+	if landed := first.agent.drainSteering(nil); landed != 1 {
+		t.Fatalf("%d notes drained, want the landing", landed)
+	}
+	if err := first.agent.Close(); err != nil {
+		t.Fatalf("closing the first life: %v", err)
+	}
+	// The checkpoint loses the acknowledgement, which is what a crash between the
+	// record and the file looks like from the next life.
+	forgetTheAcknowledgement(t, taskCheckpointPath(journal))
+
+	second := openIdleSession(t, journal)
+
+	for _, said := range queuedText(second.agent) {
+		if strings.Contains(said, "currency") {
+			t.Fatalf("the resumed session is told %q about a landing its own journal recorded", said)
+		}
+	}
+}
+
+// AND A JOURNAL THAT COULD NOT BE WRITTEN SETTLES NOTHING. The acknowledgement
+// is the record, so a failed append leaves the landing owed — said twice at
+// worst, which is the direction this has to fail in.
+func TestALandingIsNotSettledWhenTheJournalRefusesTheWrite(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	sitting := openIdleSession(t, journal)
+	node := sitting.land(t, "the currency table is written")
+
+	// The journal stops taking lines under the conversation, which is what a
+	// disk error or a closed file looks like to the write.
+	sitting.agent.file.mu.Lock()
+	sitting.agent.file.closed = true
+	sitting.agent.file.mu.Unlock()
+
+	if landed := sitting.agent.drainSteering(nil); landed != 1 {
+		t.Fatalf("%d notes drained, want the landing", landed)
+	}
+	if node.notedReadNow() {
+		t.Fatal("a landing was announced on a journal write that never happened")
+	}
+}
+
+// forgetTheAcknowledgement rewrites the checkpoint with the announced mark off,
+// leaving the journal as the only record that the landing was told.
+func forgetTheAcknowledgement(t *testing.T, checkpoint string) {
+	t.Helper()
+	document, found := loadTaskCheckpoint(checkpoint)
+	if !found {
+		t.Fatalf("no checkpoint at %s", checkpoint)
+	}
+	for index := range document.Nodes {
+		document.Nodes[index].Noted = false
+	}
+	encoded, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		t.Fatalf("re-encoding the checkpoint: %v", err)
+	}
+	if err := os.WriteFile(checkpoint, append(encoded, '\n'), 0o644); err != nil {
+		t.Fatalf("rewriting the checkpoint: %v", err)
+	}
+}
+
+// openIdleSession opens one life of a session on a journal that outlives it:
+// nobody attached, and nothing running the work.
+func openIdleSession(t *testing.T, journal string) *idleConversation {
+	t.Helper()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("nobody asked for this"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, func(config *Config) {
+		config.SessionFile = journal
+	})
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.run = func(*TaskNode) {}
+	graph.mu.Unlock()
+	return &idleConversation{
+		agent: agent, graph: graph, completer: completer,
+		checkpoint: taskCheckpointPath(journal), workspace: workspace,
 	}
 }
 

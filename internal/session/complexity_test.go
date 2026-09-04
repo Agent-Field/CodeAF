@@ -78,7 +78,7 @@ const theCeiling = 15
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
 	"taskSegments":          26,
-	"TaskGraph.rehydrate":   22,
+	"TaskGraph.rehydrate":   21,
 	"TaskGraph.runFrontier": 19,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
