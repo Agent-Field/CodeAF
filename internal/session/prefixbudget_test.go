@@ -105,6 +105,11 @@ import (
 // sentence, which `tasks` own description already carries word for word
 // (tools_tasks.go's [tasksDescription]), and the page went 21,289 → 20,840. The
 // prefix is 47,920, which is 80 under.
+// AND THE CAUSAL WAVE CAME IN UNDER WHAT IT REPLACED (2026-09-04). A woken turn
+// now answers the request its result belongs to, so the landed-work paragraph
+// says which request that is (+23), and the handoff receipt lost the clause the
+// `# Critical` bullet above already carries (-33). Nothing was raised: the page
+// went 20,840 → 20,830 and the prefix is 47,958, which is 42 under.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of

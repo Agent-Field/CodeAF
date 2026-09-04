@@ -750,6 +750,20 @@ stopped on "let me diagnose the failures systematically", and the run then sat i
 and a half of its ten hours. A woken reply that ends by **asking you** something is still left
 alone, and one that **broke** is still not read — those two endings hold for every reply.
 
+**And a woken reply is read against the request its result belongs to, not against the last
+thing you typed.** A reply that a landing started owes THAT work's request: the words you used
+when you asked for it, or — if you redirected the task in its room while it ran — the words you
+redirected it with, together with what the deliverable and the done-condition became. What you
+happened to ask about in between is not part of it, and neither is a question that was already
+answered. Measured: a build was delegated, a checksum question was asked and answered while it
+ran, and when the build landed the reader was handed the checksum question, said it had not
+been answered, and the reply repeated an answer already on the screen.
+
+**Several things landing at once keep several requests, in the order they arrived.** A batch of
+reports is read against each of the requests behind it, oldest first, and where two of them
+conflict the later one stands. A reply that YOU typed into while work was out owes both: your
+words and whatever landed in that reply.
+
 **But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
 what the reply left behind, not what it cost. If the last thing a reply did was save or edit
 something — and it then stopped in words, with nothing run over the top of it — it is read for

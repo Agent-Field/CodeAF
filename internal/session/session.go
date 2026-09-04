@@ -528,6 +528,21 @@ type TaskReplyTag struct {
 	ID      uint64 `json:"id"`
 	Title   string `json:"title"`
 	Request string `json:"request,omitempty"`
+	// Obligation is WHAT THIS RESULT WAS ACTUALLY OWED when it was delivered,
+	// and it is set only when the person moved the goal while the work ran: the
+	// admitted ask as history, their applied directions in order, and the
+	// deliverable and done-condition as they then stood (wakecause.go's
+	// [obligationText], from the assignment's own snapshot). Revision is the
+	// assignment version it was taken at, and 0 on an unrevised task.
+	//
+	// A REVISED TASK IS JUDGED BY THIS AND CITED BY Request. Request stays the
+	// person's original words for the row a surface draws beside the answer;
+	// judging a CSV result against the JSON that was first asked for is the
+	// failure these two fields exist to prevent ([Agent.turnAsk] reads them).
+	// Both are optional: an old tag, or one from an unrevised task, carries
+	// neither and is read exactly as it always was.
+	Obligation string `json:"obligation,omitempty"`
+	Revision   uint64 `json:"revision,omitempty"`
 }
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -2101,6 +2116,15 @@ type Agent struct {
 	// words (task_brief.go), and it is deliberately the WHOLE message rather than
 	// a summary of it.
 	personAsk string
+	// owedAsks is what THIS TURN was woken to answer: the original request of
+	// every finished task whose report this turn carries, in arrival order and
+	// without repeats ([TaskReplyTag.Request], wakecause.go). It is cleared when
+	// a turn opens, so it describes one turn and never the session.
+	//
+	// It is separate from personAsk because they answer different questions: a
+	// woken turn owes the request its result belongs to, not whatever was typed
+	// most recently — see [Agent.turnAsk].
+	owedAsks []string
 	// personTurns is the same answer for the turns BEFORE the newest one, kept
 	// for the same reason and bounded (admission_compile.go). personAsk answers
 	// "what is the current ask"; this answers "what else have they told us",

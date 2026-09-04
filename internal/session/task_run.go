@@ -3072,8 +3072,13 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 		}
 	}
 	message := wakeNote(note)
+	// THE TAG IS COMPOSED HERE, WHERE THE REPORT IS, so what the result is judged
+	// against is taken once, from this node as it finishes, and never fetched from
+	// a live node later (wakecause.go).
+	obligation, revision := node.obligationNow()
 	message.replyTags = []TaskReplyTag{{
 		ID: node.id, Title: node.title(), Request: node.request(),
+		Obligation: obligation, Revision: revision,
 	}}
 	reader.enqueueNote(message)
 	// ── THE QUEUE, THEN THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER ──
