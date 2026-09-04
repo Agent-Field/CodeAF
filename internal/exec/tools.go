@@ -393,6 +393,9 @@ type Result struct {
 	// arrived because nothing could hold the whole of it. Bounding it a second
 	// time at the turn boundary would cut the notice off the end of itself.
 	bounded bool
+	// timedOut carries the command runner's fact to the round limit so that
+	// deciding whether to stop never depends on matching person-facing text.
+	timedOut bool
 	// Followup carries multimodal content that must reach the next model turn.
 	// The ordinary text result is still emitted first so tool-call pairing
 	// remains valid on every OpenAI-compatible backend.
@@ -1470,7 +1473,7 @@ func (r shellRun) trustworthy(class rtk.Class) bool {
 func (r shellRun) result(seconds int) Result {
 	if r.timedOut {
 		out := errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
-		out.shape, out.bounded = shapeCommand, r.bounded
+		out.shape, out.bounded, out.timedOut = shapeCommand, r.bounded, true
 		return out
 	}
 	if r.detached {
