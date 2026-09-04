@@ -115,6 +115,12 @@ type Client struct {
 	// poll: production sleeps, tests record what would have been slept and
 	// return, so how long a retry waits is assertable without waiting.
 	wait func(context.Context, time.Duration) error
+	// receipts is the bounded hand-off for calls whose stream ended without a
+	// usage block. It is drained by a small pool started lazily for this client,
+	// so a client nobody arms for reconciliation pays no goroutine for it.
+	receipts chan receiptWork
+	// receiptOnce starts that fixed pool once when several streams end together.
+	receiptOnce sync.Once
 	// velocity is what this process has measured about the endpoints serving
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
@@ -193,6 +199,7 @@ func NewClient(config Config) (*Client, error) {
 		http:     httpClient,
 		stream:   streamClient,
 		wait:     waitContext,
+		receipts: make(chan receiptWork, receiptQueueDepth),
 		velocity: sharedVelocity,
 		pins:     sharedPins,
 		now:      time.Now,
@@ -1459,6 +1466,7 @@ func (c *Client) completeWithMessagesStreaming(
 		// An endpoint producing soup has failed this lineage as surely as one
 		// that went quiet, so the pin moves too.
 		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
 		return nil, false, cut
 	}
 	for {
@@ -1500,6 +1508,7 @@ func (c *Client) completeWithMessagesStreaming(
 					ctx: ctx, request: request, knobs: knobs, stream: true,
 					began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
 				})
+				c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
 				return nil, false, cut
 			}
 			// A stream that broke off for any reason but a cut — the caller
@@ -1510,6 +1519,7 @@ func (c *Client) completeWithMessagesStreaming(
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: decodeErr,
 			})
+			c.settle(ctx, c.modelFor(request), response, receiptTornReason, content.Len())
 			return nil, false, decodeErr
 		}
 		if response.ID == "" {
@@ -1558,6 +1568,7 @@ func (c *Client) completeWithMessagesStreaming(
 			})
 			c.refuseUpstream(request, knobs, refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
+			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
 			return nil, false, refusal
 		}
 		if chunk.Usage != nil {
