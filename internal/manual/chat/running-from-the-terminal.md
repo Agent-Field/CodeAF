@@ -149,6 +149,27 @@ one pass there is `--token-budget` and `--timeout`.
 itself, the same bytes `--out` would write. `aforge logs --json` is a third: one JSON object per line,
 byte-for-byte what is on disk.
 
+## What checked my unattended or headless run — what judged the delivery, and why task.audit is not the answer
+
+An `aforge do` errand's delivery is read at the end by the **delivery gate**. It takes a
+reading of the project's own checks before the work and another at the end, maps what you
+asked for onto the checks that exercise it, and answers whether the delivery holds.
+
+With `--json`, `judged_by` names that reader. The key is on exactly the runs something
+judged. A run nothing judged has no `judged_by` and carries `unjudged` with the reason
+instead, so a script reads for the key rather than parsing a sentence.
+
+`task.audit` is a different road's row and does not reach `aforge do`. It governs work the
+conversation hands out with `/task`: a separate, fresh, read-only checker is put in a clean
+restore of what the task wrote. Turning that row off produces the report line `nothing
+checked this work: the task.audit setting is off`. A headless errand never prints that line,
+because the session task engine is not the engine running it; its delivery gate is the
+check.
+
+One limitation remains: when a job is broken into several pieces, its gate is journaled
+against the piece that delivered rather than the whole that settles them, so `judged_by` is
+absent there.
+
 ## The old --json field names — deliverable, text, elapsed_ms, settled
 
 **The old names still work, for one release, and then go away.** They are printed beside
@@ -172,9 +193,10 @@ record every refusal as a success.
 Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
 be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. It also carries `unjudged` on the runs nothing checked — why the delivery
-went out unread — and on no others, so a script may read the key's presence as the answer. `aforge run` carries `output`, which is the typed answer whole,
-and `report`.
+`subharness`. It also carries `judged_by` on the runs something judged and `unjudged` on
+the runs nothing checked — the two sides of one question, never both on one object — so a
+script may read either key's presence as the answer. `aforge run` carries `output`, which is
+the typed answer whole, and `report`.
 
 `incomplete` is on `aforge run` and `aforge exec` both, and it is why it did not finish, in
 the same words stderr carried — a token budget that ran out with half an answer already

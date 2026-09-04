@@ -1899,6 +1899,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does it mean when a run says it was delivered without a check", "running-from-the-terminal"},
 		{"what does stop unchecked mean", "running-from-the-terminal"},
 		{"why did my headless run exit 2 when the answer looks fine", "running-from-the-terminal"},
+		// C6: the unattended road and the session task road have different
+		// checks, and the manual must answer in the words a person brings to each.
+		{"what checked my unattended run", "running-from-the-terminal"},
+		{"does task.audit apply to aforge do", "running-from-the-terminal"},
+		{"did anything check that headless run", "running-from-the-terminal"},
+		{"what judged the delivery", "running-from-the-terminal"},
 		{"what does aforge wake do", "running-from-the-terminal"},
 		// "how do I see what a task did" is deliberately NOT here: in the chat a
 		// task's own room is that question's answer, and how-tasks-run rightly

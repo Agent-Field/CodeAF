@@ -234,6 +234,7 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
 | `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
 | `unjudged` | On `aforge do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
+| `judged_by` | On `aforge do`, the name of what read the delivery — `delivery gate`. It appears on exactly the runs something judged, so its presence and `unjudged`'s are the two sides of one question and never both on one object. `task.audit` is the conversation's own row for work handed out of a chat and does not reach this road. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |

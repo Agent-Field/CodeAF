@@ -1242,6 +1242,11 @@ With it off, the gate stands open, the task's own account merges, the task lands
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
 
+**`task.audit` is this road's row and only this road's.** It governs tasks the conversation
+hands out with `/task`. It does not reach `aforge do`, whose delivery is judged by the
+delivery gate instead — see *running from the terminal* for what checks an unattended run
+and how its `--json` result names it.
+
 ## What the work SAYS it did is checked too — claims, and the ones nothing could settle
 
 **A landing's claims are its checklist.** Everything the work asserts about the world is a
