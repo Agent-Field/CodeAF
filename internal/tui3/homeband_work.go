@@ -118,11 +118,12 @@ func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, wid
 	if room < 8 {
 		return nil
 	}
-	word := homeTaskWord(entry, row)
+	status := taskEntryStatus(entry, row.Runs(entry))
+	word := taskPresenceWord(status)
 	outcome := strings.TrimSpace(entry.Outcome)
 	var parts []string
 	needs := false
-	if word == doneWord {
+	if status.Presence == session.TaskPresenceDone {
 		// DONE WEARS NO MARK. The sentence is the whole of the line.
 		if outcome != "" {
 			parts = append(parts, outcome)
@@ -132,9 +133,9 @@ func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, wid
 		// at all. What follows the word is whatever that state actually knows:
 		// a running node says what it is doing, and a failed or unjudged one
 		// says what it came to.
-		lead := homeWorkGlyph(word, pal.ascii) + " " + word
+		lead := homeWorkGlyph(status, pal.ascii) + " " + word
 		detail := outcome
-		if word == taskRecordRunsWord {
+		if !status.Settled() && status.Liveness == session.TaskLivenessHeld {
 			detail = strings.TrimSpace(entry.Activity)
 			// AND WHEN THE NODE IS NOT ITS OWN WORKER, THAT IS THE MORE HONEST
 			// LINE. The activity is what the node's room last did, and a check
@@ -154,7 +155,7 @@ func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, wid
 			lead += " · " + detail
 		}
 		parts = append(parts, lead)
-		needs = word == taskUnverifiedWord
+		needs = status.Attention
 	}
 	// THE TWO DIM FACTS, EACH ONLY WHEN IT IS ONE. A task that wrote no files
 	// says nothing about files; one that cost nothing says nothing about cost.
@@ -184,28 +185,37 @@ func homeWorkUnderSaid(entry session.TaskIndexEntry, row session.SessionRow, wid
 // HOME'S OWN GLYPHS (home.go names them) rather than the task page's, because
 // this is home and a person reading the left column has already learnt these
 // four shapes on the rows beside it.
-func homeWorkGlyph(word string, ascii bool) string {
-	switch word {
-	case taskRecordRunsWord:
+func homeWorkGlyph(status session.TaskStatus, ascii bool) string {
+	switch status.Presence {
+	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
 		if ascii {
 			return homeLiveASCII
 		}
 		return homeLiveGlyph
-	case taskRecordStoppedWord:
-		if ascii {
-			return homeStuckASCII
-		}
-		return homeStuckGlyph
-	case taskUnverifiedWord:
+	case session.TaskPresenceNeedsLook:
 		if ascii {
 			return homeAskASCII
 		}
 		return homeAskGlyph
-	case doneFailWord:
-		if ascii {
-			return glyphBadASCII
+	case session.TaskPresenceIncomplete:
+		if status.Fault {
+			if ascii {
+				return glyphBadASCII
+			}
+			return glyphBad
 		}
-		return glyphBad
+		if ascii {
+			return homeStuckASCII
+		}
+		return homeStuckGlyph
+	case session.TaskPresenceStopped:
+		// A PERSON'S STOP WEARS THE MARK IT WEARS EVERYWHERE ELSE, and not the
+		// cross: nothing was found wrong with work somebody ended themselves
+		// (task.go's [glyphStopped]).
+		if ascii {
+			return glyphStoppedASCII
+		}
+		return glyphStopped
 	}
 	return ""
 }

@@ -458,7 +458,8 @@ type taskSheetHit struct {
 // what the COMMAND is called — `/history` — and the manual quotes it.
 
 // taskStateWord is WHAT ONE ROW OF THE RECORD IS, in a person's words: the
-// state the work came home in, or the judgement about a claim of running.
+// reading of the row ([taskEntryStatus]) spelled by the one table that spells
+// readings ([taskPresenceWord], taskstatus.go).
 //
 // IT IS ONE FUNCTION BECAUSE THREE SURFACES SAY IT. Home's task lines
 // ([homeTaskWord]), the record card's first line ([app.taskCardWhenLine],
@@ -466,25 +467,14 @@ type taskSheetHit struct {
 // same row, and three spellings of "needs your look" is three chances for two
 // screens to disagree about one finished task.
 //
-// The vocabulary is the surface's and not the engine's: `needs your look` where
-// the code says TaskUnverified (task.go states that law at [taskUnverifiedWord]),
-// and `incomplete` for either a claim of running with nothing behind it or a
-// failed row that explicitly says a check refused it. The reason beside the row
-// distinguishes an interrupted present from work the check found unfinished.
+// THE READING IS WHERE THE JUDGEMENTS LIVE NOW, and three of them changed when
+// it arrived: a row a person stopped says `stopped` rather than `failed`, a run
+// the wire or a threshold ended says `incomplete` rather than `failed`, and a
+// QUEUED row in a live session says `queued` rather than `running` — acceptance
+// and execution are different receipts, and the old word claimed a worker that
+// had not started.
 func taskStateWord(entry session.TaskIndexEntry, runs bool) string {
-	switch {
-	case entry.Live() && runs:
-		return taskRecordRunsWord
-	case entry.Live():
-		return taskRecordStoppedWord
-	case entry.Status == string(session.TaskFailed) && refused(entry.Ending):
-		return taskRecordStoppedWord
-	case entry.Status == string(session.TaskFailed):
-		return doneFailWord
-	case entry.Status == string(session.TaskUnverified):
-		return taskUnverifiedWord
-	}
-	return doneWord
+	return taskPresenceWord(taskEntryStatus(entry, runs))
 }
 
 // ── the one door the column has onto this page ──────────────────────────────

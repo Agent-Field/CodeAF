@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ROOM: A TASK IS A PLACE, AND YOU CAN GO THERE.
@@ -2353,33 +2352,16 @@ func (a *app) roomNode() *taskNode {
 
 // roomMark is the node's state in one cell, UNPAINTED — [app.railGlyph]'s glyph
 // without its hue, because the header wears one hue for its whole length.
+//
+// IT IS THE ROSTER'S OWN CELL AND NOT A SECOND TABLE ([app.taskStateMark]). The
+// copy that used to live here had drifted: it knew the refusal mark but not the
+// stop's ⊘ and not the halt's !, so a node a person stopped wore a failure's
+// cross on its own page and the roster's ⊘ one keypress away.
 func (a *app) roomMark(node *taskNode) string {
 	if node == nil {
 		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
-	if mark, incomplete := a.incompleteGlyph(node); incomplete {
-		return mark
-	}
-	switch node.state {
-	case session.TaskDone:
-		return a.linearMark(glyphDone, glyphDoneASCII)
-	case session.TaskFailed:
-		return a.linearMark(glyphBad, glyphBadASCII)
-	case session.TaskUnverified:
-		// THE THIRD SETTLED STATE WEARS THE RAIL'S THIRD MARK (task.go's
-		// [glyphUnverified]), and without this case it wore the QUEUED glyph: a
-		// node that ran to the end, drawn on its own page as though it had not
-		// started. It is the same cell in both glyph tiers, so there is nothing
-		// for [app.linearMark] to stand in for.
-		return glyphUnverified
-	case session.TaskRunning:
-		if a.linear {
-			return glyphRunASCII
-		}
-		return tokens.Spinner(a.paints / spinnerStep)
-	default:
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
-	}
+	return a.taskStateMark(node)
 }
 
 // roomTrail is the breadcrumb: the root, then one step per room walked into
@@ -2424,8 +2406,9 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// the conversation has learned it here too.
 		//
 		// The SPINNER beside it deliberately keeps turning, which is not a
-		// contradiction but the other half of the honesty ([app.stoppedGlyph]
-		// makes the argument in full, stop.go): out in the conversation the person
+		// contradiction but the other half of the honesty ([session.ProjectTask]
+		// keeps that law now: a stop still going through is still running): out in
+		// the conversation the person
 		// is sitting in front of the turn and nothing should move once they have
 		// stopped it, while a node is work going on somewhere else that really is
 		// still going on — and the mark that says "landed" is owed to the landing

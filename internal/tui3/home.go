@@ -5053,28 +5053,42 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 // person has to be taught.
 func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
 	pal := a.pal
-	if row.Runs(entry) && entry.Status == string(session.TaskRunning) {
+	status := taskEntryStatus(entry, row.Runs(entry))
+	switch status.Presence {
+	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
 		if a.linear {
 			return pal.accent(glyphRunASCII)
 		}
 		return pal.accent(tokens.Spinner(a.paints / spinnerStep))
-	}
-	switch entry.Status {
-	case string(session.TaskRunning), string(session.TaskQueued):
-		if pal.ascii {
-			return pal.dim(glyphQueuedASCII)
+	case session.TaskPresenceIncomplete:
+		// A row nothing holds any more is "started and not turning", which is the
+		// empty circle and not the steer mark: nothing was found wrong with work a
+		// window walked away from.
+		if status.Liveness == session.TaskLivenessUnclaimed {
+			if pal.ascii {
+				return pal.dim(glyphQueuedASCII)
+			}
+			return pal.dim(glyphQueued)
 		}
-		return pal.dim(glyphQueued)
-	case string(session.TaskFailed):
-		if refused(entry.Ending) {
+		if !status.Fault {
 			if pal.ascii {
 				return pal.warn(homeStuckASCII)
 			}
 			return pal.warn(homeStuckGlyph)
 		}
 		return pal.bad(pal.badGlyph())
-	case string(session.TaskUnverified):
+	case session.TaskPresenceStopped:
+		if pal.ascii {
+			return pal.dim(glyphStoppedASCII)
+		}
+		return pal.dim(glyphStopped)
+	case session.TaskPresenceNeedsLook:
 		return pal.warn(glyphUnverified)
+	case session.TaskPresenceQueued:
+		if pal.ascii {
+			return pal.dim(glyphQueuedASCII)
+		}
+		return pal.dim(glyphQueued)
 	}
 	mark := glyphDone
 	if pal.ascii {

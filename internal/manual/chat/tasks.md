@@ -1848,9 +1848,12 @@ never a different tail, and never a name you cannot match.
 A row another window is running says `another window`, with that window's own name after it
 when it has settled on one. A row that still claims `running` with **no** window behind it
 says `incomplete` and **carries no age at all** — nobody judged the work, the window simply
-went, and nothing in the record dates a row that never landed. Work that failed says the
-same word its own page says, with the reason after it: `failed · the package manager
-refused the archive`.
+went, and nothing in the record dates a row that never landed. Work that did not come off
+says the same word its own page says, with the reason after it: `failed · the package
+manager refused the archive` when the run actually broke, `incomplete · …` when a check
+named what is missing or the wire, a limit or a stale brief ended it, and `stopped · …`
+when you ended it yourself. The cross is kept for the fault; the rest wear `!` and `⊘`,
+because nothing was found wrong with them.
 
 **How long ago a settled row landed is what that row's own record says.** Work reopened
 from a previous session is dated when it LANDED, not when you sat down and reopened it. It

@@ -2486,81 +2486,55 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 // at the FRONT of that fold, where 8.1.7 puts the work that did not come off
 // ([railFinalOrder]).
 func (a *app) railGroupOf(node *taskNode) railGroup {
-	switch node.state {
-	case session.TaskRunning:
-		// EXCEPT FOR THE ONE PIECE OF RUNNING WORK THAT IS NOT RUNNING. A harness
-		// design at "awaiting your look" has finished everything a machine can do
-		// for it: the page is written and the only remaining step is somebody
-		// saying whether to keep it ([taskAwaitsPerson]). Counted as running it
-		// made the roster's foot say "1 running" about a card that had been sitting
-		// on screen for ten minutes waiting on the person reading that line — and
-		// left the tally that exists to say "something needs you" saying nothing.
-		if taskAwaitsPerson(node) {
-			return railAttention
-		}
-		return railRunning
-	case session.TaskUnverified:
-		// ATTENTION, AND IT IS THE PLAINEST CASE OF IT ON THIS COLUMN. An
-		// unverified node is settled work that nobody can call finished, and the
-		// only thing that moves it is a person deciding. It is named here rather
-		// than left to the merge test below, which would file a node whose branch
-		// went nowhere under "done".
-		//
-		// AND A PARENT'S RUNNING IS A FOLD, NOT A MUTE. This used to answer
-		// [railDone] for a child under a working head, on the argument that the
-		// parent's own agent is the decider while it lives — which is true about
-		// WHO is being asked and says nothing at all about WHETHER anybody is. The
-		// cost of reading it the other way was measured: the footer counted a node
-		// nobody had decided under `done`, and the one column that could have shown
-		// the demand did not (#268). The demand stays visible here; what folds is
-		// how LOUD it is ([app.railGlyphRank] demotes a child whose head is still
-		// holding the question), which is the honest version of the same idea.
+	// THE READING DECIDES THE DEMAND AND THE LIFECYCLE DECIDES THE REST. Whether
+	// a node needs a person is one question with one answer for the whole
+	// program ([session.TaskStatus.Attention]) — work nobody could check, a
+	// design waiting to be approved, edits sitting on a branch that never came
+	// home. Whether it is queued or running is the scheduler's own fact, and it
+	// is read from the state rather than from the reading so that a queued node
+	// held behind a full machine is never filed as work in flight.
+	status := a.taskStatus(node)
+	switch {
+	case status.Attention:
+		// A PARENT'S RUNNING IS A FOLD, NOT A MUTE. The engine routes a
+		// sub-task's landing note to its parent node's own agent, which has the
+		// `tasks` tool and the diff and every reason to answer it — so while the
+		// parent lives, the top of the family is what a person should read first.
+		// That is an argument about LOUDNESS and it was once read as an argument
+		// about presence: the child was filed under `done` and drew no card, so a
+		// nested question could expire with nobody able to see it (#268). The
+		// demand stays here; what folds is how loud it is
+		// ([app.railGlyphRank]).
 		return railAttention
-	case session.TaskQueued:
-		if a.railWaits(node) != "" {
+	case status.State == session.TaskQueued:
+		if status.On == session.TaskWaitWork {
 			return railParked
 		}
 		return railIdle
-	}
-	if taskUndelivered(node) {
-		return railAttention
+	case status.State == session.TaskRunning:
+		return railRunning
 	}
 	return railDone
 }
 
-// taskUndelivered reports whether this node's work is FINISHED AND NOT DELIVERED:
-// it lives on a branch that never came home, and nothing but a person is going
-// to bring it home.
-//
-// THE BRANCH IS THE WHOLE OF THE CLAIM. "kept", "conflicted" and "aborted" are
-// the merge words session writes when it keeps a branch (task_run.go's comeHome
-// and abortedMerge), and a node wearing one of them WITH a branch name has real work
-// sitting somewhere a person can go and get. A node that ran in the person's own
-// tree, or one that ended before there was ever a branch, wears no name here and
-// has left nothing behind — so it is not undelivered, it is simply over.
 // taskAwaitsPerson reports whether this node's only remaining step is a
-// PERSON'S. It is the other half of [taskUndelivered]: both name work the
-// machine has finished and cannot take further, and both belong in the tally
-// that says how many things need somebody.
+// PERSON'S. It is one half of the demand the roster counts; the other is edits
+// nobody brought home ([session.TaskStatus.ChangesUnlanded]), and both name work
+// the machine has finished and cannot take further.
 //
-// TODAY IT IS EXACTLY ONE THING, and it is written narrowly on purpose. A
-// harness design holds its node open while its card waits to be answered, which
-// is right — the work genuinely is not over, the room has to stay open, the stop
-// has to keep working — but its STATE is the machinery's word for it, and the
-// state is `running` for the same span in which nothing is running. The phase is
-// the honest fact, so the phase is what this asks, against the engine's own
-// constant (session's HarnessPhaseAsking): the string is spelled once, over
-// there, because a second copy of it here is the copy that would drift.
+// TODAY IT IS EXACTLY ONE THING, and the narrowness is the engine's rather than
+// this file's: a harness design holds its node open while its card waits to be
+// answered — the work genuinely is not over, the room stays open, the stop keeps
+// working — and `running` is the machinery's word for the same span in which
+// nothing is running. Which phases mean that is decided once, in the reading
+// ([session.ProjectTask]), so a surface here never has to guess at the meaning
+// of a phase it was never told about.
 //
-// It is deliberately not a general "is the phase a waiting one" test. Phases are
-// a kind's own vocabulary and only this kind has one; a surface that guessed at
-// the meaning of phases it had never been told about would file the next kind's
-// rows wrong the day it landed.
-func taskAwaitsPerson(node *taskNode) bool {
-	return node != nil &&
-		node.kind == session.TaskKindHarness &&
-		node.state == session.TaskRunning &&
-		node.doing == session.HarnessPhaseAsking
+// It is the RUNNING half of "needs a person": work nobody could check needs one
+// too, and that node has settled ([app.taskStatus] answers both).
+func (a *app) taskAwaitsPerson(node *taskNode) bool {
+	status := a.taskStatus(node)
+	return status.Presence == session.TaskPresenceNeedsLook && status.State == session.TaskRunning
 }
 
 // taskParentDeciding reports whether the node above this one is STILL WORKING,
@@ -2595,14 +2569,6 @@ func (a *app) taskParentDeciding(node *taskNode) bool {
 			continue
 		}
 		return up.state == session.TaskRunning || up.state == session.TaskQueued
-	}
-	return false
-}
-
-func taskUndelivered(node *taskNode) bool {
-	switch node.merge {
-	case mergeWordConflicted, mergeWordAborted, mergeWordKept:
-		return strings.TrimSpace(node.branch) != ""
 	}
 	return false
 }
@@ -4781,19 +4747,24 @@ func (a *app) railWorst(t *railTwig) *taskNode {
 // asked, so a family drawn as its root alone must wear the root's own news and
 // not a question its own head is already holding.
 func (a *app) railGlyphRank(node *taskNode) int {
+	status := a.taskStatus(node)
 	switch {
-	case node.Paused(), taskUndelivered(node):
+	case node.Paused(), status.ChangesUnlanded():
 		return 0
-	case node.state == session.TaskUnverified:
-		if a.taskParentDeciding(node) {
+	case status.Presence == session.TaskPresenceNeedsLook:
+		// THE FOLD APPLIES TO WORK NOBODY COULD CHECK AND NOT TO A CARD. A
+		// sub-task's landing note goes to its parent's own agent, so while that
+		// parent lives it is the one being asked; a design waiting to be approved
+		// is asking the PERSON and no agent above it can answer for them.
+		if status.State == session.TaskUnverified && a.taskParentDeciding(node) {
 			return 4
 		}
 		return 0
-	case node.state == session.TaskRunning:
+	case status.State == session.TaskRunning:
 		return 1
-	case node.state == session.TaskFailed:
+	case status.State == session.TaskFailed:
 		return 2
-	case node.state == session.TaskQueued:
+	case status.State == session.TaskQueued:
 		return 3
 	}
 	return 4
@@ -5329,20 +5300,17 @@ func railWrap(text string, width int) []string {
 	return out
 }
 
-// railWaits names the prerequisites this node is still blocked on, oldest
-// first. A dependency this surface has never seen an update for is skipped
-// rather than named as an id: a row that says "waits: 7" is a row that has told
-// a person nothing.
+// railWaits is the prerequisite sentence a blocked node wears, and "" for a
+// node that is not waiting on other work. It is the reading's own answer
+// ([session.TaskWaitWork], taskstatus.go) rather than a second walk of the
+// edges, so the row, the group it is filed under and the composer's line about
+// it cannot disagree about whether this node is behind anything.
 func (a *app) railWaits(node *taskNode) string {
-	var names []string
-	for _, id := range node.dependsOn {
-		dep := a.tasks[id]
-		if dep == nil || dep.state == session.TaskDone {
-			continue
-		}
-		names = append(names, dep.title)
+	status := a.taskStatus(node)
+	if status.On != session.TaskWaitWork {
+		return ""
 	}
-	return strings.Join(names, " · ")
+	return status.Reason
 }
 
 // railGlyph is the node's state, in one cell.
@@ -5362,50 +5330,44 @@ func (a *app) railGlyph(node *taskNode) string {
 }
 
 // taskStateMark is a node's state in one cell, UNPAINTED.
+//
+// THE CELL IS THE READING AND NOT THE STATE. [session.ProjectTask] has already
+// decided which of `failed` is a fault, which is work a check found unfinished,
+// which is a person's own stop and which is a run the wire ended — the four that
+// wear four different marks and used to be told apart by four separate tests
+// scattered over this package.
 func (a *app) taskStateMark(node *taskNode) string {
-	// ⊘ IS THE ONE MARK THAT OUTRANKS THE STATE, and it is the only one that
-	// does: a node a person stopped settles as `failed` on the wire, because
-	// nothing merged, and drawing it with the failure's cross would report a
-	// finding nobody made about work they ended themselves (stop.go).
-	if mark, stopped := a.stoppedGlyph(node); stopped {
-		return mark
-	}
-	// A CHECK REFUSAL IS UNFINISHED WORK, NOT A FAULT. The engine still holds
-	// the failed state so nothing depending on it advances; the person sees the
-	// steer mark and the report's concrete next move.
-	if mark, incomplete := a.incompleteGlyph(node); incomplete {
-		return mark
-	}
-	// AND ! IS THE NEXT: a node the wire, a threshold, a loop or another task's
-	// copy halted settles as `failed` on the wire too, and the cross would be
-	// the same finding nobody made (taskending.go).
-	if mark, halted := a.haltedGlyph(node); halted {
-		return mark
-	}
-	// AND NOTHING SPINS WHILE IT IS WAITING ON YOU. A spinner is this surface's
-	// one promise that something is happening this instant, and a design at
-	// "awaiting your look" is the one running row where nothing is
-	// ([taskAwaitsPerson]). It wears the same ? the other kind of finished-and-
-	// waiting work wears, in the same warn hue, because it is the same ask: the
-	// machine has done its part and the next move is yours.
-	if taskAwaitsPerson(node) {
+	status := a.taskStatus(node)
+	switch status.Presence {
+	case session.TaskPresenceStopped:
+		// ⊘, AND IT OUTRANKS THE STATE: a node a person stopped settles `failed`
+		// because nothing merged, and the failure's cross would report a finding
+		// nobody made about work they ended themselves.
+		return a.linearMark(glyphStopped, glyphStoppedASCII)
+	case session.TaskPresenceNeedsLook:
+		// ? FOR BOTH KINDS OF WAITING ON YOU — work nobody could judge, and a
+		// design whose page is written. NOTHING SPINS WHILE IT IS WAITING ON YOU:
+		// a spinner is this surface's one promise that something is happening
+		// this instant, and neither of these is.
 		return glyphUnverified
-	}
-	switch node.state {
-	case session.TaskDone:
-		return a.linearMark(glyphDone, glyphDoneASCII)
-	case session.TaskFailed:
+	case session.TaskPresenceIncomplete:
+		// ! IS UNFINISHED WORK: a check that named gaps, a connection that
+		// dropped, a threshold, a loop, another task's copy. The cross is kept
+		// for the fault, because nobody found anything wrong with the rest.
+		if !status.Fault {
+			return glyphHalted
+		}
 		return a.linearMark(glyphBad, glyphBadASCII)
-	case session.TaskUnverified:
-		return glyphUnverified
-	case session.TaskRunning:
+	case session.TaskPresenceDone:
+		return a.linearMark(glyphDone, glyphDoneASCII)
+	}
+	if status.State == session.TaskRunning {
 		if a.linear {
 			return glyphRunASCII
 		}
 		return tokens.Spinner(a.paints / spinnerStep)
-	default:
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
+	return a.linearMark(glyphQueued, glyphQueuedASCII)
 }
 
 // taskStateInk is the hue that state is said in — the paint half of
@@ -5413,26 +5375,21 @@ func (a *app) taskStateMark(node *taskNode) string {
 // never fall out of step. Anything that says a node's name in the colour of what
 // it is doing asks this: the roster's glyph, and the composer's room segment.
 func (a *app) taskStateInk(node *taskNode) func(string) string {
-	if _, stopped := a.stoppedGlyph(node); stopped {
+	status := a.taskStatus(node)
+	switch status.Presence {
+	case session.TaskPresenceStopped:
 		return a.pal.dim
-	}
-	if _, incomplete := a.incompleteGlyph(node); incomplete {
+	case session.TaskPresenceNeedsLook:
 		return a.pal.warn
-	}
-	if _, halted := a.haltedGlyph(node); halted {
-		return a.pal.warn
-	}
-	if taskAwaitsPerson(node) {
-		return a.pal.warn
-	}
-	switch node.state {
-	case session.TaskDone:
-		return a.pal.muted
-	case session.TaskFailed:
+	case session.TaskPresenceIncomplete:
+		if !status.Fault {
+			return a.pal.warn
+		}
 		return a.pal.bad
-	case session.TaskUnverified:
-		return a.pal.warn
-	case session.TaskRunning:
+	case session.TaskPresenceDone:
+		return a.pal.muted
+	}
+	if status.State == session.TaskRunning {
 		return a.pal.accent
 	}
 	return a.pal.dim
@@ -5822,7 +5779,7 @@ func (a *app) tasksAnimating() bool {
 	// ([taskAwaitsPerson]), so a card that sits unanswered over lunch is no
 	// longer an hour of repaints for a row that never changes.
 	for _, node := range a.tasks {
-		if node != nil && node.state == session.TaskRunning && !taskAwaitsPerson(node) {
+		if node != nil && node.state == session.TaskRunning && !a.taskAwaitsPerson(node) {
 			return true
 		}
 	}

@@ -113,7 +113,7 @@ func (a *app) roomApprovalCard() *harnessCard {
 // because at that moment there is nothing to approve.
 func (a *app) roomApprovalAsking() bool {
 	node := a.tasks[a.room.id]
-	return taskAwaitsPerson(node)
+	return a.taskAwaitsPerson(node)
 }
 
 // roomApprovalHeight is how many rows the block takes: two while it is asking,

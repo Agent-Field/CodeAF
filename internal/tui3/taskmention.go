@@ -389,39 +389,47 @@ func mentionMark(ascii bool) string {
 // taskStatusGlyph is the node's state in one cell, from the vocabulary the rail
 // already spends (task.go) so that a person who has watched a task run
 // recognizes it here.
+//
+// THE MENU HAS NO LIVENESS TO ASK. It draws the index alone, so a row claiming
+// to be running is taken at its word here ([session.TaskLivenessUnknown]) rather
+// than guessed at; the surfaces that do have the answer draw the quieter cell.
 func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
-	switch entry.Status {
-	case string(session.TaskRunning):
+	status := session.ProjectTask(entry.StatusFacts(true))
+	switch status.Presence {
+	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
 		if ascii {
 			return glyphRunningASCII
 		}
 		return glyphRunning
-	case string(session.TaskQueued):
+	case session.TaskPresenceQueued:
 		if ascii {
 			return glyphQueuedASCII
 		}
 		return glyphQueued
-	case string(session.TaskFailed):
-		if refused(entry.Ending) {
+	case session.TaskPresenceIncomplete:
+		if !status.Fault {
 			return glyphHalted
 		}
 		if ascii {
 			return glyphBadASCII
 		}
 		return glyphBad
-	case string(session.TaskUnverified):
-		// THE TICK IS NOT THE DEFAULT ANSWER TO "WHAT ELSE IS THERE". An
-		// unverified row would otherwise fall through below and wear the one
-		// success glyph this surface has, which is the single place a person
-		// picking a task by recognition could be told that work nobody could
-		// judge came home (task.go's [glyphUnverified]).
-		return glyphUnverified
-	default:
+	case session.TaskPresenceStopped:
 		if ascii {
-			return glyphDoneASCII
+			return glyphStoppedASCII
 		}
-		return glyphDone
+		return glyphStopped
+	case session.TaskPresenceNeedsLook:
+		// THE TICK IS NOT THE DEFAULT ANSWER TO "WHAT ELSE IS THERE". Work nobody
+		// could judge would otherwise wear the one success glyph this surface has,
+		// which is the single place a person picking a task by recognition could
+		// be told that it came home (task.go's [glyphUnverified]).
+		return glyphUnverified
 	}
+	if ascii {
+		return glyphDoneASCII
+	}
+	return glyphDone
 }
 
 // taskNoteWord is the age on the right: how long a live task has been going,
