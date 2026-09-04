@@ -576,3 +576,106 @@ The biggest, cheapest, quality-neutral wins are NOT model choices:
   - Compact old tool results mid-turn.                                [cost + wall time]
 Each reduces cost or wall time WITHOUT reducing quality — the definition of moving
 toward the Pareto front rather than along it. The roles stay; the waste goes.
+
+---
+
+# POST-FIX RE-AUDIT (waves 1-4 binary, 2026-09-04) — independent blind QA + reproduction
+
+Three blind subagents + my own tmux reproduction on the rebuilt binary. Headline:
+the wave-2 trust fixes WORK (integrity audit: no orphans, claims reconcile), but the
+DEFAULT (non-YOLO) approval mode still creates heavy friction, and two real gaps remain.
+
+## Confirmed fixed
+- F31/F32 orphans: integrity audit — no orphaned commits, claims match git reality.
+- F34 pycache: proactively gitignored before commit.
+- F26 commit: small asks done inline (09 floor works).
+- F07 approval expiry: code + tests confirm expiry PAUSES, never denies.
+
+## NEW / REMAINING issues (post-fix)
+
+### R1 — "continue task N" does NOT invoke the continue verb (the model narrates instead)
+- Repro: spawned a task (fix divide bug, "do NOT commit"), it landed uncommitted, then
+  sent "continue task 1". The model produced a 3-tool-call narrative about the task's
+  state but NEVER called tasks{id,continue} or propose_task (verified in the call log).
+- So issue 10's machinery exists and is unit-tested, but the chat model does not reach
+  for it on the plain phrase "continue task N". Discoverability/wiring gap: either the
+  tool hint doesn't surface continue strongly enough, or the model needs a nudge.
+- ALSO: structured-QA found the same ("continue task 1 ... ends with 'Please continue'").
+
+### R2 — Default (non-YOLO) approval mode still reads as auto-deny to a blind user
+- Blind user (default profile): "every action hits a y/n/a prompt that AUTO-DENIES after
+  10s, so simple things took minutes of babysitting". My code read says expiry pauses
+  (07 fixed). The gap: either the y/n/a TASK-PROPOSAL card has a different timeout that
+  still denies, or the prompt flood (one prompt per action) makes the 10s window
+  un-winnable in practice. The structured-QA (approvals allow) saw approval PASS — so this
+  is specifically the DEFAULT mode's UX, and it is still bad.
+
+### R3 — A task told "do NOT commit" can still auto-merge on land (structured-QA FAIL)
+- My repro honored "do NOT commit" (left uncommitted). But structured-QA saw a /task
+  auto-merge as commit e312c8e despite the instruction. So merge-on-land can override an
+  explicit "don't commit" in some paths. Needs a guard: an explicit no-commit instruction
+  must suppress the auto-merge.
+
+### R4 — Control-token leak into the reply (structured-QA)
+- Raw `</｜DSML｜parameter>` / `</｜DSML｜invoke>` tokens printed into the user-facing reply
+  during the continuation probe — the model's tool-call grammar leaked into rendered text.
+
+### R5 — Residual: orphan task branches + autostash debris still left behind
+- Blind user: final tree clean BUT left an orphan task branch, two autostashes, dangling
+  commits. Integrity is better (no lost claimed work) but the repo is still littered.
+
+### R6 — Latency floor is high for trivial asks
+- ~12s for "OK", ~63s for a one-line edit. Cost is cheap and proportional; wall-time is not.
+
+### R7 — First interactive launch over a dumb pipe renders a blank alt-screen (no onboarding text)
+
+---
+
+# POST-REBASE RE-AUDIT (rebased onto dev @ 79f3e44f + waves 1-4, binary 6aaee5c4) — 2026-09-04
+
+Independent blind QA + integrity audit on the rebased binary. This is the honest
+scorecard after the rebase. Pre-existing upstream failures noted (TestC3,
+TestAWorktreeTaskBindsContractPaths fail on clean dev too — macOS symlink, NOT ours).
+
+## FIXED (verified independently)
+- do-NOT-commit: honored (power() stayed ` M calc.py`); one near-miss self-corrected on Esc-deny.
+- Small asks (commit/undo/fix) run inline, no surprise task spawn (09 floor works).
+- Esc interrupt: fast, recovers gracefully (03 works).
+- Git trust: every claim matched `git log`/`git status`; __pycache__ never committed;
+  NO orphaned commits (05 works); integrity audit: claims reconcile exactly.
+- Mojibake / control tokens: zero in transcripts (06 works).
+- Approval expiry: countdown pauses and waits forever, no deny-timer (07 works).
+
+## STILL BROKEN / REMAINING (the honest gaps)
+### R1 — "continue task N" STILL does not resume (the headline gap)
+- continue machinery exists and is unit-tested, but the CHAT never reaches it: either no
+  task forms (work runs inline) so there is no id, or the model narrates instead of
+  calling tasks{id,continue}. Blind QA: "No task 1 in this project" + inline redo.
+- ROOT: the verb is exposed but the model doesn't invoke it on the plain phrase, AND
+  cross-session continues are refused by design (no graph). Needs a discoverability fix
+  and a clear honest answer when the task isn't continuable.
+
+### R2 — Default-mode approval friction is still bad
+- Tool prompts correctly PAUSE (no deny-timer), BUT `propose_task` times out as
+  "denied by the person: default" (inconsistent + misattributed — a deny nobody gave),
+  and prompts hide behind a minutes-long "forming…" spinner until Esc.
+- Approval prompts required even for read-only `git status` / `tasks`.
+
+### R5 — Agent litter: verify_assignment.py, task-2-*.md reports, __pycache__ left untracked
+- Not an integrity violation, but the tree is not clean of assistant debris.
+
+### R6 — Default deepseek-v4-flash lane was dead (60s+ stalls) until re-pinned
+- Responsiveness: warm `chat --once` 3.6s and cost proportional, but the default model's
+  lane stalled repeatedly; blind user had to pin claude-sonnet-4. First-run rescue (13)
+  did not fully save this.
+
+### R7 — Two Ctrl+C sometimes won't quit (needed /quit); `\n` vs `\r` submit quirk (PTY)
+### R8 — The task died on the 10-min deadline (exit 3) mid-continuation.
+
+## Bottom line for the Pareto
+- TRUST floor: now solid (claims reconcile, no orphans, do-not-commit honored). The
+  worst class of bug (confident-wrong) is gone.
+- COST: proportional and cheap.
+- WALL-TIME + CONTINUITY: the remaining pain. The default-mode approval friction (R2),
+  the dead default lane (R6), and "continue doesn't continue" (R1) are what a user will
+  actually feel next. R1 and R2 are the highest-value next fixes.
