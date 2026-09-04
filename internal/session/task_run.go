@@ -428,9 +428,13 @@ type TaskNode struct {
 	worktree string
 	merge    string
 	started  time.Time
+	// ended is the instant this node last landed. It is stamped at the live
+	// transition and kept on the checkpoint, so a rebuilt row reads the record's
+	// fact instead of dating old work with the clock that happened to read it.
+	ended time.Time
 	// elapsed is the node's age FROZEN at the moment it landed. While it runs it
-	// is zero and the age is measured from started; a node rehydrated from a
-	// checkpoint has no started to measure from and this is the age it had.
+	// is zero and the age is measured from started; after a restore this is the
+	// duration the record carried beside its original start and landing stamps.
 	elapsed time.Duration
 	// cost is what this node's agents have spent, in dollars, ACCUMULATED where
 	// each of them is closed ([Agent.foldTaskUsage]). While the node runs it is
@@ -1134,6 +1138,7 @@ func (g *TaskGraph) runFrontier() {
 		ready, blocked := g.readinessLocked(node)
 		if blocked != "" {
 			node.state = TaskFailed
+			node.ended = time.Now()
 			node.report = blocked
 			node.held = ""
 			failing = append(failing, node)
@@ -1592,11 +1597,12 @@ func shareReports(reports []string, pot int) []string {
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	node.ended = time.Now()
 	if !node.started.IsZero() {
 		// The age stops here. A finished node's elapsed is a fact about how long
 		// the work took, and a checkpoint that recomputed it from `started` would
 		// have finished work ageing on disk.
-		node.elapsed = time.Since(node.started)
+		node.elapsed = node.ended.Sub(node.started)
 	}
 	g.handBackSlotLocked(node)
 	g.mu.Unlock()
@@ -1652,6 +1658,7 @@ func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
 func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	node.ended = time.Now()
 	g.mu.Unlock()
 
 	g.checkpoint()
@@ -2769,18 +2776,28 @@ func (n *TaskNode) notice() TaskNotice {
 	return n.noticeLocked(cost)
 }
 
+// ageLocked is this node's elapsed age, with the graph held.
+//
+// A SETTLED NODE'S AGE IS THE FROZEN FACT ITS RECORD CARRIES. Measuring again
+// from its recorded start would count every hour the process was closed as work,
+// so only an unsettled node with a start and no frozen age consults the moving
+// clock. Keeping that rule here prevents checkpoint, index, and notice readers
+// from giving one recorded run three different ages.
+func (n *TaskNode) ageLocked() time.Duration {
+	elapsed := n.elapsed
+	if !n.state.settled() && elapsed == 0 && !n.started.IsZero() {
+		elapsed = time.Since(n.started)
+	}
+	return elapsed
+}
+
 // noticeLocked is [TaskNode.notice] for a caller already holding the graph
 // lock, with the spend read before that lock was taken (notice says why that
 // order is the only one). It exists for [Agent.replayTaskRoster], which builds
 // every row of the roster inside ONE hold of the lock so the batch is a single
 // instant of the graph rather than a smear across a node landing mid-walk.
 func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
-	// A landed node's age is frozen, and a rehydrated one has only the age its
-	// checkpoint recorded; only a node that is still running is measured.
-	elapsed := n.elapsed
-	if elapsed == 0 && !n.started.IsZero() {
-		elapsed = time.Since(n.started)
-	}
+	elapsed := n.ageLocked()
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
 	// The three halves of Waiting, and no two of them can be true of one node:
@@ -2820,6 +2837,8 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Parent:    n.parent,
 		State:     n.state,
 		Elapsed:   elapsed,
+		StartedAt: n.started,
+		EndedAt:   n.ended,
 		Report:    n.report,
 		Changed:   changed,
 		Branch:    n.branch,

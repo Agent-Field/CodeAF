@@ -270,7 +270,8 @@ type TaskIndexEntry struct {
 	Tokens int `json:"tokens,omitempty"`
 	// DurationMS is how long it ran.
 	DurationMS int64 `json:"durationMs,omitempty"`
-	// EndedAt is when it landed, and it is zero for a row merged in live. Every
+	// EndedAt is when it landed. It is zero for a row merged in live and for a
+	// row rebuilt from a record that never carried the landing instant. Every
 	// ordering in this file is on it (see [taskIndexAt]).
 	EndedAt time.Time `json:"endedAt"`
 	// SessionID is the conversation that ran it — the id in the journal's
@@ -589,7 +590,9 @@ func (a *Agent) liveTaskRows() []TaskIndexEntry {
 
 // recordTaskIndex writes one landed node into the project's index. It is called
 // from the graph's report hook (task_run.go), which is the one place a node
-// reaching a final state is a fact rather than a guess.
+// reaching a final state is a fact rather than a guess. The fallback stamps that
+// live transition for any older settling road that did not put the same fact on
+// the node; a row rebuilt elsewhere keeps its honest zero instead.
 func (a *Agent) recordTaskIndex(node *TaskNode) {
 	path := a.config.taskIndexFile()
 	if path == "" || node == nil {
@@ -697,10 +700,7 @@ func (a *Agent) heldTaskIDs() map[string]bool {
 
 // indexEntryLocked is one node as a row, with the graph held.
 func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
-	elapsed := n.elapsed
-	if elapsed == 0 && !n.started.IsZero() {
-		elapsed = time.Since(n.started)
-	}
+	elapsed := n.ageLocked()
 	// The list and the count come out of the SAME call, which is what keeps them
 	// from disagreeing (see [taskFileCitations]). They are the node's LEAVINGS
 	// and not its live tally: a row is what the work came to, and what a node has
@@ -777,17 +777,16 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		entry.Phase = n.life
 	}
 	if n.state.settled() {
-		// A landed node's EndedAt is now minus nothing: the report hook runs at
-		// the transition. A row rebuilt later — the live merge over a graph that
-		// still holds finished nodes — keeps the file's row instead, which is
-		// where the original stamp is.
+		// A landed node's EndedAt is the record's own fact. A restored record that
+		// predates that fact keeps the zero time, so reading history cannot date it
+		// with the instant a window happened to open.
 		//
 		// An UNVERIFIED node is landed by this measure and by every other one in
 		// this file: its run is over, its cost is frozen, and the row it writes
 		// is the project's record that the work happened and nobody could judge
 		// it. A resolution later writes a second row, which is what an
 		// append-only history is for.
-		entry.EndedAt = time.Now()
+		entry.EndedAt = n.ended
 	}
 	return entry
 }

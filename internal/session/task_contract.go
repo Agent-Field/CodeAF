@@ -441,6 +441,12 @@ type TaskNotice struct {
 	State TaskState
 	// Elapsed is the node's age at this update.
 	Elapsed time.Duration
+	// StartedAt is the record's fact of when this node started. It is the zero
+	// time when nothing recorded one, and every surface draws that as nothing.
+	StartedAt time.Time
+	// EndedAt is the record's fact of when this node landed. It is the zero time
+	// when nothing recorded one, and every surface draws that as nothing.
+	EndedAt time.Time
 	// Report is the done/failed story in two or three lines: what it did, or
 	// what stopped it. A dependent node's brief is assembled from these.
 	Report string

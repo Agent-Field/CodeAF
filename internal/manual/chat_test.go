@@ -560,6 +560,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long did that call take in the task", "reading-a-task-page"},
 		{"why does the task page say the model went quiet mid-reply", "reading-a-task-page"},
 		{"guardian allowed on my task page", "reading-a-task-page"},
+		// This pair separates one task's own clock from the machine-wide tasks
+		// place row whose age a person is reading.
+		{"when did this task start", "reading-a-task-page"},
+		{"an old task says now", "tasks"},
 		// THE CLAUSE ON A CORRECTION, asked by somebody who has just watched it
 		// appear and fade (#252). They are not looking for "steering" — the word
 		// on their screen is `delivered`, and it is beside words they typed
