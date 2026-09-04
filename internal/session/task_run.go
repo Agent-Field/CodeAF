@@ -1953,7 +1953,8 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 	// document.
 	return composeBrief(n.spec.request, n.brief, n.spec.deliverable,
 		withFamilyChecks(n.spec.acceptance, n.Family),
-		expectsSection(n.spec.expects), n.spec.origin, taskCopyFor(tree))
+		expectsSection(n.spec.expects), n.spec.admission.restored(),
+		n.spec.origin, taskCopyFor(tree))
 }
 
 // taskCopyFor is the tree read as a MAP: the folder the work is about onto the
@@ -2012,8 +2013,12 @@ func (n *TaskNode) checkTexts() []checkText {
 	}
 	// THE ZERO COPY, for [TaskNode.instruction]'s reason: the harvest resolves
 	// against the clean restore rather than against any worker's own folder.
+	// AND NO ADMISSION CONTEXT, which is a decision and not an omission
+	// (admission.go). What is harvested here becomes a CHECK this work is judged
+	// against; the quotes are things that were said, and a sentence somebody
+	// typed in passing must never become a requirement nobody agreed to.
 	account := composeBrief("", work, n.spec.deliverable, acceptance,
-		expectsSection(n.spec.expects), n.spec.origin, taskCopy{})
+		expectsSection(n.spec.expects), AdmissionContext{}, n.spec.origin, taskCopy{})
 	if account != "" {
 		texts = append(texts, checkText{text: account, from: checksFromWork})
 	}
@@ -2036,6 +2041,19 @@ func (n *TaskNode) origin() taskOrigin {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.spec.origin
+}
+
+// admission is the working context this node was admitted with, frozen with the
+// rest of the spec (admission.go). It is read by [Agent.admissionContext] so
+// that work this node hands out inherits what the conversation above it said,
+// one generation older and bounded.
+func (n *TaskNode) admission() AdmissionContext {
+	if n == nil {
+		return AdmissionContext{}
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.admission
 }
 
 // acceptance is the frozen contract, read by the auditor. It is deliberately

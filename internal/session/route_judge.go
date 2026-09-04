@@ -1012,6 +1012,12 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// [Agent.handOverRunningTurn] and does not build a spec of its own, so
 		// this one assignment covers both roads.
 		origin: a.taskOriginRef(),
+		// AND THE WORKING CONTEXT, from the one compiler every door uses
+		// (admission.go). This door needs it more than any other: nobody asked
+		// for this work, so the only account of why it exists is a judge's
+		// summary — and on the checkpoint road the turn being handed over has
+		// already made the calls whose handles are in here.
+		admission: a.admissionContext(),
 		// THE BRIEF IS THE STATE AND THE ACCEPTANCE IS THE ASK, and they are two
 		// different documents that were quietly collapsing into one.
 		//

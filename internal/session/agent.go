@@ -228,6 +228,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
 		agent.messageReasoning = append(agent.messageReasoning, replayed.reasoning...)
+		// AND WHICH OF THOSE LINES THE PERSON ACTUALLY TYPED, which the messages
+		// alone cannot say (admission_compile.go). Work handed out of a reopened
+		// session would otherwise carry none of the conversation that preceded
+		// the restart, silently. No lock is taken for the reason nothing else in
+		// this constructor takes one: the agent is not reachable yet.
+		agent.restorePersonTurnsLocked(restored)
 		// AND THE CONVERSATION ABOVE THE LATEST COMPACTION IS SHAPED HERE, ONCE,
 		// while the replayed messages are still in hand. It is shaped rather than
 		// kept as messages so the pictures a compacted region held are let go of

@@ -2456,6 +2456,18 @@ WHAT TO PRODUCE
 DONE WHEN
 <the acceptance>
 
+SOME OF WHAT WAS SAID AROUND THIS WORK
+A few lines from the conversation, oldest first — a bounded selection, not the
+whole record and not a list of requirements. They are what was said, not what is
+true.
+
+· the person (grep or read <journal path>): "<what you typed>"
+· the assistant, alongside grep (…): "<what it said as it called that tool>"
+
+CALLS THAT HAVE ALREADY RUN
+· grep {"pattern":"StreamCSV"} — came back; grep call-3 in <journal path>
+· bash {"command":"go build ./..."} — FAILED: undefined: streamCSV; grep call-4 in <journal path>
+
 THE PERSON'S ORIGINAL MESSAGE
 The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
 
@@ -2464,10 +2476,26 @@ grep or read <journal path>, line <n>
 
 The first part is taken by aforge from the conversation — the message that was in front of
 the model when it proposed the work, or the newest thing you typed into that turn if you
-steered it. The model never writes that part and cannot edit it. The discussion around your
-message does not travel with the work, and the task cannot ask you anything once it starts.
+steered it. The model never writes that part and cannot edit it. The task cannot put a question to you
+and wait for an answer once it starts, though you can still send it a line while it runs —
+see *steered a task and got no reply* under *What the card says while a task is checked*.
 When that restatement is not enough, the brief also names where your original words live —
 see *Can the task see the original request* below.
+
+**A few lines of the surrounding conversation travel with it, quoted.** Not the discussion —
+a bounded selection: at most eight lines, each cut to about 600 characters with the middle
+marked `[…]` when it is longer, and at most six calls that had already run. Each line says
+who said it and names the session journal it came out of, so the worker can grep the words —
+or, for a call, the call id — and read the whole of it. The selection is made newest-first,
+so the last thing you said before the work started is the line that always survives; older
+ones are dropped when the budget runs out. There is no line number: finding one would mean
+reading the whole journal every time a task starts.
+
+**It is context, not a contract.** Those lines are what was *said*, not a list of
+requirements — the brief and the done-condition above them are still what the work is
+graded against. A constraint you typed twenty turns ago, or one buried in the middle of a
+long message, may not be in the selection at all; if it has to bind the work, put it in the
+message that starts the task.
 
 **A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
 separate deliverable, so it reads as your words, the work and a done-condition. A task
