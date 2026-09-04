@@ -33,6 +33,9 @@
 #                  why the cell judges timestamps and not text
 #   neverbusy      no window of work to steer is a FAILURE, not a pass
 #   deaf           a followup that is ignored is a FAILURE
+#   smudged        a near miss is a miss: RRABANNIC is not RABANNIC
+#   noready        a screen this rig cannot read is UNSUPPORTED (its own
+#                  calibration gap), never a crash blamed on the harness
 set -uo pipefail
 
 TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -253,7 +256,7 @@ say
 # ── a scenario an arm has no door for ───────────────────────────────────────
 say "unsupported (a scenario this arm has no door for):"
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" \
-  case_run unsupported --unguarded --arms pi --scenarios task-result-delivered --cap 30
+  case_run unsupported --unguarded --arms pi --scenarios work-result-recalled --cap 30
 [ "$(field "$CASE_RESULTS" verdict)" = "unsupported" ] \
   && ok "an undefined scenario is unsupported" || bad "an undefined scenario was $(field "$CASE_RESULTS" verdict)"
 grep -q 'unsupported 1' "$LOGDIR/unsupported.log" \
@@ -334,6 +337,37 @@ sys.exit(0 if a and b and float(a) < float(b) else 1)
     && ok "a scenario that did not happen is not a pass" || bad "a cell with no mid-work window passed"
   grep -q 'no-midwork-window' "$CASE_RESULTS" \
     && ok "and the reason is on the row" || bad "no-midwork-window is not recorded"
+
+  # A near miss is a miss. A live omp pane rendered the answer with a duplicated
+  # first letter and a substring match took it as correct.
+  say "smudged (the right answer with an extra letter):"
+  tui_case smudged smudged
+  grep -q 'RRABANNIC' "$CASE_OUT/evidence/followup-while-working-pi/scrollback.txt" \
+    && ok "the near-miss word is what reached the screen" \
+    || bad "the counterexample did not produce the smudged word"
+  [ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
+    && ok "RRABANNIC does not pass as RABANNIC" \
+    || bad "a near-miss answer was accepted: $(field "$CASE_RESULTS" verdict)"
+
+  # A screen this rig cannot read is this rig's gap, not a dead product.
+  say "noready (a composer the driver was never calibrated against):"
+  FAKE_TUI_MODE=noready CONV_SLOW_SECONDS=4 \
+  CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=6 CONV_BUSY_WAIT=6 \
+  PI_BIN="$FAKE/tui-fake.sh" \
+    case_run noready --unguarded --arms pi --scenarios followup-while-working --cap 60
+  [ "$(field "$CASE_RESULTS" verdict)" = "unsupported" ] \
+    && ok "an unrecognised composer is unsupported, not a crash" \
+    || bad "an unrecognised composer was recorded $(field "$CASE_RESULTS" verdict)"
+  grep -q 'noready' "$CASE_RESULTS" \
+    && ok "and the row says the screen was drawn but not matched" \
+    || bad "the row does not distinguish noready from noframe"
+  grep -q 'the session died\|composer never drew' "$CASE_RESULTS" \
+    && bad "the row still blames the harness for a calibration gap" \
+    || ok "nothing on the row blames the harness"
+  grep -q 'the answer is the derived token' "$CASE_RESULTS" \
+    && bad "the scenario's checks ran against a cell that never started" \
+    || ok "and the scenario's own checks did not run"
+  say
 
   say "deaf (the followup is ignored):"
   tui_case deaf deaf

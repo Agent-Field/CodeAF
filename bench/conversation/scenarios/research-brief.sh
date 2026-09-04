@@ -39,7 +39,12 @@ scenario_check() {
   # as kestrel's owner in a file that says at the top that it is superseded, so
   # this pair of checks is the whole point of the cell.
   check_grep "names the current kestrel owner (BRACKISH)" "BRACKISH" "$reply"
-  check_grep "says BRACKISH owns two services" "(two|2) services" "$reply"
+  # The COUNT is the assertion; the decoration is not. Live replies wrote this
+  # as "owns 2 services total", "owns **2 services**" and "owns **two**
+  # services", and only the last failed — for its asterisks. The count itself is
+  # still required exactly: "three services" fails here, as it should.
+  check_grep_plain "says BRACKISH owns two services" \
+    "(two|2)[ -]services" "$reply"
   check_grep_all "carries the facts that are only in the notes" "$reply" \
     "8431" "/healthz" "2310" "retry budget"
   # A brief that quotes the stale owner as current is wrong even if it also

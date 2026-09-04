@@ -11,6 +11,8 @@ GUARD_PORT=""
 GUARD_URL=""
 GUARD_SENTINEL=""
 GUARD_PID=""
+GUARD_EXIT=""
+GUARD_DIED=0
 GUARD_AUDIT=""
 GUARD_USAGE=""
 
@@ -83,10 +85,22 @@ except Exception:
   return 1
 }
 
+# guard_alive says whether this cell still has a route upstream. A guard that
+# exited mid-cell turns every later observation into a fact about the rig.
+guard_alive() {
+  [ -n "$GUARD_PID" ] && kill -0 "$GUARD_PID" 2>/dev/null
+}
+
 guard_stop() {
   [ -n "$GUARD_PID" ] || return 0
+  # Asked BEFORE the kill, because after it every guard has the same status.
+  guard_alive || GUARD_DIED=1
   kill "$GUARD_PID" 2>/dev/null
   wait "$GUARD_PID" 2>/dev/null
+  # 143 is SIGTERM (this rig's own kill), 137 SIGKILL, anything else the guard
+  # deciding to leave — which is the difference between "we stopped it" and
+  # "something else did", and the question a vanished guard leaves behind.
+  GUARD_EXIT=$?
   GUARD_PID=""
 }
 

@@ -30,8 +30,8 @@ from, are in `lib/adapters.sh`:
 
 | arm | interactive door | markers from |
 |---|---|---|
-| aforge | yes | `bench/canary/lib/chat.sh`, which drives this TUI on a schedule in this repository |
-| pi | yes | live pane capture on pi 0.84.2 in this lane |
+| aforge | yes | `internal/tui3/render.go` (`stateWord`, `waitingWord`) — the renderer itself, checked against a live pane |
+| pi | yes | live pane capture on pi 0.84.2 in this lane; the provider segment is derived from the provider in use, not hardcoded |
 | omp | yes | live pane capture on omp 18.1.2 in this lane |
 | opencode | **no** | no calibrated markers — its interactive cells are `unsupported` |
 
@@ -176,6 +176,28 @@ their receipts are read opportunistically from the session files in their
 session directory. That schema has not been verified here; when it does not
 parse, the cell comes back `cost unknown` and not-comparable rather than zero.
 
+## The ambient machine
+
+A harness that loads the operator's skills, extensions and MCP servers is not
+running the task it was given: it is running that task plus whatever is
+installed on that machine — extra tools, a longer system prompt, extra latency,
+and a different set on every box. A live pane in this lane showed omp mounting
+MCP tools and failing one of them out of `~/.claude.json`, and pi listing
+thirty-odd skills out of `~/.agents/skills`.
+
+Only documented flags are used, and what a CLI does not offer is reported rather
+than worked around — a benchmark that edits somebody's dotfiles to look fair has
+stopped measuring the thing people run.
+
+| arm | turned off | still loaded |
+|---|---|---|
+| omp 18.1.2 | `--no-skills --no-extensions --no-rules` | **user-level MCP from `~/.claude.json`** — no documented flag disables it; `mcp.enableProjectConfig` covers the project file only |
+| pi 0.84.2 | `--no-skills --no-extensions` | — |
+| aforge | nothing needed: `AFORGE_HOME` moves the whole state root, so a cell starts with no ambient skills or extensions | — |
+
+Every row records what was turned off and what was not (`ambient`), because it
+is a real difference between the arms and not a footnote.
+
 ## Effort
 
 Asked of every arm as one rung (`--effort`, default `low` — the only rung
@@ -198,16 +220,23 @@ basis.
 | `code-fix` | coding | print | a real boundary bug in a Go module: the module's own suite is the judge, and the test file is checksummed so "made the tests agree" fails |
 | `followup-while-working` | conversation | interactive | a second question typed **while** a slow job runs: it must be answered, and the job must still finish |
 | `revision-midwork` | conversation | interactive | the deliverable's shape is changed mid-flight: the revised file must exist, correct, and the superseded one must be gone |
-| `task-result-delivered` | conversation | interactive, aforge only | work is handed off, and afterwards the person asks what it produced: the number on the screen must be the number really in the file |
+| `work-result-recalled` | conversation | interactive, aforge only | work is done, and afterwards the person **asks** what it produced: the number on the screen must be the number really in the file |
 
 Fixtures are deterministic and offline (`fixtures/`). The interactive ones use a
 script that sleeps, so the busy window costs a sleep rather than tokens.
 
-`task-result-delivered` exists for aforge alone because it is about aforge's own
-surface; on any other arm it is recorded `unsupported`. **It asserts nothing
-about shape** — not how many agents ran, not whether a task was spawned. A build
-that answers in one turn with no task at all passes it, and should: the person
-asked for a result, not an org chart.
+`work-result-recalled` runs on aforge alone because it is aforge's terminal
+being examined; on any other arm it is recorded `unsupported`, and no claim is
+made about what those arms can hand off. **It asserts nothing about shape** —
+not how many agents ran, not whether a task was spawned, not that a checkpoint
+existed. A build that answers in one turn with no task at all passes it, and
+should: the person asked for a result, not an org chart.
+
+It is named for what it checks. **The person has to ask**, so it is a recall
+check and not a delivery one: a session that finishes work and says nothing
+until prompted passes it. Whether a result arrives on its own is a different
+question, tested live against the product's own task surface, and it is not in
+this suite.
 
 ## Outcomes
 
@@ -217,9 +246,27 @@ the runner's exit code moves for `fail`, `timeout` and `crash` only. A skipped
 cell that quietly read as a pass is the failure this whole suite is built to
 prevent.
 
-The interactive door adds one more: if the mid-work window never opened,
-`no-midwork-window` is recorded and the cell **fails** — the scenario did not
-happen, so there is nothing to pass.
+The interactive door adds more, and they are deliberately different words:
+
+| `ended` | what happened | outcome |
+|---|---|---|
+| `no-midwork-window` | the work never gave a window to steer into | **fail** — the scenario did not happen, so there is nothing to pass |
+| `crash` | the pane died | **crash** — the harness failed |
+| `noframe` | nothing was ever drawn | **crash** — the harness drew no screen |
+| `noready` | a screen WAS drawn and these markers did not match it | **unsupported** — a calibration gap in THIS suite; nothing was driven, so nothing is claimed and the scenario's own checks do not run |
+
+That last row is not a technicality. A live run wired pi to the guard, whose
+status bar then read `(guard) …` where the calibration expected
+`(openrouter) …`; the driver waited ninety seconds, sent nothing, and the cell
+came out as a crash with ten failed assertions against a harness that was
+sitting there healthily waiting to be typed at. The marker is now derived from
+the provider actually in use, and a screen this suite cannot read is recorded as
+this suite's gap.
+
+**A cell whose guard died is `skipped`.** If the forwarding guard exits during a
+cell, the harness is dialling a closed port and everything after that — no
+reply, no file, no receipt — is about the rig. The cell is skipped with the
+guard's exit status on the row, and the scenario's checks do not run.
 
 ### When "answered while working" is allowed to be claimed
 
@@ -263,7 +310,8 @@ Two weaknesses are named rather than papered over, and travel in `door.json` as
   puts an error bar of one poll on `answer_first_seen_at`. What it cannot be is
   an echo: the followup asks for a word from a file **reversed**
   (`CINNABAR` → `RABANNIC`), so a tool call that prints the file does not
-  produce the answer.
+  produce the answer. The match is a whole word — a live omp pane rendered
+  `RRABANNIC`, and a substring match had called that correct.
 - `screen-busy`: the weaker witness, used only where a scenario has no work of
   its own to mark. A spinner means a model request is in flight, which can be
   true before any work has begun.
@@ -328,11 +376,19 @@ record of what they were. A cell whose directory already exists refuses too, and
 records a skip. `--overwrite` is the deliberate way, and `--out` gives a run a
 directory of its own.
 
-One live pilot has been run through this suite, by the owner, on the print door
-only: three arms on `data-tally`, all passing quality, with the guard audit
-showing the pinned model and nothing else. Its numbers and the reason one of its
-three costs is not usable are in `notes/pilot-01.md`. No interactive cell has
-been run live yet.
+Live runs so far, all by the owner:
+
+* `notes/pilot-01.md` — the first print-door cells, and why one of its three
+  costs is not usable.
+* `notes/pilot-02-03.md` — two full print-door passes over four scenarios, plus
+  the first interactive cells against pi and omp. It adjudicates every non-pass
+  in those runs: which were real quality misses, which were this suite's own
+  defects (a markdown-emphasis assertion, an adapter calibrated before the
+  guard existed), and which are unusable because the rig failed under them.
+
+No interactive cell has yet produced a result this suite is willing to quote:
+the pi cells never reached a composer, and the omp cell's pass rested on an
+assertion too weak to keep.
 
 State is isolated per cell: `AFORGE_HOME` for aforge, `PI_CODING_AGENT_DIR` plus
 `--session-dir` for pi, `XDG_*` for opencode (declared, not documented by
@@ -363,9 +419,12 @@ checks the receipt reader counts a repeated message once — all three peers emi
 the same assistant message three times — and that a self-reported `$0` beside
 real tokens is read as unknown rather than free.
 
-The interactive counterexample is the one to keep: a fake TUI that **blocks**,
-finishes the build, and then answers correctly, with the right derived token and
-the right build marker, must FAIL. Its final transcript is a passing one; only
+The interactive counterexamples are the ones to keep. A fake TUI that
+**blocks**, finishes the build, and then answers correctly, with the right
+derived token and the right build marker, must FAIL. A fake that answers
+`RRABANNIC` must fail too — a near miss is a miss. And a fake that draws a
+screen these markers do not match must come out `unsupported` with its
+scenario's checks unrun, never as a crash blamed on the harness. Its final transcript is a passing one; only
 the timestamps say otherwise. The responsive fake must pass, the deaf one must
 fail, and a run where the window never opened must not be a pass.
 
@@ -385,7 +444,7 @@ without answering a request whose headers it already sent, and a priced call
 beside it must **not** be reported as the total. An admission with no
 settlement — what an abrupt shutdown leaves — reads as unknown too.
 
-At the time of writing it is 95 checks, all passing, and it needs `tmux` and
+At the time of writing it is 101 checks, all passing, and it needs `tmux` and
 `curl`; a missing dependency is reported as skipped and exits non-zero rather
 than green.
 

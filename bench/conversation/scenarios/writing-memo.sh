@@ -45,7 +45,15 @@ scenario_check() {
   check_grep_all "memo carries the three required facts" "$memo" \
     "BRACKISH" "8431" "kestrelctl rollback"
   check_not_grep "memo avoids the banned word" "synergy" "$memo"
-  check_grep "memo ends with an escalation line" "^ *Escalation:" "$memo"
+  # FORMAT, NOT FACT. The instruction was a line beginning "Escalation:", and a
+  # memo that writes "**Escalation:**" has the content and not the shape. It is
+  # still a miss — the request was literal — but the row has to say which kind,
+  # so a reader does not record a missing fact that is not missing.
+  check_grep "format: an escalation line begins literally with \"Escalation:\"" \
+    "^ *Escalation:" "$memo"
+  if ! grep -aqE "^ *Escalation:" "$memo" && grep -aqiE "^ *[*_]+ *Escalation" "$memo"; then
+    record "escalation_line" "present but emphasised — a formatting miss, not a missing fact"
+  fi
   # Escalation goes to the duty lead, which is in ownership.md and is the one
   # fact a memo written from the incident log alone would miss.
   check_grep "escalation names the duty lead" "duty lead" "$memo"

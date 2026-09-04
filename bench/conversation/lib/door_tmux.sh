@@ -32,6 +32,11 @@
 #                     labelled as such in door.json.
 #   idle<TAB>text     send after the harness has settled (the next-turn case)
 #
+# When the composer never appears, `ended` tells the two cases apart:
+# `crash` (the pane died), `noframe` (nothing was ever drawn) and `noready`
+# (a screen was drawn that these markers do not match — a calibration gap in
+# this suite, recorded as unsupported rather than as a harness failure).
+#
 # Evidence written to <out>:
 #   screen.txt        the final pane
 #   scrollback.txt    the whole conversation, which is what assertions read
@@ -209,11 +214,24 @@ tmux_door_run() {
 
   # A session that never draws a composer is a cell with nothing in it. The
   # reason is in tmux.err or nowhere.
+  # TWO WAYS TO HAVE NO COMPOSER, AND THEY ARE NOT THE SAME FINDING. A pane that
+  # died is the harness failing; a pane full of output that this suite could not
+  # recognise is THIS SUITE failing to know what that harness's composer looks
+  # like. Reporting the second as a crash blames a product for a regex — which
+  # is what happened when pi was wired to the guard and its status bar started
+  # saying "(guard)" where the calibration expected "(openrouter)".
   local screen
   while :; do
     screen="$(pane_text "$name")"
     door_is_ready "$screen" && break
-    if [ "$(now_s)" -ge $(( started + CONV_READY_WAIT )) ]; then DOOR_ENDED="noframe"; break; fi
+    if [ "$(now_s)" -ge $(( started + CONV_READY_WAIT )) ]; then
+      if [ -n "$(printf '%s' "$screen" | tr -d '[:space:]')" ]; then
+        DOOR_ENDED="noready"
+      else
+        DOOR_ENDED="noframe"
+      fi
+      break
+    fi
     if pane_dead "$name"; then DOOR_ENDED="crash"; break; fi
     sleep 1
   done

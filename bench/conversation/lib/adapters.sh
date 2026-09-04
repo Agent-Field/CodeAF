@@ -215,6 +215,49 @@ arm_role_pin() {
   [ "$ARM_ROLE_PIN" = "yes" ]
 }
 
+# ── the ambient machine, and how much of it can be turned off ───────────────
+#
+# A harness that loads the machine's skills, extensions and MCP servers is not
+# running the task it was given: it is running that task plus whatever the
+# person who owns the machine installed. A live pane in this lane showed omp
+# mounting MCP tools and failing one of them from `~/.claude.json`, and pi
+# listing thirty-odd skills from `~/.agents/skills` — extra tools, extra system
+# prompt, extra latency, and none of it the same on two machines.
+#
+# ONLY DOCUMENTED FLAGS ARE USED. What each CLI's own --help offers is taken;
+# what it does not offer is REPORTED rather than worked around, because a
+# benchmark that edits somebody's dotfiles to look fair has stopped measuring
+# the thing people run.
+#
+#   omp 18.1.2   --no-skills --no-extensions --no-rules
+#                (no flag for user-level MCP from ~/.claude.json; its config
+#                 offers mcp.enableProjectConfig, which covers the project file
+#                 only — recorded as a known difference)
+#   pi 0.84.2    --no-skills --no-extensions
+#   aforge       nothing needed: AFORGE_HOME moves the whole state root, so a
+#                cell starts with no ambient skills or extensions at all
+ARM_BASELINE_FLAGS=()
+ARM_BASELINE_NOTE=""
+arm_baseline() {
+  ARM_BASELINE_FLAGS=()
+  case "$1" in
+    omp)
+      ARM_BASELINE_FLAGS=(--no-skills --no-extensions --no-rules)
+      ARM_BASELINE_NOTE="skills/extensions/rules off; user MCP from ~/.claude.json cannot be disabled by any documented flag and is still loaded"
+      ;;
+    pi)
+      ARM_BASELINE_FLAGS=(--no-skills --no-extensions)
+      ARM_BASELINE_NOTE="skills/extensions off"
+      ;;
+    aforge)
+      ARM_BASELINE_NOTE="clean by isolation: AFORGE_HOME is this cell's own"
+      ;;
+    opencode)
+      ARM_BASELINE_NOTE="unverified: no documented discovery switches read for opencode"
+      ;;
+  esac
+}
+
 # ── effort ──────────────────────────────────────────────────────────────────
 #
 # The four CLIs spell reasoning effort four ways and do not offer the same
@@ -380,13 +423,14 @@ arm_print_argv() {
     omp)
       ARGV=("$OMP_BIN" -p --mode json --model "$model" --cwd "$work"
             --session-dir "$ARM_STATE_DIR/omp-sessions" --auto-approve
-            "${ARM_ROLE_FLAGS[@]}" "${ARM_EFFORT_FLAGS[@]}" "$text")
+            "${ARM_BASELINE_FLAGS[@]}" "${ARM_ROLE_FLAGS[@]}" "${ARM_EFFORT_FLAGS[@]}" "$text")
       ;;
     pi)
       # pi has no --cwd: it works in the directory it is started in, so run.sh
       # starts it inside the fixture.
       ARGV=("$PI_BIN" -p --mode json --provider "$(arm_provider_name)" --model "$model"
-            --session-dir "$ARM_STATE_DIR/pi-sessions" "${ARM_EFFORT_FLAGS[@]}" "$text")
+            --session-dir "$ARM_STATE_DIR/pi-sessions" "${ARM_BASELINE_FLAGS[@]}"
+            "${ARM_EFFORT_FLAGS[@]}" "$text")
       ;;
     opencode)
       ARGV=("$OPENCODE_BIN" run --format json -m "$model" --dir "$work" --auto
@@ -428,17 +472,20 @@ arm_tui_argv() {
   ARM_READY_RE=""; ARM_BUSY_RE=""; ARM_ASK_RE=""; ARM_DOOR_NOTE=""
   case "$arm" in
     aforge)
-      # Markers as used by bench/canary/lib/chat.sh, which drives this same TUI
-      # on a schedule in this repository: the status line ends in " · idle" when
-      # nothing is in flight, the rail says "N running" while a task works on
-      # after the reply, and "[a] accept" is the screen asking for consent.
+      # Markers read off the CURRENT renderer rather than copied from an older
+      # battery. internal/tui3/render.go's stateWord ends the status row with
+      # the run state — "idle", "working", "interrupted" — or with waitingWord
+      # ("waiting · your call") when consent is pending, and the rail counts
+      # tasks separately ("1 running"). tui3's own chrome_test asserts a FRESH
+      # screen's status row already says "idle", which is what makes it usable
+      # as "the composer is up" before anything has been typed.
       # --max-hours is set inside the rig's own cap so the session ends on its
       # own law and writes its ending before the driver stops watching.
       local hours; hours="$(python3 -c "print(round(max($cap - 60, 60) / 3600, 4))")"
-      ARM_READY_RE=' · idle'
-      ARM_BUSY_RE='[0-9]+ running'
-      ARM_ASK_RE='\[a\] accept'
-      ARM_DOOR_NOTE='markers from bench/canary/lib/chat.sh (in-repo, production use)'
+      ARM_READY_RE='· idle'
+      ARM_BUSY_RE='(· (working|interrupted)|[0-9]+ running)'
+      ARM_ASK_RE='waiting · your call'
+      ARM_DOOR_NOTE='markers from internal/tui3/render.go (stateWord, waitingWord), matched against a live pane in /private/tmp/af-conversation-ops/host-live-01'
       # Hosted, like any other conversation: the interactive door is the one
       # place this suite can measure the product's actual default, and passing
       # --no-host here would quietly measure something else. The cell's own
@@ -455,12 +502,19 @@ arm_tui_argv() {
       # transcript by a finished tool call as well as a running one, so reading
       # it as busy would leave the driver waiting for an idle that has already
       # happened.
-      ARM_READY_RE='\(openrouter\)'
+      #
+      # THE PROVIDER NAME IS DERIVED, NOT HARDCODED. The status bar names
+      # whichever provider is in use, so a rig that wired pi to the guard and
+      # then waited for "(openrouter)" waits forever: a live pane on a guarded
+      # run reads "(guard) deepseek/deepseek-v4-flash-0731 • low"
+      # (/private/tmp/af-conversation-ops/live-interactive-peers-01/followup-while-working-pi/screen.txt).
+      ARM_READY_RE="\\($(arm_provider_name)\\)"
       ARM_BUSY_RE='Working\.\.\.'
       ARM_ASK_RE='(\[y\]|approve|Allow\?)'
-      ARM_DOOR_NOTE='markers calibrated on pi 0.84.2 (bench/conversation lane, live pane capture)'
+      ARM_DOOR_NOTE="markers calibrated on pi 0.84.2 (bench/conversation lane, live pane capture); provider segment derived as ($(arm_provider_name))"
       ARGV=("$PI_BIN" --provider "$(arm_provider_name)" --model "$model"
-            --session-dir "$ARM_STATE_DIR/pi-sessions" "${ARM_EFFORT_FLAGS[@]}")
+            --session-dir "$ARM_STATE_DIR/pi-sessions" "${ARM_BASELINE_FLAGS[@]}"
+            "${ARM_EFFORT_FLAGS[@]}")
       ;;
     omp)
       # Calibrated on omp 18.1.2 the same way: the status line begins with the
@@ -472,7 +526,8 @@ arm_tui_argv() {
       ARM_ASK_RE='(\[y\]|approve|Allow\?)'
       ARM_DOOR_NOTE='markers calibrated on omp 18.1.2 (bench/conversation lane, live pane capture)'
       ARGV=("$OMP_BIN" --model "$model" --session-dir "$ARM_STATE_DIR/omp-sessions"
-            --auto-approve --max-time "$cap" "${ARM_ROLE_FLAGS[@]}" "${ARM_EFFORT_FLAGS[@]}")
+            --auto-approve --max-time "$cap" "${ARM_BASELINE_FLAGS[@]}"
+            "${ARM_ROLE_FLAGS[@]}" "${ARM_EFFORT_FLAGS[@]}")
       ;;
     opencode)
       ARM_DOOR_NOTE='no calibrated screen markers for opencode 1.17.15 — interactive door unsupported here'
