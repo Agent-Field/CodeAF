@@ -2482,9 +2482,12 @@ newest answer this process has heard — the call log's own memory, kept even wi
 switched off — not the moment the work was booked. A worker ten minutes into its work says
 `last call … 1s ago`, because that is what is true.
 
-The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. `aforge doctor` names
-the file and its size. Set `AFORGE_CALL_LOG=off` to write nothing at all, or
-`AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere you can watch.
+The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. With
+`AFORGE_CALL_LOG_BODIES=1` the live file is allowed 256 MB instead — a body-bearing
+line is tens of kilobytes and the ordinary cap would turn over after a few dozen
+calls. `aforge doctor` names the file and its size. Set `AFORGE_CALL_LOG=off` to
+write nothing at all, or `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere
+you can watch.
 
 ## What does the total at the end of aforge do include — the last line, and why the printed cost should match the call log
 
@@ -2532,7 +2535,9 @@ AFORGE_CALL_LOG_BODIES=1 aforge
 Every line then also carries `request_body` and `response_body`, whole and unedited: your
 prompts, your attached file contents, the model's whole reply. Turn it on for the run you
 are debugging and off again afterwards, and treat the file as you would the conversation
-itself.
+itself. The live file is allowed 256 MB with this pin on (32 MB without it), so a long
+session keeps the bodies you asked for rather than rotating them away after a few dozen
+calls.
 
 That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
 in a conversation — which keeps the **debug record** of a run in a folder of its own. The
