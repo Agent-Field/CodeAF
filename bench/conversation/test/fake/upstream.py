@@ -40,10 +40,22 @@ class Upstream(http.server.BaseHTTPRequestHandler):
         # sees the first event only when the second arrives was waiting on a
         # proxy holding the whole response.
         try:
-            delay = float(json.loads(body or b"{}").get("stream_delay") or 0)
+            asked = json.loads(body or b"{}")
+        except ValueError:
+            asked = {}
+        try:
+            delay = float(asked.get("stream_delay") or 0)
         except (ValueError, TypeError):
             delay = 0
         delay = max(0.0, min(delay, 10.0))
+        # A priced call, when the caller asked for accounting — which the guard
+        # does on every request it forwards. The figure arrives in the LAST
+        # event, which is why a stream that is cut short cannot be priced.
+        events = [b"data: UPSTREAM-CHUNK-1\n\n", b"data: UPSTREAM-CHUNK-2\n\n"]
+        if isinstance(asked.get("usage"), dict) and asked["usage"].get("include"):
+            events.append(b'data: {"usage": {"cost": 0.00025, "prompt_tokens": 11, '
+                          b'"completion_tokens": 7, "total_tokens": 18}}\n\n')
+        events.append(b"data: [DONE]\n\n")
         # Two chunks with a marker in each, so a proxy that buffers the whole
         # response instead of relaying it is still visible in the bytes.
         self.send_response(200)
@@ -51,13 +63,17 @@ class Upstream(http.server.BaseHTTPRequestHandler):
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
         first = True
-        for part in (b"data: UPSTREAM-CHUNK-1\n\n", b"data: UPSTREAM-CHUNK-2\n\ndata: [DONE]\n\n"):
-            if not first and delay:
-                time.sleep(delay)
-            first = False
-            self.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
-            self.wfile.flush()
-        self.wfile.write(b"0\r\n\r\n")
+        try:
+            for part in events:
+                if not first and delay:
+                    time.sleep(delay)
+                first = False
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
+                self.wfile.flush()
+            self.wfile.write(b"0\r\n\r\n")
+        except (BrokenPipeError, ConnectionResetError):
+            # The guard hung up because its own client did. Nothing to say.
+            self.close_connection = True
 
     def do_GET(self):
         self.record(b"")

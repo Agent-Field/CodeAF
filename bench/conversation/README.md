@@ -140,6 +140,16 @@ A self-reported `$0` alongside a non-zero token count is treated as an **absence
 not a price**: it is a zero price table, not a free call, and the cell comes back
 cost-unknown and not comparable.
 
+**Every admitted call is accounted for, or the cell's cost is unknown.** The
+guard books a request when it *admits* it — before a socket upstream is opened —
+and closes that row when the request ends, priced or explicitly unpriced. A call
+can be billed and still produce no usage block: the client hangs up mid-stream,
+the upstream fails after generating, the guard is killed with a call in flight.
+Totalling only the calls that finished would report a confident number that is
+smaller than what was spent, so any admission the ledger cannot close makes the
+whole cell cost-unknown — and that outranks the harness's own figure, which
+covers only the calls it knows about.
+
 Receipts are still read for every cell, because they name the billed model and
 the guard's audit names what was asked for:
 
@@ -227,10 +237,23 @@ work_finished_at     the fixture's own build-finished marker
 ```
 
 The message is sent only after the work says it started and before it says it
-finished, and the answer must be **seen before the work's finish marker**. The
-markers are written by the slow job itself, to an absolute path baked in when
-the fixture is generated, so they hold even if the agent copies the script
-somewhere else.
+finished. The markers are written by the slow job itself, to an absolute path
+baked in when the fixture is generated, so they hold even if the agent copies
+the script somewhere else.
+
+The two mid-work cells then part company, because they are asking different
+things of the harness:
+
+| cell | asserted | recorded, not asserted |
+|---|---|---|
+| `followup-while-working` | the answer was seen **before** the work's finish marker | how long the window was |
+| `revision-midwork` | `report.csv` was written **after** the revision was sent | whether it was also written before the build finished |
+
+The revision cell stops there on purpose. The person asked for the build *and*
+the report; finishing the build first and then writing the CSV does what was
+asked, so requiring the file mid-work would score eagerness rather than
+correctness. The followup cell is stricter because there the whole point of the
+question is that it should not have to wait.
 
 Two weaknesses are named rather than papered over, and travel in `door.json` as
 `witness`:
@@ -356,7 +379,13 @@ event back for two seconds, the first must reach the client before the second is
 sent — a guard that buffered a whole response would leave a live TUI blank for
 the length of a generation.
 
-At the time of writing it is 88 checks, all passing, and it needs `tmux` and
+The ledger is tested the same way. A client that hangs up mid-stream must leave
+a settled-but-unpriced row rather than silence, the guard must survive it
+without answering a request whose headers it already sent, and a priced call
+beside it must **not** be reported as the total. An admission with no
+settlement — what an abrupt shutdown leaves — reads as unknown too.
+
+At the time of writing it is 95 checks, all passing, and it needs `tmux` and
 `curl`; a missing dependency is reported as skipped and exits non-zero rather
 than green.
 

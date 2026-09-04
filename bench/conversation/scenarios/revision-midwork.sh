@@ -15,6 +15,16 @@
 #
 # The checks below tell those three apart on disk. Nothing is asserted about
 # how the harness organised itself to do it.
+#
+# WHAT THIS CELL DOES NOT ASSERT, deliberately. The revised file is required to
+# be written AFTER the revision was sent — otherwise it is not an answer to the
+# revision — but NOT before the slow job finishes. The person asked for both the
+# build and the report; finishing the build first and then writing the CSV is a
+# legitimate way to do what was asked, and failing it would be scoring
+# eagerness rather than correctness. The timing is recorded so it can be read.
+# The sibling cell, followup-while-working, is the one that asserts an answer
+# arrived mid-work, because there the whole point of the question is that it
+# should not have to wait.
 
 SCENARIO_WORKLOAD="conversation"
 SCENARIO_DOOR="interactive"
@@ -56,8 +66,11 @@ scenario_check() {
   check_file "the revised deliverable exists (report.csv)" "$work/report.csv"
   if [ -s "$work/report.csv" ]; then
     # The file has to be the answer to the REVISION, so it must not predate it.
+    # Whether it also beat the build to the finish is recorded, not judged.
     check "report.csv was written after the revision was sent" \
       "$(stamps_ordered "$sent" "$(file_mtime "$work/report.csv")")"
+    record "csv_before_build_finished" \
+      "$([ -n "$finished" ] && stamps_ordered "$(file_mtime "$work/report.csv")" "$finished" || echo unknown)"
     check_grep "report.csv has the asked-for header" "^ *service *, *port" "$work/report.csv"
     check_grep_all "report.csv carries every service and port" "$work/report.csv" \
       "kestrel *, *8431" "gasket *, *9002" "flange *, *7710"
