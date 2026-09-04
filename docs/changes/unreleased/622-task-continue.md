@@ -1,6 +1,7 @@
 ---
 kind: added
 title: continue re-arms the same failed task instead of proposing a new one
+pr: 622
 surface: [chat, engine, docs]
 invalidates:
   - >-

@@ -1,6 +1,8 @@
 ---
 kind: fixed
-title: "continue task N" reaches the continue verb, and a missing graph says so
+title: >-
+  continue task N reaches the continue verb, and a missing graph says so
+pr: 622
 surface: [chat, engine, docs]
 invalidates:
   - >-
