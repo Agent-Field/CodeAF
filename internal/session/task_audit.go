@@ -1441,6 +1441,16 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
 	out.WriteString(node.acceptance() + "\n\n")
+	// AND WHERE THE PERSON MOVED IT, THE PACKET SAYS SO AND SAYS WHICH ONE WINS.
+	// A revised task has two done-conditions in its history and exactly one it is
+	// judged by (assignment.go); an auditor handed both without being told that
+	// would look for work satisfying a requirement the person themselves withdrew.
+	// Their own words are here because the acceptance above is a restatement of
+	// them, and a restatement that has drifted is a thing a reader can only catch
+	// with the original beside it.
+	if revised := node.revisionNote(); revised != "" {
+		out.WriteString(revised + "\n\n")
+	}
 
 	if claim = strings.TrimSpace(claim); claim != "" {
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")

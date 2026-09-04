@@ -484,9 +484,20 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
-		waiting, err := a.SteerTask(id, say)
+		// THIS DOOR IS THE MODEL'S AND NOT THE PERSON'S, and the difference is
+		// carried with the words rather than left to be guessed at the far end
+		// ([directionFromAgent], assignment.go). It is coordination — this
+		// conversation, or a parent node, telling a running task something it needs
+		// — and a task may act on it freely; what it may not do is treat it as the
+		// person changing what the work is judged by, which is exactly what a
+		// descendant phrasing a request as an instruction would otherwise buy.
+		receipt, err := a.sayToTask(id, say, directionFromAgent)
 		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
+		}
+		waiting := receipt.Waiting
+		if receipt.Held {
+			return fmt.Sprintf("said to task %s: %s\nIts work is being checked, so nobody read it yet; it is on the task's record and its next round reads it. It cannot change what that task is judged by — only the person's own direction does that.", entry.ID, say), false, nil
 		}
 		// AND WHICH KIND OF WAIT IT LANDED IN. A task that has handed its own
 		// pieces out is parked on their reports and has no step coming
@@ -498,7 +509,7 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		if waiting {
 			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives as the person's own words."
 		}
-		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say, arrival), false, nil
+		return fmt.Sprintf("said to task %s: %s\n%s Its done-condition is unchanged: only the person's own direction can move that, never a line from here.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran

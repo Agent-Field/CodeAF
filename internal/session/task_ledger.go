@@ -77,6 +77,23 @@ func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string
 	return ledger, merge, detail, why
 }
 
+// landUnreadDirections is the end of a run whose person kept changing the work:
+// nothing merges, the branch and the working copy stay exactly as they are, and
+// the node settles unverified — the state this package already has for finished
+// work nobody can stand behind. It is not `done`, because what the person last
+// asked for was never carried out, and it is not `failed`, because nobody made a
+// finding against the work itself.
+func (a *Agent) landUnreadDirections(node *TaskNode, tree taskTree, changed []string, report string, claim publicationClaim, log io.Writer) TaskState {
+	note := unreadDirectionsNote(claim.unread)
+	if note == "" {
+		note = "this did not land: what it was checked against is no longer what this task is for. Its work is kept on its branch — continue this task to have it taken up"
+	}
+	fmt.Fprintf(log, "not landing: %s\n", note)
+	merge, kept := keepHome(node, tree, changed)
+	node.finish(withReport(note, report), kept, tree.branch, merge)
+	return TaskUnverified
+}
+
 // keepHome is [landHome]'s counterpart for a node that settles WITHOUT merging —
 // stopped, errored, turned back at the gate, or landing onto a ground that moved
 // under it. The ledger is finalized for the same two reasons: the branch a
@@ -117,6 +134,34 @@ func keepHome(node *TaskNode, tree taskTree, changed []string) (string, []string
 // fired is machinery, and a reader of a card that says done has no use for it
 // ([Agent.landStopped] states the whole of that argument).
 func (a *Agent) landFinished(node *TaskNode, tree taskTree, changed []string, head, tail, note string, log io.Writer) TaskState {
+	// ── THE PUBLICATION BOUNDARY, TAKEN BEFORE ANYTHING LEAVES THIS PROCESS ──
+	//
+	// This is the one road on which a task's work is PUBLISHED: it merges onto
+	// the person's branch and the node settles done. So it is also the road that
+	// has to answer whether the person has changed what "done" means since the
+	// worker stopped reading — a correction typed while the gate was reading the
+	// tree is held on the node's record ([Agent.SteerTask]), and work that landed
+	// as done over one would be this harness deciding their last word did not
+	// count.
+	//
+	// THE ANSWER IS AN INSTANT AND NOT A LOOK. [TaskNode.claimPublication] reads
+	// the unread directions and takes the boundary in one locked step, so a
+	// direction is either in before the claim — nothing publishes, and the work
+	// goes round again with their words — or after it, and it belongs to the next
+	// round rather than to a merge that is already going out (assignment.go).
+	claim := node.claimPublication()
+	if !claim.granted {
+		if claim.again {
+			fmt.Fprintf(log, "not landing: the person has said something this work has not read\n")
+			return taskRunAgain
+		}
+		// AND WHEN THERE IS NO ROUND LEFT, THE WORK STILL DOES NOT PUBLISH. A run
+		// that has been round for corrections as often as one run may be
+		// ([directedRoundLimit]) stops here rather than merging work the person has
+		// moved on from and calling it done. The branch is kept, nothing goes to
+		// their checkout, and the card says what is waiting.
+		return a.landUnreadDirections(node, tree, changed, withReport(head, tail), claim, log)
+	}
 	// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE. The check that passed was
 	// run inside this node's own working copy, which is a copy of the world as it
 	// was when the node started — so it says nothing at all about a file another

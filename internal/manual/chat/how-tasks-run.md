@@ -2542,9 +2542,22 @@ A task the model hands out from **inside** another task inherits the same words:
 nobody inside a task's own copy to type a new message, so the sentence that started the family is what
 every task under it reads.
 
-Once a task is admitted, its brief and its acceptance are **frozen**. Nothing changes them
-after that — not steering, not a correction round. Steering is talk to the worker, not a
-new target. If the objective itself was wrong, the answer is a new proposal.
+Once a task is admitted, the brief and the acceptance it was admitted with are **kept
+exactly as they were**: nothing rewrites them, and the record of what was agreed stays
+readable for good.
+
+**What you say afterwards can still change what it is judged by, and nothing else can.**
+Steer a running task with a correction — "CSV instead of JSON" — and its worker can fold
+that into the task's own done-condition, citing the line you sent. The task then works to
+the new condition and the checker judges it against the new condition, with your own words
+kept beside it so both of you can see what was actually asked. Everything you did not
+change stays as it was. A correction sent with `continue` on a task that has already
+settled takes the same road. Two things cannot do this: the model's own `tasks id N say`,
+which is one piece of work talking to another, and the worker's own opinion — a revision
+has to name a line **you** sent.
+
+Steering that is not a correction is still just talk to the worker: a fact it needs, a
+question to answer. Most steering is that, and it moves no target.
 
 ## Can the task see the original request — does the task know what I originally said, can a task read my full message when the brief is cut
 

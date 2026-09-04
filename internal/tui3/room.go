@@ -86,12 +86,13 @@ type taskRoomAgent interface {
 	// when the node is unknown, not running, or has no worker up yet — all three
 	// are "there is nobody in there to talk to", and all three are worth saying.
 	//
-	// The bool is whether the node was WAITING ON ITS OWN PIECES when the line
-	// was taken. It arrives either way; what changes is that a parked node has no
-	// step coming to read it at, so the line is what wakes it, and a room that
-	// said nothing would leave the person watching a page that does not move
-	// (internal/session's task_room.go).
-	SteerTask(id uint64, text string) (bool, error)
+	// The receipt is what the sending DID (internal/session's
+	// [session.SteerReceipt]): delivered, delivered to a node that was WAITING ON
+	// ITS OWN PIECES — which has no step coming to read the line at, so the line
+	// is what wakes it — or HELD on the task's record while its work is being
+	// checked. All three are successes and each has its own sentence, which this
+	// surface draws and never rewrites.
+	SteerTask(id uint64, text string) (session.SteerReceipt, error)
 	// WatchTask subscribes to the node's live events, FROM NOW: no history is
 	// replayed, and the channel closes at the node's final state. A finished node
 	// answers with an already-closed channel rather than an error.
@@ -117,7 +118,7 @@ func (a *app) roomDoors() (taskRoomAgent, bool) {
 // taskSteerDoor is separate from the live-watch door because a hosted room is
 // refreshed by bounded journal reads while its one write still crosses.
 type taskSteerDoor interface {
-	SteerTask(id uint64, text string) (bool, error)
+	SteerTask(id uint64, text string) (session.SteerReceipt, error)
 }
 
 func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
@@ -1010,7 +1011,7 @@ func (a *app) steer() tea.Cmd {
 	// The worker reads the paste and the room's row keeps the tag (pastechip.go).
 	// The chips are spent only once the engine has taken the line: a refusal
 	// leaves the words in the box, chips and all.
-	waiting, err := doors.SteerTask(room.id, a.pastesUnfolded(line))
+	receipt, err := doors.SteerTask(room.id, a.pastesUnfolded(line))
 	if err != nil {
 		// The engine's own sentence, kept: "task 3 is done, not running" and
 		// "task 3 has no worker to talk to yet" are different facts, and a
@@ -1067,11 +1068,23 @@ func (a *app) steer() tea.Cmd {
 	a.roomSaid(entry{kind: entrySteer, turn: room.turn, context: a.turnContext(),
 		steer: &steerElbow{
 			words: line, at: now, consumed: true, landed: now,
-			receipt: session.SteerDelivered(waiting),
+			receipt: steerReceiptWords(receipt),
 		}})
 	// The two wakeups the clause's fade needs and no ticker, which is [fadeTicks]'
 	// whole bargain (steerelbow.go takes the same two for the same reason).
 	return tea.Batch(a.edited(), fadeTicks())
+}
+
+// steerReceiptWords is the engine's own sentence for what the sending did, drawn
+// verbatim. A held line — the task's work is being checked, so nobody read it
+// yet and it is on the task's record — has its own words, and this surface does
+// not invent a shorter one for it: "delivered" over a line nobody has read would
+// be the room telling a person something that is not true.
+func steerReceiptWords(receipt session.SteerReceipt) string {
+	if words := strings.TrimSpace(receipt.Landing); words != "" {
+		return words
+	}
+	return session.SteerDelivered(receipt.Waiting)
 }
 
 // ── the steer guard ─────────────────────────────────────────────────────────

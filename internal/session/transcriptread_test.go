@@ -23,7 +23,7 @@ func deliveredLine(t *testing.T, text string, waiting bool) (string, *Agent) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "node.jsonl")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.SessionFile = path })
-	if !agent.enqueueSteeredLine(text, waiting) {
+	if !agent.enqueueSteeredLine(text, waiting, 0) {
 		t.Fatal("the node's own steering lane refused a line")
 	}
 	agent.mu.Lock()

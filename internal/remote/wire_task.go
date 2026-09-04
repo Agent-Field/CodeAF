@@ -44,10 +44,24 @@ type TaskSteerArgs struct {
 	Text string `json:"text"`
 }
 
-// TaskSteered preserves the local door's distinction for a node waiting on
-// its own pieces; the room uses it to say that the line woke the task.
+// TaskSteered carries the local door's whole receipt (internal/session's
+// [session.SteerReceipt]) rather than only its waiting fact.
+//
+// HELD IS WHY IT GREW. A line said while the engine is checking a task's work is
+// TAKEN — it goes on the task's record and the landing may not publish over it —
+// and that is a success with a different sentence, not an error. Carried as an
+// error it would have arrived here as bare text, so a hosted room could not tell
+// "kept, and it will be read" from "refused, say it somewhere else"; the person
+// furthest from the work would have been the one told least about it.
+//
+// An engine that predates the receipt fills Waiting and nothing else, which is
+// exactly what this type meant before: absent fields read as false, and a room
+// then draws the delivery it always drew.
 type TaskSteered struct {
-	Waiting bool `json:"waiting,omitempty"`
+	Waiting   bool   `json:"waiting,omitempty"`
+	Held      bool   `json:"held,omitempty"`
+	Direction uint64 `json:"direction,omitempty"`
+	Landing   string `json:"landing,omitempty"`
 }
 
 // TaskStopArgs uses the session's already-prefixed work id unchanged.

@@ -46,10 +46,11 @@ package session
 // so read the one you meant. THIS file's steer is aimed at A NODE: another
 // agent, in another worktree, with a transcript of its own, and the person's
 // line arrives on that agent's steering queue and is drained at ITS next step
-// boundary. What it promises is delivery — "it arrived", or "it arrived and the
-// node is parked on its own pieces" — and there is no third outcome, because a
-// node that has finished is a refusal ([Agent.enqueueSteeredLine] answers false)
-// and never a queue.
+// boundary. What it promises is that the words are KEPT while the node is still
+// running: "it arrived", "it arrived and the node is parked on its own pieces",
+// or "there was nobody inside to read it and it is on the task's record"
+// ([SteerReceipt]). A node that has FINISHED is a refusal and never a queue,
+// which is the one outcome that is not a receipt.
 //
 // [Agent.Steer] (steer.go) is the other one: a sentence SPLICED INTO THIS
 // CONVERSATION'S RUNNING TURN, part of the question already being worked on. It
@@ -62,17 +63,26 @@ package session
 // so that neither has to promise the other's outcome. steer.go states the split
 // in full; nothing in this file reads that mark and nothing there reads this one.
 //
-// ── AND STEERING IS NOT A REDIRECT ──
+// ── AND STEERING IS NOT ITSELF A REDIRECT ──
 //
-// [TaskNode]'s goal contract is untouched by this file. `spec.brief` and
-// `spec.acceptance` are frozen at admission and nothing here writes them: what
-// the auditor grades the work against cannot move while the work runs, or the
-// verification verifies nothing. Steering is a line of TALK to the worker —
-// "the config lives under etc/, not conf/" — arriving in the transcript as the
+// Nothing in this file writes the goal. A steer is a line of TALK to the worker
+// — "the config lives under etc/, not conf/" — arriving in the transcript as the
 // person's own user-role message, which is exactly what it looks like from the
-// child's side. If the objective itself was wrong, the answer is still a new
-// proposal, and that is the person exercising authority rather than editing a
-// target mid-flight.
+// child's side, and almost all of them stay talk.
+//
+// WHAT THIS FILE DOES IS RECORD WHO SAID IT. Every line said into a room is
+// written onto the node as a DIRECTION with an id and a speaker (assignment.go),
+// and one of those — the person's own, cited by the worker in an explicit call —
+// can move what the work is judged by. The admitted `spec.brief` and
+// `spec.acceptance` still never change; a revision is an overlay on them, at a
+// version, carrying the person's verbatim words to whoever checks the work. The
+// alternative was the contradiction this slice was written for: a worker told to
+// follow the person's correction and then graded, by a checker reading the
+// frozen text, for having followed it.
+//
+// A LINE FROM ANOTHER AGENT IS RECORDED THE SAME WAY AND MAY NOT DO THAT. The
+// mechanics are one thing and authority is another, and only the person's own
+// direction can move the target.
 //
 // ── THE ONE FIELD A ROOM DOES MOVE, AND WHY IT IS NOT THE SAME HOLE ──
 //
@@ -124,6 +134,11 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // person talking. Wrapping it would teach the node to read the person's words
 // as a system event, which is the one thing they are not.
 //
+// THE RECEIPT THE ENGINE ADDS IS A SECOND MESSAGE AND NEVER A WRAPPER, for
+// exactly that reason: the id a revision has to cite is a fact about the
+// delivery rather than part of what was said, so it is said separately, in the
+// engine's own voice ([taskRoom.steerIn]).
+//
 // ── AND A NODE THAT IS WAITING ON ITS OWN PIECES STILL HEARS IT ──
 //
 // The first answer is whether the node was WAITING when the line was taken: it
@@ -146,17 +161,39 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // last piece reported, the parent folded, the agent shut — cannot be talked to,
 // and the person is told so in the same breath as every other "there is nobody
 // in there".
-func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
+//
+// ── AND A LINE THE CHECK CANNOT BE SHOWN IS HELD, NOT REFUSED ──
+//
+// While the gate is reading the work there is nobody inside the node, and until
+// this returned a receipt that was the end of the story: the person was refused
+// and their words stayed in their own box. But a correction sent in that window
+// is exactly the one that matters — the work is about to land — so it is now
+// TAKEN and written onto the node's own record instead ([TaskNode.heardDirection]),
+// and the landing revalidates against it before anything is published
+// (assignment.go, task_ledger.go). [SteerReceipt.Held] is how a surface tells
+// that apart from delivery, and it says so in the engine's own words rather than
+// in a word each surface invents.
+func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
+	return a.sayToTask(id, text, directionFromPerson)
+}
+
+// sayToTask is the one road into a running node, with WHO IS SPEAKING carried
+// beside the words. Today the person's door is its only caller; the comms lane's
+// relay (another agent's coordination) takes the same road with
+// [directionFromAgent], and the difference is never mechanical — a relayed line
+// is delivered and recorded exactly as this one is, and may not revise what the
+// work is judged by (assignment.go).
+func (a *Agent) sayToTask(id uint64, text string, from directionFrom) (SteerReceipt, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return false, errors.New("nothing to say")
+		return SteerReceipt{}, errors.New("nothing to say")
 	}
 	node := a.taskNode(id)
 	if node == nil {
-		return false, fmt.Errorf("no task %d in this session", id)
+		return SteerReceipt{}, fmt.Errorf("no task %d in this session", id)
 	}
 	if state := node.stateNow(); state != TaskRunning {
-		return false, fmt.Errorf("task %d is %s, not running", id, state)
+		return SteerReceipt{}, fmt.Errorf("task %d is %s, not running", id, state)
 	}
 	// THE CHECK HAS NO READER. The node is TaskRunning across the worker, the
 	// check and every repair round — the state is honest about the node, never
@@ -170,8 +207,12 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// beat file, which is the same fact written for OTHER processes — so a
 	// person asking during the check hears what the check is instead of a
 	// sentence about a worker.
+	//
+	// SO IT IS HELD AGAINST THE WORK INSTEAD OF BEING SENT BACK. The words go on
+	// the node's record as a direction nobody has read, and the landing may not
+	// publish over one ([TaskNode.claimPublication]).
 	if node.lifeNow() == TaskPhaseChecking {
-		return false, nobodyToRead{fmt.Errorf("task %d is being checked — nobody is in there to read your line until the check lands", id)}
+		return heldForTask(node, text, from), nil
 	}
 	// Read BEFORE the line is handed over, because handing it over is what ends
 	// the wait: after the enqueue the honest answer to "was it waiting" has
@@ -188,10 +229,54 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// far end, because by the time the line is written down the node is no longer
 	// parked — this is the enqueue that released it — and the record would then
 	// say the ordinary thing about the one moment it was not true.
-	if !node.openRoom().steerIn(text, waiting) {
-		return false, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
+	// THE RECEIPT IS MINTED BEFORE THE DELIVERY because it rides under the words:
+	// a worker cannot fold a direction into the assignment without an id to cite,
+	// and the id is a fact about this delivery. A refusal below forgets it again,
+	// so nothing is left on the record for words no reader took.
+	direction, inTime := node.heardDirection(text, from)
+	receipt := ""
+	if from == directionFromPerson && direction != 0 {
+		receipt = directionReceiptLine(direction)
 	}
-	return waiting, nil
+	if !node.openRoom().steerIn(text, receipt, waiting, direction) {
+		// AND THE ONE INSTANT THE PHASE READ ABOVE CANNOT COVER. The worker's
+		// reading can end between that read and this enqueue — the runner withdraws
+		// the speaker as it leaves the fold (task_child_run.go) — and the node is
+		// still RUNNING, with a check and a landing ahead of it. Sending the words
+		// back there would drop a correction on the one work that can still use it,
+		// so a refusal from a node that is still going is held exactly as the check
+		// window is. A node that has settled since is the honest refusal it always
+		// was.
+		if node.stateNow() == TaskRunning {
+			return SteerReceipt{Held: true, Direction: direction, Landing: heldWord(inTime)}, nil
+		}
+		node.forgetDirection(direction)
+		return SteerReceipt{}, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
+	}
+	return SteerReceipt{
+		Waiting:   waiting,
+		Direction: direction,
+		Landing:   SteerDelivered(waiting),
+	}, nil
+}
+
+// heldForTask writes one line onto the node's record when there is nobody in the
+// room to read it and the work is not over. It is a RECEIPT and not a refusal:
+// the words are kept, the landing revalidates against them, and the sentence
+// says both of those things to the person who typed them.
+func heldForTask(node *TaskNode, text string, from directionFrom) SteerReceipt {
+	direction, inTime := node.heardDirection(text, from)
+	return SteerReceipt{Held: true, Direction: direction, Landing: heldWord(inTime)}
+}
+
+// heldWord is which of the two keepings this was: one the landing must still
+// answer for, or one that arrived after the boundary was taken and belongs to
+// the round after this (assignment.go).
+func heldWord(inTime bool) string {
+	if inTime {
+		return steerHeldWord
+	}
+	return steerLateWord
 }
 
 // RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
@@ -496,7 +581,14 @@ func (r *taskRoom) speaker() *Agent {
 // runner's final queue check, which answers it with one more turn — or the
 // withdrawal won and this refuses, words kept. Split across two locks it was
 // the #273 race with a narrower window, not a fix.
-func (r *taskRoom) steerIn(text string, waiting bool) bool {
+// note is the HARNESS'S OWN line under the person's, and it is a second message
+// rather than a decoration on the first: the person's words reach the worker
+// exactly as they were typed, and what the engine has to add about them — the
+// receipt id a revision has to cite (assignment.go) — is said in the engine's
+// own voice, in a message the transcript marks as the session's. Both go in
+// under ONE hold of this lock so nothing can land between a line and the receipt
+// that names it.
+func (r *taskRoom) steerIn(text, note string, waiting bool, direction uint64) bool {
 	if r == nil {
 		return false
 	}
@@ -505,7 +597,15 @@ func (r *taskRoom) steerIn(text string, waiting bool) bool {
 	if r.closed || r.child == nil {
 		return false
 	}
-	return r.child.enqueueSteeredLine(text, waiting)
+	if !r.child.enqueueSteeredLine(text, waiting, direction) {
+		return false
+	}
+	if strings.TrimSpace(note) != "" {
+		// A receipt the worker never gets costs it the ability to cite this
+		// direction and nothing else, so it is not worth refusing the line over.
+		_ = r.child.enqueueNote(briefNote(note))
+	}
+	return true
 }
 
 // bill is the agent whose unfolded usage the node's price still owes: the

@@ -770,7 +770,7 @@ func TestATranscriptWithNoSteersLoadsExactlyAsItAlwaysDid(t *testing.T) {
 func TestNodeSteeringIsNotATurnSplice(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 
-	if !agent.enqueueSteeredLine("the config lives under etc/", false) {
+	if !agent.enqueueSteeredLine("the config lives under etc/", false, 0) {
 		t.Fatal("the node's own steering lane refused a line")
 	}
 	agent.mu.Lock()

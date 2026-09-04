@@ -493,6 +493,28 @@ type TaskNode struct {
 	// spec.brief stays the original — and a second continue replaces it
 	// rather than wrapping it.
 	finding string
+	// checkedAt is the assignment version the finished work was judged at. The
+	// landing compares it with the version in force at the instant it takes the
+	// publication boundary, so work checked against a condition the person has
+	// since moved cannot be published as meeting it (assignment.go).
+	checkedAt uint64
+	// carried is the receipts written into this attempt's finding and not yet put
+	// in front of a model: the opening request marks them read (assignment.go).
+	carried []uint64
+	// assignment is what this node is working towards NOW: every line said to
+	// it, and the revisions the person's own lines were allowed to make
+	// (assignment.go). The zero value is a node nobody has said anything to,
+	// whose effective assignment is the spec it was admitted with — which is
+	// every node restored from a checkpoint written before this existed.
+	assignment taskAssignment
+	// publishing marks the instant a landing took the publication boundary: from
+	// then until the node settles, a direction is recorded and told it belongs to
+	// the round after this one, because the merge it would have changed is
+	// already going out (assignment.go's [TaskNode.claimPublication]).
+	publishing bool
+	// directedRounds counts how many times the person's own words sent this node
+	// round again inside one run, and is what [directedRoundLimit] bounds.
+	directedRounds int
 	// offer is a finished harness page waiting on the person, held for exactly
 	// as long as its card is up so the checkpoint can carry it across a restart
 	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every
@@ -770,6 +792,13 @@ type TaskGraph struct {
 	// field for the tests: five real seconds is the right cadence for a machine
 	// and the wrong one for a test suite.
 	pollEvery time.Duration
+	// publishBarrier is called immediately after a landing claims the publication
+	// boundary and before anything leaves this process (assignment.go). It is nil
+	// in the product and it is a field for the tests, for [pollEvery]'s kind of
+	// reason: the far side of that boundary is an instant wide, and a fixture
+	// that tried to reach it by timing would be asserting a race rather than the
+	// rule.
+	publishBarrier func(*TaskNode)
 
 	// claims counts the sub-task slots taken per parent by proposals that have
 	// been made and not yet admitted (see [TaskGraph.claimChild]). It is empty
@@ -1967,8 +1996,15 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 	// why that distinction is a law), and a node that owns none draws nothing —
 	// the emptiness law, applied here as it is to every other section of this
 	// document.
-	return composeBrief(n.spec.request, n.brief, n.spec.deliverable,
-		withFamilyChecks(n.spec.acceptance, n.Family),
+	//
+	// AND THE ASSIGNMENT IS THE ONE THIS WORK IS AT, not only the one it was
+	// admitted with (assignment.go). The person's own request above is still
+	// their original words; what the revision moves is the work, the deliverable
+	// and the done-condition, and the block that says so carries their later
+	// words verbatim, so the worker reads the same account the auditor will.
+	now := n.assignmentLocked()
+	return composeBrief(n.spec.request, now.brief, now.deliverable,
+		withFamilyChecks(now.acceptance, n.Family),
 		expectsSection(n.spec.expects), n.spec.admission.restored(),
 		n.spec.origin, taskCopyFor(tree))
 }
@@ -2011,20 +2047,41 @@ func (n *TaskNode) checkTexts() []checkText {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	ask := briefAskText(n.spec.request)
-	work := briefWorkText(ask, n.brief)
+	// THE ASSIGNMENT IS READ AT ITS CURRENT REVISION, for [TaskNode.acceptance]'s
+	// reason: a check harvested out of the admitted done-condition would send the
+	// auditor to run the commands the person has since told the work to stop
+	// running.
+	now := n.assignmentLocked()
+	work := briefWorkText(ask, now.brief)
 	// THE DONE-CONDITION IS THE ONE THE WORKER READS, family checks and all
 	// ([withFamilyChecks]), because a document that harvested a different
 	// sentence from the one it hands out would be two documents.
-	acceptance := withFamilyChecks(n.spec.acceptance, n.Family)
+	acceptance := withFamilyChecks(now.acceptance, n.Family)
 	texts := make([]checkText, 0, 3)
-	if ask != "" {
+	// WHICH OF THE PERSON'S MESSAGES IS HARVESTED IS THE LATEST ONE, and on a
+	// revised node that is not the one the work was admitted from. A person who
+	// said "CSV instead of JSON" has withdrawn the commands their first message
+	// named about JSON, and a harvest that kept them would hand the checker a
+	// door onto exactly the work that was called off — the same defect as judging
+	// against a superseded acceptance, one layer down. The original message is
+	// still in the document as history; what it is no longer is a source of
+	// checks.
+	//
+	// THE COST IS STATED RATHER THAN HIDDEN: a command the person named in their
+	// first message and did not repeat is not harvested on a revised node. That is
+	// the conservative side of the trade — a check nobody runs is a gap in the
+	// evidence, and a check that contradicts the person's last word is the harness
+	// overruling them.
+	if latest := n.assignment.revisedSaid(); latest != "" {
+		texts = append(texts, checkText{text: latest, from: checksFromAsk})
+	} else if ask != "" {
 		texts = append(texts, checkText{text: ask, from: checksFromAsk})
 	}
-	if acceptanceIsAsk(n.spec.acceptance) {
+	if acceptanceIsAsk(now.acceptance) {
 		// The frame carries the person's words and the family's checks carry the
 		// work's, so only the first half moves across; the checks stay in the
 		// account below, where they were written.
-		texts = append(texts, checkText{text: n.spec.acceptance, from: checksFromAsk})
+		texts = append(texts, checkText{text: now.acceptance, from: checksFromAsk})
 		acceptance = withFamilyChecks("", n.Family)
 	}
 	// THE ZERO COPY, for [TaskNode.instruction]'s reason: the harvest resolves
@@ -2033,7 +2090,7 @@ func (n *TaskNode) checkTexts() []checkText {
 	// (admission.go). What is harvested here becomes a CHECK this work is judged
 	// against; the quotes are things that were said, and a sentence somebody
 	// typed in passing must never become a requirement nobody agreed to.
-	account := composeBrief("", work, n.spec.deliverable, acceptance,
+	account := composeBrief("", work, now.deliverable, acceptance,
 		expectsSection(n.spec.expects), AdmissionContext{}, n.spec.origin, taskCopy{})
 	if account != "" {
 		texts = append(texts, checkText{text: account, from: checksFromWork})
@@ -2072,11 +2129,26 @@ func (n *TaskNode) admission() AdmissionContext {
 	return n.spec.admission
 }
 
-// acceptance is the frozen contract, read by the auditor. It is deliberately
-// the SAME field [TaskNode.instruction] hands the child: two readers of one
-// text, so there is no version of this where the work was finished against one
-// acceptance and judged against another.
+// acceptance is the contract AS IT NOW STANDS, read by the auditor. It is
+// deliberately the same text [TaskNode.instruction] hands the child: two readers
+// of one snapshot, so there is no version of this where the work was finished
+// against one acceptance and judged against another.
+//
+// It moves only with the person's authority and only through a recorded
+// revision (assignment.go). An unrevised node — which is nearly all of them, and
+// every node restored from an older checkpoint — answers exactly the admitted
+// text, byte for byte.
 func (n *TaskNode) acceptance() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.assignmentLocked().acceptance
+}
+
+// admittedAcceptance is what this node was ORIGINALLY to be judged by, kept
+// separate because a revised node's record has to be able to say both: the
+// checkpoint keeps the admitted text where it always was, and a reader asking
+// what was first agreed must not be handed a later revision instead.
+func (n *TaskNode) admittedAcceptance() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.spec.acceptance
@@ -3697,6 +3769,29 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 		node.graph.handBackLane(node)
 		return
 	}
+	// THE PERSON CHANGED THE WORK WHILE IT WAS FINISHING, so this attempt is over
+	// and the node is not (assignment.go). The parts are stopped first, exactly as
+	// they are on the settling road below — a part belongs to the attempt it was
+	// cut out of — and then one transition puts the node back on the frontier with
+	// their words carried. It NEVER settles on the way: no terminal state, no
+	// `done` closed, nothing said to the parent about an answer that is about to
+	// be worked on again.
+	//
+	// A REFUSED TRANSITION FALLS THROUGH TO THE ORDINARY ENDING, which is what a
+	// node past [directedRoundLimit] and a session that is closing both get: the
+	// work lands as it stands and the words wait for a continue.
+	if state == taskRunAgain {
+		node.graph.stopChildren(node.id)
+		if !node.graph.runAgainForDirections(node) {
+			// The graph would not take it — this session is closing under us. The
+			// node keeps TaskRunning and its lane goes back, which is exactly what a
+			// run interrupted by Close does above: recovery turns it back into
+			// queued work and the next process picks it up with the words still on
+			// its record.
+			node.graph.handBackLane(node)
+		}
+		return
+	}
 	// NOTHING OUTLIVES THE WORK IT WAS HANDED OUT FOR. A sub-task's worktree is
 	// branched off its parent's and merges back into it, so a child still
 	// running after its parent has landed is work with nowhere to come home to.
@@ -4263,6 +4358,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// loop's own answer where the loop has one — a rule the worker would not
 	// follow — and the worker's last words otherwise ([endingOfClaim]).
 	node.end(endingOfClaim(lastSaid(child), node.blockedByNow(), child.stoppedOnProcessRule()))
+	// WHAT THIS WORK IS ABOUT TO BE JUDGED AT, written down before the gate reads
+	// anything. The landing compares it with the version in force at the boundary
+	// (assignment.go): a revision that lands between here and there means the work
+	// in hand answers a question nobody is asking any more.
+	node.checkAt(node.assignmentVersion())
 
 	// THE GATE. Everything above is the node's own account of itself; what
 	// follows is somebody else's (task_audit.go). Only a VERIFIED verdict

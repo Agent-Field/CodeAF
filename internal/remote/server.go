@@ -1254,17 +1254,37 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		door, ok := agent.(interface {
+		// THE RECEIPT DOOR FIRST, AND THE OLDER ONE STILL ANSWERED. An engine that
+		// carries the whole receipt says whether the line was HELD against a task
+		// whose work is being checked (internal/session's [session.SteerReceipt]);
+		// one that predates it can still be steered, and its answer is the delivery
+		// it always gave. The capability is asserted rather than required, and its
+		// absence is visible in the frame rather than hidden behind a default.
+		if door, ok := agent.(interface {
+			SteerTask(uint64, string) (session.SteerReceipt, error)
+		}); ok {
+			receipt, err := door.SteerTask(args.ID, args.Text)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(TaskSteered{
+				Waiting:   receipt.Waiting,
+				Held:      receipt.Held,
+				Direction: receipt.Direction,
+				Landing:   receipt.Landing,
+			})
+		}
+		older, ok := agent.(interface {
 			SteerTask(uint64, string) (bool, error)
 		})
 		if !ok {
 			return nil, errors.New("engine: this session has no task rooms")
 		}
-		waiting, err := door.SteerTask(args.ID, args.Text)
+		waiting, err := older.SteerTask(args.ID, args.Text)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(TaskSteered{Waiting: waiting})
+		return json.Marshal(TaskSteered{Waiting: waiting, Landing: session.SteerDelivered(waiting)})
 	case MethodTaskStop:
 		args, err := arg[TaskStopArgs](call)
 		if err != nil {

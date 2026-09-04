@@ -164,6 +164,13 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// revise_assignment is a WORKER'S verb and nothing else's (assignment.go): it
+	// folds a direction the person gave this node into what the node is judged by.
+	// A conversation has no assignment to revise and an auditor is handed no
+	// graph, so both are absent by the same gate that decides everything else on
+	// this belt — the capability is not there rather than being there and
+	// refusing.
+	tools = append(tools, a.assignmentTools()...)
 	// divide_work rides beside propose_task and is narrower than it: the one
 	// names parts a worker could see from the start, this one names parts it
 	// only found once it had opened the material. It is absent unless THIS

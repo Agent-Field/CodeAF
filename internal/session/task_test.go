@@ -62,6 +62,14 @@ type routedCompleter struct {
 }
 
 func (c *routedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	// THE ERRANDS BESIDE THE WORK ARE ANSWERED BEFORE THE LANES ARE TOUCHED, for
+	// [scriptedCompleter.aside]'s reason said about this fixture: a namer arms
+	// itself the moment a node is admitted and carries the brief's own mark, so it
+	// lands in the CHILD lane and takes the step the test scripted for the worker.
+	// Answered here it spends none.
+	if isNameCall(messages) || isCaptionCall(messages) || isTitleCall(messages) {
+		return textResponse(""), nil
+	}
 	lane := "parent"
 	if len(messages) > 0 && messages[0].Role == "system" &&
 		strings.Contains(messageText(messages[0]), "You are an AUDITOR") {
@@ -2532,4 +2540,23 @@ func TestAProposalWaitingOnFailedWorkIsRefused(t *testing.T) {
 	if !isError || !strings.Contains(result, "already failed") {
 		t.Fatalf("a dependency on failed work was not refused as one: error=%v %q", isError, result)
 	}
+}
+
+// isTitleCall is the SESSION NAMER, which is an errand beside the turn like the
+// two above and reaches this fixture through the child lane: the exchange it is
+// given carries the brief's own mark, because the brief is what the turn said.
+func isTitleCall(messages []ai.Message) bool {
+	return len(messages) > 0 && messages[0].Role == "system" &&
+		messageContentText(messages[0]) == titleSystem
+}
+
+// childAskedAt is one particular request a WORKER was given, which is how a
+// second attempt is told from the first from the outside.
+func (c *routedCompleter) childAskedAt(index int) []ai.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if index < 0 || index >= len(c.childRequests) {
+		return nil
+	}
+	return c.childRequests[index]
 }
