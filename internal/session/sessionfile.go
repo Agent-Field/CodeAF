@@ -301,8 +301,11 @@ type journalPrincipal struct {
 	Brief      string   `json:"brief,omitempty"`
 	Checks     []string `json:"checks,omitempty"`
 	Failed     []string `json:"failed,omitempty"`
-	Removed    []string `json:"removed,omitempty"`
-	Kept       []string `json:"kept,omitempty"`
+	// Unread is each declared check the terminal reading did not start, so the
+	// checked row keeps the same fact the person-facing ending names.
+	Unread  []string `json:"unread,omitempty"`
+	Removed []string `json:"removed,omitempty"`
+	Kept    []string `json:"kept,omitempty"`
 	// Stashed is how many entries `git stash list` named at the terminal
 	// reading, and it rides the `checked` row: work the session took out of the
 	// tree and never put back is part of what that reading found, and a run

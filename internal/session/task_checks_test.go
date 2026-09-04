@@ -761,7 +761,7 @@ func TestACheckPathWithASpaceRunsWhole(t *testing.T) {
 	if command == "" {
 		t.Fatal("a script the tree holds was not a check at all")
 	}
-	if ran := runOneCheck(context.Background(), dir, command); !ran.Passed {
+	if ran := runOneCheck(context.Background(), dir, command, sessionCheckWindow); !ran.Passed {
 		t.Fatalf("the check split on the space in its own path: %q said %q", command, ran.Tail)
 	}
 }
@@ -780,7 +780,7 @@ func TestATwoWordCheckQuotesTheFileItNames(t *testing.T) {
 	if want := "sh " + shellQuoted(path); command != want {
 		t.Fatalf("the file behind the program was not quoted:\n got %q\nwant %q", command, want)
 	}
-	if ran := runOneCheck(context.Background(), dir, command); !ran.Passed {
+	if ran := runOneCheck(context.Background(), dir, command, sessionCheckWindow); !ran.Passed {
 		t.Fatalf("the check broke on the quote in its own path: %q said %q", command, ran.Tail)
 	}
 	// AND A SECOND WORD THE TREE DOES NOT HOLD IS LEFT ALONE, because there is no

@@ -2614,6 +2614,9 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	decision := a.decideRemains(ctx, a.readRemains(ctx), said)
 	switch decision.Verb {
 	case DecideDone:
+		if tail := a.checkpointUncheckedTail(); tail != "" {
+			hub.send(Event{Kind: EventNotice, Text: checkpointDoneNote + tail})
+		}
 		return false, false
 	case DecideStop:
 		// THE RUN IS OVER AND IT SAYS WHY. A session that spent its hours and
@@ -2692,8 +2695,9 @@ const checkpointStoppedNote = "stopping here · "
 //
 // THE SECOND DECIDE IS WHERE THE TREE IS LOOKED AT. A principal that says the
 // ask is MET has said the one thing this build never had any way to check, so
-// it is checked: the session's declared checks are re-run from clean and the
-// same principal is asked again with their results in front of it
+// it is checked: the session's declared checks are read from clean (with an
+// answer over the same unchanged tree reused) and the same principal is asked
+// again with their results in front of it
 // (principal_audit.go). An acceptance is what says a principal is in a position
 // to be asked that — a person holds their own and is shown nothing — so the
 // second reading belongs to a session that has one and to no other.
@@ -2745,7 +2749,7 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 // answer does not change, so a row per turn would be one fact written thirty
 // times. What is already written down is remembered for the life of the session.
 // decideOverTheChecks is the SECOND READING a done has to survive: the session's
-// declared checks are run from clean over the tree as it stands, what was
+// declared checks are read from clean over the tree as it stands, what was
 // already red before the work is folded in beside them, and the principal is
 // asked again with the results in front of it. Both roads that can end a run on
 // a done — the stopped turn ([Agent.decideRemains]) and the handover
@@ -3626,7 +3630,7 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 		decision = heldForMovingWork(decision, moving)
 		return stewardReading{read: true, decision: decision}, checkpointHandover{}, false
 	}
-	note, ending := checkpointDoneNote, checkpointCeilingDone
+	note, ending := checkpointDoneNote+a.checkpointUncheckedTail(), checkpointCeilingDone
 	if decision.Verb == DecideStop {
 		if len(moving) > 0 {
 			decision.Reason += stopLeftItMovingTail
@@ -3652,6 +3656,22 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 // done twin of [checkpointStoppedNote]: the turn ends here and nothing is
 // started.
 const checkpointDoneNote = "finishing here · what was asked is done"
+
+// notEnoughTimeToRun is the one reason a declared check is deliberately left
+// unread. It is shared by the reading and the ending so the durable fact and
+// the sentence a person sees cannot drift into two accounts of what happened.
+const notEnoughTimeToRun = "there was not enough time left to run "
+
+// checkpointUncheckedTail is the addition both done roads carry when the
+// terminal reading deliberately left commands unstarted. Empty means every
+// named check was read and preserves the old done line byte for byte.
+func (a *Agent) checkpointUncheckedTail() string {
+	commands := a.terminalUnreadNow()
+	if len(commands) == 0 {
+		return ""
+	}
+	return " · unchecked: " + notEnoughTimeToRun + strings.Join(commands, ", ")
+}
 
 // stewardReading is what a handover road learns from the session's goal owner,
 // and it exists so the roads below can tell THREE things apart that a bare
@@ -3769,7 +3789,7 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 //
 // THE SECOND READING IS TAKEN HERE TOO. Done is an ending on this road now
 // ([Agent.endTurnUnderSteward]), so a done that had not been answered by
-// re-running the session's declared checks from clean would be a run finishing
+// reading the session's declared checks from clean would be a run finishing
 // on a done nobody checked — the one thing the stopped-turn road exists to
 // prevent. It used to be left out because done did not end a handover, and the
 // checks would have been a process each bought to change nothing.

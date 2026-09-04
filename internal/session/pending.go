@@ -167,5 +167,18 @@ func (a *Agent) auditWindowFor(door auditDoor) time.Duration {
 	if a.config.auditWindow > 0 {
 		return a.config.auditWindow
 	}
-	return door.window()
+	window := door.window()
+	steward := a.steward()
+	if steward == nil {
+		return window
+	}
+	budget := steward.Budget()
+	if budget.Wall == 0 {
+		return window
+	}
+	left, _ := budget.Left()
+	// AN AUDIT CAN ALWAYS JUDGE FROM READING. A spent wall is therefore floored
+	// at the reading deadline instead of handing the checker a closed context
+	// that would misreport "nobody could check it" when there was no check time.
+	return max(auditReadingDeadline, min(window, left))
 }

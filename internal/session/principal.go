@@ -249,6 +249,10 @@ type CheckRun struct {
 	Command string
 	Passed  bool
 	Tail    string
+	// Unread says why this check was not started. NOBODY LOOKED IS A FACT, AND A
+	// FACT ABOUT THE RUN REACHES THE RECORD: it is neither a pass nor a failure,
+	// and an empty value means the command was read normally.
+	Unread string
 
 	// Ran says the command STARTED AND FINISHED — it was found, it executed, and
 	// the shell gave an exit status. A command that would not start and one the
@@ -486,6 +490,11 @@ func (r Remains) attributableRed() []string {
 func (r Remains) redChecks() []string {
 	var out []string
 	for _, check := range r.Checks {
+		// A CHECK NOBODY STARTED IS NOT A CHECK THAT FAILED. Its reason travels
+		// on the reading and is named at the ending instead.
+		if check.Unread != "" {
+			continue
+		}
 		if !check.Passed {
 			out = append(out, check.Command)
 		}
@@ -732,6 +741,7 @@ type Steward struct {
 	mu         sync.Mutex
 	ask        string
 	acceptance string
+	checks     checkMemories
 
 	// wall and money are the CEILINGS; started and spent are how the figures
 	// against them are read. spent is a closure onto the session's own
