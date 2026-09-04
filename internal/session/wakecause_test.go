@@ -11,6 +11,9 @@ package session
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -238,8 +241,8 @@ func TestABatchOfLandingsKeepsEveryRequestItOwes(t *testing.T) {
 	agent.drainSteering(nil)
 
 	want := owedAsksLead +
-		"\n1. port the language server" +
-		"\n2. fix the release dates in NOTES.md"
+		"\n1. task 1 was for: port the language server" +
+		"\n2. task 3 was for: fix the release dates in NOTES.md"
 	if got := agent.turnAsk(); got != want {
 		t.Errorf("the batch owes\n%s\nwant\n%s\n— numbered in arrival order, repeats written once", got, want)
 	}
@@ -292,8 +295,8 @@ func TestATurnThePersonOpenedOwesTheirWordsAndWhatLandsInIt(t *testing.T) {
 	agent.drainSteering(nil)
 
 	want := owedAsksLead +
-		"\n1. summarise the release notes" +
-		"\n2. port the language server"
+		"\n1. they asked: summarise the release notes" +
+		"\n2. task 4 was for: port the language server"
 	if got := agent.turnAsk(); got != want {
 		t.Errorf("the mixed turn owes\n%s\nwant\n%s", got, want)
 	}
@@ -304,56 +307,160 @@ func TestATurnThePersonOpenedOwesTheirWordsAndWhatLandsInIt(t *testing.T) {
 // A REVISED TASK IS JUDGED BY WHAT IT WAS REVISED TO, AND STILL CITED BY WHAT
 // WAS FIRST ASKED.
 //
-// The person asked for JSON, said CSV instead into the task's room while it ran,
-// and the work came home as CSV. The frozen admitted request still says JSON, so
-// a reader given only that would reject correct work and try to restore a goal
-// nobody holds any more.
+// The person asked for JSON, said CSV instead into the task's room while it ran
+// and the worker folded that in ([TaskNode.reviseAssignment]), and the work came
+// home as CSV. The admitted request still says JSON — it is frozen, and that is
+// what makes it a citation — so a reader given only that would reject correct
+// work and try to restore a goal nobody holds any more.
 //
-// THE TAG IS THE WHOLE OF IT: [TaskReplyTag.Obligation] is composed from the
-// assignment's snapshot where the report is, Request keeps the person's original
-// words for the row a surface draws, and the reader is given the first.
+// It goes through the real assignment, the real landing and the real delivery:
+// what has to hold is that the tag the session receives was composed from THIS
+// task's own snapshot.
 func TestARevisedTaskIsJudgedByItsRevisionAndCitedByItsOriginal(t *testing.T) {
 	const original = "export the release inventory as JSON"
-	const revised = "actually, make it CSV instead — the importer cannot read JSON"
+	const said = "actually, make it CSV instead — the importer cannot read JSON"
 
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	agent.mu.Lock()
 	agent.opened = false
-	agent.personAsk = "and how big is the file?"
+	agent.personAsk = "and how big is that file?"
+	agent.mu.Unlock()
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "export the inventory", summary: "one", request: original,
+		brief: "write the inventory out as JSON", deliverable: "inventory.json",
+		acceptance: "inventory.json parses",
+	})
+	node := graph.node(id)
+
+	// THE PERSON SAYS IT INTO THE ROOM AND THE WORKER FOLDS IT IN.
+	direction, kept := node.heardDirection(said, directionFromPerson)
+	if !kept {
+		t.Fatal("the person's direction was not recorded")
+	}
+	version, err := node.reviseAssignment(direction, 0, assignmentEdit{
+		work:        "write it as CSV",
+		deliverable: "inventory.csv",
+		acceptance:  "inventory.csv parses as CSV with a header row",
+	})
+	if err != nil {
+		t.Fatalf("revising the assignment: %v", err)
+	}
+
+	// AND IT LANDS, down the road a runner uses.
+	landNode(node, TaskDone, "inventory.csv written")
+	waitFor(t, "the landing to reach the conversation", func() bool {
+		return len(queuedText(agent)) > 0
+	})
+	agent.drainSteering(nil)
+
+	asked := agent.turnAsk()
+	if !strings.Contains(asked, "inventory.csv") || !strings.Contains(asked, "CSV") {
+		t.Errorf("the revised target is not what the result is read against:\n%s", asked)
+	}
+	if !strings.Contains(asked, fmt.Sprintf("revision %d", version)) {
+		t.Errorf("the reader is not told which version it is judging:\n%s", asked)
+	}
+	if !strings.Contains(asked, said) {
+		t.Errorf("the person's own words are not what the target rests on:\n%s", asked)
+	}
+	// The admitted ask is present as HISTORY, labelled, and not as a thing owed.
+	if !strings.Contains(asked, "First asked (history, superseded below): "+original) {
+		t.Errorf("the admitted ask is not carried as history:\n%s", asked)
+	}
+	// AND THE CITATION IS UNTOUCHED. Request is what a surface prints beside the
+	// answer, and it stays the person's own first words.
+	tags := agent.takeReplyTags()
+	if len(tags) != 1 || tags[0].Request != original {
+		t.Fatalf("the surface's citation = %#v, want the original request verbatim", tags)
+	}
+	if tags[0].Revision != version || tags[0].Obligation == "" {
+		t.Errorf("the effective target did not survive to the surface: %#v", tags[0])
+	}
+}
+
+// A RESULT IS DELIVERED WITH THE TARGET IT WAS COMPOSED AGAINST, WHATEVER THE
+// NODE BECOMES WHILE IT IS IN FLIGHT.
+//
+// A landing is not announced at the instant it happens: there is a claim to win
+// and a reader to find, and a node can be revised again in that gap — a revision
+// does not raise the attempt, so the claim still stands and the delivery still
+// goes out. Reading the live node at the far end would hand the OLD result the
+// NEW target.
+func TestAResultInFlightKeepsTheTargetItWasComposedAgainst(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "export the inventory", summary: "one", request: "export it as JSON",
+		brief: "write it out", deliverable: "inventory.json", acceptance: "it parses",
+	})
+	node := graph.node(id)
+
+	first, _ := node.heardDirection("make it CSV instead", directionFromPerson)
+	if _, err := node.reviseAssignment(first, 0, assignmentEdit{deliverable: "inventory.csv"}); err != nil {
+		t.Fatalf("first revision: %v", err)
+	}
+
+	// THE REPORT IS COMPOSED HERE, against the assignment as it stands.
+	_, attempt, tag := node.resultOf()
+
+	// AND THE PERSON MOVES THE GOAL AGAIN BEFORE IT IS DELIVERED.
+	second, _ := node.heardDirection("no, TSV in the end", directionFromPerson)
+	if _, err := node.reviseAssignment(second, 1, assignmentEdit{deliverable: "inventory.tsv"}); err != nil {
+		t.Fatalf("second revision: %v", err)
+	}
+
+	agent.deliverTaskNote(node, attempt, tag, "task 1 finished: inventory.csv written")
+	agent.drainSteering(nil)
+
+	asked := agent.turnAsk()
+	if !strings.Contains(asked, "inventory.csv") {
+		t.Errorf("the delivered result lost the target it was composed against:\n%s", asked)
+	}
+	if strings.Contains(asked, "inventory.tsv") {
+		t.Errorf("a revision made after the result was composed was substituted onto it:\n%s", asked)
+	}
+	if got := agent.takeReplyTags(); len(got) != 1 || got[0].Revision != 1 {
+		t.Errorf("the delivered tag = %#v, want the version the report was composed at", got)
+	}
+}
+
+// A LATE RESULT DOES NOT OVERRULE WHAT THE PERSON HAS ASKED FOR SINCE.
+//
+// Both are owed and both are listed, in the order they arrived — but the list
+// says whose line is whose, so the reader is not left to infer that the newest
+// line in the room is the authority when the newest line is a slow task's target.
+func TestALateResultDoesNotOverruleTheirNewerWords(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.mu.Lock()
+	agent.opened = false
+	agent.forgetOwedLocked()
+	agent.rememberOwedLocked(userText("stop the export, just tell me the row count"))
 	agent.mu.Unlock()
 
-	// What the delivery composes, from one snapshot of the finished assignment.
-	obligation := obligationText(original, revised, "inventory.csv", "the file parses as CSV with a header row", 2)
-	note := wakeNote("task 7 finished: inventory.csv written")
-	note.replyTags = []TaskReplyTag{{
-		ID: 7, Title: "export the inventory", Request: original,
-		Obligation: obligation, Revision: 2,
-	}}
+	note := wakeNote("task 4 finished")
+	note.replyTags = []TaskReplyTag{{ID: 4, Title: "export", Request: "export the inventory as JSON"}}
 	if !agent.enqueueNote(note) {
 		t.Fatal("the note was refused")
 	}
 	agent.drainSteering(nil)
 
 	asked := agent.turnAsk()
-	if !strings.Contains(asked, "CSV") || !strings.Contains(asked, "inventory.csv") {
-		t.Errorf("the revised target is not what the result is read against:\n%s", asked)
+	if !strings.HasPrefix(asked, owedAsksLead) {
+		t.Fatalf("two owed asks were run together without saying how to read them:\n%s", asked)
 	}
-	if !strings.Contains(asked, "revision 2") {
-		t.Errorf("the reader is not told which version it is judging:\n%s", asked)
+	if !strings.Contains(asked, "1. they asked: stop the export") {
+		t.Errorf("the person's own line is not named as theirs:\n%s", asked)
 	}
-	// The original is present as HISTORY and labelled as superseded — not as the
-	// thing still owed.
-	if !strings.Contains(asked, "First asked (history, superseded below): "+original) {
-		t.Errorf("the admitted ask is not carried as history:\n%s", asked)
-	}
-	// AND THE CITATION IS UNTOUCHED. Request is what a surface draws beside the
-	// answer, and it stays the person's own first words.
-	tags := agent.takeReplyTags()
-	if len(tags) != 1 || tags[0].Request != original {
-		t.Fatalf("the surface's citation = %#v, want the original request verbatim", tags)
-	}
-	if tags[0].Revision != 2 || tags[0].Obligation == "" {
-		t.Errorf("the effective target did not survive to the surface: %#v", tags[0])
+	if !strings.Contains(asked, "2. task 4 was for: export the inventory as JSON") {
+		t.Errorf("the result's line is not named as that task's own target:\n%s", asked)
 	}
 }
 
@@ -368,14 +475,60 @@ func TestAnUnrevisedTaskCarriesNoEffectiveTarget(t *testing.T) {
 	if got := obligationText("export it as JSON", "   ", "inventory.csv", "", 3); got != "" {
 		t.Errorf("a revision with none of the person's words composed %q, want nothing", got)
 	}
-	// AND THE NODE ANSWERS THE UNREVISED PAIR ON THIS BRANCH. Population is the
-	// steering merge's (see [TaskNode.obligationNow]); until then a delivered tag
-	// carries the admitted ask alone, which is what these tests assert everywhere
-	// else.
-	node := &TaskNode{}
-	if text, revision := node.obligationNow(); text != "" || revision != 0 {
-		t.Errorf("obligationNow = %q/%d on a branch with no assignment module", text, revision)
+	// AND A NODE NOBODY HAS SAID ANYTHING TO ANSWERS THE UNREVISED PAIR, so its
+	// tag is the two fields this build always sent.
+	graph := newTaskGraph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "export it", summary: "one",
+		request: "export it as JSON", brief: "one", acceptance: "one"})
+	tag := graph.node(id).resultTag()
+	if tag.Obligation != "" || tag.Revision != 0 {
+		t.Errorf("an unrevised node composed %#v, want no effective target", tag)
 	}
+	if tag.Request != "export it as JSON" {
+		t.Errorf("the citation = %q, want the person's own words", tag.Request)
+	}
+}
+
+// AND THE ADDITIVE FIELDS SURVIVE THE JOURNAL.
+//
+// A session resumed from disk draws the same citation and holds the same target:
+// both ride the note's own record ([sessionFile.appendNote]), and a field that
+// only existed in memory would leave a resumed window citing one thing and a
+// reader judging another.
+func TestTheEffectiveTargetSurvivesTheJournalRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	journal, _, err := openSessionFile(path, "/tmp/work", "model", "session-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []TaskReplyTag{{
+		ID: 9, Title: "export the inventory", Request: "export it as JSON",
+		Obligation: obligationText("export it as JSON", "make it CSV instead", "inventory.csv", "it parses as CSV", 1),
+		Revision:   1,
+	}}
+	journal.appendNote(textMessage("user", "task 9 finished"), noteMarks{tags: want})
+	journal.appendMessage(textMessage("assistant", "inventory.csv is written."))
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	resumed, replayed, err := openSessionFile(path, "/tmp/work", "model", "session-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	for _, entry := range shapeEntries(replayed.messages, resumed) {
+		if entry.Role != "assistant" {
+			continue
+		}
+		if !reflect.DeepEqual(entry.ReplyTags, want) {
+			t.Fatalf("resumed reply tags = %#v, want %#v", entry.ReplyTags, want)
+		}
+		return
+	}
+	t.Fatal("resumed transcript has no assistant reply")
 }
 
 // itoaTask spells a task id the way a landing note does.

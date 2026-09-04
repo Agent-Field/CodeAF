@@ -868,7 +868,8 @@ func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 	delivered.Add(1)
 	go func() {
 		defer delivered.Done()
-		here.node.deliverTaskNote(landing[0], landing[0].attemptNow(), "task 2 finished: currency\ncurrency is done")
+		here.node.deliverTaskNote(landing[0], landing[0].attemptNow(), landing[0].resultTag(),
+			"task 2 finished: currency\ncurrency is done")
 	}()
 	waitReported(t, landing[0])
 

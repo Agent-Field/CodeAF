@@ -2116,15 +2116,15 @@ type Agent struct {
 	// words (task_brief.go), and it is deliberately the WHOLE message rather than
 	// a summary of it.
 	personAsk string
-	// owedAsks is what THIS TURN was woken to answer: the original request of
-	// every finished task whose report this turn carries, in arrival order and
-	// without repeats ([TaskReplyTag.Request], wakecause.go). It is cleared when
-	// a turn opens, so it describes one turn and never the session.
+	// owedAsks is what THIS TURN owes an answer to, in arrival order, without
+	// repeats, and WITH WHO IT CAME FROM ([owedAsk], wakecause.go): the person's
+	// own words, and the target each landed result was for. It is cleared when a
+	// turn opens, so it describes one turn and never the session.
 	//
 	// It is separate from personAsk because they answer different questions: a
 	// woken turn owes the request its result belongs to, not whatever was typed
 	// most recently — see [Agent.turnAsk].
-	owedAsks []string
+	owedAsks []owedAsk
 	// personTurns is the same answer for the turns BEFORE the newest one, kept
 	// for the same reason and bounded (admission_compile.go). personAsk answers
 	// "what is the current ask"; this answers "what else have they told us",

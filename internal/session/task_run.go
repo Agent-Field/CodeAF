@@ -3058,14 +3058,18 @@ func (n *TaskNode) notice() TaskNotice {
 	return n.noticeLocked(cost)
 }
 
-// noticeFor is the notice and the attempt it describes, read under one hold of
-// the graph's lock. A report composed from one and announced against the other
-// would be this life of the node being told about the last one.
-func (n *TaskNode) noticeFor() (TaskNotice, int) {
+// resultOf is ONE LANDING, WHOLE: the notice a surface draws, the attempt it
+// describes, and the tag its result is judged and cited by, read under one hold
+// of the graph's lock. A report composed from one and announced against another
+// would be this life of the node being told about the last one, and a target
+// read later would be the goal it has since become (wakecause.go's
+// [TaskNode.resultTagLocked]).
+func (n *TaskNode) resultOf() (TaskNotice, int, TaskReplyTag) {
+	// The spend is read before the lock, for [TaskNode.notice]'s reason.
 	cost := n.spend()
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return n.noticeLocked(cost), n.attempt
+	return n.noticeLocked(cost), n.attempt, n.resultTagLocked()
 }
 
 // ageLocked is this node's elapsed age, with the graph held.
@@ -3236,10 +3240,10 @@ func (n *TaskNode) spend() float64 {
 // guess, and a row written anywhere else would be a second definition of landed
 // (task_index.go).
 func (a *Agent) reportTaskNode(node *TaskNode) {
-	// The notice and the attempt it belongs to are read together, so a report
-	// composed here cannot be announced against a later life of the node
-	// ([TaskNode.claimNote]).
-	notice, attempt := node.noticeFor()
+	// The notice, the attempt it belongs to and the tag its result is judged by
+	// are read together, so a report composed here cannot be announced against a
+	// later life of the node ([TaskNode.claimNote], [TaskNode.resultOf]).
+	notice, attempt, tag := node.resultOf()
 	a.emitTaskUpdate(notice)
 	if notice.State == TaskRunning || notice.State == TaskQueued {
 		return
@@ -3277,7 +3281,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		}
 		node.releaseNote(claim)
 	} else {
-		a.deliverTaskNote(node, attempt, note)
+		a.deliverTaskNote(node, attempt, tag, note)
 	}
 }
 
@@ -3291,7 +3295,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // no agent left to read anything, and news with nowhere to go belongs in front
 // of the person rather than nowhere. Sending it to both would tell the person's
 // model that work it never commissioned has just finished.
-func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, note string) {
+func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note string) {
 	// SAID ONCE PER ENDING, PER LIFE OF THE WORK. The identity is the attempt and
 	// the state ([noteClaim]), so a repeated announcement of one landing buys no
 	// second model turn, a node that ends somewhere else later is news again, and
@@ -3306,7 +3310,7 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, note string) {
 	// the acknowledgement, and until then this landing stays owed, so a session
 	// that closed with the note unread re-tells it on resume rather than losing
 	// it (task_store.go).
-	got := a.postTaskMessage(node, note, []durableDelivery{node.settlesNote(claim)},
+	got := a.postTaskMessage(node, tag, note, []durableDelivery{node.settlesNote(claim)},
 		func() { node.noteQueued(claim) })
 	if !got.accepted() {
 		// Nobody is left to read it, so the claim goes back and no mark is made.
@@ -3351,16 +3355,13 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
 // fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
 // written by the caller, after the seam.
-func (a *Agent) postTaskMessage(node *TaskNode, note string, durable []durableDelivery, mark func()) deliveryReceipt {
+func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
-	// THE TAG IS COMPOSED HERE, WHERE THE REPORT IS, so what the result is judged
-	// against is taken once, from this node as it finishes, and never fetched from
-	// a live node later (wakecause.go).
-	obligation, revision := node.obligationNow()
-	message.replyTags = []TaskReplyTag{{
-		ID: node.id, Title: node.title(), Request: node.request(),
-		Obligation: obligation, Revision: revision,
-	}}
+	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
+	// This delivery happens after a claim is won and a reader is found, and a
+	// node can be re-armed and revised in that gap: composing the tag here would
+	// hand the OLD result the NEW target (wakecause.go's [TaskNode.resultOf]).
+	message.replyTags = []TaskReplyTag{tag}
 	message.delivered = durable
 	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message}, a.taskNoteReaders(node)...)
 	if !got.accepted() {
@@ -4074,7 +4075,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	}
 	// It is not this node's landing being announced — that has already been said
 	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
-	a.postTaskMessage(node, readdressedLead(node, waiting), nil, nil)
+	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), nil, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed

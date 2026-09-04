@@ -759,10 +759,12 @@ answered. Measured: a build was delegated, a checksum question was asked and ans
 ran, and when the build landed the reader was handed the checksum question, said it had not
 been answered, and the reply repeated an answer already on the screen.
 
-**Several things landing at once keep several requests, in the order they arrived.** A batch of
-reports is read against each of the requests behind it, oldest first, and where two of them
-conflict the later one stands. A reply that YOU typed into while work was out owes both: your
-words and whatever landed in that reply.
+**Several things landing at once keep several requests, in the order they arrived, and each one
+says where it came from.** A batch of reports is read against each of the targets behind it,
+oldest first, and a reply you typed into while work was out owes both: your words and whatever
+landed in it. Which is which matters — **your latest words are the authority**, and a task's
+line is only what THAT work was for, so a slow task landing after you have said something else
+does not overrule what you said.
 
 **But a reply that CHANGED a file and then stopped is read however short it was.** The gate is
 what the reply left behind, not what it cost. If the last thing a reply did was save or edit
