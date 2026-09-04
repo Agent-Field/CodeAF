@@ -118,6 +118,26 @@ check_grep() {
   fi
 }
 
+# check_grep_plain matches WORDS, not formatting. Markdown emphasis lands in the
+# middle of a phrase — "BRACKISH owns **two** services" — and a check written
+# against the phrase then fails a correct answer for the way it was decorated.
+# Inline emphasis and code markers are dropped and whitespace is collapsed
+# (which also lets a phrase that wrapped across a line match). It is for
+# assertions about CONTENT; anything asserting a literal shape, like a line that
+# must begin with a particular word, must keep reading the raw file.
+markdown_plain() {
+  sed -e 's/[*`]//g' -e 's/[[:space:]][[:space:]]*/ /g' "$1" 2>/dev/null
+}
+
+check_grep_plain() {
+  local description="$1" pattern="$2" path="$3"
+  if [ -f "$path" ] && markdown_plain "$path" | grep -aqiE -- "$pattern"; then
+    pass "$description"
+  else
+    fail "$description — /$pattern/ not found in $(basename "$path") (emphasis ignored)"
+  fi
+}
+
 # check_not_grep is how a revision is told from an addition: the answer must no
 # longer carry the thing the user changed their mind about.
 check_not_grep() {

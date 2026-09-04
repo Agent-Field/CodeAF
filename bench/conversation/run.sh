@@ -42,7 +42,7 @@ source "$CONV_LIB/door_tmux.sh"
 # shellcheck source=lib/guarded.sh
 source "$CONV_LIB/guarded.sh"
 
-ALL_SCENARIOS="data-tally research-brief writing-memo code-fix followup-while-working revision-midwork task-result-delivered"
+ALL_SCENARIOS="data-tally research-brief writing-memo code-fix followup-while-working revision-midwork work-result-recalled"
 
 ARMS="${CONV_ARMS:-aforge omp pi}"
 SCENARIOS="$ALL_SCENARIOS"
@@ -284,6 +284,13 @@ for scenario in $SCENARIOS; do
     arm_role_pin "$arm"
     record "role_pin" "$ARM_ROLE_PIN"
 
+    # What ambient configuration could be turned off with a documented flag, and
+    # what could not. A peer that loads the operator's skills and MCP servers is
+    # running a different system prompt and a different tool set from its
+    # neighbours, and that belongs on the row rather than in a footnote.
+    arm_baseline "$arm"
+    record "ambient" "$ARM_BASELINE_NOTE"
+
     cell="$CONV_OUT/$scenario-$arm"
     work="$cell/work"
     # Evidence is not overwritten by accident. A cell directory that already
@@ -432,6 +439,16 @@ for scenario in $SCENARIOS; do
       arm_host_stop "$arm" "$cell" "$work"
     fi
 
+    # Did the cell's only route upstream survive the cell? A guard that exits
+    # mid-run leaves the harness dialling a closed port, and everything after
+    # that — no reply, no file, no receipt — is about the rig and not about the
+    # harness. It has happened once in this lane (notes/pilot-02-03.md), and it
+    # arrived looking exactly like a product failure.
+    guard_died=0
+    if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ] && ! guard_alive; then
+      guard_died=1
+    fi
+
     # ── receipts ──────────────────────────────────────────────────────────
     receipt="$cell/receipt.json"
     python3 "$CONV_LIB/receipts.py" --kind "$(arm_receipt_kind "$arm")" \
@@ -457,12 +474,26 @@ EOF
 
     # ── judge ─────────────────────────────────────────────────────────────
     verdict=""
+    # unjudged names a cell whose outcome says nothing about the harness. Its
+    # scenario checks do not run, because running them would produce a column of
+    # failures caused by this suite and attributed to the arm.
+    unjudged=""
+    if [ "$guard_died" = "1" ]; then
+      unjudged="the forwarding guard exited during this cell (status ${GUARD_EXIT:-unknown})"
+      conv_warn "$unjudged — see $cell/guard-audit.jsonl.err"
+      note "$unjudged; nothing here is evidence about $arm"
+      verdict="skipped"
+      comparable="no"
+      comparable_reason="${comparable_reason:+$comparable_reason; }the guard died mid-cell"
+    fi
     if [ "$timed_out" = "1" ]; then
       fail "the cell hit its ${SCENARIO_CAP_S}s cap and was stopped"
       verdict="timeout"
     fi
 
-    if [ "$SCENARIO_DOOR" = "print" ]; then
+    if [ -n "$unjudged" ]; then
+      :
+    elif [ "$SCENARIO_DOOR" = "print" ]; then
       # The exit code is a fact the row must carry, and a non-zero exit is a
       # failure even when the reply looks fine: a script downstream branches on
       # it, and a suite that ignores it would never notice it being dropped.
@@ -481,12 +512,28 @@ EOF
           # failure: the only other option is to call "nothing happened" a pass.
           fail "no window of work to steer was ever observed — the scenario did not happen"
           ;;
-        noframe) fail "the composer never came up (see tmux.err)"; verdict="crash" ;;
+        noready)
+          # A screen WAS drawn and these markers did not match it. That is a gap
+          # in this suite's calibration, not a harness failure — pi's status bar
+          # says "(guard)" on a guarded run where the calibration expected
+          # "(openrouter)", and reporting that as a crash blames a product for a
+          # regex. Nothing was driven, so nothing is claimed: `unsupported` is
+          # the word for a cell this suite could not honestly drive, and it is
+          # not a pass.
+          conv_warn "the driver did not recognise $arm's composer — see $cell/screen.txt"
+          note "a screen was drawn that the ready marker ($ARM_READY_RE) does not match"
+          unjudged="the driver could not recognise this harness's composer"
+          verdict="unsupported"
+          comparable="no"
+          comparable_reason="${comparable_reason:+$comparable_reason; }composer not recognised (benchmark calibration)"
+          ;;
+        noframe) fail "the composer never drew anything (see tmux.err)"; verdict="crash" ;;
         crash)   fail "the session died"; verdict="crash" ;;
         cap)     verdict="timeout" ;;
         *)       fail "the driver ended in an unrecognised state: ${DOOR_ENDED:-empty}" ;;
       esac
-      check_ge "every scripted turn was sent" "$(grep -acE '^[a-z]' "$plan")" "$DOOR_TURNS_SENT"
+      [ -n "$unjudged" ] || \
+        check_ge "every scripted turn was sent" "$(grep -acE '^[a-z]' "$plan")" "$DOOR_TURNS_SENT"
     fi
 
     # The open-model law, enforced on what was actually billed rather than on
@@ -524,7 +571,11 @@ print("; ".join(got.get("notes") or []))
     fi
     record "tokens" "in=$tokens_in out=$tokens_out"
 
-    scenario_check "$work" "$reply" "$cell" "$judge"
+    if [ -n "$unjudged" ]; then
+      note "the scenario's own checks did not run: $unjudged"
+    else
+      scenario_check "$work" "$reply" "$cell" "$judge"
+    fi
 
     # A cap or a dead session is the most specific thing that can be said about
     # a cell, and it keeps its word: everything downstream of a killed harness

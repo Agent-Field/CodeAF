@@ -37,11 +37,16 @@ scenario_fixture() { fixture_slowwork "$1"; }
 # anybody having answered anything; RABANNIC cannot come from an echo. It is
 # still a screen witness rather than a transcript event — recorded in door.json
 # as such — but it cannot be produced by the file passing through the terminal.
+#
+# THE MATCH IS A WHOLE WORD. A live omp pane rendered the answer as "RRABANNIC"
+# — a duplicated leading character, whether from the renderer or from the model
+# — and a substring match called that the right answer. Either it is the word or
+# it is not; a benchmark that accepts a near miss has stopped checking.
 scenario_turns() {
   local work="$1" plan="$2"
   SCENARIO_WORK_START="$work/.phases/build-started"
   SCENARIO_WORK_DONE="$work/.phases/build-finished"
-  SCENARIO_ANSWER_RE="RABANNIC"
+  SCENARIO_ANSWER_RE="(^|[^A-Za-z])RABANNIC([^A-Za-z]|\$)"
   {
     printf 'ready\tRun ./slow-build.sh in this directory. It takes about a minute. Tell me what it writes when it is done.\n'
     printf 'midwork\tWhile that runs: read NOTES.txt, take the checksum word, and reply with that word spelled backwards in capitals. Just the reversed word.\n'
@@ -74,7 +79,8 @@ scenario_check() {
   check "the followup was answered" "$([ -n "$answered" ] && echo 1 || echo 0)"
   check "and answered BEFORE the build finished" \
     "$(stamps_ordered "$answered" "$finished")"
-  check_grep "the answer is the derived token, not an echo of the file" "RABANNIC" "$transcript"
+  check_grep "the answer is the derived token, not an echo of the file" \
+    "(^|[^A-Za-z])RABANNIC([^A-Za-z]|\$)" "$transcript"
 
   # The first job was not dropped on the floor to serve the interruption.
   check_file "the slow job still finished" "$work/build.log"

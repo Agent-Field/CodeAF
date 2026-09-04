@@ -16,6 +16,11 @@
 #               mid-work window ever exists — unexercised, which is a failure
 #               and not a success.
 #   deaf        runs the build and ignores anything typed during it.
+#   smudged     answers with the right word carrying an extra leading letter
+#               ("RRABANNIC"), which a live omp pane really produced. A
+#               substring match calls it correct; the cell must not.
+#   noready     draws a screen the driver's ready marker does not match, and
+#               stays alive. This is a calibration gap in the rig, not a crash.
 set -uo pipefail
 
 MODE="${FAKE_TUI_MODE:-ok}"
@@ -59,10 +64,12 @@ answer_followup() {
   local asked="$1"
   printf 'you asked while working: %s\n' "$asked"
   if printf '%s' "$asked" | grep -qiE 'backwards|reversed|checksum'; then
-    local word
+    local word answer
     word="$(grep -oE '[A-Z]{6,}' NOTES.txt 2>/dev/null | head -1)"
-    printf 'the reversed checksum word is %s\n' \
-      "$(printf '%s' "$word" | rev)"
+    answer="$(printf '%s' "$word" | rev)"
+    # The near miss: one duplicated leading character, everything else right.
+    [ "$MODE" = "smudged" ] && answer="${answer:0:1}$answer"
+    printf 'the reversed checksum word is %s\n' "$answer"
   fi
   if printf '%s' "$asked" | grep -qi 'csv'; then
     printf 'service,port\n' > report.csv
@@ -71,6 +78,17 @@ answer_followup() {
     printf 'rewrote it as report.csv\n'
   fi
 }
+
+if [ "$MODE" = "noready" ]; then
+  # A perfectly healthy TUI whose composer this rig has never been calibrated
+  # against. It draws, it waits, and it never dies.
+  printf 'a different harness, drawing a screen nobody taught this rig to read\n'
+  while :; do
+    if ! IFS= read -r -t 300 line; then break; fi
+    printf 'ignored: %s\n' "$(clean "$line")"
+  done
+  exit 0
+fi
 
 echo "fake TUI ready"
 status
