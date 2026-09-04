@@ -753,16 +753,17 @@ func (c Config) PlanSplit() bool {
 }
 
 // ClientFor builds a client for an explicitly chosen model. With no panel it is
-// exactly the single-model adapter it always was. With a panel the choice is
-// pinned as the router's opener, so chat keeps its runtime picker without
-// bypassing observation and escalation.
+// exactly the single-model adapter it always was. With a panel the bare model
+// id is pinned as the router's opener while the whole value builds every
+// adapter, so a thinking level stays with the seat without becoming part of the
+// provider's slug.
 func (c Config) ClientFor(model string) (router.Client, error) {
 	// The pin is a model id like any other and is stripped of its level for the
 	// same reason providerConfig strips one: a router pinned to a slug nobody
 	// publishes never opens on the model it was pinned to.
-	model, _ = roles.SplitEffort(model)
+	bare, _ := roles.SplitEffort(model)
 	if len(c.Panel.Models) > 0 {
-		return router.NewPinned(c.Panel, c.providerConfig(model), c.ProfileDir, model)
+		return router.NewPinned(c.Panel, c.providerConfig(model), c.ProfileDir, bare)
 	}
 	return provider.NewClient(c.providerConfig(model))
 }
@@ -785,7 +786,13 @@ func (c Config) VisionClient() (*provider.Client, error) {
 // selects an explicit parser engine and model at the leaf boundary, and a
 // second router substitution would make both capability and cost opaque.
 func (c Config) DocumentClient() (*provider.Client, error) {
-	return provider.NewClient(c.providerConfig(c.Model))
+	configured := c.providerConfig(c.Model)
+	// The document path builds its own raw body with no reasoning object and
+	// sizes its ceiling for that exact shape. Clear a seat pin here so the raw
+	// request, its ceiling and the model-call row continue to describe the same
+	// call; document extraction has no effort-pin request path of its own.
+	configured.Effort = provider.EffortNone
+	return provider.NewClient(configured)
 }
 
 func (c Config) providerConfig(model string) provider.Config {
@@ -797,11 +804,18 @@ func (c Config) providerConfig(model string) provider.Config {
 	// the model alone. Sent whole it is a slug no provider publishes, which is
 	// a 404 on every planning call — the flag path has had that bug for as long
 	// as it has taken a level.
-	model, _ = roles.SplitEffort(model)
+	//
+	// The split has two outputs and both travel from here: the bare slug in
+	// Model, and the level beside it in Effort. Keeping the second half on the
+	// client is what lets a headless seat apply its own pin to every request
+	// without putting the suffix back onto the provider's model id.
+	model, level := roles.SplitEffort(model)
+	effort, _ := provider.ParseEffort(level)
 	return provider.Config{
 		APIKey:    c.APIKey,
 		BaseURL:   c.BaseURL,
 		Model:     model,
+		Effort:    effort,
 		MaxTokens: c.MaxTokens,
 		Timeout:   c.Timeout,
 		// The published answer to "does this model take this field", from rows
