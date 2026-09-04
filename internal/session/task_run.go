@@ -715,6 +715,12 @@ type TaskNode struct {
 	// a re-audit replace the audit's half and keep the work's — in both
 	// directions, which is the whole of the defect this field closes.
 	claim string
+	// produced is what the work actually produced, whole up to one cap and with a
+	// pointer to the rest of it (task_result.go). claim above is that same answer
+	// cut to a card's three lines; this is what every reader that needs the work
+	// rather than the card is served from — the dependent's brief, the landing
+	// note a parent or the conversation folds, a continuation's finding.
+	produced taskResult
 }
 
 // TaskGraph is the session's work as a directed acyclic graph, plus the
@@ -1509,6 +1515,7 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 		title  string
 		id     uint64
 		report string
+		whole  string
 	}
 	var reports []learned
 	for _, id := range node.dependsOn {
@@ -1516,7 +1523,11 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 		if prerequisite == nil {
 			continue
 		}
-		report := strings.TrimSpace(prerequisite.report)
+		// What the prerequisite produced, and not only the card it left: the
+		// report leads and the work's own answer stands under it
+		// (task_result.go). A node gated on work whose answer was on line four of
+		// a five-line message used to inherit the first three.
+		report := strings.TrimSpace(prerequisite.deliveredLocked())
 		if report == "" {
 			continue
 		}
@@ -1524,6 +1535,11 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 			title:  prerequisite.spec.title,
 			id:     id,
 			report: report,
+			// Where the whole of that answer is, carried on the header below
+			// rather than in the body: the bodies share one pot and are clipped to
+			// fit it, so a pointer inside a body is one this road can lose. Empty
+			// when the body is the whole answer.
+			whole: prerequisite.resultPointerLocked(),
 		})
 	}
 	brief := node.spec.brief
@@ -1536,7 +1552,7 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 	bodies := make([]string, len(reports))
 	overhead := len(brief) + len("\n\n") + len(heading)
 	for i, item := range reports {
-		headers[i] = fmt.Sprintf("\n\n%s (task %d):\n", item.title, item.id)
+		headers[i] = fmt.Sprintf("\n\n%s (task %d)%s:\n", item.title, item.id, item.whole)
 		bodies[i] = item.report
 		overhead += len(headers[i])
 	}
@@ -2843,6 +2859,10 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	if where == "" {
 		where = n.spec.where
 	}
+	// And what the work produced (task_result.go). It is bounded here rather than
+	// downstream because a notice is copied into every watcher's lane and held by
+	// whoever draws a row.
+	delivery := n.carriedResultLocked()
 	return TaskNotice{
 		ID:    n.id,
 		Title: n.spec.title,
@@ -2857,23 +2877,27 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		// AND WHAT THAT DIRECTORY IS, which the surface cannot work out for
 		// itself: the same ladder makes a worktree for one node and a fork for
 		// the next, and only the node knows which it got (groundladder.go).
-		Rung:      n.Rung,
-		DependsOn: n.dependsOn,
-		Parent:    n.parent,
-		State:     n.state,
-		Elapsed:   elapsed,
-		StartedAt: n.started,
-		EndedAt:   n.ended,
-		Report:    n.report,
-		Changed:   changed,
-		Branch:    n.branch,
-		Merge:     n.merge,
-		Doing:     n.doing,
-		Context:   n.context,
-		Mending:   n.mend,
-		Waiting:   waiting,
-		Stopped:   n.stopped,
-		Ending:    n.endingLocked(),
+		Rung:        n.Rung,
+		DependsOn:   n.dependsOn,
+		Parent:      n.parent,
+		State:       n.state,
+		Elapsed:     elapsed,
+		StartedAt:   n.started,
+		EndedAt:     n.ended,
+		Report:      n.report,
+		Result:      delivery.body,
+		ResultWhole: delivery.where,
+		ResultCut:   delivery.cut,
+		ResultHeld:  delivery.held,
+		Changed:     changed,
+		Branch:      n.branch,
+		Merge:       n.merge,
+		Doing:       n.doing,
+		Context:     n.context,
+		Mending:     n.mend,
+		Waiting:     waiting,
+		Stopped:     n.stopped,
+		Ending:      n.endingLocked(),
 		// AND WHAT ITS OWN CHECK SAID, which is not the same fact as its state: a
 		// node taken as it stands, one landed with the check switched off and one
 		// a person accepted are all done and none of them was checked
@@ -3278,6 +3302,17 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	}
 	if report != "" {
 		note.WriteString("\n" + report)
+	}
+	// And under it, what the work actually produced. The report above is the
+	// card's three lines; this is the answer, and the reader of this note is the
+	// one that has to use it — the parent folding a piece back into the whole, or
+	// the conversation writing the person's reply (task_result.go). It is empty
+	// whenever the report already carries the answer, which is the ordinary short
+	// landing.
+	if block := resultBlock(resultDelivery{
+		body: notice.Result, where: notice.ResultWhole, cut: notice.ResultCut, held: notice.ResultHeld,
+	}); block != "" {
+		note.WriteString("\n" + block)
 	}
 	if notice.State == TaskUnverified {
 		note.WriteString(settleClause(notice.ID, settle))
@@ -4136,7 +4171,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.
 		changed = mergePaths(changed, wrote)
-		report = taskReport(child)
+		said := lastSaid(child)
+		report = firstLines(said, taskReportLines)
+		// And the answer itself, whole, before the card is cut out of it. It is
+		// kept here because this is the last moment the worker's transcript is
+		// open — `retire` closes it — and because everything downstream that needs
+		// the work rather than the card reads the node (task_result.go).
+		node.keepResultNoting(said, log)
 		// AND WHAT IT ACTUALLY RAN, kept for the judge that never watched it happen.
 		// The check a worker runs last is usually the most expensive thing in the
 		// task, and an auditor made to rediscover and repeat it from nothing is an
@@ -4148,7 +4189,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// folded into the same list on the way past, so everything downstream —
 		// the card, the auditor's packet, the index it stages — reads ONE account
 		// of what this node produced ([declaredFiles]).
-		changed = mergePaths(changed, declaredFiles(lastSaid(child), tree.dir))
+		changed = mergePaths(changed, declaredFiles(said, tree.dir))
 
 		if movedFrom != "" || stopped != "" || ctx.Err() != nil {
 			break

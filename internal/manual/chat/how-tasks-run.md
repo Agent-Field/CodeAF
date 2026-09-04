@@ -862,7 +862,11 @@ thing it had just built.
 ## How a task reports back to you
 
 When a task lands, its **report** is its final assistant message, cut to the first **3
-non-empty lines**, each clipped to **300 characters**.
+non-empty lines**, each clipped to **300 characters**. That cut is what a row and a card
+show. What the task actually produced is kept whole beside it — up to **16,000
+characters**, and past that the whole text is written to a file next to the task's
+transcript and the record points at it — so the answer is never only three lines
+anywhere it is used again.
 
 A task is told to make those lines the **substance** of the work — what it found or made,
 the key findings, the decisions it took, with every file named by its full path — and not
@@ -878,7 +882,24 @@ first line carries the task's transcript URI:
 task 7 finished: <title> · transcript file:///…
 ```
 
-Then the report. Then, when there were changes, `changed: a.go, b.go`, and one line saying
+Then the report. Then, when the report's three lines do not carry the whole of what the
+task said, **the answer itself**, under one of two lines:
+
+- `what it produced, in full:` — all of it follows.
+- `what it produced, the first part of it — the whole of it is at file:///…:` — the
+  beginning of it follows, and the path holds the rest.
+
+That block is left out when the report already carries the answer word for word, which is
+every task that finished in two or three short lines.
+
+A task the check **did not accept** says something different:
+`what it produced was not accepted — the whole of it is at file:///…`. What is missing is
+the news there, so the work's own account is not repeated as though it stood — but it is
+never hidden either, and that line says where to read it. Nothing else changes what is
+delivered: a task that is done, needs your look, was stopped or ran out of steps hands its
+answer over, whatever its report was later rewritten to say.
+
+Then, when there were changes, `changed: a.go, b.go`, and one line saying
 where the branch went:
 
 - `its branch task/… merged into yours`
@@ -1885,8 +1906,14 @@ in the checkpoint on disk, and in the project's index of landed work.
 
 A task can name `depends_on` — ids that must finish first. When it starts, their reports
 land in `THE WORK` under `What the work before you learned — N reports:`, then
-`<title> (task N):` and the report. `N` is how many are there, so a six-row table can
+`<title> (task N):` and the report, **and under that what the earlier task produced** —
+not only the three lines of its card. `N` is how many are there, so a six-row table can
 count.
+
+When only the beginning of an earlier answer fits, the header says where the whole of it
+is: `<title> (task N) — the whole of it is at file:///…:`. That line is never cut, so the
+worker can always go and read the rest — a task may read any path on the machine; what it
+may only write is its own copy.
 
 **Every earlier task is always represented.** Keeping four of six and saying nothing
 about the other two is how a sink once wrote a confident four-row table. The list is
