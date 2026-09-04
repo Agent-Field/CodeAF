@@ -18,8 +18,10 @@ package session
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -48,7 +50,7 @@ func TestAWorkerMayNotMoveItsCopyOntoWorkItDidNotDo(t *testing.T) {
 		{"git --no-pager checkout main", "git checkout is not yours to run"},
 	}
 	for _, one := range refused {
-		got := refusedTaskGit(one.command)
+		got := refusedTaskGit(one.command, taskGitVoice)
 		if !strings.Contains(got, one.want) {
 			t.Fatalf("%q answered %q, want %q in it", one.command, got, one.want)
 		}
@@ -75,7 +77,7 @@ func TestAWorkerMayNotReachARemote(t *testing.T) {
 		"git remote add upstream https://example.invalid/x.git",
 		"git clone https://example.invalid/x.git", "git submodule update --init",
 	} {
-		got := refusedTaskGit(command)
+		got := refusedTaskGit(command, taskGitVoice)
 		if got == "" {
 			t.Fatalf("%q was allowed, want work this task did not do kept out of its copy", command)
 		}
@@ -90,7 +92,7 @@ func TestAWorkerMayNotReachARemote(t *testing.T) {
 // the landing that is the road it comes home on.
 func TestAWorkerDoesNotPushItsOwnWork(t *testing.T) {
 	for _, command := range []string{"git push", "git push origin HEAD", "git push -u origin fix/codeql-54"} {
-		got := refusedTaskGit(command)
+		got := refusedTaskGit(command, taskGitVoice)
 		if !strings.Contains(got, "comes home through its landing") {
 			t.Fatalf("%q was refused with %q, want the refusal to name the road home", command, got)
 		}
@@ -103,12 +105,12 @@ func TestAWorkerDoesNotPushItsOwnWork(t *testing.T) {
 // still allowed, because reading is always allowed.
 func TestAWorkerMayReadTheStashAndNotUseIt(t *testing.T) {
 	for _, command := range []string{"git stash", "git stash --include-untracked", "git stash pop", "git stash apply"} {
-		if refusedTaskGit(command) == "" {
+		if refusedTaskGit(command, taskGitVoice) == "" {
 			t.Fatalf("%q was allowed", command)
 		}
 	}
 	for _, command := range []string{"git stash list", "git stash show -p --stat"} {
-		if got := refusedTaskGit(command); got != "" {
+		if got := refusedTaskGit(command, taskGitVoice); got != "" {
 			t.Fatalf("%q was refused with %q, want reading the shelf to be allowed", command, got)
 		}
 	}
@@ -119,19 +121,19 @@ func TestAWorkerMayReadTheStashAndNotUseIt(t *testing.T) {
 // file back as this worktree last had it are a worker's own business.
 func TestAWorkerMayUnstageButMayNotDiscardItsWork(t *testing.T) {
 	for _, command := range []string{"git reset --hard HEAD", "git reset --hard main", "git reset --merge", "git reset --keep origin/main"} {
-		if refusedTaskGit(command) == "" {
+		if refusedTaskGit(command, taskGitVoice) == "" {
 			t.Fatalf("%q was allowed, want a worker's own deliverable protected from it", command)
 		}
 	}
 	for _, command := range []string{"git reset", "git reset HEAD src/thing.py", "git reset --soft HEAD~1"} {
-		if got := refusedTaskGit(command); got != "" {
+		if got := refusedTaskGit(command, taskGitVoice); got != "" {
 			t.Fatalf("%q was refused with %q, want unstaging left alone", command, got)
 		}
 	}
-	if refusedTaskGit("git restore --source=main src/thing.py") == "" {
+	if refusedTaskGit("git restore --source=main src/thing.py", taskGitVoice) == "" {
 		t.Fatal("git restore --source was allowed, and it is how a file is taken off another branch")
 	}
-	if got := refusedTaskGit("git restore src/thing.py"); got != "" {
+	if got := refusedTaskGit("git restore src/thing.py", taskGitVoice); got != "" {
 		t.Fatalf("git restore of the worker's own file was refused with %q", got)
 	}
 }
@@ -156,7 +158,7 @@ func TestAWorkerMayLookAnywhereAndSaveWhatItWrote(t *testing.T) {
 		"python -m pytest && git add src && git commit -m done",
 		"echo 'git merge is a thing people talk about' > notes.md",
 	} {
-		if got := refusedTaskGit(command); got != "" {
+		if got := refusedTaskGit(command, taskGitVoice); got != "" {
 			t.Fatalf("%q was refused with %q, want a worker's reading and saving left alone", command, got)
 		}
 	}
@@ -204,4 +206,201 @@ func TestTheGitGuardRefusesOnTheSeamAndOnlyInsideATask(t *testing.T) {
 			t.Fatalf("the guard refused %s %s", fine.Function.Name, fine.Function.Arguments)
 		}
 	}
+}
+
+// C1, C2, C3 — A SESSION THAT WILL JUDGE ITS OWN WORK ANSWERS TO THE TASK'S
+// WHOLE GIT LIST. The gate is the principal rather than the unattended flag:
+// both kinds of Person keep their terminal, while a Steward gets a failed tool
+// result before any part of the shell command can run.
+func TestASessionCarryingItsOwnWorkAnswersToTheSameGitList(t *testing.T) {
+	attended, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	stewardHeaded, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Unattended = true
+		config.Budget = Budget{Wall: time.Hour}
+	})
+	if stewardHeaded.steward() == nil {
+		t.Fatal("an unattended session with a ceiling did not get a Steward; the test no longer reaches the posture it claims to cover")
+	}
+	unattendedPerson, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Unattended = true
+	})
+
+	for _, command := range gitCommandsASessionMayNotRun() {
+		call := bashGitCall(command)
+		_, refusal, allowed := (taskGitGuard{agent: stewardHeaded}).PreAction(context.Background(), nil, nil, call)
+		if allowed {
+			t.Errorf("%q passed for a session carrying its own work", command)
+		} else if !refusal.isError {
+			t.Errorf("%q was refused without reaching the model as a failed call", command)
+		}
+		for name, person := range map[string]*Agent{
+			"attended session":                     attended,
+			"unattended session without a ceiling": unattendedPerson,
+		} {
+			if _, _, allowed := (taskGitGuard{agent: person}).PreAction(context.Background(), nil, nil, call); !allowed {
+				t.Errorf("%q was refused for an %s", command, name)
+			}
+		}
+	}
+}
+
+// C4 — READING AND SAVING ARE STILL ALWAYS ALLOWED. A session carrying its own
+// work can inspect any ref, unstage or restore its own path, and commit without
+// the guard mistaking those acts for taking somebody else's work.
+func TestASessionsOwnReadingOfGitIsStillAllowed(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Unattended = true
+		config.Budget = Budget{Wall: time.Hour}
+	})
+	if agent.steward() == nil {
+		t.Fatal("an unattended session with a ceiling did not get a Steward")
+	}
+	for _, command := range []string{
+		"git status --porcelain",
+		"git diff HEAD main",
+		"git log --oneline -3",
+		"git show main:go.mod",
+		"git branch --list",
+		"git stash list",
+		"git stash show -p --stat",
+		"git reset HEAD src/thing.py",
+		"git restore src/thing.py",
+		"git add -A && git commit -m fix",
+	} {
+		if _, _, allowed := (taskGitGuard{agent: agent}).PreAction(context.Background(), nil, nil, bashGitCall(command)); !allowed {
+			t.Errorf("%q was refused, want the session's reading and saving left alone", command)
+		}
+	}
+}
+
+// C5, C6 — THE SESSION READS ITS OWN REASON. Every category still produces the
+// task's old sentence for a task, while a Steward gets no landing or deliverable
+// vocabulary and is told to leave the work where this session will be judged.
+func TestASessionIsRefusedInItsOwnRegisterAndNotTheTasks(t *testing.T) {
+	const stashRefusal = "git stash is not yours to run here: it takes your working copy away, and what is in it is the work this session will be judged on. Leave the change in the tree, or commit it."
+	if got := refusedTaskGit("git stash", sessionGitVoice); got != stashRefusal {
+		t.Fatalf("session stash refusal = %q, want %q", got, stashRefusal)
+	}
+
+	for _, command := range gitCommandsASessionMayNotRun() {
+		sessionRefusal := refusedTaskGit(command, sessionGitVoice)
+		if sessionRefusal == "" {
+			t.Errorf("%q had no session refusal", command)
+			continue
+		}
+		for _, taskWords := range []string{"this task", "comes home", "the deliverable", "its landing"} {
+			if strings.Contains(sessionRefusal, taskWords) {
+				t.Errorf("%q was refused in the task's register: %q contains %q", command, sessionRefusal, taskWords)
+			}
+		}
+		if !strings.Contains(sessionRefusal, sessionGitLeaveIt) {
+			t.Errorf("%q was refused with %q, want it to say what the session should do instead", command, sessionRefusal)
+		}
+		taskRefusal := refusedTaskGit(command, taskGitVoice)
+		if taskRefusal == "" {
+			t.Errorf("%q no longer has the task's refusal", command)
+		} else if taskRefusal == sessionRefusal {
+			t.Errorf("%q reads the same in both postures: %q", command, taskRefusal)
+		}
+	}
+
+	for _, one := range []struct {
+		command string
+		want    string
+	}{
+		{"git pull", "git pull is not yours to run: it would bring in work this task did not do, and this task reports what it writes as its own. Look with git status, diff, log and show — any branch, as much as you want. What you write with write and edit in this copy comes home on its own."},
+		{"git merge", "git merge is not yours to run: it would put work this task did not do into your copy, and only what you write here comes home. Look with git status, diff, log and show — any branch, as much as you want. What you write with write and edit in this copy comes home on its own."},
+		{"git stash", "git stash is not yours to run: it takes your working copy away and puts it back, and a stash that will not go back cleanly leaves conflict markers in the files. Look with git status, diff, log and show — any branch, as much as you want. What you write with write and edit in this copy comes home on its own."},
+		{"git reset --hard HEAD", "git reset --hard is not yours to run: it throws your working copy away, and what is in it is the deliverable. Look with git status, diff, log and show — any branch, as much as you want. What you write with write and edit in this copy comes home on its own."},
+		{"git restore --source=main src/thing.py", "git restore --source is not yours to run: it takes a file off another branch, and only what you write here comes home. Look with git status, diff, log and show — any branch, as much as you want. What you write with write and edit in this copy comes home on its own."},
+		{"git push origin HEAD", "git push is not yours to run: This task's work comes home through its landing, and a pull request is the person's or the conversation's to open — say what you want in it in your report."},
+	} {
+		if got := refusedTaskGit(one.command, taskGitVoice); got != one.want {
+			t.Errorf("task refusal for %q = %q, want its existing sentence %q", one.command, got, one.want)
+		}
+	}
+}
+
+// C6 — EVERY CLAUSE SAYS WHY, AND EVERY COMPLETED SENTENCE SAYS WHAT TO DO
+// INSTEAD. Checking the two values together keeps a newly added field from
+// quietly becoming an empty explanation in one register.
+func TestEveryGitVoiceSaysWhyAndWhatToDoInstead(t *testing.T) {
+	voices := []struct {
+		name         string
+		voice        gitVoice
+		instead      string
+		stashInstead string
+		pushInstead  string
+	}{
+		{"task", taskGitVoice, taskGitInstead, taskGitInstead, taskLandingInstead},
+		{"session", sessionGitVoice, sessionGitInstead, sessionGitLeaveIt, sessionGitInstead},
+	}
+	for _, one := range voices {
+		fields := map[string]string{
+			"opening": one.voice.opening, "remote": one.voice.remote,
+			"moves": one.voice.moves, "stash": one.voice.stash,
+			"discard": one.voice.discard, "offAnotherBranch": one.voice.offAnotherBranch,
+			"push": one.voice.push,
+		}
+		for field, value := range fields {
+			if strings.TrimSpace(value) == "" {
+				t.Errorf("%s voice has an empty %s clause", one.name, field)
+			}
+		}
+		for _, ending := range []struct {
+			command string
+			want    string
+		}{
+			{"git pull", one.instead},
+			{"git merge", one.instead},
+			{"git stash", one.stashInstead},
+			{"git reset --hard", one.instead},
+			{"git restore --source main", one.instead},
+			{"git push", one.pushInstead},
+		} {
+			got := refusedTaskGit(ending.command, one.voice)
+			if !strings.HasSuffix(got, ending.want) {
+				t.Errorf("%s voice refused %q with %q, want it to end by saying %q", one.name, ending.command, got, ending.want)
+			}
+		}
+	}
+}
+
+// gitCommandsASessionMayNotRun names a representative shape of every verb in
+// the one production list, including each guarded form whose harmless sibling
+// is allowed. It is shared by the posture and wording tests so those contracts
+// cannot quietly cover different commands.
+func gitCommandsASessionMayNotRun() []string {
+	return []string{
+		"git stash",
+		"git stash pop",
+		"git merge --ff-only main",
+		"cd /tmp/x && git stash && pytest",
+		"git pull --rebase origin main",
+		"git fetch --all",
+		"git clone https://example.invalid/project.git",
+		"git remote add upstream https://example.invalid/project.git",
+		"git submodule update --init",
+		"git checkout main",
+		"git switch main",
+		"git rebase main",
+		"git cherry-pick HEAD~1",
+		"git revert HEAD",
+		"git am change.patch",
+		"git apply change.patch",
+		"git worktree add ../other main",
+		"git update-ref refs/heads/other HEAD",
+		"git symbolic-ref HEAD refs/heads/other",
+		"git reset --hard HEAD",
+		"git reset --merge HEAD",
+		"git reset --keep HEAD",
+		"git restore --source=main src/thing.py",
+		"git push origin HEAD",
+	}
+}
+
+func bashGitCall(command string) ai.ToolCall {
+	return ai.ToolCall{Function: ai.ToolCallFunction{
+		Name: "bash", Arguments: `{"command":` + strconv.Quote(command) + `}`,
+	}}
 }
