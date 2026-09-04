@@ -1,23 +1,19 @@
 package main
 
-// testenv_test.go is the ONE PLACE this package's tests are given a machine to
-// run on, and it exists because the suite was running on the DEVELOPER'S
-// machine instead.
+// testenv_test.go gives this package's tests a machine of their own, because the
+// suite was running on the DEVELOPER'S machine instead.
 //
 // WHAT IT COST. Several doors here are exercised end to end — `aforge exec "a
 // prompt"`, the rename rows in vocabulary_test.go — under the belief, written
 // into those tests, that every one of them "stops at a missing key". That is
-// only true of a process with no key. On a laptop with OPENROUTER_API_KEY
-// exported the same rows reached a live provider: real model calls, real money,
-// ninety seconds per row, and a deliverable (PROMPT.md) plus a state directory
-// written into the checkout the suite was running in. An offline suite that
-// spends tokens is not a suite anybody can trust to run before a landing, so the
-// isolation belongs here rather than in each test that happens to remember it.
+// only true of a process with no key: on a laptop with OPENROUTER_API_KEY
+// exported the same rows reached a live provider — real calls, real money,
+// ninety seconds a row, and a deliverable plus a state directory written into
+// the checkout under test. An offline suite that spends tokens is not one
+// anybody can run before a landing.
 //
-// IT IS THE FLOOR AND NOT A CEILING. Everything below can still be overridden by
-// a test that means to: t.Setenv wins for that test's duration, and a variable
-// this process was deliberately started with (AFORGE_HOME, the call log) is left
-// exactly as it was found.
+// IT IS A FLOOR AND NOT A CEILING: t.Setenv still wins for a test that means it,
+// and a variable this process was deliberately started with is left alone.
 
 import (
 	"os"
