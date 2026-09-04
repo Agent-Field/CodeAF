@@ -299,18 +299,22 @@ func (a *app) taskIndexHolds(node *taskNode) bool {
 
 // taskNodeEnded is when a node of this session's graph LANDED, and the zero time
 // while it is still going — which is what the index writes for a live row, and
-// what the emptiness law asks for over a node whose clock nobody started.
-// A LANDING TIME IS COMPUTED FROM A REAL START OR IT IS NOT COMPUTED AT ALL.
-// The only start this surface ever knows is [taskNode.began], anchored off the
-// age a running node's own update reported. A node replayed out of a checkpoint
-// has none — the record keeps how long the work ran and never when it began —
-// and dating one by when this WINDOW met it stamped work that finished twenty
-// minutes ago at twelve minutes from now, which the page's date filter then read
-// as tomorrow and dropped: the one task waiting on a person went missing from
-// the tasks place while its shorter siblings sat on it saying `now`.
+// what the emptiness law asks for over a node whose record carried no clock.
+// FOR A SETTLED NODE, THE RECORD'S LANDING TIME IS THE FIRST ANSWER. The live
+// guard comes before that fact because a row that says it is running must never
+// also claim it has landed. The fallback is computed from [taskNode.began],
+// anchored off the age a running node's own update reported, only for a node
+// this surface watched. Dating an older checkpoint that carried no stamp by when
+// this WINDOW met it stamped work that finished twenty minutes ago at twelve
+// minutes from now, which the page's date filter then read as tomorrow and
+// dropped: the one task waiting on a person went missing from the tasks place
+// while its shorter siblings sat on it saying `now`.
 func taskNodeEnded(node *taskNode) time.Time {
 	if node.state == session.TaskRunning || node.state == session.TaskQueued {
 		return time.Time{}
+	}
+	if !node.ended.IsZero() {
+		return node.ended
 	}
 	at := node.began
 	if at.IsZero() && !node.restored {

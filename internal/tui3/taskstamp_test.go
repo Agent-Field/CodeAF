@@ -2,18 +2,21 @@ package tui3
 
 // A TIME A PERSON READS IS THE WORK'S OWN, OR THERE IS NO TIME.
 //
-// A task replayed out of a checkpoint carries how long it RAN and nothing about
-// when it started — the record keeps `elapsed_ms` and no stamp. The page used to
-// date one of those by when this WINDOW met it plus that duration, which for a
-// terminal opened at 23:52 is a landing time after midnight: a stamp in the
-// future. The tasks place then read that as tomorrow and dropped the row off the
-// page altogether, so the one piece of work waiting on a person went missing
-// while its shorter siblings sat above it saying `now`.
+// An older task replayed out of a checkpoint can carry how long it RAN and
+// nothing about when it started — a record from before the stamps existed keeps
+// `elapsed_ms` alone. The page used to date one of those by when this WINDOW met
+// it plus that duration, which for a terminal opened at 23:52 is a landing time
+// after midnight: a stamp in the future. The tasks place then read that as
+// tomorrow and dropped the row off the page altogether, so the one piece of work
+// waiting on a person went missing while its shorter siblings sat above it
+// saying `now`.
 //
-// These cases pin the two halves of the answer: a node with a real start still
-// gets a real landing time, and a node without one gets silence.
+// These cases pin the three parts of the answer: recorded stamps are preferred,
+// a node this window watched keeps its live clock, and an older node without
+// either gets silence.
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -104,5 +107,71 @@ func TestAWatchedTaskKeepsItsOwnLandingTime(t *testing.T) {
 	}
 	if got := a.tasks[12].spawnedAt(); !got.Equal(began) {
 		t.Fatalf("a watched node says it started at %s, want %s", got.Format("15:04:05"), began.Format("15:04:05"))
+	}
+}
+
+// A restored task's own stamps outrank the moment this surface met it and the
+// elapsed duration beside them. Reopening the conversation therefore preserves
+// both ends of the work's real window.
+func TestARestoredTaskReadsTheRecordsOwnStamps(t *testing.T) {
+	a, _, _ := taskApp(t)
+	now := time.Date(2026, time.August, 16, 12, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	started := now.Add(-35 * time.Minute)
+	ended := now.Add(-23 * time.Minute)
+
+	a.taskUpdate(update(13, "Rotate the staging certificate", session.TaskDone, session.TaskNotice{
+		Elapsed: 12 * time.Minute, StartedAt: started, EndedAt: ended,
+	}))
+	node := a.tasks[13]
+	if got := node.spawnedAt(); !got.Equal(started) {
+		t.Fatalf("the restored task starts at %s, want the recorded %s", got, started)
+	}
+	if got := taskNodeEnded(node); !got.Equal(ended) {
+		t.Fatalf("the restored task lands at %s, want the recorded %s", got, ended)
+	}
+}
+
+// A completion card reads both ends of its span from the work's record. The
+// clock of a conversation reopened later is neither end of yesterday's work.
+func TestACompletionCardDrawsTheRecordsOwnSpan(t *testing.T) {
+	a, _, _ := taskApp(t)
+	reopened := time.Date(2026, time.August, 16, 9, 31, 0, 0, time.UTC)
+	a.clock = func() time.Time { return reopened }
+	started := time.Date(2026, time.August, 15, 14, 2, 0, 0, time.UTC)
+	ended := time.Date(2026, time.August, 15, 14, 14, 0, 0, time.UTC)
+
+	a.taskUpdate(update(14, "Rotate the staging certificate", session.TaskDone, session.TaskNotice{
+		Elapsed: 12 * time.Minute, StartedAt: started, EndedAt: ended,
+	}))
+	card := a.doneCardAt(len(a.entries) - 1)
+	if card == nil {
+		t.Fatal("the restored task did not draw a completion card")
+	}
+	card.open = true
+	text := taskText(a)
+	want := doneSpanLabel + "14:02 → 14:14"
+	if !strings.Contains(text, want) {
+		t.Fatalf("the completion card does not draw the record's span %q:\n%s", want, text)
+	}
+	if wrong := doneSpanLabel + "14:02 → 09:31"; strings.Contains(text, wrong) {
+		t.Fatalf("the completion card dates yesterday's landing with the reopen clock:\n%s", text)
+	}
+}
+
+// A completion card whose record carries no wall-clock stamps draws no span
+// row. This is the emptiness law: an unknown time is silence, never a guess.
+func TestACompletionCardWithNoStampsDrawsNoSpan(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(15, "Rotate the staging certificate", session.TaskDone, session.TaskNotice{
+		Elapsed: 12 * time.Minute,
+	}))
+	card := a.doneCardAt(len(a.entries) - 1)
+	if card == nil {
+		t.Fatal("the restored task did not draw a completion card")
+	}
+	card.open = true
+	if text := taskText(a); strings.Contains(text, doneSpanLabel) {
+		t.Fatalf("a completion card with no recorded stamps draws a span:\n%s", text)
 	}
 }

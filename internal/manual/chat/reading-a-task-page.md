@@ -17,6 +17,18 @@ been going, what it has cost and how many calls it has made.
 
 Nothing here is thrown away — what is folded is one keypress from open.
 
+## When did this task start — the task page says nothing where the time should be, or `started` is blank on a finished task
+
+**The time on one task's own page comes from that task's record.** Its completion card says
+`started 14:02` only when the record carries the instant the work began. Reopening the
+conversation does not replace that instant with the time you sat down.
+
+An older record may carry a duration but no start or landing instant. When that duration is
+at least one second, the settled task page shows it in the header — for example `12m` —
+while the completion card omits the entire `started 14:02` segment. A shorter or absent
+duration leaves the header figure out too. The duration is never used to invent a
+wall-clock time.
+
 ## Why most of the work is hidden on a task page — the `▸ worked` chips, the caption outline, and `ctrl+e`
 
 **This is the answer to "my task page is hiding most of the work", "where did the tool

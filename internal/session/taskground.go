@@ -68,10 +68,15 @@ const groundListNamed = 2
 // cannot have written over anybody, and it is answered without a single read.
 //
 // IT READS THE FILE AND NOT [Agent.TaskIndex]. The merged view replaces a landed
-// row with one rebuilt out of the live graph, and a rebuilt row's EndedAt is
-// NOW — so every task this session has ever finished would look like it landed
-// during this run. The durable rows carry the stamps that were true when they
-// were written, which is the only reading a window question can be asked of.
+// row with one rebuilt out of the live graph, and a rebuilt row answers from
+// whatever the node in memory holds — which is now the recorded landing instant
+// where the record carries one, and NOTHING where it does not. Neither is what
+// a window question wants: it wants the stamp that was true when the row was
+// written, which is what the durable rows carry.
+//
+// This comment used to say the rebuilt row's EndedAt is NOW, and it was right
+// until the record started carrying the instant. The conclusion did not move;
+// the reason did.
 func (a *Agent) groundShift(node *TaskNode, wrote []string) string {
 	if node == nil || len(wrote) == 0 {
 		return ""
@@ -207,12 +212,12 @@ func groundList(items []string) string {
 
 // runStart is when this node's run began, and the ZERO TIME when nothing knows.
 //
-// A node that started in this process has the instant it was marked running. A
-// node rehydrated from a checkpoint has no such instant — it has only the age it
-// had when the checkpoint was written — so its window is measured back from now,
-// which lands LATER than the truth and can only ever miss an overlap rather than
-// invent one. That direction is chosen deliberately: this file's first law is
-// that a false alarm costs more than a quiet miss.
+// A node that started in this process or was restored from a checkpoint has the
+// recorded instant it was marked running. Only an older record with no stamp
+// falls back to measuring its window back from now by its elapsed age, which
+// lands LATER than the truth and can only ever miss an overlap rather than invent
+// one. That direction is chosen deliberately: this file's first law is that a
+// false alarm costs more than a quiet miss.
 func (n *TaskNode) runStart() time.Time {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()

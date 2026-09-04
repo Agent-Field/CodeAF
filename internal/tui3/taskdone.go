@@ -62,9 +62,11 @@ type taskDone struct {
 	// bool would be this surface reporting a verdict nobody gave. A card is
 	// never both — failed stays false here.
 	unverified bool
-	// span is the node's own age at its final state, and started/landed are the
-	// two ends of it in wall-clock — kept because "how long" and "when" are
-	// different questions and the second one is what a person matches against
+	// span is the node's own age at its final state. started is the record's start
+	// or the live surface's established fallback, and landed is the record's
+	// settling instant; the surface clock is the last resort only for a landing
+	// this window actually watched. They are kept because "how long" and "when"
+	// are different questions and the second one is what a person matches against
 	// their own memory of the afternoon.
 	span              time.Duration
 	started, landed   time.Time
@@ -144,8 +146,9 @@ const (
 	// which this house bans in anything a person reads — the same rule that took
 	// `worktree` off [doneBranchLabel] eight lines below, on 2026-09-01. `started`
 	// is what a person calls it, and the stamp beside it is the node's own start
-	// or nothing at all ([taskNode.spawnedAt] answers the zero time for a node
-	// restored out of a checkpoint, and the emptiness law draws nothing for one).
+	// or nothing at all ([taskNode.spawnedAt] reads a restored node's recorded
+	// start and answers the zero time when its older record carried none, which
+	// the emptiness law draws as nothing).
 	doneStartWord = "started "
 	// doneFileSuffix and doneFilesSuffix are the changed-file count. Singular
 	// and plural are both spelled because "1 files" is the surface being sloppy
@@ -194,6 +197,10 @@ const doneWindow = 20
 // (render.go's [app.layout] emits every gap on this surface).
 func (a *app) landedCard(node *taskNode) {
 	title := taskTitleOf(node.label, node.assignment, node.id)
+	landed := node.ended
+	if landed.IsZero() && !node.restored {
+		landed = a.now()
+	}
 	card := &taskDone{
 		id:         node.id,
 		ident:      node.ident,
@@ -204,7 +211,7 @@ func (a *app) landedCard(node *taskNode) {
 		unverified: node.state == session.TaskUnverified,
 		span:       node.elapsed,
 		started:    node.spawnedAt(),
-		landed:     a.now(),
+		landed:     landed,
 		outcome:    strings.TrimSpace(firstLine(node.report)),
 		report:     strings.TrimSpace(node.report),
 		changed:    node.changed,
