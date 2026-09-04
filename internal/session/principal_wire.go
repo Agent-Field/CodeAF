@@ -405,9 +405,10 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// "nothing has been finished yet" was the first line of both briefs the
 	// standstill then compared (#513). What it made is the session's own ledger,
 	// sorted into the deliverable exactly as the tidy sorts it (principal_audit.go's
-	// [reconcile]), and it counts only WITH the reader agreeing — a session's own
-	// files are not a second opinion about themselves
-	// ([Remains.finishedSomething]).
+	// [reconcile]), and it counts only WITH A WITNESS — a session's own files are
+	// not a second opinion about themselves. The reader agreeing is the ordinary
+	// witness; when its call could not be reached, declared checks that actually
+	// run over the tree may stand in ([Remains.finishedSomething]).
 	//
 	// IT IS FILES THIS SESSION CREATED OR CHANGED under the tree. The two are
 	// kept in separate ledgers because only the created ones may ever be swept
@@ -423,6 +424,7 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// ([Agent.changedInDeliverable]).
 	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0 || a.changedInDeliverable()
 	remains.ReaderSaysDone = reader.nothingLeft
+	remains.ReaderUnreachable = reader.unreachable
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
 	// decision — rather than beside the checks themselves: the checks are run
 	// once, after a principal has said the ask is met, and a baseline attached at
