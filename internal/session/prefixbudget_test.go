@@ -97,6 +97,14 @@ import (
 // [standDescription], which owns all three by name). A belt without `stand`
 // loses nothing either — that section opens by saying it is about the tool. The
 // prompt went 21,495 → 20,712 and the prefix is 47,531, which is 469 under.
+// THE HANDOFF LAW PAID FOR ITSELF OUT OF A SENTENCE SAID TWICE (2026-09-04). A
+// live run ended a turn that had handed its work to a task and was told the ask
+// was not finished, so the page now says a handed-off outcome is not work that
+// remains — 210 bytes across `## Work or words` and `# Critical`. Nothing was
+// raised: the belt's `needs your look` bullet lost its "continue task N"
+// sentence, which `tasks` own description already carries word for word
+// (tools_tasks.go's [tasksDescription]), and the page went 21,289 → 20,840. The
+// prefix is 47,920, which is 80 under.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of

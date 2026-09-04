@@ -2572,6 +2572,21 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if a.turnIsWaitingOnItsOwnWork() {
 		return false, false
 	}
+	// AND A TURN THAT HANDED ITS ASK OFF IS FINISHED EVEN THOUGH THE ASK IS NOT.
+	//
+	// The reader answers "is the OUTCOME in hand", and that is the wrong question
+	// to end a turn on when the outcome has just become a live task's to deliver:
+	// its landing starts a turn here on its own and THAT turn is read for what
+	// remains, with the report in front of it, at wake prices. Carrying on here
+	// buys polls of the work that is about to report — measured, and exactly the
+	// shape [checkpointCarryOnCap] was written for.
+	//
+	// IT IS THE ADMISSION'S OWN FACT AND NOT A READING OF WHAT WAS SAID, and it is
+	// qualified to THIS turn's handoff: an old task, a failed one, and a worker's
+	// own turn all leave this gate shut (turnhandoff.go).
+	if a.turnHandedItsAskOff() {
+		return false, false
+	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
 	// STILL GOT WRONG.
 	//
