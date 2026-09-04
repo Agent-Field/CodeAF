@@ -488,11 +488,18 @@ func appendChecks(checks, more []string) []string {
 
 // checkSource states whose account named a candidate check. A check belongs to
 // the work, never to a shell transcript in the person's pasted words.
+//
+// THE ZERO VALUE IS THE RESTRICTIVE ONE, AND THAT ORDER IS THE POINT. Both
+// callers name the account explicitly today, but a third one written later
+// that forgets to will be handed the person's reading rather than the work's —
+// so a forgotten field costs a run one check it could have made, which is
+// recoverable, instead of costing the gate itself, which is how
+// `chmod 000 tox.ini` came out of a pasted reproduction and ran.
 type checkSource int
 
 const (
-	checksFromWork checkSource = iota
-	checksFromAsk
+	checksFromAsk checkSource = iota
+	checksFromWork
 )
 
 // checkText keeps one part of a node's document beside whose account supplied

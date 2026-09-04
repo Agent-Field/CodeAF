@@ -819,3 +819,34 @@ func TestTheShebangNamesItsFirstWordAndEnvNamesTheNext(t *testing.T) {
 		}
 	}
 }
+
+// TestAForgottenAccountReadsAsThePersonsAndNotTheWorks pins the ORDER of the
+// [checkSource] constants, which is a safety property and not a detail.
+//
+// The gate this file exists for asks whose account a prompt line came from, and
+// answers with a comparison against one of two values. Whichever of them is the
+// zero is the answer a caller gets for free when it forgets to say — and this
+// gate's whole reason for being is that the free answer used to be "the work's",
+// so a pasted `$ chmod 000 tox.ini` was a promise. A caller that forgets now
+// loses a check it could have made. That is the failure this gate should have.
+func TestAForgottenAccountReadsAsThePersonsAndNotTheWorks(t *testing.T) {
+	var forgotten checkSource
+	if forgotten != checksFromAsk {
+		t.Fatal("the zero checkSource is not checksFromAsk, so a caller that forgets whose account this is harvests the person's pasted commands")
+	}
+
+	ground := t.TempDir()
+	pasted := "To see it:\n\n$ echo reproduction-step\n\nand `echo named-check` is the check.\n"
+	got := declaredChecks(pasted, ground, forgotten)
+
+	for _, command := range got {
+		if strings.HasPrefix(command, "echo reproduction-step") {
+			t.Errorf("a prompt line was harvested under the zero account: %q", got)
+		}
+	}
+	// The backticked span is admitted from either account, which is the
+	// deliberate exception stated on [declaredChecks].
+	if len(got) != 1 || !strings.HasPrefix(got[0], "echo named-check") {
+		t.Errorf("the backticked check did not survive the zero account: %q", got)
+	}
+}

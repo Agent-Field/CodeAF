@@ -143,6 +143,14 @@ func (a *Agent) sessionChecks() []string {
 // one could compose a done-condition and the person's own words have to stand.
 // The frame is the source of truth, so this reading cannot drift from its only
 // writer into treating a pasted reproduction as the work's promise.
+//
+// THE PREFIX IS LOAD-BEARING. Every writer of an acceptance either hands the
+// frame over untouched or trims its whitespace, so the frame is still at the
+// front by the time this reads it — [Steward.setAcceptance] only trims, the
+// node's own path is verbatim, restore is verbatim, and [TaskNode.checkTexts]
+// deliberately tests the raw acceptance rather than the composed one. A future
+// composer that puts ANYTHING in front of the frame turns this silently false
+// and puts the pasted reproduction back on the door.
 func acceptanceIsAsk(acceptance string) bool {
 	return strings.HasPrefix(acceptance, routeAskAcceptance)
 }
