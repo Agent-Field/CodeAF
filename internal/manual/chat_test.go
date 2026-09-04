@@ -1853,6 +1853,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		// The ending #593 added, in the words somebody meets it in: on the
+		// stderr line they have just read, on the word in `--json`, and on the
+		// exit code they are staring at with a perfectly good answer above it.
+		// The page had none, and a page whose retrieval nothing holds is a page
+		// the chat talks over the top of — see the lanes page and #453.
+		{"what does it mean when a run says it was delivered without a check", "running-from-the-terminal"},
+		{"what does stop unchecked mean", "running-from-the-terminal"},
+		{"why did my headless run exit 2 when the answer looks fine", "running-from-the-terminal"},
 		{"what does aforge wake do", "running-from-the-terminal"},
 		// "how do I see what a task did" is deliberately NOT here: in the chat a
 		// task's own room is that question's answer, and how-tasks-run rightly

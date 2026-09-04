@@ -753,6 +753,14 @@ func TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas(t *testing.T) {
 			t.Errorf("docs/HEADLESS.md never shows the %s field of the one result envelope", field)
 		}
 	}
+	// `unjudged` is a field and not a stop word, so the sweep at the bottom of
+	// this test does not reach it. It is named here because it is the other
+	// half of the ending #593 added, and a caller reads it instead of parsing
+	// a sentence.
+	if !strings.Contains(document, "`unjudged`") {
+		t.Error("docs/HEADLESS.md never names the `unjudged` field of `do --json`")
+	}
+
 	// The one ladder, and the hatch back to exec's old numbers.
 	for _, promise := range []string{
 		"AFORGE_EXIT_CODES=legacy",
@@ -785,4 +793,113 @@ func TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas(t *testing.T) {
 			t.Errorf("docs/HEADLESS.md never names %q", current)
 		}
 	}
+
+	// AND THE LADDER IS READ OFF THE TABLE RATHER THAN REMEMBERED. Everything
+	// above this line is a string somebody typed here after noticing a drift,
+	// which is a gate that catches the drift it was written for and no other:
+	// the exit-3 row named `price` and `deadline` for as long as the rung
+	// produced four reasons, and every check above passed the whole time. So
+	// the rows are compared against [exitLadder] itself.
+	ladder := headlessLadderSection(t, document)
+	for _, rung := range exitLadder {
+		row := headlessLadderRow(ladder, int(rung.Code))
+		if row == "" {
+			t.Errorf("docs/HEADLESS.md's exit table has no row for exit %d, which exitLadder has", int(rung.Code))
+			continue
+		}
+		for _, stop := range rung.Stops {
+			if !strings.Contains(row, "`"+string(stop)+"`") {
+				t.Errorf("docs/HEADLESS.md's exit-%d row does not name `%s`, which exitLadder says produces that rung:\n  %s",
+					int(rung.Code), stop, row)
+			}
+		}
+	}
+
+	// AND EVERY WORD THE BINARY CAN PUT IN `stop` IS ON THE PAGE SOMEWHERE.
+	// A caller branches on this field, so an ending the page never names is an
+	// ending they meet as an unhandled default. The words come off the two
+	// const blocks that declare them, so one added tomorrow is on this gate
+	// tomorrow — `no-progress` was emitted for months and named nowhere.
+	for _, source := range []struct{ file, kind string }{
+		{"envelope.go", "stopReason"},
+		{"../../internal/exec/executor.go", "StopReason"},
+		{"../../internal/exec/noprogress.go", "StopReason"},
+	} {
+		for _, word := range declaredStopWords(t, source.file, source.kind) {
+			if !strings.Contains(document, "`"+word+"`") {
+				t.Errorf("docs/HEADLESS.md never names the `%s` ending, which %s declares", word, source.file)
+			}
+		}
+	}
+}
+
+// headlessLadderSection returns the body of the one section of docs/HEADLESS.md
+// that carries the shared ladder, so the rows read out of it are that table's
+// and not `exec`'s narrower restatement further down the page.
+func headlessLadderSection(t *testing.T, document string) string {
+	t.Helper()
+	const heading = "### Exit codes — one ladder, and it is the same one on all three commands"
+	start := strings.Index(document, heading)
+	if start < 0 {
+		t.Fatalf("docs/HEADLESS.md no longer carries the section %q, so the ladder cannot be read off it", heading)
+	}
+	body := document[start+len(heading):]
+	if end := strings.Index(body, "\n### "); end >= 0 {
+		body = body[:end]
+	}
+	return body
+}
+
+// headlessLadderRow is the table row for one exit code, or "" when the table
+// has none.
+func headlessLadderRow(section string, code int) string {
+	prefix := fmt.Sprintf("| `%d` |", code)
+	for _, line := range strings.Split(section, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	return ""
+}
+
+// declaredStopWords is every string constant of type `kind` declared in `file`,
+// which is how the gate above learns a new ending without being told.
+func declaredStopWords(t *testing.T, file, kind string) []string {
+	t.Helper()
+	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	words := []string{}
+	for _, declaration := range parsed.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range general.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			named, ok := value.Type.(*ast.Ident)
+			if !ok || named.Name != kind {
+				continue
+			}
+			for _, expression := range value.Values {
+				literal, ok := expression.(*ast.BasicLit)
+				if !ok || literal.Kind != token.STRING {
+					continue
+				}
+				word, err := strconv.Unquote(literal.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				words = append(words, word)
+			}
+		}
+	}
+	if len(words) == 0 {
+		t.Fatalf("no %s constant was found in %s, so this gate would pass on nothing", kind, file)
+	}
+	return words
 }
