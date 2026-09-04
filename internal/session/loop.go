@@ -1200,8 +1200,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// transcript keeps them whole — the journal is the record — and the
 		// request the model is about to read does not. compactToolHistory leaves
 		// the system prompt, the newest frozen batch and everything this turn
-		// has already sent verbatim (toolcompact.go).
-		messages = compactToolHistory(messages, frozenToolHistory)
+		// has already sent verbatim, and every result it reduces names where the
+		// whole of it can be read back (toolcompact.go).
+		messages = compactToolHistory(messages, frozenToolHistory, a.frozenResultSource())
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
@@ -3190,7 +3191,8 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 //     its own bytes (stub.go). Nothing is described, nothing is decided, and the
 //     bytes stay readable — in the store's thread, or in this session's logs/.
 //
-//  2. THE FOLD. If the transcript is still over threshold, the oldest ASSISTANT
+//  2. THE FOLD. If the transcript is still above [compactTarget] — the headroom
+//     line, not the trigger the pass fired on — the oldest ASSISTANT
 //     work is replaced by one marker line naming how much went and where it can
 //     be read, and the fold runs down to [compactTarget] — below the threshold
 //     by half a reserve, so the pass that just ran is not the pass that runs
@@ -3256,7 +3258,14 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 
 	pass := compactionPass{stored: a.chatlog != nil}
 	pass.stubbed = a.stubOldOutputsLocked()
-	if a.estimateTokensLocked() > a.compactThreshold() {
+	// THE FOLD IS ASKED FOR AGAINST THE TARGET, NOT THE TRIGGER. The pass fires
+	// at the threshold, and the stub pass alone routinely lands the estimate just
+	// under it — below the trigger, above the target, with no headroom at all. The
+	// gate was the threshold, so the fold was skipped, the next step's few
+	// thousand tokens crossed the line again, and the session was back in exactly
+	// the once-per-step thrash [compactTarget] exists to end. What buys the
+	// headroom is the same figure the fold already stops at.
+	if a.estimateTokensLocked() > a.compactTargetTokens() {
 		pass.folded, pass.marker = a.foldLocked()
 	}
 	a.compacting = false

@@ -1715,6 +1715,28 @@ runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. 
 result bytes remain in `logs/stubs/` (or the store), the model can `read` the path in each
 stub, and the session journal keeps the original result bytes.
 
+**Rung 0 — what an old result looks like in the request.** Before any of the rungs below
+fire, the copy of the conversation that goes to the model already carries the tool results
+of *earlier* turns shortened. Your transcript and the session journal keep every byte; only
+the request is shortened, and only for results the model has already worked from — the newest
+batch and everything the running turn has produced go verbatim. A shortened result reads:
+
+```
+[reduced view: bash · 41208 bytes · full: grep call_a91f in /home/x/.aforge/v3/sessions/abc.jsonl]
+go build ./...
+…[40608 bytes elided]…
+FAIL	./internal/session	0.412s
+```
+
+Both ends are kept — the first 200 bytes, which is what ran and where an error message
+lands, and the last 400, which is what it concluded — with the exact count of what was cut
+between them. The pointer is the store's copy of that result when the conversation has a
+store, and otherwise the session journal with the call id to grep for, so the model can
+fetch the whole of it in one call. **A conversation that can name neither says
+`full: not retrievable`** rather than a path that is not there. When a turn has made so many
+calls that even these views are too much, the oldest fall back to the same one-line stub
+described next.
+
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
 **4 turns** and larger than **1500 bytes** are replaced *in the live context* by a pointer
 line naming the tool, its first line, its size and where the whole of it lives:

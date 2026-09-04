@@ -1177,6 +1177,33 @@ never candidates; every replaced result remains readable through its stub path.
 the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
 the line and the unseen-result horizon.
 
+## The frozen tool history, rebuilt per request
+
+Every request of every tool round re-sends the whole conversation, and old tool
+results are the bulk of it. The snapshot on its way to the provider therefore
+carries the results of earlier turns as a REDUCED VIEW, while the live
+transcript and the journal keep every byte (`internal/session/toolcompact.go`).
+
+| bound | value | why |
+| --- | --- | --- |
+| what one reduced result keeps | head **200** (`checkpointResultBytes/2`) + tail **400** (`checkpointResultBytes`) | the tail is the verdict the checkpoint reader already proved is enough; the head is what ran, and where `no such file` and a compiler's banner land. Both are derived from the one bound rather than written twice. |
+| left verbatim below | **600 bytes** (`compactViewBytes`) | a view of a result that small repeats most of it and then charges a header for having done so. |
+| all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
+| the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
+
+Every reduction names where the whole result can be read — the store ref for
+that exact message, else the session journal with the call id to grep for — and
+both answers come from memory (the ref map, the open file's name). **No pass
+reads the journal**: it runs per request, and a read per request would cost more
+than the view saves. A session that can name neither says `not retrievable`
+rather than a path that is not there.
+
+Pinned by `internal/session/toolcompact_test.go`: the retrieval pointer is
+opened and grepped in `TestAReducedResultSentToTheProviderCanBeReadBackFromTheJournal`,
+the repeat is pinned by `TestCompactToolHistoryRepeatsItselfExactly`, the pairing
+by `TestCompactToolHistoryKeepsEveryCallPairedWithItsResult`, and
+`BenchmarkCompactToolHistory` reports the constant at 100, 400 and 1,600 rounds.
+
 ## The compaction threshold, and the ceiling that is no longer a constant
 
 Compaction fires at `window − max(15% of window, 16,384)`
@@ -1235,6 +1262,16 @@ free to move:
 The chain `threshold > compactTarget > keepRecent` holds under both laws, because
 `compactTarget` derives from whichever threshold governs rather than from the
 derivation alone.
+
+**And the fold inside a pass is asked for against the target, not the trigger.**
+A pass stubs first, and the stub pass alone routinely lands the estimate just
+under the trigger and thousands of tokens above the target — below the line that
+fired the pass, with no headroom bought. Gated on the trigger, the fold then did
+not run at all and the next step fired another pass, which is the once-a-step
+thrash `compactTarget` exists to end. Pinned by
+`TestAPassThatOnlyStubbedStillFoldsToTheTarget`, whose fixture SEARCHES for a
+history that stubs to between the two lines rather than hard-coding today's
+arithmetic.
 
 Pinned by `internal/session/window_policy_test.go`,
 `internal/session/window_guard_test.go` and

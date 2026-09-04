@@ -1995,6 +1995,19 @@ func (s *sessionFile) journalPath() string {
 	return abs
 }
 
+// path is journalPath for a caller that does not already hold the file's lock,
+// and it is nil-safe because a session without a journal is an ordinary session.
+// It reads the open file's name and nothing on disk, which is what lets the
+// per-request snapshot view name a journal without reading one.
+func (s *sessionFile) path() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.journalPath()
+}
+
 // messageLines names the journal this session is writing and the most recent
 // line carrying each of first and last, so a fold marker can point at a range
 // in a file the model can grep or read rather than at a store id neither tool
