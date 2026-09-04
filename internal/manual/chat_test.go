@@ -494,6 +494,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it move my work to a task after five minutes", "starting-aforge"},
 		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
 		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
+		{"the reader timed out and then it did the whole fix twice", "starting-aforge"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},
