@@ -889,29 +889,156 @@ func TestThePointerFallsBackToTheJournalAndThenToNothing(t *testing.T) {
 	message := ai.Message{Role: "tool", ToolCallID: "call-77",
 		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(1, 50)}}}
 
-	filed := agent.fullResultPointer(message)
+	place := agent.resultPlaceNow()
+	filed := agent.fullResultPointer(message, place)
 	if filed == "" || strings.Contains(filed, "grep ") {
 		t.Fatalf("a session with a workspace filed nothing: %q", filed)
 	}
 	// Asked twice, answered from memory rather than from the filesystem: the
 	// same path, and no second write.
-	if again := agent.fullResultPointer(message); again != filed {
+	if again := agent.fullResultPointer(message, place); again != filed {
 		t.Fatalf("the pointer moved between two requests: %q then %q", filed, again)
 	}
 
-	agent.config.Workspace = ""
 	other := ai.Message{Role: "tool", ToolCallID: "call-78",
 		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(2, 50)}}}
-	fallback := agent.fullResultPointer(other)
+	nowhere := resultPlace{journal: journal}
+	fallback := agent.fullResultPointer(other, nowhere)
 	if fallback != "grep call-78 in "+journal {
 		t.Fatalf("journal fallback = %q, want the journal and the call id", fallback)
 	}
 
-	agent.file = nil
-	if got := agent.fullResultPointer(other); got != "" {
+	if got := agent.fullResultPointer(other, resultPlace{}); got != "" {
 		t.Fatalf("a session that can name nowhere named %q", got)
 	}
 	if line := reducedOutcomeLine("read", "output", ""); !strings.Contains(line, compactNoSource) {
 		t.Fatalf("a sourceless reduction did not say so: %q", line)
+	}
+}
+
+// anchorableAgent is an OWNED conversation — one that has no project yet and may
+// still acquire one — which is the shape [Agent.AnchorWorkspace] serves. It has
+// no folder of its own, so its droppings land inside the workspace and its stub
+// paths are RELATIVE to it, which is the case an anchor can invalidate.
+func anchorableAgent(t *testing.T) *Agent {
+	t.Helper()
+	agent, err := newAgent(Config{
+		Workspace: t.TempDir(), Place: Place{Owned: true},
+		SessionFile: filepath.Join(t.TempDir(), "session.jsonl"),
+		Model:       "test/model", System: "SYSTEM",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	return agent
+}
+
+// A POINTER SURVIVES AN ANCHOR. A stub path is written relative to the workspace
+// it was filed in, and the model's read tool resolves it against the workspace
+// the belt now has — so a memo keyed by the result alone would hand back a path
+// that reads as something else, or as nothing, the moment the conversation
+// acquires its project.
+func TestAPointerStillOpensTheSameBytesAfterTheWorkspaceMoves(t *testing.T) {
+	agent := anchorableAgent(t)
+	body := sentinelOutput(3, 120)
+	message := ai.Message{Role: "tool", ToolCallID: "call-9",
+		Content: []ai.ContentPart{{Type: "text", Text: body}}}
+
+	before := agent.fullResultPointer(message, agent.resultPlaceNow())
+	if got := readWholeFile(t, beltTool(t, agent, "read"), before); !strings.Contains(got, "SENTINEL-") {
+		t.Fatalf("the first pointer %q did not open the result", before)
+	}
+
+	repo := t.TempDir()
+	if _, err := agent.AnchorWorkspace(repo); err != nil {
+		t.Fatalf("anchor: %v", err)
+	}
+	after := agent.fullResultPointer(message, agent.resultPlaceNow())
+	// The belt was rebuilt around the new workspace, so the pointer has to be
+	// read with the tool the model now holds.
+	got := readWholeFile(t, beltTool(t, agent, "read"), after)
+	if !strings.Contains(got, "SENTINEL-") {
+		t.Fatalf("after anchoring to %q the pointer %q opens nothing (was %q)", repo, after, before)
+	}
+	if !strings.Contains(got, "ROUND-03-UNIQUE-TAIL") {
+		t.Fatalf("the pointer %q opened something else", after)
+	}
+}
+
+// AND THE RESOLUTION IS SAFE WHILE THE ANCHOR MOVES. The workspace a pointer is
+// filed against is written under a.mu; this is the reason the place is read once
+// per request rather than field by field. Run with -race, this is the assertion.
+func TestResolvingAPointerRacesNothingWithAnAnchor(t *testing.T) {
+	agent := anchorableAgent(t)
+	message := ai.Message{Role: "tool", ToolCallID: "call-10",
+		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(4, 60)}}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for round := 0; round < 40; round++ {
+			if got := agent.fullResultPointer(message, agent.resultPlaceNow()); got == "" {
+				t.Errorf("round %d resolved nowhere", round)
+				return
+			}
+		}
+	}()
+	// One anchor is all the seam allows; the reader above is running across it.
+	if _, err := agent.AnchorWorkspace(t.TempDir()); err != nil {
+		t.Errorf("anchor: %v", err)
+	}
+	<-done
+}
+
+// THE MEMO IS BOUNDED. A conversation that runs for hours must not grow a map
+// entry per result for the life of the process.
+func TestThePointerMemoStaysBounded(t *testing.T) {
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, nil)
+	place := agent.resultPlaceNow()
+	for index := 0; index < filedCap+20; index++ {
+		agent.fullResultPointer(ai.Message{Role: "tool", ToolCallID: fmt.Sprintf("c-%d", index),
+			Content: []ai.ContentPart{{Type: "text", Text: fmt.Sprintf("result number %d\n", index) +
+				strings.Repeat("body ", 400)}}}, place)
+	}
+	agent.filedMu.Lock()
+	held := len(agent.filed)
+	agent.filedMu.Unlock()
+	if held > filedCap {
+		t.Fatalf("the memo holds %d entries, over the %d cap", held, filedCap)
+	}
+	if held == 0 {
+		t.Fatal("the memo holds nothing at all, so it is not memoizing")
+	}
+}
+
+// A WRITE THAT CANNOT LAND IS NOT RETRIED PER REQUEST. The fallback is the
+// journal, and asking again does not touch the filesystem again.
+func TestAFailedFilingFallsToTheJournalWithoutSpinning(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	// A droppings home that is a FILE is a home nothing can be written into.
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	place := resultPlace{workspace: blocked, droppings: Place{Dir: blocked}, journal: journal}
+	message := ai.Message{Role: "tool", ToolCallID: "call-11",
+		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(5, 40)}}}
+
+	first := agent.fullResultPointer(message, place)
+	if first != "grep call-11 in "+journal {
+		t.Fatalf("a failed filing answered %q, want the journal fallback", first)
+	}
+	agent.filedMu.Lock()
+	remembered, known := agent.filed[place.workspace+"\x00"+chatRefKey(message)]
+	agent.filedMu.Unlock()
+	if !known || remembered != "" {
+		t.Fatalf("the failure was not remembered: %q known=%v", remembered, known)
+	}
+	if again := agent.fullResultPointer(message, place); again != first {
+		t.Fatalf("the second answer moved: %q then %q", first, again)
 	}
 }

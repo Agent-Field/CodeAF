@@ -115,6 +115,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, 
 	}
 
 	earlier := shapeEntries(a.messages, a.file)
+	place := a.resultPlaceLocked()
 	target := turnWorkingTarget(a.window()) * bytesPerToken
 	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
 	// A pass that cannot buy the whole headroom does not run. Every rewrite
@@ -142,7 +143,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, 
 			text := messageContentText(message)
 			// The same pointer the stub pass and the snapshot view give, and for
 			// the same reason: a store ref is not one ([Agent.fullResultPointer]).
-			pointer := a.fullResultPointer(message)
+			pointer := a.fullResultPointer(message, place)
 			if pointer == "" {
 				complete = false
 				break

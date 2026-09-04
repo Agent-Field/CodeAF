@@ -1202,7 +1202,11 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// the system prompt, the newest frozen batch and everything this turn
 		// has already sent verbatim, and every result it reduces names where the
 		// whole of it can be read back (toolcompact.go).
-		messages = compactToolHistory(messages, frozenToolHistory, a.fullResultPointer)
+		// The place a pointer may name is read ONCE for the whole request, under
+		// the lock an anchor takes to move it (toolcompact.go).
+		place := a.resultPlaceNow()
+		messages = compactToolHistory(messages, frozenToolHistory,
+			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,

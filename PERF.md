@@ -1202,9 +1202,21 @@ call id to grep for; and otherwise with `not retrievable`.
 used to give. Nothing on the belt fetches a store message by id —
 `search_conversations` searches words and clips every hit to one line
 (`tools_conversations.go`) — so with memory on, every stub in the session pointed
-at a handle only this process could resolve. The bytes are filed **once** per
-result and remembered (`Agent.filed`), because this is asked on every request of
-every tool round and the answer may not cost a stat each time.
+at a handle only this process could resolve.
+
+The memo behind it has three bounds, because it sits on the request path:
+
+| bound | value | why |
+| --- | --- | --- |
+| the place a pointer may name | one reading per request (`Agent.resultPlaceNow`) | the workspace moves under `a.mu` (`AnchorWorkspace`); a resolver reading the field per result would race it and could answer two ways inside one request. The stub pass and the turn fold pass the same reading, already holding the lock. |
+| the memo's key | workspace + the result's fingerprint | a stub path is relative to the workspace it was filed in, so an entry kept across an anchor names a file `read` now resolves elsewhere. |
+| the memo's size | `filedCap` = `defaultContextWindow × bytesPerToken ÷ stubMinBytes` (≈ 341) | the most results one request could carry. Past it the memo is dropped whole rather than evicted one at a time; a miss costs one write. |
+
+A filing that FAILED is remembered as the absence it is, so the fallback is the
+journal and the request path does not retry the write per result per request. The
+retry happens when the workspace changes or the memo is dropped. The write itself
+lands through a rename (`writeStub`), because the file may be read by a model
+following a pointer that is already in flight.
 
 Pinned by `internal/session/toolcompact_test.go`. Retrieval is proved with the
 belt's OWN read tool rather than with a string assertion:
@@ -1213,7 +1225,11 @@ with a store AND a journal behind it, takes the pointer out of the request the
 provider was sent, pages the file it names and finds the sentinel the view
 elided; `TestStubbingWithAStoreOnPointsAtSomethingTheBeltCanOpen` does the same
 for the end-of-turn stub. The fallbacks are pinned by
-`TestThePointerFallsBackToTheJournalAndThenToNothing`, the repeat by
+`TestThePointerFallsBackToTheJournalAndThenToNothing`, the anchor and the race by
+`TestAPointerStillOpensTheSameBytesAfterTheWorkspaceMoves` and
+`TestResolvingAPointerRacesNothingWithAnAnchor` (the latter is a `-race`
+assertion), the bounds by `TestThePointerMemoStaysBounded` and
+`TestAFailedFilingFallsToTheJournalWithoutSpinning`, the repeat by
 `TestCompactToolHistoryRepeatsItselfExactly`, the pairing by
 `TestCompactToolHistoryKeepsEveryCallPairedWithItsResult`, and
 `BenchmarkCompactToolHistory` reports the constant at 100, 400 and 1,600 rounds.

@@ -163,6 +163,42 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	return out
 }
 
+// resultPlace is where this session can put a result's bytes and where its
+// journal is, taken as ONE READING. [Agent.AnchorWorkspace] rewrites the
+// workspace under a.mu while the snapshot view runs without that lock, so the
+// view reads this once at its request boundary and every pointer in that request
+// answers from the same place.
+type resultPlace struct {
+	workspace string
+	droppings Place
+	journal   string
+}
+
+// resultPlaceNow is the reading for a caller that holds nothing;
+// resultPlaceLocked is the same reading for the stub pass and the turn fold,
+// which already hold a.mu and must not take it again.
+func (a *Agent) resultPlaceNow() resultPlace {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.resultPlaceLocked()
+}
+
+func (a *Agent) resultPlaceLocked() resultPlace {
+	return resultPlace{
+		// The FAMILY'S folder, which is a worker's commissioning conversation and
+		// not the repository it borrowed (landing.go).
+		workspace: strings.TrimSpace(a.config.Workspace),
+		droppings: a.config.droppingsPlace(),
+		journal:   a.file.path(),
+	}
+}
+
+// filedCap bounds the pointer memo at the most results one request could carry —
+// a default window's bytes over the smallest result the stub pass will file. Past
+// it the memo is dropped whole rather than evicted one at a time: a miss costs one
+// write, and a long conversation must not grow a map for the life of the process.
+const filedCap = defaultContextWindow * bytesPerToken / stubMinBytes
+
 // fullResultPointer is the ONE answer to "where can the whole of that result be
 // read back", shared by the snapshot view here, the end-of-turn stub pass
 // (stub.go) and the current-turn fold (turnfold.go). One resolver, so a stub and
@@ -180,43 +216,45 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 //     long line, but a real one at a real path;
 //  3. nothing, said as nothing.
 //
-// The file is written ONCE per result and remembered ([Agent.filed]), because
-// this is asked on every request of every tool round and the answer cannot cost
-// a stat each time. It takes no session lock: the stub pass asks holding a.mu
-// and the snapshot view asks without it.
-func (a *Agent) fullResultPointer(message ai.Message) string {
+// The file is written once per result and remembered, because this is asked on
+// every request of every tool round and the answer cannot cost a write each time.
+// The memo is keyed by the WORKSPACE as well as the result: a stub path is
+// relative to the workspace it was filed in, so an answer kept across an anchor
+// would name a file the model's own read tool now resolves somewhere else.
+//
+// A write that failed is remembered too, as the absence it is. Retrying per
+// result per request would be an I/O spin on the request path with no policy
+// behind it; the retry happens when the workspace changes or the memo is dropped.
+//
+// It takes no session lock, so a caller holding a.mu may ask it.
+func (a *Agent) fullResultPointer(message ai.Message, place resultPlace) string {
 	text := messageContentText(message)
 	if strings.TrimSpace(text) == "" {
 		return ""
 	}
-	key := chatRefKey(message)
+	key := place.workspace + "\x00" + chatRefKey(message)
 	a.filedMu.Lock()
 	pointer, known := a.filed[key]
 	a.filedMu.Unlock()
-	if known {
+	if !known && place.workspace != "" {
+		pointer, _ = writeStub(place.droppings, place.workspace, text)
+		a.filedMu.Lock()
+		if a.filed == nil || len(a.filed) >= filedCap {
+			a.filed = make(map[string]string, 32)
+		}
+		a.filed[key] = pointer
+		a.filedMu.Unlock()
+	}
+	if pointer != "" {
 		return pointer
 	}
-	if workspace := strings.TrimSpace(a.config.Workspace); workspace != "" {
-		// The FAMILY'S folder, which is a worker's commissioning conversation and
-		// not the repository it borrowed (landing.go).
-		if path, err := writeStub(a.config.droppingsPlace(), workspace, text); err == nil {
-			a.filedMu.Lock()
-			if a.filed == nil {
-				a.filed = make(map[string]string, 32)
-			}
-			a.filed[key] = path
-			a.filedMu.Unlock()
-			return path
-		}
-	}
-	journal := a.file.path()
-	if journal == "" {
+	if place.journal == "" {
 		return ""
 	}
 	if id := strings.TrimSpace(message.ToolCallID); id != "" {
-		return "grep " + id + " in " + journal
+		return "grep " + id + " in " + place.journal
 	}
-	return journal
+	return place.journal
 }
 
 // toolCallNames maps a call id to the tool that was asked for, over one walk of

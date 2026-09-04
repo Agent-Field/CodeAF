@@ -136,6 +136,7 @@ func (a *Agent) stubOldOutputs() {
 // pointing at nothing is the one failure this may not have.
 func (a *Agent) stubOldOutputsLocked() int {
 	a.alignReasoningLocked()
+	place := a.resultPlaceLocked()
 	cut := stubCut(a.messages)
 	candidates, reclaim := stubCandidates(a.messages, cut)
 	if len(candidates) == 0 {
@@ -159,7 +160,7 @@ func (a *Agent) stubOldOutputsLocked() int {
 	for _, index := range candidates {
 		message := a.messages[index]
 		text := messageContentText(message)
-		pointer := a.fullResultPointer(message)
+		pointer := a.fullResultPointer(message, place)
 		if pointer == "" {
 			continue
 		}
@@ -253,6 +254,12 @@ func stubCut(messages []ai.Message) int {
 // same result stubbed twice — a re-read of the same file, a resumed session
 // stubbing again — is one file on disk, and a file that is already there is left
 // exactly as it is rather than rewritten.
+//
+// THE WRITE LANDS THROUGH A RENAME, because the reader of this file is a model
+// following a pointer that may already be in a request: two passes filing the
+// same result while a `read` runs must never show half of it. The temporary is
+// minted in the destination directory with a random name for [writeFixDocument]'s
+// reason — a fixed `.tmp` would be two writers on one file.
 func writeStub(place Place, workspace, text string) (string, error) {
 	digest := sha256.Sum256([]byte(text))
 	directory := droppingsDir(place, workspace, droppingStubs)
@@ -263,7 +270,26 @@ func writeStub(place Place, workspace, text string) (string, error) {
 	if info, err := os.Stat(full); err == nil && info.Size() == int64(len(text)) {
 		return stubPath(workspace, full), nil
 	}
-	if err := os.WriteFile(full, []byte(text), 0o600); err != nil {
+	temporary, err := os.CreateTemp(directory, ".stub-*.txt")
+	if err != nil {
+		return "", err
+	}
+	name := temporary.Name()
+	if _, err := temporary.WriteString(text); err != nil {
+		temporary.Close()
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := os.Rename(name, full); err != nil {
+		_ = os.Remove(name)
 		return "", err
 	}
 	return stubPath(workspace, full), nil
