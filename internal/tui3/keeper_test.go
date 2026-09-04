@@ -186,7 +186,7 @@ func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
 	}
 }
 
-// ctrl+c twice closes everything, and closing everything is idempotent.
+// ctrl+c twice ends every in-process conversation, and leaving is idempotent.
 func TestQuittingClosesEveryConversation(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
@@ -195,8 +195,8 @@ func TestQuittingClosesEveryConversation(t *testing.T) {
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
 
-	a.closeEverything()
-	a.closeEverything()
+	a.leaveEverything()
+	a.leaveEverything()
 	if !first.closed || !second.closed {
 		t.Fatalf("closed: front=%v behind=%v", second.closed, first.closed)
 	}

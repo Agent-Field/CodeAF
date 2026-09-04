@@ -6419,8 +6419,9 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 	return nil
 }
 
-// quit is the door out of the PROGRAM, and it takes every conversation this
-// terminal is holding with it.
+// quit is the door out of the PROGRAM. It takes this terminal off every
+// conversation it is holding — ending the ones this process runs, detaching from
+// the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
 	// A provider connection owns a loopback listener. It leaves with the
 	// surface even when the browser is still open, just as account connections
@@ -6438,11 +6439,13 @@ func (a *app) quit() tea.Cmd {
 	if a.draftFile != "" {
 		writeDraft(a.draftFile, a.leavingDraft())
 	}
-	// AND EVERY CONVERSATION, IN PARALLEL (keeper.go's [app.closeEverything]).
-	// The ones this terminal is holding behind the screen have their own drafts
+	// AND THIS TERMINAL COMES OFF EVERY CONVERSATION, IN PARALLEL (keeper.go's
+	// [app.leaveEverything]). A hosted conversation is DETACHED and keeps
+	// working; an in-process one ends here, because this process was the only
+	// thing running it. The ones held behind the screen have their own drafts
 	// already on disk — written when they were left — so what is above is the
 	// only box that still needs saving.
-	a.closeEverything()
+	a.leaveEverything()
 	// AND THE FILE DOOR GOES WITH THE SURFACE THAT OPENED IT. Every minted id and
 	// the browse token die here, which is the whole of the capability bargain: a
 	// URL that outlived the conversation would be a door onto somebody else's

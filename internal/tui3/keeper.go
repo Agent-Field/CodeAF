@@ -606,8 +606,21 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	return cmd, true
 }
 
-// closeEverything closes the conversation in front and every one in the keeper,
-// IN PARALLEL, and is safe to call twice.
+// leaveEverything is what the PROGRAM leaving does to the conversations this
+// terminal holds — the one in front and every one in the keeper — IN PARALLEL,
+// and it is safe to call twice.
+//
+// LEAVING A WINDOW IS NOT ENDING SOMEBODY'S WORK. This used to interrupt and
+// close every agent, which is right for a conversation whose engine is this
+// process and wrong for one that is hosted: a hosted agent's Close is a message
+// to the far side saying the conversation is over ([remote.Agent.Close] sends
+// it), so closing a terminal on a running task paused the task and restarted its
+// worker on the way back. The window going away is a view leaving; the engine
+// keeps the turn, the tasks, the questions and the journal.
+//
+// So each agent is asked which it is ([detachable]) and answers for itself. An
+// in-process conversation still ends here, because there is nothing left to run
+// it once this process is gone.
 //
 // PARALLEL BECAUSE THE GRACES OVERLAP RATHER THAN SUM. [session.Agent.Close] is
 // bounded on every axis and its phases are sequential, so a row of closes is
@@ -615,7 +628,7 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // quit never waits on somebody else's courtesy. Nothing caps how many
 // conversations a window holds, so a serial quit would get slower the more of
 // them somebody had open; this one does not.
-func (a *app) closeEverything() {
+func (a *app) leaveEverything() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
 		agents = append(agents, a.agent)
@@ -633,11 +646,29 @@ func (a *app) closeEverything() {
 		wg.Add(1)
 		go func(agent Agent) {
 			defer wg.Done()
-			agent.Interrupt()
-			_ = agent.Close()
+			leaveAgent(agent)
 		}(agent)
 	}
 	wg.Wait()
+}
+
+// leaveAgent takes this terminal off one conversation: a detach where the work
+// outlives the window, and the ordinary interrupt-and-close where it does not.
+func leaveAgent(agent Agent) {
+	if hosted, ok := agent.(detachable); ok {
+		_ = hosted.Detach()
+		return
+	}
+	agent.Interrupt()
+	_ = agent.Close()
+}
+
+// workOutlivesExit reports whether this conversation's work would keep going
+// after the window closed. It is what the quit warning is written from
+// (quitarm.go), so the sentence and the act cannot disagree.
+func workOutlivesExit(agent Agent) bool {
+	hosted, ok := agent.(detachable)
+	return ok && hosted.WorkOutlivesExit()
 }
 
 // ── what the keeper is asked on a frame ─────────────────────────────────────

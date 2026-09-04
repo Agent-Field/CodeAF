@@ -1369,6 +1369,33 @@ func (a *Agent) Close() error {
 	return err
 }
 
+// WorkOutlivesExit says whether this conversation keeps working once the view
+// goes. It is [Welcome.Persistent] — the engine's own statement of its lifetime,
+// which is the only honest source: a conversation hosted by the daemon on this
+// laptop names no machine at all, so nothing about the transport or the host
+// name can be read for it.
+func (a *Agent) WorkOutlivesExit() bool { return a.c.Welcome().Persistent }
+
+// Detach lets go of this VIEW of the conversation, which is what a terminal
+// closing means: the window is gone and the work need not be.
+//
+// Against a session host it sends [MethodDetach] — nothing interrupted, nothing
+// closed, the connection ended by the far side's reader loop with the turn left
+// to finish — because [MethodClose] would end a running task on behalf of
+// somebody who only shut a window. Against a one-shot engine, whose whole life
+// is this pipe, leaving IS ending, so the interrupt and the flush stand.
+//
+// Every call below is bounded ([Client.call] carries callDeadline) and safe on a
+// dead connection, so this cannot hold a quit open.
+func (a *Agent) Detach() error {
+	if a.WorkOutlivesExit() {
+		_, err := a.c.call(nil, MethodDetach, nil)
+		return err
+	}
+	a.Interrupt()
+	return a.Close()
+}
+
 // Model is the model the next request will use.
 //
 // IT IS A MEMORY READ. The engine states this at the door and again whenever it

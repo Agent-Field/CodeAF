@@ -307,8 +307,10 @@ whole arrangement under *Switch between projects without leaving*.
 
 `ctrl+c` is the other road out and it takes **two presses**, and it closes **everything**:
 the first arms the door and the hint slot reads `ctrl+c again to quit`, with how many
-conversations and what work a second press would stop — `ctrl+c again to quit ·
-3 conversations · 2 tasks and a job will stop`. A second press within 1.5 seconds leaves.
+conversations and what leaving does to the work — `ctrl+c again to quit · 3 conversations ·
+2 tasks and a job will stop` for work running inside this terminal, and `· a task keeps
+running` for work the aforge service is running, which a closed window does not touch. A
+second press within 1.5 seconds leaves.
 While a turn is running `ctrl+c` interrupts the turn instead and does not arm anything. The
 keys page has the whole rule under "Quitting aforge".
 
