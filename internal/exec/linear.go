@@ -736,6 +736,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// finish; zero means no landing has begun yet.
 	landing := 0
 	landingStop := StopReason("")
+	// landingCeiling is the spend where a budget landing must end. Zero means
+	// no token-bounded landing has begun; the deadline landing keeps its clock.
+	landingCeiling := 0
 	// The no-progress guard catches a leaf that is spending turns without
 	// advancing: repeating the same tool call, going many turns without
 	// writing anything or learning anything new, or simply running past any
@@ -1181,8 +1184,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// contextPressure and reuseCeiling in meter.go for the measurement that
 		// retired them.
 		if exhausted(outcome, l.maxTokens) && landing == 0 {
+			crossingSpend := spent(outcome)
 			landing = landingTurns
 			landingStop = StopBudget
+			landingCeiling = crossingSpend + landingAllowance(l.maxTokens)
 			// Same reason as the deadline reserve above: the budget is spent
 			// here, whether or not the landing later has to be cut short.
 			outcome.Exhausted = StopBudget
@@ -1190,7 +1195,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			// and the line a person reads are composed from one fact rather
 			// than from two guesses. See Outcome.Meter.
 			outcome.Meter = Meter{
-				Name: MeterCost, Reached: spent(outcome), Allowed: l.maxTokens,
+				Name: MeterCost, Reached: crossingSpend, Allowed: l.maxTokens,
 				Unit: "tokens of billed work",
 			}
 			reached := "budget exhausted — landing reserve granted"
@@ -1203,7 +1208,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			continue
 		}
 		if landing > 0 {
-			if landing == 1 {
+			allowanceSpent := landingCeiling > 0 && spent(outcome) >= landingCeiling
+			if landing == 1 || allowanceSpent {
+				if allowanceSpent && landing > 1 {
+					trace.note("landing reserve spent its tokens — ended before its last turn")
+				}
 				outcome.Stop = landingStop
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 				return l.land(ctx, task, outcome, started, opening), nil
@@ -1667,11 +1676,30 @@ func outputClause(task Task) string {
 // land the work.
 const wrapUpAt = 0.7
 
-// landingTurns is the reserve granted after the budget runs out: enough calls
-// to restore consistency, run one check, and repair one breakage — never
-// enough to keep working. The reserve is what stands between "budget reached"
-// and "workspace left broken mid-edit".
+// landingTurns is the turn half of the reserve granted after the budget runs
+// out: enough calls to restore consistency, run one check, and repair one
+// breakage — never enough to keep working. The token half below may end it
+// earlier; together they stand between "budget reached" and "workspace left
+// broken mid-edit" without buying another grant.
 const landingTurns = 4
+
+// landingTokenShare is what the landing reserve may spend, as a fraction of the
+// grant the leaf has already spent. At the measured honest turn cost — about
+// 11k input tokens against the cached discount described by defaultLeafTokens —
+// a fifth of the default grant buys two to three turns: enough to make the tree
+// consistent, check it, repair it, and answer. On the trial's 30-39k turns it
+// buys one, which is the least a landing can be, and never a second grant.
+const landingTokenShare = 0.2
+
+// landingAllowance is what a landing may add to what the leaf had spent when
+// its grant ran out. It is sized from the grant so a small grant cannot buy a
+// disproportionately large ending.
+func landingAllowance(maxTokens int) int {
+	if maxTokens <= 0 {
+		return 0
+	}
+	return int(float64(maxTokens) * landingTokenShare)
+}
 
 // deadlineLandingReserve leaves enough of a node's own deadline for a bounded
 // landing without taking more than two minutes away from long-running work.
