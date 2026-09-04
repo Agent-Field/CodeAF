@@ -467,9 +467,9 @@ var envelopeContract = []string{
 // spelling for each is named in docs/design/polish/envelope-and-exits.md.
 //
 // `settled`, `spend_work`, `spend_overhead`, `blocked_on`, `learned`,
-// `plan_model`, the two `*_source` fields and `subharness` are NOT duplicates of
-// anything in the contract — they are facts only `do` has — and they stay for
-// that reason rather than for compatibility.
+// `plan_model`, the two `*_source` fields, `subharness` and `workspace` are NOT
+// duplicates of anything in the contract — they are facts only `do` has — and
+// they stay for that reason rather than for compatibility.
 func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	fields := map[string]any{
 		"deliverable":    outcome.Deliverable,
@@ -485,6 +485,7 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 		"model_source":      outcome.ModelSource,
 		"plan_model_source": outcome.PlanModelSource,
 		"subharness":        outcome.Subharness,
+		"workspace":         outcome.workspace,
 	}
 	if fields["artifacts"] == nil {
 		fields["artifacts"] = []string{}

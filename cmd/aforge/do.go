@@ -125,6 +125,12 @@ type headlessOutcome struct {
 	// one spelling all three headless verbs share.
 	tokensIn  int
 	tokensOut int
+	// workspace is the directory this errand worked in, absolute, as
+	// errandWorkspace resolved it. It is the answer to "where did the work
+	// go?", and it is on the outcome rather than read again at the end
+	// because it is decided once, at the door, and a second resolution is a
+	// second answer. Empty only on a run that never got as far as opening one.
+	workspace string
 	// BlockedOn is the question this run could not answer, verbatim. It is
 	// empty on every run that was not stopped by one, and non-empty only
 	// alongside a non-zero exit code and an empty deliverable.
@@ -499,11 +505,19 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		return false
 	}
 
+	// The workspace is resolved once at this door rather than inside
+	// headlessBrain, so the ending can name it even when headlessBrain returns
+	// early to a resident. Resolving it again would make a second answer.
+	workspaceRoot, err := errandWorkspace(request.workspace)
+	if err != nil {
+		return headlessOutcome{}, err
+	}
 	// What the workers wrote, caught on its way past. Nothing fills it on a run
 	// this process handed to a resident that already holds the store — that work
 	// happens in another process, and the watcher falls back to prose there.
 	produced := &errandRegistry{}
-	brain, release, deferredTo, err := headlessBrain(window, session, request, seats, consent, ephemeral, produced)
+	brain, release, deferredTo, err := headlessBrain(window, session, request, seats, consent, ephemeral,
+		workspaceRoot, produced)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -571,6 +585,16 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		return headlessOutcome{}, err
 	}
 	outcome.Seconds = time.Since(started).Seconds()
+	outcome.workspace = workspaceRoot
+	// AND THE ENDING SAYS WHERE THE WORK WENT. Said here, once, because five
+	// different arms compose an ending and a sixth will be written; this is
+	// the one place all of them pass through. A run handed to a resident is
+	// not spoken for: the registry this process holds is empty because the
+	// work happened somewhere else, which is not the same fact as an empty
+	// tree.
+	if deferredTo == nil {
+		outcome.Deliverable = groundedInTheTree(outcome)
+	}
 	// The wall is the case that made this necessary. A leaf cancelled by the
 	// timeout journals its usage row on the way down, which is after the
 	// watcher has returned and — until this line moved the shutdown ahead of
@@ -645,7 +669,7 @@ func errandRounds(graph *store.Store, session string) int {
 // a short bound and say who it is waiting for.
 func headlessBrain(window *chatWindow, session string, request doRequest, seats config.Seats,
 	consent func(store.Node, planEstimate) bool, ephemeral bool,
-	produced *errandRegistry) (*chatBrain, func(), *lease.Resident, error) {
+	workspaceRoot string, produced *errandRegistry) (*chatBrain, func(), *lease.Resident, error) {
 	releaseLease, heldBy, err := lease.AcquireResident(window.path, headlessSurface)
 	if err != nil {
 		return nil, nil, nil, err
@@ -662,11 +686,6 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 	release := func() {}
 	if releaseLease != nil {
 		release = func() { _ = releaseLease() }
-	}
-	workspaceRoot, err := errandWorkspace(request.workspace)
-	if err != nil {
-		release()
-		return nil, nil, nil, err
 	}
 	brain, err := buildBrain(window, session, brainOptions{
 		ephemeral: ephemeral, workspaceRoot: workspaceRoot,
@@ -2516,6 +2535,48 @@ func producedWords(artifacts []string) string {
 	}
 	return fmt.Sprintf("Whatever the account above says, %s reached disk and can be opened: %s%s. Read them rather than this summary — the files are the record.",
 		plural(len(artifacts), "file"), strings.Join(named, ", "), rest)
+}
+
+// keptNothing is the closing line a run that produced NOTHING owes the person,
+// and it is the other half of producedWords' job.
+//
+// It says only what the run can prove. The evidence is the workspace's own
+// before-and-after read of the tree plus what the write tools recorded, and
+// that evidence deliberately excludes deletions (exec.Workspace.Artifacts drops
+// ArtifactDeleted, because a path that is gone is not a path to open). So the
+// claim is that nothing was created or changed — never that the directory is
+// as it was found, which would be false for a run that only removed something.
+const keptNothing = "Nothing reached disk: this run worked in %s, editing it in place, " +
+	"and no file there was created or changed while it ran."
+
+// groundedInTheTree holds a refused run's closing line answerable to the
+// working directory, the way groundedInArtifacts holds it answerable to the
+// file record.
+//
+// The defect it repairs: a run spent 45 minutes and $1.98 in somebody's
+// project, wrote not one byte, and closed with `artifacts: []` and "The time
+// limit was reached before anything finished" — a sentence about the clock,
+// under which the reader had to run `git status` themselves to learn the only
+// fact that mattered. The directory was honoured all the way through and never
+// named once it was over.
+//
+// Four endings are left exactly as they were. A clean run has nothing to say
+// about a tree; a run holding files has already said where they are, in
+// absolute paths; a run stopped by a question keeps an empty deliverable on
+// purpose (see sayBlocked and headlessOutcome.BlockedOn); and a run with no
+// nodes never did anything a tree could show.
+func groundedInTheTree(outcome headlessOutcome) string {
+	if outcome.resolvedStop() == stopDone || len(outcome.Artifacts) > 0 ||
+		strings.TrimSpace(outcome.BlockedOn) != "" || outcome.Nodes == 0 ||
+		strings.TrimSpace(outcome.workspace) == "" {
+		return outcome.Deliverable
+	}
+	words := fmt.Sprintf(keptNothing, outcome.workspace)
+	body := strings.TrimSpace(outcome.Deliverable)
+	if body == "" {
+		return words
+	}
+	return body + "\n\n" + words
 }
 
 // midFlightWords is what a run that ended inside a split has to say. It used to
