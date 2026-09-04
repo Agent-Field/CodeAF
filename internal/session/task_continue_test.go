@@ -10,6 +10,7 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -130,6 +131,51 @@ func TestContinuingAFailedTaskResumesItsWorktreeAndDoesNotProposeANewNode(t *tes
 	}
 	if !completer.childSaw("no greet.go") {
 		t.Fatal("the continued worker was not handed the checker's evidence")
+	}
+}
+
+// AN ID THIS SESSION DOES NOT HOLD IS A REFUSAL, NOT A RESUME.
+//
+// R1: "continue task 1" against a number from another window, or a number
+// this conversation never ran, used to be answered as a search miss
+// ("No task 1 in this project") and then narrated as progress. The tool
+// must say there is no graph, point at the work if the row still names
+// it, and never return a sentence that reads as if the node was re-armed.
+func TestContinueOnATaskThisSessionDoesNotHoldSaysSo(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	unknown, isError := runTool(t, agent, "tasks", `{"id":1,"continue":true}`)
+	if !isError {
+		t.Fatalf("continue on an unknown id succeeded:\n%s", unknown)
+	}
+	if !strings.Contains(unknown, "no graph") {
+		t.Fatalf("unknown continue did not name the missing graph:\n%s", unknown)
+	}
+	if strings.Contains(unknown, "continuing task") {
+		t.Fatalf("unknown continue read as a resume:\n%s", unknown)
+	}
+
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	const branch = "git:task/fix-the-divide-9c1a2f"
+	appendTaskIndex(TaskIndexPath(journal), TaskIndexEntry{
+		ID: "1", Name: "fix-the-divide", Label: "fix the divide",
+		Title: "Fix the divide", Status: string(TaskFailed),
+		SessionID: "other-window", ArtifactURI: branch,
+	})
+	held, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	away, isError := runTool(t, held, "tasks", `{"id":1,"continue":true}`)
+	if !isError {
+		t.Fatalf("continue on another conversation's task succeeded:\n%s", away)
+	}
+	if !strings.Contains(away, "no graph") {
+		t.Fatalf("cross-session continue did not name the missing graph:\n%s", away)
+	}
+	if !strings.Contains(away, branch) {
+		t.Fatalf("cross-session continue did not point at the work:\n%s", away)
+	}
+	if strings.Contains(away, "continuing task") {
+		t.Fatalf("cross-session continue read as a resume:\n%s", away)
 	}
 }
 

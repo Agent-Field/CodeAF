@@ -3572,6 +3572,21 @@ and what the task made is committed onto that branch before it lands — so the 
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
 
+## Continue task N — keep going on a failed or finished task, No task 1 in this project
+
+When you say `continue task 7` or `keep going on task 7`, the model calls `tasks` with that
+id and `continue`. That re-arms the **same** task — same id, same brief, same working copy
+and journal, the last report as this round's finding — rather than proposing a new one.
+
+It only works for a task **this conversation** still holds. A task from another
+conversation or another window, an unknown id (`No task 1 in this project` on a read), or a
+task that is still running cannot be continued here. The tool then says there is no graph
+left to continue it in, and names where the work is — its branch or working copy — so it
+can be read. The model should relay that, not narrate progress it did not make.
+
+Starting the same brief again with `/task` or `propose_task` is new work with a new id, and
+it is the wrong door when you mean keep going.
+
 ## Why is the task waiting for me — finished but needs your look, a sub-task needs my look, a nested task waiting on me
 
 Some work lands with `needs your look`: it finished, but nobody could say whether it holds —

@@ -2245,11 +2245,15 @@ A task that did not finish keeps its branch, and the row under its name on the r
 - `stopped — branch kept`, with a `⊘` — **you stopped it** (`x` on its room, `jobs kill`).
   Nothing is wrong with the work; it is on that branch.
 - `!` and one of these — **it was halted, and nothing is known to be wrong**. The work can go
-  on from its branch: say `continue task 7`. That is how you continue a task
-  instead of running it again: it re-arms the **same** task — same id, same brief,
-  same working copy, the last report handed back as this round's finding — rather
-  than proposing a new one. Start a new task that builds on that branch only if
-  the objective itself changed.
+  on from its branch: say `continue task 7` or `keep going on task 7`. That is how
+  you continue a task instead of running it again: it re-arms the **same** task —
+  same id, same brief, same working copy, the last report handed back as this
+  round's finding — rather than proposing a new one. It only works in the
+  conversation that still holds the graph. A task from another window, an unknown
+  id, or a task that is still running cannot be continued here: the tool says
+  there is no graph, and names the branch or working copy so it can be read.
+  Start a new task that builds on that branch only if the objective itself
+  changed.
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.

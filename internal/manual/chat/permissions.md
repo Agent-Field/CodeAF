@@ -424,9 +424,23 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## What is allowed without asking by default — who can see my files, and what aforge can read without asking
+## What is allowed without asking by default — who can see my files, and what aforge can read without asking, does git status need approval
 
-Some tools this build never had a reason to ask about are seeded as `allow`
+**In the default `prompt` mode, a look is not a question.** The policy itself
+allows these without a card, even before the seeded row below is applied:
+
+- **`read`, `ls`, `grep`, `find`** — they change no file.
+- **`tasks` when it is a look** — a search, or one task's page. `say`,
+  `continue` and `resolve` still ask, because they write into a node.
+- **`git status`** and its flags (`git status --short`, `git status --porcelain`)
+  when no shell-command rule list has been written. A compound line
+  (`git status && curl …`) still asks. A pattern you wrote still wins.
+
+A written `read:prompt` still asks about `read`. A deny-everything blanket
+still denies. A Policy with nothing configured still asks — "no settings" is
+not the shipped default.
+
+Some tools this build never had a reason to ask about are also seeded as `allow`
 underneath whatever you wrote:
 
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
@@ -522,6 +536,18 @@ auxiliary calls somewhere, set one of the five crew classes
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.
 
+## A timeout is not a deny — why it said "denied by the person" when nobody said no
+
+A wait that ends without an answer is not a person's no. The model used to be
+handed `denied by the person: <rule>` — including `denied by the person: default`
+on a `propose_task` that simply ran out of time. That sentence is only for a
+key someone pressed (`n`, `d`, or `esc` on the card).
+
+If the question timed out, the model is told `not approved: the question timed
+out`. If the turn ended, or the agent closed, first: `not approved: ended
+before an answer`. Silence on the card still pauses and keeps waiting; it
+does not produce either of those.
+
 ## When nobody is watching
 
 `aforge chat --once "…"` runs with no one to ask. A "prompt" decision then
@@ -532,9 +558,10 @@ needs approval but no resolver is attached: <rule>
 ```
 
 Inside a task node the refusal reads
-`refused in a task: <rule> — nobody to ask`. A turn that ends while a question
-is still pending refuses with
-`the turn ended before this call was approved: <rule>`.
+`refused in a task: <rule> — nobody to ask`. A wait that ends without an answer
+is never worded as a person's no. A timed-out question refuses with
+`not approved: the question timed out`. A turn (or the agent) that ends first
+refuses with `not approved: ended before an answer`.
 
 ## What a refused call looks like to the model
 
@@ -544,7 +571,8 @@ hang, and never the end of the turn. The exact sentences:
 - `denied by approval rule: <rule>`
 - `denied by approval rule: <rule> (remembered for this session)`
 - `denied by the person: <rule>`
-- `the turn ended before this call was approved: <rule>`
+- `not approved: the question timed out`
+- `not approved: ended before an answer`
 - `needs approval but no resolver is attached: <rule>`
 - `refused in a task: <rule> — nobody to ask`
 

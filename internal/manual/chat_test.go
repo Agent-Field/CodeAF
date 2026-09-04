@@ -635,6 +635,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is a job's log path", "tasks"},
 		{"stop a job from its page", "tasks"},
 		{"do you ask before running rm", "permissions"},
+		{"why did it say denied by the person when I did not deny", "permissions"},
+		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
 		{"how do I make it stop asking every time", "permissions"},
 		{"what model is it using right now", "models-and-cost"},
@@ -1127,6 +1129,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// old work went the way it did — so the words somebody says in front of a
 		// landed task they do not understand have to reach the page that says
 		// this is a question they may simply ask.
+		// Continue is a verb on a settled task, not a narration and not a new
+		// proposal. People say the number they saw on the roster; the page has
+		// to name those words, and the honest miss when this conversation
+		// never held that graph.
+		{"continue task 1", "tasks"},
+		{"keep going on task 4", "tasks"},
+		{"can I continue a task from another conversation", "tasks"},
+		{"No task 1 in this project", "tasks"},
+
 		{"why did the auth task pin the clock", "tasks"},
 		{"what exactly did that task change", "tasks"},
 		{"can I ask you about old work", "tasks"},

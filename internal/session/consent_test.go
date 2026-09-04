@@ -353,6 +353,74 @@ func TestAnUnansweredApprovalPastTheTimeoutDoesNotDeny(t *testing.T) {
 	}
 }
 
+// A wait that ends without an answer is not a person's no. A timeout and a
+// cancelled turn must say so in those words; "denied by the person" is a lie
+// about a click that never happened (R2).
+func TestAConsentTimeoutIsNotWordedAsDeniedByThePerson(t *testing.T) {
+	agent, _ := consentAgent(t, &scriptedCompleter{}, promptAll(), true)
+	hub := newEventHub()
+	call := ai.ToolCall{ID: "c1"}
+	call.Function.Name = "touch"
+	call.Function.Arguments = "{}"
+
+	timedOut, cancelTimeout := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelTimeout()
+	result, allowed := agent.approve(timedOut, hub, call)
+	if allowed {
+		t.Fatal("a timed-out call ran")
+	}
+	if strings.Contains(result.text, "denied by the person") {
+		t.Fatalf("timeout refusal = %q, which blames a person who was not asked", result.text)
+	}
+	if !strings.Contains(result.text, "not approved: the question timed out") {
+		t.Fatalf("timeout refusal = %q, want it to say the question timed out", result.text)
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, allowed = agent.approve(cancelled, hub, call)
+	if allowed {
+		t.Fatal("a cancelled call ran")
+	}
+	if strings.Contains(result.text, "denied by the person") {
+		t.Fatalf("cancel refusal = %q, which blames a person who was not asked", result.text)
+	}
+	if !strings.Contains(result.text, "not approved: ended before an answer") {
+		t.Fatalf("cancel refusal = %q, want it to say the wait ended before an answer", result.text)
+	}
+}
+
+// In default (prompt) mode a look is not a question. read / ls / grep / find,
+// a tasks look, and `git status` run without a card; a write still asks.
+func TestAReadOnlyCallIsNotGated(t *testing.T) {
+	agent, _ := consentAgent(t, &scriptedCompleter{}, promptAll(), true)
+	ctx := context.Background()
+	// No hub: a prompt would refuse "no resolver"; an allow runs. That is
+	// the whole assertion — a look must never reach ask().
+	looks := []ai.ToolCall{
+		gateCall("read", `{"path":"x"}`),
+		gateCall("ls", `{"path":"."}`),
+		gateCall("grep", `{"pattern":"x"}`),
+		gateCall("find", `{"pattern":"*.go"}`),
+		gateCall("tasks", `{"id":1}`),
+		gateCall(approval.ToolBash, `{"command":"git status"}`),
+	}
+	for _, call := range looks {
+		result, allowed := agent.approve(ctx, nil, call)
+		if !allowed {
+			t.Fatalf("%s was gated: %q", call.Function.Name, result.text)
+		}
+	}
+
+	result, allowed := agent.approve(ctx, nil, gateCall("write", `{"path":"x"}`))
+	if allowed {
+		t.Fatal("write ran without a person in default mode")
+	}
+	if !strings.Contains(result.text, "needs approval but no resolver is attached") {
+		t.Fatalf("write refusal = %q, want the no-resolver sentence", result.text)
+	}
+}
+
 func lastToolMessage(t *testing.T, a *Agent) ai.Message {
 	t.Helper()
 	a.mu.Lock()
