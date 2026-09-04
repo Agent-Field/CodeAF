@@ -1283,6 +1283,10 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 		// what the flag promises for work that leaves the conversation.
 		cfg.TaskModel = ""
 	}
+	// EVERY DOOR THAT BUILDS A SESSION RUN READS ITS AUDIT POSTURE HERE. The
+	// question in #618 was askable only because nothing held that one-reader
+	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
+	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about
