@@ -2089,6 +2089,21 @@ type Agent struct {
 	// words (task_brief.go), and it is deliberately the WHOLE message rather than
 	// a summary of it.
 	personAsk string
+	// personTurns is the same answer for the turns BEFORE the newest one, kept
+	// for the same reason and bounded (admission_compile.go). personAsk answers
+	// "what is the current ask"; this answers "what else have they told us",
+	// which is where a constraint typed three turns ago and never repeated lives.
+	// It is rebuilt from the journal when a session is reopened.
+	personTurns []personTurn
+	// personSeq numbers those turns so that the same sentence typed twice is two
+	// events rather than one.
+	personSeq uint64
+	// callOutcomes is whether a finished call came back a failure, by call id
+	// (admission_compile.go). It is recorded at the batch's own fan-out because
+	// the flag the tool returned does not survive into the transcript, and it is
+	// per-process: after a restart the outcome of an older call is unknown and
+	// the admission context says so rather than assuming it went well.
+	callOutcomes map[string]callOutcome
 	// replyTags are finished-task identities placed in the transcript but not
 	// yet handed to the surface. They persist across the turn-end seam.
 	replyTags []TaskReplyTag

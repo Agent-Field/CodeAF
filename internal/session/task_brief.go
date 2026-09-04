@@ -86,7 +86,7 @@ const briefAskLimit = 6000
 // a word of it is laid out, and where that leaves two spellings of one folder in
 // the same document — the person's quoted path and the copy's — the mapping is
 // said outright in a section of its own rather than smuggled into the quotation.
-func composeBrief(request, work, deliverable, acceptance, expects string, origin taskOrigin, own taskCopy) string {
+func composeBrief(request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
 	request = briefAskText(request)
 	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
@@ -94,8 +94,9 @@ func composeBrief(request, work, deliverable, acceptance, expects string, origin
 	// spelled the folder out has nothing to disambiguate and gets the document
 	// it has always got — an unconditional section would rewrite every worktree
 	// brief in the system to answer a question nobody in it had asked.
+	quoted, evidence := admissionQuotesSection(heard), admissionEvidenceSection(heard)
 	stated := ""
-	if own.real() && namesGround(own.ground, request, work, deliverable, acceptance, expects) {
+	if own.real() && namesGround(own.ground, request, work, deliverable, acceptance, expects, quoted, evidence) {
 		stated = own.note()
 	}
 	// AND THE MODEL-AUTHORED HALF IS BOUND TO THE COPY, and only that half. The
@@ -128,6 +129,20 @@ func composeBrief(request, work, deliverable, acceptance, expects string, origin
 	section(briefWorkHeading, "", work)
 	section(briefMakeHeading, "", deliverable)
 	section(briefDoneHeading, "", acceptance)
+	// AND WHAT WAS SAID AROUND THE WORK, after the contract and never before it
+	// (admission.go). The order is the whole of the distinction the two rules
+	// draw: what this worker OWES is above, settled and binding; what was SAID is
+	// below, quoted, attributed, and true only of the saying. A document that put
+	// the conversation first would read as instruction with a contract appended.
+	section(admissionQuotesHeading, admissionQuotesRule, quoted)
+	// NEITHER SECTION IS BOUND TO THE COPY, and that is a decision rather than an
+	// oversight. Both are RECORDS OF WHAT HAPPENED SOMEWHERE ELSE: a quote is
+	// somebody's sentence, and a handle names the journal it can be fetched from,
+	// which lives under the ground and has no counterpart inside the worker's
+	// tree — a rewrite would aim it at a file that is not there. The copy is
+	// stated instead, in the section above, which is what [namesGround] is asked
+	// about these two.
+	section(admissionEvidenceHeading, admissionEvidenceRule, evidence)
 	// AND WHAT THE HANDOFF PROMISED ABOUT THE WORLD, last, because it is the
 	// only section that is about the folder rather than about the job
 	// (handoffcontract.go). A handoff that promised nothing has no section, like
@@ -371,6 +386,12 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 	}
 	if text := strings.TrimSpace(user.text()); text != "" {
 		a.personAsk = text
+		// AND THE TURNS BEFORE THIS ONE ARE KEPT TOO, in the same place, on the
+		// same test (admission.go). A constraint the person typed two turns ago
+		// and never repeated is not in `personAsk` and is not recoverable from
+		// the transcript, where their words and the session's own notes are
+		// both user-role.
+		a.rememberPersonTurnLocked(user.message, text)
 		// AND THE SESSION'S GOAL OWNER IS TOLD THE SAME THING, in the same
 		// place, on the same test (principal.go). It is one writer rather than
 		// two for the reason stated directly below: a second recorder of the

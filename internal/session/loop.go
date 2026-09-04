@@ -1938,6 +1938,13 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	}()
 	results := slots.taken(waitBatch(ctx, finished))
 
+	// WHETHER EACH CALL CAME BACK A FAILURE IS RECORDED HERE AND NOWHERE ELSE
+	// (admission.go). The flag the tool returned does not survive into the
+	// transcript — a result there is a string — so work handed out later in this
+	// turn could otherwise only guess at it from the words, which is exactly the
+	// invention the admission context refuses to make.
+	a.noteCallOutcomes(calls, results)
+
 	// The end events carry Args as well as Output. Carrying the arguments rather
 	// than making the surface remember the begin event costs nothing — the
 	// rendering is the one done above — and buys an end event that is

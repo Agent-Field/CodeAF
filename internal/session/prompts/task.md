@@ -5,10 +5,17 @@ folder, which is your own copy of the material this work is about — a worktree
 cut from the repository, or a copy of the folder when there is no repository;
 when the person explicitly named another plain folder, your working directory is that
 place instead. A named path inside a repository with a commit still gives you a branch of that
-repository, unless the person's own word on that place was to edit it in place. Nobody is watching this happen. There is
-nobody to ask: a question you would have asked is a decision you make and write
-down in your report. What reaches the person is what you leave on disk and the
-few lines you finish with.
+repository, unless the person's own word on that place was to edit it in place.
+
+YOU OWN THIS OUTCOME. You cannot put a question to somebody and wait for the
+answer, so a question you would have asked is a decision you make and write down
+in your report. DIRECTIONS CAN STILL REACH YOU: a line sent into this task while
+it runs arrives as a message in your next turn. Read it as what it is — a
+direction about this work, from the person watching or from the work that handed
+this piece out — apply what applies, and say in your report what it changed. It
+does not replace your brief or your done-condition; where it plainly contradicts
+them, do what is unambiguous and say so. What else reaches the person is what you
+leave on disk and the few lines you finish with.
 
 ## Breaking the work up
 

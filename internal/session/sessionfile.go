@@ -1995,6 +1995,18 @@ func (s *sessionFile) journalPath() string {
 	return abs
 }
 
+// journalName is [sessionFile.journalPath] for a caller holding no lock, and
+// the empty string for a session with no file. It reads a name and never the
+// file, so it is cheap enough to ask at every task admission (admission.go).
+func (s *sessionFile) journalName() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.journalPath()
+}
+
 // messageLines names the journal this session is writing and the most recent
 // line carrying each of first and last, so a fold marker can point at a range
 // in a file the model can grep or read rather than at a store id neither tool

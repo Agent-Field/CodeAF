@@ -157,7 +157,18 @@ type taskRecord struct {
 	// always did: the brief has no origin section.
 	OriginJournal string `json:"origin_journal,omitempty"`
 	OriginLine    int    `json:"origin_line,omitempty"`
-	Brief         string `json:"brief"`
+	// Admission is the working context the node was admitted with: bounded
+	// quotations of what was said around the work and handles to the calls that
+	// already ran (admission.go). A resumed node that lost it would be re-opened
+	// on the contract alone, which is the same loss Request was carried to end.
+	//
+	// IT IS A POINTER SO THAT NOTHING IS WRITTEN FOR A NODE THAT HAS NONE, and
+	// its own Version field is what an older or newer record is read through
+	// ([AdmissionContext.restored]). Absent in every checkpoint written before
+	// this existed, which resumes exactly as it always did: fewer sections,
+	// nothing invented.
+	Admission *AdmissionContext `json:"admission,omitempty"`
+	Brief     string            `json:"brief"`
 	// Deliverable is what must exist when the node is over. It is omitempty for
 	// Request's reason and for one more: a task the PERSON wrote themselves names
 	// no deliverable separately, and a heading over nothing is not written
@@ -705,6 +716,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Request:       n.spec.request,
 		OriginJournal: n.spec.origin.journal,
 		OriginLine:    n.spec.origin.line,
+		Admission:     recordedAdmission(n.spec.admission),
 		Brief:         n.spec.brief,
 		Deliverable:   n.spec.deliverable,
 		Where:         n.spec.where,
@@ -1191,6 +1203,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			summary:     record.Summary,
 			request:     record.Request,
 			origin:      taskOrigin{journal: record.OriginJournal, line: record.OriginLine},
+			admission:   restoredAdmission(record.Admission),
 			brief:       record.Brief,
 			deliverable: record.Deliverable,
 			where:       record.Where,
