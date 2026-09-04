@@ -346,11 +346,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// asked for — but the session file's first line named the model the session
 	// was BORN on, which was the wrong one. Nobody on the screen could see the
 	// difference. The journal could, and the journal is the record.
-	launch, err := openV3Launch(proc, v3Options{
-		Workspace: workspace,
-		Model:     strings.TrimSpace(hello.Model),
-		Session:   firstEngineWord(hello.Session, sessionFlag),
-	})
+	// The hello's launch shape lands the same way, and for the same reason: the
+	// approval floor, the compaction posture and the one-model settlement are
+	// built INTO the session rather than switched on after it has opened
+	// ([engineLaunchOptions] holds the mapping).
+	launch, err := openV3Launch(proc, engineLaunchOptions(hello, workspace, sessionFlag))
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +430,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		SessionFile: transcript,
 		Resumed:     resumed,
 		Note:        notice,
+		// The shape this conversation ended up with, for the surface to compare
+		// against what it asked for. It is the shape that was APPLIED, so a
+		// hello that joined a conversation somebody else opened reads the other
+		// person's shape here and can say so.
+		Launch: hello.Launch,
 		// Where a picture arriving on the wire lands: the engine's own session
 		// folder, the same answer the local launch assembly gives its session.
 		Place: cfg.Place,
@@ -560,6 +565,27 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return session.RecentSessions(launch.Bucket, v3RecentSessionSlots)
 		},
 	}, nil
+}
+
+// engineLaunchOptions is the hello, as the shared assembly takes it.
+//
+// A NIL SHAPE IS THE ENGINE'S DEFAULTS, which is what every remote surface
+// sends: --yolo and its neighbours are settings of the machine the session runs
+// on, and cmd/aforge refuses them over --host and --at by name. The local dial
+// is the one caller that fills it (chatv3_local.go).
+func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Options {
+	opts := v3Options{
+		Workspace: workspace,
+		Model:     strings.TrimSpace(hello.Model),
+		Session:   firstEngineWord(hello.Session, sessionFlag),
+	}
+	if shape := hello.Launch; shape != nil {
+		opts.Yolo = shape.Yolo
+		opts.NoCompact = shape.NoCompact
+		opts.OneModel = shape.OneModel
+		opts.Budget = chatBudget(shape.MaxHours, shape.MaxCost)
+	}
+	return opts
 }
 
 // engineProcess is the once-per-process half of a v3 launch, opened on the

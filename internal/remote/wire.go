@@ -451,6 +451,33 @@ const (
 	MethodTake = "Take" // nothing → nothing
 )
 
+// LaunchShape is the handful of flags that describe how a session is built
+// rather than what is said in it: --yolo, --no-compact, --one-model and the two
+// unattended ceilings. They are one struct because they are one decision — the
+// shape a conversation was opened with — and because comparing two of them is
+// how a surface tells "the engine built what I asked for" from "I joined
+// somebody else's conversation".
+type LaunchShape struct {
+	Yolo      bool    `json:"yolo,omitempty"`
+	NoCompact bool    `json:"noCompact,omitempty"`
+	OneModel  bool    `json:"oneModel,omitempty"`
+	MaxHours  float64 `json:"maxHours,omitempty"`
+	MaxCost   float64 `json:"maxCost,omitempty"`
+}
+
+// Same reports whether two shapes describe the same conversation. A nil shape
+// is the engine's defaults, so nil and a zero shape are the same thing.
+func (l *LaunchShape) Same(other *LaunchShape) bool {
+	var mine, theirs LaunchShape
+	if l != nil {
+		mine = *l
+	}
+	if other != nil {
+		theirs = *other
+	}
+	return mine == theirs
+}
+
 // StandingWatchResult keeps "not installed" distinct from "could not read".
 type StandingWatchResult struct {
 	Status standing.WatchStatus `json:"status"`
@@ -478,6 +505,12 @@ type Hello struct {
 	// journal could, and the journal is the record.
 	Model string `json:"model,omitempty"`
 	Level string `json:"level,omitempty"`
+
+	// Launch is how the conversation should be BUILT, when this hello is the
+	// one that opens it. Nil asks for the engine's own defaults, which is what
+	// every remote surface sends: these are settings of the machine the session
+	// runs on, and cmd/aforge refuses them over --host and --at by name.
+	Launch *LaunchShape `json:"launch,omitempty"`
 
 	// Encodings are the optional frame payload encodings this surface can read.
 	// They are negotiated INSIDE one protocol version because absence means the
@@ -622,6 +655,12 @@ type Welcome struct {
 	// whether "close the lid, it keeps going" is true, both hang off this
 	// single fact, so it is stated rather than assumed from the transport.
 	Persistent bool `json:"persistent,omitempty"`
+
+	// Launch is the shape the conversation actually has, as the engine built
+	// it. It is an ECHO and not a confirmation: a hello that asked for one
+	// shape and joined a conversation somebody else had already opened gets
+	// that conversation's shape here, and the surface is expected to notice.
+	Launch *LaunchShape `json:"launch,omitempty"`
 
 	// ── version 4 ───────────────────────────────────────────────────────────
 

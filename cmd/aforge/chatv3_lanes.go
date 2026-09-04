@@ -1,20 +1,20 @@
 package main
 
-// chatv3_lanes.go is the ONE STATEMENT of which standing capabilities a
+// chatv3_lanes.go is the one statement of which standing capabilities a
 // conversation's surface can hold, and the assembly that applies it.
 //
-// THREE OF THIS BUILD'S CAPABILITIES DEPEND ON THE ROAD BETWEEN THE SESSION AND
-// THE SCREEN rather than on the machine. A design card, a subharness intake card
-// and an adaptive run's fuel gate are raised on subscriptions that outlive their
-// turn ([session.Agent.WatchHarnessDesigns], [session.Agent.WatchOrchestrations]),
-// so a question raised on a road that cannot carry it is work nobody will ever
-// be shown. In this process every road carries; over a connection the wire says
-// which do ([remote.StandingLanes]).
+// Three capabilities depend on the road between the session and the screen
+// rather than on the machine. A design card, a subharness intake card and an
+// adaptive run's fuel gate are raised on subscriptions that outlive their turn
+// ([session.Agent.WatchHarnessDesigns], [session.Agent.WatchOrchestrations]), so
+// a question raised on a road that cannot carry it is work nobody will be shown.
+// In this process every road carries; over a connection the wire says which do
+// ([remote.StandingLanes]).
 //
-// IT IS ONE FILE BECAUSE IT USED TO BE TWO PLACES: chatv3.go set HarnessCards
-// and built through [v3OpenSession], engine.go nilled HarnessStore and built
-// through session.New. Two doors answering the same questions apart is how a
-// capability gets fixed on one road and stays dark on the other.
+// It is one file because it used to be two places: chatv3.go set HarnessCards and
+// built through [v3OpenSession], engine.go nilled HarnessStore and built through
+// session.New. Two doors answering the same question apart is how a capability
+// gets fixed on one road and stays dark on the other.
 
 import (
 	"github.com/Agent-Field/aforge-v2/internal/remote"
@@ -69,11 +69,11 @@ func v3LanesOverWire() v3Lanes {
 // v3Shape applies the lanes to a config and answers the builder to open the
 // session with.
 //
-// THE BUILDER IS PART OF THE ANSWER AND NOT A SECOND DECISION. An adaptive run
-// is wired by a closure that has to be told which agent it belongs to
-// (chatv3_orchestrate.go), so "runs are on" and "build it through
-// [v3OpenSession]" are one fact said once — a door that took the lanes and then
-// picked its own builder could turn the verb on and leave nothing behind it.
+// The builder is part of the answer rather than a second decision: an adaptive
+// run is wired by a closure that has to be told which agent it belongs to
+// (chatv3_orchestrate.go), so "runs are on" and "build through [v3OpenSession]"
+// are one fact. A door that took the lanes and then picked its own builder could
+// turn the verb on with nothing behind it.
 func v3Shape(cfg session.Config, lanes v3Lanes) (session.Config, func(session.Config) (*session.Agent, error)) {
 	if !lanes.Designs {
 		// Nil is the honest way to say the designer is not among the things this

@@ -94,3 +94,27 @@ func TestTheLanesOverAConnectionAreTheOnesTheWireSaysItCarries(t *testing.T) {
 		t.Fatal("a hosted conversation was given the adaptive runner while the run room does not cross")
 	}
 }
+
+// The per-launch posture, as the engine takes it off the hello. A nil shape is
+// the engine's own defaults — what every remote surface sends — and a filled one
+// is built INTO the session rather than switched on after it opened.
+func TestTheEngineBuildsTheSessionWithTheShapeTheHelloCarried(t *testing.T) {
+	plain := engineLaunchOptions(remote.Hello{Workspace: "/srv/app"}, "/srv/app", "")
+	if plain.Yolo || plain.NoCompact || plain.OneModel || plain.Budget.Set() {
+		t.Fatalf("a hello with no shape built %+v", plain)
+	}
+	shaped := engineLaunchOptions(remote.Hello{
+		Launch: &remote.LaunchShape{Yolo: true, NoCompact: true, OneModel: true, MaxHours: 2, MaxCost: 5},
+	}, "/srv/app", "")
+	if !shaped.Yolo || !shaped.NoCompact || !shaped.OneModel {
+		t.Fatalf("the shape did not reach the session: %+v", shaped)
+	}
+	if !shaped.Budget.Set() {
+		t.Fatal("the ceilings did not reach the session")
+	}
+	// The session file the flags cannot override: the hello names it, and the
+	// engine's own flag is the fallback for a hand-run engine.
+	if got := engineLaunchOptions(remote.Hello{Session: "a.jsonl"}, "/srv/app", "b.jsonl").Session; got != "a.jsonl" {
+		t.Fatalf("the hello's session was %q", got)
+	}
+}

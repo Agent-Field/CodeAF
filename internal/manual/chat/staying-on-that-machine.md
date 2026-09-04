@@ -181,19 +181,30 @@ one dim line reading `typing from another window now · enter takes it back` —
 window` rather than a machine name, because there is no other machine in it. The status
 line grows no `via` segment for the same reason.
 
-**A host has to be there already.** A plain `aforge chat` never starts one. A host is
-there when something asked for one — a `--host` or `--at` connection into this machine, or
-`aforge engine` run on it. Joining one costs you less than it used to: harness building and
-subharness intake cards work in a hosted conversation now, because the subscription their
-cards travel on crosses a connection. The adaptive runner is still off in one (*What still
-does not work*, below).
+**A host is started for you.** `aforge chat` in a folder opens its conversation in this
+machine's session host, and starts one if none is running. That is what makes the work
+outlive the terminal: close the window mid-task and the task keeps going; open a terminal
+here tomorrow and you are back in the same conversation rather than beside it. The host
+retires itself when it is holding nothing.
 
-**Without a host, a second terminal offers you the conversation rather than a seat in it.**
-It comes up on home with that row already armed, and one `enter` moves the conversation to
-this terminal — the window that had it says `moved to another window`. One conversation, one
-place, and you say which place — *Continue a conversation from another terminal* on the home
-page, and *Two terminals in the same folder* on the sessions page. `--no-host` opts a window
-out of joining a host at all.
+**Four launches stay in this terminal instead**, each because something real about them
+lives in this process:
+
+- **the first run on a machine with no key.** Connecting a provider is a conversation with
+  you, and a background host has no terminal to have it in. Once a key is set up, the next
+  launch takes the host road.
+- **`--once`**, which never starts a host — a resident process left behind by a headless
+  command is a surprise — though it joins one that is already there.
+- **`--debug`**, because the model-call record is written by the process making the calls.
+- **`--no-host`**, the escape hatch, for the day the host is the thing that is wrong.
+
+**The per-launch postures travel with the launch.** `--yolo`, `--no-compact`, `--one-model`,
+`--max-hours` and `--max-cost` describe how a session is BUILT, and the host builds it that
+way. A conversation that is already open keeps the shape it was opened with — nothing here
+overwrites a session somebody else is in — so if you ask for one shape and this folder's
+conversation is already running under another, aforge says so in one line and opens a
+conversation in this terminal instead, where the flag is real. That one ends when the
+terminal does.
 
 ## What typing from spark now means, and why my input box is one line
 
