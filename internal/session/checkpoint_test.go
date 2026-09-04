@@ -33,6 +33,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/verify"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -600,6 +601,69 @@ func saidSomething(said []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestADoneEndingNamesTheCheckItCouldNotRun pins C6 on both roads that can end
+// an unattended run: a stopped turn and a handover each carry the same line.
+func TestADoneEndingNamesTheCheckItCouldNotRun(t *testing.T) {
+	const check = "tox -e py"
+	want := checkpointDoneNote + " · unchecked: " + notEnoughTimeToRun + check
+	nearWall := func(agent *Agent) {
+		steward := agent.steward()
+		steward.setAcceptance("the parser is ported and `" + check + "` passes")
+		steward.now = func() time.Time {
+			return steward.started.Add(steward.wall - verify.ShortestUsefulReading/2)
+		}
+	}
+
+	t.Run("stopped turn", func(t *testing.T) {
+		putTestCommandOnPath(t, "tox")
+		completer := &scriptedCompleter{steps: []step{
+			writeCall("call-src-1", "parser.go", "package parse\n"),
+			writeCall("call-src-2", "parser.go", "package parse\n"),
+			finalAnswer("the parser is ported and the tests pass"),
+			finalAnswer("the parser is ported and the tests pass"),
+		}}
+		agent, transcript := stewardCheckpointAgent(t, completer, nil)
+		nearWall(agent)
+		landOne(agent, TaskDone, "port the parser", "the parser is ported")
+		stubbedGraph(agent, func(node *TaskNode) {})
+
+		collected := collect(t, mustSubmit(t, agent, "port the parser"))
+		if !saidSomething(noticeTexts(collected), want) {
+			t.Fatalf("the stopped turn did not name its unread check: %q", noticeTexts(collected))
+		}
+		lines := closedJournal(t, agent, transcript)
+		if !strings.Contains(lines, `"event":"checked"`) ||
+			!strings.Contains(lines, `"unread":["tox -e py"]`) {
+			t.Fatalf("the checked row did not record the unread command:\n%s", lines)
+		}
+		if strings.Contains(lines, `"failed":["tox -e py"]`) {
+			t.Fatalf("the checked row recorded an unstarted command as failed:\n%s", lines)
+		}
+	})
+
+	t.Run("handover", func(t *testing.T) {
+		putTestCommandOnPath(t, "tox")
+		agent, _ := stewardCheckpointAgent(t, splitSketchSteps(), nil)
+		nearWall(agent)
+		landOne(agent, TaskDone, "port the parser", "the parser is ported")
+		stubbedGraph(agent, func(node *TaskNode) {})
+
+		collected := collect(t, mustSubmit(t, agent, "work through the four parser pieces and report back"))
+		if !saidSomething(noticeTexts(collected), want) {
+			t.Fatalf("the handover did not name its unread check: %q", noticeTexts(collected))
+		}
+	})
+}
+
+func putTestCommandOnPath(t *testing.T, name string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("writing %s: %v", name, err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // ── the running model never sees any of it ──────────────────────────────────
