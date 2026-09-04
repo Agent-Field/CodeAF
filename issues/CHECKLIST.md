@@ -13,12 +13,12 @@ then trust/correctness, then deeper architecture. Do not reorder without a reaso
 ## Wave 2 — trust & correctness (the Pareto floor: quality must be TRUE)
 - [x] 05 [comeHome must never claim success when the branch didn't fasten](05-comehome-trust.md)
 - [x] 06 [reject a mojibake hedge winner before persisting](06-hedge-mojibake.md)
-- [ ] 07 [stop deny-by-default approval timer](07-approval-timer.md)
-- [ ] 08 [single writer per file set (chat vs tasks)](08-single-writer.md)
+- [x] 07 [stop deny-by-default approval timer](07-approval-timer.md)
+- [x] 08 [single writer per file set (chat vs tasks)](08-single-writer.md)
 
 ## Wave 3 — architecture (real leverage, higher risk, do after 1–2 are green)
-- [ ] 09 [gate task-spawn so trivial asks never convert](09-task-spawn-floor.md)
-- [ ] 10 [first-class task continuation (`continue <id>`)](10-task-continue.md)
+- [x] 09 [gate task-spawn so trivial asks never convert](09-task-spawn-floor.md)
+- [x] 10 [first-class task continuation (`continue <id>`)](10-task-continue.md)
 - [ ] 11 [route task-naming off the auditor tier](11-task-naming-tier.md)  *(folds into 01)*
 
 ## Wave 4 — hygiene / DX
