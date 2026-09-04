@@ -635,10 +635,10 @@ func bankedLine(message store.Message) string {
 }
 
 // LeafState derives what a dead leaf's worker actually did — the files it
-// touched, the checks it ran, and the last calls it made — from the leaf's
-// own outcome. It is general for any task: a worker that owns a verifier
-// contributed its structured account (files changed, checks run), and every
-// worker contributes the bounded tail of what it did. The principle: a
+// touched, the commands it issued, what the finished-tree reading found, and
+// the last calls it made — from the leaf's own outcome. It is general for any
+// task: a worker that owns a verifier contributed its structured account, and
+// every worker contributes the bounded tail of what it did. The principle: a
 // continuation that knows what the dead leaf already found resumes from
 // there instead of re-reading everything it already diagnosed, which is
 // how a one-line fix that exhausted 150k tokens spawned a continuation
@@ -653,13 +653,26 @@ func LeafState(outcome *executor.Outcome) string {
 		return ""
 	}
 	var parts []string
-	// The structured account: files changed with sizes, checks run with
-	// verdicts. Only a worker that photographs its own change set and runs
-	// its own verifier fills this in; for every other leaf it is nil.
+	// The structured account: files changed with sizes, commands the leaf
+	// issued, and checks the closing photograph ran. Only a worker that
+	// photographs its own change set or finished tree fills this in; for every
+	// other leaf it is nil.
 	if outcome.Account != nil {
 		if report := strings.TrimSpace(outcome.Account.Report()); report != "" {
 			parts = append(parts, report)
 		}
+	}
+	// A red the leaf was never asked to settle used to reach nobody, so the next
+	// leaf paid to rediscover it. The landing now hands over the finding's fact,
+	// without an instruction addressed to the worker that already stopped.
+	if len(outcome.Standing) > 0 {
+		var lines strings.Builder
+		lines.WriteString("What its own reading of the finished tree found, and it landed holding:")
+		for _, finding := range outcome.Standing {
+			lines.WriteString("\n  - ")
+			lines.WriteString(finding.Fact)
+		}
+		parts = append(parts, lines.String())
 	}
 	// The bounded tail of what the worker did, in order. Every worker
 	// contributes this — it is the flight recorder's own record of the last
