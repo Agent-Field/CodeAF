@@ -250,6 +250,17 @@ type taskRecord struct {
 	// whole.
 	Claim string `json:"claim,omitempty"`
 
+	// Result is what the work produced, kept whole up to one cap with a pointer
+	// to the rest of it (task_result.go). Claim above is that same answer cut to
+	// the card's three lines; this is what a dependent's brief, a landing note
+	// and a continuation's finding are built from, so a session resumed from this
+	// file hands the work's answer on rather than the preview it kept.
+	//
+	// It is a pointer so that absence is ordinary: every checkpoint written
+	// before this field existed decodes with nil here, and every reader falls
+	// back to the report exactly as it did then.
+	Result *taskResultRecord `json:"result,omitempty"`
+
 	Changed  []string `json:"changed,omitempty"`
 	Branch   string   `json:"branch,omitempty"`
 	Worktree string   `json:"worktree,omitempty"`
@@ -715,6 +726,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Report:        n.report,
 		Ending:        n.endingLocked(),
 		Claim:         n.claim,
+		Result:        resultRecordOf(n.produced),
 		Changed:       changed,
 		Wrote:         wrote,
 		Branch:        n.branch,
@@ -1204,6 +1216,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		ending:      record.Ending,
 		kind:        record.Kind,
 		claim:       record.Claim,
+		produced:    resultFromRecord(record.Result),
 		changed:     record.Changed,
 		wrote:       record.Wrote,
 		branch:      record.Branch,

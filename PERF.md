@@ -1139,6 +1139,27 @@ Pinned by `internal/session/task_inherit_test.go`. The number on
 `taskShapeBriefLimit` is the brief bound every brief on this road is already
 held to; this section is the first time the inherited half is held to it.
 
+## What a landed task keeps of its own answer
+
+The report is the card — three lines of 300 characters (`taskReportLines`,
+`taskReportLineLimit`). What the work produced is kept beside it, and two
+numbers bound it (`internal/session/task_result.go`):
+
+| what | bound | the rule |
+| --- | --- | --- |
+| the record's own body | `taskResultLimit` (**16,000**) | the checkpoint is rewritten on every transition, so an unbounded body is a file written hundreds of times. Past it the text is cut with `…` and the whole is written beside the transcript. |
+| what one reader is handed | `taskResultCarry` (**4,000**) | a landing note, a continuation's finding and one notice each carry this much — a parent folding five pieces back reads five of them — with the address of the whole beside it. |
+| the file it overflows to | `<transcript stem>-result.txt` | written whenever the answer is longer than one reader gets, through a temporary file and a rename, so a reader following the pointer never opens a half-written answer. A write that fails leaves the transcript as the source and never a path to a file that is not there. |
+
+What travels is decided by the node's **state and ending**, never by the
+report's wording, which an accept or a late verdict may rewrite: a landing whose
+ending is `refused` names its output and its address instead of handing the body
+on, and every other settled landing hands it over. The only question asked of
+the report is whether it already contains the answer word for word, which can
+only omit what the reader is already holding. On the inherited-brief road the
+address rides the prerequisite's HEADER, which the shared pot above does not
+clip. Pinned by `internal/session/task_result_e2e_test.go`.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000

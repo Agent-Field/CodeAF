@@ -91,7 +91,11 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		g.mu.Unlock()
 		return errors.New("this session is closing")
 	}
-	node.finding = composeContinueFinding(node.report, words)
+	// The finding is the last attempt's answer and not only its card: a second
+	// attempt told "wrote the three files" has to rediscover what the first one
+	// produced (task_result.go). The report still leads, because what the check
+	// said is how a continuation knows what to change.
+	node.finding = composeContinueFinding(node.deliveredLocked(), words)
 	node.continuing = true
 	node.state = TaskQueued
 	node.claimed = false

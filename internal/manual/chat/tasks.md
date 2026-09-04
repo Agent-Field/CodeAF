@@ -3597,6 +3597,8 @@ never done for you, because only work that was checked reaches your branch.
 When you say `continue task 7` or `keep going on task 7`, the model calls `tasks` with that
 id and `continue`. That re-arms the **same** task — same id, same brief, same working copy
 and journal, the last report as this round's finding — rather than proposing a new one.
+The finding carries what the last attempt actually produced, not only the three lines of
+its card, so the second attempt does not have to work the answer out again.
 
 It only works for a task **this conversation** still holds. A task from another
 conversation or another window, an unknown id (`No task 1 in this project` on a read), or a

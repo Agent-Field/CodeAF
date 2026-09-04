@@ -1309,7 +1309,13 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	case runErr != nil:
 		fmt.Fprintf(log, "repair %d: ended with an error: %v\n", round, runErr)
 	}
-	return wrote, taskReport(child)
+	// This round's answer replaces the last one's: a repair round is the node
+	// working again, so what it produced is what the node produced. It is kept
+	// here for the receipts' reason — the transcript closes on the way out
+	// (task_result.go).
+	said := lastSaid(child)
+	node.keepResult(said)
+	return wrote, firstLines(said, taskReportLines)
 }
 
 // repairInstruction is what the repairing worker is asked.

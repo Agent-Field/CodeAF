@@ -451,8 +451,25 @@ type TaskNotice struct {
 	// when nothing recorded one, and every surface draws that as nothing.
 	EndedAt time.Time
 	// Report is the done/failed story in two or three lines: what it did, or
-	// what stopped it. A dependent node's brief is assembled from these.
+	// what stopped it. It is the card — a row on the roster, the head of a
+	// landing note — and it is cut to fit one.
 	Report string
+	// Result is what the work actually produced, as much of it as one reader's
+	// context is handed ([taskResultCarry]); ResultCut says that is only the
+	// beginning of it, and ResultWhole is where the whole can be read
+	// (task_result.go).
+	//
+	// ResultHeld is the landing that turned the work back: the answer is NAMED
+	// rather than handed on — Result is empty, ResultWhole says where it is, and
+	// nothing recycles an account the check did not accept.
+	//
+	// They are empty on a landing whose report already carries the answer exactly,
+	// which is every task that finished in two or three short lines, and on work
+	// that has not landed. A surface that ignores them draws what it always drew.
+	Result      string
+	ResultWhole string
+	ResultCut   bool
+	ResultHeld  bool
 	// Changed lists the files the node wrote, repo-relative.
 	Changed []string
 	// Branch is the task's branch ("task/fix-nil-map"), kept after a protected
