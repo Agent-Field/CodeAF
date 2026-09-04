@@ -517,6 +517,124 @@ func TestASecondAskWithTheSameSharedCheckIsRepairedRatherThanRefusedAgain(t *tes
 	}
 }
 
+// A REPEATED ACTION NOBODY DECLARED IS A LINT, NOT A PERMISSION.
+//
+// This is the negative control for the family road, and it is the leak that road
+// had: the duplicate-work rule reads a part's done-condition PROSE for commands
+// two parts both order, and everything it found used to land on the parent's own
+// checker as something it could issue. So `./counter.sh` written into three
+// acceptances — a real action, nobody's declared verification — became a command
+// the parent's checker was invited to run, which is the prose harvest coming back
+// by another road.
+//
+// THE LINT ITSELF IS KEPT, because it is worth having: the repeat is still found,
+// still taken off every part, and still told to the parent's WORKER, whose hands
+// are ordinary hands. What it does not do any more is hand a checker a verb.
+func TestAProseRepeatedActionIsLiftedWithoutBecomingCheckerAuthority(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	// THE SPELLING IS ONE THE LINT CAN SEE: it reads a done-condition clause as a
+	// command only when the first word is a program the shell would find and some
+	// later word names something findable ([ordersWork]), which is what makes this
+	// a control over the road that really lifts rather than over one that never
+	// fires.
+	const action = "sh ./counter.sh --all"
+	repeating := func() []dividePart {
+		parts := familyParts("rank", "sessions", "browse")
+		for i := range parts {
+			parts[i].Acceptance = parts[i].Title + "_test.go passes; " + action + " passes"
+		}
+		return parts
+	}
+	nest.divide(t, divideArgsFor(wideEvidence, repeating()...))
+	admitted := nest.divide(t, divideArgsFor(wideEvidence, repeating()...))
+	if !strings.HasPrefix(admitted, "split into 3 parts:") {
+		t.Fatalf("the second ask was told %q, want the division admitted", admitted)
+	}
+
+	// THE LINT RAN: the repeat came off every part and the parent was told it owns
+	// it, in the sentence its worker reads for what finishing means.
+	// The clause is compared as it stands, trailing words and all ([orderedChecks]
+	// says why), so what the parent owns is the sentence the parts repeated.
+	family := nest.parent.familyChecks()
+	if len(family) != 1 || !strings.Contains(family[0], action) {
+		t.Fatalf("the parent was given %q, want the repeated action the parts all carried", family)
+	}
+	if told := nest.parent.instruction(); !strings.Contains(told, action) {
+		t.Fatalf("the parent is never told about the repeat it now owns:\n%s", told)
+	}
+	for _, kid := range nest.graph.children(nest.parent.id) {
+		if strings.Contains(kid.acceptance(), action) {
+			t.Errorf("the part %q is still ordered to repeat the action: %q", kid.title(), kid.acceptance())
+		}
+	}
+
+	// AND NO CHECKER GAINED A VERB. Not the parent's, which is where the lift
+	// landed, and not any part's.
+	ground := t.TempDir()
+	for _, node := range append(nest.graph.children(nest.parent.id), nest.parent) {
+		door := auditDoorFor(node, ground)
+		if len(door.checks) != 0 {
+			t.Fatalf("%q's checker was handed %q, and nobody declared any of it", node.title(), door.checks)
+		}
+		if _, ok := doorRefusal(action, door); ok {
+			t.Fatalf("%q's checker may run the action its parts merely repeated", node.title())
+		}
+		if strings.Contains(door.offer(), "counter.sh") {
+			t.Fatalf("%q's checker is offered the action nobody declared:\n%s", node.title(), door.offer())
+		}
+	}
+}
+
+// AND A FAMILY CHECK DECLARED IN THE TYPED FIELD MOVES THE SAME WAY.
+//
+// A part's `checks` is what its own checker will really run (task_checks.go), so
+// a suite left standing there is the whole family's suite run once per part —
+// the same waste, arriving through the typed door instead of through prose. It
+// comes off every part's list and lands on the parent, whose door then opens on
+// it and whose parts' doors do not.
+func TestASharedCheckDeclaredByEveryPartIsLiftedOffTheirOwnDoors(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	declaring := func() []dividePart {
+		parts := familyParts("rank", "sessions", "browse")
+		for i := range parts {
+			parts[i].Acceptance = parts[i].Title + "_test.go passes"
+			parts[i].Checks = []string{"go test ./internal/" + parts[i].Title, familySuite}
+		}
+		return parts
+	}
+	// The first ask is the refusal a worker that can redraw its own division still
+	// gets; the second is the harness lifting what the worker could not.
+	nest.divide(t, divideArgsFor(wideEvidence, declaring()...))
+	admitted := nest.divide(t, divideArgsFor(wideEvidence, declaring()...))
+	if !strings.HasPrefix(admitted, "split into 3 parts:") {
+		t.Fatalf("the second ask was told %q, want the division admitted", admitted)
+	}
+
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 3 {
+		t.Fatalf("the division bore %d parts, want 3", len(kids))
+	}
+	for _, kid := range kids {
+		checks := kid.repeatableChecks()
+		if containsWord(checks, familySuite) {
+			t.Errorf("the part %q is still declared to run the family's suite: %q", kid.title(), checks)
+		}
+		if len(checks) != 1 || !strings.Contains(checks[0], kid.title()) {
+			t.Errorf("the part %q kept %q, want its own check and nothing else", kid.title(), checks)
+		}
+		if door := auditDoorFor(kid, t.TempDir()); containsWord(door.checks, familySuite) {
+			t.Errorf("the part %q's own checker still opens on the family's suite: %q", kid.title(), door.checks)
+		}
+	}
+	family := nest.parent.familyChecks()
+	if len(family) != 1 || family[0] != familySuite {
+		t.Fatalf("the parent owns %v, want the family-wide check that came off its parts", family)
+	}
+	if door := auditDoorFor(nest.parent, t.TempDir()); !containsWord(door.checks, familySuite) {
+		t.Fatalf("the parent's own door holds %q, want the check only it can honestly make", door.checks)
+	}
+}
+
 // THE PARENT IS TOLD WHAT IT NOW OWNS, in the sentence a worker reads to find
 // out what finishing means — and told WHEN, because a parent that ran it the
 // moment it noticed it would be making the parts' own mistake one level up.
@@ -547,15 +665,25 @@ func TestTheParentsInstructionNamesTheFamilyChecksItWasGiven(t *testing.T) {
 	}
 }
 
-// AND THE PARENT'S OWN DOOR OPENS ON THEM. A node told to run a check its bash
-// refuses is a node told to do something it cannot, which is the exact shape
-// task_checks.go exists to remove.
-func TestTheParentsAuditDoorOffersTheFamilyChecksItOwns(t *testing.T) {
+// AND THE PARENT'S OWN DOOR OPENS ON THE ONES THAT WERE DECLARED. A node that
+// owns its family's DECLARED verification and whose checker could not run it
+// would be a permission lost on the way up; a node whose checker gained a verb
+// out of prose would be a permission invented on the way up. The door is the
+// first and never the second ([declaredAmong]).
+func TestTheParentsAuditDoorOffersTheDeclaredFamilyChecksItOwns(t *testing.T) {
 	nest := newDivideNest(t, wideBrief, 0)
-	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
-	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "sessions", "browse")...))
+	declaring := func() []dividePart {
+		parts := familyParts("rank", "sessions", "browse")
+		for i := range parts {
+			parts[i].Acceptance = parts[i].Title + "_test.go passes"
+			parts[i].Checks = []string{familySuite}
+		}
+		return parts
+	}
+	nest.divide(t, divideArgsFor(wideEvidence, declaring()...))
+	nest.divide(t, divideArgsFor(wideEvidence, declaring()...))
 
-	door := auditDoorFor(nest.parent, auditPlace{ground: t.TempDir()})
+	door := auditDoorFor(nest.parent, t.TempDir())
 	if !strings.Contains(door.offer(), familySuite) {
 		t.Fatalf("the parent's door offers %q, want the family-wide check it now owns", door.offer())
 	}

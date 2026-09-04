@@ -1247,8 +1247,8 @@ stopped.
 ## How aforge knows a task really finished
 
 A task is never done on its own say-so. When the work finishes, a **separate, fresh,
-read-only checker** is put in a clean restore of what the task wrote, runs the repository's
-own checks, reads the diff, and answers. Only a pass merges.
+read-only checker** is put in a clean restore of what the task wrote, runs the checks the work
+declared, reads the diff, and answers. Only a pass merges.
 
 The checker has no shared context and no memory of the work. Its whole world is the
 acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
@@ -1314,60 +1314,64 @@ own files and its parts' files are both staged, both restored, and both named to
 parts'. A part that did not land is not counted, because its work is not in the tree. Nothing
 merges upward until that check answers.
 
-## Which commands the checker is allowed — the task's own check, not a fixed list
+## Which commands the checker is allowed — the checks the work declared, not a fixed list
 
-**The checker is allowed the checks the work itself names.** There is no list of build tools
-in aforge, and no setting that holds one. The commands its `bash` will accept come from three
-places, and nothing else gets through:
+**The checker is allowed the verification the work DECLARED, and nothing else it merely
+watched happen.** There is no list of build tools in aforge, and no setting that holds one.
+The commands its `bash` will accept come from two places:
 
-- **the check your task declares** — a command the work names in its own half of the brief or
-  in a `done when` sentence somebody actually wrote. A span in backticks
-  (`` `bash verify.sh` ``, `` `make check` ``) and a shell-prompt line
-  (`$ ./verify --quiet`) both count there and never in your words quoted above it. A pasted
-  terminal session shows how you saw a bug; neither spelling turns it into commands to run
-  against your tree. A wildcard the work names is honoured, so `` `verify.*` `` admits
-  `verify.sh`;
-- **the check the task itself used** — any command its worker issued, taken from the same
-  tool results the checker is shown, read for **the one command that line runs**. A leading
-  `cd <a directory in your tree> &&` is dropped — that only states the directory the task was
-  working in — and so is everything after the first pipe, along with the redirections of output
-  at the end of the line (`2>&1`, `> log`). So
-  `cd /workspace/thing && cargo build --release 2>&1 | tail -3` contributes
-  `cargo build --release`, which the checker then runs as one command, composing nothing. A
-  `cd` to somewhere outside your tree contributes nothing at all, an arrow in the middle of the
-  line leaves it composed and it contributes nothing, and a command that even a
-  permit-everything policy would still stop and ask about — `rm -rf /`, `shutdown`, `mkfs` —
-  never becomes one either;
+- **the `checks` the task was proposed with** — the commands whoever wrote the brief typed
+  into `propose_task`'s (or `divide_work`'s) `checks` field: the test, the build, the probe
+  that re-establishes the result. Each is one simple command, run as it was written, and a
+  wildcard you wrote is honoured, so a check written `verify.*` admits `verify.sh`. A check
+  that names nothing the checker could actually run where it stands is dropped rather than
+  offered;
 - **the always-safe reading commands** — `git diff`, `git log`, `git status`, `git show`,
   `pwd`, `wc`, `head`, `cat`. These print and cannot change what is being judged. They are
   not verification, so a checker holding only these can read your work but cannot exercise
   it.
 
-## How a named check matches what the checker runs
+**Nothing else is a door, and that is deliberate.** Not a command backticked in the brief or
+the done-condition, not a `$ ` line in your pasted reproduction, and **not what the task's own
+worker ran**. A check that names no file is matched as a prefix, field by field, so a declared
+`make check` admits `make check ./...` and does not admit `make checkout`. A check that
+**names a file in your tree** is matched by which file it is instead — see the next section.
+**Every refusal names what this particular check is allowed**, listing the declared checks
+first and the reading commands after them, so the model reads the door in the same breath as
+the no.
 
-A check that names no file is matched as a prefix, field by field, so `make check` admits
-`make check ./...` and does not admit `make checkout`. A check that **names a file in your
-tree** is matched by which file it is instead — see the next section. **Every refusal names
-what this particular check is allowed**, listing the task's own check first and the reading
-commands after it, so the model reads the door in the same breath as the no.
+## Why the checker does not re-run what the task already ran
 
-**When the work names no check and issued nothing that looks like one**, the checker is told
-so in as many words, told to judge from reading and answer, and given a much shorter window —
-one minute rather than five. There is no slow command for it to wait on, and the failure this
-replaced was a checker spending the full five minutes reaching for a door that was never
-going to open. That was measured on a Rust deliverable: the allowlist used to be a fixed set
-of Go verbs plus git, so on a project that was not Go the checker could confirm nothing at
-all, exhausted its five minutes on all six attempts, and every one of them landed the task
-needing your look.
+This was measured. A task was asked to run a two-minute build script **once** and report the
+marker it wrote. Its worker ran it, exit 0, read the marker back — and the checker, which used
+to be handed every command a worker ran as something it could re-run, ran the same script
+again for another two minutes.
+
+**What a worker ran is evidence of what happened, not permission to make it happen again.**
+The script was allowed, uncomposed and harmless to the tree; the point is the *action*. A
+build, a deploy, a message sent, a counter moved: you asked for it once, and a second run is a
+second effect you are paying for, in a copy of the tree where its result may not even mean the
+same thing. So the receipts stay in front of the checker — whole, verbatim, with what came back
+— and they are how it settles that the requested action was carried out, without carrying it
+out again.
+
+**If you want something re-run, declare it.** That is what `checks` is for, and a task that
+declares none is judged by reading its work and its artifacts, which is a real answer.
+
+**When the work declares no check**, the checker is told so in as many words, told to judge
+from reading and answer, and given a much shorter window — one minute rather than five. There
+is no slow command for it to wait on, and the failure this replaced was a checker spending the
+full five minutes reaching for a door that was never going to open. That was measured on a Rust
+deliverable: the allowlist used to be a fixed set of Go verbs plus git, so on a project that was
+not Go the checker could confirm nothing at all, exhausted its five minutes on all six attempts,
+and every one of them landed the task needing your look.
 
 ## Why did it run chmod or reproduction steps from the issue I pasted
 
-It harvests nothing from your pasted request as a check, whether the command is in backticks
-or on a `$ ` prompt line. That remains true when nobody could write a separate `done when`
-sentence and your words have to stand as that sentence: a terminal transcript is evidence
-of how you saw the bug, not a check to run against the finished tree. A check in either
-spelling still counts when a piece of work names it in its own half of the brief or somebody
-actually writes it into a `done when` sentence.
+It does not, and it no longer harvests commands from prose at all: neither a `$ ` prompt line
+in your pasted request, nor a backticked command in a brief or a `done when` sentence, is
+something the checker may run. A terminal transcript is evidence of how you saw the bug, and a
+sentence naming a command is a sentence. Only the `checks` field puts a command under contract.
 
 ## How the check is spelled — one file, and the ways that really start it
 
@@ -1384,13 +1388,13 @@ same file is the same check, and a wildcard you wrote is resolved the same way �
 names the file it actually matches on disk.
 
 **A file that says nothing about being run** — no `#!` line and no executable bit — gets no
-program word at all. It is run **the way your work ran it**: the exact spelling your brief
-declared, or the exact command its worker issued. The refusal says so, as "the check
+program word at all. It is run **the way the check was declared**: the exact spelling the
+`checks` entry used, and nothing else. The refusal says so, as "the check
 /path/data.txt declares no interpreter; run it the way the work ran it". A file with the
 executable bit but no `#!` line is allowed its own bare spellings and nothing in front of them.
 
 **What is still refused:** a different file (`bash other.sh`), the wrong interpreter
-(`python3 verify.sh` for a bash script), arguments your brief never declared
+(`python3 verify.sh` for a bash script), arguments the check never declared
 (`bash verify.sh --flag` — one word, then the file, and nothing after it), an option where the
 program word should be (`bash -x verify.sh`), and anything composed (`cd x && bash verify.sh`).
 Where a check can be spelled, the refusal spells it out — "the check /path/verify.sh — run it
@@ -1447,10 +1451,11 @@ The checker is also handed the **last few tool results of the task's own worker*
 six, each cut at 1200 bytes: what was called, with what, and what came back. It is the real
 result the worker read, not a display copy.
 
-That exists because a check is often the most expensive thing in the whole task. A checker
-made to rediscover the command and run it twice from scratch spends its whole five minutes
-and the task lands needing your look, which is exactly what was measured. Seeing what
-already happened tells it which command the check even is.
+That exists because **this is how the checker settles what already happened without making it
+happen again**. A task asked to run something once leaves its receipt here — the call, and what
+came back — and reading that is how the checker knows the requested action was carried out. The
+receipts are evidence only: nothing in them becomes a command the checker may issue, however
+plainly it names one.
 
 It is **not** a shortcut to a pass. The checker is told where those results came from: in a
 restore they came from the task's own copy — the one an answer may not rest on — so they can
@@ -2448,10 +2453,17 @@ Five arguments are **required**:
 | `summary` | Two or three lines you read to decide whether to redirect it |
 | `brief` | The work itself: files, symbols, conventions, what has been tried |
 | `deliverable` | What must **exist** when it is over, and where: the file and its path, the branch, the answer and its shape |
-| `acceptance` | The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear |
+| `acceptance` | The observable done-condition: the behaviour that must hold, the output that must appear |
 
 The same `acceptance` string is what the second look judges against — one text, two
 readers. So a vague acceptance costs twice.
+
+There is also an optional **`checks`**: the commands that RE-ESTABLISH the result, each one
+simple command that is safe to run again — a test, a build, a probe. They are the only
+commands the independent checker at the end is allowed to run, so a task that declares none is
+judged by reading its work and its artifacts. Never put the *work* in there: a deploy, a send,
+a job you asked for once will be run a second time by the checker if you declare it as
+verification, and running it again repeats the effect.
 
 A missing argument comes back as an ordinary result, never an error:
 `Invalid arguments: title is required`, and the same sentence for `summary`, `brief`,
@@ -2596,6 +2608,14 @@ all), circling gets a landing turn — the task writes the deliverable from what
 and only then a stop with `stopped: 200 steps and no finish`, the number being the
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
+
+**`checks`** — the repeatable verification, described in *What propose_task needs from you*
+above. Each entry must be one simple command with no pipes or `&&`, and one that even a
+permit-everything policy would still stop and ask about is refused outright:
+`Invalid arguments: checks must each be ONE command with no shell composition`. The same
+argument is on `divide_work`, where each part declares what its own checker may run — and a
+check every part declares is taken off all of them and given once to the task that divided
+them, which is the only one that can honestly make it after its parts are home.
 
 **`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in its working copy before the task is stopped as spinning. Default **6**. On the

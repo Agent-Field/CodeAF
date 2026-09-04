@@ -356,9 +356,10 @@ type TaskNode struct {
 	// contract a node was admitted with is the contract it is judged against, and
 	// [TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal] pins
 	// it. So the repair does not edit `spec.acceptance`; it puts what it lifted
-	// HERE, where the two readers that need it can find it: the worker is told
-	// ([TaskNode.instructionOn]) and its own checking door opens on it
-	// ([auditDoorFor]).
+	// HERE, where the reader that needs it can find it: the worker is TOLD what it
+	// owns ([TaskNode.instructionOn]) and runs it in its own hands. What its
+	// CHECKER may re-run is the narrower [TaskNode.FamilyDeclared], for the reason
+	// stated there.
 	//
 	// IT IS ON THE CHECKPOINT (task_store.go), UNLIKE [TaskNode.sharedTold], and
 	// the two go opposite ways for one reason: the telling is about a
@@ -371,6 +372,52 @@ type TaskNode struct {
 	// it is read by name from more than one place. Like them it is guarded by the
 	// graph's lock.
 	Family []string
+	// FamilyDeclared is the part of [TaskNode.Family] this node's CHECKER may
+	// re-run: the family's checks that a part had DECLARED as verification rather
+	// than ones this package recognised in a part's prose done-condition
+	// ([declaredAmong]).
+	//
+	// THE TWO LISTS ARE TWO PERMISSIONS AND THAT IS WHY THERE ARE TWO. Family is
+	// what the parent's worker is told to run once its parts are home, which is
+	// ordinary work in ordinary hands. This is executable verification, and
+	// lifting must move it rather than mint it: a command nobody ever typed into
+	// `checks` was executable verification nowhere, so making it the parent's door
+	// would be the prose harvest this build removed, arriving by the family road.
+	//
+	// A CHECKPOINT WRITTEN BEFORE THIS FIELD CARRIES NEITHER PROVENANCE NOR THIS
+	// LIST, and it is read as declaring nothing. Old records were filled by a
+	// build that harvested commands out of prose; granting them fresh execution
+	// now, on the strength of a list nobody can tell apart any more, is the one
+	// thing this field exists to prevent.
+	FamilyDeclared []string
+	// Checks is THE REPEATABLE VERIFICATION THIS WORK WAS PUT UNDER CONTRACT WITH:
+	// the commands whoever proposed it declared as the way anybody re-establishes
+	// that it is done, typed into `checks` rather than harvested out of prose
+	// (task.go's schema, task_checks.go's law). They are the ONLY commands this
+	// node's checker may run, beside the reading ones, and an empty list — which is
+	// most nodes, and every node admitted before this field existed — means the
+	// checker judges from what it can see and from the worker's receipts.
+	//
+	// IT IS A NODE FIELD AND NOT ONLY A SPEC ONE for the reason [TaskNode.Family]
+	// is: a check can be moved by something that happens after admission. The spec
+	// carries what the proposal declared, this carries what the node is checked
+	// against NOW, and [TaskNode.reviseChecks] is the one door between them —
+	// because a steering revision that changes the goal must not leave the old
+	// goal's checks standing in front of the new one.
+	//
+	// It is on the checkpoint (task_store.go) for Family's reason: the check is
+	// made when the work comes home, which can be a different process from the one
+	// that admitted it. Like its neighbours it is guarded by the graph's lock.
+	Checks []string
+	// checksRevision is WHICH REVISION OF THE ASSIGNMENT the two lists above were
+	// written for. Admission leaves it 0, which is the revision of a node nobody
+	// has steered; [TaskNode.reviseChecksLocked] writes it in the same hold of the
+	// lock that writes the checks, and [auditDoorForRevision] refuses to build a
+	// door out of checks stamped for a revision other than the one the audit is
+	// judging. It is on the checkpoint beside them, because a stamp that did not
+	// survive a restart would make every restored node's checks read as current
+	// under whatever the assignment says then.
+	checksRevision uint64
 	// Base is the machine commit the parent's world was sealed into and Universe
 	// is furrow's name for the fork, when a rung made either. They are here for
 	// the SAME REASON Rung and Seal are — the landing needs them and the landing
@@ -1031,6 +1078,10 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// two that ask a model for a handoff, which is the point: the harness
 		// never writes an expectation on anybody's behalf.
 		Expects: spec.expects,
+		// AND THE VERIFICATION IT DECLARED, from the same two doors and on the
+		// same terms: the harness never writes a check on anybody's behalf, and a
+		// node that declared none is checked by reading (task_checks.go).
+		Checks: spec.checks,
 	}
 	g.mu.Lock()
 	if g.nodes == nil {
@@ -2018,45 +2069,103 @@ func taskCopyFor(tree taskTree) taskCopy {
 	return taskCopy{}
 }
 
-// checkTexts hands [declaredChecks] each account in a node's document beside
-// its source because a prompt line in the person's pasted words is a story
-// about seeing the bug, while the same line in the work's account is a promise
-// about how to check it. An acceptance nobody could write is those same words
-// with a sentence in front of them, and that sentence does not turn a pasted
-// transcript into a promise. The work's half still uses [composeBrief] so this
-// reader cannot invent a second layout for the worker's document.
-func (n *TaskNode) checkTexts() []checkText {
+// taskVerification is ONE READING of everything that decides what a node's
+// checker may run: its own declared checks, the family's checks it is entitled to
+// re-run, and WHICH REVISION OF THE ASSIGNMENT all of that was written for.
+//
+// THE THREE TRAVEL TOGETHER BECAUSE THE QUESTION IS ONE QUESTION. A reader that
+// took the checks under one hold of the lock and the revision under another could
+// be handed the old goal's verification stamped with the new goal's revision —
+// which is precisely the pass nobody earned that [TaskNode.reviseChecks] exists
+// to prevent. There is one snapshot and it is taken once.
+type taskVerification struct {
+	checks   []string
+	family   []string
+	revision uint64
+}
+
+// verification is that snapshot, copied out under the lock so a reader cannot be
+// handed a slice the graph is still appending to.
+func (n *TaskNode) verification() taskVerification {
+	if n == nil || n.graph == nil {
+		return taskVerification{}
+	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	ask := briefAskText(n.spec.request)
-	work := briefWorkText(ask, n.brief)
-	// THE DONE-CONDITION IS THE ONE THE WORKER READS, family checks and all
-	// ([withFamilyChecks]), because a document that harvested a different
-	// sentence from the one it hands out would be two documents.
-	acceptance := withFamilyChecks(n.spec.acceptance, n.Family)
-	texts := make([]checkText, 0, 3)
-	if ask != "" {
-		texts = append(texts, checkText{text: ask, from: checksFromAsk})
+	return n.verificationLocked()
+}
+
+// verificationLocked is the same snapshot for a caller ALREADY HOLDING THE
+// GRAPH'S LOCK, and it exists for exactly one reader: whoever has to take this
+// and the node's assignment version in ONE hold.
+//
+// THE COMPARISON THIS FEEDS IS ONLY HONEST IF BOTH SIDES CAME FROM ONE MOMENT.
+// Reading the checks under one hold and the assignment's version under another
+// leaves a revision free to land between them, and the answer is then the old
+// goal's verification wearing the new goal's number — which is the pass nobody
+// earned that the stamp exists to prevent.
+func (n *TaskNode) verificationLocked() taskVerification {
+	return taskVerification{
+		checks:   append([]string(nil), n.Checks...),
+		family:   append([]string(nil), n.FamilyDeclared...),
+		revision: n.checksRevision,
 	}
-	if acceptanceIsAsk(n.spec.acceptance) {
-		// The frame carries the person's words and the family's checks carry the
-		// work's, so only the first half moves across; the checks stay in the
-		// account below, where they were written.
-		texts = append(texts, checkText{text: n.spec.acceptance, from: checksFromAsk})
-		acceptance = withFamilyChecks("", n.Family)
+}
+
+// repeatableChecks is the node's own declaration alone, for the readers that
+// want it without the family's ([Agent.sessionChecks] and this package's tests).
+func (n *TaskNode) repeatableChecks() []string {
+	return n.verification().checks
+}
+
+// reviseChecks replaces what this node is checked by, and it is the ONE door
+// that moves any of it after admission.
+//
+// A REVISION THAT MOVES THE GOAL MUST NOT LEAVE THE OLD GOAL'S CHECKS IN FRONT
+// OF THE NEW ONE. A check is an assertion about a particular piece of work; the
+// same command against a changed assignment is either a question nobody asked or
+// a pass nobody earned. So a revision that names no checks CLEARS them and the
+// node falls back to being judged by reading, which is the honest answer when
+// nobody has said how the new work is verified.
+//
+// THE FAMILY'S EXECUTABLE HALF GOES WITH THEM, and only that half. The commands
+// this node was told to run for its family were an assertion about the old goal
+// exactly as its own were, so its checker loses them; what the parent's WORKER
+// was told ([TaskNode.Family]) is left standing, because that is the record of
+// what was taken off parts that have already been handed out and it is work in
+// ordinary hands rather than a permission to verify.
+//
+// THE WHOLE WRITE IS ONE HOLD OF THE LOCK, revision and all, so that no reader
+// can catch this node checked by the old goal's commands under the new goal's
+// revision.
+func (n *TaskNode) reviseChecks(revision uint64, checks []string) {
+	if n == nil || n.graph == nil {
+		return
 	}
-	// THE ZERO COPY, for [TaskNode.instruction]'s reason: the harvest resolves
-	// against the clean restore rather than against any worker's own folder.
-	// AND NO ADMISSION CONTEXT, which is a decision and not an omission
-	// (admission.go). What is harvested here becomes a CHECK this work is judged
-	// against; the quotes are things that were said, and a sentence somebody
-	// typed in passing must never become a requirement nobody agreed to.
-	account := composeBrief("", work, n.spec.deliverable, acceptance,
-		expectsSection(n.spec.expects), AdmissionContext{}, n.spec.origin, taskCopy{})
-	if account != "" {
-		texts = append(texts, checkText{text: account, from: checksFromWork})
-	}
-	return texts
+	n.graph.mu.Lock()
+	n.reviseChecksLocked(revision, checks)
+	n.graph.mu.Unlock()
+	n.graph.checkpoint()
+}
+
+// reviseChecksLocked is that write for a caller ALREADY HOLDING THE GRAPH'S
+// LOCK, and it is the seam a steering road wires itself to.
+//
+// IT IS MEANT TO BE CALLED IN THE SAME HOLD THAT MOVED THE GOAL. A revision that
+// bumped the assignment's version under the lock and then released it before
+// re-taking it to clear the checks would leave a window in which this node reads
+// as checked, by the old goal's commands, at the new goal's revision — and a
+// checker that sampled that window would run them and could pass on them. So the
+// version and the verification move together or they do not move.
+//
+// THE CALLER SUPPLIES THE REVISION IT JUST PRODUCED. Nothing here reads the
+// assignment, because a second reading of somebody else's number is the drift
+// this package refuses everywhere else; what this owns is that a revision with no
+// checks of its own leaves the node with none.
+func (n *TaskNode) reviseChecksLocked(revision uint64, checks []string) {
+	n.Checks = append([]string(nil), checks...)
+	n.FamilyDeclared = nil
+	n.checksRevision = revision
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -4691,7 +4800,7 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 	// check reads a running tree and decides whether the work is moving; it has
 	// no business with a wider hand than the judge that will grade the result,
 	// and no reason for a narrower one.
-	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, auditPlace{ground: dir, ran: dir}))
+	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, dir))
 	if err != nil {
 		return false, "the progress check could not start: " + err.Error()
 	}

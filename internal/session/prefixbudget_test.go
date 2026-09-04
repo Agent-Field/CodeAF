@@ -105,6 +105,16 @@ import (
 // sentence, which `tasks` own description already carries word for word
 // (tools_tasks.go's [tasksDescription]), and the page went 21,289 → 20,840. The
 // prefix is 47,920, which is 80 under.
+// THE VERIFICATION CONTRACT PAID FOR ITSELF OUT OF THREE SENTENCES SAID TWICE
+// (2026-09-04). `propose_task` and `divide_work` grew a `checks` field — the
+// repeatable verification a piece of work is put under contract with, which is
+// the only thing its checker may run (task_checks.go) — and it landed the prefix
+// 388 over. Nothing was raised. `acceptance` gave up "the command that passes",
+// which is now the field next to it; `wide` gave up the two sentences
+// prompts/system.md's own handoff section already spells; `model`, `max_steps`
+// and `no_progress` gave up their tails about what the harness then does; and the
+// belt's `tasks` bullet lost its `id` sentence, which [tasksDescription] carries
+// in full. The prefix is 47,815, which is 185 under.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
