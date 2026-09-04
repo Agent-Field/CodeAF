@@ -196,6 +196,11 @@ func (r *childRun) open(instruction string) error {
 	if err != nil {
 		return err
 	}
+	// THE REQUEST HAS GONE, so the words written into this attempt's finding are
+	// in front of the model (assignment.go). Nothing else marks them: an attempt
+	// that never got this far leaves the person's correction pending, which is
+	// what stops a landing publishing over it.
+	r.node.openingCarried()
 	r.drain(events)
 	return nil
 }

@@ -2870,6 +2870,35 @@ you type into its room is what wakes it, and it goes back to waiting afterwards 
 task that is waiting on its pieces*). If you stop a parent, its unfinished pieces are
 stopped with it and their branches are kept.
 
+## When you change what a task is for while it is running — corrections that move the done-condition, `revise_assignment`
+
+Say "CSV instead of JSON" into a running task and two things happen. The worker reads your
+line in its next turn, as your own words; and, because that line changes what the job *is*,
+it can fold it into the task's own **done-condition** with its tool for exactly that,
+`revise_assignment`, naming the line you sent. From then on the work is done against what
+you last said, and so is the check: the person who reads the finished work is judging
+CSV, not the JSON you called off.
+
+**Your words are kept beside the new condition.** The task's page and the checker's packet
+both carry what you actually typed and what the worker made of it, so a restatement that
+has drifted from your sentence is a thing you can see rather than the only account left.
+What the task was first given stays on its record too — it is history, and history is not
+edited.
+
+**A correction sent while the work is being checked is kept, and the check cannot
+land the task as done over it.** The task takes another round with your words instead.
+There is a bound on that — a run may be sent round for corrections three times — and when
+it runs out the task **stops rather than merging**: nothing goes to your checkout, the work
+stays on the task's branch, and the card says what you said that it never took up.
+`continue` is how you take it further.
+
+**Most corrections change nothing about the contract, and that is the ordinary case.** "The
+config lives under etc/" is a fact the work needs. "Why did you do it that way?" is a
+question to answer. Neither moves the done-condition, and nothing in aforge guesses: the
+worker moves it only by making that one call, and only for a line **you** sent. What the
+model says into a task with `tasks id N say` is one piece of work talking to another and
+can never do it.
+
 ## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task
 
 A task is usually one worker. It is not fixed to one.

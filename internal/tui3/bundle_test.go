@@ -3819,8 +3819,12 @@ type roomFake struct {
 	// steerWaiting is the engine answering that the node was PARKED ON ITS OWN
 	// PIECES when it took the line (internal/session's [Agent.SteerTask]).
 	steerWaiting bool
-	steerErr     error
-	watchErr     error
+	// steerHeld is the third outcome: nobody was inside the node to read the
+	// line, its work is being checked, and the engine kept the words on the
+	// task's own record rather than sending them back.
+	steerHeld bool
+	steerErr  error
+	watchErr  error
 	// retargeted is every explicit model pick this fake was handed, in order, and
 	// retargetErr is the engine refusing one — a node that settled between the
 	// frame and the press (internal/session's [Agent.RetargetTask]).
@@ -3884,14 +3888,29 @@ func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 	}
 }
 
-func (f *roomFake) SteerTask(id uint64, text string) (bool, error) {
+func (f *roomFake) SteerTask(id uint64, text string) (session.SteerReceipt, error) {
 	if f.steerErr != nil {
-		return false, f.steerErr
+		return session.SteerReceipt{}, f.steerErr
 	}
 	f.steered = append(f.steered, steerLine{id: id, text: text})
 	// steerWaiting is the engine's own second answer: the node had handed its
 	// pieces out and was parked on their reports, so this line is what wakes it.
-	return f.steerWaiting, nil
+	// The whole receipt travels now, sentence included, because a held line — one
+	// the engine kept while a task's work was being checked — is a third outcome
+	// this fake would otherwise be unable to express.
+	return session.SteerReceipt{
+		Waiting: f.steerWaiting,
+		Held:    f.steerHeld,
+		Landing: f.steerLanding(),
+	}, nil
+}
+
+// steerLanding is the engine's own sentence for what the sending did.
+func (f *roomFake) steerLanding() string {
+	if f.steerHeld {
+		return "held on the task's record — it is being checked, and it cannot land as done without this"
+	}
+	return session.SteerDelivered(f.steerWaiting)
 }
 
 // RetargetTask is the room's fourth door: one running node moved onto another
@@ -4386,6 +4405,34 @@ func TestTheSteerGuardSendsToMainAndRevivesThroughTheHead(t *testing.T) {
 		if !strings.Contains(agent.sent[0], want) {
 			t.Fatalf("the revive request is missing %q: %q", want, agent.sent[0])
 		}
+	}
+}
+
+// A LINE THE ENGINE HELD IS NOT A REFUSAL AND MUST NOT READ LIKE ONE. The task's
+// work was in front of the checker, so nobody was inside it to read the words —
+// and the engine kept them on the task's own record instead of sending them
+// back. The page takes the line, draws the elbow every correction draws, and
+// says what the sending did in the engine's own sentence: "delivered" over words
+// nobody has read would be this surface inventing a fact.
+func TestALineTheEngineHeldIsDrawnAsKeptRatherThanGuarded(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.steerHeld = true
+	clickRail(t, a, 0)
+	a.input.setText("make it CSV instead")
+	drive(t, a, key("enter"))
+
+	if a.guarding() {
+		t.Fatal("a line the engine kept raised the guard, so the person would be asked to send it somewhere else")
+	}
+	if len(agent.steered) != 1 || agent.steered[0].text != "make it CSV instead" {
+		t.Fatalf("the engine was handed %+v, want the person's line once", agent.steered)
+	}
+	if !a.input.empty() {
+		t.Fatal("the box kept words the engine had already taken, which is how one correction gets sent twice")
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "cannot land as done without this") {
+		t.Fatalf("the page does not say what became of the line:\n%s", got)
 	}
 }
 

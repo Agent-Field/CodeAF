@@ -408,6 +408,55 @@ type taskRecord struct {
 	// absent, and a checkpoint written before it existed reads exactly as it
 	// always did: the design fails with nothing saved.
 	Offer *harnessOfferRecord `json:"offer,omitempty"`
+
+	// Assignment is what this node is working towards NOW, when that is no longer
+	// only what it was admitted with: the revisions the person's own directions
+	// made, and the receipts for every line said to it (assignment.go).
+	//
+	// IT IS ABSENT ON A NODE NOBODY HAS SAID ANYTHING TO, which is nearly all of
+	// them, and absent on every checkpoint written before it existed. Read back as
+	// nothing it means exactly what it meant then — the admitted brief and
+	// acceptance are the effective ones — so an old session opens unchanged, and
+	// the fields it would have overlaid are still on the record beside it.
+	Assignment *assignmentRecord `json:"assignment,omitempty"`
+}
+
+// assignmentRecord is the overlay and its receipts on disk. The admitted brief,
+// deliverable and acceptance keep their own fields above: this is what has been
+// said and decided SINCE, and a reader that wants what was first agreed must
+// still be able to find it.
+type assignmentRecord struct {
+	Version     uint64            `json:"version,omitempty"`
+	Deliverable string            `json:"deliverable,omitempty"`
+	Acceptance  string            `json:"acceptance,omitempty"`
+	Revisions   []revisionRecord  `json:"revisions,omitempty"`
+	Directions  []directionRecord `json:"directions,omitempty"`
+	Next        uint64            `json:"next,omitempty"`
+}
+
+// revisionRecord is one accepted move of the goal, with the words that
+// authorised it.
+type revisionRecord struct {
+	Version     uint64    `json:"version"`
+	Direction   uint64    `json:"direction,omitempty"`
+	Said        string    `json:"said,omitempty"`
+	Work        string    `json:"work,omitempty"`
+	Deliverable string    `json:"deliverable,omitempty"`
+	Acceptance  string    `json:"acceptance,omitempty"`
+	At          time.Time `json:"at,omitzero"`
+}
+
+// directionRecord is one line said to the node, with who said it and what became
+// of it. It is on the checkpoint because a direction nobody has read is what
+// stops a landing publishing, and a process that died between the words and the
+// landing must not come back having forgotten them.
+type directionRecord struct {
+	ID      uint64    `json:"id"`
+	Words   string    `json:"words"`
+	At      time.Time `json:"at,omitzero"`
+	From    string    `json:"from,omitempty"`
+	State   string    `json:"state,omitempty"`
+	Version uint64    `json:"version,omitempty"`
 }
 
 // harnessOfferRecord is one finished page as the checkpoint carries it: enough
@@ -786,6 +835,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Interrupted:   n.interrupted,
 		Kind:          n.kind,
 		Offer:         n.offer,
+		Assignment:    recordedAssignment(n.assignment),
 	}
 }
 
@@ -1317,6 +1367,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		attempt:     record.Attempt,
 		interrupted: record.Interrupted,
 		offer:       record.Offer,
+		assignment:  restoredAssignment(record.Assignment),
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading

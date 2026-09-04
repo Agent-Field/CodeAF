@@ -1067,6 +1067,13 @@ type userMessage struct {
 	// carried before it existed.
 	steer *turnSteer
 
+	// directions are the receipt ids of the lines said to a NODE that this
+	// message carries (assignment.go). They are marked READ at the drain that
+	// puts them in front of the model and nowhere else: a direction the landing
+	// is waiting on must not stop waiting because an agent exited, only because a
+	// request actually carried the words.
+	directions []uint64
+
 	// crossed is what the record keeps about a line the person sent ACROSS to
 	// this agent from the room they were standing in (task_room.go's
 	// [Agent.SteerTask]) — the instant they sent it, and the engine's own one-fact
@@ -1266,6 +1273,17 @@ func relaySpeaker(from conversationID) string {
 	return fmt.Sprintf("task %d", from.task)
 }
 
+// carryingDirection marks one queued line with the receipt the node recorded it
+// as (assignment.go), and touches nothing else on it: who spoke, what wakes and
+// how it is journaled were decided by whichever constructor built it. The drain
+// that puts the line in front of the model is what marks the direction read.
+func carryingDirection(note userMessage, direction uint64) userMessage {
+	if direction != 0 {
+		note.directions = []uint64{direction}
+	}
+	return note
+}
+
 // SteerDelivered is the ONE FACT about what sending a line to a node did, and it
 // is authored HERE — by the engine that did the sending — rather than by
 // whichever surface happens to be drawing the page.
@@ -1285,7 +1303,35 @@ func SteerDelivered(waiting bool) string {
 	return steerDeliveredWord
 }
 
-// The two sentences a delivery can carry, and there is no third.
+// SteerReceipt is what sending a line to a node DID, as one value that every
+// surface — this process's own and a client at the other end of the wire — reads
+// the same way.
+//
+// It replaced a bare bool because there are now THREE outcomes and not two, and
+// the third one cannot be an error. A line said while the gate is reading the
+// work is TAKEN: it goes onto the node's record and the landing may not publish
+// over it (assignment.go). Reported as an error it would have been a success the
+// caller had to recognise by matching a sentinel, which the local surface could
+// just about do and a hosted one could not — an error crossing the wire arrives
+// as text, so the fact would have been lost exactly where the person is furthest
+// from the work.
+type SteerReceipt struct {
+	// Waiting says the node had handed its work out and parked on the reports, so
+	// this line is what wakes it. It is the bool this receipt grew out of.
+	Waiting bool
+	// Held says nobody was inside the node to read the words and the work is not
+	// over: they are on the node's record, and the landing revalidates against
+	// them before anything is published.
+	Held bool
+	// Direction is the id of the receipt written on the node's record, and 0 when
+	// no record was written. It is what a worker cites to revise the assignment
+	// (assignment.go) and what a surface can pair an outcome with later.
+	Direction uint64
+	// Landing is the engine's own sentence for what happened, drawn verbatim.
+	Landing string
+}
+
+// The three sentences a receipt can carry, and there is no fourth.
 const (
 	// steerDeliveredWord is the ordinary case, and it says the one thing the
 	// person cannot see for themselves: the words crossed to another agent and
@@ -1298,6 +1344,19 @@ const (
 	// Without it the page goes quiet for a moment after the person presses enter,
 	// which is exactly the page they would see if the words had gone nowhere.
 	steerWokeWord = "it was waiting on its pieces — your line wakes it"
+	// steerHeldWord is the third: there was nobody inside the node to read the
+	// line, because its work is being checked, and the words were kept rather
+	// than sent back. It says what that buys — the check cannot land the task as
+	// done over a correction nobody has read — because "held" alone would read
+	// like a polite word for lost.
+	steerHeldWord = "held on the task's record — it is being checked, and it cannot land as done without this"
+	// steerLateWord is the same keeping with the one honest difference: this task
+	// was already landing when the words arrived, so they are on its record for
+	// the round after this one rather than for the work coming home now. Saying
+	// the held sentence here would promise that a merge already going out would
+	// wait, which nothing in this harness can make true (assignment.go's
+	// publication boundary).
+	steerLateWord = "kept on the task's record — it was already landing, so this is for the next round rather than for the work coming home now"
 )
 
 // steerRecord is what the JOURNAL keeps about this line when it is a correction
@@ -2224,7 +2283,6 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// the first moment there is no lock to write a checkpoint under.
 	defer a.settleDeliveries()
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
 	// drain itself is here: this seam runs immediately before the next request
@@ -2232,6 +2290,11 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// which is the one shape a user message may legally follow. Ahead rather than
 	// behind because the note is the ground the person's line is said against.
 	a.landVolatileLocked()
+	// WHICH DIRECTIONS THIS REQUEST WILL CARRY, read before the drain empties the
+	// queue and acted on after the lock is released. This is the only place a
+	// direction becomes READ (assignment.go): the turn's END drain reaches the
+	// same queue and carries nothing into a request, so it must not mark one.
+	carried := queuedDirections(a.steering)
 	// THIS DRAIN IS THE ONE THAT ANSWERS. It runs immediately before the next
 	// request (loop.go), so anything on the queue is in front of the model from
 	// here — which is precisely what a task node's runner is waiting to be true
@@ -2241,7 +2304,20 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	a.taskNotes = 0
 	includeAmbient := opening || boundaryNoteHeld(a.steering)
 	landed, _ := a.drainQueuedLocked(hub, includeAmbient)
+	a.mu.Unlock()
+	// Outside this agent's lock, because it takes the graph's (assignment.go) and
+	// there is no order in which those two are ever taken the other way round.
+	a.markDirectionsCarried(carried)
 	return landed
+}
+
+// queuedDirections is every node receipt id on one queue.
+func queuedDirections(queued []userMessage) []uint64 {
+	var ids []uint64
+	for _, message := range queued {
+		ids = append(ids, message.directions...)
+	}
+	return ids
 }
 
 // drainSteeringLocked is the TURN-boundary drain for callers already holding

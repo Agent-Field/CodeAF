@@ -1204,17 +1204,30 @@ func (a *Agent) TaskRoom(id uint64, tail int) (session.TaskRecord, error) {
 	return record, nil
 }
 
-// SteerTask carries a correction to the engine's node and keeps its waiting fact.
-func (a *Agent) SteerTask(id uint64, line string) (bool, error) {
+// SteerTask carries a correction to the engine's node and keeps its whole
+// receipt: delivered, delivered-and-woke, or held on the task's record while its
+// work is being checked (internal/session's [session.SteerReceipt]).
+func (a *Agent) SteerTask(id uint64, line string) (session.SteerReceipt, error) {
 	payload, err := a.c.call(nil, MethodTaskSteer, TaskSteerArgs{ID: id, Text: line})
 	if err != nil {
-		return false, err
+		return session.SteerReceipt{}, err
 	}
 	var steered TaskSteered
 	if err := json.Unmarshal(payload, &steered); err != nil {
-		return false, err
+		return session.SteerReceipt{}, err
 	}
-	return steered.Waiting, nil
+	receipt := session.SteerReceipt{
+		Waiting:   steered.Waiting,
+		Held:      steered.Held,
+		Direction: steered.Direction,
+		Landing:   steered.Landing,
+	}
+	// An engine too old to send its own sentence still gets one, in the words the
+	// local door would have used for the same fact.
+	if strings.TrimSpace(receipt.Landing) == "" && !receipt.Held {
+		receipt.Landing = session.SteerDelivered(receipt.Waiting)
+	}
+	return receipt, nil
 }
 
 // Cancel asks the engine to stop the prefixed work id and keeps its sentence.

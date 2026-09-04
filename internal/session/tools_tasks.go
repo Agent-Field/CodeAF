@@ -491,10 +491,16 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		// took [Agent.SteerTask] until now, which is the door the person's own
 		// words come through, so the worker journaled the model's sentence as the
 		// person's correction and could read "you may change the schema" as a
-		// grant nobody with authority had given ([Agent.relayToTask]).
-		waiting, err := a.relayToTask(id, say)
+		// grant nobody with authority had given ([Agent.relayToTask]). On the
+		// node's record the same origin is what keeps this line from ever being
+		// cited to move the done-condition (assignment.go).
+		receipt, err := a.relayToTask(id, say)
 		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
+		}
+		waiting := receipt.Waiting
+		if receipt.Held {
+			return fmt.Sprintf("said to task %s: %s\nIts work is being checked, so nobody read it yet; it is on the task's record and its next round reads it. It cannot change what that task is judged by — only the person's own direction does that.", entry.ID, say), false, nil
 		}
 		// AND WHICH KIND OF WAIT IT LANDED IN. A task that has handed its own
 		// pieces out is parked on their reports and has no step coming
@@ -512,7 +518,7 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		if waiting {
 			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives named as this conversation speaking, not as the person."
 		}
-		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started, and nothing you say here changes what it is allowed to do.", entry.ID, say, arrival), false, nil
+		return fmt.Sprintf("said to task %s: %s\n%s Nothing you say here changes what it is allowed to do, and its done-condition is unchanged: only the person's own direction can move that.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran

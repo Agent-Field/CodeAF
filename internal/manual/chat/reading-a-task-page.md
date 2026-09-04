@@ -313,6 +313,19 @@ and says the only thing you cannot see for yourself — the words crossed to the
 did not vanish on the way. `· it was waiting on its pieces — your line wakes it` appears
 instead when the task had handed its work out and was parked on the reports; then nothing
 was running to read your line at its next step, and your line is what starts it moving.
+`· held on the task's record — it is being checked, and it cannot land as done without
+this` is the third: there was nobody inside the task to read you, because its work was
+already in front of the checker. The words are kept on the task, the check is not allowed
+to land it as done over them, and the task takes another round with them instead.
+
+**A correction can change what the task is judged by, and only yours can.** Say "CSV
+instead of JSON" into a running task and the worker can fold it into the task's own
+done-condition, citing the line you sent; from then on that is what the checker judges the
+finished work against, and the first done-condition is history. Your words are kept
+verbatim beside the new condition, so you and the checker both see what you actually said.
+What the model says into a task with `tasks id N say` never does this — that is one part
+of the work talking to another, and it cannot change what somebody else's work is graded
+on.
 
 **Reopen the page and your corrections are still corrections.** Leave and come back, or
 open the task tomorrow, and each line you steered comes back as a `└ ` elbow in the place
@@ -320,10 +333,12 @@ you said it, with no clause on it — the elbow's position is the record of wher
 went. Older builds drew them as fresh `›` questions, so a page read back showed your
 corrections as extra instructions and counted turns nobody had opened.
 
-Steering is refused rather than quietly re-pointed when there is nobody to read it — a
-finished task, a background job, a task being checked — and then a question comes up
-offering to send the words to the main conversation or to ask for the work to be started
-again. Nothing is sent anywhere until you answer it.
+Steering is refused rather than quietly re-pointed when the work is over — a finished
+task, a background job — and then a question comes up offering to send the words to the
+main conversation or to ask for the work to be started again. Nothing is sent anywhere
+until you answer it. A task that is still running is never refused: if nobody is inside it
+to read you — it is being checked, or its worker has just closed — the line is held on the
+task's record instead, which the clause above says out loud.
 
 ## Task page says finished but the work is still running
 
