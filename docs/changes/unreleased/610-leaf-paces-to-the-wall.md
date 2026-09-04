@@ -1,20 +1,18 @@
 ---
 kind: fixed
-title: a leaf knows its own clock, and reading forever stopped counting as progress
+title: a leaf knows its own clock, and reading is never the reason one is stopped
 pr: 610
 surface: [engine, docs]
 invalidates:
-  - "The no-progress guard had three signals — repeated identical calls, a stagnant window, and a 60-turn floor — and none of them could see a leaf that only reads. It has a fourth: consecutive turns that carried tool calls and left the workspace unchanged, counted independently of whether the results were new. `noProgressReconTurns` is 10 and `noProgressReconConclude` is derived from it; the first span asks the leaf for its result, the second concludes it through the existing conclude-grace-terminate ladder. A mutation of any kind, including a shell command that leaves a file behind, clears the count."
-  - "A result the leaf had never seen before was progress without bound, so 156 distinct greps in one measured run were 156 distinct content hashes and `stagnantTurns` never left zero across a whole 45-minute wall. New information still resets the stagnant window exactly as before; it no longer resets the mutation-free count, which is the signal that separates a leaf gathering from a leaf producing."
-  - "The only thing a leaf was ever told about its wall arrived once `time.Until(deadline) <= deadlineLandingReserve`, a tenth of the wall capped at two minutes, and in one measured run it never arrived at all. A leaf's brief now names the wall it has, spelled the way `--timeout` accepts it, and `wallPaceAt` (0.5) buys one live reading of what has gone and what is left, injected after the deadline landing check so a leaf already landing is never paced."
-  - "`RoomLeft` computed a leaf's remaining wall for the self-close pass and nothing surfaced it to the model as a budget it could pace against. It still does exactly that; the leaf's own reading is a separate once-only message from the turn loop, and both it and the recon notice write a `trace.note` beside the existing conclude line, so a run's record names them."
-  - "PERF.md's table of a leaf's bounds listed five ceilings and every one of them was a magnitude. It now also carries the mutation-free recon pace and escalation and the wall reading, with the escalation marked as the only one of the three that may land a leaf — and it lands it by concluding, never by killing it outright."
-  - "Nothing in the chat manual answered someone asking why a run spent its whole time reading and produced nothing. `internal/manual/chat/adaptive-runs.md` now says what the worker is told about its clock and when, and states the refusal plainly: reading is never by itself a reason a worker is stopped, and a worker whose result is the answer itself is asked for the answer rather than killed for not writing a file."
+  - "The guard's fourth signal advises and never concludes: each `noProgressReconTurns` mutation-free span asks the leaf for its result, and each further span asks again with its own larger count. No count of mutation-free turns has ever been able to stop a leaf on `dev`; this pull request adds the notice and not a stop. A leaf whose deliverable is its answer mutates nothing by design, while the repeated-call and stagnant-window signals stop a leaf going in circles at 4 and 6 turns."
+  - "`MutationCount` is a per-leaf revision that moves when a write tool files an artifact or when a before-and-after walk of the leaf's own workspace root differs. The walk skips dot entries and dependency and cache directories, is bounded at 6000 entries, and compares endpoints, so a write outside the leaf's directory, a write into a skipped tree, or a file created and deleted inside one shell call never clears the advisory count."
+  - "A leaf's brief now names its wall in `--timeout`'s own spelling, and `wallPaceAt` (0.5) buys one live reading of what has gone and what is left. The reading is injected after the deadline landing check, so a leaf already landing is never paced."
+  - "PERF.md's leaf-bounds table now carries `noProgressReconTurns` (10), `wallPaceAt` (0.5), and the one-second rounding of the displayed reading. Neither the mutation-free reminder nor the live wall reading may land a leaf."
+  - "`internal/manual/chat/adaptive-runs.md` now explains both reminders and says, in bold, that reading is never by itself a reason a worker is stopped. That sentence is now true of the code, including for research, explanations, and reviews whose answer is the result."
 ---
 
-The load this has to hold under is a model that read for forty minutes with
-verified line numbers in its prompt and an explicit instruction to start
-writing. Advisory text did not move it, which is why the second span concludes
-rather than asking a third time — but it concludes into the landing every other
-signal already uses, so a leaf whose deliverable really is its own reply is
-asked for that reply instead of being thrown away.
+The measured load is a model that read for forty minutes with line numbers in
+its prompt and an explicit instruction to start writing. A reminder alone may
+not move that worker, but the absence of a write cannot distinguish it from a
+researcher whose work belongs in the reply. The wall owns the first run's end;
+repeated calls and already-seen results own the no-progress stop.
