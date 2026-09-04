@@ -128,16 +128,14 @@ func (a *Agent) stubOldOutputs() {
 // stubOldOutputsLocked is the pass itself, and it reports how many results it
 // replaced — the number the compaction row says out loud.
 //
-// THE POINTER IS THE STORE'S FIRST AND THE FILE'S SECOND. A result already
-// posted to the store's thread (chatlog.go) needs no second copy on disk, and
-// the store id is the better pointer besides: it survives a workspace being
-// deleted, which a dropping does not. A session with no store spills to its own
-// logs/ exactly as this always did, and a session that can do neither leaves the
-// result verbatim — a stub pointing at nothing is the one failure this may not
-// have.
+// THE POINTER IS ASKED FOR ONCE, of [Agent.fullResultPointer], which is the same
+// answer the snapshot view and the turn fold get. It used to be the store's ref
+// first — and no verb on this belt fetches a store message by id, so every stub
+// in a session with memory on pointed at a handle nothing could open. A result
+// this session can neither file nor find in a journal is left verbatim: a stub
+// pointing at nothing is the one failure this may not have.
 func (a *Agent) stubOldOutputsLocked() int {
 	a.alignReasoningLocked()
-	workspace := strings.TrimSpace(a.config.Workspace)
 	cut := stubCut(a.messages)
 	candidates, reclaim := stubCandidates(a.messages, cut)
 	if len(candidates) == 0 {
@@ -161,20 +159,9 @@ func (a *Agent) stubOldOutputsLocked() int {
 	for _, index := range candidates {
 		message := a.messages[index]
 		text := messageContentText(message)
-		pointer := a.chatlog.ref(message)
+		pointer := a.fullResultPointer(message)
 		if pointer == "" {
-			if workspace == "" {
-				continue
-			}
-			// The FAMILY'S folder, which is this agent's own when it is a session
-			// and the commissioning conversation's when it is a worker. A worker
-			// asked for its Place instead, got the zero one, and filed every long
-			// result it read into the repository it borrowed (landing.go).
-			path, err := writeStub(a.config.droppingsPlace(), workspace, text)
-			if err != nil {
-				continue
-			}
-			pointer = path
+			continue
 		}
 		// A NEW content slice, never a write into the old one: a request already
 		// in flight holds a shallow copy of this message (see [Agent.snapshot]),

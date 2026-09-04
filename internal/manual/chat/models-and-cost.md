@@ -1712,8 +1712,8 @@ The pass aims below the trigger, at the midpoint between the kept tail and the w
 line. That headroom matters because rewriting a result makes the provider's cached prefix
 cold from that point; one deeper pass is cheaper than another rewrite every round. When it
 runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. The full
-result bytes remain in `logs/stubs/` (or the store), the model can `read` the path in each
-stub, and the session journal keeps the original result bytes.
+result bytes remain in `logs/stubs/`, the model can `read` the path in each stub, and the
+session journal keeps the original result bytes.
 
 **Rung 0 — what an old result looks like in the request.** Before any of the rungs below
 fire, the copy of the conversation that goes to the model already carries the tool results
@@ -1722,7 +1722,7 @@ the request is shortened, and only for results the model has already worked from
 batch and everything the running turn has produced go verbatim. A shortened result reads:
 
 ```
-[reduced view: bash · 41208 bytes · full: grep call_a91f in /home/x/.aforge/v3/sessions/abc.jsonl]
+[reduced view: bash · 41208 bytes · full: /home/x/.aforge/v3/projects/-you-work/<session>/logs/stubs/9c2f.txt]
 go build ./...
 …[40608 bytes elided]…
 FAIL	./internal/session	0.412s
@@ -1730,12 +1730,17 @@ FAIL	./internal/session	0.412s
 
 Both ends are kept — the first 200 bytes, which is what ran and where an error message
 lands, and the last 400, which is what it concluded — with the exact count of what was cut
-between them. The pointer is the store's copy of that result when the conversation has a
-store, and otherwise the session journal with the call id to grep for, so the model can
-fetch the whole of it in one call. **A conversation that can name neither says
-`full: not retrievable`** rather than a path that is not there. When a turn has made so many
-calls that even these views are too much, the oldest fall back to the same one-line stub
-described next.
+between them. The pointer is the same one a stub gives (next section): the result's own
+bytes, filed under `logs/stubs/`, which `read` opens and pages through at any size. Where
+there is nowhere to file them it is the session journal with the call id to grep for — a
+real file, though a journal line is JSON and `grep` clips a long one. **A conversation that
+can name neither says `full: not retrievable`** rather than a path that is not there.
+
+**A `store:` id is never given as a pointer.** It used to be, whenever memory was on, and
+nothing aforge can run fetches a store message by id — `search_conversations` searches words
+and answers with one clipped line per hit. So a stub or a reduced view that named one sent
+the model somewhere it could not go. When a turn has made so many calls that even these views
+are too much, the oldest fall back to the same one-line stub described next.
 
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
 **4 turns** and larger than **1500 bytes** are replaced *in the live context* by a pointer
@@ -1745,8 +1750,8 @@ line naming the tool, its first line, its size and where the whole of it lives:
 [tool: bash · go build ./... — 0 exit · 41208 bytes · full: ~/.aforge/v3/projects/-you-work/<session>/logs/stubs/<hash>.txt]
 ```
 
-The bytes are written to disk first, named by their own digest — or the pointer is the id of
-the result already posted to the store — and the model can `read` them back at any time.
+The bytes are written to disk first, named by their own digest, and the model can `read`
+them back at any time.
 **They are written in this conversation's own folder, under `logs/stubs/`, and never in your
 project**: a stubbed result is the harness's own droppings, not your work. That holds for a
 task's worker too, however long the files it reads — its stubs are filed with the

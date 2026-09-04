@@ -514,34 +514,43 @@ func TestCompactionLeavesEveryEvictedMessageReadableInTheStore(t *testing.T) {
 		}
 	}
 
-	// THE POINTER IS THE STUB'S OWN. It names a store message; that message
-	// names a spill file; the file is the original bytes.
+	// THE POINTER IS SOMETHING THE MODEL CAN OPEN, and it used to be a store id.
+	// Nothing on this belt fetches a store message by id — search_conversations
+	// searches words and clips each hit to a line — so the stub named a handle
+	// only this process could resolve. It is the filed bytes now.
 	pointer := stubPathIn(t, stub)
-	if !strings.HasPrefix(pointer, chatRefPrefix) {
-		t.Fatalf("the stub of a stored result points at %q, want a store id", pointer)
+	if strings.HasPrefix(pointer, chatRefPrefix) {
+		t.Fatalf("the stub points at %q, which no verb on the belt resolves", pointer)
 	}
-	var landed *store.Message
-	for index := range posted {
-		if fmt.Sprintf("%s%d", chatRefPrefix, posted[index].Seq) == pointer {
-			landed = &posted[index]
-		}
+	filed := pointer
+	if !filepath.IsAbs(filed) {
+		filed = filepath.Join(workspace, filed)
 	}
-	if landed == nil {
-		t.Fatalf("the stub points at %q, which is in no thread: %q", pointer, stub)
-	}
-	if len(landed.Attachments) != 1 {
-		t.Fatalf("an oversized post carries %d attachments, want the spill file", len(landed.Attachments))
-	}
-	spill := landed.Attachments[0]
-	if !filepath.IsAbs(spill) {
-		spill = filepath.Join(workspace, spill)
-	}
-	full, err := os.ReadFile(spill)
+	full, err := os.ReadFile(filed)
 	if err != nil {
-		t.Fatalf("the store names bytes that are not there: %v", err)
+		t.Fatalf("the stub names bytes that are not there: %v", err)
 	}
 	if string(full) != huge {
-		t.Fatalf("the spilled result is %d bytes, want the original %d", len(full), len(huge))
+		t.Fatalf("the filed result is %d bytes, want the original %d", len(full), len(huge))
+	}
+
+	// AND THE STORE IS STILL THE FLOOR UNDER IT. The oversized result cannot be
+	// posted whole ([store.MaxMessageBytes]), so its post names a spill file; that
+	// file is the original bytes whether or not any stub points at it.
+	spilled := false
+	for index := range posted {
+		for _, attachment := range posted[index].Attachments {
+			if !filepath.IsAbs(attachment) {
+				attachment = filepath.Join(workspace, attachment)
+			}
+			bytes, err := os.ReadFile(attachment)
+			if err == nil && string(bytes) == huge {
+				spilled = true
+			}
+		}
+	}
+	if !spilled {
+		t.Fatal("no post in the thread spilled the oversized result, so the store floor is a story about a floor")
 	}
 }
 

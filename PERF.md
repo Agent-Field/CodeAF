@@ -1191,17 +1191,31 @@ transcript and the journal keep every byte (`internal/session/toolcompact.go`).
 | all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
 | the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
 
-Every reduction names where the whole result can be read — the store ref for
-that exact message, else the session journal with the call id to grep for — and
-both answers come from memory (the ref map, the open file's name). **No pass
-reads the journal**: it runs per request, and a read per request would cost more
-than the view saves. A session that can name neither says `not retrievable`
-rather than a path that is not there.
+Every reduction names where the whole result can be read, and **one resolver
+answers for all three passes** — this view, the end-of-turn stub and the
+current-turn fold (`Agent.fullResultPointer`). It answers with the result's own
+bytes filed under `logs/stubs/` (`writeStub`), which `read` opens and pages at
+any size; where there is nowhere to file them, with the session journal and the
+call id to grep for; and otherwise with `not retrievable`.
 
-Pinned by `internal/session/toolcompact_test.go`: the retrieval pointer is
-opened and grepped in `TestAReducedResultSentToTheProviderCanBeReadBackFromTheJournal`,
-the repeat is pinned by `TestCompactToolHistoryRepeatsItselfExactly`, the pairing
-by `TestCompactToolHistoryKeepsEveryCallPairedWithItsResult`, and
+**A `store:` ref is not a pointer**, and it was the first answer all three passes
+used to give. Nothing on the belt fetches a store message by id —
+`search_conversations` searches words and clips every hit to one line
+(`tools_conversations.go`) — so with memory on, every stub in the session pointed
+at a handle only this process could resolve. The bytes are filed **once** per
+result and remembered (`Agent.filed`), because this is asked on every request of
+every tool round and the answer may not cost a stat each time.
+
+Pinned by `internal/session/toolcompact_test.go`. Retrieval is proved with the
+belt's OWN read tool rather than with a string assertion:
+`TestAReducedResultsPointerFetchesTheElidedMiddleWithTheBeltsOwnRead` runs a turn
+with a store AND a journal behind it, takes the pointer out of the request the
+provider was sent, pages the file it names and finds the sentinel the view
+elided; `TestStubbingWithAStoreOnPointsAtSomethingTheBeltCanOpen` does the same
+for the end-of-turn stub. The fallbacks are pinned by
+`TestThePointerFallsBackToTheJournalAndThenToNothing`, the repeat by
+`TestCompactToolHistoryRepeatsItselfExactly`, the pairing by
+`TestCompactToolHistoryKeepsEveryCallPairedWithItsResult`, and
 `BenchmarkCompactToolHistory` reports the constant at 100, 400 and 1,600 rounds.
 
 ## The compaction threshold, and the ceiling that is no longer a constant

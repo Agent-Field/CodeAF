@@ -1202,7 +1202,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// the system prompt, the newest frozen batch and everything this turn
 		// has already sent verbatim, and every result it reduces names where the
 		// whole of it can be read back (toolcompact.go).
-		messages = compactToolHistory(messages, frozenToolHistory, a.frozenResultSource())
+		messages = compactToolHistory(messages, frozenToolHistory, a.fullResultPointer)
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,

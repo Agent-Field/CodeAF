@@ -26,26 +26,19 @@ package session
 // THE SYSTEM PROMPT IS NEVER TOUCHED. Message 0 is the cache-friendly prefix
 // F2 is already paying for; rewriting it would re-price the whole request.
 //
-// THE NEWEST FROZEN BATCH STAYS VERBATIM. Everything earlier has already been
-// consumed by a later call and is replaced by a REDUCED VIEW of itself: the head
-// that says what ran, the tail the checkpoint digest already proved is enough to
-// keep a verdict ([checkpointResultTail], [checkpointResultBytes]), the exact
-// count of the bytes cut from between them, and where the whole of it can be
-// read back. When those views together would exceed the digest budget
-// ([checkpointDigestBytes]), older ones shrink to the one-line account stub.go
-// already writes ([stubLine]) so prompt growth stays bounded in the old results
-// even as the call count climbs.
+// THE NEWEST FROZEN BATCH STAYS VERBATIM. Everything earlier is replaced by a
+// reduced view of itself: the head that says what ran, the tail the checkpoint
+// digest already proved keeps a verdict ([checkpointResultBytes]), the exact
+// count of the bytes cut between them, and where the whole of it can be read
+// back. Over the digest budget ([checkpointDigestBytes]) the oldest shrink
+// further, to the one-line account stub.go already writes ([stubLine]).
 //
-// NOTHING HERE READS A RESULT AND DECIDES WHAT IT MEANT. An ai.Message carries
-// no isError, so a reduction that called a result a success because its prose
-// looked calm would be inventing the one fact the model most needs. Head, tail
-// and byte counts are mechanical; the model reads them and judges for itself.
+// Nothing here reads a result and decides what it meant: an ai.Message carries
+// no isError, so calling a result a success because its prose looked calm would
+// invent the one fact the model most needs. Head, tail and counts are mechanical.
 //
-// A REDUCTION SAYS WHERE THE BYTES ARE, or says it cannot. The pointer comes
-// from the caller's own resolver ([Agent.frozenResultSource]) and is resolved
-// from state already in memory — the store's ref map, the open journal's name —
-// because this runs on EVERY request of every tool round and a per-request
-// journal read would cost more than the pass saves.
+// Every reduction names a place the model can open, or says it cannot
+// ([Agent.fullResultPointer]).
 //
 // A TOOL RESULT MAY BE SHORTENED AND MUST NOT BE DROPPED. The provider pairs
 // every call with a result by id; deleting a result is a malformed request,
@@ -59,36 +52,32 @@ import (
 )
 
 const (
-	// compactHeadBytes is how much of a reduced result's OPENING is kept beside
-	// its tail. The tail is a verdict ([checkpointResultBytes]); the head is what
-	// was run and, for the tools that fail loudest, the error itself — a compiler
-	// banner, `no such file`, a stack's first frame. Half the tail's bound is a
-	// couple of lines of it, and the pair still replaces kilobytes with hundreds
-	// of bytes. It is derived from the tail bound rather than written as a second
+	// compactHeadBytes is how much of a reduced result's opening is kept beside
+	// its tail. The tail is the verdict; the head is what ran and where an error
+	// lands. It is derived from the tail bound rather than written as a second
 	// number, so the two cannot drift apart.
 	compactHeadBytes = checkpointResultBytes / 2
 
 	// compactViewBytes is the floor under which a result is left verbatim: the
-	// most a reduced view can keep. Below it the view would repeat most of the
-	// result and then charge a header for having done so.
+	// most a reduced view can keep. Below it the view repeats most of the result
+	// and charges a header for having done so.
 	compactViewBytes = compactHeadBytes + checkpointResultBytes
 
-	// compactReducedMarker opens every reduced view and is how a later pass
-	// recognizes one, so a view is never reduced a second time and two requests
-	// of the same round produce the same bytes.
+	// compactReducedMarker opens every reduced view. A later pass recognizes one
+	// by it, so a view is never reduced again and two requests of the same round
+	// produce the same bytes.
 	compactReducedMarker = "[reduced"
 
 	// compactNoSource is what a reduction says instead of a pointer when this
-	// session can name nowhere to read the original back: no store thread, no
-	// journal. A path that is not there is worse than an honest absence — the
-	// model spends a call on it and learns nothing.
+	// session can name nowhere to read the original back. A path that is not
+	// there costs the model a call and returns nothing.
 	compactNoSource = "not retrievable"
 )
 
 // resultSource answers where the full bytes of one frozen tool result can be
 // read back, and answers empty when nothing can be named. It is a function so
 // the snapshot view stays a pure rewrite of messages while the session that owns
-// the store and the journal decides what a pointer is.
+// the journal and the droppings decides what a pointer is.
 type resultSource func(ai.Message) string
 
 func (s resultSource) of(message ai.Message) string {
@@ -122,16 +111,15 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	if len(old) == 0 {
 		return messages
 	}
-	// The call each result answers, found ONCE for the whole pass. Asking
-	// [toolNameFor] per result walks back up the transcript per result, which is
-	// the same quadratic shape the running total below removes.
+	// The call each result answers, found once for the whole pass: [toolNameFor]
+	// walks back up the transcript per result, which is the same quadratic shape
+	// the running total below removes.
 	names := toolCallNames(messages[:newest])
 	out := append([]ai.Message(nil), messages...)
 
 	// spent is the running weight of the old results in out, carried rather than
 	// recomputed. The budget walk below used to re-add every old result on every
-	// iteration — quadratic in the call count, on the hot path of every request
-	// of every tool round of every turn.
+	// iteration — quadratic in the call count, on the hot path of every request.
 	spent := 0
 	for _, index := range old {
 		text := messageContentText(messages[index])
@@ -145,19 +133,16 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 		}
 		spent += messageBytes(out[index])
 	}
-	// THE DIGEST BUDGET IS THE CEILING FOR CONSUMED EVIDENCE, the same 5k-token
-	// account the checkpoint reader already proved replaces a 57–91k raw read.
-	// Newest-of-old keep their views; the far end shrinks to a line. The newest
-	// batch is outside this sum on purpose — it is still the working evidence.
+	// The digest budget is the ceiling for consumed evidence — the same 5k-token
+	// account the checkpoint reader is held to. Newest-of-old keep their views;
+	// the far end shrinks to a line. The newest batch is outside this sum, being
+	// still the working evidence.
 	//
-	// ONE WALK, OLDEST FIRST. Replacing a view with its one-line account is
-	// enough to drop the pile under the budget on a long turn; looping until
-	// the meter moved invited a restamp of the same line forever, because a
-	// line made from a line is not always shorter than the line it started from.
-	//
-	// The budget is a CEILING TO WALK TOWARDS, not a promise: several hundred
-	// calls weigh more than it even when every one of them is a single line, and
-	// what this owes that turn is to have reduced everything it could.
+	// One walk, oldest first: looping until the meter moved invited a restamp of
+	// the same line forever, because a line made from a line is not always
+	// shorter. The budget is a ceiling to walk towards rather than a promise —
+	// several hundred calls weigh more than it even as single lines — so what
+	// this owes is to have reduced everything it could.
 	for _, index := range old {
 		if spent <= checkpointDigestBytes {
 			break
@@ -178,33 +163,60 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	return out
 }
 
-// frozenResultSource is this session's answer to "where can that result be read
-// back", built once per request and asked once per reduced result.
+// fullResultPointer is the ONE answer to "where can the whole of that result be
+// read back", shared by the snapshot view here, the end-of-turn stub pass
+// (stub.go) and the current-turn fold (turnfold.go). One resolver, so a stub and
+// a reduced view never point at two different kinds of thing.
 //
-// THE STORE'S REF IS FIRST and the journal is second, which is stub.go's order
-// and for stub.go's reasons: a store ref survives a workspace being deleted, and
-// a session with no store is still writing a journal that holds every result
-// whole. The journal is named with the call id beside it because the id is the
-// token that finds the one line among thousands, and because a bare path is a
-// pointer at a file rather than at a result.
+// A STORE REF IS NOT A POINTER. `store:412` was the first answer all three used,
+// and nothing on this belt fetches a store message by id: `search_conversations`
+// searches words and clips every hit to one line (tools_conversations.go). So the
+// pointer is a place the belt's own verbs open:
 //
-// BOTH ANSWERS COME FROM MEMORY. The ref map is already in hand and the path is
-// the open file's own name; neither reads the journal, which this may not do —
-// it is asked on every request of every tool round.
-func (a *Agent) frozenResultSource() resultSource {
-	journal := a.file.path()
-	return func(message ai.Message) string {
-		if ref := a.chatlog.ref(message); ref != "" {
-			return ref
-		}
-		if journal == "" {
-			return ""
-		}
-		if id := strings.TrimSpace(message.ToolCallID); id != "" {
-			return "grep " + id + " in " + journal
-		}
-		return journal
+//  1. the bytes filed in this session's droppings ([writeStub]), which `read`
+//     takes and pages through at any size;
+//  2. the session journal with the call id to grep for, when there is nowhere to
+//     file — a weaker pointer, since a journal line is JSON and `grep` clips a
+//     long line, but a real one at a real path;
+//  3. nothing, said as nothing.
+//
+// The file is written ONCE per result and remembered ([Agent.filed]), because
+// this is asked on every request of every tool round and the answer cannot cost
+// a stat each time. It takes no session lock: the stub pass asks holding a.mu
+// and the snapshot view asks without it.
+func (a *Agent) fullResultPointer(message ai.Message) string {
+	text := messageContentText(message)
+	if strings.TrimSpace(text) == "" {
+		return ""
 	}
+	key := chatRefKey(message)
+	a.filedMu.Lock()
+	pointer, known := a.filed[key]
+	a.filedMu.Unlock()
+	if known {
+		return pointer
+	}
+	if workspace := strings.TrimSpace(a.config.Workspace); workspace != "" {
+		// The FAMILY'S folder, which is a worker's commissioning conversation and
+		// not the repository it borrowed (landing.go).
+		if path, err := writeStub(a.config.droppingsPlace(), workspace, text); err == nil {
+			a.filedMu.Lock()
+			if a.filed == nil {
+				a.filed = make(map[string]string, 32)
+			}
+			a.filed[key] = path
+			a.filedMu.Unlock()
+			return path
+		}
+	}
+	journal := a.file.path()
+	if journal == "" {
+		return ""
+	}
+	if id := strings.TrimSpace(message.ToolCallID); id != "" {
+		return "grep " + id + " in " + journal
+	}
+	return journal
 }
 
 // toolCallNames maps a call id to the tool that was asked for, over one walk of
@@ -225,14 +237,14 @@ func toolCallNames(messages []ai.Message) map[string]string {
 // tool, the result's true size and where the whole of it lives, then the head,
 // then the exact count of what was cut, then the tail.
 //
-//	[reduced view: bash · 41208 bytes · full: store:412]
+//	[reduced view: bash · 41208 bytes · full: logs/stubs/9c2f.txt]
 //	go build ./...
 //	…[40608 bytes elided]…
 //	FAIL	./internal/session	0.412s
 //
-// THE ELIDED COUNT IS COUNTED, not the size minus the bounds: a rune boundary
-// moves both cuts by a byte or two, and a number that is nearly right about how
-// much is missing is a number a model cannot use to decide whether to fetch it.
+// The elided count is measured, not the size minus the two bounds: a rune
+// boundary moves both cuts, and a count that is nearly right is one a model
+// cannot decide from.
 func reducedResultView(tool, text, source string) string {
 	trimmed := strings.TrimSpace(text)
 	head := compactHead(trimmed, compactHeadBytes)
@@ -246,9 +258,8 @@ func reducedResultView(tool, text, source string) string {
 		head, elided, tail)
 }
 
-// reducedOutcomeLine is the far end's one line, and it is stub.go's line
-// verbatim — same shape, same fields, one formatter — because a model that has
-// learned to read a stub has already learned to read this.
+// reducedOutcomeLine is the far end's one line, and it is stub.go's formatter:
+// a model that has learned to read a stub has already learned to read this.
 func reducedOutcomeLine(tool, text, source string) string {
 	return stubLine(tool, text, compactSource(source))
 }
@@ -269,9 +280,8 @@ func compactToolName(tool string) string {
 }
 
 // compactHead and compactTail cut on a rune boundary, for [checkpointResultTail]'s
-// reason: a string cut through a multi-byte character is not a string anybody can
-// read. The head walks its cut BACK so it never keeps half a rune; the tail walks
-// forward so it never starts on one.
+// reason: a string cut through a multi-byte character is not one anybody can read.
+// The head walks its cut back, the tail forward.
 func compactHead(text string, limit int) string {
 	if len(text) <= limit {
 		return text
