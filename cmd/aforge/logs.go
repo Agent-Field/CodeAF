@@ -491,6 +491,12 @@ func hedgeFields(record calllog.Record) []string {
 	if action := strings.TrimSpace(record.Action); action != "" {
 		fields = append(fields, "acted "+action)
 	}
+	if reason := strings.TrimSpace(record.Reason); reason != "" {
+		fields = append(fields, reason)
+	}
+	if refused := strings.TrimSpace(record.Refused); refused != "" {
+		fields = append(fields, "no rescue: "+refused)
+	}
 	if record.Arms > 1 {
 		fields = append(fields, fmt.Sprintf("%d arms", record.Arms))
 	}

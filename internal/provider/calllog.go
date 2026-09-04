@@ -247,6 +247,8 @@ func (c *Client) record(facts recordFacts) {
 		record.TTFTms = wait.ttft.Milliseconds()
 		record.SilenceMs = wait.silence.Milliseconds()
 		record.Action = wait.action
+		record.Reason = wait.reason
+		record.Refused = wait.refused
 		record.WaitS, record.CostS = wait.wait, wait.cost
 		record.Hedged = wait.hedged
 		record.WasteUSD = wait.waste
