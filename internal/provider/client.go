@@ -520,6 +520,14 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// ([velocityLedger.holdsVetoes]).
 	if c.velocity != nil && ignoredEverything(peek) && c.velocity.holdsVetoes(model) {
 		c.velocity.refuseCoveringIgnore(model)
+		// THE SAME SENTENCE CARRIES MORE THAN THE MEMO TAKES. The set was
+		// empty, so every machine this process knows and was not refusing is a
+		// machine the router would not have sent to. A refusal of a DEMAND is
+		// exempt: with `allow_fallbacks: false` its set is exactly what the
+		// demand names, and the refusal says nothing about a machine outside it.
+		if refusal.Lane == "" {
+			c.velocity.learnUnreachable(model)
+		}
 	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
