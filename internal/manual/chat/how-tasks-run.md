@@ -968,8 +968,11 @@ longer evidence that anybody is looking at *that* conversation.
 Two clocks, and neither is a hard stop.
 
 **One hour per checkpoint.** The run, every correction round and every check inside it
-share a 60-minute interval — but when it fires, a second look decides what
-happens next. That look stands in the task's own working copy and has to open it: an answer
+share a 60-minute interval — unless the task starts under `--max-hours` with less of the
+run's wall left, in which case its interval is what remains. The setup-and-check allowance
+is the floor, so a task is never handed a shorter interval than it needs to open and be
+checked. When the interval fires, a second look decides what happens next. That look stands
+in the task's own working copy and has to open it: an answer
 given without reading anything is sent back once, told so, and the second answer is the one
 that counts. Working toward the brief: the task gets another hour, up to five in all
 (5 hours is the hard backstop, and a healthy task never meets it). Circling: it is told to

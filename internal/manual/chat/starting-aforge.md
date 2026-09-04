@@ -112,7 +112,7 @@ built on the far machine, so set them there.
 
 ## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
 
-With a budget, four things change, and only with a budget:
+With a budget, five things change, and only with a budget:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
@@ -132,6 +132,13 @@ With a budget, four things change, and only with a budget:
   it is working in is part of the answer and is left alone, and anything it wrote
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
+- **The hours end the run even while its work is out.** The run cannot continue
+  past the hours you gave it, whether work is out or not: the wall is read while
+  the conversation is idle as well as at the end of a reply. If time runs out
+  with a task still running, that task is stopped through the usual stop: its row
+  settles, and its branch, working copy and everything it did are kept. Nothing
+  starts after the wall. If a reply is still speaking, the wall waits; that reply
+  reaches its own ending and stops there instead of being sealed from outside.
 
 ## Why did it stop at a task that was finished · it ended without starting more work · why did it not hand the work over
 
@@ -161,10 +168,13 @@ So before the work moves, the same reading a stopped turn gets is taken:
   `stopping here · ` line every other stop uses. If a piece of work is still running when
   that happens, it does **not** stop there: the work moves onto a task as usual and the same
   stop is said again at the next ending, once nothing is in flight.
-- **The hours or the money ran out** — this is the one stop that does not wait for anything.
-  Waiting is more of exactly what ran out, so it ends the turn even with work still going,
-  and says so on the end of its own line: `· work was still going and was left where it was`.
-  Nothing is killed and nothing is thrown away; what was running is where you left it.
+- **The hours or the money ran out** — this is the one stop that does not buy another
+  reply. Waiting is more of exactly what ran out, so a reply already speaking reaches its
+  own ending even with work still going, and says so on the end of its line:
+  `· work was still going and was left where it was`. A money-only ceiling leaves that
+  work where it is. If the hours ran out, the wall reader then stops the work through its
+  usual stop and says `· work was still going, so it was stopped and what it did was kept`.
+  Nothing is thrown away, and its branch and working copy are kept.
 
 **And a handover it asked for is never dropped.** A long turn can normally talk its own
 handover out of happening: if the model says nothing is left AND the second reader's sketch
