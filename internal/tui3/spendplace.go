@@ -70,6 +70,9 @@ type spendReading struct {
 	// that DRAWING stays arithmetic over what was already gathered. Zero is the
 	// ordinary case and the line says nothing about it.
 	unwritten int64
+	// unbilled is how many charged calls ended without either a wire price or a
+	// provider receipt ([session.UnbilledCalls]). Zero is absent from the line.
+	unbilled int64
 }
 
 // lost hands the reading the count of rows that never reached the file. It
@@ -77,6 +80,13 @@ type spendReading struct {
 // answer.
 func (r spendReading) lost(dropped int64) spendReading {
 	r.unwritten = dropped
+	return r
+}
+
+// unpriced hands the reading the count of charged calls no receipt could put a
+// figure on. It answers a copy for the same immutable-reading reason as [lost].
+func (r spendReading) unpriced(calls int64) spendReading {
+	r.unbilled = calls
 	return r
 }
 
@@ -410,6 +420,10 @@ func (r spendReading) railsRow(width int, pal palette) string {
 	if r.unwritten > 0 {
 		figure := strconv.FormatInt(r.unwritten, 10)
 		fields = append(fields, rowSay(figure+" "+spendUnwrittenSaid, figure+" unwritten", figure))
+	}
+	if r.unbilled > 0 {
+		figure := strconv.FormatInt(r.unbilled, 10)
+		fields = append(fields, rowSay(figure+" "+spendUnbilledSaid, figure+" unbilled", figure))
 	}
 	fields = append(fields, rowSay(spendRailsWord, "/budget"))
 	return pal.dim(fit(rowTail(fields, width), width))

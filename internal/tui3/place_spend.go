@@ -259,7 +259,7 @@ func (a *app) usageSince(from time.Time) ([]session.UsageLine, bool) {
 func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
-		railed(a.machineAllowance()).lost(session.UsageDrops()).
+		railed(a.machineAllowance()).lost(session.UsageDrops()).unpriced(session.UnbilledCalls()).
 		todayed(spendDayTotal(p.lines, p.read))
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
