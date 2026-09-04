@@ -1168,31 +1168,35 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 	if item.section == tasksNeeds {
 		return tokens.GlyphNeedsHuman, pal.warn
 	}
-	// A ROW NOTHING IS RUNNING DOES NOT WEAR THE RUNNING GLYPH. [glyphIdle] takes
-	// its place — the dot this surface already spends on a call that was still
-	// going when its turn ended — because a frozen spinner would claim the work
-	// is alive and a dot claims nothing.
-	if item.entry.Live() && !item.runs {
-		if pal.ascii {
-			return glyphIdleASCII, pal.dim
+	status := taskEntryStatus(item.entry, item.runs)
+	switch status.Presence {
+	case session.TaskPresenceIncomplete:
+		// A row nothing is running wears neither the running glyph nor the steer
+		// mark: [glyphIdle] takes its place, because a frozen spinner would claim
+		// the work is alive and a dot claims nothing.
+		if status.Liveness == session.TaskLivenessUnclaimed {
+			if pal.ascii {
+				return glyphIdleASCII, pal.dim
+			}
+			return glyphIdle, pal.dim
 		}
-		return glyphIdle, pal.dim
-	}
-	switch item.entry.Status {
-	case string(session.TaskRunning):
-		return tokens.GlyphWorking, pal.live
-	case string(session.TaskQueued):
-		return tokens.GlyphQueued, pal.dim
-	case string(session.TaskDone):
-		return tokens.GlyphSettled, pal.muted
-	case string(session.TaskFailed):
-		if refused(item.entry.Ending) {
+		if !status.Fault {
 			return glyphHalted, pal.warn
 		}
 		return tokens.GlyphFailed, pal.bad
-	default:
-		return tokens.GlyphQueued, pal.dim
+	case session.TaskPresenceStopped:
+		if pal.ascii {
+			return glyphStoppedASCII, pal.dim
+		}
+		return glyphStopped, pal.dim
+	case session.TaskPresenceNeedsLook:
+		return glyphUnverified, pal.warn
+	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
+		return tokens.GlyphWorking, pal.live
+	case session.TaskPresenceDone:
+		return tokens.GlyphSettled, pal.muted
 	}
+	return tokens.GlyphQueued, pal.dim
 }
 
 // step keeps the four time keys in one grammar shared with spend.

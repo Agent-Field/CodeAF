@@ -610,22 +610,6 @@ const (
 	glyphStoppedASCII = "/"
 )
 
-// stoppedGlyph is one node's cell when a person ended it, and false for every
-// other node. It is UNPAINTED, like every other cell in that table: the hue is
-// [app.taskStateInk]'s, and it is the dim one — the roster, the strip and the
-// composer's room segment all read the pair, so the mark is the same cell and
-// the same colour wherever it is drawn.
-//
-// IT ANSWERS ONLY FOR WORK THAT HAS LANDED. A node whose stop is still going
-// through — the context is cut, the child is winding up — is still running, and
-// the spinner is the honest thing to draw until it is not.
-func (a *app) stoppedGlyph(node *taskNode) (string, bool) {
-	if node == nil || !node.stopped || node.state == session.TaskRunning {
-		return "", false
-	}
-	return a.linearMark(glyphStopped, glyphStoppedASCII), true
-}
-
 // taskStoppedByPerson is the word the header and the roster spell a stopped
 // node with. It is the same word internal/session uses on the wire and the same
 // word the card's button offers, because one act should not have three names.

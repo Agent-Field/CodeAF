@@ -1544,7 +1544,8 @@ home row say which of them it is in:
 
 **Another window sees it too.** A conversation says every few seconds which nodes it has
 out and which life each of them is in, so a home row or a switcher row about work running
-in a DIFFERENT window says the same words — `1 task running · checking what it left`. Two
+in a DIFFERENT window says the same words — `1 task running`, with the task's own row
+reading `finishing · checking what it left`. Two
 things it does not carry: the round numbers, which stay on the window running the work
 (another window reads `closing gaps` with no numbers after it), and anything at all from a
 window that is gone — a conversation whose file has gone stale draws the row it always

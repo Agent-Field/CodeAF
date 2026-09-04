@@ -106,23 +106,3 @@ const glyphHalted = "!"
 func refused(ending session.TaskEnding) bool {
 	return ending == session.TaskEndingRefused
 }
-
-// incompleteGlyph is the steer mark for refused work. It is deliberately the
-// same mark as halted work: both leave a branch and a concrete next move, and
-// neither should wear the cross reserved for a fault.
-func (a *app) incompleteGlyph(node *taskNode) (string, bool) {
-	if node == nil || node.state != session.TaskFailed || !refused(node.ending) {
-		return "", false
-	}
-	return glyphHalted, true
-}
-
-// haltedGlyph is one node's cell when it was halted, and false for every other
-// node. Like [app.stoppedGlyph] it answers only for work that has landed, and a
-// person's stop outranks it — that mark is answered first by the callers.
-func (a *app) haltedGlyph(node *taskNode) (string, bool) {
-	if node == nil || node.state != session.TaskFailed || !halted(node.ending) {
-		return "", false
-	}
-	return glyphHalted, true
-}

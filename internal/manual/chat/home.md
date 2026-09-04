@@ -846,14 +846,22 @@ a mark means something is *happening*, and done is the absence of one. Every oth
 leads the second line instead, with the glyph it wears everywhere else here:
 
 - `◐ running · <what it is doing>`
-- `◐ running · checking what it left`, `◐ running · closing gaps` — the minutes when the
+- `◐ finishing · checking what it left`, `◐ finishing · closing gaps` — the minutes when the
   node's own worker is not the one at it, said here for another window's node as well as
   for this one's, and never for a window that has gone (the page on how tasks run has both).
-- `◌ incomplete · <what is still missing>` — work a check did not accept, or work that was
-  under way when the window went; home shares this empty-circle shape with queued work and
+  The word is `finishing` rather than `running` because the worker is done and the end of
+  the run is being read; the row is still live and still spinning.
+- `queued` with no mark — the task was admitted and nothing has started it yet. Accepting
+  work and executing it are different receipts, and this row says which one has happened.
+- `◌ incomplete · <what is still missing>` — work a check did not accept, work a dropped
+  connection or a threshold ended, a brief whose world had moved, or work that was under
+  way when the window went; home shares this empty-circle shape with queued work and
   distinguishes it with the state word and warn hue
 - `? needs your look · <what it came to>` — brought up out of the dim, because it is asking
-- `✗ failed · <what stopped it>`
+- `⊘ stopped · <what it came to>` — **you** ended it. Nothing was found wrong with it.
+- `✗ failed · <what stopped it>` — and only this: a working copy that could not be made, a
+  worker that would not start, an error nobody classified. A run the wire or a limit ended
+  reads `incomplete`, because nothing was found out about the work.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
