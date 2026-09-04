@@ -1126,12 +1126,10 @@ func (h *Head) journaledPlan(node store.Node) (string, store.PlanGraph, bool) {
 // renderPlan is one job's structure in plain words: every step, in an order
 // that can actually run, with what each is waiting on and how each is going.
 //
-// The states and the spend are read off the durable rows rather than off the
-// journaled document, and that is not belt-and-braces. The journal is written
-// when a plan is made and when it is revised, never once per landed leaf, so a
-// document read on its own would report a finished job as entirely pending —
-// which is the same reason the executor re-derives state from the store when it
-// rehydrates a plan, by the same id mapping.
+// A landed leaf's own measurements reach the journaled document. States still
+// come from the durable rows because those rows are what a running node is
+// known by: the document is written by the process that settled a leaf and says
+// nothing about a node another process has since claimed.
 func (h *Head) renderPlan(node store.Node) (string, bool) {
 	return h.renderPlanWithin(node, planStepCap, h.budget.result)
 }

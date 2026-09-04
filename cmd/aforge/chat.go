@@ -1025,7 +1025,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 		}
 		if planNode != nil {
-			plans.recordOutcome(planGraph, planNode, outcome, err)
+			plans.recordOutcome(planPrefix, planGraph, planNode, outcome, err)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
 			// A cancel is news for the plan above this leaf, and it is the one
@@ -1948,7 +1948,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
 		if planNode != nil {
-			plans.recordOutcome(planGraph, planNode, outcome, nil)
+			plans.recordOutcome(planPrefix, planGraph, planNode, outcome, nil)
 		}
 		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
 			// The recalibration report reaches the job's RECORD, not a stdout the
@@ -4211,28 +4211,29 @@ func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, strin
 	return prefix, entry.graph, nil, entry.model, entry.client
 }
 
-// recordOutcome writes a leaf's measured ending onto its plan node — the same
-// fields, in the same shape, that the headless scheduler records.
-func (j *jobPlans) recordOutcome(graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error) {
+// recordOutcome writes a leaf's measured ending onto its plan node through the
+// same seam, in the same shape, that the headless scheduler uses.
+func (j *jobPlans) recordOutcome(prefix string, graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error) {
 	locks := j.locksFor(graph)
 	locks.document.Lock()
 	defer locks.document.Unlock()
-	if outcome != nil {
-		node.Turns = outcome.Turns
-		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
-		node.Cost = outcome.Usage.Cost
-		node.Stop = string(outcome.Stop)
-		node.Verdict = outcome.Verdict
-		node.Artifacts = outcome.Artifacts
-		node.Result = outcome.Text
-		node.Checked = outcome.Account.Summary()
-		node.Calibration = append([]string(nil), outcome.Calibration...)
+	exec.Settle(node, outcome, err, func() { j.journalSettled(prefix, graph) })
+}
+
+// journalSettled persists the plan document a leaf has just settled, so a
+// restart restores the job as it happened rather than as it was planned. Its
+// caller holds this document's lock, and taking the registry lock from there is
+// the document-then-registry direction put already uses; the reverse direction
+// is the one the registry forbids.
+func (j *jobPlans) journalSettled(prefix string, graph *plan.Graph) {
+	if j.journal == nil || prefix == "" {
+		return
 	}
-	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
-		node.State = plan.StateFailed
-	} else {
-		node.State = plan.StateDone
+	entry, ok := j.get(prefix)
+	if !ok || entry.graph != graph {
+		return
 	}
+	j.journal(prefix, entry)
 }
 
 // takeIfRoot removes and returns a job's graph when the landed node is that
