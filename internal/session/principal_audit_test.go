@@ -130,6 +130,75 @@ func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
 	}
 }
 
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO PROMPT STEP INTO
+// THE SESSION'S CHECKS.
+//
+// When no one could write a done-condition, the person's words arrive behind
+// [routeAskAcceptance]. The measured tox reproduction must still remain a
+// story about seeing the bug rather than become `chmod 000 tox.ini` run against
+// the deliverable tree.
+func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
+		t.Fatalf("writing tox.ini: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "run_tests.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("writing run_tests.sh: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance(routeAskAcceptance +
+		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
+
+	checks := agent.sessionChecks()
+	if containsWord(checks, "chmod 000 tox.ini") {
+		t.Fatalf("a step out of the ask-fallback done-condition became a session check: %v", checks)
+	}
+	if want := checkCommand(tree, "run_tests.sh"); want == "" || !containsWord(checks, want) {
+		t.Fatalf("a backticked command in the same ask-fallback was not a session check: want %q in %v", want, checks)
+	}
+}
+
+// A SETTLED UNIT'S DOOR CARRIES NO PROMPT STEP OUT OF THE PERSON'S PASTED ASK
+// INTO THE SESSION'S CHECKS.
+//
+// The node door is the only path from a landing into the terminal check list;
+// this pins the full path that would otherwise run the measured tox
+// reproduction against the deliverable tree.
+func TestASettledNodeNeverContributesAStepOutOfThePastedAsk(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
+		t.Fatalf("writing tox.ini: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "run_tests.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("writing run_tests.sh: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the tox configuration remains readable")
+	node := landOne(agent, TaskDone, "repair tox", "done")
+	node.graph.mu.Lock()
+	node.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
+	node.spec.brief = "repair the tox configuration"
+	node.brief = node.spec.brief
+	node.spec.acceptance = "the tox configuration remains readable and `run_tests.sh` passes"
+	node.graph.mu.Unlock()
+
+	checks := agent.sessionChecks()
+	if containsWord(checks, "chmod 000 tox.ini") {
+		t.Fatalf("a settled node carried a pasted reproduction step into the session checks: %v", checks)
+	}
+	if want := checkCommand(tree, "run_tests.sh"); want == "" || !containsWord(checks, want) {
+		t.Fatalf("the settled node's own check did not reach the session checks: want %q in %v", want, checks)
+	}
+}
+
 // A CHECK THAT PASSES AND A CHECK THAT DOES NOT ARE DIFFERENT NEWS, and a check
 // that could not be started at all is the second of the two — a session must
 // never declare itself finished because its build command was misspelled.

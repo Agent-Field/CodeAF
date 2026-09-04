@@ -162,7 +162,7 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 				continue
 			}
 		}
-		got := declaredChecks("Check it with `"+one.span+"`, please.", one.ground)
+		got := declaredChecks("Check it with `"+one.span+"`, please.", one.ground, checksFromWork)
 		if one.door && len(got) != 1 {
 			t.Errorf("%s (%q) is runnable here and did not become a check: %q", one.what, one.span, got)
 		}
@@ -190,6 +190,79 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 	// acceptance and the one that ends the audit instead of spinning it.
 	if !strings.Contains(door.line(), "NOTHING THIS WORK DECLARES OR RAN") {
 		t.Fatalf("a node with no runnable check is not told so:\n%s", door.line())
+	}
+}
+
+// A PROMPT LINE IN THE PERSON'S PASTED REPRODUCTION IS NEVER A NODE CHECK, AND
+// THE SAME LINE IN THE WORK'S OWN ACCOUNT STILL IS.
+//
+// A measured tox run harvested `chmod 000 tox.ini` from the pasted issue and
+// tried it against the deliverable tree. On a tree holding that file, success
+// would make the project's own configuration unreadable. Only prompt lines
+// move: a backticked command in the person's words still names a check.
+func TestAStepOutOfThePastedReproductionIsNeverANodeCheck(t *testing.T) {
+	tree := checkedTree(t, "tox.ini", "run_tests.sh")
+
+	pasted := checkedNode("repair the tox configuration", "`run_tests.sh` passes")
+	pasted.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
+	fromPaste := auditDoorFor(pasted, auditPlace{ground: tree, ran: tree})
+	if !containsWord(fromPaste.checks, "run_tests.sh") {
+		t.Fatalf("the acceptance's backticked check was not harvested: %v", fromPaste.checks)
+	}
+	if containsWord(fromPaste.checks, "chmod 000 tox.ini") {
+		t.Fatalf("a pasted reproduction step became a node check: %v", fromPaste.checks)
+	}
+	if containsWord(fromPaste.allowed, "chmod 000 tox.ini") {
+		t.Fatalf("a pasted reproduction step entered the node's door: %v", fromPaste.allowed)
+	}
+	if strings.Contains(fromPaste.offer(), "chmod 000 tox.ini") {
+		t.Fatalf("the node offered a pasted reproduction step:\n%s", fromPaste.offer())
+	}
+	if _, ok := auditRefusal("chmod 000 tox.ini", fromPaste.allowed); ok {
+		t.Fatal("the gate allowed a pasted reproduction step")
+	}
+
+	owned := auditDoorFor(checkedNode("repair it with:\n$ chmod 000 tox.ini", "it is repaired"),
+		auditPlace{ground: tree, ran: tree})
+	if !containsWord(owned.checks, "chmod 000 tox.ini") {
+		t.Fatalf("the work's own prompt line did not become a node check: %v", owned.checks)
+	}
+
+	named := checkedNode("repair the tox configuration", "it is repaired")
+	named.spec.request = "check it with `run_tests.sh`"
+	fromBackticks := auditDoorFor(named, auditPlace{ground: tree, ran: tree})
+	if !containsWord(fromBackticks.checks, "run_tests.sh") {
+		t.Fatalf("a backticked command in the person's words stopped being a node check: %v", fromBackticks.checks)
+	}
+}
+
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO PROMPT STEP ONTO
+// A NODE'S DOOR, WHILE A BACKTICKED CHECK IN THOSE WORDS STILL OPENS IT.
+//
+// The auto-started road puts [routeAskAcceptance] in front of the request when
+// nobody could write a separate done-condition. The measured tox transcript
+// must remain the person's account even while that frame occupies the node's
+// acceptance field.
+func TestANodesDoneWhenThatIsThePastedAskCarriesNoStepOutOfIt(t *testing.T) {
+	tree := checkedTree(t, "tox.ini", "run_tests.sh")
+	node := checkedNode("repair the tox configuration", routeAskAcceptance+
+		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
+	door := auditDoorFor(node, auditPlace{ground: tree, ran: tree})
+
+	if containsWord(door.checks, "chmod 000 tox.ini") ||
+		containsWord(door.allowed, "chmod 000 tox.ini") ||
+		strings.Contains(door.offer(), "chmod 000 tox.ini") {
+		t.Fatalf("the ask-fallback done-condition opened a node door onto its prompt step: %+v\n%s",
+			door.checks, door.offer())
+	}
+	if _, ok := auditRefusal("chmod 000 tox.ini", door.allowed); ok {
+		t.Fatal("the gate allowed a prompt step out of the ask-fallback done-condition")
+	}
+	if !containsWord(door.checks, "run_tests.sh") {
+		t.Fatalf("a backticked check in the same fallback was not harvested: %v", door.checks)
+	}
+	if refusal, ok := auditRefusal("run_tests.sh", door.allowed); !ok {
+		t.Fatalf("a backticked check in the same fallback did not open the node's door: %s", refusal)
 	}
 }
 
@@ -744,5 +817,36 @@ func TestTheShebangNamesItsFirstWordAndEnvNamesTheNext(t *testing.T) {
 		if got, _ := fileFacts(path); got != c.want {
 			t.Errorf("%s: %q names %q, want %q", c.what, strings.TrimSpace(c.line), got, c.want)
 		}
+	}
+}
+
+// TestAForgottenAccountReadsAsThePersonsAndNotTheWorks pins the ORDER of the
+// [checkSource] constants, which is a safety property and not a detail.
+//
+// The gate this file exists for asks whose account a prompt line came from, and
+// answers with a comparison against one of two values. Whichever of them is the
+// zero is the answer a caller gets for free when it forgets to say — and this
+// gate's whole reason for being is that the free answer used to be "the work's",
+// so a pasted `$ chmod 000 tox.ini` was a promise. A caller that forgets now
+// loses a check it could have made. That is the failure this gate should have.
+func TestAForgottenAccountReadsAsThePersonsAndNotTheWorks(t *testing.T) {
+	var forgotten checkSource
+	if forgotten != checksFromAsk {
+		t.Fatal("the zero checkSource is not checksFromAsk, so a caller that forgets whose account this is harvests the person's pasted commands")
+	}
+
+	ground := t.TempDir()
+	pasted := "To see it:\n\n$ echo reproduction-step\n\nand `echo named-check` is the check.\n"
+	got := declaredChecks(pasted, ground, forgotten)
+
+	for _, command := range got {
+		if strings.HasPrefix(command, "echo reproduction-step") {
+			t.Errorf("a prompt line was harvested under the zero account: %q", got)
+		}
+	}
+	// The backticked span is admitted from either account, which is the
+	// deliberate exception stated on [declaredChecks].
+	if len(got) != 1 || !strings.HasPrefix(got[0], "echo named-check") {
+		t.Errorf("the backticked check did not survive the zero account: %q", got)
 	}
 }
