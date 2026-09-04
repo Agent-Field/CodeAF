@@ -424,10 +424,11 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## What is allowed without asking by default — who can see my files, and what aforge can read without asking, does git status need approval
+## Who can see my files — privacy and file access: what aforge can read without asking, does git status need approval
 
-**In the default `prompt` mode, a look is not a question.** The policy itself
-allows these without a card, even before the seeded row below is applied:
+**Privacy: who can see my files.** In the default `prompt` mode, a look is not
+a question. aforge can read and open these files without asking — the policy
+itself allows these without a card, even before the seeded row below is applied:
 
 - **`read`, `ls`, `grep`, `find`** — they change no file.
 - **`tasks` when it is a look** — a search, or one task's page. `say`,
