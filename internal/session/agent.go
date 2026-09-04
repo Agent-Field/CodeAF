@@ -1477,6 +1477,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// carry the sentence that asked for it rather than a paraphrase of it
 	// (task_brief.go). A woken turn opens with nothing and changes nothing here.
 	a.rememberAskLocked(user)
+	// AND WHAT THIS TURN WAS WOKEN TO ANSWER, which is the other half of the same
+	// question and belongs to this turn alone (wakecause.go).
+	a.forgetOwedLocked()
+	a.rememberOwedLocked(user)
 	var events <-chan Event
 	if watcher != nil {
 		hub.adopt(watcher)
@@ -2361,6 +2365,9 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		// the newest thing they typed is what a proposal made after this drain
 		// quotes (task_brief.go).
 		a.rememberAskLocked(message)
+		// AND WHAT A RESULT DRAINED HERE IS THE RESULT OF, so a landing that
+		// arrives mid-turn is owed by the turn it arrives in (wakecause.go).
+		a.rememberOwedLocked(message)
 		// AND IT IS STILL THE PERSON WAITING. Two kinds of line here are owed a
 		// sentence: a wake note, which is work the harness did that nobody
 		// watched, and a message with no `authored` mark — which is the person

@@ -3353,8 +3353,13 @@ func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
 // written by the caller, after the seam.
 func (a *Agent) postTaskMessage(node *TaskNode, note string, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
+	// THE TAG IS COMPOSED HERE, WHERE THE REPORT IS, so what the result is judged
+	// against is taken once, from this node as it finishes, and never fetched from
+	// a live node later (wakecause.go).
+	obligation, revision := node.obligationNow()
 	message.replyTags = []TaskReplyTag{{
 		ID: node.id, Title: node.title(), Request: node.request(),
+		Obligation: obligation, Revision: revision,
 	}}
 	message.delivered = durable
 	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message}, a.taskNoteReaders(node)...)

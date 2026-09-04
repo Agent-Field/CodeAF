@@ -1435,7 +1435,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION, for the price
 	// [checkpointDigestTokens] states: the reader is asked about the SHAPE of what
 	// is left, and nothing inside a tool result changes that shape.
-	digest := checkpointDigest(a.taskRequest(), a.snapshot())
+	digest := checkpointDigest(a.turnAsk(), a.snapshot())
 	if digest == "" {
 		// NOTHING TO READ IS NOT A READING. A turn with no ask, no tool call and
 		// nothing said has nothing for a second mind to be shown, and a call made
@@ -2420,7 +2420,7 @@ func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
 	// marks and the ceiling all start a task through this gate; a commit
 	// that has already staged five files is still a commit, and looking at
 	// the work is how F26 converted it.
-	if trivialAsk(a.taskRequest()) {
+	if trivialAsk(a.turnAsk()) {
 		return false
 	}
 	a.mu.Lock()
@@ -2929,7 +2929,9 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	if a.markReaderAbsent() {
 		return readerLine{}
 	}
-	digest := checkpointDigest(a.taskRequest(), a.snapshot())
+	// THE ASK IS THE ONE THIS TURN OWES, which on a woken turn is the request its
+	// result belongs to and not whatever was typed last (wakecause.go).
+	digest := checkpointDigest(a.turnAsk(), a.snapshot())
 	if digest == "" {
 		return readerLine{}
 	}
@@ -3161,7 +3163,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// declined would still have converted the ask in every way that costs
 	// money. So the ask is read first and nothing is spent: the ending row
 	// above writes the drop, and the turn carries on.
-	if trivialAsk(a.taskRequest()) {
+	if trivialAsk(a.turnAsk()) {
 		return checkpointHandover{decision: checkpointCeilingTrivial}
 	}
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
@@ -3173,7 +3175,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		return handover
 	}
 	sketch := read.sketch
-	asked := a.taskRequest()
+	asked := a.turnAsk()
 	// THE NAME IS ASKED FOR NOW, beside the two calls below rather than after
 	// them (taskname.go's [nameAhead]). This stage is the longest silence on the
 	// road, and the namer used to start only when it ended — so the line that
