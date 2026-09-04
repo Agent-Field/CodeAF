@@ -98,15 +98,24 @@ func (a *app) quitSweep() {
 
 // ── WHAT THE SECOND PRESS WOULD COST ────────────────────────────────────────
 
-// quitHint is the armed sentence, with what would stop named on the end of it:
+// quitHint is the armed sentence, with what leaving would do to the work named
+// on the end of it:
 //
 //	ctrl+c again to quit
 //	ctrl+c again to quit · a task will stop
+//	ctrl+c again to quit · a task keeps running
 //	ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
 //
 // THE CLAUSE ORDER IS DELIBERATE: how many conversations, then what work. A
 // person who has forgotten they left something open in another project needs the
 // first number before the second one means anything.
+//
+// AND THE VERB IS THE TRUTH ABOUT THIS CONVERSATION. Work a host is running
+// outlives the window, so a warning that said it would stop would be asking
+// somebody not to close a terminal for a reason that is not real — and the day
+// they believed it, they would leave the window open for an hour to protect work
+// that was never at risk. Work this process is running does stop, and that
+// sentence is unchanged (keeper.go's [workOutlivesExit] is the one test).
 //
 // EVERY CLAUSE IS ABSENT WHEN IT IS ZERO, which is the emptiness law: one
 // conversation drops the first, nothing running drops the second, and a quiet
@@ -118,14 +127,15 @@ func (a *app) quitHint() string {
 	if open := a.openCount(); open > 1 {
 		word += " · " + itoa(open) + plural(" conversation", open)
 	}
-	if work := a.quitWorkWord(); work != "" {
-		word += " · " + work + " will stop"
+	for _, clause := range a.quitWorkClauses() {
+		word += " · " + clause
 	}
 	return word
 }
 
-// quitWorkWord names what this session has running that the door would take
-// with it, in a person's own words, or "" when there is nothing.
+// quitWorkClauses names what this terminal has running and what leaving does to
+// it, in a person's own words: one clause for the work that stops, one for the
+// work that keeps going, and nothing at all when there is neither.
 //
 // IT COUNTS WHAT THE FRAME ALREADY TRUSTS rather than asking anything new. The
 // running task nodes are the strip's own set (taskstrip.go), and the background
@@ -143,21 +153,69 @@ func (a *app) quitHint() string {
 // only the conversation on screen would be the one place this feature could
 // cost somebody work they had forgotten about. The jobs are the front
 // conversation's only, and that limit is stated where it is made.
-func (a *app) quitWorkWord() string {
-	tasks := a.behindTasks()
+func (a *app) quitWorkClauses() []string {
+	stopping, keeping := a.quitWorkCounts()
+	var clauses []string
+	if word := quitWorkWord(stopping); word != "" {
+		clauses = append(clauses, word+" will stop")
+	}
+	if word := quitWorkWord(keeping); word != "" {
+		clauses = append(clauses, word+" "+quitKeepsVerb(keeping)+" running")
+	}
+	return clauses
+}
+
+// quitWorkCount is running work on one side of that line: nodes, and the
+// background jobs of the conversation on screen.
+type quitWorkCount struct{ tasks, jobs int }
+
+// quitWorkCounts splits what is running by what leaving would do to it. The
+// conversation on screen carries the jobs, because that is the only one this
+// surface can count them for ([app.behindTasks] states the limit).
+func (a *app) quitWorkCounts() (stopping, keeping quitWorkCount) {
+	front := &stopping
+	if a.agent != nil && workOutlivesExit(a.agent) {
+		front = &keeping
+	}
 	for _, id := range a.taskOrder {
 		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
-			tasks++
+			front.tasks++
 		}
 	}
-	var parts []string
-	if tasks > 0 {
-		parts = append(parts, quitCountWord(tasks, "task"))
+	front.jobs += a.hudStats().jobs
+	for _, held := range a.behind {
+		if held.conv.Agent == nil {
+			continue
+		}
+		side := &stopping
+		if workOutlivesExit(held.conv.Agent) {
+			side = &keeping
+		}
+		side.tasks += runningTasks(held.conv.Agent)
 	}
-	if jobs := a.hudStats().jobs; jobs > 0 {
-		parts = append(parts, quitCountWord(jobs, "job"))
+	return stopping, keeping
+}
+
+// quitWorkWord spells one side of the count — "a task", "2 tasks and a job" —
+// and "" when that side has nothing on it.
+func quitWorkWord(count quitWorkCount) string {
+	var parts []string
+	if count.tasks > 0 {
+		parts = append(parts, quitCountWord(count.tasks, "task"))
+	}
+	if count.jobs > 0 {
+		parts = append(parts, quitCountWord(count.jobs, "job"))
 	}
 	return strings.Join(parts, " and ")
+}
+
+// quitKeepsVerb agrees with what it is about: one thing keeps running, several
+// keep running.
+func quitKeepsVerb(count quitWorkCount) string {
+	if count.tasks+count.jobs == 1 {
+		return "keeps"
+	}
+	return "keep"
 }
 
 // quitCountWord spells one of those counts the way a person would say it out

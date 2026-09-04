@@ -224,6 +224,14 @@ func (f *fakeAgent) Compact(context.Context) error {
 	return f.compactBy
 }
 
+// closed is how many times this agent was told the conversation is over, read
+// under its own lock because the engine goroutine writes it.
+func (f *fakeAgent) closed() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.closes
+}
+
 func (f *fakeAgent) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

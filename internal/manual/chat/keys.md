@@ -432,16 +432,23 @@ keystroke is the one every terminal habit tells you to hit when something seems 
 It could end a session that was running tasks, holding live background jobs, and still
 carrying a message you had typed and pressed `enter` on.
 
-**What is running is named before it stops, across every conversation this terminal
+**What is running is named before you leave, across every conversation this terminal
 holds.** If there is more than one open, the armed line says how many first — a person who
 has forgotten they left something open in another project needs that number before the work
 count means anything:
 
 ```
+ctrl+c again to quit · a task keeps running
 ctrl+c again to quit · a task will stop
 ctrl+c again to quit · 2 tasks and a job will stop
 ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
 ```
+
+**The verb is the truth about where the work is.** A conversation this machine's aforge
+service is running keeps going after the window closes, so the line says `keeps running`
+and leaving costs nothing. A conversation running inside this terminal — `--no-host`, or a
+host that could not be reached — stops with the window, and the line says `will stop`. A
+terminal holding both says both, what ends first.
 
 Each clause is absent when it is zero: one conversation drops the first, nothing running
 drops the second, and a quiet single conversation reads exactly `ctrl+c again to quit`.
@@ -468,10 +475,16 @@ shows `ctrl+c again to quit`, and the second press leaves with the panel still u
 ## What quitting saves and closes — kill, SIGTERM, SIGHUP, terminal closed, or hung up
 
 **What quitting does.** Your unsent draft is written to disk first, with any message
-still waiting for an answer folded in underneath it, then the turn is interrupted and
-the session is closed. Nothing is lost that was typed. Every conversation this terminal
-holds is closed together, and the ones behind the screen already wrote their own boxes to
-disk when you switched away from them.
+still waiting for an answer folded in underneath it. Then this terminal comes off every
+conversation it holds — the ones behind the screen as well, which already wrote their own
+boxes to disk when you switched away from them. Nothing is lost that was typed.
+
+**Leaving a window is not ending the work.** A hosted conversation is *detached*: the
+window goes and the conversation keeps its turn, its tasks, its questions and its journal,
+and opening the same workspace again rejoins it. A conversation running inside this
+terminal has nowhere else to run, so it is interrupted and closed here. `/close` and a stop
+you type are still the person ending something on purpose, wherever the conversation is
+running.
 
 **Limits.**
 
@@ -490,17 +503,21 @@ disk when you switched away from them.
 
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
-Every task this session is running is stopped when the session closes, and aforge waits for
-all of them before it leaves. A task that was only just admitted is stopped before it opens
-anything — no worktree, no log, no model call for a session that has left. Nothing can
-start in the session afterwards: `this session has closed; nothing new starts in it`.
+**A hosted conversation keeps working.** Closing the window, `ctrl+c` twice, `kill -HUP`
+and a terminal that went away all detach: the task goes on running in this machine's aforge
+service, its questions stay waiting for you, and you rejoin it by opening the same
+workspace again. The armed line says `keeps running` when that is what will happen.
 
-Background jobs go the same way, a moment later. What a task wrote is on its branch and
-stays there; a stop is an interruption and never a finding about the work.
+**A conversation running inside this terminal stops with it.** That is `--no-host`, and a
+launch where no host could be reached. Every task the session is running is stopped when it
+closes and aforge waits for all of them before it leaves; a task that was only just admitted
+is stopped before it opens anything — no worktree, no log, no model call for a session that
+has left. Nothing can start in it afterwards: `this session has closed; nothing new starts
+in it`. Background jobs go the same way, a moment later.
 
-An interrupt from outside — including a closed terminal window — stops the session's work
-the same way. A headless `aforge chat --once` leaves by that road too: the turn stops, the
-session closes, and the process exits cleanly.
+Either way, what a task wrote is on its branch and stays there; a stop is an interruption
+and never a finding about the work. A headless `aforge chat --once` leaves by the closing
+road: the turn stops, the session closes, and the process exits cleanly.
 
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 

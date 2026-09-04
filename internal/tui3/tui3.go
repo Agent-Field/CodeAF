@@ -180,6 +180,32 @@ type Agent interface {
 	EarlierHistory() session.EarlierHistory
 }
 
+// detachable is an agent whose conversation OUTLIVES THIS TERMINAL, and it is
+// how this surface tells the two apart without guessing.
+//
+// The distinction cannot be read off a machine name: a conversation hosted by
+// the daemon on this laptop has no machine in front of it (cmd/aforge's
+// chatv3_local.go dials with an empty host on purpose), and it is exactly the
+// one whose work must survive the window. Only the agent knows what it is
+// attached to, so it is asked ([remote.Agent.Detach]).
+//
+// An agent that does not implement it is one whose work is this process — the
+// in-process door — and leaving it is ending it. An agent that DOES implement it
+// still has to be asked whether the work outlives the exit: implementing the
+// interface says only that the agent owns the answer.
+type detachable interface {
+	// WorkOutlivesExit says whether this conversation keeps working after the
+	// view goes. It is a separate question from Detach because the same type
+	// answers both ways: a conversation on a session host outlives the window,
+	// and a one-shot engine on a pipe does not, and the warning a person reads
+	// before they quit has to say which ([app.quitHint]).
+	WorkOutlivesExit() bool
+	// Detach lets go of the view. Where the work outlives it the conversation is
+	// left running; where it does not, this is the ordinary ending. It must be
+	// safe to call twice and safe on a connection that has already died.
+	Detach() error
+}
+
 // Conversation is one live agent and everything the door resolved around it:
 // where it works, what it may keep, and the seams that answer for THAT agent
 // and no other.

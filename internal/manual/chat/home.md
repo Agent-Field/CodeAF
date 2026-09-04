@@ -1238,7 +1238,9 @@ and `ctrl+w` are how a conversation you are done with actually ends.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves aforge
   only when that was the last one.
 - **`ctrl+c` twice** closes all of them, and the warm line says how many:
-  `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop`.
+  `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop` — and
+  `keeps running` in place of `will stop` for work the aforge service is running, which
+  closing the window leaves alone.
 
 ## How do I switch to my other chat — and is it still running
 
