@@ -9,8 +9,9 @@ Not only programming. Nothing else on this page is about code in particular:
 files, shell commands, the web, pictures, audio and video, your connected
 accounts, your own settings. A folder of contracts, a pile of recordings to
 transcribe and a repository are the same material to aforge — whatever is in the
-folder it was pointed at. Where there is a repository a task hands its work back
-on a branch; where there is none it works in the folder itself and says so:
+folder it was pointed at. Where there is a repository a task works on a branch and merges
+into an ordinary checked-out branch; on a protected, moved or detached checkout the task
+branch is kept for you instead. Where there is no repository it works in the folder itself and says so:
 `it worked directly in the workspace: there was no repository to branch`.
 
 ## Can you read, write, create, delete, rename or move files?

@@ -31,7 +31,16 @@ import (
 // work that could not be committed at all — walked straight past all five of
 // them. A mark nobody may land on is added here once, and every road refuses it.
 func cameHome(merge string) bool {
-	return merge != mergeConflicted && merge != mergeAborted
+	switch merge {
+	case mergeConflicted, mergeAborted:
+		return false
+	case mergeKept:
+		// FINISHED WORK ON A PROTECTED CHECKOUT IS COMPLETE. It is visible on
+		// the named branch and unblocks dependents even though no checkout moved.
+		return true
+	default:
+		return true
+	}
 }
 
 // landingRefusal is WHY a landing could not be saved, in the two kinds that have

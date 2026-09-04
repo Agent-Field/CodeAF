@@ -12,13 +12,205 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// heldTaskWorld lets a door test observe the worker's live directory before
+// its scripted run is released. The contract is about isolation while work is
+// happening, so waiting until cleanup would miss the checkout write it guards.
+func heldTaskWorld(t *testing.T, agent *Agent, path, content string) (<-chan taskTree, func()) {
+	t.Helper()
+	world := make(chan taskTree, 1)
+	release := make(chan struct{})
+	var once sync.Once
+	stubbedGraph(agent, func(node *TaskNode) {
+		tree, ok := agent.openTaskWorld(context.Background(), node, io.Discard)
+		if !ok {
+			return
+		}
+		writeFile(t, filepath.Join(tree.dir, path), content)
+		world <- tree
+		<-release
+		merge, changed := keptWork(tree, node.title(), []string{path})
+		node.finish("scripted run ended", changed, tree.branch, merge)
+		node.graph.complete(node, TaskFailed)
+	})
+	done := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(done)
+	return world, done
+}
+
+// C1: a model asking for in-place repository work gets a task branch, the live
+// checkout stays untouched, and the proposal receipt says why it was redirected.
+func TestC1AProposalCannotPutRepositoryWorkInTheCheckout(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	world, release := heldTaskWorld(t, agent, "isolated.txt", "only on the task branch\n")
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "isolate the write", Summary: "write without touching the checkout",
+		Brief: "write isolated.txt", Deliverable: "isolated.txt", Where: "in place",
+		Acceptance: "isolated.txt contains the line",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil || isError {
+		t.Fatalf("proposeTask = %q, error=%v, isError=%v", result, err, isError)
+	}
+	tree := <-world
+	wantSentence := whereRedirectSentence("in place", canonicalPath(repo))
+	if strings.Count(result, wantSentence) != 1 {
+		t.Fatalf("proposal receipt does not carry the redirect once:\n%s", result)
+	}
+	if tree.root != canonicalPath(repo) || !strings.HasPrefix(tree.branch, "task/") {
+		t.Fatalf("tree = %+v, want a task branch of %s", tree, repo)
+	}
+	if !withinDir(place.Trees(), tree.dir) {
+		t.Fatalf("task directory %s is not under %s", tree.dir, place.Trees())
+	}
+	if _, err := os.Stat(filepath.Join(repo, "isolated.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the live checkout was written while the worker ran: %v", err)
+	}
+	if list := gitOut(t, repo, "worktree", "list"); !strings.Contains(list, tree.dir) {
+		t.Fatalf("git does not know the task copy:\n%s", list)
+	}
+	if got := taskWhereNotice(place, repo, 1, "in place", TaskModeWorktree); got == repo || got != filepath.Join(place.Trees(), "1") {
+		t.Fatalf("proposal card directory = %q, want the task folder", got)
+	}
+	// IN PLACE RE-ENTERS THE LADDER. A contract naming no file therefore gets
+	// the repository as a reference, but its redirected placement still puts
+	// the worker and the proposal card in the task's own folder.
+	reference := agent.resolveTaskGround(taskSpec{
+		where: "in place", deliverable: "a concise answer", acceptance: "the question is answered",
+	})
+	if reference.mode != TaskModeReference || reference.redirect != wantSentence {
+		t.Fatalf("read-only in-place request resolved as %+v, want a redirected reference", reference)
+	}
+	if got := taskWhereNotice(place, repo, 2, "in place", reference.mode); got != filepath.Join(place.Trees(), "2") {
+		t.Fatalf("reference proposal card directory = %q, want its task folder", got)
+	}
+	release()
+	waitDoneNode(t, agent.graph().node(1))
+}
+
+// C3: every spelling of where keeps its old plain-folder behaviour, while an
+// existing or future path inside a committed repository resolves to its root.
+func TestC3WhereInsideARepositoryIsBranchedAndPlainFoldersStayInPlace(t *testing.T) {
+	repo := newTestRepo(t)
+	inside := filepath.Join(repo, "notes")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plain := t.TempDir()
+	fresh := filepath.Join(t.TempDir(), "future", "out")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = repo })
+
+	for _, test := range []struct {
+		name  string
+		where string
+		mode  TaskMode
+		dir   string
+		rung  string
+	}{
+		{"absolute path inside the repository", inside, TaskModeWorktree, canonicalPath(repo), taskGroundNamed},
+		{"plain folder", plain, TaskModeInPlace, canonicalPath(plain), taskGroundNamed},
+		{"future folder outside repositories", fresh, TaskModeInPlace, canonicalPath(fresh), taskGroundNamed},
+		{"future relative path inside the repository", "notes/out", TaskModeWorktree, canonicalPath(repo), taskGroundNamed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stand := agent.resolveTaskGround(taskSpec{where: test.where, deliverable: "out.txt", acceptance: "it exists"})
+			if stand.mode != test.mode || stand.dir != test.dir || stand.rung != test.rung {
+				t.Fatalf("stand = %+v, want dir %s mode %s rung %s", stand, test.dir, test.mode, test.rung)
+			}
+		})
+	}
+
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	tree, err := prepareTaskTreeAt(context.Background(), place, repo, "named", 9, "write below notes", "notes/out", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.root != canonicalPath(repo) || tree.dir == filepath.Join(repo, "notes", "out") {
+		t.Fatalf("relative repository placement made %+v", tree)
+	}
+	tree.releaseKept()
+
+	created, err := prepareTaskTreeAt(context.Background(), Place{}, repo, "plain", 10, "write outside", fresh, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.dir != canonicalPath(fresh) || created.merge != mergeInPlace {
+		t.Fatalf("future plain folder made %+v", created)
+	}
+	if info, err := os.Stat(fresh); err != nil || !info.IsDir() {
+		t.Fatalf("future plain folder was not created: %v", err)
+	}
+}
+
+// C4: an in-place mode the person put on a referred repository remains the one
+// authority that deliberately writes that repository directly.
+func TestC4APersonsInPlaceModeOnAReferredRepositoryIsHonoured(t *testing.T) {
+	repo := newTestRepo(t)
+	workspace := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = workspace })
+	if _, err := agent.ReferPlace(repo, PlaceSaid); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.SetPlaceMode(repo, "in place"); err != nil {
+		t.Fatal(err)
+	}
+	stand := agent.resolveTaskGround(taskSpec{deliverable: "shared.txt", acceptance: "it changed"})
+	if stand.dir != canonicalPath(repo) || stand.mode != TaskModeInPlace {
+		t.Fatalf("the person's mode was overruled: %+v", stand)
+	}
+}
+
+// C5: in place still means exactly that for a plain workspace and for a
+// repository with no commit from which a branch could be cut.
+func TestC5InPlaceWithoutACommittedRepositoryIsUnchanged(t *testing.T) {
+	plain := t.TempDir()
+	for _, test := range []struct {
+		name      string
+		workspace string
+	}{
+		{"plain folder", plain},
+		{"repository with no commit", func() string {
+			dir := t.TempDir()
+			mustGit(t, dir, "init")
+			return dir
+		}()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = test.workspace })
+			stand := agent.resolveTaskGround(taskSpec{where: "in place", deliverable: "notes.txt", acceptance: "it exists"})
+			if stand.dir != canonicalPath(test.workspace) || stand.mode != TaskModeInPlace || stand.redirect != "" {
+				t.Fatalf("stand = %+v, want unchanged in-place work", stand)
+			}
+			tree, err := prepareTaskTreeAt(context.Background(), Place{}, test.workspace, "plain", 1, "write notes", "in place", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tree.dir != test.workspace || tree.merge != mergeInPlace || tree.branch != "" {
+				t.Fatalf("tree = %+v, want the workspace itself", tree)
+			}
+			note := taskNote(TaskNotice{ID: 1, Title: "Write notes", State: TaskDone, Merge: mergeInPlace}, "", TaskSettleAsk, landingAddress{person: true})
+			if !strings.Contains(note, "there was no repository to branch") {
+				t.Fatalf("in-place completion says nothing about the missing branch:\n%s", note)
+			}
+		})
+	}
+}
 
 // THE DEFECT: the chat was opened in a home directory, the harness cut both
 // workers a worktree from an empty repository beside the session, and the check

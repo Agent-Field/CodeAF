@@ -500,6 +500,7 @@ const (
 	mergeWordConflicted = "conflicted"
 	mergeWordInPlace    = "inplace"
 	mergeWordAborted    = "aborted"
+	mergeWordKept       = "kept"
 )
 
 // ── WHERE THE WORK LANDED, IN A PERSON'S WORDS ──────────────────────────────
@@ -529,7 +530,7 @@ const (
 // instead, because "this work is over" is true of every merge outcome there can
 // be and a token nobody can read is true of nothing.
 var mergeScreenWords = map[string]string{
-	// Two of the four already mean on screen what they mean in the branch.
+	// Two of the five already mean on screen what they mean in the branch.
 	mergeWordMerged:     mergeWordMerged,
 	mergeWordConflicted: mergeWordConflicted,
 	// "aborted" reads as a crash and is almost never one: the commonest way a
@@ -537,6 +538,9 @@ var mergeScreenWords = map[string]string{
 	// given (see [taskStoppedKept], which adds the branch clause where a row has
 	// the cells for it).
 	mergeWordAborted: taskStoppedWord,
+	// "kept" says what the engine did with a ref; the person-facing fact is
+	// that a finished branch is waiting for them to take it.
+	mergeWordKept: taskBranchKept,
 	// "inplace" is not an outcome at all — it is WHERE the work is. There was no
 	// branch, so nothing had to come home, and the fact a person needs is that
 	// their own files were the ones edited.
@@ -2470,11 +2474,11 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 // off. That is worth keeping — it is why the roster keeps everything — and it is
 // not worth the top of the column and a group that never folds.
 //
-// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Three
+// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Four
 // outcomes pass it and nothing else does: work nobody could judge, which moves
 // only when a person decides (session's ResolveUnverified); a branch that
-// conflicted; and a run that stopped with its branch kept. The last two are the
-// same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
+// was deliberately kept; a branch that conflicted; and a run that stopped with
+// its branch kept. The last three are the same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
 // nobody but a person is going to bring home — and they are read off the merge
 // word rather than off the state, because a failed node and a done node can each
 // wear either one. A failure with NO kept branch left nothing behind to deliver,
@@ -2528,9 +2532,9 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 // it lives on a branch that never came home, and nothing but a person is going
 // to bring it home.
 //
-// THE BRANCH IS THE WHOLE OF THE CLAIM. "conflicted" and "aborted" are the two
-// merge words session writes when it keeps a branch (task_run.go's comeHome and
-// abortedMerge), and a node wearing one of them WITH a branch name has real work
+// THE BRANCH IS THE WHOLE OF THE CLAIM. "kept", "conflicted" and "aborted" are
+// the merge words session writes when it keeps a branch (task_run.go's comeHome
+// and abortedMerge), and a node wearing one of them WITH a branch name has real work
 // sitting somewhere a person can go and get. A node that ran in the person's own
 // tree, or one that ended before there was ever a branch, wears no name here and
 // has left nothing behind — so it is not undelivered, it is simply over.
@@ -2597,7 +2601,7 @@ func (a *app) taskParentDeciding(node *taskNode) bool {
 
 func taskUndelivered(node *taskNode) bool {
 	switch node.merge {
-	case mergeWordConflicted, mergeWordAborted:
+	case mergeWordConflicted, mergeWordAborted, mergeWordKept:
 		return strings.TrimSpace(node.branch) != ""
 	}
 	return false
@@ -4971,6 +4975,10 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		paint, text = a.pal.warn, taskUnverifiedWaits
 	default:
 		switch node.merge {
+		case mergeWordKept:
+			// FINISHED AND WAITING ON ITS BRANCH. The state stays done because the
+			// work is complete; the row names the one action left to the person.
+			text = taskBranchKept + " · " + node.branch
 		case mergeWordConflicted:
 			// THE ONE LOUD ROW ON THE RAIL. A branch that did not merge is work
 			// that is finished and not delivered, and its branch is the only
