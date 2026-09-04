@@ -63,7 +63,10 @@ import (
 // THE PATHS ARE NORMALISED BEFORE THEY ARE COMPARED, because `report.md` and
 // `/…/tree/report.md` in two done-conditions are one file and a comparison on
 // the words would say they were two. [resolvePath] is the same reading a shell standing in
-// that directory would make.
+// that directory would make, and [canonicalPath] settles the rest of the
+// spelling: a file reached through a symlinked ancestor — /var and /private/var
+// on a Mac — is one file, so two parts that claim it two ways are one claim.
+// The refusal still quotes each part's own words.
 //
 // It is one pass over the parts with a set, not a comparison of every part
 // against every other: a division may carry a dozen parts and each
@@ -81,7 +84,7 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 			if !groundHolds(tree, token) {
 				continue
 			}
-			path := resolvePath(tree, token)
+			path := canonicalPath(resolvePath(tree, token))
 			first, claimed := owner[path]
 			if !claimed {
 				owner[path] = index

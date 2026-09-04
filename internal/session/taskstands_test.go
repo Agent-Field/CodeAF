@@ -159,17 +159,11 @@ func TestC3WhereInsideARepositoryIsBranchedAndPlainFoldersStayInPlace(t *testing
 	}
 }
 
-// C3b: A CONTRACT THAT SPELLS ITS GROUND ANOTHER WAY IS STILL A CONTRACT ABOUT
-// THAT GROUND.
-//
-// The ground is resolved to git's own spelling while the paths in a brief are
-// spelled the way whoever wrote them was standing, and on a Mac those differ by
-// a `/private` on every task whose repository sits in a temp directory. Read as
-// bytes, a contract that named the ground three times looked like a contract
-// that named nothing under it — so [groundMode] made the work a read-only
-// reference, and a reference deliberately binds none of its addresses to the
-// copy it was given ([taskCopyFor]). The worker was then handed the person's own
-// checkout to write in, which is the isolation this whole file exists for.
+// C3b: a contract that spells its ground another way is still a contract about
+// that ground. Read as bytes, one that named the ground three times looked like
+// one that named nothing under it, so the work became a read-only reference —
+// and a reference binds none of its addresses to the copy it was given, which
+// left the worker writing in the person's own checkout.
 func TestC3bAContractSpellingTheGroundThroughAnAliasStillWritesInIt(t *testing.T) {
 	repo := newTestRepo(t)
 	alias := filepath.Join(t.TempDir(), "alias")

@@ -187,25 +187,20 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	}
 }
 
-// A FOLDER SPELLED THROUGH A SYMLINK IS STILL THE FOLDER.
-//
-// The addresses in a contract are spelled the way the parent was standing, and
-// the ground is spelled the way git and [canonicalPath] resolve it. On a Mac
-// those two are different every time — /var/folders is /private/var/folders, so
-// every worktree task in a temp directory names its ground through an alias —
-// and a bind that compared bytes alone left the worker pointed at the folder the
-// copy was made of. The link here is made by hand rather than borrowed from the
-// machine, so the law is pinned on every platform.
+// A FOLDER SPELLED THROUGH A SYMLINK IS STILL THE FOLDER. A contract's addresses
+// are spelled the way their author was standing while the ground is spelled the
+// way git resolves it, and a bind comparing bytes alone left the worker pointed
+// at the folder its copy was made of. The link is made by hand rather than
+// borrowed from the machine, so this holds on every platform.
 func TestBindFollowsAnAliasSpellingOfTheGround(t *testing.T) {
 	root := t.TempDir()
 	real := filepath.Join(root, "real")
 	if err := os.MkdirAll(filepath.Join(real, "internal"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A SIBLING WHOSE NAME BEGINS THE SAME WAY, reachable through its own link:
-	// the lookalike rule has to hold for an alias exactly as it holds for the
-	// ground's own spelling, or a rewrite would invent a way into a folder the
-	// work was never about.
+	// A sibling whose name begins the same way, reachable through its own link:
+	// the lookalike rule holds for an alias as it does for the ground's own
+	// spelling, or a rewrite would invent a way into a folder nobody asked about.
 	if err := os.MkdirAll(filepath.Join(root, "real-old"), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -728,20 +728,17 @@ func groundNamesWorkUnder(ground string, spec taskSpec) bool {
 // project and counts when the file or the directory that would hold it is really
 // there, which keeps ordinary prose from reading as a path.
 //
-// THE ABSOLUTE COMPARISON IS BETWEEN TWO CANONICAL SPELLINGS, exactly as
-// [placeNamedIn]'s is and for the same reason. The ground arrives resolved —
-// git's own spelling of the repository — while a path in a contract is spelled
-// however the model wrote it, and on macOS those two spellings of one directory
-// differ by a `/private` nobody typed. Comparing them as written answered "this
-// contract names nothing under the ground" about a contract that named the
-// ground three times, which cost the task its worktree: [groundMode] read the
-// work as a reference, and a reference deliberately does not bind its addresses
-// to the copy ([taskCopyFor]), so the worker was sent to the person's checkout.
+// THE ABSOLUTE COMPARISON IS BETWEEN TWO CANONICAL SPELLINGS, as [placeNamedIn]'s
+// is: the ground arrives spelled the way git resolves it while a contract's paths
+// are spelled the way their author was standing, and on macOS the two differ by a
+// `/private` nobody typed. Read as written, a contract that named the ground three
+// times looked like one that named nothing under it, so [groundMode] made the work
+// a reference — and a reference binds no addresses to its copy ([taskCopyFor]),
+// which sent the worker to the person's checkout.
 //
-// BOTH SIDES ARE RESOLVED HERE and neither is left to a caller, because half of
-// them hold a canonical ground and half hold whatever the workspace was spelled
-// as ([scopeCollisions] passes the raw one). One side resolved is worse than
-// neither: it turns paths that agree into paths that do not.
+// Both sides are resolved here rather than left to callers, because some hold a
+// canonical ground and some a raw workspace ([scopeCollisions]); resolving one
+// side only turns paths that agree into paths that do not.
 func groundHolds(ground, token string) bool {
 	if strings.HasPrefix(token, "~") || filepath.IsAbs(token) {
 		full := canonicalPath(groundDirOf(token, ""))

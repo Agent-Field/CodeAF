@@ -229,14 +229,12 @@ func (c taskCopy) real() bool {
 // repository, nor inside `/y/x/repo`, which is a different folder that happens
 // to end with the same name.
 //
-// AND A FOLDER SPELLED ANOTHER WAY IS STILL THE FOLDER. The byte comparison
-// above only sees the ground's own spelling, and the address a model writes is
-// the one it was standing in: on a Mac a checkout under /var/folders is the same
-// directory git and every canonical path here call /private/var/folders. A
-// contract that named the ground through such an alias bound nothing at all —
-// the worker was pointed straight back at the person's checkout, which is the
-// whole of #566 wearing a different spelling — so the aliases are resolved
-// ([groundAliases]) and rewritten by the same whole-path rule.
+// A FOLDER SPELLED ANOTHER WAY IS STILL THE FOLDER. The comparison above sees
+// only the ground's own spelling, while an address is written the way its author
+// was standing — /var/folders and /private/var/folders are one directory on a
+// Mac — so [groundAliases] resolves the rest and they are rewritten by the same
+// whole-path rule. Without it a contract naming the ground through an alias
+// bound nothing, and the worker was left pointing at the person's checkout.
 func (c taskCopy) bind(text string) string {
 	if !c.real() {
 		return text
@@ -251,9 +249,8 @@ func (c taskCopy) bind(text string) string {
 }
 
 // replaceWholePath rewrites every occurrence of one address that stands as a
-// whole path, and nothing else. It is the rewrite [taskCopy.bind] has always
-// done, lifted out so that the ground's own spelling and an alias of it are
-// replaced by one rule rather than by two that could come to disagree.
+// whole path, and nothing else. It is lifted out of [taskCopy.bind] so the
+// ground's own spelling and an alias of it move by one rule.
 func replaceWholePath(text, address, with string) string {
 	var out strings.Builder
 	for rest := text; ; {
@@ -299,33 +296,24 @@ func namesGround(ground string, sections ...string) bool {
 }
 
 // groundAlias is one address in a contract that names the ground, or something
-// under it, THROUGH A DIFFERENT SPELLING OF THE SAME FOLDER.
+// under it, through a different spelling of the same folder.
 type groundAlias struct {
-	// spelling is the address exactly as the text writes it, which is what a
-	// rewrite has to find and replace.
+	// spelling is the address as the text writes it, which is what a rewrite has
+	// to find; under is the path it names beneath the ground, "." for the ground.
 	spelling string
-	// under is the path it names beneath the ground, "." for the ground itself.
-	under string
+	under    string
 }
 
-// groundAliases is PATH IDENTITY where the byte comparison cannot reach: the
-// addresses in one text that are the ground or sit under it, spelled some other
-// way. The case that matters on every Mac is an alias in an ancestor — /var is
-// /private/var, /tmp is /private/tmp — so a model writing the directory it was
-// handed and this package holding the canonical spelling of that same directory
-// disagree by bytes and agree by disk.
+// groundAliases answers path identity where a byte comparison cannot: the
+// addresses in one text that resolve to the ground or below it while being
+// spelled another way, most often through a symlinked ancestor.
 //
-// EVERY CANDIDATE GOES THROUGH THE HELPERS THAT ALREADY ANSWER THIS, and that is
-// deliberate: [pathTokens] reads prose for what could be a path, [canonicalPath]
-// gives one spelling to a path that may not exist yet, and [insideWorkspace]
-// decides at COMPONENT boundaries, so a ground of /x/repo never swallows
-// /x/repo-old. A fourth canonicalizer written here would be a fourth reading of
-// one question.
-//
-// A RELATIVE NAME IS NOT AN ALIAS and is left alone. It is already an address in
-// whatever directory the reader is standing in, which for a worker is its own
-// copy, and resolving it against the ground would turn a path that was already
-// right into a rewrite.
+// The reading is composed out of the helpers that already own each half —
+// [pathTokens] for what could be a path, [canonicalPath] for one spelling of a
+// path that need not exist yet, [insideWorkspace] for a comparison at component
+// boundaries, so a ground of /x/repo never swallows /x/repo-old. A relative name
+// is not an alias: it is already an address in the directory the worker stands
+// in, and resolving it would move a path that was right.
 func groundAliases(ground, text string) []groundAlias {
 	ground = canonicalPath(cleanFolder(ground))
 	if ground == "" || ground == "/" {
@@ -333,9 +321,8 @@ func groundAliases(ground, text string) []groundAlias {
 	}
 	var out []groundAlias
 	for _, token := range pathTokens(text) {
-		// The ground's own spelling is not an alias of itself: [indexWholePath]
-		// answers those without a syscall, and every caller here has already
-		// asked it.
+		// The ground's own spelling is not an alias of itself, and both callers
+		// have already asked [indexWholePath] about it without a syscall.
 		if !filepath.IsAbs(token) || indexWholePath(token, ground) >= 0 {
 			continue
 		}
