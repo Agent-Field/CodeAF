@@ -1,13 +1,13 @@
 package enginehost
 
-// persistent_test.go is the promise the whole host exists for, driven end to
-// end on a real socket with no model in it: WORK GOES ON AFTER THE TERMINAL
-// CLOSES, and the person who comes back is put into the same conversation
-// rather than a copy of it.
+// persistent_test.go is the promise the host exists for, driven end to end on a
+// real socket with no model in it: work goes on after the terminal closes, and
+// the person who comes back is put into the same conversation rather than a copy
+// of it.
 //
 // Everything faked here is the conversation. The socket, the lock, the frames,
-// the client and the idle policy are all the real ones, because every question
-// below is about them.
+// the client and the idle policy are the real ones, because every question below
+// is about them.
 
 import (
 	"context"
@@ -44,6 +44,7 @@ type workingAgent struct {
 	cards    map[uint64]session.Event
 	standing []uint64
 	answers  []uint64
+	consents int
 }
 
 // WorkingNow is the authoritative "is anything still happening" reading the
@@ -85,6 +86,32 @@ func (a *workingAgent) finish() {
 	close(lane)
 }
 
+// ask raises one card inside the turn that is running, which is where a consent
+// question really arrives: on the turn's own stream, so the engine's waiting
+// room records it.
+func (a *workingAgent) ask(event session.Event) {
+	a.mu.Lock()
+	lane := a.turn
+	a.mu.Unlock()
+	if lane != nil {
+		lane <- event
+	}
+}
+
+// ResolveConsent counts the answers that came back, which is what makes a held
+// card a question rather than a picture of one.
+func (a *workingAgent) ResolveConsent(uint64, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.consents++
+}
+
+func (a *workingAgent) consented() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.consents
+}
+
 func (a *workingAgent) turns() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -104,13 +131,11 @@ func (a *workingAgent) Close() error {
 	return nil
 }
 
-// WatchHarnessDesigns mirrors internal/session's own semantics, which is the
-// point of the test below: EVERY NEW SUBSCRIPTION IS REPLAYED THE CARDS THAT ARE
-// STILL STANDING (harness_build.go replays design cards and subharness
-// proposals as a watcher attaches). That is what makes a card raised while
-// nobody was attached survive a reconnect, and it is why these cards are not
-// also in the waiting room — held.go would then hand the same question over
-// twice.
+// WatchHarnessDesigns mirrors internal/session's semantics, which is the point of
+// the test below: every new subscription is replayed the cards that are still
+// standing (harness_build.go). That is what carries a card raised while nobody
+// was attached across a reconnect, and why these cards are not also in the
+// waiting room — held.go would hand the same question over twice.
 func (a *workingAgent) WatchHarnessDesigns() (<-chan session.Event, func()) {
 	lane := make(chan session.Event, 8)
 	a.mu.Lock()
@@ -243,7 +268,7 @@ func waitUntil(t *testing.T, what string, done func() bool) {
 	t.Fatalf("timed out waiting until %s", what)
 }
 
-// THE PROMISE: a window that goes away mid-turn does not take the work with it,
+// The promise: a window that goes away mid-turn does not take the work with it,
 // and the conversation is still there when somebody comes back to it.
 //
 // The link is CUT rather than closed, which is the event this is really about —
@@ -303,7 +328,7 @@ func TestWorkGoesOnAfterTheWindowIsCutAndTheNextWindowIsInTheSameConversation(t 
 	}
 }
 
-// AND THE CUT WINDOW'S SUBSCRIPTION IS LET GO OF, so a host holding a
+// And the cut window's subscription is let go of, so a host holding a
 // conversation for hours is not also holding a pump per window that ever
 // attached to it.
 func TestACutWindowLeavesItsLaneBehind(t *testing.T) {
@@ -319,10 +344,9 @@ func TestACutWindowLeavesItsLaneBehind(t *testing.T) {
 	waitUntil(t, "the host let go of the subscription", func() bool { return far.watching() == 0 })
 }
 
-// SAYING GOODBYE IS DIFFERENT FROM WALKING AWAY, and the difference is the
-// whole of the lifetime a person is promised: [remote.MethodClose] ends the
-// conversation — the journal is flushed and the agent closed — while the cut
-// above ended nothing.
+// Saying goodbye is different from walking away, and the difference is the
+// lifetime a person is promised: [remote.MethodClose] ends the conversation, the
+// journal is flushed and the agent closed, while the cut above ended nothing.
 func TestClosingTheConversationEndsItWhereACutDoesNot(t *testing.T) {
 	far := &workingAgent{}
 	workspace := hostHolding(t, far)
@@ -335,10 +359,10 @@ func TestClosingTheConversationEndsItWhereACutDoesNot(t *testing.T) {
 	_ = client.Close()
 }
 
-// A CONVERSATION WITH A TURN IN IT IS NEVER IDLE, which is what keeps the sweep
-// from retiring the very work the host exists to carry. The reading is
-// [remote.Session.IdleSince] and the policy is [Host.sweepOnce]; this drives
-// both through the socket rather than trusting either on its own.
+// A conversation with a turn in it is never idle, which keeps the sweep from
+// retiring the work the host exists to carry. The reading is
+// [remote.Session.IdleSince] and the policy is [Host.sweepOnce]; this drives both
+// rather than trusting either on its own.
 func TestASweepKeepsAConversationThatIsStillWorking(t *testing.T) {
 	far := &workingAgent{}
 	shortHome(t)
@@ -416,10 +440,10 @@ func (h *Host) held() []*remote.Session {
 	return out
 }
 
-// THE SWEEP'S OWN CLOCK, WITH WORK UNDER IT. The turn is over — its ring is
-// gone, which is what made the conversation read as idle — and a task is still
-// running. Waiting out the real thirty minutes is not a test, so the policy's
-// span is shortened and the pass is asked directly.
+// The sweep's own clock, with work under it. The turn is over — its ring is gone,
+// which is what made the conversation read as idle — and a task is still running.
+// Waiting out the real thirty minutes is not a test, so the span is shortened and
+// the pass is asked directly.
 func TestTheIdleSweepDoesNotRetireAConversationWhoseTaskIsStillRunning(t *testing.T) {
 	was := sessionIdle
 	sessionIdle = 20 * time.Millisecond
@@ -473,7 +497,7 @@ func TestTheIdleSweepDoesNotRetireAConversationWhoseTaskIsStillRunning(t *testin
 	})
 }
 
-// A CARD RAISED WITH EVERY WINDOW GONE IS THERE WHEN SOMEBODY COMES BACK, once,
+// A card raised with every window gone is there when somebody comes back, once,
 // and answering it takes it down for good.
 //
 // This is the half a lane alone does not buy. The card is not on any turn's
@@ -534,5 +558,113 @@ func TestACardRaisedWithNobodyAttachedIsHandedToTheNextWindowOnce(t *testing.T) 
 			t.Fatalf("an answered card was replayed to the next window: %v", event)
 		}
 	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// The whole promise in one test, over a real socket: a window goes away with a
+// task running and a question on the screen, and both are still there when
+// somebody comes back.
+func TestATaskAndAQuestionBothSurviveTheWindowGoingAway(t *testing.T) {
+	far := &workingAgent{}
+	workspace := hostHolding(t, far)
+
+	first := dialHost(t, workspace)
+	lane, err := first.Agent().Submit(context.Background(), "port the parser and ask me before you push")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	// A task starts under that turn and a card is raised inside it.
+	far.setWork([]session.WorkNode{{ID: "task:4", Title: "port the parser", State: session.WorkRunning}})
+	far.ask(session.Event{Kind: session.EventConsentRequest, ID: 7, Tool: "bash", Hint: "git push"})
+	drainUntil(t, lane, session.EventConsentRequest)
+
+	// The terminal is killed: no goodbye, no detach frame.
+	if err := first.Close(); err != nil {
+		t.Fatalf("close the link: %v", err)
+	}
+
+	// Somebody comes back. The question is handed to them, and the work is
+	// still the same conversation's.
+	second := dialHost(t, workspace)
+	t.Cleanup(func() { _ = second.Close() })
+	held := second.Welcome().Held
+	if len(held) != 1 || held[0].Kind != remote.HeldConsent || held[0].Event.ID != 7 {
+		t.Fatalf("the returning window was handed %+v, want the unanswered consent card", held)
+	}
+	if far.turns() != 0 {
+		t.Fatal("the turn ended while nobody was watching — it was waiting on an answer")
+	}
+
+	// And answering it from here reaches the conversation, which is what makes
+	// the card a question rather than a picture of one.
+	second.Agent().ResolveConsent(7, true)
+	waitUntil(t, "the answer reached the conversation", func() bool { return far.consented() == 1 })
+}
+
+// drainUntil reads a turn's events until the kind the test is waiting for
+// arrives, so a card raised mid-turn is known to have reached the surface (and
+// therefore the engine's waiting room) before the link is cut.
+func drainUntil(t *testing.T, lane <-chan session.Event, kind session.EventKind) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event, ok := <-lane:
+			if !ok {
+				t.Fatalf("the turn ended before %v arrived", kind)
+			}
+			if event.Kind == kind {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("%v never arrived on the turn", kind)
+		}
+	}
+}
+
+// And an unanswered question keeps a conversation that is doing nothing else.
+// Nobody is attached, no turn is streaming and no work is running; what is left is
+// a card somebody has to answer, and retiring under it throws the question away.
+func TestTheIdleSweepKeepsAConversationHoldingAnUnansweredCard(t *testing.T) {
+	was := sessionIdle
+	sessionIdle = 20 * time.Millisecond
+	t.Cleanup(func() { sessionIdle = was })
+
+	far := &workingAgent{}
+	shortHome(t)
+	workspace := "/home/somebody/api"
+	host := stubHostAround(t, workspace, far)
+
+	surface, engine := net.Pipe()
+	go host.attach(engine)
+	client, err := remote.Dial(surface, "", remote.Hello{Version: remote.Version})
+	if err != nil {
+		t.Fatalf("handshake: %v", err)
+	}
+	lane, err := client.Agent().Submit(context.Background(), "push it when you are done")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	far.ask(session.Event{Kind: session.EventConsentRequest, ID: 11, Tool: "bash", Hint: "git push"})
+	drainUntil(t, lane, session.EventConsentRequest)
+	far.finish()
+	_ = client.Close()
+	_ = surface.Close()
+	waitUntil(t, "the window had gone", func() bool {
+		for _, sess := range host.held() {
+			if sess.Attached() == 0 {
+				return true
+			}
+		}
+		return false
+	})
+
+	time.Sleep(60 * time.Millisecond)
+	host.sweepOnce()
+	if far.closed() != 0 {
+		t.Fatal("the sweep retired a conversation with a question waiting on it")
+	}
+	if len(host.held()) == 0 {
+		t.Fatal("the host let go of a conversation with a question waiting on it")
 	}
 }

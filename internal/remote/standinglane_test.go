@@ -1,10 +1,9 @@
 package remote
 
-// THE BUG THESE PIN: a conversation held over a connection was built with its
-// harness designer nilled, its intake cards off and its adaptive runner
-// unwired, because all three raise their news on standing subscriptions and
-// only a running turn's stream crossed this wire. Every test below is the same
-// shape as tasklane_test.go's, which pinned the same fault in the task rail.
+// The bug these pin: a conversation held over a connection was built with its
+// harness designer nilled and its intake cards off, because both raise their
+// cards on a standing subscription and only a running turn's stream crossed this
+// wire. They follow tasklane_test.go, which pinned the same fault in the rail.
 
 import (
 	"encoding/json"
@@ -121,10 +120,9 @@ func laneLoop(t *testing.T, far WrappedAgent) *Loop {
 	return loop
 }
 
-// A DESIGN CARD RAISED WITH NO TURN RUNNING REACHES A HOSTED SURFACE. Before
-// version 11 the card was emitted onto a subscription nothing carried, which is
-// why the engine switched the designer off rather than raising pages nobody
-// would see.
+// A design card raised with no turn running reaches a hosted surface. Before
+// version 11 it was emitted onto a subscription nothing carried, which is why the
+// engine switched the designer off rather than raise pages nobody would see.
 func TestAHarnessCardReachesAHostedSurface(t *testing.T) {
 	far := newLaneAgent()
 	loop := laneLoop(t, far)
@@ -140,9 +138,9 @@ func TestAHarnessCardReachesAHostedSurface(t *testing.T) {
 	}
 }
 
-// AND THE INTAKE CARD'S ANSWER REACHES THE ENGINE. The card and the design card
-// ride one subscription; their answers do not, and a lane whose answer had no
-// door would be a page whose keys pressed nothing.
+// And the intake card's answer reaches the engine. The two cards ride one
+// subscription; their answers do not, and a lane whose answer had no door would
+// be a page whose keys pressed nothing.
 func TestAnIntakeCardAnsweredOverTheWireReachesTheEngine(t *testing.T) {
 	far := newLaneAgent()
 	loop := laneLoop(t, far)
@@ -163,9 +161,9 @@ func TestAnIntakeCardAnsweredOverTheWireReachesTheEngine(t *testing.T) {
 	})
 }
 
-// AN ENGINE WHOSE AGENT HAS NO LANE IS ABSENT, NOT BROKEN. The subscription is
-// refused quietly, the surface's lane simply never speaks, and answering a card
-// it never raised is an error rather than a hang.
+// An engine whose agent has no lane is absent rather than broken: the
+// subscription is refused quietly, the lane never speaks, and answering a card it
+// never raised is an error rather than a hang.
 func TestAnEngineWithNoLanesRefusesQuietly(t *testing.T) {
 	loop := laneLoop(t, &fakeAgent{})
 
@@ -182,9 +180,9 @@ func TestAnEngineWithNoLanesRefusesQuietly(t *testing.T) {
 	loop.Client.Agent().ResolveSubharness(4, true, nil)
 }
 
-// TAKING UP A SECOND CONVERSATION REPLACES A LANE AND NEVER ADDS ONE. Two pumps
-// on one channel each take half the events, which is a page that silently
-// misses cards.
+// Taking up a second conversation replaces a lane and never adds one: two pumps
+// on one channel each take half the events, which is a page that silently misses
+// cards.
 func TestWatchingALaneTwiceReplacesIt(t *testing.T) {
 	far := newLaneAgent()
 	loop := laneLoop(t, far)
@@ -211,9 +209,8 @@ func TestWatchingALaneTwiceReplacesIt(t *testing.T) {
 	}
 }
 
-// A LANE ENDS WITH THE CONNECTION, without an error event on it: nothing on it
-// is mid-sentence, and the one sentence about a link that died belongs to the
-// link.
+// A lane ends with the connection and puts no error event on it: nothing on it is
+// mid-sentence, and the sentence about a link that died belongs to the link.
 func TestALaneEndsWhenTheConnectionDoes(t *testing.T) {
 	far := newLaneAgent()
 	loop := laneLoop(t, far)
@@ -301,11 +298,9 @@ func TestASwapRepointsTheStandingLanes(t *testing.T) {
 	}
 }
 
-// THE CARD ARRIVES WHOLE, which is what the page behind it needs to draw: the
-// intake fields, what is still missing, and the sentence saying why it was
-// raised. internal/tui3 builds the form out of this payload alone — nothing on
-// the surface asks the far machine a second question about it — so a field lost
-// in the encoding would be a form a person could not fill in.
+// The card arrives whole, which is what the page behind it needs: internal/tui3
+// builds the form out of this payload alone and asks the far machine nothing
+// more, so a field lost in the encoding is a form nobody can fill in.
 func TestTheIntakeCardCrossesWholeEnoughToDraw(t *testing.T) {
 	far := newLaneAgent()
 	loop := laneLoop(t, far)
@@ -345,15 +340,13 @@ func TestTheIntakeCardCrossesWholeEnoughToDraw(t *testing.T) {
 	}
 }
 
-// ── WHAT THE SURFACE ASSERTS, ASSERTED HERE ─────────────────────────────────
+// ── what the surface asserts, asserted here ─────────────────────────────────
 //
-// internal/tui3 takes each of these lanes as ONE optional interface on whatever
-// agent it is holding, and a hosted surface is only not-a-lesser-surface if the
-// remote agent satisfies the same shape a *session.Agent does. The shapes are
-// restated here rather than imported because that package must not import this
-// one; they are copied from internal/tui3's designAgent, leavableDesigner and
-// subharnessOfferAgent, and a rename there fails here as an unsatisfied
-// assertion rather than as a lane that silently never opens.
+// internal/tui3 takes each lane as one optional interface on whatever agent it
+// holds, so a hosted surface is only not-a-lesser-surface if the remote agent
+// satisfies the same shape a *session.Agent does. The shapes are restated rather
+// than imported because that package must not import this one; a rename there
+// fails here as an unsatisfied assertion rather than as a lane that never opens.
 
 type surfaceDesigner interface {
 	HarnessDesigns() <-chan session.Event
@@ -383,5 +376,37 @@ func TestAHostedSurfaceDoesNotHalfOfferTheRunRoom(t *testing.T) {
 	if _, ok := any((*Agent)(nil)).(surfaceRunRoom); ok != StandingLanes().Runs {
 		t.Fatalf("the client offers %v of the run room while the wire claims Runs=%v — lanes.go states what a whole one needs",
 			ok, StandingLanes().Runs)
+	}
+}
+
+// The launch shape crosses and comes back. The engine builds with what the
+// hello asked for and says on the welcome what the conversation actually has,
+// which is how a surface tells the conversation it opened from one it joined.
+func TestTheLaunchShapeCrossesAndIsEchoedOnTheWelcome(t *testing.T) {
+	asked := &LaunchShape{Yolo: true, MaxCost: 5}
+	var got *LaunchShape
+	loop, err := Loopback(Hello{Version: Version, Launch: asked}, Options{Boot: func(hello Hello) (*Engine, error) {
+		got = hello.Launch
+		return &Engine{Agent: &fakeAgent{}, Workspace: "/srv/app", Launch: hello.Launch}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+
+	if got == nil || !got.Yolo || got.MaxCost != 5 {
+		t.Fatalf("the engine was asked for %+v", got)
+	}
+	if !loop.Client.Welcome().Launch.Same(asked) {
+		t.Fatalf("the welcome echoed %+v, want %+v", loop.Client.Welcome().Launch, asked)
+	}
+	// A conversation somebody else opened answers with ITS shape, and the
+	// surface reads the difference rather than the request.
+	other := &LaunchShape{OneModel: true}
+	if other.Same(asked) {
+		t.Fatal("two different shapes read as the same conversation")
+	}
+	if !(*LaunchShape)(nil).Same(&LaunchShape{}) {
+		t.Fatal("no shape and an empty shape are the same defaults and must compare equal")
 	}
 }

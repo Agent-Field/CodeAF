@@ -1,10 +1,10 @@
 package remote
 
-// THE BUG THESE PIN: a conversation whose turn had ENDED but whose work had not
-// read as idle. A task, an adaptive run and a background job all outlive the
-// turn that started them — the ring is dropped the moment the stream closes —
-// so the session went quiet on paper while three workers ran on, and the host's
-// sweep closed it half an hour later with the work inside it.
+// The bug these pin: a conversation whose turn had ended but whose work had not
+// read as idle. A task, an adaptive run and a background job outlive the turn
+// that started them, and the ring is dropped when the stream closes — so the
+// session went quiet on paper while the workers ran on, and the sweep closed it
+// half an hour later with the work inside.
 
 import (
 	"testing"
@@ -57,7 +57,7 @@ func TestAConversationWithWorkInItIsNotIdleAfterItsTurnEnded(t *testing.T) {
 	}
 }
 
-// AN ENGINE THAT CANNOT ANSWER IS READ AS IT ALWAYS WAS. A scripted agent with
+// An engine that cannot answer is read as it always was: a scripted agent with
 // no graph is not kept alive on suspicion.
 func TestAnEngineWithNoWorkReadingIsIdleOnTheOldTerms(t *testing.T) {
 	sess := idleSession(&fakeAgent{})
@@ -66,8 +66,8 @@ func TestAnEngineWithNoWorkReadingIsIdleOnTheOldTerms(t *testing.T) {
 	}
 }
 
-// A QUESTION NOBODY HAS ANSWERED KEEPS THE CONVERSATION, which is the half that
-// was already true and must stay true beside the work reading.
+// A question nobody has answered keeps the conversation. That was already true
+// and must stay true beside the work reading.
 func TestAWaitingQuestionKeepsAConversationAlive(t *testing.T) {
 	sess := idleSession(&fakeAgent{})
 	sess.mu.Lock()
@@ -85,9 +85,9 @@ func TestAWaitingQuestionKeepsAConversationAlive(t *testing.T) {
 	}
 }
 
-// THE READING IS TAKEN OFF THE SESSION LOCK, so a slow walk of the graph cannot
+// The reading is taken off the session lock, so a slow walk of the graph cannot
 // hold up the events a running turn is recording. A door that blocks until the
-// test lets it go proves it: the session stays usable while the sweep is asking.
+// test lets it go proves it: the session stays usable while the sweep asks.
 func TestTheWorkReadingDoesNotHoldTheSessionLock(t *testing.T) {
 	far := &blockingWorkAgent{fakeAgent: &fakeAgent{}, entered: make(chan struct{}), release: make(chan struct{})}
 	sess := idleSession(far)
@@ -116,6 +116,9 @@ type blockingWorkAgent struct {
 	entered chan struct{}
 	release chan struct{}
 	once    bool
+	// quiet makes the reading answer "nothing is working" once it unblocks, so
+	// a test can stage the gap between the look and the act.
+	quiet bool
 }
 
 func (a *blockingWorkAgent) WorkingNow() []session.WorkNode {
@@ -124,5 +127,56 @@ func (a *blockingWorkAgent) WorkingNow() []session.WorkNode {
 		close(a.entered)
 		<-a.release
 	}
+	if a.quiet {
+		return nil
+	}
 	return []session.WorkNode{{ID: "task:1", State: session.WorkRunning}}
+}
+
+// Retiring is one decision and not two. A caller that read IdleSince and then
+// closed would be acting on a photograph; this proves a card raised while the
+// work reading is in flight cancels the retirement instead of being thrown away
+// with the conversation.
+func TestRetiringRechecksAfterTheWorkReading(t *testing.T) {
+	far := &blockingWorkAgent{fakeAgent: &fakeAgent{}, entered: make(chan struct{}), release: make(chan struct{})}
+	far.quiet = true
+	sess := idleSession(far)
+
+	answered := make(chan bool, 1)
+	go func() { answered <- sess.RetireIfIdle(0) }()
+	<-far.entered
+
+	// The moment the conversation is being asked about, somebody's question
+	// lands on it.
+	sess.mu.Lock()
+	sess.held.raise(WireEvent(session.Event{Kind: session.EventConsentRequest, ID: 4}), 1, true)
+	sess.mu.Unlock()
+	close(far.release)
+
+	if <-answered {
+		t.Fatal("a conversation was retired with a card that arrived while it was being asked about")
+	}
+	if sess.Ended() {
+		t.Fatal("the conversation was ended anyway")
+	}
+}
+
+// And an idle one is actually retired, so the re-check is a check rather than a
+// way of never letting go of anything.
+func TestAnIdleConversationIsRetiredAndClosed(t *testing.T) {
+	far := &fakeAgent{}
+	sess := idleSession(far)
+	if !sess.RetireIfIdle(0) {
+		t.Fatal("a conversation with nobody in it and nothing running was kept")
+	}
+	if !sess.Ended() {
+		t.Fatal("the retired conversation does not read as ended, so a host would hand it out again")
+	}
+	if far.closes != 1 {
+		t.Fatalf("the agent was closed %d times, want once: the journal is flushed there", far.closes)
+	}
+	// Saying it twice changes nothing, which every road out of a host relies on.
+	if !sess.RetireIfIdle(0) || far.closes != 1 {
+		t.Fatalf("retiring twice closed the agent %d times", far.closes)
+	}
 }

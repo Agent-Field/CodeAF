@@ -4,11 +4,11 @@ package remote
 // held over a connection actually have", said once so the doors that BUILD a
 // conversation do not each keep a copy of it (cmd/aforge's chatv3_lanes.go).
 //
-// A CAPABILITY IS NOT A CHANNEL. Carrying a lane's events is the easy half; a
-// card is only real when its ANSWER has a door, when a card raised while nobody
-// is attached survives the gap, and when every verb the page behind it needs
-// crosses too. Anything less puts a question on a screen that cannot be closed,
-// which is worse than the capability being absent.
+// A capability is not a channel. Carrying a lane's events is the easy half: a
+// card is only real when its answer has a door, when one raised with nobody
+// attached survives the gap, and when every verb the page behind it needs crosses
+// too. Anything less puts a question on a screen that cannot be closed, which is
+// worse than the capability being absent.
 
 // Lanes says which standing capabilities this build carries end to end.
 type Lanes struct {

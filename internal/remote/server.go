@@ -140,6 +140,10 @@ type Engine struct {
 	// started a new one" travels here, the same words the local door puts on
 	// the surface's entry notice.
 	Note string
+	// Launch is the shape this conversation was built with, echoed on every
+	// welcome so a surface can tell the conversation it asked for from the one
+	// it joined ([LaunchShape]). Nil is the engine's own defaults.
+	Launch *LaunchShape
 
 	// ApprovalMode is this machine's own answer to "does a tool run without
 	// asking", read once at boot off the profile the boot closure resolved
@@ -374,11 +378,11 @@ type Session struct {
 	// (tasklane.go states the whole of it).
 	tasklanes map[*server]*taskFeed
 
-	// lanes is the same arrangement for the two subscriptions version 11 added
-	// — the harness designs and the adaptive runs — keyed by lane and then by
-	// the surface holding it (standinglane.go). They are one map rather than
-	// two fields because every road that ends a subscription ends all of them:
-	// a surface leaving, a session swap, a conversation closing.
+	// lanes is the same arrangement for the harness subscription version 11
+	// added, keyed by lane and then by the surface holding it
+	// (standinglane.go). It is a map by lane rather than one field because
+	// every road that ends a subscription ends all of them: a surface leaving,
+	// a session swap, a conversation closing.
 	lanes map[laneName]map[*server]*laneFeed
 
 	// driver is the one surface that may put words into this conversation, and
@@ -449,20 +453,20 @@ func (sess *Session) Ended() bool {
 // not. Four things make it busy: a surface attached, a turn still streaming, a
 // question waiting to be answered, and WORK THE CONVERSATION HANDED OFF.
 //
-// THE FOURTH WAS MISSING AND IT HAD A CLOCK ON IT. A task, an adaptive run and a
-// background job all outlive the turn that started them; the turn ends, its ring
-// is dropped, and this session read as idle while the workers ran on. Thirty
-// minutes later the sweep closed it and took the work — the opposite of what the
-// persistent engine is for. So the agent is asked, and
+// The fourth was missing and it had a clock on it. A task, an adaptive run and a
+// background job outlive the turn that started them; the turn ends, its ring is
+// dropped, and the session read as idle while the workers ran on — thirty minutes
+// later the sweep closed it and took the work. So the agent is asked, and
 // [session.Agent.WorkingNow] is the authoritative reading: tasks, runs and jobs
 // together.
 //
-// THE AGENT IS ASKED OFF THIS LOCK, because that walk takes locks of its own and
+// The agent is asked off this lock, because that walk takes locks of its own and
 // holding sess.mu across it would put the sweep in front of every event a turn
-// records. The answer can therefore age while it is read, so the state is
-// re-checked afterwards and a conversation that changed under the reading is
-// reported busy for this pass: one sweep too many costs a minute of memory, one
-// too few costs somebody's work.
+// records. The answer can age while it is read, so the state is re-checked
+// afterwards and a conversation that changed under the reading is reported busy
+// for this pass: one sweep too many costs a minute of memory, one too few costs
+// somebody's work. [Session.RetireIfIdle] is where that re-check becomes a
+// decision.
 func (sess *Session) IdleSince() time.Time {
 	sess.mu.Lock()
 	agent, generation := sess.agent, sess.generation
@@ -520,9 +524,52 @@ func (sess *Session) Close() error {
 	agent, already := sess.agent, sess.closed
 	sess.closed = true
 	sess.mu.Unlock()
+	return sess.shutDown(agent, already)
+}
+
+// RetireIfIdle ends this conversation if it has been idle for longer than the
+// policy allows, and answers whether it is now over.
+//
+// IT EXISTS FOR THE GAP BETWEEN ASKING AND ACTING. A caller that read
+// [Session.IdleSince] and then called Close would be deciding on a photograph:
+// a surface can attach, a turn can open and a card can be raised in between, and
+// closing then would take down a conversation somebody had just come back to.
+// Here the last look and the decision to end it happen under ONE acquisition of
+// the session lock, so anything that goes through that lock either arrives
+// before the look — and cancels the retirement — or finds the conversation
+// already ended and is handed a fresh one (internal/enginehost's open).
+//
+// WHAT IS STILL A PHOTOGRAPH is the work reading inside IdleSince, which cannot
+// be taken under this lock (it walks the graph). The guarantee is therefore:
+// nothing that reaches this session's own state can be lost, and a background
+// worker that starts something new in the microseconds after the walk is
+// interrupted with its journal flushed, exactly as a person's own /quit would.
+// The window is that walk, not the whole idle span.
+func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
+	idle := sess.IdleSince()
+	if idle.IsZero() || time.Since(idle) <= olderThan {
+		return false
+	}
+	sess.mu.Lock()
+	if again := sess.idleSinceLocked(); again.IsZero() || time.Since(again) <= olderThan {
+		// Somebody came back, a turn opened, or a card was raised while the
+		// question was being asked. The conversation stays.
+		sess.mu.Unlock()
+		return false
+	}
+	agent, already := sess.agent, sess.closed
+	sess.closed = true
+	sess.mu.Unlock()
+	_ = sess.shutDown(agent, already)
+	return true
+}
+
+// shutDown is what ending a conversation does once the caller has won the
+// closed flag: every lane left, the turn interrupted, the journal flushed.
+func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
 	// a conversation that is being flushed and shut (tasklane.go), and version
-	// 11's two subscriptions go the same way (standinglane.go).
+	// 11's subscription goes the same way (standinglane.go).
 	sess.closeTaskLanes()
 	sess.closeLanes()
 	if agent == nil || already {
@@ -691,6 +738,7 @@ func (sess *Session) welcomeLocked() Welcome {
 		Live:                       sess.liveLocked(),
 		Held:                       sess.held.waiting(),
 		Persistent:                 sess.persistent,
+		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 	}
 }
