@@ -1997,7 +1997,9 @@ func (s *sessionFile) journalPath() string {
 
 // journalName is [sessionFile.journalPath] for a caller holding no lock, and
 // the empty string for a session with no file. It reads a name and never the
-// file, so it is cheap enough to ask at every task admission (admission.go).
+// file, so it is cheap enough to ask at every task admission (admission.go) and
+// on the request path, where the snapshot view names a journal without reading
+// one (toolcompact.go).
 func (s *sessionFile) journalName() string {
 	if s == nil {
 		return ""

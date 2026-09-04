@@ -1177,6 +1177,63 @@ never candidates; every replaced result remains readable through its stub path.
 the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
 the line and the unseen-result horizon.
 
+## The frozen tool history, rebuilt per request
+
+Every request of every tool round re-sends the whole conversation, and old tool
+results are the bulk of it. The snapshot on its way to the provider therefore
+carries the results of earlier turns as a REDUCED VIEW, while the live
+transcript and the journal keep every byte (`internal/session/toolcompact.go`).
+
+| bound | value | why |
+| --- | --- | --- |
+| what one reduced result keeps | head **200** (`checkpointResultBytes/2`) + tail **400** (`checkpointResultBytes`) | the tail is the verdict the checkpoint reader already proved is enough; the head is what ran, and where `no such file` and a compiler's banner land. Both are derived from the one bound rather than written twice. |
+| left verbatim below | **600 bytes** (`compactViewBytes`) | a view of a result that small repeats most of it and then charges a header for having done so. |
+| all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
+| the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
+
+Every reduction names where the whole result can be read, and **one resolver
+answers for all three passes** — this view, the end-of-turn stub and the
+current-turn fold (`Agent.fullResultPointer`). It answers with the result's own
+bytes filed under `logs/stubs/` (`writeStub`), which `read` opens and pages at
+any size; where there is nowhere to file them, with the session journal and the
+call id to grep for; and otherwise with `not retrievable`.
+
+**A `store:` ref is not a pointer**, and it was the first answer all three passes
+used to give. Nothing on the belt fetches a store message by id —
+`search_conversations` searches words and clips every hit to one line
+(`tools_conversations.go`) — so with memory on, every stub in the session pointed
+at a handle only this process could resolve.
+
+The memo behind it has three bounds, because it sits on the request path:
+
+| bound | value | why |
+| --- | --- | --- |
+| the place a pointer may name | one reading per request (`Agent.resultPlaceNow`) | the workspace moves under `a.mu` (`AnchorWorkspace`); a resolver reading the field per result would race it and could answer two ways inside one request. The stub pass and the turn fold pass the same reading, already holding the lock. |
+| the memo's key | workspace + the result's fingerprint | a stub path is relative to the workspace it was filed in, so an entry kept across an anchor names a file `read` now resolves elsewhere. |
+| the memo's size | `filedCap` = `defaultContextWindow × bytesPerToken ÷ stubMinBytes` (≈ 341) | the most results one request could carry. Past it the memo is dropped whole rather than evicted one at a time; a miss costs one write. |
+
+A filing that FAILED is remembered as the absence it is, so the fallback is the
+journal and the request path does not retry the write per result per request. The
+retry happens when the workspace changes or the memo is dropped. The write itself
+lands through a rename (`writeStub`), because the file may be read by a model
+following a pointer that is already in flight.
+
+Pinned by `internal/session/toolcompact_test.go`. Retrieval is proved with the
+belt's OWN read tool rather than with a string assertion:
+`TestAReducedResultsPointerFetchesTheElidedMiddleWithTheBeltsOwnRead` runs a turn
+with a store AND a journal behind it, takes the pointer out of the request the
+provider was sent, pages the file it names and finds the sentinel the view
+elided; `TestStubbingWithAStoreOnPointsAtSomethingTheBeltCanOpen` does the same
+for the end-of-turn stub. The fallbacks are pinned by
+`TestThePointerFallsBackToTheJournalAndThenToNothing`, the anchor and the race by
+`TestAPointerStillOpensTheSameBytesAfterTheWorkspaceMoves` and
+`TestResolvingAPointerRacesNothingWithAnAnchor` (the latter is a `-race`
+assertion), the bounds by `TestThePointerMemoStaysBounded` and
+`TestAFailedFilingFallsToTheJournalWithoutSpinning`, the repeat by
+`TestCompactToolHistoryRepeatsItselfExactly`, the pairing by
+`TestCompactToolHistoryKeepsEveryCallPairedWithItsResult`, and
+`BenchmarkCompactToolHistory` reports the constant at 100, 400 and 1,600 rounds.
+
 ## The compaction threshold, and the ceiling that is no longer a constant
 
 Compaction fires at `window − max(15% of window, 16,384)`
@@ -1235,6 +1292,16 @@ free to move:
 The chain `threshold > compactTarget > keepRecent` holds under both laws, because
 `compactTarget` derives from whichever threshold governs rather than from the
 derivation alone.
+
+**And the fold inside a pass is asked for against the target, not the trigger.**
+A pass stubs first, and the stub pass alone routinely lands the estimate just
+under the trigger and thousands of tokens above the target — below the line that
+fired the pass, with no headroom bought. Gated on the trigger, the fold then did
+not run at all and the next step fired another pass, which is the once-a-step
+thrash `compactTarget` exists to end. Pinned by
+`TestAPassThatOnlyStubbedStillFoldsToTheTarget`, whose fixture SEARCHES for a
+history that stubs to between the two lines rather than hard-coding today's
+arithmetic.
 
 Pinned by `internal/session/window_policy_test.go`,
 `internal/session/window_guard_test.go` and

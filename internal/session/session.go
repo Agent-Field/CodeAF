@@ -1964,6 +1964,17 @@ type Agent struct {
 	// lock for the reason memory does — its writer outlives the turn.
 	chatlog *chatJournal
 
+	// filed is where each long tool result's bytes were spilled, keyed by the
+	// workspace and the message's own fingerprint ([chatRefKey]), so the
+	// per-request snapshot view names a path without writing one it has already
+	// written ([Agent.fullResultPointer]). An empty value is a filing that failed
+	// and is not to be retried per request; the map is dropped whole at
+	// [filedCap]. It sits outside mu with its own lock because that view is built
+	// without the session lock while the stub pass asks the same question holding
+	// it.
+	filedMu sync.Mutex
+	filed   map[string]string
+
 	// stateStore is the BPE working state (state.go): the beliefs and progress
 	// records that live OUTSIDE the transcript so a compaction cannot lose them.
 	// It is built on first use through [Agent.state] — the belt closes over the

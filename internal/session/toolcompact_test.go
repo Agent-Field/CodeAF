@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -74,7 +76,7 @@ func toolResultPayloadBytes(messages []ai.Message) int {
 
 func TestCompactToolHistoryKeepsNewestVerbatimAndSystemUntouched(t *testing.T) {
 	original := toolCompactMessages(6, 1)
-	got := compactToolHistory(original, len(original))
+	got := compactToolHistory(original, len(original), nil)
 
 	if messageContentText(got[0]) != messageContentText(original[0]) {
 		t.Fatalf("system prompt moved: %q", messageContentText(got[0]))
@@ -93,8 +95,8 @@ func TestCompactToolHistoryKeepsNewestVerbatimAndSystemUntouched(t *testing.T) {
 		if !strings.Contains(texts[index], fmt.Sprintf("ROUND-%02d-UNIQUE-TAIL", index)) {
 			t.Fatalf("old result %d lost its tail: %.80q", index, texts[index])
 		}
-		if len(texts[index]) > checkpointResultBytes+len("…") {
-			t.Fatalf("old result %d is %d bytes, want a digest tail", index, len(texts[index]))
+		if len(texts[index]) > compactViewBytes+reducedViewSlack {
+			t.Fatalf("old result %d is %d bytes, want a reduced view", index, len(texts[index]))
 		}
 	}
 	for _, message := range original {
@@ -109,7 +111,7 @@ func TestCompactToolHistoryKeepsNewestVerbatimAndSystemUntouched(t *testing.T) {
 
 func TestCompactToolHistoryKeepsAParallelNewestBatchVerbatim(t *testing.T) {
 	original := toolCompactMessages(4, 3)
-	got := compactToolHistory(original, len(original))
+	got := compactToolHistory(original, len(original), nil)
 	texts := toolTextsOf(got)
 	if len(texts) != 6 {
 		t.Fatalf("tool results = %d, want 6", len(texts))
@@ -132,7 +134,7 @@ func TestCompactToolHistoryBoundsOldResultsToTheDigestBudget(t *testing.T) {
 	// the same budget the checkpoint reader already proved.
 	const rounds = 80
 	original := toolCompactMessages(rounds, 1)
-	got := compactToolHistory(original, len(original))
+	got := compactToolHistory(original, len(original), nil)
 	texts := toolTextsOf(got)
 	if texts[len(texts)-1] != toolCompactOutput(rounds-1) {
 		t.Fatal("newest result was compacted to make the budget")
@@ -285,7 +287,7 @@ func TestLiveCompactToolHistoryKeepsNewestReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := toolCompactMessages(5, 1)
-	history := compactToolHistory(messages, len(messages))
+	history := compactToolHistory(messages, len(messages), nil)
 	history = append(history, textMessage("user",
 		"Reply with only the last line of the newest tool result, nothing else."))
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -301,5 +303,742 @@ func TestLiveCompactToolHistoryKeepsNewestReadable(t *testing.T) {
 	got := messageContentText(response.Choices[0].Message)
 	if !strings.Contains(got, "ROUND-04-UNIQUE-TAIL") {
 		t.Fatalf("live model did not see the newest verbatim tail: %q", got)
+	}
+}
+
+// reducedViewSlack is what a reduced view spends on top of the head and tail it
+// keeps: one header line naming the tool, the size and the pointer, and the
+// elision note between the halves. Two hundred bytes covers a long store ref or
+// a long journal path and is still a rounding error against the kilobytes the
+// view replaces.
+const reducedViewSlack = 200
+
+// headedOutput is a result whose FIRST line is the interesting one — the shape
+// of every failing build, every missing file, every stack trace — and whose last
+// line is the verdict.
+func headedOutput(round int) string {
+	return fmt.Sprintf("HEAD-%02d-ERROR: no such file\n", round) +
+		strings.Repeat("filler line that nobody needs to read\n", 200) +
+		fmt.Sprintf("ROUND-%02d-UNIQUE-TAIL", round)
+}
+
+func headedMessages(rounds int) []ai.Message {
+	messages := []ai.Message{
+		textMessage("system", "SYSTEM-PROMPT-MUST-NOT-MOVE"),
+		textMessage("user", "do the work"),
+	}
+	for round := 0; round < rounds; round++ {
+		call := fmt.Sprintf("call-%d", round)
+		messages = append(messages,
+			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+				ID: call, Function: ai.ToolCallFunction{Name: "bash", Arguments: "{}"},
+			}}},
+			ai.Message{Role: "tool", ToolCallID: call, Content: []ai.ContentPart{{
+				Type: "text", Text: headedOutput(round),
+			}}},
+		)
+	}
+	return messages
+}
+
+// A REDUCED RESULT KEEPS BOTH ENDS AND SAYS WHAT IT CUT. The tail alone showed
+// the model that something had finished and never that it had started by saying
+// `no such file`, and it named nowhere to read the rest.
+func TestAReducedResultKeepsBothEndsAndNamesItsSource(t *testing.T) {
+	original := headedMessages(4)
+	source := func(message ai.Message) string { return "logs/stubs/" + message.ToolCallID + ".txt" }
+	got := compactToolHistory(original, len(original), source)
+	texts := toolTextsOf(got)
+
+	for index, text := range texts[:len(texts)-1] {
+		if !strings.Contains(text, fmt.Sprintf("HEAD-%02d-ERROR: no such file", index)) {
+			t.Fatalf("result %d lost the head that said what went wrong: %.120q", index, text)
+		}
+		if !strings.Contains(text, fmt.Sprintf("ROUND-%02d-UNIQUE-TAIL", index)) {
+			t.Fatalf("result %d lost its verdict: %.120q", index, text)
+		}
+		if !strings.Contains(text, fmt.Sprintf("full: logs/stubs/call-%d.txt", index)) {
+			t.Fatalf("result %d named no source to read it back: %.200q", index, text)
+		}
+		if !strings.Contains(text, fmt.Sprintf("%d bytes ·", len(headedOutput(index)))) {
+			t.Fatalf("result %d did not say its true size: %.200q", index, text)
+		}
+		if len(text) > compactViewBytes+reducedViewSlack {
+			t.Fatalf("result %d is %d bytes, want at most %d", index, len(text), compactViewBytes+reducedViewSlack)
+		}
+	}
+}
+
+// THE ELIDED COUNT IS THE COUNT. A model decides whether to spend a call on the
+// rest from this number, so head + elided + tail has to be the whole result.
+func TestAReducedViewCountsTheBytesItCutExactly(t *testing.T) {
+	text := headedOutput(7)
+	view := reducedResultView("bash", text, "logs/stubs/9c2f.txt")
+	body := view[strings.Index(view, "\n")+1:]
+	head, rest, ok := strings.Cut(body, "\n…[")
+	if !ok {
+		t.Fatalf("no elision note in the view: %.200q", view)
+	}
+	note, tail, ok := strings.Cut(rest, " bytes elided]…\n")
+	if !ok {
+		t.Fatalf("malformed elision note: %.200q", rest)
+	}
+	elided := 0
+	if _, err := fmt.Sscanf(note, "%d", &elided); err != nil {
+		t.Fatalf("elision note %q is not a count: %v", note, err)
+	}
+	if got := len(head) + elided + len(tail); got != len(strings.TrimSpace(text)) {
+		t.Fatalf("head %d + elided %d + tail %d = %d, want the whole %d-byte result",
+			len(head), elided, len(tail), got, len(strings.TrimSpace(text)))
+	}
+}
+
+// A SESSION THAT CAN NAME NOWHERE SAYS SO. A pointer at a store this session
+// never had, or a journal it is not writing, costs the model a call and returns
+// nothing — the one failure stub.go's law forbids.
+func TestAReducedResultWithNoStoreOrJournalIsHonestAboutIt(t *testing.T) {
+	original := headedMessages(3)
+	got := compactToolHistory(original, len(original), nil)
+	for index, text := range toolTextsOf(got) {
+		if index == 2 {
+			continue
+		}
+		if !strings.Contains(text, "full: "+compactNoSource) {
+			t.Fatalf("result %d invented a source: %.200q", index, text)
+		}
+		if strings.Contains(text, ".jsonl") || strings.Contains(text, "logs/stubs/") {
+			t.Fatalf("result %d named a place nothing confirmed: %.200q", index, text)
+		}
+	}
+}
+
+// EVERY CALL KEEPS ITS RESULT, in order and by id. A shortened result is a
+// saving; a missing one is a 400 from the provider on this request and on every
+// request after it.
+func TestCompactToolHistoryKeepsEveryCallPairedWithItsResult(t *testing.T) {
+	original := toolCompactMessages(40, 2)
+	got := compactToolHistory(original, len(original), nil)
+	if len(got) != len(original) {
+		t.Fatalf("snapshot has %d messages, want the same %d", len(got), len(original))
+	}
+	for index := range original {
+		if got[index].Role != original[index].Role {
+			t.Fatalf("message %d changed role: %q → %q", index, original[index].Role, got[index].Role)
+		}
+		if got[index].ToolCallID != original[index].ToolCallID {
+			t.Fatalf("message %d changed its call id: %q → %q", index, original[index].ToolCallID, got[index].ToolCallID)
+		}
+		if len(got[index].ToolCalls) != len(original[index].ToolCalls) {
+			t.Fatalf("message %d changed its calls: %d → %d", index,
+				len(original[index].ToolCalls), len(got[index].ToolCalls))
+		}
+		for call := range original[index].ToolCalls {
+			if got[index].ToolCalls[call].ID != original[index].ToolCalls[call].ID {
+				t.Fatalf("message %d rewrote a call id", index)
+			}
+		}
+	}
+}
+
+// THE SAME FROZEN PREFIX PRODUCES THE SAME BYTES, on the second request of a
+// round and on the tenth. A view that reduced its own reduction would send a
+// different prefix every time and pay for a cold cache on every request.
+func TestCompactToolHistoryRepeatsItselfExactly(t *testing.T) {
+	original := headedMessages(60)
+	source := func(message ai.Message) string { return "logs/stubs/" + message.ToolCallID + ".txt" }
+	first := compactToolHistory(original, len(original), source)
+	second := compactToolHistory(original, len(original), source)
+	for index := range first {
+		if messageContentText(first[index]) != messageContentText(second[index]) {
+			t.Fatalf("message %d differs between two passes over the same frozen prefix", index)
+		}
+	}
+	// And a pass over an already-reduced view leaves it alone: the marker is
+	// what makes a reduction final.
+	again := compactToolHistory(first, len(first), source)
+	for index := range first {
+		if messageContentText(first[index]) != messageContentText(again[index]) {
+			t.Fatalf("message %d was reduced a second time: %.120q", index, messageContentText(again[index]))
+		}
+	}
+}
+
+// THE RUNNING TOTAL IS THE RECOMPUTED TOTAL. The budget walk carries its own sum
+// instead of re-adding every old result on every iteration; if the two ever
+// disagree the pass either stops early and blows the budget or keeps going and
+// shrinks evidence it did not have to.
+func TestTheBudgetWalkCarriesTheSameTotalItWouldRecompute(t *testing.T) {
+	for _, rounds := range []int{4, 40, 400} {
+		original := toolCompactMessages(rounds, 1)
+		got := compactToolHistory(original, len(original), nil)
+		var old []int
+		cut := newestToolBatchStart(got)
+		for index, message := range got {
+			if message.Role == "tool" && index < cut {
+				old = append(old, index)
+			}
+		}
+		spent := toolResultBytes(got, old)
+		// Under the budget, or every old result already at its one-line floor:
+		// four hundred calls cannot fit the account however hard they are cut,
+		// and a walk that stopped early would leave views the budget cannot pay
+		// for. Either way the carried total has to agree with the recomputed one.
+		if spent > checkpointDigestBytes {
+			for _, index := range old {
+				text := strings.TrimSpace(messageContentText(got[index]))
+				if !strings.HasPrefix(text, stubMarker) {
+					t.Fatalf("%d rounds: over budget at %d bytes with result %d not reduced to a line: %.120q",
+						rounds, spent, index, text)
+				}
+			}
+			continue
+		}
+		// Nothing shrank that did not have to: the walk stops the moment the
+		// carried total is inside the budget, so the newest of the old results
+		// still holds its full view.
+		if rounds > 4 {
+			last := messageContentText(got[old[len(old)-1]])
+			if !strings.HasPrefix(strings.TrimSpace(last), compactReducedMarker) {
+				t.Fatalf("%d rounds: the newest old result was over-reduced: %.120q", rounds, last)
+			}
+		}
+	}
+}
+
+// THE FAR END STILL SAYS WHERE ITS BYTES ARE. The one-line account a
+// budget-blown history falls back to used to be a first line and a size, with
+// nothing to follow.
+func TestTheOneLineFallbackStillNamesASource(t *testing.T) {
+	original := toolCompactMessages(200, 1)
+	source := func(message ai.Message) string { return "logs/stubs/" + message.ToolCallID + ".txt" }
+	got := compactToolHistory(original, len(original), source)
+	lines := 0
+	for index, message := range got {
+		if message.Role != "tool" || index >= newestToolBatchStart(got) {
+			continue
+		}
+		text := strings.TrimSpace(messageContentText(message))
+		if !strings.HasPrefix(text, stubMarker) {
+			continue
+		}
+		lines++
+		if !strings.Contains(text, "full: logs/stubs/"+message.ToolCallID+".txt") {
+			t.Fatalf("one-line account %d points nowhere: %q", index, text)
+		}
+	}
+	if lines == 0 {
+		t.Fatal("no result fell back to a one-line account, so the fallback went untested")
+	}
+}
+
+// BenchmarkCompactToolHistory is evidence rather than a gate: the walk is linear
+// in the call count by construction, and this is what the constant looks like.
+func BenchmarkCompactToolHistory(b *testing.B) {
+	for _, rounds := range []int{100, 400, 1600} {
+		messages := toolCompactMessages(rounds, 1)
+		b.Run(fmt.Sprintf("rounds=%d", rounds), func(b *testing.B) {
+			for iteration := 0; iteration < b.N; iteration++ {
+				compactToolHistory(messages, len(messages), nil)
+			}
+		})
+	}
+}
+
+// A REDUCED RESULT SENT TO A PROVIDER NAMES SOMEWHERE, AND THE JOURNAL STILL
+// HOLDS THE WHOLE OF IT. Retrieval through the belt's own read is the next test;
+// what this one pins is that the live request carries a pointer at all and that
+// the record behind it was not shortened.
+func TestAReducedResultSentToTheProviderCanBeReadBackFromTheJournal(t *testing.T) {
+	const rounds = 6
+	steps := make([]step, 0, rounds+2)
+	for round := 0; round < rounds; round++ {
+		round := round
+		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponseWithText(
+				fmt.Sprintf("call-%d", round),
+				"read",
+				fmt.Sprintf(`{"round":%d}`, round),
+				fmt.Sprintf("working round %d", round),
+			), nil
+		})
+	}
+	steps = append(steps,
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("still done"), nil },
+	)
+	completer := &scriptedCompleter{
+		steps: steps,
+		aside: func(messages []ai.Message) (*ai.Response, bool) {
+			if len(messages) == 0 || messageContentText(messages[0]) != "SYSTEM" {
+				return textResponse("aside"), true
+			}
+			return nil, false
+		},
+	}
+	journal := filepath.Join(t.TempDir(), "transcript.jsonl")
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.ContextWindow = bigTestWindow
+		config.CompactEnabled = false
+		config.TaskAudit = false
+		config.SessionFile = journal
+	})
+	issued := 0
+	for index := range agent.tools {
+		if agent.tools[index].Name != "read" {
+			continue
+		}
+		tool := staticTool("read", "")
+		tool.Execute = func(context.Context, json.RawMessage) (string, bool, error) {
+			text := headedOutput(issued)
+			issued++
+			return text, false, nil
+		}
+		agent.tools[index] = tool
+		break
+	}
+
+	events, err := agent.Submit(context.Background(), "read six times")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	// THE FROZEN REGION IS WHAT EXISTED BEFORE THIS TURN'S FIRST REQUEST, so the
+	// six results become reducible only once a second turn asks about them.
+	events, err = agent.Submit(context.Background(), "recap that work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+
+	// Every request the turn made is looked at, because the last one recorded
+	// belongs to whichever errand ran after the answer.
+	var reduced ai.Message
+	for request := 0; request < completer.requests() && reduced.ToolCallID == ""; request++ {
+		for _, message := range completer.request(request) {
+			if message.Role != "tool" {
+				continue
+			}
+			if strings.HasPrefix(strings.TrimSpace(messageContentText(message)), compactReducedMarker) {
+				reduced = message
+				break
+			}
+		}
+	}
+	if reduced.ToolCallID == "" {
+		t.Fatal("no reduced result reached the provider, so the pointer went untested")
+	}
+	text := messageContentText(reduced)
+	if !strings.Contains(text, "full: ") || strings.Contains(text, compactNoSource) {
+		t.Fatalf("reduced result named nowhere to read it back: %.240q", text)
+	}
+	// And the journal is still the record behind the pointer: the whole result
+	// sits in it, on the line carrying that call id.
+	content, err := os.ReadFile(journal)
+	if err != nil {
+		t.Fatalf("the pointer names a journal that cannot be read: %v", err)
+	}
+	found := false
+	for _, line := range strings.Split(string(content), "\n") {
+		if !strings.Contains(line, reduced.ToolCallID) {
+			continue
+		}
+		var entry struct {
+			Content string `json:"content"`
+		}
+		if json.Unmarshal([]byte(line), &entry) != nil {
+			continue
+		}
+		if strings.Contains(entry.Content, "HEAD-") && strings.Contains(entry.Content, "UNIQUE-TAIL") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("the journal holds no whole result for %s: the record behind the pointer is gone", reduced.ToolCallID)
+	}
+}
+
+// sentinelOutput is a result whose interesting line is in the MIDDLE, past both
+// the head a reduced view keeps and the tail. Recovering it is the whole point
+// of the pointer: if the sentinel cannot be read back, the reduction lost it.
+func sentinelOutput(round int, lines int) string {
+	var out strings.Builder
+	fmt.Fprintf(&out, "HEAD-%02d-ERROR: no such file\n", round)
+	for line := 0; line < lines; line++ {
+		if line == lines/2 {
+			fmt.Fprintf(&out, "SENTINEL-%02d-IN-THE-MIDDLE\n", round)
+			continue
+		}
+		fmt.Fprintf(&out, "filler line %d that nobody needs to read\n", line)
+	}
+	fmt.Fprintf(&out, "ROUND-%02d-UNIQUE-TAIL", round)
+	return out.String()
+}
+
+// readWholeFile pages the belt's own read tool to the end of a file, the way a
+// model follows the tool's own "use offset=N to continue" line.
+func readWholeFile(t *testing.T, tool bare.Tool, path string) string {
+	t.Helper()
+	var whole strings.Builder
+	offset := 1
+	for page := 0; page < 40; page++ {
+		args := fmt.Sprintf(`{"path":%q,"offset":%d}`, path, offset)
+		out, isErr, err := tool.Execute(context.Background(), json.RawMessage(args))
+		if err != nil || isErr {
+			t.Fatalf("read %s at offset %d: err=%v isError=%v out=%.200q", path, offset, err, isErr, out)
+		}
+		whole.WriteString(out)
+		marker := "Use offset="
+		at := strings.LastIndex(out, marker)
+		if at < 0 {
+			return whole.String()
+		}
+		next := 0
+		if _, err := fmt.Sscanf(out[at+len(marker):], "%d", &next); err != nil || next <= offset {
+			return whole.String()
+		}
+		offset = next
+	}
+	t.Fatalf("read never reached the end of %s", path)
+	return ""
+}
+
+// THE POINTER IS FOLLOWED WITH THE MODEL'S OWN VERB, on a session that has BOTH
+// a store and a journal — the shape where the pointer used to be `store:412`,
+// which nothing on this belt can fetch. What is proved here is retrieval: a
+// sentinel that the reduced view elided comes back out of the file the view
+// names, through the registered read tool.
+func TestAReducedResultsPointerFetchesTheElidedMiddleWithTheBeltsOwnRead(t *testing.T) {
+	const rounds = 4
+	steps := make([]step, 0, rounds+2)
+	for round := 0; round < rounds; round++ {
+		round := round
+		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponseWithText(fmt.Sprintf("call-%d", round), "read",
+				fmt.Sprintf(`{"round":%d}`, round), fmt.Sprintf("working round %d", round)), nil
+		})
+	}
+	steps = append(steps,
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("still done"), nil },
+	)
+	completer := &scriptedCompleter{
+		steps: steps,
+		aside: func(messages []ai.Message) (*ai.Response, bool) {
+			if len(messages) == 0 || messageContentText(messages[0]) != "SYSTEM" {
+				return textResponse("aside"), true
+			}
+			return nil, false
+		},
+	}
+	journal := filepath.Join(t.TempDir(), "transcript.jsonl")
+	agent, workspace := newTestAgent(t, completer, func(config *Config) {
+		config.ContextWindow = bigTestWindow
+		config.CompactEnabled = false
+		config.TaskAudit = false
+		config.SessionFile = journal
+		// BOTH FLOORS AT ONCE. With a store behind it the old resolver answered
+		// with a store ref and never filed anything.
+		config.Memory = openTestBrain(t)
+	})
+	if agent.chatlog == nil {
+		t.Fatal("fixture has no store, so the store-ref path is untested")
+	}
+	issued := 0
+	for index := range agent.tools {
+		if agent.tools[index].Name != "read" {
+			continue
+		}
+		tool := staticTool("read", "")
+		tool.Execute = func(context.Context, json.RawMessage) (string, bool, error) {
+			// Sixty thousand bytes is past what one `read` call returns, so the
+			// recovery below has to page exactly as a model would.
+			text := sentinelOutput(issued, 1400)
+			issued++
+			return text, false, nil
+		}
+		agent.tools[index] = tool
+		break
+	}
+
+	events, err := agent.Submit(context.Background(), "read four times")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	// The frozen region is what existed before this turn's first request, so the
+	// results become reducible only once a second turn asks about them.
+	events, err = agent.Submit(context.Background(), "recap that work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+
+	var reduced ai.Message
+	for request := 0; request < completer.requests() && reduced.ToolCallID == ""; request++ {
+		for _, message := range completer.request(request) {
+			if message.Role == "tool" &&
+				strings.HasPrefix(strings.TrimSpace(messageContentText(message)), compactReducedMarker) {
+				reduced = message
+				break
+			}
+		}
+	}
+	if reduced.ToolCallID == "" {
+		t.Fatal("no reduced result reached the provider, so the pointer went untested")
+	}
+	view := messageContentText(reduced)
+	if strings.Contains(view, "SENTINEL-") {
+		t.Fatalf("the sentinel was not elided, so recovering it proves nothing: %.240q", view)
+	}
+	if strings.Contains(view, chatRefPrefix) {
+		t.Fatalf("the view points at a store ref, which nothing on the belt fetches: %.240q", view)
+	}
+	_, after, ok := strings.Cut(view[:strings.Index(view, "\n")], "full: ")
+	if !ok {
+		t.Fatalf("no pointer in the view header: %.240q", view)
+	}
+	pointer := strings.TrimSuffix(strings.TrimSpace(after), "]")
+
+	// The model's own verb, on the path the model was given. A path inside the
+	// workspace is read relative to it exactly as the tool would resolve it.
+	got := readWholeFile(t, beltTool(t, agent, "read"), pointer)
+	if !strings.Contains(got, "SENTINEL-") {
+		t.Fatalf("reading %q did not return the elided middle; %d bytes came back", pointer, len(got))
+	}
+	if _, err := os.Stat(filepath.Join(workspace, pointer)); err != nil && !filepath.IsAbs(pointer) {
+		t.Fatalf("the pointer %q names nothing under the workspace: %v", pointer, err)
+	}
+}
+
+// AND THE STUB PASS GIVES THE SAME KIND OF POINTER. With memory on it used to
+// hand back `store:NN` for every stubbed result — a handle no verb on this belt
+// resolves — so the whole end-of-turn pass pointed nowhere.
+func TestStubbingWithAStoreOnPointsAtSomethingTheBeltCanOpen(t *testing.T) {
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+		config.Memory = openTestBrain(t)
+	})
+	if agent.chatlog == nil {
+		t.Fatal("fixture has no store")
+	}
+	agent.mu.Lock()
+	for turn := 1; turn <= 6; turn++ {
+		call := fmt.Sprintf("call-%d", turn)
+		agent.messages = append(agent.messages,
+			textMessage("user", fmt.Sprintf("question %d", turn)),
+			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+				ID: call, Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"big.go"}`},
+			}}},
+			ai.Message{Role: "tool", ToolCallID: call,
+				Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(turn, 200)}}})
+	}
+	agent.messageReasoning = make([]provider.MessageReasoning, len(agent.messages))
+	// The store's own copy has landed for these messages, which is what used to
+	// make the ref win.
+	for _, message := range agent.messages {
+		agent.chatlog.post(message)
+	}
+	agent.mu.Unlock()
+	agent.chatlog.settle()
+
+	agent.mu.Lock()
+	stubbed := agent.stubOldOutputsLocked()
+	texts := make([]string, 0, len(agent.messages))
+	for _, message := range agent.messages {
+		if message.Role == "tool" {
+			texts = append(texts, messageContentText(message))
+		}
+	}
+	agent.mu.Unlock()
+	if stubbed == 0 {
+		t.Fatal("nothing was stubbed, so the pointer went untested")
+	}
+	read := beltTool(t, agent, "read")
+	checked := 0
+	for _, text := range texts {
+		if !strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
+			continue
+		}
+		if strings.Contains(text, chatRefPrefix) {
+			t.Fatalf("a stub points at a store ref nothing can fetch: %q", text)
+		}
+		_, after, ok := strings.Cut(text, "full: ")
+		if !ok {
+			t.Fatalf("a stub names no pointer: %q", text)
+		}
+		pointer := strings.TrimSuffix(strings.TrimSpace(after), "]")
+		if got := readWholeFile(t, read, pointer); !strings.Contains(got, "SENTINEL-") {
+			t.Fatalf("reading the stub's pointer %q returned no result body", pointer)
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Fatal("no stub line was checked")
+	}
+}
+
+// WITH NOWHERE TO FILE, THE JOURNAL IS THE POINTER — a real path with the call
+// id to grep for, which is weaker than a filed copy and still something the belt
+// opens. With neither, the pointer is the absence, said out loud.
+func TestThePointerFallsBackToTheJournalAndThenToNothing(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	message := ai.Message{Role: "tool", ToolCallID: "call-77",
+		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(1, 50)}}}
+
+	place := agent.resultPlaceNow()
+	filed := agent.fullResultPointer(message, place)
+	if filed == "" || strings.Contains(filed, "grep ") {
+		t.Fatalf("a session with a workspace filed nothing: %q", filed)
+	}
+	// Asked twice, answered from memory rather than from the filesystem: the
+	// same path, and no second write.
+	if again := agent.fullResultPointer(message, place); again != filed {
+		t.Fatalf("the pointer moved between two requests: %q then %q", filed, again)
+	}
+
+	other := ai.Message{Role: "tool", ToolCallID: "call-78",
+		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(2, 50)}}}
+	nowhere := resultPlace{journal: journal}
+	fallback := agent.fullResultPointer(other, nowhere)
+	if fallback != "grep call-78 in "+journal {
+		t.Fatalf("journal fallback = %q, want the journal and the call id", fallback)
+	}
+
+	if got := agent.fullResultPointer(other, resultPlace{}); got != "" {
+		t.Fatalf("a session that can name nowhere named %q", got)
+	}
+	if line := reducedOutcomeLine("read", "output", ""); !strings.Contains(line, compactNoSource) {
+		t.Fatalf("a sourceless reduction did not say so: %q", line)
+	}
+}
+
+// anchorableAgent is an OWNED conversation — one that has no project yet and may
+// still acquire one — which is the shape [Agent.AnchorWorkspace] serves. It has
+// no folder of its own, so its droppings land inside the workspace and its stub
+// paths are RELATIVE to it, which is the case an anchor can invalidate.
+func anchorableAgent(t *testing.T) *Agent {
+	t.Helper()
+	agent, err := newAgent(Config{
+		Workspace: t.TempDir(), Place: Place{Owned: true},
+		SessionFile: filepath.Join(t.TempDir(), "session.jsonl"),
+		Model:       "test/model", System: "SYSTEM",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	return agent
+}
+
+// A POINTER SURVIVES AN ANCHOR. A stub path is written relative to the workspace
+// it was filed in, and the model's read tool resolves it against the workspace
+// the belt now has — so a memo keyed by the result alone would hand back a path
+// that reads as something else, or as nothing, the moment the conversation
+// acquires its project.
+func TestAPointerStillOpensTheSameBytesAfterTheWorkspaceMoves(t *testing.T) {
+	agent := anchorableAgent(t)
+	body := sentinelOutput(3, 120)
+	message := ai.Message{Role: "tool", ToolCallID: "call-9",
+		Content: []ai.ContentPart{{Type: "text", Text: body}}}
+
+	before := agent.fullResultPointer(message, agent.resultPlaceNow())
+	if got := readWholeFile(t, beltTool(t, agent, "read"), before); !strings.Contains(got, "SENTINEL-") {
+		t.Fatalf("the first pointer %q did not open the result", before)
+	}
+
+	repo := t.TempDir()
+	if _, err := agent.AnchorWorkspace(repo); err != nil {
+		t.Fatalf("anchor: %v", err)
+	}
+	after := agent.fullResultPointer(message, agent.resultPlaceNow())
+	// The belt was rebuilt around the new workspace, so the pointer has to be
+	// read with the tool the model now holds.
+	got := readWholeFile(t, beltTool(t, agent, "read"), after)
+	if !strings.Contains(got, "SENTINEL-") {
+		t.Fatalf("after anchoring to %q the pointer %q opens nothing (was %q)", repo, after, before)
+	}
+	if !strings.Contains(got, "ROUND-03-UNIQUE-TAIL") {
+		t.Fatalf("the pointer %q opened something else", after)
+	}
+}
+
+// AND THE RESOLUTION IS SAFE WHILE THE ANCHOR MOVES. The workspace a pointer is
+// filed against is written under a.mu; this is the reason the place is read once
+// per request rather than field by field. Run with -race, this is the assertion.
+func TestResolvingAPointerRacesNothingWithAnAnchor(t *testing.T) {
+	agent := anchorableAgent(t)
+	message := ai.Message{Role: "tool", ToolCallID: "call-10",
+		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(4, 60)}}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for round := 0; round < 40; round++ {
+			if got := agent.fullResultPointer(message, agent.resultPlaceNow()); got == "" {
+				t.Errorf("round %d resolved nowhere", round)
+				return
+			}
+		}
+	}()
+	// One anchor is all the seam allows; the reader above is running across it.
+	if _, err := agent.AnchorWorkspace(t.TempDir()); err != nil {
+		t.Errorf("anchor: %v", err)
+	}
+	<-done
+}
+
+// THE MEMO IS BOUNDED. A conversation that runs for hours must not grow a map
+// entry per result for the life of the process.
+func TestThePointerMemoStaysBounded(t *testing.T) {
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, nil)
+	place := agent.resultPlaceNow()
+	for index := 0; index < filedCap+20; index++ {
+		agent.fullResultPointer(ai.Message{Role: "tool", ToolCallID: fmt.Sprintf("c-%d", index),
+			Content: []ai.ContentPart{{Type: "text", Text: fmt.Sprintf("result number %d\n", index) +
+				strings.Repeat("body ", 400)}}}, place)
+	}
+	agent.filedMu.Lock()
+	held := len(agent.filed)
+	agent.filedMu.Unlock()
+	if held > filedCap {
+		t.Fatalf("the memo holds %d entries, over the %d cap", held, filedCap)
+	}
+	if held == 0 {
+		t.Fatal("the memo holds nothing at all, so it is not memoizing")
+	}
+}
+
+// A WRITE THAT CANNOT LAND IS NOT RETRIED PER REQUEST. The fallback is the
+// journal, and asking again does not touch the filesystem again.
+func TestAFailedFilingFallsToTheJournalWithoutSpinning(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	// A droppings home that is a FILE is a home nothing can be written into.
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	place := resultPlace{workspace: blocked, droppings: Place{Dir: blocked}, journal: journal}
+	message := ai.Message{Role: "tool", ToolCallID: "call-11",
+		Content: []ai.ContentPart{{Type: "text", Text: sentinelOutput(5, 40)}}}
+
+	first := agent.fullResultPointer(message, place)
+	if first != "grep call-11 in "+journal {
+		t.Fatalf("a failed filing answered %q, want the journal fallback", first)
+	}
+	agent.filedMu.Lock()
+	remembered, known := agent.filed[place.workspace+"\x00"+chatRefKey(message)]
+	agent.filedMu.Unlock()
+	if !known || remembered != "" {
+		t.Fatalf("the failure was not remembered: %q known=%v", remembered, known)
+	}
+	if again := agent.fullResultPointer(message, place); again != first {
+		t.Fatalf("the second answer moved: %q then %q", first, again)
 	}
 }
