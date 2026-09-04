@@ -304,9 +304,10 @@ func TestAnOldAttemptsDeliveryCannotAnnounceTheNewOne(t *testing.T) {
 
 	// The stale delivery finishes now. It reached a reader — its words are not
 	// lost — but it speaks for a life of the work that is over.
-	if part.noteHandedOver(stale) {
+	if part.noteRecorded(stale) {
 		t.Fatal("a delivery of the last attempt's ending was recorded as this attempt's announcement")
 	}
+	part.noteQueued(stale)
 	if part.reported() {
 		t.Fatal("the new attempt is marked as announced by the old one's hand-over")
 	}
@@ -379,6 +380,170 @@ func TestAReportNobodyTookIsNotMarkedAsAnnounced(t *testing.T) {
 	if part.reported() {
 		t.Fatal("a report that reached nobody is marked as handed over, so nothing will ever say it again")
 	}
+}
+
+// ── queued is not delivered, across a close ─────────────────────────────────
+
+// THE PROOF THAT A QUEUE IS NOT A RECORD.
+//
+// A task finishes on a session nobody is attached to: the wake declines
+// ([Agent.wakeLocked] answers false with no reader), so the landing note sits on
+// the conversation's queue with no step boundary coming. The reaper closes that
+// session half an hour after the terminal detached, and the queue goes with the
+// process. Marked announced at the enqueue — which is what the checkpoint used
+// to record — the next life of the session did not re-tell it either, and the
+// work was finished, merged and never mentioned to anybody.
+func TestALandingNobodyReadIsStillOwedAfterAnIdleClose(t *testing.T) {
+	sitting := newIdleConversation(t)
+
+	sitting.land(t, "the currency table is written")
+
+	// Nobody is there, so nothing was asked and nothing was read.
+	if asked := sitting.completer.requests(); asked != 0 {
+		t.Fatalf("an unattended session started %d turns, want the note held for a boundary that never came", asked)
+	}
+	if got := queuedText(sitting.agent); len(got) != 1 {
+		t.Fatalf("the conversation holds %#v, want the landing note on its queue", got)
+	}
+	if err := sitting.agent.Close(); err != nil {
+		t.Fatalf("closing the idle session: %v", err)
+	}
+
+	// The next life of this session reads the checkpoint, and the landing is
+	// still owed: it is composed again, for a model that has never seen it.
+	retold := sitting.reopen(t)
+	if !strings.Contains(retold, "currency") {
+		t.Fatalf("the resumed session is told %q, want the landing nobody ever read", retold)
+	}
+}
+
+// AND A LANDING THE MODEL DID READ IS NOT SAID TWICE. The acknowledgement is the
+// recipient's own record ([Agent.recordUserLocked]), and the checkpoint written
+// from it is what makes the next life treat this as history.
+func TestALandingTheRecordHoldsIsNotRetoldAfterAClose(t *testing.T) {
+	sitting := newIdleConversation(t)
+
+	sitting.land(t, "the currency table is written")
+	// The drain is the step boundary an attended session reaches: the note goes
+	// into the transcript, and the sender is told so.
+	if landed := sitting.agent.drainSteering(nil); landed != 1 {
+		t.Fatalf("%d notes drained, want the one landing", landed)
+	}
+	if err := sitting.agent.Close(); err != nil {
+		t.Fatalf("closing the session: %v", err)
+	}
+
+	if retold := sitting.reopen(t); strings.Contains(retold, "finished") {
+		t.Fatalf("the resumed session is told %q about work its model has already read", retold)
+	}
+}
+
+// AND AN ACKNOWLEDGEMENT FROM AN EARLIER LIFE SETTLES NOTHING. A note queued
+// before a continue is still owed to the attempt it was about; the attempt
+// running now has its own ending to reach, and a stale settle would write it off.
+func TestAStaleAcknowledgementDoesNotSettleTheNewAttempt(t *testing.T) {
+	sitting := newIdleConversation(t)
+	node := sitting.land(t, "the currency table is written")
+
+	stale := sitting.agent.settlingNow(t)
+	if err := sitting.graph.reopen(node, "try the other table"); err != nil {
+		t.Fatalf("continuing the task: %v", err)
+	}
+	for _, delivery := range stale {
+		delivery.settled()
+	}
+
+	if node.notedReadNow() {
+		t.Fatal("an acknowledgement from the life before the continue settled this one")
+	}
+	// And the landing is still owed on the checkpoint, which is what a stale
+	// settle would have written off.
+	if retold := sitting.reopen(t); strings.Contains(retold, "announced") {
+		t.Fatalf("the resumed session reads %q", retold)
+	}
+}
+
+// idleConversation is a session with a checkpoint and nobody attached: the shape
+// a task lands into when the terminal has gone.
+type idleConversation struct {
+	agent      *Agent
+	graph      *TaskGraph
+	completer  *scriptedCompleter
+	checkpoint string
+	workspace  string
+}
+
+func newIdleConversation(t *testing.T) *idleConversation {
+	t.Helper()
+	checkpoint := filepath.Join(t.TempDir(), "session.tasks.json")
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("nobody asked for this"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, nil)
+	// Nobody is attached, which is what makes the wake decline.
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
+	graph := agent.graph()
+	graph.mu.Lock()
+	// Nothing runs the work: this fixture is about what happens to the news after
+	// it lands, and a real runner would be a second author of that landing.
+	graph.run = func(*TaskNode) {}
+	graph.store = newTaskStore(checkpoint)
+	graph.mu.Unlock()
+	return &idleConversation{agent: agent, graph: graph, completer: completer, checkpoint: checkpoint, workspace: workspace}
+}
+
+// land admits one task of this conversation's own and finishes it, which is the
+// road a landing note really travels ([Agent.reportTaskNode]).
+func (c *idleConversation) land(t *testing.T, report string) *TaskNode {
+	t.Helper()
+	id := c.graph.reserve()
+	c.graph.admit(id, taskSpec{title: "the currency table", brief: "b", acceptance: "a", depth: 1})
+	node := c.graph.node(id)
+	if node == nil {
+		t.Fatal("the task was admitted and is not in the graph")
+	}
+	node.finish(report, nil, "", "")
+	c.graph.complete(node, TaskDone)
+	return node
+}
+
+// reopen is the next life of this session reading the checkpoint: what it would
+// tell its model about work that landed while the last one was away.
+func (c *idleConversation) reopen(t *testing.T) string {
+	t.Helper()
+	document, found := loadTaskCheckpoint(c.checkpoint)
+	if !found {
+		t.Fatalf("no checkpoint was written to %s", c.checkpoint)
+	}
+	fresh := newTaskGraph()
+	return fresh.rehydrate(document, c.workspace, TaskSettleAsk).note()
+}
+
+// settlingNow is the acknowledgements this conversation is holding, taken
+// without sending them.
+func (a *Agent) settlingNow(t *testing.T) []durableDelivery {
+	t.Helper()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	held := append([]durableDelivery(nil), a.settling...)
+	for _, message := range a.steering {
+		held = append(held, message.delivered...)
+	}
+	if len(held) == 0 {
+		t.Fatal("nothing is waiting to be acknowledged")
+	}
+	return held
+}
+
+// notedReadNow is the mark the checkpoint is written from.
+func (n *TaskNode) notedReadNow() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.notedRead
 }
 
 // ── progress is not a conversation ──────────────────────────────────────────

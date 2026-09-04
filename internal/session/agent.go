@@ -1082,6 +1082,14 @@ type userMessage struct {
 	// into a node.
 	crossed *SteerMark
 
+	// delivered names the DURABLE deliveries this message carries: news whose
+	// sender is owed an answer once this conversation's own record holds it, not
+	// when its queue took it ([durableDelivery]). Nil on every message that is
+	// not one, which is nearly all of them; a batch carries the ids of every note
+	// folded into it ([batchSessionNotes]), because the batch is the record those
+	// notes end up in.
+	delivered []durableDelivery
+
 	// batchKey names repeated ambient updates that collapse to their count and
 	// newest fact at a boundary. Today only watches set it: their complete tick
 	// history already lives behind `jobs output`, and copying every delta into
@@ -1775,6 +1783,12 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() error {
+	// WHAT THE RECORD ALREADY HOLDS IS SETTLED BEFORE THE DOOR SHUTS, so an idle
+	// session that read a landing in its last turn does not re-tell it tomorrow.
+	// What the record does NOT hold stays owed, which is the whole point: a note
+	// still sitting on the queue goes with this process and is said again by the
+	// next one ([durableDelivery]).
+	a.settleDeliveries()
 	a.mu.Lock()
 	if a.closed {
 		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP
@@ -1946,6 +1960,13 @@ func (a *Agent) recordLocked(message ai.Message) {
 // must not write. Everything the model and the tools produce is text and goes
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
+	// AND WHOEVER SENT IT IS OWED THE ANSWER THAT IT LANDED. It is deferred so
+	// that every road below has written the record first — the transcript on all
+	// of them, and the journal on the two that reach a file — because the promise
+	// a durable delivery makes is about the record and not about the queue
+	// ([durableDelivery]). The senders are told outside this lock
+	// ([Agent.settleDeliveries]), which is where a checkpoint may be written.
+	defer a.holdSettledLocked(user)
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, user.message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
@@ -2183,6 +2204,9 @@ func isVolatileNote(text string) bool {
 // interval into an owed note now and an ambient note later would be two accounts
 // where one batch is the honest shape.
 func (a *Agent) drainSteering(hub *eventHub) int {
+	// The senders of anything recorded below are told once this returns, which is
+	// the first moment there is no lock to write a checkpoint under.
+	defer a.settleDeliveries()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	opening := !a.running || len(a.messages) == a.turnFloor
@@ -2321,12 +2345,17 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	order := make([]string, 0, len(notes))
 	parts := make([]string, 0, len(notes))
 	var (
-		wake bool
-		tags []TaskReplyTag
+		wake      bool
+		tags      []TaskReplyTag
+		delivered []durableDelivery
 	)
 	for _, note := range notes {
 		wake = wake || note.wake
 		tags = append(tags, note.replyTags...)
+		// The batch is the record these notes end up in, so it carries what
+		// settles each of them ([durableDelivery]); dropped here, every landing in
+		// the batch would be re-told on the next resume.
+		delivered = append(delivered, note.delivered...)
 		if note.batchKey == "" {
 			parts = append(parts, strings.TrimSpace(note.text()))
 			order = append(order, "")
@@ -2365,6 +2394,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	return userMessage{
 		message:   textMessage("user", text),
 		replyTags: tags,
+		delivered: delivered,
 		wake:      wake,
 		authored:  true,
 	}
@@ -2559,6 +2589,32 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		a.wakeLocked()
 	}
 	return true
+}
+
+// holdSettledLocked keeps the acknowledgements this message earned until they
+// can be sent outside a.mu. The caller holds the lock.
+func (a *Agent) holdSettledLocked(user userMessage) {
+	a.settling = append(a.settling, user.delivered...)
+}
+
+// settleDeliveries tells the senders of everything this conversation has
+// RECORDED that their news arrived. It runs with no lock held, because settling
+// a landing writes a checkpoint.
+//
+// The two callers are the two moments the record is known to be on disk: the
+// drain that puts a message in front of the model, and the close. A crash
+// between the record and this call re-tells the landing on resume — a duplicate
+// rather than a loss, which is the direction this has to fail in.
+func (a *Agent) settleDeliveries() {
+	a.mu.Lock()
+	settling := a.settling
+	a.settling = nil
+	a.mu.Unlock()
+	for _, delivery := range settling {
+		if delivery.settled != nil {
+			delivery.settled()
+		}
+	}
 }
 
 // postTaskNews records that one of this agent's OWN sub-tasks has handed over

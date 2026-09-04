@@ -2182,8 +2182,16 @@ that were never delivered appear underneath.
 What comes back is its row in the project's list, closed with `incomplete — aforge closed
 while this was still running`. See *Adaptive runs*.
 
-A completion is announced **exactly once across lives** — a resumed session does not
-re-tell the model about work it already read about.
+A completion is announced **once per life of the work** — a resumed session does not
+re-tell the model about a landing its model has already read.
+
+**And a landing nobody was there to read is still owed.** If a task finishes while no
+terminal is attached, its note waits for a step boundary that never comes, and the session
+is closed later without one. That landing is not written off as announced: the next time
+you open the session it appears under `recovered task graph: …` with the others, so work
+that finished while you were away is told to you rather than lost. The narrow cost is the
+other direction — a machine that dies in the moment between the model reading a landing and
+the checkpoint being written may mention that one twice.
 
 ## Where task state is written on disk
 

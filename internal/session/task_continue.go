@@ -103,6 +103,7 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 	// as already announced ([TaskNode.claimNote]).
 	node.attempt++
 	node.noted = false
+	node.notedRead = false
 	node.notedState = ""
 	node.noting = false
 	node.notingClaim = noteClaim{}

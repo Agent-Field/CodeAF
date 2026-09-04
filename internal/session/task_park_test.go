@@ -791,41 +791,31 @@ func waitReported(t *testing.T, part *TaskNode) {
 	t.Fatalf("the delivery of %q never marked the part reported", part.title())
 }
 
-// AND IT IS ONE TURN WHEN THE LAST TWO PIECES LAND INSIDE EACH OTHER'S DELIVERY.
+// AND IT IS ONE TURN WHEN A PART AND A HAND LAND ON EACH OTHER'S HEELS.
 //
-// The round above lands its two parts together and lets the machine decide the
-// interleaving, which catches this on a loaded machine and not on a quiet one.
-// THIS ONE HOLDS THE WINDOW OPEN ON PURPOSE, so what it says is a fact about the
-// program rather than about the hour it was run in.
+// The round above lands two parts on one road and lets the machine choose the
+// interleaving. This one crosses the TWO roads a piece of this node's work comes
+// home by — a sub-task's report and a forked hand's — because the parent parked
+// on them cannot tell those apart and must not have to: it asks one question of
+// the pair ([Agent.taskNewsStanding]) and takes one integration turn holding
+// both.
 //
-// The window is the one the delivery law is about. A part's report reaches the
-// parent's queue, its node is marked reported — and only then is the news
-// counted and the parent woken. The mark owes the disk a checkpoint, so freezing
-// the task store's own write suspends the delivery INSIDE that gap, with the
-// part no longer outstanding and its news not yet posted. A forked hand coming
-// home meanwhile is the second piece of news, on the other delivery road and
-// touching no checkpoint at all, and its wake is what puts the parent's runner in
-// front of the pair while one of the two is half-written.
-//
-// Read as two questions, the parent saw "nothing outstanding, one note owed",
-// took its integration turn carrying BOTH reports — correctly — and was then told
-// about news that turn had already carried, so it came back for a second turn
-// with an empty request. Read as one fact ([Agent.taskNewsStanding]), the half
-// delivery is not visible at all: the turn happens once, and it holds everything.
+// It used to hold a window open by freezing the task store, because a delivery
+// wrote a checkpoint after its mark and stopped there. That window is gone. What
+// a delivery owes the disk is now written when the RECIPIENT'S RECORD holds the
+// note ([durableDelivery]), so there is no file write inside the seam to suspend
+// a delivery on, and the two facts the waiter reads are made under one lock with
+// nothing slow between them.
 func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 	var (
 		here      *nest
 		delivered sync.WaitGroup
-		once      sync.Once
 	)
-	// The frozen checkpoint is let go from INSIDE the integration turn, which is
-	// the whole point: the part's news is posted while the request that already
-	// carries its report is in flight. A mutex may be unlocked by a goroutine
-	// that did not take it, and this one deliberately is.
-	thaw := func() { once.Do(func() { here.graph.store.mu.Unlock() }) }
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			thaw()
+			// The request waits for the part's delivery to be over, so what the
+			// count below finds is the pair being read as one fact rather than a
+			// delivery that had not finished when the turn started.
 			delivered.Wait()
 			return textResponse("the part and the hand are in; here is the one deliverable"), nil
 		},
@@ -848,8 +838,8 @@ func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 	})
 	// THE GRAPH KEEPS A CHECKPOINT, which every real session's does
 	// ([runTaskChild] hands its graph a store built from the session file) and a
-	// scripted one does not. It is the file the mark owes a write to, and that
-	// write is the window this test holds open.
+	// scripted one does not: the acknowledgement this run's landing earns is
+	// written to it, on the drain, and that write is on this test's road.
 	here.graph.store = newTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
 
 	// One part handed out, and one hand forked — the two roads a piece of this
@@ -874,10 +864,7 @@ func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 		t.Fatalf("%d parts were admitted, want the one that was proposed", len(landing))
 	}
 
-	// The store is frozen, so the part's delivery stops on the checkpoint its
-	// mark owes — queued, marked, and not yet posted.
-	here.graph.store.mu.Lock()
-	defer thaw()
+	// The part reports first, on its own goroutine, exactly as a runner does.
 	delivered.Add(1)
 	go func() {
 		defer delivered.Done()
@@ -885,7 +872,7 @@ func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 	}()
 	waitReported(t, landing[0])
 
-	// And the hand comes home into that window, which is the wake the parent
+	// And the hand comes home on the other road, which is the wake the parent
 	// reads its pair on.
 	here.node.handIsHome(hand, 0,
 		forkArguments{Parts: []forkPart{{Role: "the shorter path"}}},

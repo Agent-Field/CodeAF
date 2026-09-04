@@ -483,14 +483,24 @@ type TaskNode struct {
 	// ([TaskNode.claimNote]). Absent from checkpoints written before it existed,
 	// which restore as attempt 0 — the life they were written in.
 	attempt int
-	// noted says this node's completion note has been handed over, and notedState
-	// the ending it was handed over FOR: the same landing announced twice is one
-	// piece of news, while a node that later ends somewhere else
-	// ([TaskGraph.resettle]) is news again. Both belong to the CURRENT attempt,
-	// because reopening clears them in the same locked step that raises it. An
-	// empty notedState is a checkpoint written before it existed and reads as
-	// "announced, whatever it said".
+	// noted says this node's completion note is on a live reader's QUEUE, and
+	// notedState the ending it was handed over for: the same landing announced
+	// twice is one piece of news, while a node that later ends somewhere else
+	// ([TaskGraph.resettle]) is news again. It is what a parked parent reads as
+	// "this piece is no longer outstanding" ([TaskNode.reported]), and it is held
+	// in memory only, because a queue does not survive the process it lives in.
+	//
+	// notedRead says the RECIPIENT'S OWN RECORD holds it, and that is the one
+	// that is written down ([taskRecord.Noted]): a note queued onto an idle
+	// conversation nobody is attached to is read at a step boundary that may
+	// never come, and marking it announced on the checkpoint is how a landing
+	// went missing for good ([durableDelivery]).
+	//
+	// Both belong to the CURRENT attempt, because reopening clears them in the
+	// same locked step that raises it. An empty notedState is a checkpoint
+	// written before it existed and reads as "announced, whatever it said".
 	noted      bool
+	notedRead  bool
 	notedState TaskState
 	// noting holds the claim a delivery in flight took, so two deliveries of one
 	// ending cannot both reach the queue. It is in memory only: what is written
@@ -2792,11 +2802,14 @@ type noteClaim struct {
 	state   TaskState
 }
 
-// markNoted records that this node's completion note has been handed over, for
+// markNoted records this node's completion note as both queued and recorded, for
 // the roads that compose one without claiming it first (task_store.go re-tells
-// the notes an ended session never delivered).
+// the notes an ended session never delivered, into the note a resumed session
+// opens with).
 func (n *TaskNode) markNoted() {
-	if n.noteHandedOver(n.currentClaim()) {
+	claim := n.currentClaim()
+	n.noteQueued(claim)
+	if n.noteRecorded(claim) {
 		n.graph.checkpoint()
 	}
 }
@@ -2844,10 +2857,11 @@ func (n *TaskNode) releaseNote(claim noteClaim) {
 	n.graph.mu.Unlock()
 }
 
-// notedLocked reports whether this claim's ending has already been handed over.
-// The mark belongs to the current attempt by construction — reopening clears it
-// in the same locked step that raises the attempt — so an earlier attempt's
-// claim is never satisfied by it.
+// notedLocked reports whether this claim's ending has already been handed to a
+// reader. It reads the QUEUED mark, because a second announcement of an ending
+// one reader already has is a duplicate whether or not that reader has read it
+// yet. The mark belongs to the current attempt by construction — reopening
+// clears it in the same locked step that raises the attempt.
 func (n *TaskNode) notedLocked(claim noteClaim) bool {
 	if claim.attempt != n.attempt {
 		return false
@@ -2855,32 +2869,56 @@ func (n *TaskNode) notedLocked(claim noteClaim) bool {
 	return n.noted && (n.notedState == "" || n.notedState == claim.state)
 }
 
-// noteHandedOver turns the mark on for one claim and answers whether THIS call
-// is the one that turned it, which is the caller's cue that the checkpoint is
-// still owed.
+// noteQueued marks this node's news as sitting on a live reader's queue. It is
+// made inside the news handover ([Agent.handOverTaskNews]), between the queue
+// and the wake, because a parent parked on its pieces reads it as "this one is
+// no longer outstanding" and must not see that before the note is there.
 //
-// A CLAIM FROM AN EARLIER ATTEMPT CHANGES NOTHING — not the mark, and not the
-// claim standing now. Its delivery did reach a reader, so those words are not
-// lost; what it may not do is record the life the node is on as announced, which
-// would suppress the ending this attempt is going to reach.
+// THE CLAIM STAYS HELD. The delivery is not finished until the recipient's
+// record has it, and until then no second delivery of the same ending may start.
 //
-// It is separate from [TaskNode.markNoted] because the delivery road makes this
-// mark inside the news handover ([Agent.handOverTaskNews]), where a parked parent
-// may be waiting to read it, and a checkpoint is a file to write after that seam
-// rather than under it.
-func (n *TaskNode) noteHandedOver(claim noteClaim) bool {
+// A CLAIM FROM AN EARLIER ATTEMPT CHANGES NOTHING. Its words did reach a reader,
+// so they are not lost; what it may not do is speak for the life of the work
+// running now.
+func (n *TaskNode) noteQueued(claim noteClaim) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if claim.attempt != n.attempt {
+		return
+	}
+	n.noted = true
+	n.notedState = claim.state
+}
+
+// noteRecorded is the delivery finished: the recipient's own record holds the
+// note ([Agent.recordUserLocked]), so this landing is announced and no later
+// life of this session says it again. It answers whether THIS call moved the
+// mark, which is the caller's cue that the checkpoint is still owed — and the
+// checkpoint is what makes it durable, so it is written outside every lock this
+// takes.
+func (n *TaskNode) noteRecorded(claim noteClaim) bool {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if claim.attempt != n.attempt {
 		return false
 	}
-	already := n.notedLocked(claim)
+	// The question this answers is whether the RECORD's mark moved, so it is read
+	// off that mark: the queued one is already on by the time a delivery is
+	// acknowledged ([TaskNode.noteQueued]).
+	already := n.notedRead && (n.notedState == "" || n.notedState == claim.state)
 	n.noted = true
+	n.notedRead = true
 	n.notedState = claim.state
 	if n.noting && n.notingClaim == claim {
 		n.noting, n.notingClaim = false, noteClaim{}
 	}
 	return !already
+}
+
+// noteDelivery is the id this node's news travels under, stable across a
+// restart because every part of it is on the checkpoint.
+func (n *TaskNode) noteDelivery(claim noteClaim) deliveryID {
+	return deliveryID(fmt.Sprintf("%s/%d@%d:%s", n.graph.sessionName(), n.id, claim.attempt, claim.state))
 }
 
 // notice copies the node out from under the lock, shaped for an
@@ -3099,10 +3137,10 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		if !claimed {
 			return
 		}
-		if a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: userText(note)}).accepted() {
-			if node.noteHandedOver(claim) {
-				node.graph.checkpoint()
-			}
+		line := userText(note)
+		line.delivered = []durableDelivery{node.settlesNote(claim)}
+		if a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line}).accepted() {
+			node.noteQueued(claim)
 			return
 		}
 		node.releaseNote(claim)
@@ -3131,17 +3169,31 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, note string) {
 	if !claimed {
 		return
 	}
-	handedOver := false
-	got := a.postTaskMessage(node, note, func() { handedOver = node.noteHandedOver(claim) })
+	// AND THE ANNOUNCEMENT IS NOT WRITTEN DOWN UNTIL SOMEBODY HAS IT. The note
+	// carries what settles it ([durableDelivery]): the recipient's own record is
+	// the acknowledgement, and until then this landing stays owed, so a session
+	// that closed with the note unread re-tells it on resume rather than losing
+	// it (task_store.go).
+	got := a.postTaskMessage(node, note, []durableDelivery{node.settlesNote(claim)},
+		func() { node.noteQueued(claim) })
 	if !got.accepted() {
-		// Nobody is left to read it, so the claim goes back and the mark is not
-		// made: this landing is still owed, and a resumed session tells the model
-		// about it (task_store.go) instead of treating it as announced.
+		// Nobody is left to read it, so the claim goes back and no mark is made.
 		node.releaseNote(claim)
-		return
 	}
-	if handedOver {
-		node.graph.checkpoint()
+}
+
+// settlesNote is this landing's durable delivery: the id it travels under, and
+// what to do when the recipient's record holds it. The checkpoint is written
+// here rather than by the recipient because this is the sender's own fact, and
+// it is written outside the recipient's lock ([Agent.settleDeliveries]).
+func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
+	return durableDelivery{
+		id: n.noteDelivery(claim),
+		settled: func() {
+			if n.noteRecorded(claim) {
+				n.graph.checkpoint()
+			}
+		},
 	}
 }
 
@@ -3167,11 +3219,12 @@ func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, note string) {
 // under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
 // fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
 // written by the caller, after the seam.
-func (a *Agent) postTaskMessage(node *TaskNode, note string, mark func()) deliveryReceipt {
+func (a *Agent) postTaskMessage(node *TaskNode, note string, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
 	message.replyTags = []TaskReplyTag{{
 		ID: node.id, Title: node.title(), Request: node.request(),
 	}}
+	message.delivered = durable
 	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message}, a.taskNoteReaders(node)...)
 	if !got.accepted() {
 		return got
@@ -3850,7 +3903,7 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	}
 	// It is not this node's landing being announced — that has already been said
 	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
-	a.postTaskMessage(node, readdressedLead(node, waiting), nil)
+	a.postTaskMessage(node, readdressedLead(node, waiting), nil, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed

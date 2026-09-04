@@ -331,11 +331,18 @@ type taskRecord struct {
 	// lane. It is what stops a resumed session re-announcing work the transcript
 	// already carries.
 	//
-	// It is HANDED OVER, not read: a note enqueued in the instant before the
-	// process died never reached the transcript and is lost. That window is one
-	// step boundary wide and closing it would mean the graph reaching into the
-	// turn loop to ask whether a message had drained yet, which is a coupling
-	// worth more than the case it buys.
+	// IT IS THE RECIPIENT'S RECORD AND NOT ITS QUEUE. A note accepted onto a
+	// queue is read at a step boundary that an unattended session may never
+	// reach — the wake declines with nobody there, and the reaper closes the
+	// session half an hour after the terminal detached — so a mark made at the
+	// enqueue said "announced" about a landing no model ever saw, and this
+	// checkpoint then stopped the next life re-telling it. It is written when the
+	// note reaches the recipient's own record ([TaskNode.noteRecorded]).
+	//
+	// The window that remains is a crash between that record and this file, and
+	// it costs a landing said twice rather than a landing lost. A file written
+	// before this meaning changed says "announced" about a note that was queued,
+	// which is read here exactly as it was written.
 	Noted bool `json:"noted,omitempty"`
 
 	// NotedState is the ending that announcement was made for, so that work which
@@ -747,7 +754,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Output:        n.output,
 		CacheRead:     n.cacheRead,
 		CacheWrite:    n.cacheWrite,
-		Noted:         n.noted,
+		Noted:         n.notedRead,
 		NotedState:    n.notedState,
 		Attempt:       n.attempt,
 		Interrupted:   n.interrupted,
@@ -1234,6 +1241,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		cacheRead:   record.CacheRead,
 		cacheWrite:  record.CacheWrite,
 		noted:       record.Noted,
+		notedRead:   record.Noted,
 		notedState:  record.NotedState,
 		attempt:     record.Attempt,
 		interrupted: record.Interrupted,

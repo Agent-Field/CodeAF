@@ -141,6 +141,37 @@ type deliveryReceipt struct {
 
 func (r deliveryReceipt) accepted() bool { return r.state == deliveryAccepted }
 
+// deliveryID names one durable delivery: which conversation the news is about,
+// which life of that work, and which ending. Every part of it is on the task
+// checkpoint, so the same landing composed again after a restart carries the
+// same id and a replay can be told from a second event.
+type deliveryID string
+
+// durableDelivery is a message whose sender is owed an answer about the
+// RECIPIENT'S RECORD rather than about its queue.
+//
+// THE QUEUE IS NOT THE RECORD, and the difference is a lost report. A note
+// accepted onto an idle conversation's queue is read at that conversation's next
+// step boundary, which on an unattended session may never come: the wake
+// declines with nobody there ([Agent.wakeLocked]), the reaper closes the session
+// half an hour after the terminal detached, and the queue goes with the process.
+// Marked delivered at the queue, that landing was also marked announced on the
+// checkpoint, so the next life of the session did not re-tell it either.
+//
+// So the sender is told twice, and the two facts are different: `accepted` when
+// a live reader took it ([deliveryReceipt]), and `settled` when the recipient's
+// own record holds it ([Agent.recordUserLocked]). Only the second is written
+// down as announced.
+//
+// IT IS NOT EXACTLY ONCE AND DOES NOT CLAIM TO BE. A process killed between the
+// record and the checkpoint re-tells the landing on resume: a duplicate, which
+// is the direction this must fail in. Nothing here makes an external effect
+// idempotent.
+type durableDelivery struct {
+	id      deliveryID
+	settled func()
+}
+
 // mailbox is a conversation that can be handed a message. Both implementations
 // are local: an agent, and the seat inside a task room.
 type mailbox interface {
