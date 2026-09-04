@@ -70,7 +70,21 @@ func protectedBranch(root, name string) bool {
 // a referred repository is borrowed and still must be protected.
 func (t taskTree) landsInThePersonsRepository() bool {
 	root, ground := canonicalPath(strings.TrimSpace(t.root)), canonicalPath(strings.TrimSpace(t.ground))
-	if root == "" || root != ground {
+	if root == "" {
+		return false
+	}
+	// A GROUND INSIDE THE ROOT IS STILL THE PERSON'S REPOSITORY. This used to
+	// be `root != ground` and nothing more, which answered false for a ground
+	// one directory inside the checkout — every protection below skipped, and
+	// the landing merged onto whatever branch the person was standing on.
+	//
+	// Nothing reaches that today: [Agent.ReferPlace] snaps a referred path to
+	// the repository root and so does groundRoot on the task ladder, so the two
+	// are equal by the time either road builds a tree. But that is an invariant
+	// held in other files, and this is the guard whose failure costs somebody
+	// their working tree — so it does not rest on somebody else remembering.
+	// The exemptions below are unchanged and still decide the borrowed cases.
+	if ground != "" && ground != root && !withinDir(root, ground) {
 		return false
 	}
 	if trees := canonicalPath(strings.TrimSpace(t.place.Trees())); trees != "" && withinDir(trees, root) {

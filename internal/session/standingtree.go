@@ -169,6 +169,17 @@ func (l FolderLanding) Kept() bool {
 	return l.Merged == mergeKept || l.Merged != "" && !cameHome(l.Merged)
 }
 
+// KeptByPolicy reports the ONE kind of keep that is not a failure: the landing
+// worked exactly as designed and the branch was left alone because writing this
+// checkout is something aforge will not do.
+//
+// IT EXISTS BECAUSE [FolderLanding.Kept] ANSWERS TWO DIFFERENT QUESTIONS. Every
+// other keep is something that went wrong — a merge git could not settle, a
+// landing that could not save the work at all — and a surface is right to
+// phrase those as a failure. This one is a policy honoured, and phrasing it the
+// same way tells somebody their work did not land when it did.
+func (l FolderLanding) KeptByPolicy() bool { return l.Merged == mergeKept }
+
 // Places whose folder the conversation may not stage into, answered once.
 //
 // A FOLDER THE PERSON SAID "IN PLACE" ABOUT IS EDITED DIRECTLY. That is

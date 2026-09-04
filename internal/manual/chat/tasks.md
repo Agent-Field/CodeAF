@@ -1129,7 +1129,8 @@ After the name the card carries the span, the file count, and how the branch cam
 or `branch kept · <branch>`.
 
 `branch kept · <branch>` on a **done** task means the work finished but your checkout was
-on a protected branch, had moved since the work was cut, or was detached. The branch named
+on a protected branch, was on a different branch than when the work was cut, or was
+detached. The branch named
 there holds the finished work; the how-tasks-run page explains the exact reason and how to
 merge it where you want it.
 

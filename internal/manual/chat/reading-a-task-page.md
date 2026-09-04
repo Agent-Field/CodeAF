@@ -175,10 +175,11 @@ Every word it draws:
 - `waiting` — still running, but its calls to the model are being paced.
 - `stopping` — you ended it and it is still letting go; `stopped` once it has.
 - `needs your look` — it finished and nobody could say whether the work holds.
-- `merged`, `in your own folder`, `conflicted`, `stopped`, `done`, `failed` — it is over,
-  and the word says how it ended: its branch came home; there was no branch to bring home,
-  so it edited your own files; the merge clashed; it was ended early; it is over and nothing
-  was said about a branch; or it did not come off.
+- `merged`, `branch kept`, `in your own folder`, `conflicted`, `stopped`, `done`, `failed`
+  — it is over, and the word says how it ended: its branch came home; the work is finished
+  and left on its own branch because your checkout is one aforge will not write to; there
+  was no branch to bring home, so it edited your own files; the merge clashed; it was ended
+  early; it is over and nothing was said about a branch; or it did not come off.
 - A sub-harness being designed says what it is doing in its own words — `designing`, and
   `awaiting your look` while its page sits waiting on you.
 

@@ -255,7 +255,8 @@ what your `.gitignore` covers is the one thing it does not have. Two reasons:
 
 Everything else is the same either way: your uncommitted edits and your untracked files
 travel on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as
-a merge into your branch.
+a merge into your branch — unless that branch is one aforge will not write, in which case
+the branch is kept and named for you instead.
 
 **To see which one a task got,** open its page: the first line of its log says what world
 it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
@@ -416,8 +417,10 @@ You will see one exact reason:
 Take it with `git merge task/x` on the branch where you want the work. `git branch --list
 'task/*'` lists finished work waiting this way. Or check out a feature branch before
 starting tasks; when it is still checked out at landing, finished work comes home by
-itself. A checkout moved after the task started, or detached before it landed, is kept by
-the same rule so aforge never guesses where you meant the work to go.
+itself. A checkout that is on a different branch than when the task started, or detached before
+it landed, is kept by the same rule so aforge never guesses where you meant the work to go.
+The test is which branch you are on, not what is on it: commit or rebase all you like on the
+branch you started on and the work still comes home to it.
 
 ## My task's branch would not merge — what happens then
 
@@ -741,7 +744,8 @@ project on GitHub, GitLab or another host:
 
 **So how does the work get to you?** Every path the task passed to `write` or `edit` is
 staged by name and merged home onto your branch when the task lands — that is the road, and
-it is the only one. If the work should become a pull request, the task says so in its
+it is the only one, with the one stop on it being a checkout aforge will not write, where
+the branch is kept and named instead. If the work should become a pull request, the task says so in its
 report and you or the conversation opens it.
 
 ## Does a task have my credentials — can a task read your GitHub token, gh auth token is refused inside a task, my task said gh auth token is not yours to run
@@ -788,8 +792,9 @@ directory it is standing in.
 --list`, `git rev-parse`, `git merge-base` — against any branch, including `main` and any
 other task's branch. Knowing what is around it is how it does the work.
 
-**It does not have to save anything.** What lands on your branch is every path the task
-passed to `write` or `edit`, staged by name on the way home — the task is told not to stage
+**It does not have to save anything.** What lands on your branch — or on the kept branch,
+where your checkout is one aforge will not write — is every path the task passed to `write`
+or `edit`, staged by name on the way home — the task is told not to stage
 its own work, and `git add` and `git commit` are neither needed nor refused.
 
 **It may not move its copy onto work it did not do, and may not reach a remote.** These are
@@ -863,7 +868,8 @@ When a task's work does come home, the paths it wrote are staged by name — nev
 `git add -A`, and never `.aforge-v3` — then committed on its own branch as
 `task: <first line of title, at most 72 chars>` with the identity
 `aforge <aforge@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
-A protected, moved or detached checkout is left alone and the task branch is kept instead.
+A checkout on a protected branch, on a different branch than when the work was cut, or
+detached, is left alone and the task branch is kept instead.
 Otherwise the merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
 the branch is kept, the working copy is given back, and the task needs your look. A commit

@@ -6421,7 +6421,12 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, landin
 	if t.landsInThePersonsRepository() {
 		if kept := t.keptLandingSentence(); kept != "" {
 			t.releaseKeptLocked()
-			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true))
+			// refusedNothing: the landing was not refused, it was HONOURED. The
+			// work is committed on its branch and the person has been told which
+			// one — a refusal here would put a policy keep on the unsaved road
+			// (task_land_unsaved.go) and offer to try it again, which is the one
+			// thing that must not happen to a checkout aforge will not write.
+			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), refusedNothing
 		}
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a

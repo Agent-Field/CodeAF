@@ -34,7 +34,7 @@ func TestC7AProtectedCheckoutKeepsCompletedWorkOnItsTaskBranch(t *testing.T) {
 				t.Fatalf("prepareTaskTree: %v", err)
 			}
 			writeFile(t, filepath.Join(tree.dir, "protected.txt"), branch+"\n")
-			merge, detail := tree.comeHome("write the protected case", []string{"protected.txt"})
+			merge, detail, _ := tree.comeHome("write the protected case", []string{"protected.txt"})
 			if merge != mergeKept {
 				t.Fatalf("merge = %q (%s), want %q", merge, detail, mergeKept)
 			}
@@ -83,7 +83,7 @@ func TestC8AMovedOrDetachedCheckoutKeepsTheTaskBranch(t *testing.T) {
 		}
 		writeFile(t, filepath.Join(tree.dir, "moved.txt"), "kept\n")
 		mustGit(t, repo, "checkout", "-b", "other")
-		merge, detail := tree.comeHome("write after the move", []string{"moved.txt"})
+		merge, detail, _ := tree.comeHome("write after the move", []string{"moved.txt"})
 		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — merge it where you want it"
 		if merge != mergeKept || !strings.Contains(detail, want) {
 			t.Fatalf("landing = %q, %q; want moved-checkout keep", merge, detail)
@@ -101,7 +101,7 @@ func TestC8AMovedOrDetachedCheckoutKeepsTheTaskBranch(t *testing.T) {
 		}
 		writeFile(t, filepath.Join(tree.dir, "detached.txt"), "kept\n")
 		mustGit(t, repo, "checkout", "--detach")
-		merge, detail := tree.comeHome("write while detached", []string{"detached.txt"})
+		merge, detail, _ := tree.comeHome("write while detached", []string{"detached.txt"})
 		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — check one out and merge it"
 		if merge != mergeKept || !strings.Contains(detail, want) {
 			t.Fatalf("landing = %q, %q; want detached-checkout keep", merge, detail)
@@ -121,7 +121,7 @@ func TestC9AnOwnedWorkspaceStillMergesOnItsDefaultBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "owned.txt"), "landed\n")
-	if merge, detail := tree.comeHome("write in owned work", []string{"owned.txt"}); merge != mergeMerged {
+	if merge, detail, _ := tree.comeHome("write in owned work", []string{"owned.txt"}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want the owned workspace to merge", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(work, "owned.txt")); got != "landed\n" {
@@ -140,7 +140,7 @@ func TestC12ARecordWithoutHomeStillLandsByTheCurrentBranchPolicy(t *testing.T) {
 		}
 		tree.home = ""
 		writeFile(t, filepath.Join(tree.dir, "old.txt"), "merged\n")
-		if merge, detail := tree.comeHome("write from an old record", []string{"old.txt"}); merge != mergeMerged {
+		if merge, detail, _ := tree.comeHome("write from an old record", []string{"old.txt"}); merge != mergeMerged {
 			t.Fatalf("merge = %q (%s), want feature-branch merge", merge, detail)
 		}
 	})
@@ -154,8 +154,44 @@ func TestC12ARecordWithoutHomeStillLandsByTheCurrentBranchPolicy(t *testing.T) {
 		}
 		tree.home = ""
 		writeFile(t, filepath.Join(tree.dir, "old.txt"), "kept\n")
-		if merge, detail := tree.comeHome("write from an old record", []string{"old.txt"}); merge != mergeKept {
+		if merge, detail, _ := tree.comeHome("write from an old record", []string{"old.txt"}); merge != mergeKept {
 			t.Fatalf("merge = %q (%s), want protected-branch keep", merge, detail)
 		}
 	})
+}
+
+// C15: A GROUND THAT IS A SUBDIRECTORY OF THE PERSON'S REPOSITORY IS STILL THE
+// PERSON'S REPOSITORY.
+//
+// [taskTree.landsInThePersonsRepository] used to answer false the moment `root`
+// and `ground` differed, and [Agent.Land] builds its tree with
+// `ground: tree.Folder` and `root: tree.Root` — so a folder one level inside a
+// checkout skipped every protection in this file and merged onto whatever
+// branch the person was standing on.
+//
+// Nothing could reach that: ReferPlace snaps a referred path to the repository
+// root, and so does groundRoot on the task ladder. This test exists because
+// that invariant is enforced in OTHER files, with nothing pinning it where the
+// guard relies on it — and the guard is the piece whose failure costs somebody
+// their working tree.
+func TestC15ARepositorySubdirectoryGroundIsStillProtected(t *testing.T) {
+	repo := newTestRepo(t)
+	notes := filepath.Join(repo, "notes")
+	if err := os.MkdirAll(notes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	inside := taskTree{root: repo, ground: notes, home: "work"}
+	if !inside.landsInThePersonsRepository() {
+		t.Errorf("a ground inside the person's repository (%s under %s) is not read as theirs, "+
+			"so a landing there would merge onto their branch with none of this file's protection",
+			notes, repo)
+	}
+
+	// AND A GROUND THAT IS NOT UNDER THE ROOT AT ALL IS STILL NOT THEIRS, which
+	// is the case the old comparison was written for.
+	elsewhere := taskTree{root: repo, ground: t.TempDir(), home: "work"}
+	if elsewhere.landsInThePersonsRepository() {
+		t.Error("a ground outside the root is being read as the person's repository")
+	}
 }

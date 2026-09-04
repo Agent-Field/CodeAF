@@ -15,7 +15,7 @@ func keptDependency(t *testing.T, place Place, repo, session string, id uint64, 
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(tree.dir, path), content)
-	merge, detail := tree.comeHome(title, []string{path})
+	merge, detail, _ := tree.comeHome(title, []string{path})
 	if merge != mergeKept {
 		t.Fatalf("dependency landing = %q (%s), want kept", merge, detail)
 	}
