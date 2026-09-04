@@ -162,8 +162,8 @@ launched from. `do --json` carries the same four facts as fields.
 | --- | --- | --- |
 | `0` | `done` | It is done, and what is on stdout is the answer. |
 | `1` | `error` | It could not be run at all — no key, bad arguments, the store would not open, the workspace could not be made, no resident took it. Nothing was attempted and nothing was spent. |
-| `2` | `incomplete` | It ran and did not finish: part of the work does not stand. The job failed or was cancelled, the delivery did not land whole, or a refusal that was not a question. Whatever it DID manage is on stdout and is worth reading. |
-| `3` | `price`, `deadline` | A limit you set stopped it — the wall (`--timeout`), or a plan price that crossed the consent threshold with no `--yes-spend`. The work was going when it was cut off; raise the limit and run it again. |
+| `2` | `incomplete`, `unchecked` | It ran and did not finish: part of the work does not stand. The job failed or was cancelled, the delivery did not land whole, or a refusal that was not a question. Whatever it DID manage is on stdout and is worth reading. `unchecked` is the same rung and a different fact: the work was delivered and the final check could not be reached, so nothing has vouched for it — read it, it may be perfectly good. |
+| `3` | `budget`, `turn-cap`, `deadline`, `price` | A limit you set stopped it — the token budget (`--token-budget`), the turn cap (`--max-turns`), the wall (`--timeout`), or a plan price that crossed the consent threshold with no `--yes-spend`. The work was going when it was cut off; raise the limit and run it again. |
 | `4` | `question` | It stopped to ask and nobody was there. The question is on stderr verbatim and in `blocked_on`. |
 
 **This moved.** `do` used to return 0, 1 and 2 only, where `1` meant everything
@@ -229,10 +229,11 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | Field | Contract |
 | --- | --- |
 | `ok` | The work stands. True on exactly the runs that exit `0`. |
-| `stop` | Why it ended, in one word: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question`. **This is the field to read.** The exit code says how much is wrong; `stop` says what. |
+| `stop` | Why it ended, in one word: `done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`, `deadline`, `price`, `question`. **This is the field to read.** The exit code says how much is wrong; `stop` says what. |
 | `answer` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
 | `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
+| `unjudged` | On `aforge do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
@@ -447,7 +448,7 @@ wrote two readers and the second one was written wrong.
 | Field | Contract, where `exec` differs from section 1 |
 | --- | --- |
 | `answer` | The deliverable, whole. Empty is possible, and it is now `stop: "incomplete"` and exit `2` rather than the old `stop: "done"` and exit `6`. |
-| `stop` | `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`. The executor's own endings that are not rungs of their own — `empty`, `overrun`, `promote`, `paused`, `cancelled` — still pass through under their own names and land on exit `2`. |
+| `stop` | `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`. The executor's own endings that are not rungs of their own — `empty`, `split`, `overrun`, `no-progress`, `promote`, `paused`, `cancelled` — still pass through under their own names and land on exit `2`. |
 | `steps` | Iterations of the tool loop. This is what `turns` was. |
 | `run` | This invocation's id, as above. |
 | `calls` | Model calls this run made. |
@@ -486,7 +487,7 @@ caller can keep stdout for the prose and still get the machine record.
 | --- | --- | --- |
 | `0` | `done` | The worker stopped asking for tools and had something to say. |
 | `1` | `error` | It could not be run at all: the provider failed, the key was missing, the model id was rejected. |
-| `2` | `incomplete` | It ran and did not finish — including finishing with nothing to show, and every ending without a rung of its own (`cancelled`, `paused`, `promote`, `split`, `empty`, `overrun`). |
+| `2` | `incomplete` | It ran and did not finish — including finishing with nothing to show, and every ending without a rung of its own (`cancelled`, `paused`, `promote`, `split`, `empty`, `overrun`, `no-progress`). |
 | `3` | `budget`, `turn-cap`, `deadline` | A limit you set stopped it: the token budget, the turn cap, or the wall. `answer` holds whatever it had. |
 
 **This moved a long way, and there is a hatch.** `exec` used to return 2 for the
