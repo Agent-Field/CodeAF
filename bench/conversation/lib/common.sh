@@ -95,6 +95,20 @@ CONV_CARRIED="PATH HOME TERM LANG LC_ALL TMPDIR OPENROUTER_API_KEY"
 # carried is always visible in the cell's config record.
 CONV_PASS_ENV="${CONV_PASS_ENV:-}"
 
+# env_overridden says whether a later assignment already names this variable.
+# A carried value that is about to be replaced is DROPPED rather than emitted
+# and then overridden: `env -i K=real K=sentinel` gives the process the
+# sentinel, but the real value is still on the command line, where ps and the
+# rig's own saved command file can read it.
+env_overridden() {
+  local name="$1"; shift
+  local assignment
+  for assignment in "$@"; do
+    [ "${assignment%%=*}" = "$name" ] && return 0
+  done
+  return 1
+}
+
 # child_env prints `env -i NAME=VALUE …` for the carried variables plus the
 # per-arm ones passed as arguments. Callers use it for both doors.
 child_env() {
@@ -103,6 +117,7 @@ child_env() {
   for name in $CONV_CARRIED $CONV_PASS_ENV; do
     eval "value=\${$name:-}"
     [ -n "$value" ] || continue
+    env_overridden "$name" "$@" && continue
     printf ' %s=%s' "$name" "$(printf '%q' "$value")"
   done
   for value in "$@"; do printf ' %s' "$(printf '%q' "$value")"; done
@@ -116,6 +131,7 @@ child_env_array() {
   for name in $CONV_CARRIED $CONV_PASS_ENV; do
     eval "value=\${$name:-}"
     [ -n "$value" ] || continue
+    env_overridden "$name" "$@" && continue
     CHILD_ENV+=("$name=$value")
   done
   for value in "$@"; do CHILD_ENV+=("$value"); done

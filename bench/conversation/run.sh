@@ -127,6 +127,16 @@ mkdir -p "$CONV_OUT" "$(dirname "$CSV")"
 [ -f "$CSV" ] || echo "date,run_id,git_sha,scenario,workload,door,arm,arm_version,model,effort_requested,effort_sent,wall_s,exit,cost_usd,cost_source,tokens_in,tokens_out,turns,verdict,comparable,notes" > "$CSV"
 
 RESULTS_JSONL="$CONV_OUT/results.jsonl"
+# A run's own summary is authoritative evidence and is refused before it is
+# opened. Per-cell refusal is not enough on its own: truncating this file first
+# and only then declining to overwrite the cells leaves the cell directories
+# intact and destroys the record that says what they were.
+if [ -s "$RESULTS_JSONL" ] && [ "$OVERWRITE" != "1" ]; then
+  conv_warn "refusing to write over an existing run summary at $RESULTS_JSONL"
+  conv_warn "(it holds $(grep -c "" "$RESULTS_JSONL") row(s)); pass --overwrite to replace this run,"
+  conv_warn "or give --out a directory of its own."
+  exit 1
+fi
 : > "$RESULTS_JSONL"
 
 echo "battery:    bench/conversation"

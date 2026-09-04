@@ -93,7 +93,10 @@ the provider says it actually billed.
 
 **Environment.** A harness process inherits `PATH`, `HOME`, `TERM`, `LANG`,
 `TMPDIR` and an `OPENROUTER_API_KEY` set to the sentinel — never the real key,
-and never another provider's. `CONV_PASS_ENV` names anything extra to carry, so
+and never another provider's. A carried variable that a later assignment
+replaces is dropped rather than emitted and overridden: `env -i K=real
+K=sentinel` gives the process the sentinel, but leaves the real value on a
+command line that `ps` can read. `CONV_PASS_ENV` names anything extra to carry, so
 what got through is visible in the cell's `config.txt`.
 
 **The key.** The guard needs a live `OPENROUTER_API_KEY` in the shell that
@@ -219,8 +222,13 @@ curated list rather than an environment dump: a redaction regex over everything
 a shell happens to hold is one unfamiliar variable name away from publishing a
 secret.
 
-Evidence is never overwritten by accident — a run whose cell directory already
-exists refuses and records a skip. `--overwrite` is the deliberate way.
+Evidence is never overwritten by accident, at both levels. A run whose
+`results.jsonl` already holds rows refuses **before opening it** — cell-level
+refusal alone is not enough, because truncating the summary first and only then
+declining to touch the cells leaves the directories intact and destroys the
+record of what they were. A cell whose directory already exists refuses too, and
+records a skip. `--overwrite` is the deliberate way, and `--out` gives a run a
+directory of its own.
 
 No live comparison has been run through this suite yet: the shell's
 `OPENROUTER_API_KEY` on the machine it was built on is stale (a direct call to
@@ -250,8 +258,8 @@ wrong answer, a harness that hangs, usage that was never reported, a model off
 the allowlist (including one reached only by an auxiliary role), a catalog that
 cannot pin the id, a scenario an arm has no door for, a followup that never
 arrives, a busy window that never happens, an existing omp profile, a second run
-that would overwrite the first's evidence, and credentials leaking into a child
-process. It also checks the receipt reader counts a repeated message once — all
+that would overwrite the first's evidence or truncate its summary, and
+credentials leaking into a child process or onto its command line. It also checks the receipt reader counts a repeated message once — all
 three peers emit the same assistant message three times.
 
 It also drives the guard against a stand-in upstream: a commercial model is
@@ -260,7 +268,7 @@ its streamed chunks relayed untouched, a caller without the sentinel is refused,
 an unreadable body is refused, and the audit log carries the decisions and no
 credential.
 
-At the time of writing it is 62 checks, all passing, and it needs `tmux` and
+At the time of writing it is 71 checks, all passing, and it needs `tmux` and
 `curl`; a missing dependency is reported as skipped and exits non-zero rather
 than green.
 

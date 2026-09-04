@@ -333,25 +333,43 @@ fi
 say
 
 # ── evidence is not overwritten by accident ─────────────────────────────────
-say "evidence (a second run does not erase the first):"
+say "evidence (a second run erases nothing the first left):"
 SHARED="$WORKDIR/shared-evidence"
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
   CONV_RUN_ID=first "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-first.log" 2>&1
-cp "$SHARED/results.jsonl" "$WORKDIR/first-results.jsonl" 2>/dev/null
+FIRST_ROWS="$(grep -c "" "$SHARED/results.jsonl" 2>/dev/null || echo 0)"
+[ "$FIRST_ROWS" -ge 1 ] \
+  && ok "the first run wrote a summary" || bad "the first run wrote no summary"
+# A sentinel in both places the second run could clobber: the authoritative
+# summary, and an artifact inside the cell.
+echo '{"sentinel":"first-run-row-that-must-survive"}' >> "$SHARED/results.jsonl"
+echo 'first-run artifact' > "$SHARED/data-tally-pi/sentinel.txt"
+
 FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
   CONV_RUN_ID=second "$RUN" --unguarded --arms pi --scenarios data-tally --cap 60 \
   > "$LOGDIR/evidence-second.log" 2>&1
 SECOND_EXIT=$?
-[ "$(field "$SHARED/results.jsonl" verdict)" = "skipped" ] \
-  && ok "a second run refuses to write over the first's cell" \
-  || bad "a second run overwrote existing evidence"
+[ "$SECOND_EXIT" -ne 0 ] \
+  && ok "a second run into the same output refuses" \
+  || bad "a second run wrote into an existing run's output (exit $SECOND_EXIT)"
+grep -q 'first-run-row-that-must-survive' "$SHARED/results.jsonl" \
+  && ok "and the first run's summary rows are still there" \
+  || bad "the second run TRUNCATED the first run's summary"
+[ -s "$SHARED/data-tally-pi/sentinel.txt" ] \
+  && ok "and the first run's cell artifacts are still there" \
+  || bad "the second run destroyed a cell artifact"
 [ -s "$SHARED/data-tally-pi/receipt.json" ] \
-  && ok "and the first run's receipt is still there" || bad "the first run's receipt is gone"
-[ "$SECOND_EXIT" -eq 0 ] \
-  && ok "the refusal is a skip, not a failure" || bad "the refusal moved the exit code"
-say
+  && ok "including its receipt" || bad "the first run's receipt is gone"
+grep -q 'refusing to write over an existing run summary' "$LOGDIR/evidence-second.log" \
+  && ok "and it says which file stopped it" || bad "the refusal does not name the summary"
 
+# --overwrite is the deliberate way, and it is the only way.
+FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" CONV_OUT="$SHARED" CONV_CSV="$WORKDIR/shared.csv" \
+  CONV_RUN_ID=third "$RUN" --unguarded --overwrite --arms pi --scenarios data-tally --cap 60 \
+  > "$LOGDIR/evidence-third.log" 2>&1
+[ $? -eq 0 ] && ok "--overwrite replaces a run deliberately" || bad "--overwrite did not run"
+say
 
 # ── the guard: prevention, not detection ────────────────────────────────────
 say "guard (a disallowed model must never reach an upstream):"
@@ -424,6 +442,41 @@ else
   fi
 fi
 kill "$G_PID" "$UP_PID" 2>/dev/null; wait "$G_PID" "$UP_PID" 2>/dev/null
+say
+
+say "guard (a fixed upstream, and a sentinel where the key would be):"
+GUARD_TEST=0 python3 "$CONV_ROOT/lib/guard.py" --allow deepseek/deepseek-v4-flash-0731 \
+  --upstream "http://127.0.0.1:1/v1" > "$WORKDIR/fixedupstream.log" 2>&1
+[ $? -ne 0 ] \
+  && ok "the upstream cannot be moved outside the test flag" \
+  || bad "the guard accepted an arbitrary upstream"
+grep -q '127.0.0.1' "$CONV_ROOT/lib/guard.py" \
+  && ok "the guard binds loopback in source" || bad "the guard does not bind loopback"
+
+# The wiring is checked directly, because a guarded run needs a live key and
+# this suite stays offline: what matters is which key reaches a harness.
+WIRE="$(CONV_ROOT="$CONV_ROOT" CONV_LIB="$CONV_ROOT/lib" \
+  REAL_KEY="real-key-must-not-leak" bash -c '
+    set -u
+    OPENROUTER_API_KEY="$REAL_KEY"
+    source "$CONV_LIB/common.sh"; source "$CONV_LIB/allowlist.sh"
+    source "$CONV_LIB/verdict.sh"; source "$CONV_LIB/adapters.sh"
+    source "$CONV_LIB/guarded.sh"
+    GUARD_URL="http://127.0.0.1:9/v1"; GUARD_SENTINEL="sentinel-token"
+    ARM_STATE_DIR="$(mktemp -d)"; ARM_ENV=()
+    arm_guard_wire pi "$ARM_STATE_DIR" >/dev/null 2>&1
+    child_env "${ARM_ENV[@]}"
+    printf "\n---models.json---\n"
+    cat "$ARM_STATE_DIR/pi-home/models.json"
+  ')"
+printf '%s' "$WIRE" | grep -q 'OPENROUTER_API_KEY=sentinel-token' \
+  && ok "a wired harness is handed the sentinel" || bad "the harness was not handed the sentinel"
+printf '%s' "$WIRE" | grep -q 'real-key-must-not-leak' \
+  && bad "the real key reached the harness environment" \
+  || ok "and never the real key — only the guard has that"
+printf '%s' "$WIRE" | grep -q '"baseUrl": "http://127.0.0.1:9/v1"' \
+  && ok "and its provider points at the guard on loopback" \
+  || bad "the provider config does not point at the guard"
 say
 
 say "guard gate (unguarded is not a workaround):"
