@@ -1664,7 +1664,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 					Mechanical: true, Checked: true, Grounds: grounds,
 					Finding: FindingMissingProduces, Fallback: true}
 			}
-			return faulted(node, "the gate answered with nothing this could read", err)
+			return faulted(node, gateUnreadableWhy, err)
 		}
 		// A transport failure is a different thing and stays fail-open: the
 		// model was never reached, so nothing about this deliverable was
@@ -1766,11 +1766,38 @@ func faulted(node store.Node, why string, err error) Judgment {
 	return Judgment{Fault: note}
 }
 
+const (
+	gateUnreadableWhy     = "the gate answered with nothing this could read"
+	gateFaultSentence     = "the review could not be read, so this delivery was never checked"
+	gateFaultHandoverLead = "I'm handing this over unchecked: the review of it could not be read"
+	gateFaultHandoverTail = ", so nothing has confirmed this is what you asked for."
+)
+
+// gateFaultReason keeps the part of a fault that distinguishes this run from
+// another one. The shared lead already says the review was unreadable, so
+// repeating the gate's equivalent lead would obscure the evidence that follows
+// it. That evidence is already bounded by internal/shaped's replyDetailBytes
+// and noteBytes; this reading does not invent another limit.
+func gateFaultReason(fault string) string {
+	reason := strings.TrimSpace(fault)
+	if strings.HasPrefix(reason, gateUnreadableWhy) {
+		reason = strings.TrimPrefix(reason, gateUnreadableWhy)
+		reason = strings.TrimPrefix(reason, ": ")
+	}
+	return strings.TrimSpace(reason)
+}
+
 // GateFaultWords is the shortfall as the delivery gate's own ledger keeps it,
 // and as the headless stream prints it. It says what did not happen — the check
-// — rather than what the gate found, because the gate found nothing.
+// — and why it did not happen, never alleging anything about the work when the
+// gate found nothing. An empty reason stays empty so an unknown renders as
+// nothing rather than as a dangling separator.
 func GateFaultWords(fault string) string {
-	return "the review could not be read, so this delivery was never checked"
+	words := gateFaultSentence
+	if reason := gateFaultReason(fault); reason != "" {
+		words += " — " + reason
+	}
+	return words
 }
 
 // GateFaultHandover is the reservation that rides the delivery when the gate
@@ -1779,9 +1806,15 @@ func GateFaultWords(fault string) string {
 // It exists for the same reason GapHandover does: a run that hands over work its
 // own check never looked at must not hand it over in silence. What it must NOT
 // say is that anything is wrong with the work — nobody knows, and that is the
-// whole point — so it names the missing check and stops there.
+// whole point — so it names the missing check and why it did not happen, never
+// alleging anything about the work. An empty reason stays empty so an unknown
+// renders as nothing rather than as an empty parenthetical.
 func GateFaultHandover(fault string) string {
-	return "I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for."
+	words := gateFaultHandoverLead
+	if reason := gateFaultReason(fault); reason != "" {
+		words += " (" + reason + ")"
+	}
+	return words + gateFaultHandoverTail
 }
 
 // unjudged is the fail-open pass, said out loud.
