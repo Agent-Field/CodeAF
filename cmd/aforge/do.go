@@ -167,6 +167,11 @@ type headlessOutcome struct {
 	// log (#514). `stop` says "unchecked"; this says why, and the two travel
 	// together.
 	Unjudged string `json:"unjudged,omitempty"`
+	// Checklist is what became of each thing the request asked for, on exactly
+	// the runs whose journal carried a checklist. It is a field because machine
+	// callers must never parse the bounded person's account, and it is never
+	// clipped.
+	Checklist []revision.PointOutcome `json:"checklist,omitempty"`
 	// Error is the sentence a run that never reached an outcome left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
@@ -2220,6 +2225,21 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		// worker wrote it, so the worker's own file list has done its job and
 		// comes back off before anything is printed.
 		outcome.Deliverable = withoutSummaryFileList(outcome.Deliverable, outcome.Artifacts)
+		// AND WHAT BECAME OF EACH THING THIS RUN WAS ASKED FOR. The rows go out
+		// whole for the machine; the person gets the bounded account only where
+		// the gate's own mapping did not already answer the list, and never a
+		// second time — a failed node's error carries it here already, and one
+		// list said twice reads as two findings.
+		var gateAnswered bool
+		outcome.Checklist, gateAnswered = w.checklistFor(final.ID, outcome.Artifacts)
+		if !gateAnswered && !strings.Contains(outcome.Deliverable, revision.ChecklistHeading) {
+			if account := revision.ChecklistAccount(outcome.Checklist); account != "" {
+				if strings.TrimSpace(outcome.Deliverable) != "" {
+					outcome.Deliverable += "\n\n"
+				}
+				outcome.Deliverable += account
+			}
+		}
 	}
 	// The board survives as the outcome's learned lines: what one worker told
 	// the others is exactly what the caller would want to know about the
@@ -2236,6 +2256,46 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 	}
 	return outcome
+}
+
+// checklistFor reads what became of each thing this run was asked for, off rows
+// the run had already written down: the acceptance checklist journaled before
+// any work began, and the delivery gate's own mapping of points onto checks
+// where a gate ran. Nothing here spends anything — no model call, no second
+// reading of the tree — which is what makes it affordable on EVERY ending,
+// including the early ones that never reached a gate and used to hand back a
+// stop reason and a file list with no account of the list at all (#551).
+//
+// gateAnswered says whether the gate settled these points itself. It is the
+// question the caller has, and it is returned rather than re-derived from the
+// rows, because a reading of a reading drifts from the fact it is about.
+//
+// The rows come off THE NODE THE CHECKLIST GOVERNS, which is the node that was
+// handed the request — the ordinary errand's one settled root. A job the planner
+// broke into several leaves journals a checklist against each leaf that carries
+// one and none against the root that settles them, so this reports nothing there
+// and the account still reaches the person the other way: it rides the failing
+// leaf's own recorded error (humanFailure in chat.go), which is what every
+// reader downstream of a stopped part opens.
+//
+// Every read is best-effort in the sense every other journal read on this path
+// is: a store that will not answer costs the account, never the ending. AND AN
+// UNREADABLE GATE IS NOT A GATE THAT ANSWERED — the list is still the person's
+// and is still accounted for, with nothing claimed answered.
+func (w *settlementWatch) checklistFor(nodeID string, wrote []string) (rows []revision.PointOutcome, gateAnswered bool) {
+	if w.graph == nil {
+		return nil, false
+	}
+	acceptance, found, err := w.graph.AcceptanceFor(nodeID)
+	if err != nil || !found {
+		return nil, false
+	}
+	gate, gateRead, err := w.graph.DeliveryGateFor(nodeID)
+	if err != nil {
+		gate, gateRead = store.DeliveryGate{}, false
+	}
+	gateAnswered = gateRead && len(gate.Exercises) > 0
+	return revision.AnswerChecklist(acceptance.Points, gate, gateRead, wrote), gateAnswered
 }
 
 // deliveredWhole answers the exit code's own question of a settled job: is what

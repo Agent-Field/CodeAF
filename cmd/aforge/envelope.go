@@ -503,6 +503,9 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	if strings.TrimSpace(outcome.Unjudged) != "" {
 		fields["unjudged"] = outcome.Unjudged
 	}
+	if len(outcome.Checklist) > 0 {
+		fields["checklist"] = outcome.Checklist
+	}
 	return fields
 }
 
