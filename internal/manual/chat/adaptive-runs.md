@@ -1382,6 +1382,24 @@ ever matched to a check.
 lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
 exactly as it would have without any of this.
 
+## The run stopped early — which things I asked for did it actually do, which one it missed after fixing three of my four, and why one was never touched
+
+The ending reads back the acceptance checklist taken from your request before the work
+starts. Under the heading `What was asked for, and what happened to each:`, every point is
+accounted for as `answered`, `not answered` or `not reached`.
+
+`answered` comes only from a check the delivery gate matched to that point. When a point
+names a file, `not answered` with `nothing this run wrote is prose.go` means exactly that:
+the run's file record names no `prose.go`. `not reached` means nothing in the run's record
+settles the point. It is not a claim that the work was skipped; when the run did change a
+file the point names, the line says so without claiming that the behaviour holds.
+
+The block a person reads is bounded so a long checklist cannot crowd the failure itself
+off the ending. If every line does not fit, its last line counts how many remain on the
+run's own record. `aforge do --json` carries the whole, unclipped list in `checklist`, with
+one `{behaviour, state, why}` row per point. A run whose request produced no acceptance
+checklist has neither the block nor that key.
+
 ## When nothing checks what you asked for — "no check exercises …"
 
 At the end, the review asks one more question of every answer it reaches — whether it was

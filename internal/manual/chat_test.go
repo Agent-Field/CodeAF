@@ -873,6 +873,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it said partial but the tests were green", "adaptive-runs"},
 		{"it said done but never ran the tests", "adaptive-runs"},
 		{"the request was met as stated", "adaptive-runs"},
+		// A stopped run now answers the person's original list point by point.
+		// These are the two ways the missing line was reported: asking what did
+		// land, and naming the one item the old ending silently dropped.
+		{"the run stopped early — which of the things I asked for did it actually do", "adaptive-runs"},
+		{"it fixed three of my four and never said which one it missed", "adaptive-runs"},
 		// And the same ending arriving the other way round: the work is done,
 		// the checks are green, and the run reports a failure because the
 		// worker's last call to the model never came back. Both are asked in
