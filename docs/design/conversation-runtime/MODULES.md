@@ -1,218 +1,226 @@
-# Modules: where the responsibilities actually are, and where the seams should go
+# Modules: where the responsibilities are, and where the seams are
 
-**Read as of `9daaa397a` plus this wave's status-projection change. It describes the code
-that exists today; the PLAN/PRODUCT/COMMUNICATION documents describe intended behavior and
-are not claims about what is shipped.**
+**Read as of the integration line at `15ebb5d61`.** Every row marked *implemented* names
+code in this tree. Every row marked *proposed* is a plan and nothing more. `PLAN.md`,
+`PRODUCT.md` and `COMMUNICATION.md` describe intended behavior and are not claims about
+what ships.
 
-The measurements below are line counts and call sites taken from the current tree. They are
-here to locate responsibilities, not to argue that a long file is a bug: `task_run.go` is
-7,249 lines and about half of that is prose explaining why a decision is the way it is,
-which is the repository's own convention. **The argument in this document is never "this
-file is long". It is "this file answers questions that belong to two different owners, and
-the crossing is what makes a change in one break the other."**
+Two words this document uses precisely:
 
-## 1. What exists now
+- a **seam** is a named boundary *inside* `internal/session` — one file that owns a
+  question, with the rest of the package calling it instead of re-deriving it;
+- an **extracted package** is a separate Go package with its own import boundary.
 
-### 1.1 internal/session — one package, seven responsibilities
+**No part of the conversation runtime has been extracted into a standalone package.**
+`internal/session` is still one package. The seams below are real files with real owners;
+they are not module boundaries the compiler enforces. The only enforced boundaries in this
+area are the pre-existing package lines: `internal/session` (engine), `internal/remote`
+(client/server protocol), `internal/tui3` (terminal surface), `cmd/aforge` (doors).
 
-| Responsibility | Where it lives today | Who else reaches into it |
-| --- | --- | --- |
-| **Admission and context** — what work is allowed to start, where it will stand, what it is told | `task.go` (`proposeTask`, `ResolveTask`, `askTask`), `taskstands.go`, `groundladder.go`, `task_brief.go`, `task_divide*.go`, `taskmodel.go` | `task_run.go` calls admission's ladder at start; `task_contract.go` holds the frozen shape |
-| **Lifecycle and scheduling** — the graph, the frontier, state transitions | `task_run.go` (`TaskGraph.admit/runFrontier/complete/resettle`, `TaskNode.end`) | everything; `orchestrate.go` and `harness_task.go` map their own runs onto the same states |
-| **Steering and rooms** — the person's words reaching a running node | `task_room.go` (`SteerTask`, `taskRoom.steerIn`, `speaker`), `steer.go` (`Steer` for the main turn), `agent.go` (`enqueueNote`, `enqueueSteeredLine`, `steeringHeld`) | `task_run.go`'s `runTaskChild`, which must not close an agent with an unread line |
-| **Worker** — one node's run inside its world | `task_child_run.go` (`childRun.open/drain/step/trip/park`), `loop.go` (the model loop both main and task threads use) | `task_run.go` owns the call and the landing around it |
-| **Evidence and outcome** — did the work hold, and what is the record of it | `task_audit.go` (2,895 lines), `task_claims.go`, `taskgrade.go`, `task_checks.go` | `task_run.go` decides `TaskDone`/`TaskFailed`/`TaskUnverified` from the verdict |
-| **Workspace and change disposition** — worktrees, branches, merges, holds | `taskgit.go`, `treehold.go`, `task_branch_protection.go`, `groundladder.go`, the `comeHome`/`abortedMerge` paths in `task_run.go` | `task_run.go`'s landings; the surfaces read `Merge`/`Branch` off the notice |
-| **Storage** — what survives the process | `task_store.go` + `checkpoint.go` (the graph), `task_index.go` (the project's record), `sessionfile.go` (the transcript), `world.go` (`SessionRow.Runs`, the liveness ladder) | every surface; `task_run.go` calls `graph.checkpoint()` inline at ~20 sites |
-| **Projection** — what a person is told | **new:** `task_status.go`; the surfaces in `internal/tui3` | `internal/tui3` only |
+## 1. Seams that exist
 
-### 1.2 The crossings that actually hurt
-
-These are ranked by how often a change to one side has broken the other, not by size.
-
-1. **Lifecycle owns landing, delivery and evidence in one function body.**
-   `task_run.go` holds `settleUnfinished`, `landUnchecked`, `landStopped`, `landShifted`,
-   `landConflicted` and `landFinished` (in `task_ledger.go`). Each of them decides a state,
-   asks git what happened to the branch, composes the note the model reads, and writes a
-   checkpoint. A change to the *wording* of a landing is a change in the file that owns the
-   scheduler. This is the crossing the status projection was written against: five
-   different landings, five different tables of "what does this mean to a person".
-
-2. **The surfaces re-derived meaning that the engine already knew.**
-   Before this wave, `railGroupOf`, `railGlyphRank`, `taskStateMark`, `taskStateInk`,
-   `roomMark`, `tasksGlyph`, `homeTaskGlyph`, `homeWorkGlyph`, `taskStatusGlyph` and
-   `taskStateWord` each read `state`, `ending`, `stopped` and `merge` in their own order.
-   They disagreed: the roster drew ⊘ for a person's stop and the record page drew ✗ for the
-   same task, because the index carries no stop flag and each surface guessed differently.
-
-3. **Liveness is one judgement with two readers and no shared vocabulary.**
-   `SessionRow.Runs` is the ladder (a live conversation's own claim list, then the lock).
-   Everything else treated "not in my map" as "dead", which is wrong the moment work
-   outlives the terminal. The projection now takes liveness as a three-valued fact
-   (`unknown` / `held` / `unclaimed`) so an absent answer stays absent.
-
-4. **Delivery of *changes* was being read as delivery of *results*.**
-   `taskUndelivered` (now `TaskStatus.ChangesUnlanded`) is a source-control fact: a branch
-   nobody merged. A research or writing task can be completely answered with no branch at
-   all. Any future "did the person get what they asked for" record must be its own field;
-   the branch cannot stand in for it.
-
-5. **Communication is delivery + wake + policy, fused per call site.**
-   `enqueueNote` appends and then decides — from flags on `userMessage` (`wake`, `steered`,
-   `ending`, `authored`) — whether to release a parked runner and whether to start a turn.
-   `deliverTaskNote` picks the recipient (parent's agent, else the conversation), tags the
-   message, and orders queue → fact → wake by hand with a long comment explaining the two
-   interleavings that broke. That ordering is correct; it is also written once per caller.
-
-## 2. What this wave changed
-
-`internal/session/task_status.go` is one pure function, `ProjectTask(TaskFacts) TaskStatus`,
-plus `TaskIndexEntry.StatusFacts`. It answers four questions that used to be one word:
-
-- **presence** — `queued`, `working`, `waiting`, `finishing`, `done`, `incomplete`,
-  `needs-look`, `stopped`, and the zero value for a state this build does not recognise.
-- **who or what is being waited on** (`TaskWaitOn`), which is what makes "waiting" mean
-  anything. A "whose move is next" enum was drafted and then removed: no production surface
-  consumed it, and the runtime's actual continuation affordances — `SteerTask` for a running
-  node, `ResolveUnverified` for a claim nobody could check, and `ContinueTask`
-  (`task_continue.go`, which reopens a settled node onto the frontier under its own id) —
-  already have their own doors. A projection that named a next action would be a second,
-  weaker copy of those rules.
-- **change disposition** (`TaskChangeDisposition`) — merged, in-place, kept, conflicted —
-  which is source control and nothing else.
-- **fault** — whether something broke, as distinct from work that did not finish.
-
-`internal/tui3/taskstatus.go` holds the two adapters and the single table that spells a
-reading in this program's words. Nine derivation sites now go through it.
-
-Behavior that changed as a result, all in the direction of not claiming things:
-
-- a task a person stopped is `stopped` everywhere, not `failed` on the record page;
-- a run the wire, a provider, a threshold, a loop or a stale brief ended is `incomplete`,
-  not `failed` — the cross is kept for actual faults;
-- a **queued** node in a live session says `queued`, not `running`;
-- the check and repair rounds read `finishing` (from the published lifecycle phase, not
-  from whether a sentence happened to arrive with them);
-- a node this window never watched keeps its recorded claim instead of being called dead.
-
-Documented gaps, not fixed here: the project index carries no merge word, branch, hold, gap
-or prerequisite, so a record row can never raise the unlanded-edits demand a live row
-raises; harness phases are strings with no typed lifecycle, so exactly one of them
-(`HarnessPhaseAsking`) is interpreted by name.
-
-## 3. The communications boundary
-
-The requirement is one delivery mechanism with different recipient policy per kind, built by
-**extending the queue that exists** — not by adding a bus. Today's parts already form most
-of it:
-
-| Concept | Today | Gap |
-| --- | --- | --- |
-| Message | `userMessage{message, refs, replyTags, wake, said, authored, steered, ending}` | Flags, not a kind. Origin (person / agent / tool / runtime) is inferred from which flag is set. |
-| Recipient | an `*Agent` pointer picked at the call site (`deliverTaskNote`) | Identity is a pointer. Nothing names "session S, node N". |
-| Queue | `a.steering` (+ `a.ambient` for telemetry) | Fine. This is the mailbox; it should stay. |
-| Wake | `wakeLocked` (main) / `releaseTaskWaitLocked` (a parked runner) | Correct and already one-step-with-the-append. It is re-implemented per caller. |
-| Receipt | `enqueueNote` returns a bool; `SteerTask` returns `(waiting, error)` and `ErrNobodyToRead` | Accepted vs read vs superseded vs rejected are not distinguished. |
-| Correlation | `replyTags []TaskReplyTag{ID, Title, Request}` | Only for landing notes; no reply-to for questions. |
-| Revision | none | Nothing records which assignment revision a message or a result belongs to. |
-
-### 3.1 The envelope to extract
-
-One struct, in `internal/session`, carrying:
-
-- **id** — stable per message, so a retry can be de-duplicated;
-- **from / to** — `TaskAddress{Session, Node}`; a task number alone is not unique across
-  sessions, and today's `*Agent` pointer cannot be persisted or routed later;
-- **origin** — authenticated person, agent, tool, runtime. A quoted user line in a document
-  is *not* a person's origin, and this is the field that has to make that impossible;
-- **kind** — direction, work request, result, question, answer, progress, runtime notice;
-- **body or content reference** — a hash identifies content, not an event: a person
-  repeating an instruction after a correction is a new event with the same body;
-- **correlation** — reply-to for question/answer pairs;
-- **assignment revision** — which version of the assignment this message belongs to.
-
-### 3.2 One mailbox, one wake, different recipient policy
-
-Keep exactly the primitive `enqueueNote` already implements — *append and signal the
-eligible reader in one locked step* — and let the recipient's policy differ by kind:
-
-| Kind | Wake policy | Why |
-| --- | --- | --- |
-| User direction | release a parked runner; consider at the next legal model/tool boundary | somebody is standing there waiting; `enqueueSteeredLine` already does this half |
-| Child result | mark owed, release the parent's wait, do **not** start a turn inside a task | `postTaskNews`'s existing law: a node's turns are its runner's to start |
-| Question to a parent | same as a result — it must wake a parked owner, or the wait deadlocks | today a child's question has no route that is not a landing note |
-| Answer to a child | release exactly the wait that named that question | scoped waiting: an unanswered question blocks only work that needs the answer |
-| Progress | coalesce into the ambient queue; never a model wake, never an established fact | `enqueueAmbient` exists for exactly this and must not grow a wake |
-| Runtime notice | typed state change; wakes only when it is actionable | `ending` already works this way for a parked job |
-
-Two rules the current code makes easy to break and the extraction should make hard:
-**progress must not become a paid wake**, and **data must not become authority** — an
-origin field that cannot be forged by quoting.
-
-### 3.3 What is explicitly not in scope
-
-No global registry, no remote fan-out, no distributed event store, no event sourcing.
-Cross-session is a *shape* requirement only: addresses instead of pointers, and a delivery
-interface a future router could implement. Nothing in this wave routes across sessions, and
-the extraction must not claim it does.
-
-## 4. Staged extraction plan
-
-Each stage is a seam, a mechanical move, and a test that would catch the move going wrong.
-Stages are ordered by (risk of the current crossing) ÷ (cost of the move).
-
-| # | Stage | Move | Boundary test |
+| Seam | File(s) | What it owns | Status |
 | --- | --- | --- | --- |
-| 0 | **Projection** *(done in this wave)* | `task_status.go`; surfaces adapt | table test over facts → reading; tui3 tests that every surface draws one node the same way |
-| 1 | **Communication envelope + mailbox** | envelope type, `TaskAddress`, one `deliver(envelope)` used by `enqueueNote`/`enqueueSteeredLine`/`deliverTaskNote`/`postTaskNews` | duplicate delivery is de-duplicated; close/enqueue race yields an explicit rejection, never a silent drop; a parked parent wakes for a child result *and* for a child question; progress delivers with zero model calls |
-| 2 | **Landing / change disposition** | the five `land*` functions keep the state decision and hand branch questions to a workspace seam; the note text moves next to the projection's vocabulary | a landing with each merge outcome produces the same state and the same person-facing reading; a protected checkout still keeps the branch |
-| 3 | **Evidence and outcome** | `task_audit.go`'s verdict becomes a value the lifecycle consumes, rather than a call the lifecycle makes | a refused verdict, an absent verdict and an audit that never returns each produce their documented state without the scheduler knowing how the audit ran |
-| 4 | **Admission and context** | one entry point returning a frozen assignment (brief, ground, mode, limits, model) | admission refusals are unchanged; a started node's contract is byte-identical to the one admission produced |
-| 5 | **Storage** | checkpoint writes move behind one recorder instead of ~20 inline `graph.checkpoint()` calls | old checkpoints still load; a crash between any two transitions replays to the same graph |
-| 6 | **Worker** | `childRun` becomes usable for main-thread work too (one loop, two threads) | the same conversation script produces the same transcript through either entry |
+| **Delivery** | `mailbox.go` | who is addressed (`conversationID{session, task}`), who is speaking (`messageOrigin`), what kind of message it is (`messageKind`), one hand-over (`deliverTo`) and one answer (`deliveryReceipt`) | implemented |
+| **Durable acknowledgement** | `mailbox.go` (`durableDelivery`, `deliveryID`, `Agent.hasRecorded`), `task_store.go` | the difference between a message a live reader accepted and one the recipient's own record holds | implemented |
+| **Assignment and revision** | `assignment.go`, `assignment_tool.go` | the frozen admitted spec plus a revision overlay; which origins may move the done-condition | implemented |
+| **Admission context** | `admission.go`, `admission_compile.go` | one bounded, attributed selection of conversation excerpts and tool-output handles per admission door | implemented |
+| **Result** | `task_result.go` | the full answer kept apart from the compact card, with a retrievable overflow reference | implemented |
+| **End-of-turn handoff** | `turnhandoff.go` | whether the current request's work was handed to a task that is still live, so the turn can end without polling | implemented |
+| **Projection** | `task_status.go`; adapters in `internal/tui3/taskstatus.go` | one pure `ProjectTask(TaskFacts) TaskStatus`: presence, wait-on, change disposition, fault, attention | implemented |
+| **Lifetime of a view** | `internal/remote/client.go` (`WorkOutlivesExit`, `Detach`), `internal/tui3/keeper.go` | whether closing a window ends the conversation, asked as a capability rather than guessed from a hostname | implemented |
+| **Lifecycle and scheduling** | `task_run.go`, `task_ledger.go` | the graph, the frontier, state transitions, the five landings | no seam; owns several questions at once |
+| **Evidence and outcome** | `task_audit.go`, `task_claims.go`, `taskgrade.go`, `task_checks.go` | did the work hold, and what is the record of it | no seam; reached through calls, not a value |
+| **Workspace and change disposition** | `taskgit.go`, `treehold.go`, `task_branch_protection.go` | worktrees, branches, merges, holds | no seam; the landings call it inline |
+| **Storage** | `task_store.go`, `checkpoint.go`, `task_index.go`, `sessionfile.go`, `world.go` | what survives the process | no seam; `graph.checkpoint()` is called inline at many sites |
 
-## 5. The next two or three surgical extractions
+## 2. What each implemented seam actually guarantees, and what it does not
 
-Concrete, small, and each with a place to stand:
+### 2.1 Delivery (`mailbox.go`)
 
-1. **`deliverTaskNote` + `enqueueNote` + `enqueueSteeredLine` + `postTaskNews` → one
-   `inbox` seam** (~250 lines moved, no behavior change intended). The ordering comment in
-   `deliverTaskNote` — queue, then the fact, then the wake — becomes the seam's invariant
-   instead of a paragraph each caller has to honour. *Integration test boundary:* a parent
-   parked on two children, one of which reports while a person steers the parent; assert
-   exactly one model turn carries both, and that neither wake is lost. This is the lane the
-   root has said it will assign next; the envelope above is its shape.
+A message is addressed to a `conversationID` — a session plus a task number, where task 0 is
+the main chat. `deliverTo` walks the caller's ordered mailboxes and returns one receipt:
+`nobody`, `closed`, or `accepted`. The two implementations are an `*Agent` and a `roomSeat`,
+which resolves the live reader and appends under one hold of the room's lock, so a runner
+withdrawing its seat cannot interleave into a swallowed message.
 
-2. **`roomStateWord` (room.go, ~110 lines of switch) → the projection.** It is the last
-   large surface table and it is richer than the others: it prefers the kind's phase word,
-   the lifecycle line, the gap, then the hold. Three of those four are now facts the
-   projection already takes; the fourth (`stoppingWord` while a stop is in flight) is a
-   presence the projection does not have and should gain. *Integration test boundary:* the
-   header, the roster row and the composer's room segment say consistent things about one
-   node through a whole run — queued, working, checking, stopping, stopped.
+Origin is carried separately from kind. `fromRuntime`, `fromPerson` and `fromAgent` all
+arrive on one queue as user-role text, and the label is what keeps a descendant from raising
+its own authority by writing a sentence that sounds like the person. Kind chooses the queue:
+`msgProgress` goes to the ambient queue that no step drain reads, so telemetry cannot start
+a paid turn however it was addressed.
 
-3. **`TaskIndexEntry` gains the facts the record cannot currently carry** (merge word,
-   branch, hold), so that the history page can raise the unlanded-edits demand that only
-   live rows raise today. It is a persisted-format change and therefore wants its own
-   wave: additive fields, absence stays unknown, old rows keep their present reading.
-   *Integration test boundary:* a session that lands a conflicted branch and is then
-   reopened from the index alone shows the same demand it showed live.
+**Not guaranteed:** accepted is not read. A receipt says a live reader has the words on its
+queue and nothing else.
 
-## 6. Criticism of this plan
+### 2.2 Durable acknowledgement
 
-- **The projection could grow into a second engine.** It must stay a pure function over
-  facts. The moment it starts asking the graph questions, it becomes a place where
-  scheduling decisions hide behind a presentation name.
-- **Extraction can be motion without value.** Stage 1 is worth doing because it removes a
-  hand-repeated ordering invariant and a pointer-shaped recipient. Stages 4–6 are worth
-  doing only if a real defect keeps crossing those lines; moving code into more files is not
-  a result.
-- **The envelope invites over-typing.** Six kinds is a small set answering real differences.
-  A seventh should have to name a wake policy nothing else has.
-- **`task_audit.go` is the biggest untouched risk** and it is not first on this list, because
-  its interface to the lifecycle is narrow (a verdict) even though its internals are large.
-  Size is not the ordering criterion; crossings are.
-- **A record that cannot say whether the person got their answer is the real gap.** Both the
-  index and the projection can describe a run and its branch. Neither can say "the draft was
-  delivered". That is the field the delivery lane owns, and no amount of branch state infers
-  it.
+For news whose sender is owed an answer about the *recipient's record* rather than its queue,
+`durableDelivery` carries an id composed from checkpoint facts and a `settled` callback that
+fires when the recipient's own journal holds the line. Only that second fact is written down
+as announced, and a resume asks the journal (`sessionFile.recorded`) before re-telling a
+landing.
+
+**Not guaranteed — stated in the code and repeated here because it is the most likely thing
+to be misread as shipped:** this is **not exactly-once**. Dedupe covers what the journal
+holds; a session with no journal, or a journal line that never reached disk, is told again on
+resume, which is the direction it is designed to fail in. **Nothing here makes an external
+effect idempotent.** A task that already sent an email has sent it, and no acknowledgement in
+this runtime changes that.
+
+### 2.3 Assignment and revision (`assignment.go`)
+
+The admitted specification is frozen; corrections land as an overlay of `assignmentRevision`
+values, and `effective` is what the work is judged by. `directionOf(messageOrigin)` is the
+single mapping from origin to authority: **only a person's direction may move the
+done-condition.** An agent's coordination line, however it is phrased, is recorded and read
+but can never re-aim the work. A landing may not publish while a person's direction is
+unread, which is what closes the race between a correction and a worker's finalization —
+that boundary is on the node, not in the mailbox.
+
+**Not guaranteed:** discussion is not direction. There is no classifier model call deciding
+whether a sentence was "really" an instruction; the rule is structural (which door the words
+came through, and which origin they carry). An ordinary question asked in a room does not
+rewrite the acceptance condition, and a genuine correction typed anywhere *other* than into
+the task is not automatically routed to it — see §4.
+
+### 2.4 Admission context (`admission.go`)
+
+Each admission door compiles a bounded context: attributed quotes (`AdmissionQuote` carries
+speaker and source) and tool handles (`AdmissionHandle` carries call, tool, input and
+outcome, where the outcome may be `unknown`). Records are versioned and survive checkpoints.
+
+**Not guaranteed:** the selection is deliberately partial, and the partial-selection rule is
+stated in the file rather than hidden. This is **not a durable universal constraint ledger**:
+there is no promise that every relevant earlier statement a person made is present in the
+context a task receives. A handle is useful only because the tools available to the recipient
+can open it; an identifier alone would establish nothing.
+
+### 2.5 Result (`task_result.go`)
+
+The full answer is kept apart from the compact card, with a bounded excerpt and a retrievable
+overflow reference, and the outcome qualification is retained rather than flattened into
+"done". Delivery of a result is recorded separately from whether the work merged.
+
+### 2.6 End-of-turn handoff (`turnhandoff.go`)
+
+The measured failure this answers: a turn that correctly *handed work to a live task* was
+re-opened by an end-of-turn reader asking whether the outcome had arrived, and the model,
+with nothing to do, polled its own task. The seam asks the narrower question — did this turn
+put the current request's work into a task that is still live — and lets the node's own
+landing start the next turn, at wake prices, with the report in front of it. It is
+request-scoped and does not poll.
+
+### 2.7 Projection (`task_status.go`)
+
+One pure function over facts. It separates presence (`queued`, `working`, `waiting`,
+`finishing`, `done`, `incomplete`, `needs-look`, `stopped`, and a zero value for a state this
+build does not recognise) from what is being waited on, from source-control disposition, from
+fault, from attention. `Settled()` reads the lifecycle state, not the presentation word.
+Liveness is three-valued (`unknown` / `held` / `unclaimed`) so an absent answer stays absent
+instead of becoming "dead". Wire enums and checkpoint formats are unchanged.
+
+**Not guaranteed:** the project index still carries no merge word, branch or hold, so a
+record row cannot raise the unlanded-edits demand a live row raises. Harness phases are
+strings with no typed lifecycle; exactly one (`HarnessPhaseAsking`) is interpreted by name.
+
+### 2.8 Lifetime of a view (`internal/remote`, `internal/tui3`)
+
+`Welcome.Persistent` is the engine's own statement about whether it outlives the connection.
+`Agent.WorkOutlivesExit()` reports that fact; `Agent.Detach()` sends `MethodDetach` when it is
+true and falls back to interrupt-and-close when it is false. A terminal exit — including
+SIGHUP — detaches instead of ending the conversation, so running work, standing questions,
+drafts and parked messages survive. `/close` and an explicit stop are still endings, and the
+quit hint promises "keeps running" only for conversations that will actually keep running.
+
+## 3. UX first principles this architecture is answering
+
+1. **The main chat is for thinking, not for waiting.** A person describes what they want and
+   keeps talking. The turn ends when the request has been handed off, not when the outcome
+   exists (§2.6).
+2. **Workers own their results.** A task holds its own assignment, evidence and answer, and
+   reports when it has one. The main chat does not poll it, and a progress tick is not a
+   reason to pay for a turn (§2.1).
+3. **A person can steer a room.** Words said into a task room are recorded on that task as a
+   direction with an origin, and a person's direction moves what the work is judged by while
+   an agent's does not (§2.3).
+4. **The surface says what is true and no more.** A stop is not a failure, a queued node is
+   not running, an unknown liveness is not death, and a window closing is not an ending
+   (§2.7, §2.8).
+
+## 4. What is NOT achieved
+
+Stated plainly, because each of these is easy to read into the sections above.
+
+- **No distributed runtime and no exactly-once external effects.** Everything here is local
+  and in-process. The durable acknowledgement bounds *re-telling*, not *re-doing* (§2.2).
+- **No automatic main-chat steering broadcast.** A correction typed in the main chat is not
+  fanned out to running tasks. Steering is per-room today; routing a main-chat line to the
+  tasks it concerns would require deciding which tasks it concerns, which nothing here does.
+- **No universal durable constraint ledger.** Admission context is a bounded selection, not a
+  record of every constraint a person has ever stated (§2.4).
+- **No universal performance superiority.** See `IMPLEMENTATION.md`; the available
+  comparisons do not establish that this runtime is faster or cheaper in general.
+- **No extracted packages.** §1's seams are files, not import boundaries.
+
+## 5. How addresses, origins and messages extend later without cross-session infrastructure
+
+The shape is already the extension point, and it costs nothing today:
+
+- **Address, not pointer.** `conversationID` carries a session id because a task number is
+  minted per session and repeats across them. A later router would resolve a remote address to
+  a mailbox exactly the way `deliverTo` resolves local ones, and the callers would not change.
+- **`mailbox` is a two-method interface.** `address()` and `accept(delivery) deliveryReceipt`
+  are satisfiable by something that speaks to another process. The receipt already
+  distinguishes nobody / closed / accepted, which is the vocabulary a remote delivery needs.
+- **Origin is a field, not an inference.** Adding `fromRemotePerson` or an authenticated
+  peer origin is an enum case plus a policy decision in `directionOf`, not a rewrite of
+  authority checks scattered across call sites.
+- **Durable ids already exist.** `deliveryID` is composed from checkpoint facts, so replay
+  protection across a restart and replay protection across a peer are the same mechanism.
+
+What such a step would additionally require, and what deliberately does not exist now:
+authenticated authority (an origin claim from another process must be verified, not
+believed), admission policy (who may address this session at all), and replay protection at
+the boundary. **There is no discovery service, no registry, no global bus, and no
+cross-session permission model in this tree**, and nothing above should be read as a partial
+implementation of one.
+
+## 6. Proposed next work
+
+Ordered by (how often the current crossing breaks something) ÷ (cost of the move). None of
+this is started.
+
+1. **Landing / change disposition.** `task_run.go` and `task_ledger.go` hold five landings
+   that each decide a state, ask git about the branch, compose the note the model reads and
+   write a checkpoint. The wording of a landing lives in the file that owns the scheduler.
+   Move the branch questions behind the workspace seam and the note text next to the
+   projection's vocabulary. *Boundary test:* each merge outcome produces the same state and
+   the same person-facing reading; a protected checkout still keeps its branch.
+2. **`roomStateWord` into the projection.** The last large surface table. It prefers the
+   kind's phase word, then the lifecycle line, then the gap, then the hold; three of those
+   four are facts the projection already takes. The fourth — a stop in flight — is a presence
+   the projection should gain. *Boundary test:* header, roster row and composer segment agree
+   about one node through queued → working → checking → stopping → stopped.
+3. **Evidence as a value.** `task_audit.go`'s verdict becomes something the lifecycle
+   consumes rather than a call it makes. *Boundary test:* a refused verdict, an absent verdict
+   and an audit that never returns each produce their documented state without the scheduler
+   knowing how the audit ran.
+4. **Storage recorder**, then **one worker loop for main and task threads**. Both are worth
+   doing only if a real defect keeps crossing those lines. Moving code into more files is not
+   a result.
+
+## 7. Criticism of this plan
+
+- **The projection can grow into a second engine.** It must stay a pure function over facts.
+  The moment it asks the graph a question, scheduling hides behind a presentation name.
+- **The delivery seam can be mistaken for a transport.** It is a resolution-and-append rule
+  with an honest receipt. Every sentence about cross-session use in §5 is about *shape*.
+- **Kinds invite over-typing.** Four kinds answer real differences in queue and wake policy.
+  A fifth should have to name a policy none of the others has.
+- **`task_audit.go` remains the largest untouched risk** and is still not first, because its
+  interface to the lifecycle is narrow even though its internals are large. Size is not the
+  ordering criterion; crossings are.
+- **The record still cannot say whether the person got their answer.** The index and the
+  projection describe a run and its branch. Neither states "the draft was delivered", and no
+  branch state infers it.
