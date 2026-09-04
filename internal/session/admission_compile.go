@@ -1,27 +1,22 @@
 package session
 
-// One compiler, at every door work enters the graph through.
+// One compiler, reached by every door work enters the graph through: a person's
+// typed task (task_person.go), a model's proposal (task.go), the parts of a
+// division (task_divide_wip.go) and the automatic handover (route_judge.go). A
+// continuation re-runs a node that already holds its context (task_continue.go)
+// and a checkpoint restores it (task_store.go), so neither compiles a second
+// one. admission_law_test.go fails the build if a new door composes its own.
 //
-// The doors are a person's typed task (task_person.go), a model's proposal
-// (task.go), the parts of a division (task_divide_wip.go) and the automatic
-// handover that starts work nobody asked for (route_judge.go). A continuation
-// re-runs a node that already holds its context (task_continue.go) and a
-// checkpoint restores it (task_store.go), so neither compiles a second one.
-// admission_law_test.go is what keeps a new door from quietly composing its own.
+// This is supporting context, not a constraint record. The selection is bounded
+// in count, in bytes and in generations, so a constraint older than the window,
+// deeper than the inheritance limit or in the elided middle of a message is not
+// here. The authoritative copies stay where they were: the person's words on the
+// spec, the journal behind the origin pointer, the full results in the record.
 //
-// WHAT IT IS NOT. This is supporting context, not a constraint record: the
-// selection is bounded in count, in bytes and in generations, so a constraint
-// older than the window, deeper than the inheritance limit or further into a
-// message than the clip is NOT here. That is why every entry carries a source
-// and why the section rule says the record is partial. The authoritative copies
-// live where they always did — the person's own words on the spec, the journal
-// behind the origin pointer, and the full tool results in the chat log.
-//
-// HOW IT CHOOSES. Newest first to a byte budget, then printed oldest first.
-// Newest-first is the whole policy and it is aimed at one failure: a person's
-// twenty-first correction has to survive a budget the first twenty exchanges
-// could fill. Printing oldest-first afterwards keeps a correction below the
-// thing it corrects.
+// Selection is newest-first to a byte budget, then printed oldest-first. Newest
+// first is aimed at one failure — a twenty-first correction has to survive a
+// budget the first twenty exchanges could fill — and printing oldest-first
+// afterwards keeps a correction below the thing it corrects.
 
 import (
 	"bytes"
@@ -33,64 +28,57 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// The bounds, in bytes and counts because both are exactly measurable here.
 const (
-	// admissionQuoteLimit bounds one quoted exchange. A quote longer than this is
-	// ELIDED IN THE MIDDLE rather than cut off ([elide]): a person's last
-	// sentence is where a constraint most often is, and a head-only clip drops
-	// precisely that.
+	// admissionQuoteLimit bounds one quoted exchange. A longer one is elided in
+	// the middle rather than cut off ([elide]), because a person's last sentence
+	// is where a constraint most often is.
 	admissionQuoteLimit = 600
 	// admissionQuotesKept and admissionHandlesKept bound how many of each one
 	// admission carries.
 	admissionQuotesKept  = 8
 	admissionHandlesKept = 6
-	// admissionInputLimit keeps a handle an exact input reference — the path that
-	// was read, the pattern that was searched — rather than a tool name.
+	// admissionInputLimit bounds the opening of a call's arguments — enough to
+	// recognise the call, never a claim to be the whole of it.
 	admissionInputLimit  = 240
 	admissionDetailLimit = 240
-	// admissionInherited bounds what comes down from the parent's own admission,
+	// admissionInherited bounds what comes down from the parent's admission,
 	// below the local cap: what is local is what the work is about.
 	admissionInherited = 4
 	// admissionDepthLimit is how many generations one entry may travel.
 	admissionDepthLimit = 3
-	// admissionBudget is the rendered size of the whole context — one overall
+	// admissionBudget is the rendered size of the whole context, one overall
 	// bound rather than one per section.
 	admissionBudget = 5000
 	// admissionTurnsRemembered is how many of the person's turns a session keeps
-	// to select from. Larger than admissionQuotesKept on purpose: a session that
-	// remembered only as many as it carries could not prefer anything.
+	// to select from. Larger than admissionQuotesKept: a session that remembered
+	// only as many as it carries could not prefer anything.
 	admissionTurnsRemembered = 24
-	// admissionWindow bounds the WALK, not the selection: how far back down the
-	// transcript the compiler looks. Deep enough for a long working turn and its
-	// batches, which is what a proposal made mid-work quotes from.
+	// admissionWindow bounds the walk rather than the selection — how far back
+	// the compiler looks, deep enough for a long working turn and its batches.
 	admissionWindow = 200
-	// admissionOutcomesKept bounds the per-call outcome map. It is generous next
-	// to admissionHandlesKept because the compiler selects the newest calls out
-	// of a long turn.
+	// admissionOutcomesKept bounds the per-call outcome map, generously next to
+	// admissionHandlesKept because the compiler selects the newest calls out of a
+	// long turn.
 	admissionOutcomesKept = 512
 )
 
 // ── what the session keeps so this can be compiled ──────────────────────────
 
-// personTurn is one thing THE PERSON typed. It is kept because the transcript
-// cannot answer the question afterwards: every user-role message is user-role,
-// including the ones the session wrote itself, and the bit that says who spoke
-// does not survive the append.
-//
-// A line steered into a running node is the person typing, which is why this is
-// recorded where the person's words are recorded rather than at a conversation's
-// turn start.
+// personTurn is one thing the person typed. The transcript cannot answer that
+// question afterwards: every user-role message is user-role, including the ones
+// the session wrote itself, and the bit saying who spoke does not survive the
+// append. A line steered into a running node is the person typing too, which is
+// why this is recorded where the person's words are recorded.
 type personTurn struct {
-	// seq makes the EVENT the identity. The same sentence typed twice, before
-	// and after a correction, is two instructions, so retyping never collapses
-	// onto the earlier turn.
+	// seq makes the event the identity, so the same sentence typed again after a
+	// correction is a second instruction rather than the first one repeated.
 	seq  uint64
 	key  string
 	text string
 }
 
-// rememberPersonTurnLocked appends one of the person's turns to the bounded list
-// the compiler selects from. The caller holds a.mu.
+// rememberPersonTurnLocked appends one turn to the bounded list the compiler
+// selects from. The caller holds a.mu.
 func (a *Agent) rememberPersonTurnLocked(message ai.Message, text string) {
 	a.personSeq++
 	a.personTurns = append(a.personTurns, personTurn{
@@ -105,11 +93,9 @@ func (a *Agent) rememberPersonTurnLocked(message ai.Message, text string) {
 // transcript, so a conversation reopened tomorrow hands out work with the
 // context it had today.
 //
-// The journal marks which user-role lines the session wrote itself
-// ([sessionEntry.Note]), and that mark is the only thing that can tell the
-// person's words from a task's landing note after a restart. Without this the
-// records would silently be empty on every resumed session — which is a worse
-// answer than an older one, because nothing would say so.
+// The journal's own mark for lines the session wrote ([sessionEntry.Note]) is
+// the only thing that can tell the person's words from a task's landing note
+// after a restart.
 func (a *Agent) restorePersonTurnsLocked(messages []ai.Message) {
 	for _, message := range messages {
 		if message.Role != "user" || a.file.isNote(message) {
@@ -127,10 +113,9 @@ func (a *Agent) restorePersonTurnsLocked(messages []ai.Message) {
 // It is recorded at the batch's fan-out because that is where the answer exists:
 // a tool result in the transcript is a string, and the flag the tool returned is
 // gone by then. Guessing at it from the words is the invention this package
-// refuses to make, so an unrecorded call stays [AdmissionUnknown].
-//
-// IT IS PER-PROCESS. Nothing persists it, so work handed out after a restart
-// gets handles whose outcome is unknown and says so.
+// refuses to make, so an unrecorded call stays [AdmissionUnknown]. Nothing
+// persists it, so work handed out after a restart gets handles whose outcome is
+// unknown and says so.
 type callOutcome struct {
 	tool   string
 	failed bool
@@ -149,8 +134,8 @@ func (a *Agent) noteCallOutcomes(calls []ai.ToolCall, results []toolResult) {
 		a.callOutcomes = make(map[string]callOutcome, len(calls))
 	}
 	// Emptied rather than trimmed: trimming needs an order this map does not
-	// keep, and the compiler already answers "unknown" for an id it cannot find,
-	// which is the honest answer for an outcome nobody kept.
+	// keep, and an id the compiler cannot find is answered "unknown", which is
+	// the honest answer for an outcome nobody kept.
 	if len(a.callOutcomes) > admissionOutcomesKept {
 		a.callOutcomes = make(map[string]callOutcome, len(calls))
 	}
@@ -174,26 +159,21 @@ type admissionSource struct {
 	// said is the person's own turns, oldest first.
 	said []personTurn
 	// asked is the request the brief already prints verbatim (task_brief.go's
-	// [briefAskHeading]) and is excluded from the quotes: printing it twice under
-	// two headings reads as two instructions that happen to agree.
+	// [briefAskHeading]), excluded from the quotes so it is not printed twice
+	// under two headings.
 	asked string
 	// messages is the working transcript, oldest first.
 	messages []ai.Message
 	// outcomes says how a finished call came back, by call id.
 	outcomes map[string]callOutcome
-	// record is the journal these words and results can be read out of — a path
-	// `read` and `grep` open, which a conversation-store id is not (loop.go says
-	// the same of a fold marker). Empty for a session with no file, and then no
-	// entry draws a pointer.
-	//
-	// IT IS A PATH KNOWN WITHOUT READING ANYTHING. Placing each quote at its own
-	// LINE would mean parsing the whole journal at every admission — a cost on
-	// the hot path of spawning work, taken to produce a number that is ambiguous
-	// anyway for a sentence somebody typed twice. The words are the grep token
-	// for a quote and the call id is the grep token for a result.
+	// record is the journal these words and results can be read out of: a path
+	// read and grep open, which a conversation-store id is not. It is known
+	// without reading anything — placing each quote at its own line would mean
+	// parsing the whole journal on every spawn for a number that is ambiguous
+	// anyway. Empty for a session with no file, and then nothing draws a pointer.
 	record string
-	// scope names where these words were said, and is part of every id: a hash of
-	// the same sentence said by two people in two sessions is not one event.
+	// scope names where these words were said and is part of every id: the same
+	// sentence in two sessions is not one event.
 	scope string
 	// from is whose transcript this is: empty for the conversation, "task 7" for
 	// a node.
@@ -236,12 +216,11 @@ func compileAdmission(source admissionSource) AdmissionContext {
 	return context
 }
 
-// quoteCost and handleCost are THE BYTES THE ENTRY ACTUALLY COSTS THE WORKER'S
-// PROMPT: the rendered line, its bullet and its newline, measured through the
-// same [AdmissionQuote.line] the document is drawn with. Costing the fields
-// instead would under-count everything the rendering adds — the speaker, the
-// path, the tool names a line was said alongside, the separators — and the
-// budget would then be a bound on a number nobody reads.
+// quoteCost and handleCost are the bytes an entry actually costs the worker's
+// prompt: the rendered line with its bullet and newline, measured through the
+// same functions the document is drawn with. Costing the struct fields instead
+// would under-count the speaker, the path, the tool names and the separators,
+// and the budget would bound a number nobody reads.
 func quoteCost(quote AdmissionQuote) int {
 	return len("· "+quote.line()) + 1
 }
@@ -260,11 +239,10 @@ var admissionOverhead = len(admissionQuotesHeading) + len(admissionQuotesRule) +
 // admissionRoom is what the entries themselves may spend.
 func admissionRoom() int { return admissionBudget - admissionOverhead }
 
-// admissionEvidenceFloor is the room the quotes may NOT take. Quotes are
-// selected first, and a talkative conversation would otherwise spend the whole
-// budget on eight long paragraphs and leave a worker with no idea which calls
-// had already run — including the failed ones, which are the entries that save
-// it money. A third is enough for two or three handles at their own bounds.
+// admissionEvidenceFloor is the room quotes may not take. They are selected
+// first, and a talkative conversation would otherwise spend everything on eight
+// long paragraphs and leave the worker unable to see which calls had run —
+// including the failed ones, which are the entries that save it money.
 func admissionEvidenceFloor() int { return admissionRoom() / 3 }
 
 // admissionCandidate is one quotable message with the position it was found at.
@@ -276,9 +254,9 @@ type admissionCandidate struct {
 // admissionCandidates reads the transcript once and returns everything worth
 // quoting, in transcript order.
 func admissionCandidates(source admissionSource) []admissionCandidate {
-	// The person's turns are matched into the transcript by content key so they
-	// land in the order they were said. Two identical messages share a key and
-	// are separate turns, so each match is consumed once, oldest first.
+	// The person's turns are matched into the transcript by content key. Two
+	// identical messages share a key and are separate turns, so each match is
+	// consumed once, oldest first.
 	pending := make(map[string][]personTurn, len(source.said))
 	asked := strings.TrimSpace(source.asked)
 	for _, turn := range source.said {
@@ -305,10 +283,9 @@ func admissionCandidates(source admissionSource) []admissionCandidate {
 			if text == "" || strings.HasPrefix(text, stubMarker) {
 				continue
 			}
-			// KEYED BY CONTENT, NOT BY POSITION. A fold rewrites the transcript
-			// and every index after it moves, so an id made of the position would
-			// name a different line after every compaction — and could collide
-			// with an older quote inherited from a parent.
+			// Keyed by content, not by position: a fold moves every index after
+			// it, so a position-derived id would name a different line after each
+			// compaction and could collide with an inherited quote.
 			quote := AdmissionQuote{
 				ID: source.scope + "/a" + chatRefKey(message), Speaker: admissionAssistant,
 				Text: elide(text, admissionQuoteLimit), From: source.from, Source: source.record,
@@ -319,12 +296,9 @@ func admissionCandidates(source admissionSource) []admissionCandidate {
 			candidates = append(candidates, admissionCandidate{order: index, quote: quote})
 		}
 	}
-	// A TURN THE WORKING WINDOW NO LONGER HOLDS IS STILL SOMETHING THE PERSON
-	// SAID: compaction rewrites the transcript and a session outlives many of
-	// them. Those turns sit before everything in the window and IN THE ORDER THEY
-	// WERE HEARD — the newest of them is the newest thing the person said that
-	// this window cannot show, so it must be selected first and read last, like
-	// every other quote here.
+	// A turn the window no longer holds is still something the person said.
+	// Those turns sit before everything in the window and keep the order they
+	// were heard in, so the newest of them is still selected first and read last.
 	unmatched := make([]personTurn, 0, len(source.said))
 	for _, turn := range source.said {
 		waiting := pending[turn.key]
@@ -343,7 +317,7 @@ func admissionCandidates(source admissionSource) []admissionCandidate {
 }
 
 // personQuote is one of the person's turns as a quote: an id that numbers the
-// EVENT (see [personTurn.seq]) and the record it can be read out of.
+// event ([personTurn.seq]) and the record it can be read out of.
 func (s admissionSource) personQuote(turn personTurn) AdmissionQuote {
 	return AdmissionQuote{
 		ID:      s.scope + "/p" + strconv.FormatUint(turn.seq, 10),
@@ -352,7 +326,7 @@ func (s admissionSource) personQuote(turn personTurn) AdmissionQuote {
 }
 
 // sameAsk says whether a remembered turn is the request the brief already prints
-// in full. Prefix rather than equality because the remembered copy is bounded
+// in full. Prefix rather than equality, because the remembered copy is bounded
 // and the printed one is not.
 func sameAsk(turn, asked string) bool {
 	turn, asked = strings.TrimSpace(turn), strings.TrimSpace(asked)
@@ -369,20 +343,18 @@ func sameAsk(turn, asked string) bool {
 	return strings.HasPrefix(asked, turn)
 }
 
-// admissionSelfCall are the calls that HAND WORK OVER rather than find anything
-// out. Their arguments are the assignment itself — the brief, the deliverable,
-// the acceptance — which the document above already prints in full, so a handle
-// for one would repeat a whole contract inside the context of the task it
-// created.
+// admissionSelfCall are the calls that hand work over rather than find anything
+// out. Their arguments are the assignment itself, which the document above
+// already prints in full, so a handle for one would repeat a whole contract
+// inside the context of the task it created.
 var admissionSelfCall = map[string]bool{"propose_task": true, "divide_work": true}
 
 // admissionEvidence is the calls that already ran, newest first to what is left
 // of the budget, printed oldest first.
 //
-// A failure outranks a success of the same age, and that is the only weighting
-// here. It is not a reading of what the results mean: a successful call's body
-// is still readable behind its handle, while a dropped failure costs the next
-// worker the same failed call and the same money.
+// A failure outranks a success of the same age. That is not a reading of what
+// the results mean: a successful call's body is still readable behind its
+// handle, while a dropped failure costs the next worker the same failed call.
 func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 	room := admissionRoom() - *spent
 	if room <= 0 {
@@ -420,9 +392,9 @@ func admissionEvidence(source admissionSource, spent *int) []AdmissionHandle {
 			case !wasAnswered:
 				handle.Outcome = AdmissionUnanswered
 			}
-			// A pointer only where there is something to fetch. The record is the
-			// journal, which writes the call id on the result's own line, so the
-			// grep the rendered line names really does find it.
+			// A pointer only where there is something to fetch. The journal writes
+			// the call id on the result's own line, so the grep the rendered line
+			// names really does find it.
 			if wasAnswered {
 				handle.Source = source.record
 			}
@@ -503,10 +475,10 @@ func (c *AdmissionContext) inherit(parent AdmissionContext, seen map[string]bool
 		carried = append(carried, quote)
 	}
 	c.Quotes = append(carried, c.Quotes...)
-	// Evidence is inherited only when it FAILED. A handle addresses a result in
+	// Evidence is inherited only when it failed. A handle addresses a result in
 	// the producer's own record, which a grandchild that never made the call has
-	// no use for; what does travel is that the call went badly, which is what
-	// stops a family paying for it twice.
+	// no use for; what travels is that the call went badly, which is what stops a
+	// family paying for it twice.
 	carriedEvidence := make([]AdmissionHandle, 0, admissionInherited)
 	held := make(map[string]bool, len(c.Evidence))
 	for _, handle := range c.Evidence {
@@ -532,16 +504,15 @@ func (c *AdmissionContext) inherit(parent AdmissionContext, seen map[string]bool
 
 // ── the door ────────────────────────────────────────────────────────────────
 
-// admissionContext is what every door hands to the spec it is admitting.
-//
-// In a node it compiles the node's OWN transcript and inherits its parent's
-// admission, which is what makes a division carry both what the conversation
-// established and what the worker learned before it divided.
+// admissionContext is what every door hands to the spec it is admitting. In a
+// node it compiles the node's own transcript and inherits its parent's, which is
+// what makes a division carry both what the conversation established and what
+// the worker learned before it divided.
 func (a *Agent) admissionContext() AdmissionContext {
 	source := admissionSource{scope: "chat/" + a.id}
 	// The graph is read before the agent's own lock is taken. Both readings want
-	// a lock and this package takes the graph's while holding an agent's in other
-	// lanes, so the other order here would be the pair that deadlocks.
+	// a lock, and this package takes the graph's while holding an agent's in
+	// other lanes, so the other order here would be the pair that deadlocks.
 	if a.config.InTask && a.config.taskID != 0 {
 		source.from = "task " + strconv.FormatUint(a.config.taskID, 10)
 		source.scope = source.from + "/" + a.id
@@ -567,10 +538,6 @@ func (a *Agent) admissionContext() AdmissionContext {
 	}
 	file := a.file
 	a.mu.Unlock()
-	// THE RECORD IS A PATH AND NOT A STORE ID. `store:412` is not something a
-	// worker's `read` or `grep` can open (loop.go states the same rule for a fold
-	// marker), and the journal holds the whole conversation with each result
-	// under its own call id.
 	source.record = file.journalName()
 	return compileAdmission(source)
 }
@@ -584,13 +551,12 @@ func admissionWindowOf(messages []ai.Message) []ai.Message {
 	return append([]ai.Message(nil), messages[from:]...)
 }
 
-// elisionMark is what stands where a quote lost its middle.
+// elisionMark stands where a quote lost its middle.
 const elisionMark = " […] "
 
-// elide bounds a quote while KEEPING BOTH ENDS. A person's last sentence is
-// where a constraint most often is — "and don't touch the tests" — so a
-// head-only clip drops exactly the words a worker most needs. The cut is marked,
-// and the quote's Source is what leads to the rest.
+// elide bounds a quote while keeping both ends, because a head-only clip drops
+// the trailing sentence a constraint most often lives in. The cut is marked, and
+// the quote's Source leads to the rest.
 func elide(text string, limit int) string {
 	text = strings.TrimSpace(text)
 	if limit <= len(elisionMark)+2 || len(text) <= limit {
