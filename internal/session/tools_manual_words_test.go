@@ -32,11 +32,14 @@ func askManualOf(t *testing.T, agent *Agent, arguments map[string]string) string
 }
 
 const (
-	// personsPrivacyQuestion is what the person typed, and modelsRewrite is what
-	// deepseek/deepseek-v4-flash was measured sending instead (#307, #309).
-	// Neither is a phrasing invented here.
+	// personsPrivacyQuestion is what the person typed, and modelsRewrite is a
+	// stand-in for what the model sent instead (#307, #309). The measured
+	// rewrite — "who can see my files privacy file access" — reaches the
+	// permissions page on its own since that page was reworded to carry the
+	// privacy terms, so it no longer misses and cannot measure the wiring; a
+	// phrasing of the same shape that still misses is used instead.
 	personsPrivacyQuestion = "who can see my files in aforge"
-	modelsRewrite          = "who can see my files privacy file access"
+	modelsRewrite          = "who can view my files in aforge"
 	permissionsLabel       = "[permissions · "
 )
 

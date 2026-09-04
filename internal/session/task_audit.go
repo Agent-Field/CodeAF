@@ -2651,6 +2651,12 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	auditor.mu.Lock()
 	auditor.tools = tools
 	auditor.definitions = definitions
+	// AN AUDITOR DOES NOT NAME ANYTHING. Its journal is machinery, and a
+	// session namer running after the first verdict would be a cheap-looking
+	// errand whose floor is THIS agent — the high tier — so a fall-through
+	// is a naming call billed on the model that exists to judge work, not to
+	// label it (F38). The attempt is marked used so maybeTitle is a no-op.
+	auditor.titleTried = true
 	auditor.mu.Unlock()
 	return auditor, nil
 }
@@ -2763,7 +2769,22 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 		if err := decodeToolArguments(args, &fields); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
-		if refusal, ok := refuseOutsideDoor(fields.Command, door, voice); !ok {
+		command := fields.Command
+		if voice == auditShell {
+			// PRE-VALIDATE ONLY THE AUDITOR'S OWN BELT SO THE CONTRACT NEVER
+			// REFUSES ITS OWN COMMAND. The shared gate also serves fork hands,
+			// whose read-only door must continue to refuse every composition.
+			command = preparedAuditCommand(fields.Command)
+			if command != fields.Command {
+				fields.Command = command
+				rewritten, err := json.Marshal(fields)
+				if err != nil {
+					return "Invalid arguments: " + err.Error(), true, nil
+				}
+				args = rewritten
+			}
+		}
+		if refusal, ok := refuseOutsideDoor(command, door, voice); !ok {
 			return refusal, true, nil
 		}
 		return inner(ctx, args)

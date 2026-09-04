@@ -100,9 +100,9 @@ models-and-cost page has how to read one of those lines.
 What the log holds is the **shape** of a call — how many messages, how many tools, which
 ceiling, which lane — and not what you wrote. The one exception is the old
 `AFORGE_CALL_LOG_BODIES` pin, which still adds the whole request and reply to each line of
-`calls.jsonl` as well as turning the debug record on; the bodies are moving out of the log
-and into the record, so that the file you grep stays small and the run you are debugging
-cannot lose its own evidence to a rotation.
+`calls.jsonl` as well as turning the debug record on. With that pin on, the live file is
+allowed 256 MB (32 MB without it) so a long session keeps the bodies; the bodies are still
+moving out of the log and into the record, so that the file you grep stays small.
 
 ## Is my key in the debug record — what it never holds
 

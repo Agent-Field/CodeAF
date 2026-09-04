@@ -120,6 +120,11 @@ type Profile struct {
 	// FailWith is an HTTP status this lane answers with instead of streaming.
 	// Zero serves normally.
 	FailWith int
+	// Answer, when set, is the text this lane streams instead of the
+	// generated t0 t1 t2 tokens. It exists so a test can stage a
+	// degraded winner — the F20 mojibake — without inventing a second
+	// router. Tokens still bills the length.
+	Answer string
 	// Heartbeats emits the router's own comment lines before the first token,
 	// which is the free signal that tells a dead path apart from a slow lane.
 	Heartbeats bool
@@ -999,14 +1004,25 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			return
 		}
 	}
-	for token := 0; token < total; token++ {
+	if lane.Answer != "" {
 		if !pause() {
 			s.cancelled(lane.Name)
 			return
 		}
-		if !write("data: " + chunkJSON(id, ask.Model, named, fmt.Sprintf("t%d ", token)) + "\n\n") {
+		if !write("data: " + chunkJSON(id, ask.Model, named, lane.Answer) + "\n\n") {
 			s.cancelled(lane.Name)
 			return
+		}
+	} else {
+		for token := 0; token < total; token++ {
+			if !pause() {
+				s.cancelled(lane.Name)
+				return
+			}
+			if !write("data: " + chunkJSON(id, ask.Model, named, fmt.Sprintf("t%d ", token)) + "\n\n") {
+				s.cancelled(lane.Name)
+				return
+			}
 		}
 	}
 	if !write("data: " + finishJSON(id, ask.Model, named) + "\n\n") {
@@ -1038,8 +1054,12 @@ func (s *Server) serveWhole(w http.ResponseWriter, r *http.Request, clock Clock,
 		return
 	}
 	var answer strings.Builder
-	for token := 0; token < total; token++ {
-		fmt.Fprintf(&answer, "t%d ", token)
+	if lane.Answer != "" {
+		answer.WriteString(lane.Answer)
+	} else {
+		for token := 0; token < total; token++ {
+			fmt.Fprintf(&answer, "t%d ", token)
+		}
 	}
 	cost := lane.PriceIn*float64(record.PromptTokens) + lane.PriceOut*float64(total)
 	writeJSON(w, http.StatusOK, map[string]any{

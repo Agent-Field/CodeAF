@@ -108,6 +108,9 @@ func TestTheHandoffReceiptSaysTheSessionIsToldWhenTheWorkLands(t *testing.T) {
 	if !strings.Contains(tasksDescription, "Never to WAIT for handed-off work") {
 		t.Fatalf("the tasks description does not rule out polling:\n%s", tasksDescription)
 	}
+	if !strings.Contains(tasksDescription, "continue task N") {
+		t.Fatalf("the tasks description does not name the person's continue words:\n%s", tasksDescription)
+	}
 }
 
 // handoffReceipt is one admitted proposal's receipt, in the state named. It is

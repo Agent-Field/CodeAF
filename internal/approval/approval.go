@@ -203,7 +203,7 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
 	base := p.base(tool, args)
 	if tool != ToolBash {
-		return base
+		return p.maybeAllowReadOnly(tool, args, base)
 	}
 	command, ok := bashCommand(args)
 	if !ok {
@@ -249,8 +249,10 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	whole := strings.TrimSpace(command)
 
 	decision := base
-	if rule, matched := matchRule(p.BashPatterns, whole, segments, compound); matched {
+	matched := false
+	if rule, hit := matchRule(p.BashPatterns, whole, segments, compound); hit {
 		decision = Decision{Action: rule.Action, Rule: fmt.Sprintf("bash pattern %q", rule.Match)}
+		matched = true
 	}
 
 	// The critical table is a floor under allow and nothing more. An explicit
@@ -260,6 +262,14 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 		if hit, ok := criticalHit(command, segments); ok {
 			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("critical command %q", hit)}
 		}
+	}
+	// A read-only line — `git status` and its flags — is not a question in
+	// default (prompt) mode when the pattern list is empty. The moment the
+	// list has an author, that list is the whole answer: a project row that
+	// replaced the person's patterns must not quietly re-allow git status
+	// underneath (cmd/aforge's TestAProjectBashRowReplacesTheRememberedOne).
+	if !matched && len(p.BashPatterns) == 0 && p.liftsReadOnly(ToolBash) && decision.Action == ActionPrompt && readOnlyBash(command) {
+		return Decision{Action: ActionAllow, Rule: "read-only"}
 	}
 	return decision
 }

@@ -180,7 +180,7 @@ func TestTheAlwaysKeyIsHiddenAndInertOnAQuestionThatCannotRememberIt(t *testing.
 // reading. It can only ever deny — an expiry that approved would make "prompt"
 // mean "allow" on any unattended screen — and any keypress at all ends it, since
 // a key is evidence of a person mid-decision.
-func TestTheApprovalCountdownDeniesAtExpiryAndPausesOnAnyKey(t *testing.T) {
+func TestTheApprovalCountdownPausesAtExpiryAndNeverDenies(t *testing.T) {
 	at := time.Now()
 	agent, a := wired([]session.Event{
 		toolBegin("bash", "bash rm -rf build"),
@@ -201,15 +201,18 @@ func TestTheApprovalCountdownDeniesAtExpiryAndPausesOnAnyKey(t *testing.T) {
 	if len(agent.answers) != 0 {
 		t.Fatalf("the clock answered early: %+v", agent.answers)
 	}
-	// Past it, the call is refused and the row says who said so — which is
-	// nobody.
+	// Past it the call is NOT refused: silence is not a no (F41). The engine
+	// stays blocked on the question and the row says it paused.
 	at = at.Add(2 * time.Second)
 	drive(t, a, frameMsg{})
-	if len(agent.answers) != 1 || agent.answers[0].allow {
-		t.Fatalf("the clock resolved %+v, want a deny", agent.answers)
+	if len(agent.answers) != 0 {
+		t.Fatalf("the clock answered on the person's behalf: %+v", agent.answers)
 	}
-	if !strings.Contains(plain(frame(a)), consentExpiredWord) {
-		t.Fatalf("the expired row is not annotated:\n%s", plain(frame(a)))
+	if !strings.Contains(plain(frame(a)), "paused") {
+		t.Fatalf("the expired row does not say it paused:\n%s", plain(frame(a)))
+	}
+	if !a.asking() {
+		t.Fatal("the question went away at expiry instead of waiting")
 	}
 
 	// A key that answers nothing still stops the clock, for good.

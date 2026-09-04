@@ -87,8 +87,39 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// base's own answer about carrying a preference and not its hostname.
 	if !c.carriesPreferences() || c.routing() == RoutingOff {
 		plan.Alts = nil
+	} else if len(plan.Alts) == 0 {
+		// THE CHOOSER RETURNS THE ZERO CHOICE WHEN IT HOLDS FEWER THAN TWO
+		// BELIEFS. That is right about ranking and wrong about waiting: a
+		// later turn on a model this process has barely measured still has
+		// a sheet of other machines, and leaving them off is how a stall
+		// sat at "all lanes slow" for 129s with arms:None (F33). Routing
+		// and waiting are two questions; an empty Choice is not an empty
+		// frontier.
+		plan.Alts = sheetAlts(model, plan.Lane)
 	}
 	return plan
+}
+
+// sheetAlts is where a rescue can go when the chooser named nothing. First
+// is left unknown on purpose: a sheet row is a prior, not a measurement,
+// and the ceiling still acts without one.
+func sheetAlts(model, head string) []control.Alternative {
+	rows := lanes.Default().Sheet().Rows(model)
+	if len(rows) == 0 {
+		return nil
+	}
+	seen := map[string]bool{strings.ToLower(strings.TrimSpace(head)): true}
+	alts := make([]control.Alternative, 0, len(rows))
+	for _, row := range rows {
+		lane := strings.TrimSpace(row.ID.Lane)
+		key := strings.ToLower(lane)
+		if lane == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		alts = append(alts, control.Alternative{Lane: lane, Rate: row.Ratep50})
+	}
+	return alts
 }
 
 // equalLane compares two lane names the way every other comparison in this

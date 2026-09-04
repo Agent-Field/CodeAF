@@ -63,6 +63,57 @@ func TestTheSameWriteLandsOnceTheNodeHasFinished(t *testing.T) {
 	}
 }
 
+// A WORKTREE NODE THAT HAS WRITTEN A FILE OWNS THAT FILE. The directory stays
+// the person's (the test above); the path does not. F36 was the chat editing
+// cart.py while a running worktree task already had it, then spawning another
+// task at the same files — three writers, one logical file, a tree that
+// matched none of them.
+func TestAChatEditIsBlockedWhileATaskOwnsTheFile(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := &TaskGraph{nodes: map[uint64]*TaskNode{}, order: []uint64{2}}
+	graph.nodes[2] = &TaskNode{
+		graph: graph, id: 2, state: TaskRunning, started: time.Now(),
+		spec:     taskSpec{title: "discount code entry"},
+		worktree: filepath.Join(workspace, ".aforge", "trees", "2"),
+		branch:   "aforge/task-2",
+		wrote:    []string{"cart.py"},
+	}
+	agent.config.tasker = graph
+	call := scopedCall("edit", filepath.Join(workspace, "cart.py"))
+
+	_, result, ok := (treeClaimGuard{agent: agent}).PreAction(context.Background(), nil, nil, call)
+	if ok {
+		t.Fatal("the chat edited a file a running task owns")
+	}
+	if !result.isError {
+		t.Fatal("the refusal did not come back as an error the model must read")
+	}
+	if strings.Contains(result.text, "\n") {
+		t.Fatalf("the refusal is not one line: %q", result.text)
+	}
+	if !strings.Contains(result.text, "task 2") || !strings.Contains(result.text, "discount code entry") {
+		t.Fatalf("the refusal does not name the owner: %q", result.text)
+	}
+	if !strings.Contains(result.text, "cart.py") {
+		t.Fatalf("the refusal does not name the file: %q", result.text)
+	}
+
+	// ONE FILE, NOT THE TREE. A path the node has not written is still the
+	// person's, which is the half [TestAWorktreeIsolatedNodeDoesNotClaimTheWorkspace]
+	// already holds.
+	if _, _, ok := (treeClaimGuard{agent: agent}).PreAction(context.Background(), nil, nil,
+		scopedCall("edit", filepath.Join(workspace, "readme.md"))); !ok {
+		t.Fatal("the task locked a file it does not own")
+	}
+
+	// AND THE SAME EDIT LANDS THE MOMENT THE NODE HAS. The claim is the node
+	// running with that path on its list, so it ends when the node does.
+	graph.nodes[2].state = TaskDone
+	if _, _, ok := (treeClaimGuard{agent: agent}).PreAction(context.Background(), nil, nil, call); !ok {
+		t.Fatal("the file was still held after the task landed")
+	}
+}
+
 // (vii) A WORKTREE-ISOLATED NODE CLAIMS NOTHING. Its writes land in a copy
 // nobody else is in and come home through a merge, which is the machinery the
 // in-place road lacks — so the person keeps their own repository.

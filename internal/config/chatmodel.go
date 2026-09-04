@@ -49,3 +49,12 @@ func ChatModelAt(profileDir string) string {
 func WriteChatModel(profileDir, slug string) error {
 	return writeProfileValue(profileDir, KeyChatModel, strings.TrimSpace(slug))
 }
+
+// FirstPrompt reports whether this profile has never chosen a conversation
+// model. A fresh install's first typed line is this: [ChatModelAt] is empty
+// and the talk slot is still the build default. The hedge uses it so a stall
+// there names `/model` instead of sitting silent until the ninety-second
+// first-token cut (F42).
+func FirstPrompt(profileDir string) bool {
+	return ChatModelAt(profileDir) == ""
+}

@@ -111,9 +111,11 @@ func (g *TaskGraph) claimOver(path string, writer uint64, writerTree string) (tr
 		if node == nil || node.state != TaskRunning {
 			continue
 		}
-		// A NODE WITH A BRANCH OF ITS OWN CLAIMS NOTHING. Its writes land in a
+		// A NODE WITH A BRANCH OF ITS OWN CLAIMS NO TREE. Its writes land in a
 		// worktree nobody else is in and come home through a merge, which is the
 		// machinery this whole question exists because the in-place road lacks.
+		// The FILES it has already written are a different claim ([fileOwner]):
+		// the person's directory stays theirs, those paths do not.
 		if node.merge != mergeInPlace && strings.TrimSpace(node.branch) != "" {
 			continue
 		}
@@ -146,6 +148,81 @@ func (g *TaskGraph) claimOver(path string, writer uint64, writerTree string) (tr
 		return treeClaim{}, false
 	}
 	return claim, true
+}
+
+// fileOwner answers who holds the FILE `relative` is, from the point of view of
+// `writer` — the node id the writing agent belongs to, and 0 for the
+// conversation itself.
+//
+// THE MEASURED FAILURE. Audit F36: a worktree task was writing cart.py, the
+// chat edited the same path on the person's tree, a second task was spawned at
+// the same files, and the person's branch ended matching none of them. The
+// worktree kept the bytes apart. It did not keep the logical file to one
+// owner, and a merge cannot invent one afterwards.
+//
+// THE LAW: A RUNNING WORKTREE NODE OWNS EVERY PATH IT HAS ALREADY WRITTEN.
+// A write of one of those paths from anywhere else — the chat, a sibling
+// node — is refused with the holder named. One owner per file at a time.
+//
+// IT IS A FACT AND NOT AN INTENT, the same bar [TaskNode.wrote] is held to:
+// a path is owned because a saving call came back, never because the brief
+// named it. A node that has written nothing yet owns nothing, which is why
+// [TestAWorktreeIsolatedNodeDoesNotClaimTheWorkspace] still holds — the
+// person is not locked out of their repository for a node that has not
+// touched a file.
+//
+// In-place nodes are not asked here. They already claim the whole tree
+// ([claimOver]), and a second sentence about one file would be a second
+// wording for a refusal the tree already made.
+func (g *TaskGraph) fileOwner(relative string, writer uint64) (treeClaim, bool) {
+	relative = filepath.ToSlash(filepath.Clean(strings.TrimSpace(relative)))
+	if g == nil || relative == "" || relative == "." || strings.HasPrefix(relative, "../") {
+		return treeClaim{}, false
+	}
+	var (
+		holder  *TaskNode
+		claim   treeClaim
+		started time.Time
+	)
+	g.mu.Lock()
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node == nil || node.state != TaskRunning {
+			continue
+		}
+		if node.merge == mergeInPlace || strings.TrimSpace(node.branch) == "" {
+			continue
+		}
+		if !ownsWritten(node.wrote, relative) {
+			continue
+		}
+		if holder != nil && !node.started.Before(started) {
+			continue
+		}
+		holder, started = node, node.started
+		claim = treeClaim{id: node.id, title: node.spec.title, dir: strings.TrimSpace(node.worktree)}
+	}
+	g.mu.Unlock()
+
+	if holder == nil || claim.id == writer {
+		return treeClaim{}, false
+	}
+	if writer != 0 && holder.family()[strconv.FormatUint(writer, 10)] {
+		return treeClaim{}, false
+	}
+	return claim, true
+}
+
+// ownsWritten reports whether `relative` is one of the paths a node has already
+// put its name to. Exact slash-spelled paths, no patterns — the same law
+// [SharedFiles] states, asked of one name.
+func ownsWritten(wrote []string, relative string) bool {
+	for _, path := range wrote {
+		if filepath.ToSlash(filepath.Clean(strings.TrimSpace(path))) == relative {
+			return true
+		}
+	}
+	return false
 }
 
 // treeCovers reports whether `path` is the tree `dir` or something under it.
@@ -197,6 +274,17 @@ func (g treeClaimGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, ca
 		return call, toolResult{}, true
 	}
 	claim, held := graph.claimOver(path, g.agent.config.taskID, g.agent.config.Workspace)
+	reason := ""
+	if held {
+		reason = treeHeldRefusal(claim, shown)
+	} else if claim, held = graph.fileOwner(shown, g.agent.config.taskID); held {
+		// ONE LINE, AND THE HOLDER IS IN IT. A file refusal that explains the
+		// machinery (worktree, merge, come-home) is a refusal the chat argues
+		// with or tries to route around; a refusal that names the task is one
+		// it can wait on. Auto-routing the edit into the task is a different
+		// product and is not this check.
+		reason = fileHeldRefusal(claim, shown)
+	}
 	if !held {
 		return call, toolResult{}, true
 	}
@@ -206,7 +294,7 @@ func (g treeClaimGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, ca
 	// behind the holder, and the ending names the holder instead
 	// (task_run.go's [endingOfClaim]).
 	graph.node(g.agent.config.taskID).noteBlocked(taskStopName(claim.id, claim.title))
-	return call, toolResult{text: treeHeldRefusal(claim, shown), isError: true}, false
+	return call, toolResult{text: reason, isError: true}, false
 }
 
 // treeHeldRefusal is what the model reads instead of a write.
@@ -223,4 +311,14 @@ func treeHeldRefusal(claim treeClaim, shown string) string {
 			"That work is writing there until it finishes — wait for its report and make this change "+
 			"on top of what it did, or change something outside %s.",
 		shown, taskStopName(claim.id, claim.title), filepath.ToSlash(filepath.Clean(claim.dir)))
+}
+
+// fileHeldRefusal is what the model reads instead of a write of one owned file.
+//
+// It is one line on purpose: the file, the task that holds it, and that
+// nothing was written. A second sentence about waiting or routing would be
+// a second product.
+func fileHeldRefusal(claim treeClaim, shown string) string {
+	return fmt.Sprintf("%s is held by %s, so nothing was written.",
+		shown, taskStopName(claim.id, claim.title))
 }

@@ -54,7 +54,7 @@ import (
 // comment beside it is free. Every rule the old description stated is still
 // stated; what went is the rhetoric, and the sentences the schema's own fields
 // say better. A rule belongs in the field it governs and appears ONCE.
-const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other aforge windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered or resolved. Rows carry artifact and transcript URIs that read takes verbatim."
+const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers, continues or settles one. \"continue task N\" / \"keep going on task N\" is id plus continue on a settled task — never a narration and never a new propose_task. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered, continued or resolved. Rows carry artifact and transcript URIs that read takes verbatim."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -78,7 +78,8 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	// request of every turn while this comment is free.
 	`"lines":{"type":"integer","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
 	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
-	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks, arriving in its loop as the person's own words. Brief and acceptance never change; propose the work again if the objective was wrong. With resolve, it is the REASON."},` +
+	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks. With resolve, it is the REASON; with continue, this round's finding."},` +
+	`"continue":{"type":"boolean","description":"The door for \"continue task N\" / \"keep going on task N\". Re-arm that settled task: same node, brief and working copy. A new propose_task is the wrong door."},` +
 	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."}` +
 	`},"additionalProperties":false}`
 
@@ -88,13 +89,14 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 // refusing the number would be this tool failing a call that named exactly what
 // it meant.
 type tasksArguments struct {
-	Query   string          `json:"query"`
-	Limit   int             `json:"limit"`
-	Scope   string          `json:"scope"`
-	ID      json.RawMessage `json:"id"`
-	Lines   int             `json:"lines"`
-	Say     string          `json:"say"`
-	Resolve string          `json:"resolve"`
+	Query    string          `json:"query"`
+	Limit    int             `json:"limit"`
+	Scope    string          `json:"scope"`
+	ID       json.RawMessage `json:"id"`
+	Lines    int             `json:"lines"`
+	Say      string          `json:"say"`
+	Continue bool            `json:"continue"`
+	Resolve  string          `json:"resolve"`
 }
 
 // The two words `scope` takes. They are constants because the schema's enum,
@@ -129,13 +131,14 @@ func taskScopeWord(raw string) (string, bool) {
 // onto the work that is running right now. It is the ONLY way the model reaches
 // either, for [Agent.jobsTool]'s reason: one vocabulary per kind of thing.
 //
-// ── THREE OPS, ONE NOUN ──
+// ── FOUR OPS, ONE NOUN ──
 //
 // The tool is shaped by what the model does with it, and what it does is a
 // sequence: PULL the state of work it handed off, DECIDE whether it is going
-// the right way, and STEER it if it is not. Those are one conversation about
-// one task, so they are one tool with one id — not a search tool, a read tool
-// and a steering tool, each with its own spelling of "which task".
+// the right way, STEER it if it is not, and CONTINUE it when it has ended.
+// Those are one conversation about one task, so they are one tool with one
+// id — not a search tool, a read tool, a steering tool and a continue tool,
+// each with its own spelling of "which task".
 //
 //   - no id: the search, unchanged. The person referred to earlier work and
 //     pointed at nothing.
@@ -145,6 +148,9 @@ func taskScopeWord(raw string) (string, bool) {
 //   - id and say: the person's door into a running node ([Agent.SteerTask]),
 //     opened for the model. It is the same door and the same law: talk to the
 //     worker, never a new target.
+//   - id and continue: the same node again ([Agent.ContinueTask]), after it
+//     failed or finished. Same brief, same working copy, last report as this
+//     round's finding. A new propose_task is the wrong door.
 func (a *Agent) tasksTool() bare.Tool {
 	return bare.Tool{
 		Name:        "tasks",
@@ -167,6 +173,9 @@ func (a *Agent) tasksTool() bare.Tool {
 			if token == "" {
 				if strings.TrimSpace(parsed.Say) != "" {
 					return "Invalid arguments: say needs an id — it goes to one running task, not to a search", true, nil
+				}
+				if parsed.Continue {
+					return "Invalid arguments: continue needs an id — it re-arms one settled task, not a search", true, nil
 				}
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
@@ -432,8 +441,8 @@ func taskToken(raw json.RawMessage) string {
 	return strings.TrimSpace(text)
 }
 
-// oneTask is the id half of the tool: read that task, say something to it, or
-// resolve it.
+// oneTask is the id half of the tool: read that task, say something to it,
+// continue it, or resolve it.
 //
 // THE ROW COMES FROM THE INDEX AND THE PRESENT COMES FROM THE GRAPH, and the
 // join is here because they answer different halves of one question. The index
@@ -450,6 +459,13 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 	rows := a.taskRows()
 	entry, found := LookupTask(rows, token)
 	if !found {
+		// CONTINUE ON A MISS IS NOT "NO TASK". The person named a number and
+		// asked to re-arm it; answering as a search miss lets the model
+		// narrate the work as if it had resumed (R1). The honest fact is
+		// that this session has no graph for that id.
+		if parsed.Continue {
+			return continueNoGraph(token, TaskIndexEntry{}), true, nil
+		}
 		if a.config.taskID != 0 {
 			// Scoped, so the miss is a different fact: the id may well name real
 			// work, and what it does not name is anything this node handed out.
@@ -460,6 +476,9 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 	id, here := a.thisSessionTask(entry)
 	if resolution := strings.TrimSpace(parsed.Resolve); resolution != "" {
 		return a.resolveOneTask(entry, id, here, TaskResolution(strings.ToLower(resolution)), parsed.Say)
+	}
+	if parsed.Continue {
+		return a.continueOneTask(entry, id, here, parsed.Say)
 	}
 	if say := strings.TrimSpace(parsed.Say); say != "" {
 		if !here {
@@ -497,6 +516,29 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 	return taskLiveText(live, state), false, nil
 }
 
+// continueOneTask is the continue verb: the model re-arming a settled node
+// ([Agent.ContinueTask]) instead of proposing a new one.
+//
+// IT IS THIS SESSION'S GRAPH OR NOTHING, exactly as steering is. A failed
+// task from a conversation that has ended is a row in the index and a
+// branch in the repository; there is no graph left to put it back on, and
+// telling the model it had continued something would be this tool inventing
+// an effect it did not have.
+func (a *Agent) continueOneTask(entry TaskIndexEntry, id uint64, here bool, words string) (string, bool, error) {
+	if !here {
+		return continueNoGraph(entry.ID, entry), true, nil
+	}
+	if err := a.ContinueTask(id, words); err != nil {
+		return capitalized(err.Error()) + ".", true, nil
+	}
+	if strings.TrimSpace(words) != "" {
+		return fmt.Sprintf("continuing task %s from where it left off, with your words as this round's finding. Same node, same working copy, same brief. %s",
+			entry.ID, taskHandoffWakeSentence), false, nil
+	}
+	return fmt.Sprintf("continuing task %s from where it left off. Same node, same working copy, same brief; the last report is this round's finding. %s",
+		entry.ID, taskHandoffWakeSentence), false, nil
+}
+
 // resolveOneTask is the resolve verb: the model settling a node whose auditor
 // never gave a verdict ([Agent.ResolveUnverified]).
 //
@@ -523,6 +565,31 @@ func (a *Agent) resolveOneTask(entry TaskIndexEntry, id uint64, here bool, resol
 	}
 }
 
+// continueNoGraph is the honest refusal when this session cannot re-arm the
+// named task: unknown id, another conversation's row, a number this graph
+// never held. It names the miss and the real road — read the branch or
+// working copy the row still points at — and never a sentence that reads as
+// progress. The two call sites (a lookup miss, and a row from an earlier
+// window) share one string so the model cannot be taught two stories about
+// the same fact.
+func continueNoGraph(token string, entry TaskIndexEntry) string {
+	id := strings.TrimSpace(entry.ID)
+	if id == "" {
+		id = strings.TrimSpace(token)
+	}
+	if where := taskWhereWord(entry); where != "" && where != taskWhereNowhere {
+		return fmt.Sprintf("There is no graph in this session for task %s, so it cannot be continued here. Its work is at %s — read that branch or working copy; do not narrate progress as if the task resumed. Propose what still needs doing only if the objective itself changed.",
+			id, where)
+	}
+	return fmt.Sprintf("There is no graph in this session for task %s, so it cannot be continued here. Call tasks with no arguments to see what this conversation holds; a number from another window is not this session's to re-arm.",
+		id)
+}
+
+// taskWhereNowhere is the emptiness-law stand-in [taskWhereWord] returns when
+// a row names no artifact and no transcript. [continueNoGraph] treats it as
+// no road, so the refusal does not point at a place that is not there.
+const taskWhereNowhere = "nowhere this session can point at"
+
 // taskWhereWord names where a task's work is, for a reader who has just been
 // told this session cannot touch it: the artifact if the row has one, else the
 // transcript, else nothing worth pointing at.
@@ -533,7 +600,7 @@ func taskWhereWord(entry TaskIndexEntry) string {
 	if entry.TranscriptURI != "" {
 		return entry.TranscriptURI
 	}
-	return "nowhere this session can point at"
+	return taskWhereNowhere
 }
 
 // taskRows is what this tool answers from: the project's whole index in a

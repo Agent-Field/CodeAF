@@ -109,7 +109,8 @@ const (
 	EventReasoning
 	// EventConsentRequest asks the person whether one tool call may run
 	// (consent.go). It carries the call's ID, Tool, Args and gloss in Hint, and
-	// the policy's own phrasing of why it is asking in Rule.
+	// the policy's own phrasing of why it is asking in Rule. Wait is
+	// ConsentWaiting: silence is not a no.
 	//
 	// It is a QUESTION, not a report: the call is blocked inside the tool batch
 	// until [Agent.ResolveConsent] answers it or the turn's context dies, and a
@@ -715,6 +716,12 @@ type Event struct {
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
+
+	// Wait is how silence is held on EventConsentRequest: ConsentWaiting means
+	// the question stays up. A surface clock that recorded "denied" after a
+	// few seconds was F41, and this field is how the engine says that is not
+	// the mode. Empty on every other kind.
+	Wait string
 
 	// Memo says whether a ConsentToolSession answer to this question WOULD DO
 	// ANYTHING. It is set on EventConsentRequest and false everywhere else.
@@ -2182,6 +2189,11 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	cancel    context.CancelFunc
+	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
+	// It sits outside mu and holds its own lock: Interrupt is the one call that
+	// must always be answerable, and the handlers it serializes must never need
+	// the session lock to ask whether they may fire.
+	interrupt interruptFan
 	// generation is the CURRENT provider request, independently cancellable from
 	// the turn around it (steer.go). A steer cuts this context and leaves cancel
 	// alone, so the same turn can record the partial answer, land the person's

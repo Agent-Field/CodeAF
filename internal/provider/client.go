@@ -1144,6 +1144,32 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 	return cut
 }
 
+// rescuedStreamCut reads a COMPLETE rescue for the F20 failure plane — a
+// stream that closed after a hedge or walk and is not language — and
+// returns the cut to fail the arm with, or nil for a clean answer.
+//
+// It answers only on a rescue (`hedgeLane` is set). The primary of a
+// hedged race is judged in [hedgeRace.refuseCorrupt], because that is
+// the moment the race would otherwise name a winner.
+func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, text string) *StreamCut {
+	if hedgeLaneFrom(ctx) == "" {
+		return nil
+	}
+	err := rescuedStreamError(response)
+	if err == nil {
+		return nil
+	}
+	cut, ok := CutFrom(err)
+	if !ok {
+		cut = &StreamCut{Reason: CutBabble}
+	}
+	c.stampCut(cut, served, began, text)
+	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
+	c.releaseEndpoint(ctx, c.modelFor(request))
+	return cut
+}
+
 // completeWithMessagesStreaming performs one completion over a GUARDED stream:
 // the silence bounds, the wall and the degeneration guard in streamguard.go all
 // ride on it. The accumulated response is the same shape callers already parse
@@ -1784,6 +1810,18 @@ func (c *Client) completeWithMessagesStreaming(
 	// exactly as the learning below: the leak is a property of the endpoint,
 	// not of the transport that carried it.
 	if cut := c.machineryCut(ctx, request, response, served, began, content.String()); cut != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+		})
+		c.bill(ctx, c.modelFor(request), response)
+		return nil, false, cut
+	}
+	// A RESCUE IS NOT THE TURN UNTIL IT READS AS LANGUAGE. The hedge used
+	// to accept the first arm that closed, and F20 persisted the mojibake
+	// that arrived after a 429. The check is here, before StreamFinished,
+	// so a corrupt rescue leaves as a failed arm and never as a response.
+	if cut := c.rescuedStreamCut(ctx, request, response, served, began, content.String()); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,

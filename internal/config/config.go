@@ -25,6 +25,10 @@ const (
 	// floating alias, so a new dated snapshot is picked up without a code change.
 	// 1M context, ~$0.09/M in and ~$0.18/M out, and it advertises both
 	// structured_outputs and reasoning on OpenRouter.
+	//
+	// A first-prompt stall on this default names `/model` rather than hanging
+	// silent (F42). The slug itself is not swapped for a more expensive one:
+	// the cheap default stays, and the stall is what must recover visibly.
 	DefaultModel = "~deepseek/deepseek-v4-flash-latest"
 
 	// DefaultVoiceModel is the independent speech-to-text slot. Voice never

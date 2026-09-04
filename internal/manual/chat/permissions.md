@@ -12,7 +12,9 @@ The offer line reads, literally:
 allow? [y] yes · [n] no · [a] always, this command · [esc] cancel
 ```
 
-with a countdown on the end — ` · 7s`, or ` · paused` once you have touched it.
+with the wait mode on the end — ` · 7s`, or ` · paused` once you have touched
+it or the reminder expired, or ` · waiting` when the countdown is off. Silence
+is never a no.
 
 - `y` — allow this one call. The transcript row is annotated `allowed`.
 - `n` — refuse this one call. The row is annotated `denied`. The model is handed
@@ -61,26 +63,30 @@ rules' own words. It can read:
 
 The same sentence is what the model is told when a call is refused.
 
-## The countdown: silence denies
+## The countdown: silence waits — why an unanswered approval is not denied
 
-A question that is not answered answers itself, and the answer is **no**.
+A question that is not answered stays a question. Silence is never a **no**.
 
-The wait is **10 seconds** by default. The setting is
+The reminder is **10 seconds** by default. The setting is
 `approval.timeout_seconds`, labelled "approval countdown" in `/settings`.
 
-At expiry aforge **denies** the call — it never allows it — and the transcript
-row keeps the words `denied · no answer`.
+At expiry aforge **pauses** and keeps waiting — it never denies the call, and
+it never allows it. The offer tail reads `paused` (or `waiting` when the
+countdown is off) and the work stays blocked until you answer. The transcript
+row is not annotated `denied · no answer`; that wording was a previous build
+answering no for you.
 
 Any key press, and any mouse press inside the block, pauses the clock
 **permanently**. There is no way to start it again; the tail then reads
 ` · paused` and the question waits for you. Setting the countdown to `0` turns
-the clock off entirely, and every question waits forever.
+the clock off from the start, and every question waits forever.
 
 The clock **only runs while that terminal window has the keyboard**. Switch to
 another window and it stops where it is; come back and it starts again from the
 full 10 seconds. See "Does my other window keep working when I switch away".
 
-The clock is drawn in whole seconds.
+The clock is drawn in whole seconds. The wait mode is on the tail so what
+silence will do is not hidden.
 
 ## Does my other window keep working when I switch away — why my other session looked frozen
 
@@ -121,8 +127,9 @@ Two things tell you a window is waiting while you are elsewhere:
   says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
 
 If your terminal does not report focus to the programs inside it, aforge
-assumes the window is focused — so the countdown runs as it always did and no
-banner is sent. There is no setting for either; both are on.
+assumes the window is focused — so the countdown runs, and at expiry it pauses
+rather than answering no, and no banner is sent. There is no setting for
+either; both are on.
 
 ## Why did my session stop after I switched windows — what to check
 
@@ -132,9 +139,10 @@ nowhere, it is one of these:
 - **A question is up.** The most common one. The row it is about says
   `allow?`; the session is blocked until you answer, and the countdown is held
   while you are away rather than answering for you.
-- **A call was already denied while you were gone** on a build from before this
-  changed. The row says `denied · no answer`. Say so and the model will ask
-  again.
+- **A call was already denied while you were gone** on a build from before
+  silence stopped answering no. The row says `denied · no answer`. Say so and
+  the model will ask again. A current build does not write that; the question
+  is still up.
 - **The turn finished.** A turn that ends on an unfocused window sends its own
   desktop banner, `<conversation> · turn done`.
 
@@ -416,9 +424,24 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## What is allowed without asking by default — who can see my files, and what aforge can read without asking
+## Who can see my files — privacy and file access: what aforge can read without asking, does git status need approval
 
-Some tools this build never had a reason to ask about are seeded as `allow`
+**Privacy: who can see my files.** In the default `prompt` mode, a look is not
+a question. aforge can read and open these files without asking — the policy
+itself allows these without a card, even before the seeded row below is applied:
+
+- **`read`, `ls`, `grep`, `find`** — they change no file.
+- **`tasks` when it is a look** — a search, or one task's page. `say`,
+  `continue` and `resolve` still ask, because they write into a node.
+- **`git status`** and its flags (`git status --short`, `git status --porcelain`)
+  when no shell-command rule list has been written. A compound line
+  (`git status && curl …`) still asks. A pattern you wrote still wins.
+
+A written `read:prompt` still asks about `read`. A deny-everything blanket
+still denies. A Policy with nothing configured still asks — "no settings" is
+not the shipped default.
+
+Some tools this build never had a reason to ask about are also seeded as `allow`
 underneath whatever you wrote:
 
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
@@ -471,8 +494,8 @@ The whole list, by settings key:
 - **What may run without asking you** — `tools.approvalMode`,
   `tools.approval`, `tools.bashPatterns`, `approval.guardian`,
   `approval.timeout_seconds`, `task.autoapprove_seconds`. The gate, the two rule
-  rows, the model that answers in your place, and the two clocks that answer when
-  you do not.
+  rows, the model that answers in your place, the reminder that pauses rather
+  than answering no, and the task clock that starts work if you say nothing.
 - **What may be spent without asking you** — `daily_budget_usd`,
   `plan_consent_usd`, `practice_budget_usd`, `session.spendRailUSD`,
   `task.repair_rounds`, `working_set_tokens`, `context_reuse_pct`. The last three
@@ -514,6 +537,18 @@ auxiliary calls somewhere, set one of the five crew classes
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.
 
+## A timeout is not a deny — why it said "denied by the person" when nobody said no
+
+A wait that ends without an answer is not a person's no. The model used to be
+handed `denied by the person: <rule>` — including `denied by the person: default`
+on a `propose_task` that simply ran out of time. That sentence is only for a
+key someone pressed (`n`, `d`, or `esc` on the card).
+
+If the question timed out, the model is told `not approved: the question timed
+out`. If the turn ended, or the agent closed, first: `not approved: ended
+before an answer`. Silence on the card still pauses and keeps waiting; it
+does not produce either of those.
+
 ## When nobody is watching
 
 `aforge chat --once "…"` runs with no one to ask. A "prompt" decision then
@@ -524,9 +559,10 @@ needs approval but no resolver is attached: <rule>
 ```
 
 Inside a task node the refusal reads
-`refused in a task: <rule> — nobody to ask`. A turn that ends while a question
-is still pending refuses with
-`the turn ended before this call was approved: <rule>`.
+`refused in a task: <rule> — nobody to ask`. A wait that ends without an answer
+is never worded as a person's no. A timed-out question refuses with
+`not approved: the question timed out`. A turn (or the agent) that ends first
+refuses with `not approved: ended before an answer`.
 
 ## What a refused call looks like to the model
 
@@ -536,7 +572,8 @@ hang, and never the end of the turn. The exact sentences:
 - `denied by approval rule: <rule>`
 - `denied by approval rule: <rule> (remembered for this session)`
 - `denied by the person: <rule>`
-- `the turn ended before this call was approved: <rule>`
+- `not approved: the question timed out`
+- `not approved: ended before an answer`
 - `needs approval but no resolver is attached: <rule>`
 - `refused in a task: <rule> — nobody to ask`
 

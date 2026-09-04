@@ -69,11 +69,20 @@ const (
 	FileName         = "calls.jsonl"
 	PreviousFileName = "calls.1.jsonl"
 
-	// MaxBytes is where the live file rotates. Thirty-two megabytes is a few
-	// hundred thousand records — weeks of ordinary use, and still small enough
-	// that a person can grep the whole thing — and the predecessor doubles the
-	// history without letting the pair grow without bound.
+	// MaxBytes is where the live file rotates when the bodies pin is off.
+	// Thirty-two megabytes is a few hundred thousand shape-only records —
+	// weeks of ordinary use, and still small enough that a person can grep
+	// the whole thing — and the predecessor doubles the history without
+	// letting the pair grow without bound.
 	MaxBytes = 32 << 20
+
+	// BodiesMaxBytes is where the live file rotates when BodiesEnvVar is on.
+	// A body-bearing record is tens to hundreds of kilobytes, and MaxBytes
+	// then turns over after a few dozen calls — too soon for the session
+	// that asked for the bodies. Two hundred and fifty-six megabytes is the
+	// same figure the debug record keeps per run, and it is hours of a real
+	// debug session rather than minutes, while still bounding the pair.
+	BodiesMaxBytes = 256 << 20
 )
 
 // Record is one model call as it happened: what was asked, what came back, and
@@ -317,6 +326,18 @@ func Bodies() bool {
 	return value != "" && value != "0" && !strings.EqualFold(value, "false") && !strings.EqualFold(value, OffValue)
 }
 
+// rotateAt is the live-file size that triggers a rotation. The ordinary cap
+// stays MaxBytes so a shape-only log still turns over after weeks, not hours.
+// Bodies raise it: a body-bearing record is tens to hundreds of kilobytes,
+// and MaxBytes then turns over after a few dozen calls — too soon for the
+// session that asked for the bodies.
+func rotateAt() int64 {
+	if Bodies() {
+		return BodiesMaxBytes
+	}
+	return MaxBytes
+}
+
 // log is the process's one open file. It is a singleton for the reason the
 // quirks memo is: the adapter underneath is shared by every agent in the
 // process, and one appender with one mutex is the only shape in which their
@@ -519,7 +540,7 @@ func (l *log) write(record Record) {
 		l.silence(err)
 		return
 	}
-	if l.size+int64(len(line))+1 > MaxBytes {
+	if l.size+int64(len(line))+1 > rotateAt() {
 		if err := l.rotate(); err != nil {
 			l.silence(err)
 			return

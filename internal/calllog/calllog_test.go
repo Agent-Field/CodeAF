@@ -120,6 +120,53 @@ func TestTheLogRotatesAtTheCapAndKeepsOnePredecessor(t *testing.T) {
 	}
 }
 
+// TestBodiesKeepHistoryPastTheOrdinaryCap is F24: AFORGE_CALL_LOG_BODIES=1
+// makes each record tens of kilobytes, and MaxBytes then turns over after
+// ~80 calls. A debug session that asked for the bodies must still have the
+// first call after that point, on the live file, not rotated away.
+func TestBodiesKeepHistoryPastTheOrdinaryCap(t *testing.T) {
+	t.Setenv(BodiesEnvVar, "1")
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	fresh(t, path)
+
+	const firstID = "first001"
+	filler := strings.Repeat("x", 256<<10)
+	Append(Record{
+		Time: "2026-08-28T21:12:53.000Z", ID: firstID, Tag: "leaf",
+		Error: filler, RequestBody: "req", ResponseBody: "res",
+	})
+	n := 1
+	for written := int64(len(filler)); written < MaxBytes+int64(len(filler)); written += int64(len(filler)) {
+		n++
+		Append(Record{
+			Time: "2026-08-28T21:12:53.000Z", Tag: "leaf",
+			Error: filler, RequestBody: "req", ResponseBody: "res",
+		})
+	}
+	if n < 80 {
+		t.Fatalf("the fixture only wrote %d calls; need to pass the old ~80-call point", n)
+	}
+
+	live, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("the live log should still be there: %v", err)
+	}
+	if live.Size() <= MaxBytes {
+		t.Fatalf("bodies on should keep writing past the ordinary %d-byte cap; live is %d", MaxBytes, live.Size())
+	}
+	if _, err := os.Stat(filepath.Join(dir, PreviousFileName)); !os.IsNotExist(err) {
+		t.Fatal("bodies on rotated at the ordinary cap; a debug session would have started losing history")
+	}
+	records := readLines(t, path)
+	if len(records) != n {
+		t.Fatalf("bodies on should keep all %d calls on the live file; found %d", n, len(records))
+	}
+	if records[0].ID != firstID {
+		t.Fatalf("the first body-bearing call left the live file: got %q", records[0].ID)
+	}
+}
+
 func TestOffWritesNothingAtAll(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(EnvVar, OffValue)

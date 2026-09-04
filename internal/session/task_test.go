@@ -1679,7 +1679,9 @@ func TestRefutingAnUnverifiedNodeCascades(t *testing.T) {
 // THE BELT IS THE SAFETY ARGUMENT. An auditor has no hand that writes, and its
 // bash runs the repository's verification and refuses everything else —
 // including a destructive command, a command that runs the node's own code, and
-// a verification with a second command chained onto it.
+// a verification with a second command chained onto it. A trailing redirect
+// on an allowed check is not that: it is the first stage, and it is run
+// (task_audit_waste_test.go).
 func TestAuditBeltIsReadOnly(t *testing.T) {
 	// The door is built the way a real audit builds it: the checks the work
 	// itself named, and the always-safe reading commands under them
@@ -1714,7 +1716,6 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 		{"go generate ./...", "runs the code it is judging"},
 		{"go run ./cmd/thing", "runs the code it is judging"},
 		{"go test ./... && rm -rf /", "a second command chained onto a verification"},
-		{"go test ./... > /tmp/out", "a redirect"},
 		{"echo $(rm -rf .)", "a substitution"},
 		{"", "nothing at all"},
 	} {
@@ -1902,7 +1903,10 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 			config.TaskAudit = false
 		})
 		graph := agent.graph()
-		collect(t, mustSubmit(t, agent, "read"))
+		// THE ASK READS THE WHOLE DOCUMENT, not one page: the spawn floor
+		// (spawnfloor.go) keeps a one-page read in the conversation, and a
+		// node exists here because the person asked for the sweep.
+		collect(t, mustSubmit(t, agent, "read every line of the long document"))
 		node := graph.node(1)
 		waitDoneNode(t, node)
 		if notice := node.notice(); notice.State != TaskDone {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -487,6 +488,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
 	}
+	// A FIRST PROMPT HAS NO SAVED TALK MODEL. The stall rescue that fires
+	// before a word arrives used to say nothing, and a fresh profile sat
+	// ninety seconds discovering `/model` on its own (F42).
+	if !a.config.InTask && config.FirstPrompt(a.config.ProfileDir) {
+		ctx = provider.WithFirstPrompt(ctx)
+	}
 	ctx = provider.WithValueOfTime(ctx, a.turnLambda())
 
 	// The slot the adapter writes each answer's endpoint into. It is per turn and
@@ -566,6 +573,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// of a conversation on the strength of a conversation that already ended.
 	meter := &checkpointMeter{}
 
+	// TOOL COMPACTION MAY ONLY TOUCH HISTORY THAT WAS FROZEN BEFORE THIS TURN'S
+	// FIRST REQUEST. Every result appended below will have appeared verbatim in
+	// one request before a later round could call it old; rewriting it then
+	// would throw away the byte-stable prefix the provider has already cached.
+	frozenToolHistory := len(a.snapshot())
+
 	for {
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
@@ -614,7 +627,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// out, so it is the only place the wait a person feels can be timed from
 		// without timing this package's own preparation as well.
 		a.turnLane.sent(time.Now())
-		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reasoning, warm, forming)
+		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reasoning, warm, forming, frozenToolHistory)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
@@ -1105,10 +1118,10 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 // is stamped when no level is set: an unstamped context is the one shape that
 // leaves the request byte-for-byte what it was.
 func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
-	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reasoningBuffer{}, warm, forming)
+	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reasoningBuffer{}, warm, forming, len(a.snapshot()))
 }
 
-func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
 	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in
 	// this package that can say so: every request that goes out through here is
 	// the turn's own, and every gate, judge, title and memo is made from some
@@ -1183,6 +1196,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			attemptCtx = provider.WithCallTag(attemptCtx, "turn")
 		}
 		messages, carried := a.snapshotWithReasoning()
+		// OLD FROZEN TOOL RESULTS ARE ALREADY CONSUMED EVIDENCE. The live
+		// transcript keeps them whole — the journal is the record — and the
+		// request the model is about to read does not. compactToolHistory leaves
+		// the system prompt, the newest frozen batch and everything this turn
+		// has already sent verbatim (toolcompact.go).
+		messages = compactToolHistory(messages, frozenToolHistory)
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,

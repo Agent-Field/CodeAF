@@ -187,7 +187,7 @@ func (b *formingBatch) note(event provider.StreamEvent) (Event, bool) {
 // the row can say, and the id is preferred because a person watching wants to
 // know which piece of work is being touched before they want to know how.
 var formingHintFields = map[string][]string{
-	"tasks": {"id", "resolve", "say", "query"},
+	"tasks": {"id", "continue", "resolve", "say", "query"},
 }
 
 func formingHintFieldsFor(tool string) []string {

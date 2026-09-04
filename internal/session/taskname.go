@@ -34,7 +34,10 @@ package session
 //   - THE CHEAP MODEL. It resolves through internal/roles as RoleTaskName, on
 //     the low tier, beside the session's own namer: naming in a few words is the
 //     archetypal cheap call, and it is one of the calls that must NOT think —
-//     the resolved level is deliberately not put on the request.
+//     the resolved level is deliberately not put on the request. THE FLOOR IS
+//     NEVER THE AUDITOR TIER: a session whose model is the high-tier judge
+//     used to fall through onto that judge and bill a naming call as if it
+//     were a verdict (F38).
 //
 //   - IT NEVER BLOCKS THE WORK. The node is admitted, checkpointed and on the
 //     frontier before this call is made; it runs on a goroutine of its own with
@@ -322,6 +325,7 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
 	a.mu.Lock()
 	model, closed, client := a.model, a.closed, a.client
+	source := a.config.RolesSource
 	a.mu.Unlock()
 	if closed || client == nil {
 		return ""
@@ -334,10 +338,22 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 	ctx, cancel := context.WithTimeout(ctx, window)
 	defer cancel()
 
+	// NAMING NEVER FALLS THROUGH ONTO THE AUDITOR TIER. The floor is the
+	// session model, and when this agent IS the high-tier judge that floor
+	// would turn one failed cheap call into a dear one (F38). An empty floor
+	// means the cheap rung or silence — a missing name, not a billed retry
+	// on the model that exists to judge work.
+	floor := model
+	if high, ok := roles.TierModel(roles.Source(source), roles.TierHigh); ok {
+		if strings.TrimSpace(high) != "" && strings.TrimSpace(model) == strings.TrimSpace(high) {
+			floor = ""
+		}
+	}
+
 	// NO EFFORT IS PUT ON THE REQUEST, and that is the reflex law rather than an
 	// omission: the calls that are told not to think are the ones that sort and
 	// name in a few words, and this is one of them.
-	response, named, callErr := a.callRole(ctx, roles.RoleTaskName, model,
+	response, named, callErr := a.callRole(ctx, roles.RoleTaskName, floor,
 		[]ai.Message{
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),

@@ -212,14 +212,14 @@ var settingUI = map[string]settingMeta{
 			"are only asked about the rest.",
 	},
 	// And directly under those three, because it is the last thing that can
-	// happen to the question they raise: the clock that answers it when nobody
-	// does. It is a countdown toward NO — the row above can spare you a
-	// question, this one refuses on your behalf — which is why it sits here and
-	// not beside the task countdown it otherwise looks like.
+	// happen to the question they raise: the reminder clock. It used to count
+	// toward NO (F41) and does not — at expiry the card pauses and keeps
+	// waiting, which is why it still sits here and not beside the task
+	// countdown that starts work on its own.
 	config.KeyConsentTimeout: {
 		tab: tabSafety, label: "approval countdown", widget: widgetText,
-		about: "seconds an approval question waits before it answers no for you. " +
-			"Any key stops the clock; 0 turns it off.",
+		about: "seconds an approval question counts down before it pauses and keeps waiting. " +
+			"Never answers no; any key stops the clock; 0 waits from the start.",
 	},
 	config.KeyBashBackgroundAfter: {
 		tab: tabSafety, label: "background after", widget: widgetText,
