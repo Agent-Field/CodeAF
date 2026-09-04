@@ -784,11 +784,12 @@ type TaskGraph struct {
 	// resumes it — its `done` is never closed, and a stop that waited on that
 	// channel would wait for something nobody is going to send.
 	runners sync.WaitGroup
-	// quitting is set once, by the graph's bounded stop, and it is what makes a
-	// closed session a session with no running nodes: after it the frontier
-	// starts nothing, so no goroutine can join the wait that is already under
-	// way. It is read and written under `mu` beside the Add above, which is
-	// what keeps a node from being counted after the count is being waited on.
+	// quitting closes the frontier: after it is set, nothing starts. The graph's
+	// bounded stop sets it when the session quits so no goroutine can join the
+	// wait already under way; the wall sets it because a run past its ceiling
+	// may not start work it cannot pay for. It is read and written under `mu`
+	// beside the Add above, which keeps a node from being counted after the
+	// count is being waited on.
 	quitting bool
 	// report is called once per node reaching a final state, outside the lock.
 	// It is how the world hears: the update event, and the note that reaches the
@@ -2092,6 +2093,18 @@ func (a *Agent) taskLimits(node *TaskNode) taskLimits {
 	limits := node.limits()
 	if a.config.TaskDeadline > 0 {
 		limits.deadline = a.config.TaskDeadline
+	}
+	// A TASK STARTED UNDER A WALL GETS AN INTERVAL THAT FITS WHAT THE RUN HAS
+	// left. The allowance is the floor because it is the same setup-and-check
+	// margin that refuses a handover when there is no useful task interval left
+	// (turnwall.go); making up a smaller duration here would reopen that refused
+	// road through a different task door.
+	if steward := a.steward(); steward != nil {
+		budget := steward.Budget()
+		left, _ := budget.Left()
+		if budget.Wall > 0 {
+			limits.deadline = max(min(limits.deadline, left), taskAllowance)
+		}
 	}
 	return limits
 }
