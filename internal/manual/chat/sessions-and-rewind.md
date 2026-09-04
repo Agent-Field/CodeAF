@@ -610,8 +610,9 @@ what the two presses do and what they cost.
 windows attached, one keyboard between them, the newest window typing. That happens locally
 too when a host is already holding this workspace — a `--host` or `--at` connection into this
 machine, or somebody's `aforge engine`. See *Staying on that machine*. A plain `aforge chat`
-never starts a host of its own; it opens in this terminal's own process, which is what keeps
-adaptive runs, harness building and subharness intake cards working in it.
+never starts a host of its own; it opens in this terminal's own process. Joining one when it
+is there costs less than it used to: harness building and subharness intake cards work in a
+hosted conversation now, and the adaptive runner is the one thing still switched off in one.
 
 ## It used to start a new conversation in the second terminal — why it doesn't now
 

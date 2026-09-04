@@ -17,13 +17,12 @@ package main
 // (internal/remote's driver.go), and the surface already knows how to be a
 // watcher (internal/tui3's watching.go). What was missing was a local dial.
 //
-// IT IS NOT THE DEFAULT AND MUST NOT BECOME ONE HERE. A hosted conversation is
-// built by `session.New` over a wire with no door for the standing lanes, so
-// adaptive runs, harness building and subharness cards are all off in it
-// (engine.go states each one and why). A lone terminal in a workspace nothing
-// else is open on therefore keeps the in-process door and loses nothing;
-// [v3HostRoad] is the whole of when this one is taken instead, and
-// docs/design/multi-attach/PLAN.md is the staging that says why.
+// A HOSTED CONVERSATION IS NO LONGER A LESSER ONE. It used to be built with the
+// designer nilled, the intake cards off and the adaptive runner unwired, because
+// the wire had no door for the standing lanes those three raise their cards on;
+// it carries them now (internal/remote's standinglane.go), and both roads are
+// shaped by the same statement (chatv3_lanes.go). What still decides whether
+// this door is taken is [v3HostRoad] below.
 //
 // EVERYTHING BELOW THE DIAL IS THE ssh DOOR'S OWN CODE. The client, the
 // welcome, the surface's options and the headless run are [openChatV3Host]'s,
@@ -179,9 +178,9 @@ type v3HostChoice struct {
 // the local default is issue #66, gated on the wire growing doors for the
 // standing lanes (docs/design/multi-attach/PLAN.md).
 //
-// OTHERWISE THE IN-PROCESS DOOR RUNS EXACTLY AS IT ALWAYS HAS: a lone terminal
-// keeps adaptive runs, harness building and the subharness cards, none of which
-// a hosted conversation has (engine.go says why for each).
+// OTHERWISE THE IN-PROCESS DOOR RUNS EXACTLY AS IT ALWAYS HAS, and it is no
+// longer the door with more in it: the two roads are shaped by one statement
+// (chatv3_lanes.go), so joining a host costs a person no capability.
 //
 // A WORKSPACE THAT CANNOT BE RESOLVED IS NO ROAD. Everything here answers
 // "in-process" when it cannot tell, because the in-process door is the floor

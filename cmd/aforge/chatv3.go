@@ -311,16 +311,17 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
-	// AND THAT SURFACE HOLDS THE HARNESS LANE, which is a second fact and not the
-	// same one: the lane is a standing subscription opened on the agent itself
-	// (internal/tui3's watchDesigns), so it exists only where the surface and the
-	// session are in one process. It is what lets chat offer a saved program with
-	// an intake card (internal/session's canProposeSubharness); a conversation
-	// held over a connection sets AskConsent and NOT this, because the card has no
-	// road to the far end (engine.go says the same about the design card).
-	cfg.HarnessCards = true
+	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
+	// the same one: a design card, a subharness intake card and an adaptive
+	// run's fuel gate each arrive on a subscription opened on the agent itself
+	// (internal/tui3's watchDesigns and watchRuns), and here the surface and the
+	// session are one process, so all three reach a person by construction. The
+	// three are set together, in the one place that decides them for every door
+	// (chatv3_lanes.go), so this launch and a hosted one differ in what the road
+	// carries rather than in what two files remembered to say.
+	cfg, open := v3Shape(cfg, v3LanesHere())
 
-	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	// LAUNCH-ON-LOCK. The conversation this terminal asked for is open in
 	// another window, and this door has a screen — so it offers that
 	// conversation rather than refusing or, as it once did, quietly handing over

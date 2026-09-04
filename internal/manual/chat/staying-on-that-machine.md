@@ -181,11 +181,12 @@ one dim line reading `typing from another window now · enter takes it back` —
 window` rather than a machine name, because there is no other machine in it. The status
 line grows no `via` segment for the same reason.
 
-**A host has to be there already.** A plain `aforge chat` never starts one, on purpose:
-adaptive runs, harness building and subharness intake cards are all off in a hosted
-conversation (*What still does not work*, below), so a terminal that has nobody to share
-with keeps them. A host is there when something asked for one — a `--host` or `--at`
-connection into this machine, or `aforge engine` run on it.
+**A host has to be there already.** A plain `aforge chat` never starts one. A host is
+there when something asked for one — a `--host` or `--at` connection into this machine, or
+`aforge engine` run on it. Joining one costs you less than it used to: harness building and
+subharness intake cards work in a hosted conversation now, because the subscription their
+cards travel on crosses a connection. The adaptive runner is still off in one (*What still
+does not work*, below).
 
 **Without a host, a second terminal offers you the conversation rather than a seat in it.**
 It comes up on home with that row already armed, and one `enter` moves the conversation to
@@ -367,24 +368,26 @@ another machine*).
 
 ## What still does not work, even though the session stays open
 
-Three things, and all three for the same reason: their questions do not travel this
-connection at all — not the card, and not the answer.
+Two things.
 
-- **Building a harness.** Asking for a harness to be designed is off over `--host`. The
-  card that asks whether to keep the finished page is raised on a lane that has no door on
-  this wire, so it would never reach you and holding it is not possible either. Running a
-  harness that already exists works normally.
-- **An adaptive run.** Its notes, its gauge and its spending gate all arrive on the same
-  kind of lane. A run started over a connection would spend money and stop at its cap with
-  nothing on your screen, so the model is not given the verb at all.
-- **Offering a saved program with an intake card.** Same lane, same answer. `/subharness`
-  is a command on the machine you are sitting at and has nothing to list over a
-  connection.
+- **An adaptive run.** A hosted conversation is built with no adaptive runner. Its notes,
+  its gauge and its spending gate arrive on a standing subscription that this wire does not
+  yet carry, and unlike the harness lane that subscription replays nothing — so a gate
+  raised while every window was away would be gone when you came back, and the run would sit
+  at its cap for ever. Nothing is lost by the wait: no command, tool or sentence starts an
+  adaptive run in this build anyway, here or on a far machine.
+- **`/subharness`** lists what is saved on the machine you are sitting at, so over a
+  connection it has nothing to show you and says so. The far session can still OFFER a
+  saved program with an intake card, and answering that card runs it over there.
 
-This is a smaller list than it was — permission cards, reminders, harness offers and
-account connections all wait for you now. What is left is not about anybody being in the
-room; it is about a road that has not been built. Nothing here half-works: each one is
-absent rather than present and failing.
+The list used to be three long. Harness building and subharness intake cards came off it
+when the wire grew their subscription and their answer: a card raised while nobody is
+attached is handed to the next window that arrives, once, and answering it takes it down.
+Permission cards, reminders, harness offers and account connections wait for you as they
+already did.
+
+Nothing here half-works: a capability a road cannot carry is absent rather than present and
+failing, which is why the model is not given a verb it could not finish.
 
 ## What does --no-host do — make one window not use the session host
 
