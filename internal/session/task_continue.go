@@ -101,7 +101,16 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""
+	// THE LIFE OF THE WORK MOVES ON HERE, and the announcement marks are cleared
+	// with it in the same locked step: a delivery of the ending that just closed
+	// may still be in flight, and it must not be able to record this new attempt
+	// as already announced ([TaskNode.claimNote]).
+	node.attempt++
 	node.noted = false
+	node.notedRead = false
+	node.notedState = ""
+	node.noting = false
+	node.notingClaim = noteClaim{}
 	node.queuedSaid = false
 	node.held = ""
 	node.parked = false

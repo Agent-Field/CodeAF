@@ -2245,7 +2245,14 @@ type Agent struct {
 	// loop recovery and task control are instructions for the next step, not
 	// periodic telemetry.
 	ambient []userMessage
-	closed  bool
+	// settling is the acknowledgements this conversation's record has earned and
+	// not yet sent: news whose sender is owed an answer once the record holds it
+	// rather than when the queue took it ([durableDelivery]). They are held here
+	// because they are collected where the record is written, under this lock,
+	// and sent where a checkpoint may be written, which is not under it
+	// ([Agent.settleDeliveries]).
+	settling []durableDelivery
+	closed   bool
 	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
 	// the close complete for everybody rather than only for whoever got there
 	// first.

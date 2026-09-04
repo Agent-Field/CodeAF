@@ -1974,6 +1974,33 @@ What this means in practice: **the fold is a volume, not a mute.** One job with 
 in it does not read as six demands while it is running, and nothing quietly rots underneath
 a task that went home.
 
+**And a piece that lands when its parent has stopped reading comes to you instead.** The
+parent's worker stops reading a few seconds before the task itself lands — while its work
+is being checked — and a piece finishing in that window has no reader inside the family. Its
+report arrives in this conversation, exactly as a top-level task's does, rather than being
+put on a queue nobody drains. Before this it was queued on the worker that had stopped
+reading and was never said again, in this session or after a restart.
+
+## When the conversation says something to a running task — did the task think that was me
+
+Two different things can send a line into a running task, and the task is told which.
+
+**Your own line** — typed into the task's room, or `m` on the steer guard — arrives in its
+transcript as your words, undecorated, and is kept in its record as your correction. That is
+the one road that speaks for you.
+
+**The conversation's own model can also say something to a task** (you will see it call
+`tasks` with `say`, usually to pass on a fact the worker lacks). That line arrives named as
+the conversation speaking, with a sentence saying plainly that it is not the person, and it
+is recorded in the task's transcript as the session's own line rather than as yours. The
+task's brief and its acceptance are unchanged either way — they were frozen when it started
+— and neither road can hand a task permission you did not give it.
+
+This matters when you reopen a task's transcript later: a line that reads like a decision
+("you may change the schema") shows whether you made it or the conversation did. Before
+this the two were written down identically, and the task's page drew the model's message as
+your own correction.
+
 ## Choosing which model a task runs on
 
 You say it in the conversation, in words: "use opus for this one". The model then puts the
@@ -2183,8 +2210,22 @@ that were never delivered appear underneath.
 What comes back is its row in the project's list, closed with `incomplete — aforge closed
 while this was still running`. See *Adaptive runs*.
 
-A completion is announced **exactly once across lives** — a resumed session does not
-re-tell the model about work it already read about.
+A completion is announced **once per life of the work** — a resumed session does not
+re-tell the model about a landing its model has already read.
+
+**And a landing nobody was there to read is still owed.** If a task finishes while no
+terminal is attached, its note waits for a step boundary that never comes, and the session
+is closed later without one. That landing is not written off as announced: the next time
+you open the session it appears under `recovered task graph: …` with the others, so work
+that finished while you were away is told to you rather than lost.
+
+**It stays owed for as many lives as it takes.** Opening the session and closing it again
+without the model reading that note does not spend it either — the debt is settled when the
+landing reaches the conversation's own transcript, not when a session merely offers it — so
+a note can be re-told on the second, third and fourth open and is only written off once it
+has actually been read. The narrow cost is the other direction: a machine that dies in the
+moment between the model reading a landing and the checkpoint being written may mention
+that one twice.
 
 ## Where task state is written on disk
 

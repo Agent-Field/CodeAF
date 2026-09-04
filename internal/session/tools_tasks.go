@@ -145,9 +145,11 @@ func taskScopeWord(raw string) (string, bool) {
 //   - id: that one task. Running, and the answer is read off the GRAPH — the
 //     same live source the surface's rail draws (task_live.go) — never off the
 //     index file, which by construction holds only work that is over.
-//   - id and say: the person's door into a running node ([Agent.SteerTask]),
-//     opened for the model. It is the same door and the same law: talk to the
-//     worker, never a new target.
+//   - id and say: a line into a running node ([Agent.relayToTask]). Same
+//     mechanics as the person's own door and the same law — talk to the worker,
+//     never a new target — but it arrives named as this conversation speaking,
+//     because the model is not the person and a worker that cannot tell them
+//     apart will read coordination as permission.
 //   - id and continue: the same node again ([Agent.ContinueTask]), after it
 //     failed or finished. Same brief, same working copy, last report as this
 //     round's finding. A new propose_task is the wrong door.
@@ -484,7 +486,13 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
-		waiting, err := a.SteerTask(id, say)
+		// THE MODEL IS NOT THE PERSON, AND THE WORKER MUST BE ABLE TO TELL. This
+		// tool call is coordination between two conversations in one session; it
+		// took [Agent.SteerTask] until now, which is the door the person's own
+		// words come through, so the worker journaled the model's sentence as the
+		// person's correction and could read "you may change the schema" as a
+		// grant nobody with authority had given ([Agent.relayToTask]).
+		waiting, err := a.relayToTask(id, say)
 		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
 		}
@@ -494,11 +502,17 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		// riding a turn already running — which is the difference between an
 		// answer now and an answer the model would otherwise expect at the next
 		// step of a task that is not taking one.
-		arrival := "It arrives in its loop as the person's own words."
+		//
+		// AND IT ARRIVES AS YOURS. The answer says so plainly, because a model
+		// told its line lands "as the person's own words" will use this tool to
+		// give itself permissions: the worker reads it named as another agent in
+		// this session ([relayNote]), and only the person's own door speaks for
+		// the person.
+		arrival := "It arrives in its loop named as this conversation speaking, not as the person."
 		if waiting {
-			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives as the person's own words."
+			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives named as this conversation speaking, not as the person."
 		}
-		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say, arrival), false, nil
+		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started, and nothing you say here changes what it is allowed to do.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran

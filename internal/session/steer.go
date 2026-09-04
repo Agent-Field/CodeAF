@@ -83,7 +83,7 @@ package session
 //	SteerTask  steers a NODE.  Another agent. Delivery is all it promises — the
 //	           answer is "it arrived", or "it arrived and the node is parked".
 //	           There is no fall-through, because a node that has finished is a
-//	           refusal ([Agent.enqueueSteeredLine] answers false) and never a
+//	           refusal ([taskRoom.handIn] answers nobody) and never a
 //	           queue.
 //	Steer      splices THIS TURN. This agent, this conversation, this question.
 //	           It carries an identity, three outcomes, and a record that says

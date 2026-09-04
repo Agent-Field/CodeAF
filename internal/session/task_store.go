@@ -353,12 +353,34 @@ type taskRecord struct {
 	// lane. It is what stops a resumed session re-announcing work the transcript
 	// already carries.
 	//
-	// It is HANDED OVER, not read: a note enqueued in the instant before the
-	// process died never reached the transcript and is lost. That window is one
-	// step boundary wide and closing it would mean the graph reaching into the
-	// turn loop to ask whether a message had drained yet, which is a coupling
-	// worth more than the case it buys.
+	// IT IS THE RECIPIENT'S RECORD AND NOT ITS QUEUE. A note accepted onto a
+	// queue is read at a step boundary that an unattended session may never
+	// reach — the wake declines with nobody there, and the reaper closes the
+	// session half an hour after the terminal detached — so a mark made at the
+	// enqueue said "announced" about a landing no model ever saw, and this
+	// checkpoint then stopped the next life re-telling it. It is written when the
+	// note reaches the recipient's own record ([TaskNode.noteRecorded]).
+	//
+	// A crash between that record and this file leaves this saying "still owed"
+	// about a landing that was told — which is why the replay asks the
+	// recipient's journal as well ([sessionFile.recorded]), and why the failure
+	// here is a landing said twice rather than one lost. A file written before
+	// this meaning changed says "announced" about a note that was queued, which
+	// is read here exactly as it was written.
 	Noted bool `json:"noted,omitempty"`
+
+	// NotedState is the ending that announcement was made for, so that work which
+	// later ends somewhere else — a person deciding about a landing nobody could
+	// check — is news again while the same landing is not announced twice
+	// ([TaskNode.notedLocked]). It is absent from every checkpoint written before
+	// it existed, and an absent one reads as "announced, whatever it said".
+	NotedState TaskState `json:"noted_state,omitempty"`
+
+	// Attempt is which life of this node's work the row describes, raised each
+	// time the node is re-armed ([TaskGraph.reopen]). Absent from older
+	// checkpoints, which restore as attempt 0 — the life they were written in —
+	// and from every node that has only ever run once.
+	Attempt int `json:"attempt,omitempty"`
 
 	// Interrupted says this node was RUNNING when a session ended and that a
 	// recovery has consumed that fact. It is the consume-once receipt.
@@ -758,7 +780,9 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Output:        n.output,
 		CacheRead:     n.cacheRead,
 		CacheWrite:    n.cacheWrite,
-		Noted:         n.noted,
+		Noted:         n.notedRead,
+		NotedState:    n.notedState,
+		Attempt:       n.attempt,
 		Interrupted:   n.interrupted,
 		Kind:          n.kind,
 		Offer:         n.offer,
@@ -904,6 +928,12 @@ func validMergeOutcome(merge string) bool {
 // taskRecovery is what one recovery found, in the four categories a person and a
 // model both need kept apart, plus the notes nobody ever got.
 type taskRecovery struct {
+	// deliveries are the durable deliveries the re-told notes are: one per
+	// landing this session still owes, settled when the recipient's record holds
+	// the note ([durableDelivery]). Without them a resume marked its own
+	// re-telling as said the moment it composed it, so a session closed unread
+	// twice lost the landing exactly as the first enqueue-time mark did.
+	deliveries  []durableDelivery
 	done        int
 	failed      int
 	unverified  int
@@ -1051,7 +1081,9 @@ func (a *Agent) recoverTasks() {
 		// the last process left behind is context for the first turn rather than
 		// a reason to start one. A session that opened by talking to itself about
 		// yesterday's interrupt would be answering a question nobody asked.
-		a.enqueueAmbientNote(note)
+		line := userText(note)
+		line.delivered = recovery.deliveries
+		a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line})
 	}
 	// CONTINUE — the same frontier every other transition turns. A queued node
 	// whose prerequisites are done starts now; one whose prerequisite was
@@ -1163,9 +1195,9 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	}
 	g.mu.Unlock()
 
-	// The notes nobody ever got, in the shape a fresh run would have produced —
-	// and marked as handed over, so this is the only life of this session in
-	// which they are said.
+	// The notes nobody ever got, in the shape a fresh run would have produced.
+	// They are QUEUED and not announced: a life that closes before anybody reads
+	// one still owes it, and the next life says it again ([durableDelivery]).
 	//
 	// THEY ARE RE-TOLD AND NOT ARRIVING, so nothing here is put to the session's
 	// goal owner: the landing already happened, in a life of this session that
@@ -1177,11 +1209,46 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	if g.home != nil {
 		address = g.home.quietAddress()
 	}
-	for _, node := range unannounced {
-		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
-		node.markNoted()
-	}
+	notes, deliveries := g.owedNotes(unannounced, settle, address)
+	recovery.notes = append(recovery.notes, notes...)
+	recovery.deliveries = append(recovery.deliveries, deliveries...)
 	return recovery
+}
+
+// owedNotes composes the landings this session still owes and the deliveries
+// that settle them.
+//
+// A RE-TELLING IS A DELIVERY LIKE ANY OTHER: queued, not announced. A life that
+// closes before anybody reads one still owes it, and the next life says it
+// again — which is what a resume that marked its own re-telling as said the
+// moment it composed it could not do ([durableDelivery]).
+//
+// AND THE RECORD IS ASKED FIRST. The checkpoint says these are owed, and the
+// checkpoint may simply not have been written: a process killed between the
+// recipient recording a note and the file being saved comes back here with the
+// mark off. The journal is the record that WAS written, so a landing whose
+// delivery id is already on one of its lines is settled rather than said twice
+// ([sessionFile.recorded]).
+func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, address landingAddress) ([]string, []durableDelivery) {
+	var (
+		notes      []string
+		deliveries []durableDelivery
+	)
+	for _, node := range unannounced {
+		claim, claimed := node.claimNote(node.attemptNow())
+		if !claimed {
+			continue
+		}
+		delivery := node.settlesNote(claim)
+		if g.home != nil && g.home.hasRecorded(delivery.id) {
+			delivery.settled()
+			continue
+		}
+		notes = append(notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
+		node.noteQueued(claim)
+		deliveries = append(deliveries, delivery)
+	}
+	return notes, deliveries
 }
 
 // restoreNode is one record as a node again. Its done channel is CLOSED for a
@@ -1245,6 +1312,9 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		cacheRead:   record.CacheRead,
 		cacheWrite:  record.CacheWrite,
 		noted:       record.Noted,
+		notedRead:   record.Noted,
+		notedState:  record.NotedState,
+		attempt:     record.Attempt,
 		interrupted: record.Interrupted,
 		offer:       record.Offer,
 	}
