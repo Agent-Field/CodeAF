@@ -198,16 +198,36 @@ import (
 // VERSION 10 CARRIES [MethodTaskHold]. A version-9 engine would reject the
 // first rune's hold while its surface already showed "waiting on you", then
 // admit the task on the deadline the person believed had stopped.
-const Version = 10
+//
+// VERSION 11 CARRIES THE HARNESS LANE. A design card and a subharness intake
+// card are raised on a subscription that outlives the turn (internal/session's
+// emitHarness), and only a running turn's stream crossed this wire — so
+// cmd/aforge built every hosted session with the designer nilled and the cards
+// off, and said so in prose. The delta is one subscription up
+// ([MethodDesignWatch]), its frames down ("design"), and the intake card's
+// answer ([MethodSubharnessResolve]); the design card's own answer has been
+// [MethodHarness] since version 1. A lane without its answer door puts a
+// question on a screen that nothing can close, which is the fault version 8
+// found in the task rail.
+//
+// The adaptive run lane is deliberately NOT part of this delta; lanes.go states
+// exactly what is missing from it.
+//
+// The number moves rather than riding version 10 for [MethodTaskWatch]'s
+// reason: an older engine answers the new subscription with "no such method"
+// and leaves a lane permanently dark with nothing on the screen saying so.
+const Version = 11
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "turn", "driver", "fatal".
+	// "event", "closed", "facts", "task", "design", "turn", "driver", "fatal".
 	//
-	// "facts" and "task" are the TWO KINDS THAT ANSWER NOTHING. Every other
+	// "facts", "task" and "design" are the KINDS THAT ANSWER NOTHING. The last
+	// is version 11's harness lane and carries one [EventWire], exactly as
+	// "task" does (standinglane.go). Every other
 	// frame from the engine either replies to a call or belongs to a stream a
-	// call opened; these two are the engine saying something the surface did
+	// call opened; these are the engine saying something the surface did
 	// not ask for on that frame, because the whole point of them is that the
 	// surface never has to ask. "facts" carries a [FactsPush]; "task" carries
 	// one [EventWire] off the standing task lane (tasklane.go). Neither has an

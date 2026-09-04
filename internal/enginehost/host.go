@@ -55,10 +55,14 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // two lifetimes are deliberately NOT married: standing work already keeps a
 // machine warm on its own terms, and a host that stayed up forever to guard it
 // would be a second answer to a question that already has one.
+// sessionIdle is a var rather than a const so a test can ask what the policy
+// DECIDES without waiting half an hour to find out. Nothing in the product
+// writes it.
+var sessionIdle = 30 * time.Minute
+
 const (
-	sessionIdle = 30 * time.Minute
-	hostIdle    = 2 * time.Minute
-	sweepEvery  = 30 * time.Second
+	hostIdle   = 2 * time.Minute
+	sweepEvery = 30 * time.Second
 )
 
 // The two numbers a stand-down is measured in.

@@ -994,14 +994,15 @@ type Config struct {
 	//
 	// IT IS NOT AskConsent SAID TWICE, and the difference is a road rather than
 	// a mood. AskConsent is about the TURN'S OWN STREAM: an approval, a connect
-	// offer, a task proposal, all of which cross a connection as ordinary events,
-	// which is why `aforge --host` sets it (cmd/aforge's engine.go). The harness
-	// lane does not cross — the surface on the far end of that wire holds a
-	// remote handle with no WatchHarnessDesigns on it — so a card raised there
-	// would be raised into an empty room and expire unseen. engine.go already
-	// says exactly this in prose about the DESIGN card, which it switches off by
-	// nilling HarnessStore; this field is that same fact with a name, for the
-	// lane's other card ([Agent.canProposeSubharness]).
+	// offer, a task proposal, all of which cross a connection as ordinary
+	// events. This lane is a standing subscription, and whether it reaches
+	// anybody is a question about the road: in one process it always does, and
+	// over a connection it does exactly when that wire carries the lane AND the
+	// answer the card asks for (internal/remote's standinglane.go, version 11 —
+	// before it, neither crossed and a card raised over a wire expired unseen).
+	// The one place that decides it for every door is cmd/aforge's
+	// chatv3_lanes.go, which fills this field and HarnessStore together for the
+	// lane's two cards ([Agent.canProposeSubharness] and harness_build.go).
 	//
 	// LEFT FALSE IT TAKES THE VERB AWAY RATHER THAN BREAKING IT, which is this
 	// belt's law (tools.go): a model told it can offer a saved program plans
