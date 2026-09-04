@@ -850,9 +850,9 @@ func sortedKeys(set map[string]bool) []string {
 }
 
 // pathTokens picks the things in a piece of prose that could be paths: a word
-// with a separator in it, or one that ends in an extension. Everything around it
-// — quotes, backticks, brackets, the full stop that ended the sentence — is
-// trimmed off.
+// with a separator in it, or one that ends in an extension. What is around it —
+// quotes, backticks, brackets — is trimmed off, and so is the full stop that
+// ended the sentence, which is why the trimming below has a side to it.
 //
 // IT IS A READING AND NOT A PARSER, and every caller treats it as one: a token
 // only ever matters here when it also turns out to exist under a directory, or
@@ -865,7 +865,13 @@ func pathTokens(text string) []string {
 			r == '`' || r == '"' || r == '\'' || r == '(' || r == ')' || r == '[' || r == ']' ||
 			r == '<' || r == '>' || r == '{' || r == '}'
 	}) {
-		token := strings.Trim(raw, ".:")
+		// THE PUNCTUATION IS TRIMMED OFF THE END ONLY. A leading dot is part of
+		// the path — `./slow-build.sh`, `../out/report.md`, `.github/ci.yml` —
+		// and trimming it turned a name in the working directory into an
+		// absolute path at the root of the machine, which the ground lint then
+		// refused as a folder the task does not stand in. A leading colon is
+		// nobody's filename and still goes.
+		token := strings.TrimLeft(strings.TrimRight(raw, ".:"), ":")
 		if token == "" || !looksLikePath(token) {
 			continue
 		}
