@@ -98,6 +98,9 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 	node.stopped = false
 	node.ending = ""
 	node.noted = false
+	node.notedState = ""
+	node.noting = false
+	node.notingState = ""
 	node.queuedSaid = false
 	node.held = ""
 	node.parked = false

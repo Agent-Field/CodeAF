@@ -479,7 +479,23 @@ type TaskNode struct {
 	// noted says this node's completion note has been handed to the steering
 	// lane, and it is what stops a resumed session announcing finished work
 	// twice (task_store.go).
-	noted bool
+	//
+	// notedState is the ending it was announced FOR, so that a node which later
+	// ends somewhere else — a person accepting work nobody could check
+	// ([TaskGraph.resettle]) — is news again while the same landing announced
+	// twice is not. It is empty on a checkpoint written before it existed, which
+	// reads as "announced, whatever it said" ([TaskNode.notedEnding]).
+	//
+	// noting is the claim a delivery in flight holds, with notingState naming the
+	// ending it is announcing. They are in memory only: the mark is made after
+	// the note is on somebody's queue ([Agent.deliverTaskNote]), and this is what
+	// keeps two deliveries of one ending from both getting that far. The claim is
+	// a flag of its own rather than a non-empty state, because a node assembled
+	// by hand has no state and its one landing is still worth announcing once.
+	noted       bool
+	notedState  TaskState
+	noting      bool
+	notingState TaskState
 	// interrupted marks a node that was RUNNING when a session ended and whose
 	// interrupt a recovery has consumed. It is history, and it is written down so
 	// that exactly one recovery ever consumes it.
@@ -2768,22 +2784,62 @@ func (n *TaskNode) journalPath() string {
 // markNoted records that this node's completion note has been handed to the
 // steering lane, so no later life of this session says it again.
 func (n *TaskNode) markNoted() {
-	if n.noteHandedOver() {
+	if n.noteHandedOver(n.stateNow()) {
 		n.graph.checkpoint()
 	}
 }
 
-// noteHandedOver turns the mark on and answers whether THIS call is the one that
-// turned it, which is the caller's cue that the checkpoint is still owed.
+// claimNote claims the announcement of this node's news IN ITS CURRENT STATE and
+// answers that state, so the caller marks the same ending it delivered rather
+// than whatever the node has moved to by the time the delivery lands.
+//
+// It answers false for an ending that has already been announced, and for one
+// another delivery is announcing right now. The claim is in memory only: what is
+// checkpointed is the completed hand-over below, because a claim that outlived
+// the process would suppress news nobody ever heard.
+func (n *TaskNode) claimNote() (TaskState, bool) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	state := n.state
+	if n.notedEnding(state) || (n.noting && n.notingState == state) {
+		return state, false
+	}
+	n.noting, n.notingState = true, state
+	return state, true
+}
+
+// releaseNote gives an unspent claim back, for a delivery that found nobody to
+// read it. Nothing is marked and nothing is written down, which is what makes a
+// resumed session tell the model about that landing (task_store.go).
+func (n *TaskNode) releaseNote() {
+	n.graph.mu.Lock()
+	n.noting, n.notingState = false, ""
+	n.graph.mu.Unlock()
+}
+
+// notedEnding reports whether this node's news in `state` has already been
+// handed over, with the graph held. An older checkpoint recorded the mark
+// without the ending it was made for, and it is read as "announced, whatever it
+// said" — the alternative is a resumed session re-announcing finished work,
+// which is the one thing the mark exists to stop.
+func (n *TaskNode) notedEnding(state TaskState) bool {
+	return n.noted && (n.notedState == "" || n.notedState == state)
+}
+
+// noteHandedOver turns the mark on for one ending and answers whether THIS call
+// is the one that turned it, which is the caller's cue that the checkpoint is
+// still owed.
 //
 // It is split out of [TaskNode.markNoted] because the delivery road makes this
 // mark inside the news handover ([Agent.handOverTaskNews]), where a parked parent
 // may be waiting to read it — and the checkpoint is a file written to disk, which
 // is not something to hold that seam across.
-func (n *TaskNode) noteHandedOver() bool {
+func (n *TaskNode) noteHandedOver(state TaskState) bool {
 	n.graph.mu.Lock()
-	already := n.noted
+	already := n.notedEnding(state)
 	n.noted = true
+	n.notedState = state
+	n.noting, n.notingState = false, ""
 	n.graph.mu.Unlock()
 	return !already
 }
@@ -2985,8 +3041,20 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	// (task_store.go). On the delivery road the mark is made INSIDE the handover,
 	// between the queue and the wake, for the reason stated there.
 	if notice.Kind == TaskKindHarness {
-		a.enqueueAmbientNote(note)
-		node.markNoted()
+		// The mark follows the same law the delivery road follows: it is made
+		// when a reader actually took the line, and not when one was written for
+		// a session that has already closed.
+		state, claimed := node.claimNote()
+		if !claimed {
+			return
+		}
+		if a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: userText(note)}).accepted() {
+			if node.noteHandedOver(state) {
+				node.graph.checkpoint()
+			}
+			return
+		}
+		node.releaseNote()
 	} else {
 		a.deliverTaskNote(node, note)
 	}
@@ -3003,19 +3071,48 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // of the person rather than nowhere. Sending it to both would tell the person's
 // model that work it never commissioned has just finished.
 func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
-	reader := a
-	if node.parent != 0 {
-		if parent := node.graph.node(node.parent); parent != nil {
-			if child := parent.openRoom().speaker(); child != nil && child.takesNotes() {
-				reader = child
-			}
-		}
+	// ── SAID ONCE PER ENDING, AND THE ENDING IS THE IDENTITY ──
+	//
+	// The event here is "this node reached THIS state", and that is what the
+	// claim is keyed on: a repeated announcement of the same landing — a
+	// re-entered report hook, a delivery retried after a race — buys no second
+	// model turn, while a node that genuinely ends somewhere else later (a person
+	// accepting work nobody could check, [TaskGraph.resettle]) is news again. The
+	// note's text is not the identity: the same sentence said twice about two
+	// endings is two events, and one sentence rewritten about one ending is still
+	// one.
+	state, claimed := node.claimNote()
+	if !claimed {
+		return
 	}
 	message := wakeNote(note)
 	message.replyTags = []TaskReplyTag{{
 		ID: node.id, Title: node.title(), Request: node.request(),
 	}}
-	reader.enqueueNote(message)
+	// ── THE READER IS CHOSEN AT THE INSTANT THE NOTE IS HANDED OVER ──
+	//
+	// It used to be chosen one instant and written to the next: the parent's
+	// worker was read out of the room, asked whether it was still open, and then
+	// enqueued to — and the two roads that close in that gap both ended with the
+	// report gone. A worker that closed in between took nothing (the enqueue
+	// answers false and the answer was dropped on the floor); a worker whose
+	// runner withdrew it in between took the note onto a queue nothing would ever
+	// drain. Either way the node was then marked as announced and checkpointed as
+	// such, so nothing said it again in this life or any later one.
+	//
+	// The seat resolves and appends under the room's own lock now
+	// ([taskRoom.handIn]), which is the same protocol a person's line already
+	// took, and the conversation is tried when nobody in the room can read it.
+	handed := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message}, a.taskNoteReaders(node)...)
+	if !handed.accepted() {
+		// NOBODY IS LEFT, and that is recorded as what it is. The claim goes back
+		// and the mark is not made, so this landing is still owed: a resumed
+		// session tells the model about it ([TaskGraph.restore]) instead of
+		// treating work nobody ever heard about as announced.
+		node.releaseNote()
+		return
+	}
+	reader := handed.reader
 	// ── THE QUEUE, THEN THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER ──
 	//
 	// A parent parked on its pieces asks two questions of this moment and the
@@ -3043,10 +3140,31 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 	// changed is that a parked parent is no longer kept waiting on a file while
 	// the two facts it reads disagree.
 	handedOver := false
-	reader.handOverTaskNews(func() { handedOver = node.noteHandedOver() })
+	reader.handOverTaskNews(func() { handedOver = node.noteHandedOver(state) })
 	if handedOver {
 		node.graph.checkpoint()
 	}
+}
+
+// taskNoteReaders is WHO MAY READ ONE LANDED NODE'S NEWS, in the order they are
+// asked. The parent node's own worker comes first for the reason the header
+// above states — it is the only reader that can fold the piece back into the
+// whole — and the conversation is the fallback rather than a second delivery.
+//
+// A NODE WITH NO PARENT HAS ONE READER and the room is not consulted at all: it
+// was proposed here, and here is where its news is owed.
+func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
+	if node.parent == 0 {
+		return []mailbox{a}
+	}
+	parent := node.graph.node(node.parent)
+	if parent == nil {
+		return []mailbox{a}
+	}
+	// openRoom answers nil for a settled parent, and the seat answers "nobody"
+	// for a nil room — the parent has landed, has no agent left to read anything,
+	// and the person's conversation is the honest place for the news.
+	return []mailbox{roomSeat{at: conversationOf(parent), room: parent.openRoom()}, a}
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,

@@ -1946,6 +1946,33 @@ What this means in practice: **the fold is a volume, not a mute.** One job with 
 in it does not read as six demands while it is running, and nothing quietly rots underneath
 a task that went home.
 
+**And a piece that lands when its parent has stopped reading comes to you instead.** The
+parent's worker stops reading a few seconds before the task itself lands — while its work
+is being checked — and a piece finishing in that window has no reader inside the family. Its
+report arrives in this conversation, exactly as a top-level task's does, rather than being
+put on a queue nobody drains. Before this it was queued on the worker that had stopped
+reading and was never said again, in this session or after a restart.
+
+## When the conversation says something to a running task — did the task think that was me
+
+Two different things can send a line into a running task, and the task is told which.
+
+**Your own line** — typed into the task's room, or `m` on the steer guard — arrives in its
+transcript as your words, undecorated, and is kept in its record as your correction. That is
+the one road that speaks for you.
+
+**The conversation's own model can also say something to a task** (you will see it call
+`tasks` with `say`, usually to pass on a fact the worker lacks). That line arrives named as
+the conversation speaking, with a sentence saying plainly that it is not the person, and it
+is recorded in the task's transcript as the session's own line rather than as yours. The
+task's brief and its acceptance are unchanged either way — they were frozen when it started
+— and neither road can hand a task permission you did not give it.
+
+This matters when you reopen a task's transcript later: a line that reads like a decision
+("you may change the schema") shows whether you made it or the conversation did. Before
+this the two were written down identically, and the task's page drew the model's message as
+your own correction.
+
 ## Choosing which model a task runs on
 
 You say it in the conversation, in words: "use opus for this one". The model then puts the

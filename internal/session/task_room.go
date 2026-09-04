@@ -48,7 +48,7 @@ package session
 // line arrives on that agent's steering queue and is drained at ITS next step
 // boundary. What it promises is delivery — "it arrived", or "it arrived and the
 // node is parked on its own pieces" — and there is no third outcome, because a
-// node that has finished is a refusal ([Agent.enqueueSteeredLine] answers false)
+// node that has finished is a refusal ([taskRoom.handIn] answers nobody)
 // and never a queue.
 //
 // [Agent.Steer] (steer.go) is the other one: a sentence SPLICED INTO THIS
@@ -136,7 +136,7 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 //
 // It is a fact and not a refusal, because the line does arrive: the parked
 // runner is released by the enqueue below, wakes with the sentence on its queue
-// and re-enters the model with it ([Agent.enqueueSteeredLine], [runTaskChild]).
+// and re-enters the model with it ([taskRoom.steerIn], [runTaskChild]).
 // Before that it went onto a queue with nothing to drain it — held for as long
 // as the slowest piece ran and dropped outright if the last report arrived
 // first, while the room said it had arrived.
@@ -147,6 +147,31 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // and the person is told so in the same breath as every other "there is nobody
 // in there".
 func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
+	return a.sayToTask(id, text, fromPerson)
+}
+
+// relayToTask is THE OTHER SPEAKER, and it is not the person: the model calling
+// `tasks … say` from this conversation or from a parent node
+// (tools_tasks.go's [Agent.oneTask]).
+//
+// IT TAKES THE SAME ROAD AND NOT THE SAME AUTHORSHIP. The mechanics are one
+// thing — a line onto a running node's queue, read at its next step boundary,
+// waking it if it was parked — and every one of those is about DELIVERY. Who
+// said it is a separate fact, and it used to be lost here: the model's
+// coordination arrived through [Agent.SteerTask] wearing the person's own mark,
+// so the worker's journal drew it as the person's correction, the session's
+// folder recorded that the person had spoken, and a sentence like "you may
+// change the schema" read as authority nobody with authority had given. A
+// descendant cannot raise its own authority by phrasing a request as an
+// instruction, so the origin travels with the words ([relayNote] frames them).
+func (a *Agent) relayToTask(id uint64, text string) (bool, error) {
+	return a.sayToTask(id, text, fromAgent)
+}
+
+// sayToTask is the one road both doors take. The refusals are shared because
+// they are facts about the NODE — unknown, settled, being checked, nobody in
+// the room — and the origin decides only what the words arrive as.
+func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (bool, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return false, errors.New("nothing to say")
@@ -188,10 +213,22 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// far end, because by the time the line is written down the node is no longer
 	// parked — this is the enqueue that released it — and the record would then
 	// say the ordinary thing about the one moment it was not true.
-	if !node.openRoom().steerIn(text, waiting) {
+	if !node.openRoom().steerIn(conversationOf(node), a.spoken(text, waiting, origin)) {
 		return false, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
 	}
 	return waiting, nil
+}
+
+// spoken is the line as the recipient will read it, built from WHO IS SPEAKING.
+// A person's words go in undecorated, because from the worker's side that is
+// exactly what they are; another agent's coordination is framed and named, so
+// that a worker can act on it without mistaking it for the person's authority.
+func (a *Agent) spoken(text string, waiting bool, origin messageOrigin) delivery {
+	note := steerNote(text, waiting)
+	if origin == fromAgent {
+		note = relayNote(text, a.address())
+	}
+	return delivery{origin: origin, kind: msgDirection, note: note}
 }
 
 // RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
@@ -489,23 +526,18 @@ func (r *taskRoom) speaker() *Agent {
 	return r.child
 }
 
-// steerIn hands the person's line to whoever is in the room, with the nil-check
-// and the enqueue under ONE hold of the room's lock. The runner's withdrawal
-// takes the same lock, so the two cannot interleave into a swallow: either this
-// enqueue lands while the speaker still stands — and then it lands BEFORE the
-// runner's final queue check, which answers it with one more turn — or the
-// withdrawal won and this refuses, words kept. Split across two locks it was
-// the #273 race with a narrower window, not a fix.
-func (r *taskRoom) steerIn(text string, waiting bool) bool {
-	if r == nil {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closed || r.child == nil {
-		return false
-	}
-	return r.child.enqueueSteeredLine(text, waiting)
+// steerIn hands one spoken line to whoever is in the room, and answers whether
+// a live reader took it. The resolve-and-append is one step
+// ([taskRoom.handIn]), which is what keeps the runner's withdrawal from
+// slipping between the two into a swallow.
+//
+// THERE IS NO SECOND ADDRESS TO TRY. A landed node's report falls back to the
+// person's conversation because news with nowhere to go still belongs to
+// somebody ([Agent.deliverTaskNote]); a line said INTO a room does not, because
+// putting somebody's words in front of a reader they did not address is worse
+// than telling them nobody was there to hear it.
+func (r *taskRoom) steerIn(at conversationID, said delivery) bool {
+	return deliverTo(said, roomSeat{at: at, room: r}).accepted()
 }
 
 // bill is the agent whose unfolded usage the node's price still owes: the

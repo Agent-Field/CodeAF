@@ -132,7 +132,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	// From the moment this function returns, this child never reads again — the
 	// check and the landing are other hands — but it stays OPEN until the
 	// caller's retire, which on a checked node is minutes away. A line steered
-	// in during that window would still be TAKEN ([Agent.enqueueSteeredLine]
+	// in during that window would still be TAKEN ([Agent.enqueueNote]
 	// answers whether the agent is closed, not whether anybody will drain it),
 	// echoed by the room as said, and closed over unread: the #273 swallow. The
 	// tail loop below also withdraws at its own last read, which is earlier on
@@ -674,7 +674,7 @@ func (r *childRun) foldParts() {
 			// From here the child never reads again — the check and the landing
 			// are other hands — but it stays OPEN until [Agent.workTaskNode]'s
 			// retire, which on a checked node is minutes away. A line steered in
-			// during that window would still be TAKEN ([Agent.enqueueSteeredLine]
+			// during that window would still be TAKEN ([Agent.enqueueNote]
 			// answers whether the agent is closed, not whether anybody will
 			// drain it), echoed by the room as said, and then closed over: the
 			// exact swallow the speaker's clearing at close exists to prevent
@@ -693,7 +693,18 @@ func (r *childRun) foldParts() {
 			// who is owed the report). The next pass through this gate takes
 			// the speaker away again.
 			r.room.speaking(nil)
-			if !r.child.steeringHeld() {
+			// BOTH QUEUES ARE ASKED AGAIN, because both roads into this worker
+			// go through the room's lock and either can have won the race with
+			// the withdrawal. A person's line and another agent's are held on
+			// the steering mark; a sub-task's report is not marked at all and is
+			// owed news instead ([Agent.deliverTaskNote]), and asking only about
+			// the mark left exactly that report queued on a worker about to stop
+			// reading — the delivery that lost this race by an instant is now
+			// refused at the seat and goes to the conversation instead, and the
+			// one that won it is answered here by one more turn.
+			owed, working = r.child.taskNewsStanding()
+			held = r.child.steeringHeld()
+			if owed == 0 && !held && !working {
 				return
 			}
 			r.room.speaking(r.child)

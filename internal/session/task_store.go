@@ -338,6 +338,13 @@ type taskRecord struct {
 	// worth more than the case it buys.
 	Noted bool `json:"noted,omitempty"`
 
+	// NotedState is the ending that announcement was made for, so that work which
+	// later ends somewhere else — a person deciding about a landing nobody could
+	// check — is news again while the same landing is not announced twice
+	// ([TaskNode.notedEnding]). It is absent from every checkpoint written before
+	// it existed, and an absent one reads as "announced, whatever it said".
+	NotedState TaskState `json:"noted_state,omitempty"`
+
 	// Interrupted says this node was RUNNING when a session ended and that a
 	// recovery has consumed that fact. It is the consume-once receipt.
 	Interrupted bool `json:"interrupted,omitempty"`
@@ -735,6 +742,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		CacheRead:     n.cacheRead,
 		CacheWrite:    n.cacheWrite,
 		Noted:         n.noted,
+		NotedState:    n.notedState,
 		Interrupted:   n.interrupted,
 		Kind:          n.kind,
 		Offer:         n.offer,
@@ -1219,6 +1227,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		cacheRead:   record.CacheRead,
 		cacheWrite:  record.CacheWrite,
 		noted:       record.Noted,
+		notedState:  record.NotedState,
 		interrupted: record.Interrupted,
 		offer:       record.Offer,
 	}

@@ -50,7 +50,13 @@ var wakeRoads = map[string]string{
 	"enqueueSteering": "the generic lane. Its callers own the addressing: a landing goes through " +
 		"[Agent.deliverTaskNote] below, a standing firing is the person's own armed words, " +
 		"a fork's hand reports to the model that forked it",
-	"enqueueSteeredLine": "the person's own line, steered into a node (task_room.go)",
+	"spoken": "the person's own line, said into a node (task_room.go). The other speaker on " +
+		"this road is another agent in this session, and it is addressed to the node's own " +
+		"runner rather than to anybody out there ([relayNote])",
+	"relayNote": "the model's `tasks … say` into a running node. It wakes THAT NODE'S RUNNER " +
+		"and nobody else — a worker's turns are its runner's to start ([Agent.wakeLocked] " +
+		"declines inside a task) — so it never reaches the wake a person would have to be " +
+		"there for, and it is marked as the session's own words rather than as theirs",
 	"deliverTaskNote": "THE ONE THAT MATTERED. The note is built by [taskNote] out of a " +
 		"[landingAddress], which is what the session's goal owner answered about that landing " +
 		"([Agent.addressLanding] → [Principal.Report])",
