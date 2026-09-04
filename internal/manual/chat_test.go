@@ -1854,6 +1854,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
+		{"does aforge do use the lane I pinned", "lanes"},
+		{"is my pinned provider used when I run from a terminal", "lanes"},
 		// And the one thing that ends a pin without the person: the router
 		// saying that machine cannot serve that model at all (issue #456). It
 		// is asked as somebody reads it on the screen and wants to know what it
