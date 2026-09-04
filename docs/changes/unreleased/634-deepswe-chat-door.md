@@ -16,3 +16,8 @@ copied out with `docker cp` on every poll and read by the canary's journal.py.
 A card waiting on a person is not the end of a cell: the rig waits
 CHAT_ASK_GRACE seconds for a monitor to answer, then ends it as `asked`, because
 a person sitting in front of the chat would have answered.
+
+The first measurement is AUTOPSY.md's s15: eight tasks, sixteen cells, no
+reward 1 on either door; `chat` passes more hidden tests than `do` on five of
+eight tasks at about twice the money and one and a half times the wall, and
+`do` on the five tasks with history costs $2.74 where s13 cost $1.52.
