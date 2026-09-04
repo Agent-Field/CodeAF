@@ -679,3 +679,24 @@ TestAWorktreeTaskBindsContractPaths fail on clean dev too — macOS symlink, NOT
 - WALL-TIME + CONTINUITY: the remaining pain. The default-mode approval friction (R2),
   the dead default lane (R6), and "continue doesn't continue" (R1) are what a user will
   actually feel next. R1 and R2 are the highest-value next fixes.
+
+---
+
+# R1/R2 RESOLUTION (2026-09-04, binary aa8740a1)
+
+## R2 — approval — FIXED (verified by blind QA + code)
+- Timeout now pauses, never "denied by the person" (transcript shows "· paused").
+- Read-only calls (read/ls/grep/find, tasks read, git status) ungated in default mode;
+  mutating calls still prompt; compound bash correctly prompts.
+
+## R1 — continue — FIXED (root cause found + fixed)
+- ROOT CAUSE was NOT the continue verb; it was upstream: "as a task: fix the one-file
+  bug" was eaten by the spawn floor (head "fix" + one file => trivial => ran INLINE), so
+  NO task ever formed and "continue task N" had nothing to continue. Fix: wantsTask()
+  detects explicit intent (as a task / make this a task / spin off / hand off) and lifts
+  the floor, exactly as /task does (commit aa8740a1).
+- LIVE VERIFICATION (qa6): "as a task: fix the sq bug" now launches a real task
+  (propose_task fired), and "continue task 1" reached the continue path, which answered
+  honestly: "Task 1 is already running — continue doesn't apply". The model invoked the
+  tool and relayed truth. The earlier cross-session refusal ("No task / earlier
+  conversation") is by design and now says so plainly.
