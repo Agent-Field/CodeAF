@@ -390,9 +390,9 @@ func mentionMark(ascii bool) string {
 // already spends (task.go) so that a person who has watched a task run
 // recognizes it here.
 //
-// THE MENU HAS NO LIVENESS TO ASK. It draws the index alone, so a row claiming
-// to be running is taken at its word here ([session.TaskLivenessUnknown]) rather
-// than guessed at; the surfaces that do have the answer draw the quieter cell.
+// The menu has no liveness to ask: it draws the index alone, so a row claiming
+// to be running is taken at its word rather than guessed at. The surfaces that
+// do have the answer draw the quieter cell.
 func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
 	status := session.ProjectTask(entry.StatusFacts(true))
 	switch status.Presence {
@@ -420,10 +420,9 @@ func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
 		}
 		return glyphStopped
 	case session.TaskPresenceNeedsLook:
-		// THE TICK IS NOT THE DEFAULT ANSWER TO "WHAT ELSE IS THERE". Work nobody
-		// could judge would otherwise wear the one success glyph this surface has,
-		// which is the single place a person picking a task by recognition could
-		// be told that it came home (task.go's [glyphUnverified]).
+		// The tick is not the default answer to "what else is there": work nobody
+		// could judge would otherwise wear this surface's one success glyph
+		// (task.go's [glyphUnverified]).
 		return glyphUnverified
 	}
 	if ascii {

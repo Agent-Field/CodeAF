@@ -12,7 +12,6 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts    TaskFacts
 		presence TaskPresence
 		on       TaskWaitOn
-		next     TaskNextAction
 		reason   string
 		fault    bool
 		wants    bool // needs a person
@@ -25,7 +24,6 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskQueued, Hold: "machine busy"},
 		presence: TaskPresenceQueued,
 		on:       TaskWaitMachine,
-		next:     TaskNextWait,
 		reason:   "machine busy",
 	}, {
 		name:     "queued behind other work waits on that work by name",
@@ -42,7 +40,6 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskRunning, Hold: "rate limited"},
 		presence: TaskPresenceWaiting,
 		on:       TaskWaitMachine,
-		next:     TaskNextWait,
 		reason:   "rate limited",
 	}, {
 		name:     "a named gap outranks the hold",
@@ -54,7 +51,6 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskRunning, Kind: TaskKindHarness, Phase: HarnessPhaseAsking},
 		presence: TaskPresenceNeedsLook,
 		on:       TaskWaitPerson,
-		next:     TaskNextLook,
 		wants:    true,
 	}, {
 		name:     "another kind's phase is prose, not a state",
@@ -66,7 +62,6 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskUnverified},
 		presence: TaskPresenceNeedsLook,
 		on:       TaskWaitPerson,
-		next:     TaskNextLook,
 		wants:    true,
 	}, {
 		name:     "a person's stop is a stop and not a failure",
@@ -85,38 +80,32 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingWire},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 	}, {
 		name:     "a provider refusal says nothing about the work",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingUpstream},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 	}, {
 		name:     "a check that named gaps is unfinished work",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingRefused},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 	}, {
 		name:     "a brief whose world moved never started",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingStale},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 	}, {
 		name:     "an error is the fault",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingError},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 		fault:    true,
 	}, {
 		name:     "an older row with no ending keeps the fault it always wore",
 		facts:    TaskFacts{State: TaskFailed},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 		fault:    true,
 	}, {
 		name:     "done is done",
@@ -127,13 +116,11 @@ func TestProjectTaskPresence(t *testing.T) {
 		facts:    TaskFacts{State: TaskRunning, Liveness: TaskLivenessUnclaimed},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 	}, {
 		name:     "and the same for a queued row nothing holds",
 		facts:    TaskFacts{State: TaskQueued, Liveness: TaskLivenessUnclaimed},
 		presence: TaskPresenceIncomplete,
 		on:       TaskWaitPerson,
-		next:     TaskNextInspect,
 	}, {
 		name:     "an unheld running row keeps its claim while nobody can say",
 		facts:    TaskFacts{State: TaskRunning},
@@ -164,9 +151,6 @@ func TestProjectTaskPresence(t *testing.T) {
 			if got.On != tc.on {
 				t.Errorf("waiting on = %q, want %q", got.On, tc.on)
 			}
-			if got.Next != tc.next {
-				t.Errorf("next = %q, want %q", got.Next, tc.next)
-			}
 			if got.Reason != tc.reason {
 				t.Errorf("reason = %q, want %q", got.Reason, tc.reason)
 			}
@@ -192,7 +176,6 @@ func TestProjectTaskChangesAreTheirOwnAxis(t *testing.T) {
 		facts    TaskFacts
 		presence TaskPresence
 		changes  TaskChangeDisposition
-		next     TaskNextAction
 		unlanded bool
 	}{{
 		name:     "merged edits are home",
@@ -204,14 +187,12 @@ func TestProjectTaskChangesAreTheirOwnAxis(t *testing.T) {
 		facts:    TaskFacts{State: TaskDone, Merge: mergeConflicted, Branch: "task/fix-nil"},
 		presence: TaskPresenceDone,
 		changes:  TaskChangesConflicted,
-		next:     TaskNextCollect,
 		unlanded: true,
 	}, {
 		name:     "a stopped run leaves a branch to collect",
 		facts:    TaskFacts{State: TaskFailed, Stopped: true, Merge: mergeAborted, Branch: "task/offline"},
 		presence: TaskPresenceStopped,
 		changes:  TaskChangesKept,
-		next:     TaskNextCollect,
 		unlanded: true,
 	}, {
 		name:     "a kept word with no branch left nothing behind",
@@ -224,11 +205,10 @@ func TestProjectTaskChangesAreTheirOwnAxis(t *testing.T) {
 		presence: TaskPresenceDone,
 		changes:  TaskChangesInPlace,
 	}, {
-		name:     "incomplete work keeps its own next move over the branch's",
+		name:     "incomplete work with a kept branch is both facts at once",
 		facts:    TaskFacts{State: TaskFailed, Ending: TaskEndingRefused, Merge: mergeKept, Branch: "task/import"},
 		presence: TaskPresenceIncomplete,
 		changes:  TaskChangesKept,
-		next:     TaskNextInspect,
 		unlanded: true,
 	}, {
 		name:     "a merge word this build does not know places nothing",
@@ -242,16 +222,13 @@ func TestProjectTaskChangesAreTheirOwnAxis(t *testing.T) {
 				t.Errorf("presence = %q, want %q", got.Presence, tc.presence)
 			}
 			if got.Changes != tc.changes {
-				t.Errorf("delivery = %q, want %q", got.Changes, tc.changes)
-			}
-			if got.Next != tc.next {
-				t.Errorf("next = %q, want %q", got.Next, tc.next)
+				t.Errorf("changes = %q, want %q", got.Changes, tc.changes)
 			}
 			if got.ChangesUnlanded() != tc.unlanded {
-				t.Errorf("undelivered = %v, want %v", got.ChangesUnlanded(), tc.unlanded)
+				t.Errorf("unlanded = %v, want %v", got.ChangesUnlanded(), tc.unlanded)
 			}
 			if got.ChangesUnlanded() && !got.Attention {
-				t.Error("undelivered work must ask for a person")
+				t.Error("edits nobody brought home must ask for a person")
 			}
 		})
 	}

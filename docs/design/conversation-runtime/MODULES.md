@@ -71,9 +71,13 @@ plus `TaskIndexEntry.StatusFacts`. It answers four questions that used to be one
 
 - **presence** — `queued`, `working`, `waiting`, `finishing`, `done`, `incomplete`,
   `needs-look`, `stopped`, and the zero value for a state this build does not recognise.
-- **who/what is being waited on** (`TaskWaitOn`) and **whose move is next**
-  (`TaskNextAction`), where every action named is one the runtime actually offers — there is
-  no "resume", because `SteerTask` refuses anything that is not running.
+- **who or what is being waited on** (`TaskWaitOn`), which is what makes "waiting" mean
+  anything. A "whose move is next" enum was drafted and then removed: no production surface
+  consumed it, and the runtime's actual continuation affordances — `SteerTask` for a running
+  node, `ResolveUnverified` for a claim nobody could check, and `ContinueTask`
+  (`task_continue.go`, which reopens a settled node onto the frontier under its own id) —
+  already have their own doors. A projection that named a next action would be a second,
+  weaker copy of those rules.
 - **change disposition** (`TaskChangeDisposition`) — merged, in-place, kept, conflicted —
   which is source control and nothing else.
 - **fault** — whether something broke, as distinct from work that did not finish.
@@ -92,7 +96,7 @@ Behavior that changed as a result, all in the direction of not claiming things:
 - a node this window never watched keeps its recorded claim instead of being called dead.
 
 Documented gaps, not fixed here: the project index carries no merge word, branch, hold, gap
-or prerequisite, so a record row can never raise the "collect the branch" demand a live row
+or prerequisite, so a record row can never raise the unlanded-edits demand a live row
 raises; harness phases are strings with no typed lifecycle, so exactly one of them
 (`HarnessPhaseAsking`) is interpreted by name.
 
@@ -188,8 +192,8 @@ Concrete, small, and each with a place to stand:
    node through a whole run — queued, working, checking, stopping, stopped.
 
 3. **`TaskIndexEntry` gains the facts the record cannot currently carry** (merge word,
-   branch, hold), so that the history page can raise the "collect this branch" demand that
-   only live rows raise today. It is a persisted-format change and therefore wants its own
+   branch, hold), so that the history page can raise the unlanded-edits demand that only
+   live rows raise today. It is a persisted-format change and therefore wants its own
    wave: additive fields, absence stays unknown, old rows keep their present reading.
    *Integration test boundary:* a session that lands a conflicted branch and is then
    reopened from the index alone shows the same demand it showed live.

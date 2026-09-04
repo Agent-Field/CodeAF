@@ -2,26 +2,15 @@ package tui3
 
 import "github.com/Agent-Field/aforge-v2/internal/session"
 
-// ── THE ONE READING EVERY TASK SURFACE DRAWS FROM ───────────────────────────
-//
-// [session.ProjectTask] is where "what is this task doing, and is anything mine
-// to do about it" is answered. This file is the two doors onto it — one for the
-// nodes this window is watching, one for the rows the project's record holds —
-// and the one table that turns a reading into this surface's own words.
-//
-// THE VOCABULARY STAYS HERE. The engine answers with identifiers and this file
-// spells them, which is the same split the record page has always had
-// (taskview.go): a screen that says `needs your look` where the code says
-// TaskUnverified is a surface decision, and the engine has no business holding a
-// copy of it.
+// The two doors onto [session.ProjectTask], and the one table that turns a
+// reading into this surface's own words. The engine answers with identifiers and
+// the vocabulary stays here, which is the split the record page has always had
+// (taskview.go).
 
-// taskStatus reads one node this window is watching.
-//
-// LIVENESS IS ONLY CLAIMED WHERE IT IS KNOWN. A node this session met while it
-// ran is held by this session; a node replayed out of a checkpoint was never
-// watched here ([taskNode.restored]), and this window has no standing to say
-// whether anything is behind it — so it says nothing, and the reading follows
-// the state as recorded rather than calling the work dead.
+// taskStatus reads one node this window is watching. Liveness is claimed only
+// where it is known: a node this session met while it ran is held here, and one
+// replayed out of a checkpoint ([taskNode.restored]) was never watched, so this
+// window says nothing about it rather than calling the work dead.
 func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 	if node == nil {
 		return session.TaskStatus{}
@@ -54,10 +43,10 @@ func taskEntryStatus(entry session.TaskIndexEntry, runs bool) session.TaskStatus
 	return session.ProjectTask(entry.StatusFacts(runs))
 }
 
-// taskPresenceWord is the reading in this surface's words, and it is the only
-// table that spells one. A presence this build has no word for draws nothing at
-// all rather than falling through to `done`, which is what the record page's own
-// switch used to do with a status it did not recognise.
+// taskPresenceWord is the reading in this surface's words, and the only table
+// that spells one. A presence with no word draws nothing rather than falling
+// through to `done`, which is what the record page's switch did with a status it
+// did not recognise.
 func taskPresenceWord(status session.TaskStatus) string {
 	switch status.Presence {
 	case session.TaskPresenceQueued:
@@ -75,10 +64,10 @@ func taskPresenceWord(status session.TaskStatus) string {
 	case session.TaskPresenceStopped:
 		return taskStoppedWord
 	case session.TaskPresenceIncomplete:
-		// THE FAULT IS THE ONLY THING THAT EARNS `failed`. A dropped connection,
-		// a threshold, a check that named gaps and a brief whose world had moved
-		// are all work that did not finish, and calling any of them a failure
-		// reports a finding nobody made (session's TaskStatus.Fault).
+		// The fault is the only thing that earns `failed`: a dropped connection, a
+		// threshold, a check that named gaps and a brief whose world had moved are
+		// all work that did not finish, and calling any of them a failure reports a
+		// finding nobody made.
 		if status.Fault {
 			return doneFailWord
 		}

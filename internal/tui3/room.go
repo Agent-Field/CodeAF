@@ -2353,9 +2353,9 @@ func (a *app) roomNode() *taskNode {
 // roomMark is the node's state in one cell, UNPAINTED — [app.railGlyph]'s glyph
 // without its hue, because the header wears one hue for its whole length.
 //
-// IT IS THE ROSTER'S OWN CELL AND NOT A SECOND TABLE ([app.taskStateMark]). The
-// copy that used to live here had drifted: it knew the refusal mark but not the
-// stop's ⊘ and not the halt's !, so a node a person stopped wore a failure's
+// It is the roster's own cell ([app.taskStateMark]) and not a second table. The
+// copy that used to live here had drifted: it knew the refusal mark but neither
+// the stop's ⊘ nor the halt's !, so a node a person stopped wore a failure's
 // cross on its own page and the roster's ⊘ one keypress away.
 func (a *app) roomMark(node *taskNode) string {
 	if node == nil {

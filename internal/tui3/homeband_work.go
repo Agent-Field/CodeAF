@@ -209,9 +209,8 @@ func homeWorkGlyph(status session.TaskStatus, ascii bool) string {
 		}
 		return homeStuckGlyph
 	case session.TaskPresenceStopped:
-		// A PERSON'S STOP WEARS THE MARK IT WEARS EVERYWHERE ELSE, and not the
-		// cross: nothing was found wrong with work somebody ended themselves
-		// (task.go's [glyphStopped]).
+		// A person's stop wears the mark it wears everywhere else and not the
+		// cross (task.go's [glyphStopped]).
 		if ascii {
 			return glyphStoppedASCII
 		}

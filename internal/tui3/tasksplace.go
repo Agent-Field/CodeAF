@@ -1171,11 +1171,9 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 	status := taskEntryStatus(item.entry, item.runs)
 	switch status.Presence {
 	case session.TaskPresenceIncomplete:
-		// A ROW NOTHING IS RUNNING DOES NOT WEAR THE RUNNING GLYPH, and it does
-		// not wear the steer mark either: [glyphIdle] takes its place — the dot
-		// this surface already spends on a call that was still going when its turn
-		// ended — because a frozen spinner would claim the work is alive and a dot
-		// claims nothing (session's TaskLivenessUnclaimed).
+		// A row nothing is running wears neither the running glyph nor the steer
+		// mark: [glyphIdle] takes its place, because a frozen spinner would claim
+		// the work is alive and a dot claims nothing.
 		if status.Liveness == session.TaskLivenessUnclaimed {
 			if pal.ascii {
 				return glyphIdleASCII, pal.dim
