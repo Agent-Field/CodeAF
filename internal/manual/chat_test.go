@@ -47,6 +47,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meet it: reading the figure, and finding it beside the call log.
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
+		// A refused headless run names the project it worked in, asked in the two
+		// ways somebody meets an empty file list after spending time and money.
+		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
+		{"aforge do spent money and wrote no files", "running-from-the-terminal"},
 		// And the reader itself: a person with a log in front of them wants one
 		// call out of it, or wants the rows a program can read.
 		{"find one call in the log", "models-and-cost"},

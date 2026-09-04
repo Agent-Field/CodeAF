@@ -46,6 +46,10 @@ work done.
 | `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
 | `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
 
+A run that ends without delivering and without writing anything says so in its own answer:
+`Nothing reached disk: this run worked in /srv/project, editing it in place, and no file there was created or changed while it ran.`
+The run's own traces live under the kept store named by the `record kept at <path>` line on stderr; that store is a different place from the working directory.
+
 Flags may appear after the task text; `do` reorders its own arguments. Naming
 neither context flag touches the environment at all, so a wrapper script that
 exported `AFORGE_CONTEXT_FILL_PCT` for a whole campaign stays in charge of it.
@@ -259,14 +263,15 @@ there now. Test its value, or read `ok`.
 
 Fields that belong to `do` and stay: `spend_work` and `spend_overhead` — what
 the work cost against what it cost to decide what the work should be —
-`blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`.
+`blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source`,
+`subharness` and `workspace`.
 
 | Field | Contract |
 | --- | --- |
 | `blocked_on` | The question it could not answer, verbatim. Non-empty **only** alongside a non-zero exit and an empty `answer`. |
 | `learned` | The job's blackboard: discoveries, pitfalls, a sibling's failure and why. On an ephemeral store this is the only piece of what the run understood that would otherwise die with it — capture it if you care about the run's reasoning. |
 | `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `AFORGE_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
+| `workspace` | The directory the run worked in, absolute, edited in place. Always present; empty only on a run that never got as far as opening one. |
 
 ### Stream discipline
 

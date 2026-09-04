@@ -287,6 +287,23 @@ in it. `aforge logs --run <id>` answers a miss the same way.
 The id is the one the plan gave that step — the same id `logs --node <id>` filters on, and
 the value of the `node` field in `logs --json`.
 
+## The run finished and my directory is empty — where did the work go after aforge do spent money and wrote no files
+
+`aforge do` edits the directory you point it at in place; it files nothing anywhere else.
+When a run did work but ended without delivering or creating or changing a file, its answer
+ends with:
+
+```
+Nothing reached disk: this run worked in /srv/project, editing it in place, and no file there was created or changed while it ran.
+```
+
+A run that did write instead names every file by its absolute path.
+
+The run's own record is separate. On a run that does not finish cleanly, the
+`record kept at <path>` line on stderr names the private store holding its traces and job
+logs. “Nothing reached disk” is about the project directory, not that record. Under
+`aforge do --json`, `workspace` carries the same absolute project directory.
+
 ## Where is the record of my headless run — reading a kept one-shot's store
 
 `why` reads a store, and by default that store is `~/.aforge/graph.db`. A headless
