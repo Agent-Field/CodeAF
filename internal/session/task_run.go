@@ -255,6 +255,16 @@ type TaskNode struct {
 	// and it is not an edge: dependsOn says what must finish first, this says
 	// who asked (task_contract.go states the difference).
 	parent uint64
+	// admitBy and admitAt are WHOSE REQUEST HANDED THIS WORK OUT: the agent that
+	// admitted the node and the request it was working on at the time — its turn
+	// and the person's steers into that turn ([requestEpoch]) — or nil and the
+	// zero epoch for a node nobody's turn opened: a checkpoint restore, a
+	// scripted graph, a `/task` typed between turns. They are written once, at
+	// admission, beside the rest of the node's provenance, and read by
+	// turnhandoff.go so the turn that handed its ask off is not read as a turn
+	// that stopped short of it.
+	admitBy *Agent
+	admitAt requestEpoch
 	// depth is how many tasks deep this node sits — 1 for the conversation's
 	// own, 2 for a sub-task — and it is what taskDepthLimit bounds.
 	depth int
@@ -979,6 +989,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// judge's answer was banked; a scripted graph in a test has no conversation
 	// and gets the honest false ([Agent.armDivision] is nil-safe).
 	spec.armed = g.home.armDivision(spec)
+	// WHOSE TURN HANDED THIS OUT, read once, before the node exists
+	// (turnhandoff.go).
+	admitter := g.admittingAgent(spec)
 	node := &TaskNode{
 		graph:     g,
 		id:        id,
@@ -990,6 +1003,11 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		spec:      spec,
 		kind:      spec.kind(),
 		state:     TaskQueued,
+		// WHOSE REQUEST HANDED THIS OUT, stamped at the one door every task in
+		// this package comes through so no road has to remember to do it
+		// (turnhandoff.go).
+		admitBy: admitter,
+		admitAt: requestEpochAt(admitter),
 		// WHERE THE WORK STANDS, carried from the door that resolved it
 		// (taskstands.go). A door that resolved none — a design, a subharness run,
 		// a scripted graph — admits with nothing here and the working copy fills it

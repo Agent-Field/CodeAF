@@ -814,10 +814,22 @@ Nothing knew that "waiting on the world" was an answer, so the reply was read, f
 the very command that was going to report, for about a third of a dollar and no progress, until
 the running-long point moved the wait into a task whose done-condition nobody could ever fail.
 
-**A sub-task of your own is deliberately not one of these.** A task landing wakes a reply and
-that reply *is* read for what remains, however short it was — that is the rule in the section
-above, and going quiet while any sub-task was out would take it away from the reply it was
-written for.
+**A task started for the message you just sent ends the reply, and nothing else does.** If the
+reply handed *this* request's work to a task and that task is queued or running, the reply
+stops there and is not read: the outcome is the task's to deliver, its landing wakes a reply
+here on its own, and *that* reply is read for what remains with the report in front of it. It
+is narrow on purpose — a task started for an **earlier** message excuses nothing, so a reply
+that hands nothing over is read exactly as it was before; **anything you say after the
+handoff**, including a correction typed into the running reply, puts the reading back; and a
+task that has already **failed or finished** is news to answer rather than work to wait for.
+
+**What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
+no done-condition is answered. A reply that hands one part of your message over and quietly
+drops another ends here too, and what catches that is the reading the landing brings — deferred,
+not skipped. The measured failure it fixes: "hand this work to a task, run the build and tell me
+the marker, keep the conversation free while it runs" was done exactly as asked, read as
+unfinished because the marker was not known yet, and carried on into polling the task it had
+just started and a watch over its own work.
 
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything

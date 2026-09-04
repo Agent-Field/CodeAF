@@ -145,7 +145,11 @@ var beltFacts = []beltFact{{
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering, and `tasks` with `scope: \"everywhere\"` groups every OTHER project holding live work.\n" +
 		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read, and say so when a row prints no transcript. A `[Task reference: ...]` block already carries those URIs.\n" +
 		"- `tasks` with `id` shows the call in flight, the steps, the spend and the last of what a running task said and did: pull it to SEE inside a run. Steer with `id` and `say`.\n" +
-		"- `needs your look`: not done or failed, branch kept; settle with `tasks` id and `resolve`. \"continue task N\" / \"keep going on task N\" — failed, finished or halted — is `tasks` with that id and `continue`, never a narration and never a new `propose_task`. If the tool says there is no graph, say so and point at the row's branch or working copy.",
+		// THE CONTINUE SENTENCE IS NOT REPEATED HERE. `tasks` own description
+		// carries it word for word ([tasksDescription]), and the prefix is a
+		// budget: what pays for the handoff law in prompts/system.md is this
+		// second copy of a law the model already holds whenever it holds the verb.
+		"- `needs your look`: not done or failed, branch kept; settle with `tasks` id and `resolve`. If the tool says there is no graph, say so and point at the row's branch or working copy.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},
