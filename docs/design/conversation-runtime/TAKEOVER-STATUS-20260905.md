@@ -459,3 +459,28 @@ it now asserts no consent, no execution and a safe actionable error. Valid JSON
 with an escaped control byte still exercises the existing card-scrubbing path.
 The preceding deadline/build revision `8ae9d135e` passed both CI halves
 (run 33992899226). The first native trial remains frozen at its permission card.
+
+### Recovery trial and truthful waiting status
+
+The separate native recovery trial started at 21:55:01 UTC on `79b2d48b0`,
+with binary SHA-256 `a3b59d2b5fb2919d14042f266bf6a87f7c9127ed30f739e533455c1e1d1bcbb0`.
+Its environment note gives the verified `--no-cov` command. Source, prompt,
+images, model and controls are frozen in
+`~/bench-artifacts/af653-native-recovery-20260905/manifest.json` on Spark.
+It is unattended and graded only after delivery or the declared deadline.
+
+Read-only observation exposed a separate presentation defect: repeated
+`still no answer — trying another lane` notices occurred on calls whose own
+receipts recorded `action: report`, with no rescue arm. The first-prompt report
+shared the rescue wording and switching phase even when no alternative could
+start. A wire-level regression with exactly one available provider reproduces
+that false claim. The next runtime says `still waiting for an answer · /model
+switches` and remains in the waiting phase in that case; actual rescue requests
+retain their existing notice and switching phase. Provider selection, allowances
+and retries are unchanged. This presentation fix is not injected into the
+running recovery trial.
+
+The waiting-status fix passes the full provider/manual make-check gate
+(51.922 and 1.760 seconds), packed manual, vet, formatting, build and size.
+The real-wire wait/rescue/last-resort cases pass ten race repetitions
+(11.983 seconds). The no-alternative regression fails before the change.

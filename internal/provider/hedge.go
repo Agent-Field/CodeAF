@@ -86,6 +86,9 @@ const hedgeNotice = "that lane went quiet — this answer is coming from another
 // is the switch a person would otherwise have to discover.
 const firstPromptNotice = "still no answer — trying another lane · /model switches"
 
+// A wait without another request must not claim a rescue or draw switching.
+const firstPromptWaitNotice = "still waiting for an answer · /model switches"
+
 // waitNow is the clock the waiting controller runs on, and it is deliberately
 // NOT the client's seamed [Client.clock].
 //
@@ -529,7 +532,7 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
 		// start. Saying nothing here is the 90s hang: the stream guard is
 		// the next thing that acts, and `/model` is never named.
-		if r.tellFirstPrompt("", quietWords(act.Silence)) {
+		if r.tellFirstPrompt("", quietWords(act.Silence), false) {
 			return
 		}
 		r.tellTheWait(act)
@@ -580,7 +583,7 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	// the second half would not know what it was about (phase.go).
 	quiet := primary.watch.quietFor(waitNow())
 	r.phase.switching(strings.ToLower(alt), quiet)
-	r.tellFirstPrompt(alt, quiet)
+	r.tellFirstPrompt(alt, quiet, true)
 	r.start(index, alt)
 }
 
@@ -636,7 +639,7 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	} else {
 		r.report.started(RescueNews{Reason: RescueSlow})
 	}
-	r.tellFirstPrompt(alt, quiet)
+	r.tellFirstPrompt(alt, quiet, true)
 	r.start(index, alt)
 	return true
 }
@@ -644,10 +647,11 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 // tellFirstPrompt is the visible half of a first-prompt stall. [hedgeNotice]
 // waits for text already on the screen; a first prompt has none, so the
 // rescue has to say itself — and name `/model` — or the person sits through
-// the first-token cut discovering nothing (F42).
+// the first-token cut discovering nothing (F42). A report with no available
+// rescue names that same door while saying only that the original call waits.
 //
 // IT IS ONCE PER QUESTION. A stall that re-announces on every beat is nagging.
-func (r *hedgeRace) tellFirstPrompt(alt, quiet string) bool {
+func (r *hedgeRace) tellFirstPrompt(alt, quiet string, rescuing bool) bool {
 	if r == nil || !firstPromptFrom(r.base) {
 		return false
 	}
@@ -659,17 +663,19 @@ func (r *hedgeRace) tellFirstPrompt(alt, quiet string) bool {
 	if already {
 		return true
 	}
-	then := strings.TrimSpace(alt)
-	if then == "" {
-		then = "/model"
-	}
+	notice := firstPromptWaitNotice
 	// A named alt already moved the phase in the caller. An empty one is
 	// the cold first-run rescue: nowhere named, so the door itself is Then.
-	if strings.TrimSpace(alt) == "" {
-		r.phase.switching(then, quiet)
+	if rescuing {
+		notice = firstPromptNotice
+		if strings.TrimSpace(alt) == "" {
+			r.phase.switching("/model", quiet)
+		}
+	} else {
+		r.phase.allSlow("")
 	}
 	if r.observer != nil {
-		r.observer(StreamEvent{Kind: StreamNotice, Delta: firstPromptNotice, Session: session})
+		r.observer(StreamEvent{Kind: StreamNotice, Delta: notice, Session: session})
 	}
 	return true
 }
