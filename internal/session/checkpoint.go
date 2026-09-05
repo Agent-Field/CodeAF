@@ -3190,15 +3190,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	}
 	sketch := read.sketch
 	asked := a.turnAsk()
-	// THE NAME IS ASKED FOR NOW, beside the two calls below rather than after
-	// them (taskname.go's [nameAhead]). This stage is the longest silence on the
-	// road, and the namer used to start only when it ended — so the line that
-	// announced the task, and the row it put on the rail, carried the person's
-	// raw sentence and were renamed under their eyes a moment later, or never,
-	// when the task failed first. Asked here, the name has the whole stage to
-	// land in. A road that declines below lets the call go.
-	ahead := a.nameAhead(asked)
-	defer ahead.release()
+	// THE NAME IS NOT ASKED FOR YET. It used to be started here, above both calls,
+	// so that the rail row was never drawn under the person's raw sentence; it is
+	// now started below, once the await reading can no longer end this road, and
+	// still has the writer's call to land in. A road that declines below lets the
+	// call go.
 	// AND THE PERSON IS TOLD WHAT THE SILENCE IS, because the two calls below are
 	// the longest stretch of this whole road with nothing drawn.
 	//
@@ -3225,31 +3221,24 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// it, counting from here to whichever ending this road takes.
 	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, time.Now())
 	draft, remains, drafted, awaited := a.checkpointBrief(ctx, turn, model)
-	// ── THE ONE PLACE AN AWAIT IS CONSUMED ──────────────────────────────────
-	//
-	// THE ONLY THING LEFT IS AN ENDING THIS CONVERSATION IS ALREADY OWED, and it
-	// said which one. Nothing moves: no task is admitted, nothing is marked done,
-	// no command is stopped and the obligation stays exactly where it was. What
-	// brings the result back is the wake that was always coming — the job's own
-	// ending note ([Agent.enqueueJobNote]) — and the turn that note starts is read
-	// for what remains like any other (handoff_remainder.go states the whole law).
-	//
-	// IT IS A DIFFERENT ENDING FROM THE DECLINE BELOW AND IS SPELLED APART FROM
-	// IT. That one is two minds agreeing the request is FINISHED; this one is the
-	// request being unfinished, with the unfinished part in this conversation's
-	// own hands. The row says which ([checkpointCeilingAwaiting]) and names the
-	// operation ([awaitDecision.awaitedRow]).
-	//
-	// AND THE GOAL OWNER'S CARRY-ON OUTRANKS IT, on exactly the terms it outranks
-	// the two-minds decline: an unattended session whose principal has just read
-	// this ending and said the ask is not finished is not talked over by a reading
-	// of what the running model claimed. A person's session never reads this road
-	// ([stewardReading]), so an attended conversation is decided by the two
-	// runtime facts and the model's typed answer alone.
-	if awaited.granted && !reading.carriesOn() {
+	// THE ONE PLACE AN AWAIT IS CONSUMED, and it is checked again here rather than
+	// trusted from a model call ago ([Agent.stillGranted]). Nothing moves: no task
+	// is admitted, nothing is marked done, no command is stopped, and the ending
+	// this conversation is owed comes back as the wake it always did. It is spelled
+	// apart from the decline below because that one is the request being FINISHED
+	// and this one is the request being unfinished in this conversation's own
+	// hands. The goal owner's carry-on outranks it on the same terms it outranks
+	// that decline, and a person's session never reads that road at all.
+	if a.stillGranted(awaited) && !reading.carriesOn() {
 		a.endPhase()
 		return checkpointHandover{decision: checkpointCeilingAwaiting, reason: awaited.awaitedRow()}
 	}
+	// THE NAME IS ASKED FOR HERE, once the road can no longer end without a task
+	// on this reading. It still has the writer's call below to land in — the
+	// longest stretch of the stage — and an await no longer pays for a namer it
+	// would have thrown away (taskname.go's [nameAhead]).
+	ahead := a.nameAhead(asked)
+	defer ahead.release()
 	if !remains {
 		// AND THE PRINCIPAL'S CARRY-ON OUTRANKS BOTH MINDS. The decline rests on
 		// two readers of the WORK agreeing that none of it is left; the session's
@@ -3953,11 +3942,11 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 			awaitDecision{refused: awaitNotClaimed}
 	}
 	// AND THE ASK CARRIES THIS CONVERSATION'S OWN LIVE OPERATIONS WHERE THERE ARE
-	// ANY (handoff_remainder.go). The offer and the epoch are taken TOGETHER and
-	// before the call, because what the answer will be verified against is what
-	// the model was actually shown and the request it was shown it for.
+	// ANY (handoff_remainder.go). The ground is read BEFORE the history it will be
+	// checked against, so a correction that lands in between changes the epoch and
+	// the claim is refused; a drain in between can only add what the model saw.
 	offered := a.awaitableOperations()
-	offeredAt := requestEpochAt(a)
+	offeredAt := a.awaitGroundNow()
 	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk+awaitOfferBlock(offered)))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
@@ -4000,24 +3989,19 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 		return "", false, carryStep{rung: carryRungDraft, outcome: carryNothingLeft},
 			awaitDecision{refused: awaitNotClaimed}
 	}
-	// AND THE AWAIT CONTRACT IS READ NEXT, in front of every reading that is about
-	// the DOCUMENT, because it is the other answer that is about the WORK.
-	//
-	// IT IS THE SECOND OF TWO WORK ANSWERS AND NEVER A THIRD SPELLING OF THE
-	// FIRST: `NOTHING LEFT TO DO` says the request is discharged, and this says a
-	// named ending is still owed to this conversation (handoff_remainder.go). A
-	// claim the runtime cannot verify falls through to the lines below and is read
-	// as the brief it also is, which is what keeps an ambiguity from costing
-	// anybody their work.
+	// AND THE AWAIT CONTRACT IS READ NEXT, because it is the other answer that is
+	// about the WORK rather than about the document. It never overlaps with the
+	// one above: that token says the request is discharged, and this says a named
+	// ending is still owed to this conversation (handoff_remainder.go).
 	if claimed, ok := readAwaitClaim(brief); ok {
 		if decided := a.confirmAwait(claimed, offered, offeredAt); decided.granted {
 			return "", true, carryStep{rung: carryRungDraft, outcome: carryAwaited,
 				reason: decided.awaitedRow()}, decided
-		} else if decided.refused != "" {
-			// A REFUSED CLAIM IS NOT A BRIEF EITHER. The answer was the token and
-			// some numbers, so there is nothing in it a worker could open on; the
-			// rung is degenerate and the ladder descends to the writer, which is
-			// exactly what happens to any other answer nobody could work from.
+		} else {
+			// A REFUSED CLAIM IS NOT A BRIEF EITHER: the answer was a token and
+			// some numbers, so there is nothing in it a worker could open on. The
+			// rung is degenerate and the ladder descends to the writer, exactly as
+			// it does for any other answer nobody could work from.
 			return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
 				reason: decided.refused, said: carrySaidNothingNew}, decided
 		}

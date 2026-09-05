@@ -1,109 +1,43 @@
 package session
 
 // THE LAW: A CONVERSATION MAY STOP WITHOUT DELEGATING WHEN THE ONLY THING LEFT
-// IS THE ENDING OF AN OPERATION IT IS ALREADY OWED — AND IT SAYS WHICH ONE.
+// IS THE ENDING OF AN OPERATION IT ALREADY OWNS — AND IT SAYS WHICH ONE.
 //
-// ── THE MEASURED FAILURE (calibration-02, cell 018-revision-midwork-aforge) ──
+// A turn that has finished every artifact the person asked for and is left only
+// waiting on a command it started has nothing a worker could be given: a cold
+// worker cannot wait on a job in somebody else's registry. The stopped-turn door
+// already knows this ([Agent.turnIsWaitingOnItsOwnWork]); the running-turn
+// handover door could not see it, and made a task out of the wait. The measured
+// cell is written up in the review under docs/design/conversation-runtime.
 //
-// A person asked for two things in one sentence: run ./slow-build.sh ("it takes
-// about a minute and I want it done"), and write a report. The turn started the
-// build in the background as job 1, wrote the report, took the person's revision
-// mid-turn, wrote report.csv and removed report.md — every artifact they asked
-// for — and the write seam then fired on the second file. The mark's reader drew
-// `(waiting)`, which is not one of [checkpointDoneShapes], so the two-minds
-// decline could not fire, and task 2 was admitted carrying a brief whose whole
-// content was "wait for ./slow-build.sh to finish … then verify report.csv".
-//
-// Forty-two seconds later job 1's own ending woke the conversation and it
-// answered correctly in one round. The task, meanwhile, spawned a repair child
-// and an audit child, and the cell ran to its 180-second cap.
-//
-// ── WHAT WAS ACTUALLY MISSING ──
-//
-// Not a threshold. At the moment of the handover the conversation held ONE
-// outstanding obligation, it OWNED that obligation, and the obligation's ending
-// was already queued to wake it ([Agent.enqueueJobNote]). There was nothing a
-// worker could have been given: a cold worker cannot wait on a job in somebody
-// else's registry, and the verification it would do is a re-reading of files
-// this turn had just written.
-//
-// [Agent.turnIsWaitingOnItsOwnWork] already states exactly this reasoning at the
-// STOPPED-turn door (checkpoint.go). The RUNNING-turn handover door could not
-// see it. This file is that fact, made available to the one road that lacked it,
-// as a typed answer rather than as a second opinion about English.
-//
-// ── WHY THE MODEL IS ASKED, AND WHAT IT IS ASKED FOR ──
-//
-// The runtime knows WHICH operations are outstanding; it does not know whether
-// the person's request is finished apart from them. Only the model that spent
-// the turn knows that. So the dowry ask it already answers
-// ([checkpointHandoffAsk]) is extended, AND ONLY WHERE THERE IS SOMETHING REAL
-// TO OFFER, with the operations this conversation is genuinely awaiting, by
-// number and by name. The model may then answer one more typed line —
-// [awaitOnlyToken] with those numbers — which means: everything else the person
-// asked for is done here, and what is left is these endings.
-//
-// IT IS NOT A NEW MODEL CALL. It is one more answer to a call this road already
-// makes and already pays for.
-//
-// IT IS NOT A KEYWORD READING. The numbers are checked against the snapshot the
-// ask offered, the operations are checked to be still running, and the request
-// is checked not to have moved under it. A claim the runtime cannot verify is
-// not refused politely — it is simply not an await, and the work is handed over
-// exactly as it would have been.
-//
-// ── AND THE THREE THINGS IT IS NOT ──
-//
-//   - IT IS NOT "NOTHING LEFT TO DO". That token says the request is discharged;
-//     this one says a named obligation is still owed and is somebody's — this
-//     conversation's — to receive. They are journaled apart ([carryAwaited]
-//     against [carryNothingLeft], [checkpointCeilingAwaiting] against
-//     [checkpointCeilingNothing]) because a bench that spelled them alike could
-//     not tell a finished turn from a waiting one.
-//   - IT IS NOT A RUNNING-JOB EXEMPTION. A live job on its own suppresses
-//     nothing: a turn with a build in flight and a rename still to do hands the
-//     rename over exactly as it did before this file existed. What suppresses
-//     the handover is the MODEL SAYING the remainder is only those endings.
-//   - IT IS NOT A TASK, A WATCH BUS OR A UNIVERSAL OPERATION GRAPH. It is
-//     background commands and fork hands in THIS agent's own registry, which are
-//     the operations whose ending is wired to wake THIS agent by construction
-//     (agent.go's `newJobRegistry(…, agent.enqueueJobNote, …)`). Task nodes have
-//     their own road ([Agent.turnHandedItsAskOff]) and their own custody
-//     reduction (checkpoint_custody.go); watches are left out because a watch is
-//     a command re-run on a timer, and "wait for it to end" is not a thing a
-//     person can be owed. Extending the set is a ruling, not a refactor.
+// The runtime knows WHICH operations are outstanding and cannot know whether the
+// rest of the request is done, so the dowry ask the handover already makes
+// ([checkpointHandoffAsk]) offers this conversation's own live operations, and
+// the model may answer one exact line naming the ones it is waiting for. This is
+// not a new model call, not a reading of prose, and not a running-job exemption:
+// a live operation on its own suppresses nothing, and a remainder with real work
+// in it is handed over exactly as before.
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 // ── what may be awaited ─────────────────────────────────────────────────────
 
-// ownedOperation is ONE background operation this conversation started, still
-// running, whose ending comes back here by itself.
-//
-// The two fields are what the ask has to show and what the journal has to name:
-// the number the surface already gives it (`job 1`, jobs list's own spelling)
-// and the line a person would recognise it by (jobrow.go's [jobRowTitle], so the
-// ask and the roster cannot come to call one thing two names).
+// ownedOperation is one background operation this conversation started that is
+// still running. The number and the label are the surface's own (jobrow.go), so
+// the ask and the roster cannot come to call one thing two names.
 type ownedOperation struct {
 	id    int
 	label string
 }
 
-// awaitableOperations is the snapshot the dowry ask offers, and it is the whole
-// of what this file will ever grant an await over.
-//
-// IT IS THE REGISTRY'S OWN ANSWER, taken the way [Agent.jobsWorkingNow] takes
-// it, so the numbers a model is shown are the numbers a person is looking at.
-// The two filters are the whole policy: RUNNING, because an operation that has
-// ended is news to read rather than work to wait for; and a KIND WHOSE ENDING IS
-// OWED — a background command or a fork hand — because those are the ones whose
-// exit is queued as a note that starts a turn here on its own.
-//
-// A session that has started nothing answers nil, and nothing is offered at all.
+// awaitableOperations is the snapshot the ask offers and the only thing an await
+// will ever be granted over. It is the registry's own answer, taken the way
+// [Agent.jobsWorkingNow] takes it, and it holds no agent lock.
 func (a *Agent) awaitableOperations() []ownedOperation {
 	if a == nil || a.jobs == nil {
 		return nil
@@ -119,39 +53,79 @@ func (a *Agent) awaitableOperations() []ownedOperation {
 	return out
 }
 
-// awaitableKind is the one place the KIND policy is written down.
-//
-// A WATCH IS DELIBERATELY NOT ONE. It is a command re-run on a timer with no
-// ending of its own to be owed, and a turn that stopped "until the watch fires"
-// is the five measured minutes [checkpointCarryOnCap] was written from — a
-// different failure with a different answer. A task node is not one either: its
-// landing already ends a turn through [Agent.turnHandedItsAskOff], and a second
-// road to the same fact is the thing this whole area has too many of.
+// awaitableKind is the whole of the kind policy. A background command and a fork
+// hand each have one ending that is owed to this session and queued to wake it
+// (agent.go wires the registry's announce to [Agent.enqueueJobNote]). A watch is
+// a command re-run on a timer with no such ending, and a task node already ends
+// a turn by its own road ([Agent.turnHandedItsAskOff]); widening this set is a
+// ruling rather than a refactor.
 func awaitableKind(kind jobKind) bool {
 	return kind == jobKindBash || kind == jobKindHand
 }
 
+// ── the ground a decision stands on ─────────────────────────────────────────
+
+// awaitGround is the request an offer was made under, together with the fact
+// that the model's view of it was complete.
+//
+// THE SECOND HALF IS THE ONE A BARE EPOCH CANNOT GIVE. [Agent.Steer] mints its
+// number when the words are ENQUEUED and the words reach the model only at the
+// next boundary, so an epoch on its own can be unchanged across a correction the
+// model has not read yet — and an await granted there would answer the old
+// request. So the queue is read WITH the epoch, under one hold of the lock
+// [Agent.Steer] appends to, and a session that is closed, not running, or
+// holding anything of the person's is no ground at all.
+type awaitGround struct {
+	epoch requestEpoch
+	sound bool
+}
+
+// awaitGroundNow reads that ground. It takes only the agent's own lock and calls
+// nothing while holding it, so it can never sit in front of the job registry.
+func (a *Agent) awaitGroundNow() awaitGround {
+	if a == nil {
+		return awaitGround{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || !a.running {
+		return awaitGround{}
+	}
+	for _, message := range a.steering {
+		// Unread direction, however it arrived: the person's own splice into this
+		// turn ([userMessage.steer]) or a line said into this node from outside it
+		// ([userMessage.steered]). The loop empties this queue at the next
+		// boundary, so anything still on it is a sentence the model that has just
+		// answered was never shown.
+		if message.steer != nil || message.steered {
+			return awaitGround{}
+		}
+	}
+	return awaitGround{epoch: requestEpoch{turn: a.turnSeq, steer: a.steerSeq.Load()}, sound: true}
+}
+
+// holds reports that a later reading of the ground is the same request, still
+// sound. A dead epoch never holds.
+func (g awaitGround) holds(later awaitGround) bool {
+	return g.sound && later.sound && g.epoch.live() && g.epoch == later.epoch
+}
+
 // ── what the model is offered, and what it may answer ───────────────────────
 
-// awaitOnlyToken is the line the ask teaches, and it is a token for
-// [checkpointNothingLeft]'s reason: a thing the model CHOSE to say, matched
-// whole, rather than a phrase the harness thought it heard. The numbers follow
-// it on the same line.
+// awaitOnlyToken opens the one line this contract accepts. It is a token the ask
+// teaches rather than a phrase the harness sniffs for, exactly as
+// [checkpointNothingLeft] is.
 const awaitOnlyToken = "AWAITING"
 
-// awaitOfferBlock is what is added to [checkpointHandoffAsk] WHEN AND ONLY WHEN
-// this conversation is awaiting something.
-//
-// IT ENUMERATES THIS SESSION'S OWN LIVE OPERATIONS AND NOTHING ELSE. There is no
-// vocabulary of kinds, no table of states and no explanation of the machinery: a
-// model that is shown "job 1 (./slow-build.sh)" and told what answering with its
-// number means has been told everything the harness will act on. An ask that
-// described the operation model in general would be paying for a paragraph on
-// every handover a session ever makes.
-//
-// AND IT NAMES THE DISTINCTION IT IS ASKING ABOUT, because that distinction is
-// the whole reading: the person's request being finished APART FROM these
-// endings, versus there being work left that somebody else could do now.
+// awaitLine is the whole grammar: the token, then one or more ids, single spaces
+// throughout, no leading zeros, nothing before or after. A reply that says
+// anything else — including this line with a paragraph after it — is a brief and
+// is handed over as one.
+var awaitLine = regexp.MustCompile(`^` + awaitOnlyToken + `( [1-9][0-9]{0,8})+$`)
+
+// awaitOfferBlock is added to the dowry ask only where this conversation has
+// something of its own running, so a session the failure was not about pays
+// nothing for it. It names this session's live operations and no machinery.
 func awaitOfferBlock(operations []ownedOperation) string {
 	if len(operations) == 0 {
 		return ""
@@ -166,45 +140,28 @@ func awaitOfferBlock(operations []ownedOperation) string {
 		" — each one's ending comes back to this conversation on its own. " +
 		"If everything else the person asked for is already done and all that is left is those endings, " +
 		"answer with the single line " + awaitOnlyToken + " " + strings.Join(numbers, " ") +
-		" (that word and the numbers you are still waiting on, nothing else at all). " +
+		" — that word and the numbers you are waiting on, separated by single spaces, and nothing else at all. " +
 		"If there is anything somebody could be working on now, write their instruction instead."
 }
 
-// readAwaitClaim reads an answer for the typed await line and answers the
-// numbers it claims.
-//
-// THE WHOLE ANSWER OR NOTHING. A reply that is the token, the numbers and then a
-// paragraph is a reply that says two things, and a harness that took the first
-// and dropped the second would be dropping real work on an ambiguity. So the
-// trimmed answer must be that one line and nothing more; anything else reads as
-// an ordinary brief and is handed over as one.
-//
-// AND A CLAIM WITH NO NUMBERS IS NOT A CLAIM. `AWAITING` alone names no
-// operation, so there is nothing to verify and nothing to grant.
+// readAwaitClaim answers the ids an exact await line names. Anything that is not
+// that line answers nothing, because a reply the harness had to interpret is a
+// reply it should be handing over instead.
 func readAwaitClaim(answer string) ([]int, bool) {
 	line := strings.TrimSpace(answer)
-	rest, cut := strings.CutPrefix(line, awaitOnlyToken)
-	if !cut {
+	if !awaitLine.MatchString(line) {
 		return nil, false
 	}
-	fields := strings.FieldsFunc(rest, func(r rune) bool {
-		return r == ',' || r == ' ' || r == '\t' || r == '#'
-	})
-	if len(fields) == 0 {
-		return nil, false
-	}
+	fields := strings.Fields(strings.TrimPrefix(line, awaitOnlyToken))
 	claimed := make([]int, 0, len(fields))
 	seen := map[int]bool{}
 	for _, field := range fields {
 		id, err := strconv.Atoi(field)
-		if err != nil {
-			// ANY WORD THAT IS NOT A NUMBER ENDS IT. `AWAITING the build` is prose
-			// about a wait, not a reference to an operation, and guessing which one
-			// it meant is the reading this file exists to avoid.
+		if err != nil || id <= 0 || seen[id] {
+			// A REPEATED ID IS A MALFORMED CLAIM AND NOT A SET TO BE TIDIED. The
+			// ask teaches one spelling, and a harness that quietly normalised a
+			// second one would be teaching a grammar it never wrote down.
 			return nil, false
-		}
-		if seen[id] {
-			continue
 		}
 		seen[id] = true
 		claimed = append(claimed, id)
@@ -214,56 +171,38 @@ func readAwaitClaim(answer string) ([]int, bool) {
 
 // ── what the runtime will grant ─────────────────────────────────────────────
 
-// awaitDecision is what one await claim came to, and it is the type
-// [Agent.handOverRunningTurn] consumes exactly once.
-//
-// granted is the only field the road branches on. refused is for the journal and
-// is written whether or not a claim was made, because "the model did not claim
-// an await" and "it claimed one over a job that had already exited" are
-// different facts about a handover and a file that spelled them alike could not
-// tell them apart afterwards.
+// awaitDecision is what one claim came to, and it is the type the handover road
+// consumes. refused is written whether or not a claim was made, so a file can
+// tell a handover that wrote a brief from one that claimed an ended job.
 type awaitDecision struct {
 	granted bool
 	ids     []int
+	ground  awaitGround
 	refused string
 }
 
-// The reasons a claim was not granted. They are the harness's own words, in the
-// register the carry ladder's reasons are written in.
+// The reasons a claim was not granted, in the register the carry ladder uses.
 const (
 	awaitNotClaimed   = "the model wrote a brief rather than an await"
 	awaitNoOffer      = "nothing of this conversation's own was running to await"
 	awaitUnknownID    = "it named something that was not offered"
 	awaitEnded        = "what it named is no longer running"
-	awaitRequestMoved = "the person said something after the offer"
+	awaitRequestMoved = "the person's direction moved under it"
 )
 
-// confirmAwait is the VALIDATION, and every clause of it is a runtime fact.
+// confirmAwait grants a claim only where four runtime facts hold: something was
+// offered; every id was on that offer; every id is still running when read
+// again; and the request the offer was made under is still the request being
+// answered, with nothing of the person's unread.
 //
-// FOUR THINGS ARE CHECKED AND ALL FOUR MUST HOLD:
+// AN OPERATION THAT ENDED WHILE THE MODEL WAS DRAFTING IS REFUSED, because its
+// news is already on its way and the wait is over. Every refusal returns the
+// same thing — not granted, with a reason — and the handover proceeds as it
+// would have if none of this existed, which is the direction this errs in.
 //
-//  1. SOMETHING WAS OFFERED. A claim over an empty snapshot is a claim about
-//     nothing; a session with no live operation of its own can never reach the
-//     decline through this door.
-//  2. EVERY NUMBER WAS ON THE OFFER. An id the ask did not show is an id the
-//     model invented or remembered from earlier in the conversation, and neither
-//     is an operation this turn is owed.
-//  3. EVERY OPERATION IS STILL RUNNING, READ AGAIN NOW. This is the settled-job
-//     race and it is resolved CONSERVATIVELY: an operation that ended between the
-//     offer and this line has already queued its news, so the honest answer is
-//     that the wait is over rather than that the turn may stop for it. Refusing
-//     here costs a handover that might not have been needed; granting here risks
-//     a turn that stops for an ending nobody is bringing.
-//  4. THE REQUEST HAS NOT MOVED. [requestEpoch] is the turn and the sentences
-//     the person has spliced into it (turnhandoff.go). A steer that landed while
-//     the model was drafting is new direction, and an await granted over it would
-//     be the harness answering the old request. A dead epoch — no turn running —
-//     fails this for the same reason.
-//
-// AND WHAT IT NEVER DOES IS SUPPRESS WORK ON A DOUBT. Every failure above
-// returns the same thing: not granted, with the reason written down, and the
-// handover proceeds exactly as it would have if this file did not exist.
-func (a *Agent) confirmAwait(claimed []int, offered []ownedOperation, at requestEpoch) awaitDecision {
+// The registry is walked first and the ground is read last, so no agent lock is
+// ever held across a registry call.
+func (a *Agent) confirmAwait(claimed []int, offered []ownedOperation, at awaitGround) awaitDecision {
 	if len(claimed) == 0 {
 		return awaitDecision{refused: awaitNotClaimed}
 	}
@@ -279,26 +218,41 @@ func (a *Agent) confirmAwait(claimed []int, offered []ownedOperation, at request
 			return awaitDecision{refused: awaitUnknownID}
 		}
 	}
+	if !a.allStillRunning(claimed) {
+		return awaitDecision{refused: awaitEnded}
+	}
+	if !at.holds(a.awaitGroundNow()) {
+		return awaitDecision{refused: awaitRequestMoved}
+	}
+	return awaitDecision{granted: true, ids: claimed, ground: at}
+}
+
+// stillGranted is the SAME two facts read again at the moment the decision is
+// acted on, because a grant taken a model call ago is evidence about a request
+// that may since have moved. It is what the handover road branches on.
+func (a *Agent) stillGranted(decision awaitDecision) bool {
+	if !decision.granted {
+		return false
+	}
+	return a.allStillRunning(decision.ids) && decision.ground.holds(a.awaitGroundNow())
+}
+
+// allStillRunning reports that every named operation is running now.
+func (a *Agent) allStillRunning(ids []int) bool {
 	running := make(map[int]bool)
 	for _, operation := range a.awaitableOperations() {
 		running[operation.id] = true
 	}
-	for _, id := range claimed {
+	for _, id := range ids {
 		if !running[id] {
-			return awaitDecision{refused: awaitEnded}
+			return false
 		}
 	}
-	// THE EPOCH IS READ LAST, AND IT IS READ NOW rather than remembered: what
-	// matters is whether the person has spoken since the offer went out, and the
-	// answer to that is only knowable at the moment the decision is taken.
-	if now := requestEpochAt(a); !at.live() || now != at {
-		return awaitDecision{refused: awaitRequestMoved}
-	}
-	return awaitDecision{granted: true, ids: claimed}
+	return true
 }
 
-// awaitedRow is how a granted await names itself in the journal: the word and
-// the numbers, so an autopsy can see WHICH ending the turn stopped for.
+// awaitedRow names a granted await in the journal, so an autopsy can see which
+// ending the turn stopped for.
 func (d awaitDecision) awaitedRow() string {
 	if !d.granted {
 		return d.refused

@@ -25,9 +25,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -119,6 +122,29 @@ func jobStillRunning(t *testing.T, agent *Agent, id int) bool {
 		return false
 	}
 	return one.info().state == jobRunning
+}
+
+// endJob settles one planted job the way its reaper would, so a case can put the
+// settled-job race exactly where it wants it.
+func endJob(t *testing.T, agent *Agent, id int) {
+	if t != nil {
+		t.Helper()
+	}
+	one := agent.jobs.find(id)
+	one.mu.Lock()
+	one.state = jobExited
+	one.mu.Unlock()
+}
+
+// queueDirection puts a person's words on the steering queue WITHOUT letting the
+// model read them, which is the state [Agent.Steer] leaves behind between the
+// moment somebody types and the next step boundary.
+func queueDirection(agent *Agent, words string) {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	agent.steering = append(agent.steering, steerMessage(&turnSteer{
+		note: SteerNote{ID: agent.steerSeq.Add(1), Words: words},
+	}))
 }
 
 // ── the failure, closed ─────────────────────────────────────────────────────
@@ -224,10 +250,7 @@ func TestAnUnverifiableAwaitClaimNeverDropsTheWork(t *testing.T) {
 		name:  "ended between the offer and the answer",
 		plant: func(_ *testing.T, agent *Agent) { liveJob(agent, 1, jobKindBash, "./slow-build.sh") },
 		dowry: func(agent *Agent) string {
-			one := agent.jobs.find(1)
-			one.mu.Lock()
-			one.state = jobExited
-			one.mu.Unlock()
+			endJob(nil, agent, 1)
 			return "AWAITING 1"
 		},
 	}, {
@@ -292,20 +315,36 @@ func TestNoLiveOperationMeansNoOfferAtAll(t *testing.T) {
 
 // ── the validator, on its own ───────────────────────────────────────────────
 
-// THE READING IS THE WHOLE LINE OR IT IS A BRIEF.
-func TestReadAwaitClaimTakesTheWholeLineOrNothing(t *testing.T) {
+// THE GRAMMAR IS EXACT: the token, single spaces, plain positive numbers, and
+// nothing else in the reply. Everything else is a brief and is handed over.
+func TestReadAwaitClaimTakesOneExactLine(t *testing.T) {
 	for _, one := range []struct {
 		answer string
 		want   []int
 	}{
 		{"AWAITING 1", []int{1}},
 		{"AWAITING 1 4", []int{1, 4}},
-		{"AWAITING 1, 4", []int{1, 4}},
-		{"AWAITING 1,1", []int{1}},
-		{"  AWAITING 2  ", []int{2}},
-		// AND EVERYTHING ELSE IS A BRIEF, INCLUDING A CLAIM WITH PROSE AFTER IT:
-		// an answer that says two things must not have its second half dropped.
+		{"AWAITING 12 7 3", []int{12, 7, 3}},
+		{"  AWAITING 2\n", []int{2}},
+		// A CLAIM WITH ANYTHING AFTER IT SAYS TWO THINGS, and dropping the second
+		// half would drop real work.
 		{"AWAITING 1\nAlso rewrite the parser.", nil},
+		{"AWAITING 1. It should be done shortly.", nil},
+		{"AWAITING 1\nAWAITING 2", nil},
+		// AND NO SPELLING THE ASK DID NOT TEACH IS ACCEPTED.
+		{"AWAITING1", nil},
+		{"AWAITING  1", nil},
+		{"AWAITING 1,4", nil},
+		{"AWAITING 1, 4", nil},
+		{"AWAITING\t1", nil},
+		{"AWAITING #1", nil},
+		{"AWAITING +1", nil},
+		{"AWAITING -1", nil},
+		{"AWAITING 0", nil},
+		{"AWAITING 01", nil},
+		{"AWAITING 1 1", nil},
+		{"AWAITING 99999999999999999999", nil},
+		{"awaiting 1", nil},
 		{"AWAITING", nil},
 		{"AWAITING the build", nil},
 		{"We are awaiting job 1.", nil},
@@ -325,23 +364,31 @@ func TestReadAwaitClaimTakesTheWholeLineOrNothing(t *testing.T) {
 	}
 }
 
-// AND THE FOUR CHECKS, EACH ONE ON ITS OWN, against a session holding one live
-// command and one turn.
+// AND THE GROUND AND THE FOUR CHECKS, each on its own, against a session holding
+// one live command and one running turn.
 func TestConfirmAwaitGrantsOnlyWhatItCanVerify(t *testing.T) {
-	newSession := func(t *testing.T) (*Agent, []ownedOperation, requestEpoch) {
+	newSession := func(t *testing.T) (*Agent, []ownedOperation, awaitGround) {
 		t.Helper()
 		agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, func(*Config) {})
 		liveJob(agent, 1, jobKindBash, "./slow-build.sh")
 		agent.mu.Lock()
 		agent.running, agent.turnSeq = true, 4
 		agent.mu.Unlock()
-		return agent, agent.awaitableOperations(), requestEpochAt(agent)
+		ground := agent.awaitGroundNow()
+		if !ground.sound {
+			t.Fatal("a running turn with nothing queued reads as no ground at all")
+		}
+		return agent, agent.awaitableOperations(), ground
 	}
 
 	t.Run("granted over a live offered operation on an unmoved request", func(t *testing.T) {
 		agent, offered, at := newSession(t)
-		if decided := agent.confirmAwait([]int{1}, offered, at); !decided.granted {
+		decided := agent.confirmAwait([]int{1}, offered, at)
+		if !decided.granted {
 			t.Fatalf("a verifiable claim was refused: %s", decided.refused)
+		}
+		if !agent.stillGranted(decided) {
+			t.Fatal("the same claim did not survive the recheck at consumption")
 		}
 	})
 	t.Run("an id that was not offered", func(t *testing.T) {
@@ -353,16 +400,13 @@ func TestConfirmAwaitGrantsOnlyWhatItCanVerify(t *testing.T) {
 	})
 	t.Run("an operation that has since ended", func(t *testing.T) {
 		agent, offered, at := newSession(t)
-		one := agent.jobs.find(1)
-		one.mu.Lock()
-		one.state = jobExited
-		one.mu.Unlock()
+		endJob(t, agent, 1)
 		if decided := agent.confirmAwait([]int{1}, offered, at); decided.granted ||
 			decided.refused != awaitEnded {
 			t.Fatalf("granted=%v refused=%q", decided.granted, decided.refused)
 		}
 	})
-	t.Run("a request that moved", func(t *testing.T) {
+	t.Run("a request that moved after the offer", func(t *testing.T) {
 		agent, offered, at := newSession(t)
 		agent.steerSeq.Add(1)
 		if decided := agent.confirmAwait([]int{1}, offered, at); decided.granted ||
@@ -384,6 +428,85 @@ func TestConfirmAwaitGrantsOnlyWhatItCanVerify(t *testing.T) {
 			t.Fatalf("granted=%v refused=%q", decided.granted, decided.refused)
 		}
 	})
+	// AND THE CONSUMPTION IS ITS OWN MOMENT. A grant taken a model call ago is
+	// evidence about a request that may since have moved, so both facts are read
+	// again where the road acts on them.
+	t.Run("a grant that stops holding before it is consumed", func(t *testing.T) {
+		agent, offered, at := newSession(t)
+		decided := agent.confirmAwait([]int{1}, offered, at)
+		if !decided.granted {
+			t.Fatalf("the fixture's own premise is gone: %s", decided.refused)
+		}
+		endJob(t, agent, 1)
+		if agent.stillGranted(decided) {
+			t.Fatal("a grant survived the operation it named ending")
+		}
+	})
+	t.Run("direction queued before the consumption", func(t *testing.T) {
+		agent, offered, at := newSession(t)
+		decided := agent.confirmAwait([]int{1}, offered, at)
+		if !decided.granted {
+			t.Fatalf("the fixture's own premise is gone: %s", decided.refused)
+		}
+		queueDirection(agent, "actually make it JSON")
+		if agent.stillGranted(decided) {
+			t.Fatal("a grant survived a correction the model has not read")
+		}
+	})
+}
+
+// DIRECTION THE MODEL HAS NOT READ IS NO GROUND AT ALL, AND THE EPOCH ALONE
+// CANNOT SEE IT.
+//
+// [Agent.Steer] mints its number when the words are ENQUEUED and the words reach
+// the model only at the next boundary. So a correction that arrived before the
+// offer was built leaves the epoch identical at every later reading, and a check
+// that compared epochs alone would grant an await over a request the model was
+// answering blind. The queue is what says so.
+func TestUnreadDirectionBeforeTheOfferIsNoGround(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, func(*Config) {})
+	liveJob(agent, 1, jobKindBash, "./slow-build.sh")
+	agent.mu.Lock()
+	agent.running, agent.turnSeq = true, 4
+	agent.mu.Unlock()
+
+	queueDirection(agent, "actually make it JSON, not CSV")
+	// THE EPOCH IS UNCHANGED ACROSS THE WHOLE CASE, which is the point: nothing
+	// here is caught by comparing one to another.
+	before := requestEpochAt(agent)
+	ground := agent.awaitGroundNow()
+	if ground.sound {
+		t.Fatal("a session holding a correction the model has not read offered ground for an await")
+	}
+	if decided := agent.confirmAwait([]int{1}, agent.awaitableOperations(), ground); decided.granted ||
+		decided.refused != awaitRequestMoved {
+		t.Fatalf("granted=%v refused=%q", decided.granted, decided.refused)
+	}
+	if after := requestEpochAt(agent); after != before {
+		t.Fatalf("the epoch moved (%v to %v); this case must fail on the queue alone", before, after)
+	}
+}
+
+// AND A SESSION THAT IS NOT RUNNING A TURN, OR IS CLOSED, IS NO GROUND EITHER.
+func TestOnlyARunningOpenTurnIsGround(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, func(*Config) {})
+	liveJob(agent, 1, jobKindBash, "./slow-build.sh")
+
+	if agent.awaitGroundNow().sound {
+		t.Fatal("a session with no turn running offered ground for an await")
+	}
+	agent.mu.Lock()
+	agent.running, agent.turnSeq = true, 2
+	agent.mu.Unlock()
+	if !agent.awaitGroundNow().sound {
+		t.Fatal("a running turn with nothing queued is not ground")
+	}
+	agent.mu.Lock()
+	agent.closed = true
+	agent.mu.Unlock()
+	if agent.awaitGroundNow().sound {
+		t.Fatal("a closed session offered ground for an await")
+	}
 }
 
 // AND A WATCH IS NOT AWAITABLE, which is the kind policy stated as a case rather
@@ -394,4 +517,158 @@ func TestAWatchIsNeverOffered(t *testing.T) {
 	if operations := agent.awaitableOperations(); len(operations) != 0 {
 		t.Fatalf("a watch was offered as awaitable: %v", operations)
 	}
+}
+
+// ── and the ending really does come back ────────────────────────────────────
+
+// THE DECLINE RESTS ON A WAKE, SO THE WAKE IS PROVED WITH A REAL COMMAND.
+//
+// Everything above plants a job. This one lets the model start a genuine
+// background command through `bash` inside [Agent.Submit], held on a file nobody
+// has created yet, declines the handover over it, and then creates that file.
+// What is asserted is the whole return path: the command's own exit starts a
+// turn here, that turn answers, and it does so without re-running the command
+// and without starting a task.
+func TestTheAwaitedCommandsEndingWakesTheConversation(t *testing.T) {
+	flag := filepath.Join(t.TempDir(), "release")
+	command := "while [ ! -f " + flag + " ]; do sleep 0.02; done; echo built"
+
+	var started, writes atomic.Int64
+	steps := make([]step, 24)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			switch {
+			case askedForSketch(messages):
+				return textResponse("(waiting)\nWaiting for the build that was started."), nil
+			case askedForHandoff(messages):
+				return textResponse("AWAITING 1"), nil
+			case askedToWriteHandoff(messages):
+				return textResponse("Finish the remaining step."), nil
+			case askedForRemains(messages):
+				return textResponse(checkpointNothingLeft), nil
+			}
+			if started.Add(1) == 1 {
+				arguments, _ := json.Marshal(struct {
+					Command    string `json:"command"`
+					Background bool   `json:"background"`
+				}{Command: command, Background: true})
+				return toolResponseWithText("start-build", "bash", string(arguments),
+					"Starting the build in the background."), nil
+			}
+			if round := writes.Add(1); round <= writeAllowanceFiles {
+				arguments, _ := json.Marshal(struct {
+					Path string `json:"path"`
+					Text string `json:"content"`
+				}{Path: fmt.Sprintf("report%d.csv", round), Text: "service,port\n"})
+				return toolResponseWithText(fmt.Sprintf("write-%d", round), "write", string(arguments),
+					"Writing the report."), nil
+			}
+			return textResponse("report.csv is written; the build is still running."), nil
+		}
+	}
+
+	completer := &scriptedCompleter{steps: steps}
+	agent := awaitingAgent(t, completer)
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+	// THE WAKE LANE IS SUBSCRIBED BEFORE THE COMMAND CAN POSSIBLY END, and the
+	// command is released whatever this case does next, so a failure leaves no
+	// process behind.
+	wakes := agent.Wakes()
+	t.Cleanup(func() { _ = os.WriteFile(flag, []byte("go\n"), 0o600) })
+
+	events, err := agent.Submit(context.Background(), theAsk)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	if handoffAsks(completer) != 1 {
+		t.Fatalf("the handover road was taken %d times, want exactly one", handoffAsks(completer))
+	}
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were admitted over a command this conversation was awaiting", count)
+	}
+	if !jobStillRunning(t, agent, 1) {
+		t.Fatal("the command was not left running by the decline")
+	}
+
+	// AND NOW THE COMMAND IS LET GO. Nothing else is touched: what happens next
+	// is the registry's own ending and the session's own wake.
+	if err := os.WriteFile(flag, []byte("go\n"), 0o600); err != nil {
+		t.Fatalf("releasing the command: %v", err)
+	}
+
+	select {
+	case stream := <-wakes:
+		if stream == nil {
+			t.Fatal("the wake lane carried a nil stream")
+		}
+		var ended bool
+		for event := range stream {
+			if event.Kind == EventTurnDone {
+				ended = true
+			}
+		}
+		if !ended {
+			t.Fatal("the woken turn never ended")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the awaited command ended and no turn was started for it")
+	}
+
+	// THE ENDING IS IN THE CONVERSATION AS THE JOB'S OWN NEWS, and the model
+	// answered AFTER it — which is the whole return path this decline rests on:
+	// `job 1 exited 0` arrives as a note and the turn it starts speaks.
+	if !answeredAfterTheEnding(agent, "job 1 exited") {
+		t.Fatalf("nothing was said after the command's ending:\n%s", transcriptText(agent))
+	}
+	// AND NOTHING WAS DONE TWICE. The command ran once and no task was started
+	// for it after the wake either.
+	if got := started.Load(); got < 1 {
+		t.Fatal("the fixture never started the command")
+	}
+	if ran := commandsRun(completer, command); ran != 1 {
+		t.Fatalf("the command was issued %d times, want exactly one", ran)
+	}
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were admitted after the wake", count)
+	}
+}
+
+// answeredAfterTheEnding reports that the conversation said something of its own
+// after one note landed in it.
+func answeredAfterTheEnding(agent *Agent, note string) bool {
+	messages := agent.snapshot()
+	for index, message := range messages {
+		if message.Role != "user" || !strings.Contains(messageText(message), note) {
+			continue
+		}
+		for _, later := range messages[index+1:] {
+			if later.Role == "assistant" && strings.TrimSpace(messageText(later)) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// commandsRun counts how many times the script actually asked for one shell
+// command, read off the assistant messages the completer was sent.
+func commandsRun(completer *scriptedCompleter, command string) int {
+	ran := 0
+	for index := range completer.requests() {
+		for _, message := range completer.request(index) {
+			for _, call := range message.ToolCalls {
+				if call.Function.Name == "bash" && strings.Contains(call.Function.Arguments, command) {
+					ran++
+				}
+			}
+		}
+	}
+	if ran == 0 {
+		return 0
+	}
+	// The same assistant message is re-sent with every later request, so the
+	// distinct call is what matters rather than how often it was replayed.
+	return 1
 }
