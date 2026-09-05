@@ -94,17 +94,16 @@ func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
 // the agent at the moment the prompt is rendered.
 func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 
-// mayStand says whether `stand` belongs on this belt (tools_standing.go's
-// [Agent.standingTools], which asks [Agent.standingItems] the same two
-// questions in the same order). It is the sharpest absence on the belt — a
-// model told it can leave something behind will plan a whole reply around one —
-// and it is the predicate the page's own standing section is composed from.
-func (c Config) mayStand() bool {
-	if c.standingItems != nil {
-		return true
-	}
-	return c.Standing != nil && c.Standing.Store != nil
-}
+// mayStand says whether `stand` belongs on this belt, and it is
+// [Config.standingStore] — the ONE reading of that availability, which
+// [Agent.standingTools] builds the tool from (tools_standing.go). It is not a
+// second reading of the two fields: the belt and the page must not be able to
+// disagree about whether anything can be scheduled from here.
+//
+// It is the sharpest absence on the belt — a model told it can leave something
+// behind will plan a whole reply around one — and it is the predicate the page's
+// standing section is composed from.
+func (c Config) mayStand() bool { return c.standingStore() != nil }
 
 // mayFork says whether `fork` belongs on this belt (fork.go). It is off in a
 // hand and nowhere else, which is the whole of the depth-one law: a chat turn
@@ -163,7 +162,12 @@ var beltFacts = []beltFact{{
 	tools:   []string{"stand"},
 	holds:   Config.mayStand,
 	present: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so NEVER run `date` for it. It does not tick inside a turn, so when a MINUTE matters use `stand`'s `when.in` or the `now:` line a `stand` result ends with.",
-	absent:  "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so NEVER run `date` for it. It does not tick inside a turn, so a moment that must be exact to the MINUTE is the one thing to read off the clock as you need it.",
+	// AND THE ABSENT CASE MUST NOT CONTRADICT ITSELF. It cannot say NEVER run
+	// `date` and in the same breath send the model to the clock, because with no
+	// `stand` the shell IS the only clock: the rule stays what it is for the
+	// four facts the footer already gives, and the one case it does not cover is
+	// named as the exception.
+	absent: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so never shell out for any of those four. It does not tick inside a turn, so a moment that must be exact to the MINUTE is the one case for a single `date` call.",
 }, {
 	tools: []string{"propose_task", "tasks"},
 	holds: Config.mayProposeTask,
@@ -347,9 +351,18 @@ var standingFacts = []beltFact{{
 	// it: a heading over one sentence is a heading nobody needs, and a sentence
 	// naming a tool this belt does not carry is the lie the whole file exists to
 	// prevent (prompt_belt_test.go asks it of every shape).
-	absent: "NOTHING YOU DO HERE KEEPS WORKING ONCE THIS WINDOW CLOSES: you cannot leave a\n" +
-		"reminder, a rhythm or a watch behind from where you stand, so say so plainly\n" +
-		"rather than promising to remember.",
+	//
+	// IT DENIES SCHEDULING AND NOTHING ELSE. An earlier wording said nothing
+	// this agent does keeps working once the window closes, which is far wider
+	// than the missing verb and false on this build: work handed to a task
+	// outlives the turn that started it, is checkpointed and comes home on its
+	// own (task_run.go), and a session is restored rather than lost. What
+	// [Config.mayStand] actually decides is whether a thing can be left to fire
+	// LATER, so that is the whole of what this sentence says.
+	absent: "NOTHING CAN BE SCHEDULED FROM HERE: there is no way to leave a reminder, a\n" +
+		"rhythm or a condition to watch behind you, so say so plainly rather than\n" +
+		"promising to check back later. Work already handed off is a different thing\n" +
+		"and is not affected.",
 }}
 
 // revisionFacts uses the same capability predicate as the tool and joins the
