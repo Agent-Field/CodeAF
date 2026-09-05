@@ -309,6 +309,16 @@ type episode struct {
 	// the rest of the episode is advanced on the turn loop's one goroutine.
 	captionMu sync.Mutex
 	captionN  int
+
+	// asking is the person's message THE REQUEST NOW GOING OUT is answering,
+	// stamped where the horizon is stamped and read by the one tool that may act
+	// under their authority (task_forward.go). It is guarded for [episode.captionN]'s
+	// reason — a batch runs its calls on goroutines of their own — and it is
+	// per-request rather than per-turn because a steer lands mid-turn: a call
+	// made against what they said at the top of the turn must not be able to
+	// forward what they typed into the middle of it.
+	askingMu sync.Mutex
+	asking   personSource
 }
 
 // newEpisode builds one turn's control plane and runs `episode-init`.
@@ -340,7 +350,27 @@ func (ep *episode) decisionBegins() {
 	}
 	ep.agent.mu.Lock()
 	ep.seenThrough = len(ep.agent.messages)
+	// AND THE PERSON'S MESSAGE THIS REQUEST IS ANSWERING, read under the lock
+	// their words are recorded under and the lock [Agent.Steer] mints its id
+	// inside, so the identity, the words and the request generation cannot be
+	// torn apart from one another (task_forward.go).
+	asking := ep.agent.askingLocked()
 	ep.agent.mu.Unlock()
+
+	ep.askingMu.Lock()
+	ep.asking = asking
+	ep.askingMu.Unlock()
+}
+
+// askedFrom is the person's message the request that produced this call was
+// answering, and the zero source where there was none.
+func (ep *episode) askedFrom() personSource {
+	if ep == nil {
+		return personSource{}
+	}
+	ep.askingMu.Lock()
+	defer ep.askingMu.Unlock()
+	return ep.asking
 }
 
 // preAction runs the pre-action chain and reports the call to run, or the

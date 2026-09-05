@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The section headings, in the order [composeBrief] lays them out. They are
@@ -489,6 +490,12 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 	}
 	if text := strings.TrimSpace(user.text()); text != "" {
 		a.personAsk = text
+		// AND WHICH TURN THEY TYPED IT INTO, which is the difference between words
+		// the person is saying now and words they said before the last thing that
+		// woke this session. Only the first can be forwarded into a running task
+		// under their own authority (task_forward.go).
+		a.personHeard = a.turnSeq
+		a.personAt = time.Now()
 		// AND THE TURNS BEFORE THIS ONE ARE KEPT TOO, in the same place, on the
 		// same test (admission.go). A constraint the person typed two turns ago
 		// and never repeated is not in `personAsk` and is not recoverable from

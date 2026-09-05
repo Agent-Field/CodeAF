@@ -122,6 +122,11 @@ const (
 type taskDirection struct {
 	id    uint64
 	words string
+	// at is WHEN THE PERSON SAID IT, which for a line typed into this task's room
+	// is when it arrived and for a forwarded one is when they typed it in the
+	// conversation (task_forward.go). It is the order their corrections are
+	// weighed in ([taskAssignment.lastSpokenApplied]), so the distinction is not
+	// cosmetic: the two doors do not deliver at the same speed.
 	at    time.Time
 	from  directionFrom
 	state directionState
@@ -129,6 +134,13 @@ type taskDirection struct {
 	// produces one. A direction that was read and changed nothing keeps 0
 	// forever, which is the ordinary case.
 	version uint64
+	// source is the person's message this line was FORWARDED from
+	// ([personSourceID], task_forward.go), and empty for every line said into the
+	// node's own room. It is what makes a repeated call the same instruction
+	// rather than a second one, and what puts the person's own messages in order
+	// on this record however they arrived: both are decided in
+	// [taskAssignment.hear], where the receipt is minted.
+	source personSourceID
 }
 
 // taskAssignment is the node's effective instruction and the record it came
@@ -218,21 +230,76 @@ var (
 // recorded, including the ones that will never be anything but talk: the
 // receipt is what a worker cites, what a landing counts and what a person's
 // page can show, and a message nobody wrote down cannot be any of the three.
-func (a *taskAssignment) hear(words string, from directionFrom, at time.Time) (uint64, bool) {
+//
+// ── AND A FORWARDED LINE IS ORDERED AGAINST THE RECORD, NOT MERELY ADDED ──
+//
+// A line said into the node's own room is heard when it is said, and that is the
+// end of it. A line FORWARDED from the conversation (task_forward.go) carries
+// the identity of the message it came from, and two things follow from that,
+// both decided here because here is where the receipt is minted and the graph's
+// lock is held:
+//
+//   - THE SAME MESSAGE IS NOT HEARD TWICE. A repeated call — a retried tool
+//     call, a batch the model sent again — answers the receipt already on the
+//     record and delivers nothing.
+//   - AND AN OLDER MESSAGE MAY NOT LAND BEHIND A NEWER ONE. Receipt ids are this
+//     node's arrival order, and [taskAssignment.revise] reads them as the
+//     person's own order — so an older correction admitted after a newer one
+//     would carry the higher id, could be folded in over the newer one, and
+//     would leave the newer one refused as stale. It is refused instead, and
+//     nothing is written down.
+//
+// Neither road is open to a line with no source, and that is not an oversight:
+// saying the same sentence into a room twice IS saying it twice.
+func (a *taskAssignment) hear(words string, from directionFrom, at time.Time, source spokenSource) (uint64, bool, directionOrder) {
 	words = strings.TrimSpace(words)
 	if words == "" {
-		return 0, false
+		return 0, false, directionRefused
+	}
+	if source.id.live() {
+		for _, said := range a.directions {
+			if said.source == source.id {
+				return said.id, true, directionAgain
+			}
+		}
+		for _, said := range a.directions {
+			if said.source.after(source.id) {
+				return said.id, true, directionOutOfOrder
+			}
+		}
+	}
+	// AND IT IS RECORDED AT THE INSTANT THE PERSON SAID IT. For a line typed into
+	// this room those are the same instant; for a forwarded one they are not, and
+	// it is the speaking instant that decides which of their corrections is the
+	// later one ([taskAssignment.lastSpokenApplied]).
+	if !source.spoken.IsZero() {
+		at = source.spoken
 	}
 	a.next++
 	a.directions = append(a.directions, taskDirection{
-		id:    a.next,
-		words: words,
-		at:    at,
-		from:  from,
-		state: directionPending,
+		id:     a.next,
+		words:  words,
+		at:     at,
+		from:   from,
+		state:  directionPending,
+		source: source.id,
 	})
-	return a.next, true
+	return a.next, true, directionHeardNow
 }
+
+// directionOrder is what one arrival came to once the record was consulted.
+type directionOrder uint8
+
+const (
+	// directionRefused is nothing at all: there was no line to hear.
+	directionRefused directionOrder = iota
+	// directionHeardNow is the ordinary answer — written down, receipt minted.
+	directionHeardNow
+	// directionAgain is the same forwarded message this node already holds.
+	directionAgain
+	// directionOutOfOrder is a forwarded message older than one already here.
+	directionOutOfOrder
+)
 
 // forget removes a receipt that was minted for words nobody took. It exists
 // because the id has to be known BEFORE the line is delivered — it rides under
@@ -305,13 +372,13 @@ func (a *taskAssignment) revise(id uint64, expected uint64, edit assignmentEdit,
 	if said.state == directionApplied {
 		return 0, errDirectionSpent
 	}
-	// AND NEVER OUT OF ORDER. A direction older than the last one applied cannot
-	// move the goal, whatever version it names: the person's later correction is
-	// already in force, and folding an earlier one in on top of it would put back
-	// a condition they have moved on from. The version check below is about
-	// concurrent readings; this is about which sentence came last.
-	if latest := a.latestApplied(); said.id < latest {
-		return 0, fmt.Errorf("%w: direction %d came before %d, which is already in force", errStaleDirection, said.id, latest)
+	// AND NEVER OUT OF ORDER. A direction the person said before the last one
+	// applied cannot move the goal, whatever version it names: their later
+	// correction is already in force, and folding an earlier one in on top of it
+	// would put back a condition they have moved on from. The version check below
+	// is about concurrent readings; this is about which sentence they said last.
+	if latest, applied := a.lastSpokenApplied(); applied && said.spokenBefore(latest) {
+		return 0, fmt.Errorf("%w: direction %d came before %d, which is already in force", errStaleDirection, said.id, latest.id)
 	}
 	if expected != a.version {
 		return 0, fmt.Errorf("%w: it is at revision %d and you named %d", errStaleVersion, a.version, expected)
@@ -346,17 +413,48 @@ func (a *taskAssignment) revise(id uint64, expected uint64, edit assignmentEdit,
 	return a.version, nil
 }
 
-// latestApplied is the newest direction that has moved this assignment, and 0
-// when none has. Ids are minted in arrival order, so the largest is the last
-// thing the person said that counted.
-func (a *taskAssignment) latestApplied() uint64 {
-	var latest uint64
+// lastSpokenApplied is the direction that has moved this assignment and was
+// SAID LAST OF THOSE THAT DID, and false when none has.
+//
+// ── WHY THIS IS NOT SIMPLY THE HIGHEST RECEIPT ID ──
+//
+// Receipt ids are this node's ARRIVAL order, and arrival order was the person's
+// order only while there was one door into a task. There are two now. A message
+// they typed in the main conversation reaches a node when the model gets round to
+// forwarding it (task_forward.go), and a line typed into the task's own room
+// reaches it the moment they press enter — so the person can say A here, walk
+// into the room and say B, and have A arrive second and take the higher id.
+// Ordered by id, A would then be the "later" instruction: a worker could fold it
+// in over B, putting back the goal they had just moved away from, and B could
+// never be applied afterwards because it would read as the older one.
+//
+// So the order is WHEN THEY SAID IT ([taskDirection.at], which for a forwarded
+// line is when they typed it rather than when it was forwarded), with the
+// receipt id as the tiebreak for two lines heard in the same instant and for
+// records restored from disk, which have no monotonic clock left in them.
+func (a *taskAssignment) lastSpokenApplied() (taskDirection, bool) {
+	var latest taskDirection
+	found := false
 	for _, revision := range a.revisions {
-		if revision.directionID > latest {
-			latest = revision.directionID
+		said, ok := a.direction(revision.directionID)
+		if !ok {
+			continue
+		}
+		if !found || latest.spokenBefore(said) {
+			latest, found = said, true
 		}
 	}
-	return latest
+	return latest, found
+}
+
+// spokenBefore says this line was said before the other one. An instant nobody
+// recorded — a direction from a build that did not stamp one — falls back to the
+// receipt order, which is what this comparison was before there were two doors.
+func (d taskDirection) spokenBefore(other taskDirection) bool {
+	if d.at.IsZero() || other.at.IsZero() || d.at.Equal(other.at) {
+		return d.id < other.id
+	}
+	return d.at.Before(other.at)
 }
 
 // effective folds the overlay onto the admitted spec. The brief keeps whatever
@@ -467,15 +565,27 @@ const directionCarriedLead = "Said while the last attempt was finishing, and rea
 // admitted before the claim — and then the claim fails and the work does not
 // publish — or after it, and then it belongs to the round after this one. There
 // is no third ordering and no window between them.
-func (n *TaskNode) heardDirection(words string, from directionFrom) (uint64, bool) {
+func (n *TaskNode) heardDirection(words string, from directionFrom, source spokenSource) directionHeard {
 	if n == nil || n.graph == nil {
-		return 0, false
+		return directionHeard{}
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	id, kept := n.assignment.hear(words, from, time.Now())
-	return id, kept && !n.publishing
+	id, kept, order := n.assignment.hear(words, from, time.Now(), source)
+	return directionHeard{id: id, inTime: kept && !n.publishing, order: order}
 }
+
+// directionHeard is what one line's arrival came to: the receipt, which side of
+// the publication boundary it landed on, and how the record answered it.
+type directionHeard struct {
+	id     uint64
+	inTime bool
+	order  directionOrder
+}
+
+// fresh says these words were written down now, which is the only answer that
+// owes a delivery.
+func (h directionHeard) fresh() bool { return h.order == directionHeardNow }
 
 // forgetDirection drops a receipt whose words were never delivered.
 func (n *TaskNode) forgetDirection(id uint64) {
@@ -497,7 +607,27 @@ func (n *TaskNode) forgetDirection(id uint64) {
 // leads and still reads as somebody talking; a frame around them would teach the
 // worker to read a person as a system event, which is the thing that law is for.
 func directionReceiptLine(id uint64) string {
-	return fmt.Sprintf("[the harness: that was the person, direction %d. If it changes what this work is FOR — a different output, a different target, a requirement added or dropped — fold it in with revise_assignment citing %d. If it is a fact or a question, just use it or answer it.]", id, id)
+	return fmt.Sprintf("[the harness: that was the person, direction %d.%s]", id, directionReceiptTail(id))
+}
+
+// forwardedReceiptLine is the same line for words the person typed in the MAIN
+// CONVERSATION about this task rather than into this room (task_forward.go).
+//
+// The provenance is the whole of the difference, and it is said rather than
+// implied: the words are theirs and unedited, so they carry their authority, and
+// the ADDRESS was chosen by the conversation's model, so a line that plainly
+// belongs to other work is a mis-delivery to report rather than an instruction
+// to carry out. Nothing here asks the worker to weigh whether they meant it —
+// what it needs is the fact that they were not standing in this room.
+func forwardedReceiptLine(id uint64) string {
+	return fmt.Sprintf("[the harness: that was the person, said in the main conversation about this task and forwarded here word for word — their direction %d, not the conversation's own line.%s "+
+		"They were not addressing this room, so if what they say plainly belongs to other work, say so in your report and carry on with the brief.]", id, directionReceiptTail(id))
+}
+
+// directionReceiptTail is what a worker DOES with a direction, and it is one
+// string because both receipts above ask for exactly the same reading.
+func directionReceiptTail(id uint64) string {
+	return fmt.Sprintf(" If it changes what this work is FOR — a different output, a different target, a requirement added or dropped — fold it in with revise_assignment citing %d. If it is a fact or a question, just use it or answer it.", id)
 }
 
 // directionsNow copies the receipts out for a reader outside the lock.
@@ -658,6 +788,7 @@ func recordedAssignment(a taskAssignment) *assignmentRecord {
 			From:    said.from.String(),
 			State:   string(said.state),
 			Version: said.version,
+			Source:  recordedSource(said.source),
 		})
 	}
 	return record
@@ -695,6 +826,7 @@ func restoredAssignment(record *assignmentRecord) taskAssignment {
 			from:    directionFromWord(said.From),
 			state:   directionStateWord(said.State),
 			version: said.Version,
+			source:  restoredSource(said.Source),
 		})
 		// A record written by a build with a different idea of the counter still
 		// leaves this one able to mint ids nothing else holds.
@@ -703,6 +835,30 @@ func restoredAssignment(record *assignmentRecord) taskAssignment {
 		}
 	}
 	return restored
+}
+
+// recordedSource is the checkpoint's copy of a forwarded line's identity, and
+// nothing at all for a line said into the node's own room — which keeps the row
+// a session writes byte-identical to what it wrote before forwarding existed.
+func recordedSource(id personSourceID) *sourceRecord {
+	if !id.live() {
+		return nil
+	}
+	return &sourceRecord{Scope: id.scope, Seq: id.seq}
+}
+
+// restoredSource reads one back. A record with half of it missing names no
+// message and is restored as none: an identity that cannot be compared must not
+// be able to suppress a genuinely new direction as a repeat.
+func restoredSource(record *sourceRecord) personSourceID {
+	if record == nil {
+		return personSourceID{}
+	}
+	id := personSourceID{scope: record.Scope, seq: record.Seq}
+	if !id.live() {
+		return personSourceID{}
+	}
+	return id
 }
 
 // directionFromWord reads a speaker back. Anything a reader cannot recognise —

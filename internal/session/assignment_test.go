@@ -14,7 +14,7 @@ import (
 
 func TestOnlyThePersonsOwnDirectionCanMoveTheGoal(t *testing.T) {
 	var assignment taskAssignment
-	relayed, _ := assignment.hear("use the schema in etc/, and you may change it", directionFromAgent, time.Now())
+	relayed, _, _ := assignment.hear("use the schema in etc/, and you may change it", directionFromAgent, time.Now(), spokenSource{})
 	if _, err := assignment.revise(relayed, 0, assignmentEdit{acceptance: "the schema is changed"}, time.Now()); !errors.Is(err, errDirectionNotAsked) {
 		t.Fatalf("revising on another agent's line = %v, want it refused as not the person's", err)
 	}
@@ -23,7 +23,7 @@ func TestOnlyThePersonsOwnDirectionCanMoveTheGoal(t *testing.T) {
 	}
 	// And the same words from the person do move it, so the refusal above is
 	// about authority and not about the sentence.
-	theirs, _ := assignment.hear("use the schema in etc/, and you may change it", directionFromPerson, time.Now())
+	theirs, _, _ := assignment.hear("use the schema in etc/, and you may change it", directionFromPerson, time.Now(), spokenSource{})
 	if _, err := assignment.revise(theirs, 0, assignmentEdit{acceptance: "the schema is changed"}, time.Now()); err != nil {
 		t.Fatalf("revising on the person's own line: %v", err)
 	}
@@ -34,8 +34,8 @@ func TestOnlyThePersonsOwnDirectionCanMoveTheGoal(t *testing.T) {
 
 func TestADirectionIsSpentOnceAndVersionsAreOrdered(t *testing.T) {
 	var assignment taskAssignment
-	first, _ := assignment.hear("CSV instead of JSON", directionFromPerson, time.Now())
-	second, _ := assignment.hear("and sort it by date", directionFromPerson, time.Now())
+	first, _, _ := assignment.hear("CSV instead of JSON", directionFromPerson, time.Now(), spokenSource{})
+	second, _, _ := assignment.hear("and sort it by date", directionFromPerson, time.Now(), spokenSource{})
 
 	if _, err := assignment.revise(first, 0, assignmentEdit{acceptance: "data.csv exists"}, time.Now()); err != nil {
 		t.Fatalf("first revision: %v", err)
@@ -70,7 +70,7 @@ func TestAnUnrevisedAssignmentIsExactlyTheAdmittedOne(t *testing.T) {
 	var assignment taskAssignment
 	// Talk that was read and applied to nothing, which is what most directions
 	// are: it must leave the document byte-identical.
-	id, kept := assignment.hear("why did you use a map there?", directionFromPerson, time.Now())
+	id, kept, _ := assignment.hear("why did you use a map there?", directionFromPerson, time.Now(), spokenSource{})
 	if !kept {
 		t.Fatal("a question was not even recorded")
 	}
@@ -94,7 +94,7 @@ func TestOnlyUnreadWordsHoldAPublicationAndReadingThemReleasesIt(t *testing.T) {
 	}
 	node.publishing = false
 
-	if _, late := node.heardDirection("CSV instead of JSON", directionFromPerson); !late {
+	if heard := node.heardDirection("CSV instead of JSON", directionFromPerson, spokenSource{}); !heard.inTime {
 		t.Fatal("a direction said before any claim was reported as coming after one")
 	}
 	if claim := node.claimPublication(); claim.granted {
@@ -112,7 +112,7 @@ func TestOnlyUnreadWordsHoldAPublicationAndReadingThemReleasesIt(t *testing.T) {
 	// AND FROM THE CLAIM ON, A LINE BELONGS TO THE NEXT ROUND. The merge it would
 	// have changed is already going out, and saying otherwise would be promising
 	// something this harness cannot do.
-	if _, before := node.heardDirection("actually make it TSV", directionFromPerson); before {
+	if heard := node.heardDirection("actually make it TSV", directionFromPerson, spokenSource{}); heard.inTime {
 		t.Fatal("a direction said after the boundary was claimed was reported as having come first")
 	}
 }
@@ -122,8 +122,8 @@ func TestOnlyUnreadWordsHoldAPublicationAndReadingThemReleasesIt(t *testing.T) {
 // has already moved past — which is their latest word being silently discarded.
 func TestAnOlderDirectionCannotOverwriteALaterOne(t *testing.T) {
 	var assignment taskAssignment
-	first, _ := assignment.hear("CSV instead of JSON", directionFromPerson, time.Now())
-	second, _ := assignment.hear("actually make it TSV", directionFromPerson, time.Now())
+	first, _, _ := assignment.hear("CSV instead of JSON", directionFromPerson, time.Now(), spokenSource{})
+	second, _, _ := assignment.hear("actually make it TSV", directionFromPerson, time.Now(), spokenSource{})
 
 	if _, err := assignment.revise(second, 0, assignmentEdit{acceptance: "report.tsv exists"}, time.Now()); err != nil {
 		t.Fatalf("applying the later correction: %v", err)
@@ -150,7 +150,7 @@ func TestARoundLimitStopsRatherThanPublishingStaleWork(t *testing.T) {
 	graph := newTaskGraph()
 	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{}), directedRounds: directedRoundLimit}
 	graph.nodes = map[uint64]*TaskNode{1: node}
-	node.heardDirection("one more thing", directionFromPerson)
+	node.heardDirection("one more thing", directionFromPerson, spokenSource{})
 
 	claim := node.claimPublication()
 	if claim.granted {
@@ -175,7 +175,7 @@ func TestAClaimIsRefusedWhenTheAssignmentMovedSinceTheCheck(t *testing.T) {
 	graph := newTaskGraph()
 	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{})}
 	graph.nodes = map[uint64]*TaskNode{1: node}
-	said, _ := node.heardDirection("CSV instead of JSON", directionFromPerson)
+	said := node.heardDirection("CSV instead of JSON", directionFromPerson, spokenSource{}).id
 	node.assignment.markCarried([]uint64{said})
 	node.checkAt(0)
 	if _, err := node.reviseAssignment(said, 0, assignmentEdit{acceptance: "report.csv exists"}); err != nil {
@@ -192,7 +192,7 @@ func TestAClaimIsRefusedWhenTheAssignmentMovedSinceTheCheck(t *testing.T) {
 		t.Fatalf("claim = %+v, want work checked at the version in force to land", claim)
 	}
 	// AND NOTHING MOVES BEHIND A CLAIMED BOUNDARY.
-	later, _ := node.heardDirection("and sort it", directionFromPerson)
+	later := node.heardDirection("and sort it", directionFromPerson, spokenSource{}).id
 	if _, err := node.reviseAssignment(later, 1, assignmentEdit{acceptance: "sorted"}); !errors.Is(err, errPublishing) {
 		t.Fatalf("revising behind a claimed boundary = %v, want it refused", err)
 	}
@@ -200,8 +200,8 @@ func TestAClaimIsRefusedWhenTheAssignmentMovedSinceTheCheck(t *testing.T) {
 
 func TestTheRecordCarriesTheOverlayAndAnOlderCheckpointReadsAsUnrevised(t *testing.T) {
 	var assignment taskAssignment
-	said, _ := assignment.hear("CSV instead of JSON", directionFromPerson, time.Now())
-	relayed, _ := assignment.hear("the parent says the loader is in etc/", directionFromAgent, time.Now())
+	said, _, _ := assignment.hear("CSV instead of JSON", directionFromPerson, time.Now(), spokenSource{})
+	relayed, _, _ := assignment.hear("the parent says the loader is in etc/", directionFromAgent, time.Now(), spokenSource{})
 	if _, err := assignment.revise(said, 0, assignmentEdit{acceptance: "data.csv exists"}, time.Now()); err != nil {
 		t.Fatalf("revise: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestASettledTaskCannotBeRevised(t *testing.T) {
 	graph := newTaskGraph()
 	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{}), state: TaskDone}
 	graph.nodes = map[uint64]*TaskNode{1: node}
-	said, _ := node.heardDirection("CSV instead of JSON", directionFromPerson)
+	said := node.heardDirection("CSV instead of JSON", directionFromPerson, spokenSource{}).id
 	if _, err := node.reviseAssignment(said, 0, assignmentEdit{acceptance: "data.csv exists"}); !errors.Is(err, errAssignmentSettled) {
 		t.Fatalf("revising a landed task = %v, want it refused: what it was judged against is a fact now", err)
 	}
