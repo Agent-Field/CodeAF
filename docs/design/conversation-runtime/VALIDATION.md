@@ -1,5 +1,16 @@
 # Validation and remaining product work
 
+## Current measured candidate
+
+The later candidate `ec9f5a0c2` passed the full repository check and completed a
+frozen 36-cell Aforge/Pi/OMP calibration on the exact DeepSeek model. The detailed
+protocol, failures, costs and next decisions are in
+[CALIBRATION-20260905.md](CALIBRATION-20260905.md). Small print requests all passed,
+but Aforge cost more than Pi on every observed print slice. Aforge passed one of
+two side-question cases and one of two revision cases; the other revision timed
+out. Steering handoff improved, but a Pareto or production-reliability claim is
+not established. The sections below retain the earlier wave's evidence.
+
 This is a local development wave, not a release or a claim that the harness is on a
 universal cost/time/quality frontier. The integration branch is
 `santosh/conversation-runtime`; the shared `dev` checkout and the prior consolidated
