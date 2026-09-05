@@ -293,7 +293,9 @@ func TestLiveCompactToolHistoryKeepsNewestReadable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	response, err := client.CompleteWithMessages(ctx, history,
-		ai.WithModel(model), ai.WithMaxTokens(64))
+		// Reasoning and the visible answer share this allowance. A 64-token
+		// ceiling can cut the marker itself short, without losing any history.
+		ai.WithModel(model), ai.WithMaxTokens(512))
 	if err != nil {
 		t.Fatalf("live compacted history was refused: %v", err)
 	}
@@ -302,7 +304,7 @@ func TestLiveCompactToolHistoryKeepsNewestReadable(t *testing.T) {
 	}
 	got := messageContentText(response.Choices[0].Message)
 	if !strings.Contains(got, "ROUND-04-UNIQUE-TAIL") {
-		t.Fatalf("live model did not see the newest verbatim tail: %q", got)
+		t.Fatalf("live model did not return the newest verbatim tail (finish=%s): %q", response.Choices[0].FinishReason, got)
 	}
 }
 

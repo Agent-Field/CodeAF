@@ -529,17 +529,41 @@ func TestWorkHandedOutAfterTheirNextSentenceQualifiesAgain(t *testing.T) {
 func TestAHandoffThatFailedInsideItsOwnTurnIsStillRead(t *testing.T) {
 	const remains = "the build never ran, so no marker was ever written"
 
+	failed := make(chan struct{})
 	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: handedOffSteps(checkpointMarkAt(1), slowBuildSaid, func() string {
+	steps := handedOffSteps(checkpointMarkAt(1), slowBuildSaid, func() string {
 		if remainsAsks.Add(1) == 1 {
 			return remains
 		}
 		return checkpointNothingLeft
-	})}
+	})
+	// The failure must precede the turn's closing prose. Merely launching a
+	// goroutine that fails immediately does not establish that ordering on CI.
+	for i, next := range steps {
+		steps[i] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			answer, err := next(ctx, messages)
+			if answer != nil && len(answer.Choices) > 0 {
+				for _, part := range answer.Choices[0].Message.Content {
+					if part.Text == slowBuildSaid {
+						select {
+						case <-failed:
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						case <-time.After(5 * time.Second):
+							return nil, fmt.Errorf("the fixture task never failed")
+						}
+					}
+				}
+			}
+			return answer, err
+		}
+	}
+	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {
 		node.finish("the script exited 127: ./slow-build.sh not found", nil, "", "")
 		node.graph.complete(node, TaskFailed)
+		close(failed)
 	})
 
 	events, err := agent.Submit(context.Background(), slowBuildAsk)

@@ -403,10 +403,16 @@ class Guard(http.server.BaseHTTPRequestHandler):
                            path=self.path, model=model,
                            upstream_status=response.status, usage_include_added=added_usage)
         except urllib.error.HTTPError as error:
-            payload = error.read()
+            with error:
+                payload = error.read()
             if not sent_headers:
                 self.send_response(error.code)
-                self.send_header("Content-Type", error.headers.get("Content-Type", "application/json"))
+                # Error bytes have the same encoding contract as successful
+                # responses. Dropping Content-Encoding turns a compressed
+                # provider refusal into unreadable text in the terminal.
+                for name, value in error.headers.items():
+                    if name.lower() not in HOP_BY_HOP:
+                        self.send_header(name, value)
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)

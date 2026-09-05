@@ -7,6 +7,12 @@ right, and a correction if it is not — so settled work opens first to an outli
 caption sentences and the machinery is one expand further. This page is about what is
 folded, how to open it, and what to do when the page seems empty or stuck at the top.
 
+Click the task's name in the right-hand list to open its conversation, including
+in the ordinary local window. While it loads, the page says so. Type a correction
+there and press Enter to send it to that task; Escape returns to the main
+conversation. Refreshing the task keeps opened blocks open and keeps an accepted
+correction visible while its worker catches up with writing the transcript.
+
 ## What is on this task page — everything a task's page shows, in order
 
 The instruction it was given, folded to three lines with a door. The work it did, folded

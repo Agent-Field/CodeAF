@@ -162,3 +162,103 @@ DeepSeek pin, low requested reasoning effort, an isolated profile, and its own
 credential-holding guard outside the container. Both use the existing tmux
 conversation driver. Hidden tests and the reference implementation never enter
 the candidate container. No quality result is claimed before independent grading.
+
+## Correctness-first task interaction pass
+
+The user's priority is now dependable developer workflows before efficiency;
+small-task costs remain diagnostics. The default local window supplied a
+`TaskRoom` reader over the engine connection but no remote host label. The UI
+mistakenly required that label before using the reader, so clicking a live task
+reported that the session had no task rooms. The regression failed on the old
+condition and passes when the UI selects the available capability directly.
+
+A second regression reproduced accepted corrections disappearing on the next
+journal refresh. Refresh now retains unchanged entries, preserves open/full state
+when content grows, and keeps accepted corrections until their journal entries
+arrive. Repeated identical corrections remain distinct. The same loading wording
+works on a local engine and on a remote machine.
+
+A raw-input test sends SGR mouse clicks, typed text, Enter and Escape through
+Bubble Tea's actual input decoder/program loop, with a real loopback engine
+client. It verifies opening the intended task, reading its journal, delivering a
+correction once to task 7, and returning to the main conversation. The fixture
+provides the roster and scripted engine; it does not establish model quality or
+claim to control the user's existing terminal window. The focused interaction
+and hosted-room tests passed under the race detector.
+
+The media-fixture correction's full session check passed (191.714 seconds).
+CI at `3768a93ce` then exposed a separate ordering assumption in the failed-handoff
+fixture: its background task was not guaranteed to fail before the closing
+response. The fixture now explicitly waits for graph completion. Thirty race
+runs passed. That CI run's full terminal package also passed (467.450 seconds).
+The new task interaction changes require a fresh package check.
+
+### Task interaction validation outcome
+
+The full terminal package passes with these changes (466.970 seconds), and the
+manual package passes. The session package's run failed only its optional live
+compaction smoke: the returned marker was `ROUND-04`, instead of the complete
+`ROUND-04-UNIQUE-TAIL`. That test allowed only 64 output tokens, shared with
+reasoning. Its allowance is now 512 and failure output includes the finish
+reason; three fresh pinned-model runs pass (5.078 seconds total). No compaction
+runtime behavior was changed to accommodate that model response. The final
+offline session gate is run without provider credentials; live checks are
+reported separately rather than making ordinary package checks depend on a
+provider response.
+
+### Complex pilot outcome and diagnostic grade
+
+Both original terminal runs ended at their ready screens: Pi in 1,232 seconds,
+Aforge in 1,282 seconds. Those times include startup and the quiet window; they
+are not times to equivalent completed work. Both original grades are zero.
+
+Pi produced an implementation. Its added test package collided with the hidden
+suite's module names, so the original acceptance collection never ran. Aforge's
+only task failed with an upstream HTTP 404, and its final main-workspace patch
+is empty. No unlanded branch was substituted to improve that score.
+
+A supplementary diagnostic excludes **all candidate `tests/` changes** from each
+saved patch, preserves every other change and runs the same frozen verifier
+without network or additional inference. Results:
+
+| Saved implementation | Acceptance | Regression |
+| --- | ---: | ---: |
+| Pi, with candidate tests excluded | 159/159 | 61/61 |
+| Aforge, with candidate tests excluded | 0/159 | 61/61 |
+
+This diagnostic does not replace the original failed run. It establishes that
+Pi's implementation passes the assertions once the collection collision is
+removed; it does not repair Aforge's missing implementation. The original
+patches, grades and logs remain intact. The diagnostic script and its patch
+hashes are retained under `af653-complex-20260905/diagnostic-test-isolation` on
+Spark; the invocation script is at that artifact root.
+
+The Aforge task's unreadable refusal begins with the gzip signature. The
+benchmark proxy preserved compressed error bytes but dropped `Content-Encoding`
+and retry headers, unlike its success path. An offline compressed-404 regression
+fails before the proxy fix and passes after it. Error headers now retain the
+same end-to-end contract as successful responses. This does **not** explain away
+the upstream 404, prove it is fixed, or turn the failed task into a success.
+The corrected proxy was not used retroactively in either scored run.
+
+Every admitted inference used `deepseek/deepseek-v4-flash-0731`: Pi made 76 calls;
+Aforge made 120. Read-only reconciliation prices all Pi calls at $0.048953800644.
+Aforge has 116 priced calls out of 120, so its total remains **unknown**. No
+cost ratio is reported. Emulation also drove Aforge's UI and engine close to the
+8 GiB container cap; this run used the declared `GOGC=off` workaround and does
+not establish native runtime memory demand. One pair with these failures cannot
+establish quality equivalence, a performance ranking or a frontier.
+
+The temporary credential file used by this pilot's guard was removed after both
+runs and reconciliation ended. Further complex-work validation should first
+resolve the provider refusal with readable diagnostics, then repeat under a
+predeclared test-isolation policy. The practical priority remains opening,
+steering and recovering real work, ahead of schema or small-task cost tuning.
+
+Final gate for the task UI wave: the full terminal suite passed above; the
+credential-free `make check` for session/manual passes (session 181.771 seconds),
+including vet, formatting, packed manual, build and binary-size ratchet. The
+binary is 50,552,770 bytes, below 54,600,000. All 156 conversation benchmark
+Python checks pass (44.738 seconds). A new complex Aforge trial will retain the
+original runtime/model/limits and change the proxy's error-header behavior;
+its result will be recorded separately from the original paired pilot.

@@ -284,11 +284,14 @@ type taskRoom struct {
 	// no other time — and, unlike the conversation's, on the HEIGHT too, because
 	// a room's fold keeps as many calls as its view is tall ([app.roomToolTail])
 	// and a taller view is a different row list.
-	rows    []row
-	width   int
-	height  int
-	dirty   bool
-	loading bool
+	rows          []row
+	width         int
+	height        int
+	dirty         bool
+	loading       bool
+	journal       []byte
+	lastSteerAt   time.Time
+	pendingSteers []roomSteerEcho
 }
 
 type roomRecordMsg struct {
@@ -368,7 +371,7 @@ const (
 	// asking the head to start the work again while the original is minutes from
 	// done manufactures a duplicate task.
 	roomBusyWord    = " cannot read this right now — "
-	roomLoadingWord = "bringing this task's transcript from the other machine…"
+	roomLoadingWord = "loading this task's conversation…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
 	// the same box that talks to the model. It names the way out as well —
@@ -510,7 +513,8 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 func (a *app) openRoom(id uint64, title string) {
 	doors, ok := a.roomDoors()
 	if !ok {
-		if a.hosted() && (a.farRoomRecord != nil || a.farRecord != nil) {
+		// Local engine windows use this same door without a remote host label.
+		if a.farRoomRecord != nil || a.farRecord != nil {
 			node := a.tasks[id]
 			if node != nil && (a.farRoomRecord != nil || node.transcript != "") {
 				a.openFarRoom(node, title)
@@ -627,8 +631,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	}
 	a.room.loading = false
 	if msg.err == nil {
-		a.room.entries, a.room.turn = a.roomRecord(
-			session.ReadTranscriptBytes(msg.record.Journal), roomTail)
+		a.refreshRoomRecord(msg.record.Journal)
 	}
 	a.room.resolveUnfinished()
 	a.roomTouched()
@@ -1010,7 +1013,8 @@ func (a *app) steer() tea.Cmd {
 	// The worker reads the paste and the room's row keeps the tag (pastechip.go).
 	// The chips are spent only once the engine has taken the line: a refusal
 	// leaves the words in the box, chips and all.
-	receipt, err := doors.SteerTask(room.id, a.pastesUnfolded(line))
+	words := a.pastesUnfolded(line)
+	receipt, err := doors.SteerTask(room.id, words)
 	if err != nil {
 		// The engine's own sentence, kept: "task 3 is done, not running" and
 		// "task 3 has no worker to talk to yet" are different facts, and a
@@ -1069,6 +1073,9 @@ func (a *app) steer() tea.Cmd {
 			words: line, at: now, consumed: true, landed: now,
 			receipt: steerReceiptWords(receipt),
 		}})
+	if a.farRoomRecord != nil {
+		room.keepSteerEcho(words, room.entries[len(room.entries)-1])
+	}
 	// The two wakeups the clause's fade needs and no ticker, which is [fadeTicks]'
 	// whole bargain (steerelbow.go takes the same two for the same reason).
 	return tea.Batch(a.edited(), fadeTicks())

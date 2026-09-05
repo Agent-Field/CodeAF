@@ -15,6 +15,7 @@ runs in-process. No model is called, nothing is spent.
 
   python3 bench/conversation/test/test_meter.py
 """
+import gzip
 import http.client
 import http.server
 import json
@@ -26,6 +27,7 @@ import struct
 import socket
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
@@ -175,6 +177,28 @@ class MeterCase(unittest.TestCase):
         # up for the process's whole life, so a settlement that a finished
         # test's relay thread writes a moment too late can never be mistaken
         # for this test's own.
+
+    def test_compressed_provider_refusal_keeps_its_encoding(self):
+        body = gzip.compress(json.dumps({'error': {'message': 'No route available', 'code': 404}}).encode())
+        def refuse(upstream):
+            upstream.rfile.read(int(upstream.headers.get('Content-Length', 0)))
+            upstream.send_response(404)
+            upstream.send_header('Content-Type', 'application/json')
+            upstream.send_header('Content-Encoding', 'gzip')
+            upstream.send_header('Content-Length', str(len(body)))
+            upstream.send_header('Retry-After', '2')
+            upstream.end_headers()
+            upstream.wfile.write(body)
+        with patch.object(Upstream, 'do_POST', refuse):
+            connection = http.client.HTTPConnection('127.0.0.1', self.guard_port, timeout=5)
+            connection.request('POST', '/v1/chat/completions', json.dumps({'model': MODEL}), {'Content-Type':'application/json'})
+            response = connection.getresponse()
+            raw = response.read()
+            connection.close()
+            self.assertEqual(response.status, 404)
+            self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
+            self.assertEqual(response.getheader('Retry-After'), '2')
+            self.assertEqual(json.loads(gzip.decompress(raw))['error']['message'], 'No route available')
 
     # -- helpers -----------------------------------------------------------
 
