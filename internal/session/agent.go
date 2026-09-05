@@ -984,6 +984,9 @@ type userMessage struct {
 	// replyTags names finished tasks whose reports this message carries. It is
 	// empty on every person's message and every other authored note.
 	replyTags []TaskReplyTag
+	// otherResults preserves untagged background outcomes when a batch also
+	// carries task results. Their reply obligation must not be lost in folding.
+	otherResults bool
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
@@ -1152,6 +1155,7 @@ func jobNote(text string) userMessage {
 	// the command this note is about, in the same locked step as the append
 	// ([userMessage.ending]).
 	note.ending = true
+	note.otherResults = true
 	return note
 }
 
@@ -2455,12 +2459,14 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	order := make([]string, 0, len(notes))
 	parts := make([]string, 0, len(notes))
 	var (
-		wake      bool
-		tags      []TaskReplyTag
-		delivered []durableDelivery
+		wake         bool
+		otherResults bool
+		tags         []TaskReplyTag
+		delivered    []durableDelivery
 	)
 	for _, note := range notes {
 		wake = wake || note.wake
+		otherResults = otherResults || note.otherResults
 		tags = append(tags, note.replyTags...)
 		// The batch is the record these notes end up in, so it carries what
 		// settles each of them ([durableDelivery]); dropped here, every landing in
@@ -2502,11 +2508,12 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		text = "while you worked:\n\n" + strings.Join(rendered, "\n\n")
 	}
 	return userMessage{
-		message:   textMessage("user", text),
-		replyTags: tags,
-		delivered: delivered,
-		wake:      wake,
-		authored:  true,
+		message:      textMessage("user", text),
+		replyTags:    tags,
+		otherResults: otherResults,
+		delivered:    delivered,
+		wake:         wake,
+		authored:     true,
 	}
 }
 
@@ -2603,7 +2610,9 @@ func (a *Agent) enqueueJobNote(text string) {
 // news does not carry one.
 func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
-		a.enqueueNote(wakeNote(text))
+		note := wakeNote(text)
+		note.otherResults = true
+		a.enqueueNote(note)
 		return
 	}
 	// A tick is delivered as PROGRESS, which is the kind whose whole content is

@@ -97,6 +97,28 @@ while the previous one drains. The focused TUI suite passed in 2.888s. The remot
 wake subscription passed its full package under the race detector in 20.497s, plus
 structural laws and the full manual package. Full integrated validation follows.
 
+## Interactive policy candidate 1e1756b6f
+
+The mid-work revision case passed: the action ran once, the change arrived while it
+ran, all three CSV rows were correct, and the superseded Markdown file was absent.
+Wall time was 104s. Total cost is unknown (36 of 40 calls priced); the receipt records
+399,746 input and 15,909 output tokens. This fixes the observed reversion behavior,
+not a general proof of correct steering across arbitrary tasks.
+
+The follow-up case still failed: 94s, $0.002813903988, 138,511 input / 3,746 output.
+The action ran once. The model first returned an incorrect word, then corrected it
+after the work finished. Its build answer was hidden by the later correction inside
+the same turn. The trace exposed a remaining causal gap: background command outcomes
+had no task result tag, so the completion reader fell back to the latest unrelated
+question. Explicit background outcome provenance now survives note batching and
+selects its own reply duty. Untagged control wakes retain their prior behavior.
+
+The shared prompt also now applies to general conversation and artifact work, keeps
+engineering guidance conditional on coding, and asks for deterministic computation
+when exact calculations or transformations matter. Redundant uncertainty wording was
+shortened to keep the existing fixed-prefix budget unchanged. The follow-up rerun
+below evaluates these changes; this failed candidate remains in the evidence.
+
 ## Priorities after this wave
 
 1. Make result delivery an explicit user-facing obligation through provider failures:

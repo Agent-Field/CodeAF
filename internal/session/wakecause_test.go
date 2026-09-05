@@ -534,3 +534,29 @@ func TestTheEffectiveTargetSurvivesTheJournalRoundTrip(t *testing.T) {
 
 // itoaTask spells a task id the way a landing note does.
 func itoaTask(id uint64) string { return "task " + itoa(int(id)) }
+
+func TestBackgroundReplyDoesNotInheritTheLatestUnrelatedQuestion(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	a.hearAsk("What is the unrelated checksum?")
+	a.mu.Lock()
+	a.forgetOwedLocked()
+	a.rememberOwedLocked(batchSessionNotes([]userMessage{jobNote("job 1 exited 0: build finished", true)}))
+	a.mu.Unlock()
+	if got := a.turnAsk(); got != backgroundReplyObligation {
+		t.Fatalf("job completion inherited unrelated question: %q", got)
+	}
+}
+
+func TestMixedBackgroundBatchPreservesBothReplyDuties(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	task := wakeNote("task report")
+	task.replyTags = []TaskReplyTag{{ID: 3, Request: "write the report"}}
+	batch := batchSessionNotes([]userMessage{task, jobNote("job 1 exited 0", true)})
+	a.mu.Lock()
+	a.rememberOwedLocked(batch)
+	a.mu.Unlock()
+	got := a.turnAsk()
+	if !strings.Contains(got, backgroundReplyObligation) || !strings.Contains(got, "write the report") {
+		t.Fatalf("mixed batch lost a reply duty: %q", got)
+	}
+}

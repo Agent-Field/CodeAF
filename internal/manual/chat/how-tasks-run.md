@@ -2710,3 +2710,10 @@ rest of the task.
 The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. Without declared task checks, the completion reader assesses the work and existing evidence; it does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
 
 Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed.
+
+## A background command finishes after we changed the subject
+
+A background command or fired watch owes a report of its new outcome. That reply is
+checked against the background news, rather than an unrelated question you asked
+while waiting. Task reports carry their own current assignment. If several outcomes
+arrive together, they keep their separate reply obligations through the combined note.

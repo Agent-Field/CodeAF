@@ -75,7 +75,8 @@ Hosted sessions subscribe once to runtime wake turns. The existing numbered stre
 replay and fan-out path carries them to attached windows. Hosted turn adoption uses
 the same ordered queue as local wakes; a later reply cannot silently reuse the
 previous person's turn or disappear while its last events drain. This closes a display
-failure that unit-only transport testing did not catch. A visible reply still depends
+failure that unit-only transport testing did not catch. Background commands and fired watches carry their own outcome reply duty through
+batching as well; they do not inherit an unrelated recent question. A visible reply still depends
 on successful model narration; retained results and transport delivery are distinct.
 
 ## What is measured, and what is not claimed

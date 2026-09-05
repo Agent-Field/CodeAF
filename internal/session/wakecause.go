@@ -61,6 +61,7 @@ type owedFrom uint8
 const (
 	owedByPerson owedFrom = iota
 	owedByResult
+	owedByBackground
 )
 
 // rememberOwedLocked records what one arriving message makes this turn owe: the
@@ -78,10 +79,19 @@ func (a *Agent) rememberOwedLocked(user userMessage) {
 	// AND WHAT EACH RESULT WAS OWED, which is the effective target where the
 	// person moved that task's goal while it ran and its original words
 	// otherwise ([TaskReplyTag.owed]).
+	// Jobs, fired watches and other background news have no task tag. They
+	// still owe a report of their outcome, never another answer to whichever
+	// unrelated question the person happened to ask most recently.
+	if user.otherResults {
+		a.oweLocked(owedAsk{text: backgroundReplyObligation, from: owedByBackground})
+	}
 	for _, tag := range user.replyTags {
 		a.oweLocked(owedAsk{text: tag.owed(), from: owedByResult, task: tag.ID})
 	}
 }
+
+// This is a runtime reply duty, not a claim that the person issued new work.
+const backgroundReplyObligation = "Report the new background outcomes in this turn, using their completion notes and logs as evidence. State relevant results or action needed. Do not re-answer unrelated earlier questions."
 
 // owed is the target one result must be judged against: the effective one when
 // the person moved that task's goal while it ran, and the words it was admitted
@@ -166,6 +176,8 @@ func (o owedAsk) label() string {
 	switch {
 	case o.from == owedByPerson:
 		return "they asked:"
+	case o.from == owedByBackground:
+		return "new background outcomes require:"
 	case o.task == 0:
 		return "a finished task was for:"
 	default:
