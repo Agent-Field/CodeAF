@@ -262,3 +262,32 @@ binary is 50,552,770 bytes, below 54,600,000. All 156 conversation benchmark
 Python checks pass (44.738 seconds). A new complex Aforge trial will retain the
 original runtime/model/limits and change the proxy's error-header behavior;
 its result will be recorded separately from the original paired pilot.
+
+### Read failures and the recursive-core review
+
+A further task-page regression reproduced temporary read failures presented as
+missing history. Finished tasks stopped polling after that failed first read.
+Opening and refreshing now share one captured reader, show a steady retry message
+on failure and retain any transcript already displayed. The focused running and
+finished recovery cases pass with the local task/wire tests under the race
+detector. A fresh terminal package check follows this change.
+
+The user's proposed “Pi spawning Pis” model is already the implementation's core:
+workers and forks create the same Agent. `RECURSIVE-CORE-20260905.md` inventories
+the surrounding duplicate decisions and defines the smaller target. It is a
+proposal for removing policy layers, not a claim that the two-file/five-write
+promotion rule or the extra routing readers have already been deleted.
+
+The task-read recovery gate passes: `make check` for terminal/manual, with the
+full terminal suite at 467.541 seconds, manual at 1.541 seconds, packed manual,
+vet, formatting, build and size all passing. The binary is 50,552,722 bytes.
+Remote CI for the preceding `120806c17` task-click/refresh wave also passes both
+halves (run 33984222248); the recovery follow-up is a later commit.
+
+An important limit on the architecture inference: the original complex run's
+40-round ceiling recorded `dropped:work-already-out`. The existing ownership
+check prevented another handoff there. We do not attribute that run's failure
+to a forced handoff that never happened. Its recorded request traffic was
+71,984,610 bytes across 120 calls for Aforge and 17,282,734 across 76 for Pi;
+19 Aforge requests carried no tools. These are workload observations with failed
+outcomes, not proof that every helper call is unnecessary or a cost comparison.

@@ -289,6 +289,7 @@ type taskRoom struct {
 	height        int
 	dirty         bool
 	loading       bool
+	readFailed    bool
 	journal       []byte
 	lastSteerAt   time.Time
 	pendingSteers []roomSteerEcho
@@ -370,8 +371,9 @@ const (
 	// a lie about live work, and the revive key is withheld for the same reason:
 	// asking the head to start the work again while the original is minutes from
 	// done manufactures a duplicate task.
-	roomBusyWord    = " cannot read this right now — "
-	roomLoadingWord = "loading this task's conversation…"
+	roomBusyWord       = " cannot read this right now — "
+	roomLoadingWord    = "loading this task's conversation…"
+	roomReadFailedWord = "couldn't read this task's conversation · retrying"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
 	// the same box that talks to the model. It names the way out as well —
@@ -612,14 +614,30 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 	a.sel = -1
 	a.dropHover()
 	a.touch()
-	read, id, uri, gen := a.farRoomRecord, node.id, node.transcript, room.gen
-	a.roomPump = func() tea.Msg {
+	a.roomPump = a.readRoomRecord()
+}
+
+// Capture the reader and identity before leaving the program loop, for both
+// the first read and refreshes. A window switch cannot change an in-flight read.
+func (a *app) readRoomRecord() tea.Cmd {
+	if a.room == nil {
+		return nil
+	}
+	read, fallback, id, gen := a.farRoomRecord, a.farRecord, a.room.id, a.room.gen
+	uri := ""
+	if node := a.tasks[id]; node != nil {
+		uri = node.transcript
+	}
+	if read == nil && (fallback == nil || uri == "") {
+		return nil
+	}
+	return func() tea.Msg {
 		var record session.TaskRecord
 		var err error
 		if read != nil {
 			record, err = read(id, session.TaskJournalTail)
 		} else {
-			record, err = a.farRecord(uri, session.TaskJournalTail)
+			record, err = fallback(uri, session.TaskJournalTail)
 		}
 		return roomRecordMsg{gen: gen, record: record, err: err}
 	}
@@ -630,6 +648,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 		return nil
 	}
 	a.room.loading = false
+	a.room.readFailed = msg.err != nil
 	if msg.err == nil {
 		a.refreshRoomRecord(msg.record.Journal)
 	}
@@ -637,8 +656,8 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	a.roomTouched()
 	prefetch := a.prefetchRoomPictures()
 	node := a.tasks[a.room.id]
-	if roomRowDone(node) {
-		a.room.done = true
+	a.room.done = roomRowDone(node)
+	if a.room.done && msg.err == nil {
 		return prefetch
 	}
 	return tea.Batch(prefetch, farRoomTick(a.room.gen))
@@ -664,14 +683,10 @@ func (a *app) farRoomPoll(gen int) tea.Cmd {
 	if a.room == nil || a.room.gen != gen {
 		return nil
 	}
-	if a.room.done || a.farRoomRecord == nil {
+	if a.room.done && !a.room.readFailed {
 		return nil
 	}
-	read, id := a.farRoomRecord, a.room.id
-	return func() tea.Msg {
-		record, err := read(id, session.TaskJournalTail)
-		return roomRecordMsg{gen: gen, record: record, err: err}
-	}
+	return a.readRoomRecord()
 }
 
 // leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
@@ -2702,7 +2717,9 @@ func (a *app) roomRows(width int) []row {
 	// perfectly healthy session: a task opened the moment it is started has
 	// journaled nothing yet, and one that is queued has not begun. The words
 	// differ by what is true (roomYetWord above), the rule does not.
-	if len(out) == 0 && room.harnessProgress == "" {
+	if room.readFailed {
+		out = append(out, row{text: a.pal.dim(fit(roomReadFailedWord, width)), entry: -1})
+	} else if len(out) == 0 && room.harnessProgress == "" {
 		out = a.roomRecordRows(out, width)
 	}
 	if room.done {

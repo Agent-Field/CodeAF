@@ -12,6 +12,9 @@ in the ordinary local window. While it loads, the page says so. Type a correctio
 there and press Enter to send it to that task; Escape returns to the main
 conversation. Refreshing the task keeps opened blocks open and keeps an accepted
 correction visible while its worker catches up with writing the transcript.
+If reading fails, the page keeps any transcript already shown and says it is
+retrying. A temporary read failure does not mean the task's history is gone;
+finished tasks can recover their pages too.
 
 ## What is on this task page — everything a task's page shows, in order
 

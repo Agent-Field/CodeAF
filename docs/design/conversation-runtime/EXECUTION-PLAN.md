@@ -5,6 +5,11 @@ description of capabilities already shipped. The draft PR carries the earlier
 conversation-runtime work as a baseline; its presence is not evidence that every
 choice in that baseline is correct.
 
+The [recursive-core note](RECURSIVE-CORE-20260905.md) narrows this plan after the
+user asked whether the system can be one agent loop spawning instances of itself.
+It inventories existing duplicate decisions and the behavior that must survive
+their removal.
+
 ## Decision
 
 Keep one owner for each requested outcome. Let that owner choose direct work,
