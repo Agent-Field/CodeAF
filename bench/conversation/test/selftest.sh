@@ -36,6 +36,12 @@
 #   smudged        a near miss is a miss: RRABANNIC is not RABANNIC
 #   noready        a screen this rig cannot read is UNSUPPORTED (its own
 #                  calibration gap), never a crash blamed on the harness
+#   repair         four independent defects, all four repaired: a PASS, and the
+#                  verdict comes from the judge beside the cell
+#   cheat          the visible suite made green by a table of answers to it:
+#                  the external judge must still FAIL the cell
+#   tamper         the right behaviour AND an edited test file: a FAIL, because
+#                  the question was changed
 set -uo pipefail
 
 TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,7 +56,7 @@ mkdir -p "$LOGDIR"
 # inherits what this suite carries on purpose (lib/common.sh). Naming the FAKE_*
 # variables here is what lets them through — and the credential scrubbing test
 # below still holds, because nothing in this list is a credential.
-export CONV_PASS_ENV="FAKE_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID FAKE_ANSWER_ROOT"
+export CONV_PASS_ENV="FAKE_MODE FAKE_MARKER FAKE_ENV_REPORT FAKE_TUI_MODE FAKE_TUI_BUSY FAKE_CATALOG_ID FAKE_ANSWER_ROOT FAKE_REPAIR_SRC FAKE_CHEAT_SRC"
 
 # These cases drive fake binaries that reach no network, so they run without the
 # forwarding guard — and say so the only way run.sh accepts, which is what keeps
@@ -261,6 +267,59 @@ FAKE_MODE=ok PI_BIN="$FAKE/pi-fake.sh" \
   && ok "an undefined scenario is unsupported" || bad "an undefined scenario was $(field "$CASE_RESULTS" verdict)"
 grep -q 'unsupported 1' "$LOGDIR/unsupported.log" \
   && ok "and it is counted apart from the passes" || bad "the summary hides the unsupported cell"
+say
+
+# ── work that is judged outside the workspace it was done in ────────────────
+#
+# The coding cell hands over four independent defects and asks for a repair. Its
+# verdict comes from a judge beside the cell, on inputs the workspace never
+# held — so the three fakes below are three outcomes a transcript cannot tell
+# apart, and the rig has to.
+say "multi-defect (four defects, one pipeline, an external judge):"
+CODE_CELL="$WORKDIR/multidefect-ok/evidence/multi-defect-pipeline-pi"
+FAKE_MODE=repair PI_BIN="$FAKE/pi-fake.sh" \
+  FAKE_REPAIR_SRC="$CONV_ROOT/fixtures/dutylog/reference" \
+  case_run multidefect-ok --unguarded --arms pi --scenarios multi-defect-pipeline --cap 180
+[ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
+  && ok "a repair of all four modules passes" \
+  || bad "a complete repair came out $(field "$CASE_RESULTS" verdict)"
+[ -s "$CODE_CELL/judge/judge-verdict.json" ] \
+  && ok "the judge left its verdict beside the cell" || bad "no judge verdict was written"
+[ ! -e "$CODE_CELL/work/judge_dutylog.py" ] && [ ! -e "$CODE_CELL/work/judge-verdict.json" ] \
+  && ok "and the judge was never in the workspace" || bad "the judge is inside the model's workspace"
+say
+
+say "multi-defect cheat (the visible tests answered from a table):"
+FAKE_MODE=cheat PI_BIN="$FAKE/pi-fake.sh" \
+  FAKE_REPAIR_SRC="$CONV_ROOT/fixtures/dutylog/reference" \
+  FAKE_CHEAT_SRC="$FAKE/dutylog-cheat" \
+  case_run multidefect-cheat --unguarded --arms pi --scenarios multi-defect-pipeline --cap 180
+CHEAT_WORK="$WORKDIR/multidefect-cheat/evidence/multi-defect-pipeline-pi/work"
+( cd "$CHEAT_WORK" && python3 -m unittest discover -s tests -t . ) \
+  > "$LOGDIR/multidefect-cheat-visible.log" 2>&1 \
+  && ok "the counterexample really does leave the workspace's own suite green" \
+  || bad "the cheat fake did not make the visible suite pass — it stages nothing"
+[ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
+  && ok "and the external judge fails it anyway" \
+  || bad "a hard-coded answer came out $(field "$CASE_RESULTS" verdict)"
+grep -q 'FAIL:aggregate behaves' "$CASE_RESULTS" \
+  && ok "the row names the module that does not behave" || bad "the row does not say which module failed"
+grep -q 'FAIL:integration behaves' "$CASE_RESULTS" \
+  && ok "and that the joined-up pipeline is wrong" || bad "the row does not fail the integration"
+say
+
+say "multi-defect tamper (right behaviour, edited question):"
+FAKE_MODE=tamper PI_BIN="$FAKE/pi-fake.sh" \
+  FAKE_REPAIR_SRC="$CONV_ROOT/fixtures/dutylog/reference" \
+  case_run multidefect-tamper --unguarded --arms pi --scenarios multi-defect-pipeline --cap 180
+[ "$(field "$CASE_RESULTS" verdict)" = "fail" ] \
+  && ok "an edited test file fails the cell" \
+  || bad "a tampered workspace came out $(field "$CASE_RESULTS" verdict)"
+grep -q 'FAIL:tests/ and SPEC.md were edited or deleted' "$CASE_RESULTS" \
+  && ok "and the row says the question was changed" || bad "the row does not name the tampering"
+grep -q '"outcome":"pass","check":"integration behaves' "$CASE_RESULTS" \
+  && ok "even though the behaviour itself was right" \
+  || bad "the tamper cell did not otherwise behave — it stages the wrong thing"
 say
 
 # ── the interactive door ────────────────────────────────────────────────────

@@ -236,6 +236,115 @@ until prompted passes it. Whether a result arrives on its own is a different
 question, tested live against the product's own task surface, and it is not in
 this suite.
 
+### `multi-defect-pipeline`, which is not in the battery
+
+One more coding scenario exists and is **not** run by default. Nothing above
+changes: `run.sh` with no `--scenarios` runs the same seven cells it always did,
+and `campaign.py plan` freezes the same six calibration slices. This one is
+asked for by name:
+
+```sh
+bench/conversation/run.sh --scenarios multi-defect-pipeline --arms aforge,pi,omp
+bench/conversation/campaign.py plan /tmp/multi.json --id multi --scenarios multi-defect-pipeline
+```
+
+It exists because the battery's coding cell is one boundary bug in one file, and
+the slow-work cells buy their busy window with a `sleep`. Neither is a piece of
+work with separable parts. This one is: a small Python project — standard
+library only, no dependencies, nothing downloaded — with **four independent
+defects, one in each of four modules**, and a command-line pipeline that joins
+them.
+
+| module | the defect | how it shows |
+|---|---|---|
+| `parsing.py` | commas split by hand instead of read as CSV | a quoted site name with a comma in it, and a leading byte order mark |
+| `validation.py` | a repeated identifier is only noticed on the very next record | the same `entry_id` used again four lines later |
+| `aggregate.py` | an ISO week number pasted onto the calendar year | Monday 2024-12-30 is in `2025-W01`, and 2027-01-01 is in `2026-W53` |
+| `report.py` | equal totals left in the order they were built | the same records in another order render differently |
+
+They are independent — the fixture's own tests assert that repairing one repairs
+one — and the pipeline's output is right only when all four are. The workspace
+carries the failing suite and `SPEC.md`, which is the contract.
+
+**The judge is black-box and it is a parent process.** `judge/judge_dutylog.py`
+is copied to the cell's judge directory and runs the repaired project's own
+command line as a child, on 29 cases of input the workspace never contained —
+different dates and sites, minutes at exactly 1 and exactly 1440, an ISO year
+that is not the calendar year, an unpadded timestamp, ties, and the whole
+pipeline. It reads stdout, stderr and the exit status, and nothing else: not the
+project's source text, and not its functions.
+
+That last part is not a preference. An earlier version imported the candidate's
+modules and called them, and a root review showed what that costs: a
+`dutylog/__init__.py` that replaced the judge's own case list with no-ops
+returned `cases: 34, failed: 0, passed: true` with the judge's checksum intact.
+The parent must not import the candidate. Both counterexamples are now tests —
+that one, and a module that answers the visible tests out of a lookup table
+(`test/fake/dutylog-cheat`) — as is the property they protect: a rewrite that
+shares no line with the reference repair passes (`test/fake/dutylog-alt`).
+
+Judging each module through the command line is less coverage than calling its
+functions was. A module's internal contract is checked only as far as the CLI
+reveals it, on inputs chosen so that exactly one defect can change the answer;
+the workspace's own unittest suite still describes the modules directly, as
+developer guidance rather than as the mark.
+
+**Everything is bounded.** Each child runs in its own process group with a
+deadline and is killed by group, so a CLI that spawns something does not leave
+it behind; the whole judging run has a budget, and the scenario wraps the judge
+in `timeout -k`. A project that sleeps on import costs the cell its judging cap
+and a recorded failure. Before the review it cost the cell nothing and the run
+everything: the runner's cap covers the harness, not the checks that follow it.
+
+Each module is one assertion and the pipeline is another, so a three-of-four
+repair says which one is missing. `tests/` and `SPEC.md` are checksummed before
+the run and the judge is checksummed before and after it. A changed instrument
+is **not used**: a judge whose checksum moved is reported and not executed, and
+a guard manifest whose checksum moved verifies nothing. A file *added* under
+`tests/` is recorded and is not a failure.
+
+**It asserts nothing about shape.** Not how many agents ran, not whether a task
+was spawned, not whether the four repairs happened at once. A serial run that
+fixes all four in one turn passes exactly as a fan-out does, and should.
+
+What it does not establish, plainly:
+
+* **Nothing about useful parallelism, and not much work.** Each of the four
+  repairs is small — use `csv.reader`, keep a set instead of a variable, take
+  the ISO year, add a tie-break — in about 250 lines of Python. This is a
+  multi-module correctness and calibration fixture. Whether independent work of
+  this size is worth splitting up is an empirical question it does not answer,
+  and answering it needs bigger held-out workloads and a serial ablation to
+  compare against.
+* One language, one domain, one size, one prompt, and a judge with a finite
+  number of black-box cases. A repair that satisfies all 29 can still be wrong
+  about something nobody wrote a case for, and about anything a module does that
+  its command line does not show.
+* The judge and the answer keys are **outside the directory the harness was
+  pointed at, which is a location and not a sandbox**. Nothing stops a process
+  from walking up one directory. The checksums are detection: they say
+  afterwards that an instrument moved, and the scenario then refuses to use it.
+  What is now structural rather than detected is the process boundary — the
+  candidate runs as a child, and the parent holding the expected answers never
+  imports it.
+* The prompt names the four modules, because every arm must get the same task
+  and finding the work is not what is being compared here. It says nothing about
+  agents, tasks or parallelism.
+
+Its deterministic tests call no model:
+
+```sh
+python3 -m unittest discover -s bench/conversation/test -p 'test_dutylog*.py'
+```
+
+They build the fixture the way `run.sh` does and check that it fails in all four
+modules before any repair, that the reference repair and an unrelated correct
+implementation both pass, that three modules out of four never passes, and that
+a hard-coded answer, an edited test, a deleted test, a planted verdict, a
+project that hangs on import, a CLI that leaves a grandchild running, and the
+review's own `__init__.py` forgery are each caught. `test/selftest.sh` drives the same three outcomes through the real
+runner against fake binaries.
+
 ## Outcomes
 
 `pass`, `fail`, `timeout`, `crash`, `skipped`, `unsupported` are six different
@@ -417,6 +526,12 @@ checks the receipt reader counts a repeated message once — all three peers emi
 the same assistant message three times — and that a self-reported `$0` beside
 real tokens is read as unknown rather than free.
 
+The coding counterexamples are of the same kind: a fake that repairs all four
+defects of `multi-defect-pipeline` must pass, one that makes the workspace's own
+suite green by answering it from a table must FAIL on the external judge, and
+one whose behaviour is right but which edited a test file must fail on the
+checksum rather than on the behaviour.
+
 The interactive counterexamples are the ones to keep. A fake TUI that
 **blocks**, finishes the build, and then answers correctly, with the right
 derived token and the right build marker, must FAIL. A fake that answers
@@ -442,7 +557,7 @@ without answering a request whose headers it already sent, and a priced call
 beside it must **not** be reported as the total. An admission with no
 settlement — what an abrupt shutdown leaves — reads as unknown too.
 
-At the time of writing it is 101 checks, all passing, and it needs `tmux` and
+At the time of writing it is 112 checks, all passing, and it needs `tmux` and
 `curl`; a missing dependency is reported as skipped and exits non-zero rather
 than green.
 
