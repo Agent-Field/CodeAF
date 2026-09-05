@@ -137,6 +137,11 @@ Two things are worth knowing. A question that was **on your screen** when you wa
 is kept too, and comes back the next time you attach. And a question waiting for you keeps
 that conversation open — the machine does not let go of a conversation that is holding one.
 
+A new window receives every unanswered question even if the old window is still
+connected or its broken connection has not yet been noticed. The question appears once
+in the new window, even when the running reply also replays it. Answering it resolves
+the same question for the conversation.
+
 ## Two windows on one conversation — two terminals on the same chat
 
 More than one window can be attached to the same conversation at once — a desk machine and

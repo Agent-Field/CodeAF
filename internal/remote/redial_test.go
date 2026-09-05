@@ -254,6 +254,49 @@ func TestAnEventAlreadyDeliveredIsNotDeliveredTwice(t *testing.T) {
 
 // ── roaming ─────────────────────────────────────────────────────────────────
 
+func TestARedialStillDeliversAQuestionMissedByTheExistingWindow(t *testing.T) {
+	first := make(chan struct{})
+	question := session.Event{Kind: session.EventConsentRequest, ID: 7, Tool: "bash"}
+	client, links := roam(t,
+		script{
+			welcome: Welcome{Version: Version, SessionFile: "/j.jsonl", Persistent: true},
+			play: func(engine *scripted, _ Hello) {
+				<-first
+				engine.event(1, 1, "started")
+			},
+		},
+		script{
+			welcome: Welcome{Version: Version, SessionFile: "/j.jsonl", Persistent: true, Live: 1,
+				Held: []HeldQuestion{{Kind: HeldConsent, Event: WireEvent(question), Stream: 1}}},
+			play: func(engine *scripted, _ Hello) {
+				engine.send(Frame{Kind: "event", ID: 1, Seq: 2, Payload: mustClientJSON(WireEvent(question))})
+				engine.closeStream(1, 2)
+			},
+		},
+	)
+	events, err := client.Agent().Submit(nil, "run the checks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(first)
+	if event, _ := nextEvent(t, events); event.Text != "started" {
+		t.Fatalf("initial event = %+v", event)
+	}
+	links.cut(0)
+	questions := 0
+	for event := range events {
+		if event.Kind == session.EventError {
+			t.Fatal(event.Err)
+		}
+		if event.Kind == session.EventConsentRequest && event.ID == 7 {
+			questions++
+		}
+	}
+	if questions != 1 {
+		t.Fatalf("the existing window received %d copies of its missed question", questions)
+	}
+}
+
 // The whole story in one test: a turn is running, the link dies without a
 // goodbye, the client redials by itself, says how far it got, and the turn
 // carries on where it was — with the overlap the engine replays drawn nowhere.

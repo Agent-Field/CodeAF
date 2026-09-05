@@ -950,11 +950,14 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 	// GOING TO, which is what [heldSet] is for: the windows in the list below
 	// are about to draw it, and any other window — including one that has not
 	// dialled yet — is owed it on arrival.
-	drawn := make([]uint64, 0, len(watching))
-	for _, surface := range watching {
-		drawn = append(drawn, surface.arrived)
+	if _, question := heldKeyOf(event); question {
+		// Ordinary text deltas do not need a second copy of the watching set.
+		drawn := make([]uint64, 0, len(watching))
+		for _, surface := range watching {
+			drawn = append(drawn, surface.arrived)
+		}
+		sess.held.raise(wire, id, drawn)
 	}
-	sess.held.raise(wire, id, drawn)
 	// A connect ask removes itself when its five-minute wait settles. That
 	// settling emits the next event, so reconcile here while the session lock is
 	// already held and do not leave a dead card keeping the host alive forever.

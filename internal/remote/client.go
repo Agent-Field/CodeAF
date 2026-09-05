@@ -286,8 +286,27 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 		return Welcome{}, spokenError{reason: fmt.Sprintf("%s selected a frame encoding this build cannot read", c.where())}
 	}
 	c.mu.Lock()
+	first := c.welcome.Version == 0
 	c.welcome = welcome
 	c.mu.Unlock()
+	// THE FIRST WELCOME AND THE STREAM ARE TWO ROADS FOR THE SAME QUESTION.
+	// The surface draws Held separately; suppress its copies in the initial
+	// replay without skipping the other events or losing the stream cursor.
+	// A redial keeps the existing surface and does not redraw Held, so its
+	// newly missed questions must still arrive through the replay.
+	if first {
+		for _, question := range welcome.Held {
+			if key, ok := heldKeyOf(question.Event.Event); ok && question.Stream != 0 {
+				stream := c.stream(question.Stream)
+				stream.mu.Lock()
+				if stream.inWelcome == nil {
+					stream.inWelcome = make(map[heldKey]struct{})
+				}
+				stream.inWelcome[key] = struct{}{}
+				stream.mu.Unlock()
+			}
+		}
+	}
 	// A TURN ALREADY RUNNING WHEN THIS SURFACE ARRIVED IS ONE IT DID NOT START
 	// EITHER, and it reaches the screen by the same road. It carries no sentence:
 	// the message that opened it is in the journal, which this surface reads on
@@ -1627,6 +1646,9 @@ type stream struct {
 	closed bool
 	out    chan session.Event
 	once   sync.Once
+	// inWelcome identifies questions already handed to this surface outside
+	// the stream. It lasts only as long as this turn's stream does.
+	inWelcome map[heldKey]struct{}
 	// seen is the highest [Frame.Seq] this stream has QUEUED FOR THE SURFACE,
 	// and it is the whole of the replay law stated at the top of this file: an
 	// event at or below it has already been drawn once and is dropped. It is
@@ -1676,6 +1698,14 @@ func (s *stream) push(seq uint64, payload json.RawMessage) {
 		}
 		s.mu.Unlock()
 		if already {
+			return
+		}
+	}
+	if key, question := heldKeyOf(wired.Event); question {
+		s.mu.Lock()
+		_, inWelcome := s.inWelcome[key]
+		s.mu.Unlock()
+		if inWelcome {
 			return
 		}
 	}
