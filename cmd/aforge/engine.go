@@ -584,6 +584,7 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 		opts.NoCompact = shape.NoCompact
 		opts.OneModel = shape.OneModel
 		opts.Budget = chatBudget(shape.MaxHours, shape.MaxCost)
+		opts.Interactive = shape.Interactive
 	}
 	return opts
 }

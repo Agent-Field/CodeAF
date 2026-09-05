@@ -100,17 +100,30 @@ func TestTheLanesOverAConnectionAreTheOnesTheWireSaysItCarries(t *testing.T) {
 // is built INTO the session rather than switched on after it opened.
 func TestTheEngineBuildsTheSessionWithTheShapeTheHelloCarried(t *testing.T) {
 	plain := engineLaunchOptions(remote.Hello{Workspace: "/srv/app"}, "/srv/app", "")
-	if plain.Yolo || plain.NoCompact || plain.OneModel || plain.Budget.Set() {
+	if plain.Yolo || plain.NoCompact || plain.OneModel || plain.Budget.Set() || plain.Interactive {
 		t.Fatalf("a hello with no shape built %+v", plain)
 	}
 	shaped := engineLaunchOptions(remote.Hello{
-		Launch: &remote.LaunchShape{Yolo: true, NoCompact: true, OneModel: true, MaxHours: 2, MaxCost: 5},
+		Launch: &remote.LaunchShape{Yolo: true, NoCompact: true, OneModel: true, MaxHours: 2, MaxCost: 5, Interactive: true},
 	}, "/srv/app", "")
 	if !shaped.Yolo || !shaped.NoCompact || !shaped.OneModel {
 		t.Fatalf("the shape did not reach the session: %+v", shaped)
 	}
 	if !shaped.Budget.Set() {
 		t.Fatal("the ceilings did not reach the session")
+	}
+	// THE STEERING FACT RIDES THE SAME SHAPE, and it is the one the engine
+	// cannot read off its own wire: a --yolo launch with a budget is a frozen
+	// overnight run when the dial was a --once probe, and the person's own
+	// conversation when it was a screen. Same flags, opposite principals.
+	if !shaped.Interactive {
+		t.Fatal("a steered dial did not mark its session steered")
+	}
+	probe := engineLaunchOptions(remote.Hello{
+		Launch: &remote.LaunchShape{Yolo: true, MaxHours: 2},
+	}, "/srv/app", "")
+	if probe.Interactive {
+		t.Fatal("a --once probe was marked steered")
 	}
 	// The session file the flags cannot override: the hello names it, and the
 	// engine's own flag is the fallback for a hand-run engine.

@@ -1730,8 +1730,18 @@ type Config struct {
 	// session's principal a [Steward] (principal.go); alone it changes nothing
 	// whatever, because a flag that quietly started carrying a conversation on
 	// for hours would be the harness spending somebody's money on a sentence
-	// they did not write. The door says so in one line at launch.
+	// they did not write. The door says so in one line at launch. AND IT IS
+	// OVER-RULED BY [Config.Interactive]: a conversation somebody is steering
+	// is theirs to steer even under a ceiling.
 	Unattended bool
+
+	// Interactive says A PERSON IS STEERING THIS CONVERSATION — the door's own
+	// fact, and the one thing `--yolo` is not: yolo is approvals, this is who
+	// is watching. [newPrincipalFor] answers a [Person] for it even under a
+	// budget, so the person's latest words are the ask and work they handed to
+	// a task keeps its own assignment. --once and every worker door leave it
+	// unset, keeping the unattended [Steward] exactly as it was.
+	Interactive bool
 
 	// OneModel is the door's `--one-model` promise kept where it can actually be
 	// kept: EVERY TEXT CALL THIS SESSION MAKES RIDES THE CONVERSATION'S MODEL,
