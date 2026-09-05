@@ -1,0 +1,88 @@
+# Validation and remaining product work
+
+This is a local development wave, not a release or a claim that the harness is on a
+universal cost/time/quality frontier. The integration branch is
+`santosh/conversation-runtime`; the shared `dev` checkout and the prior consolidated
+QA branch were not used as mutable workspaces. Independent Claude Opus lanes were
+reviewed and merged locally. After the Opus session limit, the owner authorized OMP
+with GLM 5.3 for the remaining delegated review. All live comparison calls use
+`deepseek/deepseek-v4-flash-0731`, including auxiliary roles. Guards refuse other
+models before forwarding an inference request.
+
+## Deterministic evidence
+
+The code carries behavioral regressions for message provenance, delivery/reopen,
+result preservation, task scope at admission, leaf capabilities, assignment revisions,
+publication races, check authority, foreground handoff, host detach, status projection,
+workspace identity and compaction. Focused tests, race checks and build checks were
+run at lane integration. Final whole-tree validation is recorded below when complete.
+
+Worker openings and landing instructions now use the runtime-note door. Previously,
+a child admission could quote its parent's composed brief as a fresh statement by the
+person. The new regression covers live recording, journal classification and actual
+person corrections; composed instructions no longer become person quotes.
+
+## Live observations
+
+The manual terminal run `host-live-02` demonstrated foreground availability and work
+continuing after terminal closure. It also found action replay by the checker, wrong
+causality on a task-result wake, and relative paths misread as absolute. Each received
+a bounded code fix and regression tests.
+
+The nested run `host-live-03` tested source candidate `b8e868d85` through the normal
+hosted terminal. Task 1 created task 2, the prepared one-minute action ran once, and
+the parent produced the marker and correct service count. Explicit checks did not
+repeat the action. Admission took about 77 seconds, including two missing-deliverable
+refusals, one invalid piped check and provider stall rescue. The child still did some
+unassigned counting and read a contradictory manual passage; that passage and the
+composed-brief provenance defect were fixed afterwards.
+
+The main conversation answered during the build in about 8.7 seconds, but the saved
+model response reversed the checksum incorrectly. This is a quality failure. The
+parent result was then recorded, but its automatic narration encountered a provider
+internal-markup cut; no substantive final answer appeared during observation. A task
+card and a stored artifact do not by themselves satisfy the conversational delivery
+requirement. The guard recorded interrupted and unresolved calls, so a complete cost
+for this diagnostic run is unknown.
+
+The first integrated paired-run attempt was invalid: a long evidence path exceeded
+Aforge's Unix socket path limit, causing in-process fallback and setup. The rig now
+uses a short owned alias to the same cell state. Those two unsupported cells are not
+product failures or successful tests.
+
+## Comparison limits
+
+The small print-task pilot was not consistently faster or cheaper than Pi or OMP.
+Its two orderings and a few tasks do not establish a frontier. Early cost metering
+could omit interrupted requests; current metering reconciles every admission and
+reports unknown cost when usage is missing.
+
+Peer interactive evidence uses one repetition per case with a 60-second prepared
+command. Pi answered the follow-up after the command finished. OMP displayed the wrong
+word. Both peers honored the output-format correction. OMP's installed MCP discovery
+was still present despite disabled skills, rules and extensions, weakening isolation.
+These facts are observations, not a ranking of the harnesses in general.
+
+## Priorities after this wave
+
+1. Make result delivery an explicit user-facing obligation through provider failures:
+   retained result, attempted narration, visible retry/failure, and a clear way to
+   recover. Model text ending is not proof that the person received an answer.
+2. Reduce admission overhead using measured traces. Keep a small typed assignment;
+   avoid requiring title, summary and prose restatements as independent model-authored
+   sources of truth. Measure malformed-tool recovery and model calls before work starts.
+3. Replace command-count heuristics for foreground work with a policy that accounts
+   for duration and reversibility. A long single command can occupy chat as effectively
+   as a hundred edits; a quick commit still should not need a worktree ceremony.
+4. Finish scoped clarification and revision propagation to dependencies. A person can
+   address one task now; broadcasting to all descendants would be wrong when only one
+   deliverable changed. Questions need correlated owners and affected work needs explicit
+   revision dependencies.
+5. Extract larger packages only after the interfaces settle. Delivery, provenance,
+   admission, verification authority and status have single owners, but the session
+   package still has direct internal access. Landing/workspace disposition and evidence
+   evaluation remain the next useful module boundaries, with compatibility tests.
+6. Run a broader randomized and repeated battery: research, writing, data analysis,
+   multiple repositories, long context, interruption, crashes, revisions and return
+   after absence. Report quality gates, time to first useful result, total time, actual
+   billed cost and failed-call cost. Do not optimize only the successful cells.

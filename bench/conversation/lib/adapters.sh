@@ -331,9 +331,17 @@ arm_isolate() {
   mkdir -p "$ARM_STATE_DIR"
   case "$arm" in
     aforge)
-      ARM_ENV=("AFORGE_HOME=$ARM_STATE_DIR/aforge-home")
       mkdir -p "$ARM_STATE_DIR/aforge-home"
-      ARM_ISOLATION="full: AFORGE_HOME moves the whole state root"
+      # A host socket has a roughly hundred-byte path limit. Evidence folders
+      # can be much longer, so address this same state through a short owned
+      # alias rather than silently measuring the in-process fallback.
+      local alias_dir
+      alias_dir="$(mktemp -d /tmp/afconv-home.XXXXXX)" || return 1
+      ln -s "$ARM_STATE_DIR/aforge-home" "$alias_dir/home" || return 1
+      ARM_ENV=("AFORGE_HOME=$alias_dir/home")
+      ARM_CLEANUP_PATH="$alias_dir"
+      printf '%s\n' "$alias_dir" > "$cell/state-alias.txt"
+      ARM_ISOLATION="full: AFORGE_HOME is a short owned alias to this cell's state"
       ;;
     omp)
       # omp's documented isolation is a named profile, and profiles live under

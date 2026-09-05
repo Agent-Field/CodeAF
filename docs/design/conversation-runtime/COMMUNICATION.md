@@ -1,6 +1,6 @@
 # Communication ownership and extension boundary
 
-This is the implementation target, not a claim about current behavior. The local wave remains on `santosh/conversation-runtime`; no push, pull request or trunk merge is authorized for this wave. Coding delegates use Claude Code Opus. Live model tests use DeepSeek V4 Flash through OpenRouter, pinned across roles. Commercial OpenRouter models are excluded.
+This is the implementation target, not a claim about current behavior. The local wave remains on `santosh/conversation-runtime`; no push, pull request or trunk merge is authorized for this wave. Coding delegates initially used Claude Code Opus; the owner subsequently authorized OMP with GLM 5.3 as its replacement. Live model tests use DeepSeek V4 Flash through OpenRouter, pinned across roles. Commercial OpenRouter models are excluded.
 
 ## One delivery mechanism, distinct meanings
 

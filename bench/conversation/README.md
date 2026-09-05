@@ -458,3 +458,12 @@ job, so they measure whether a followup lands and the work survives, not how a
 harness behaves under a genuinely expensive one. Wall clock carries provider
 latency and queueing; two runs of identical code have come in 60% apart on the
 older batteries in `bench/`.
+
+### Long evidence paths and the hosted Aforge door
+
+Aforge's Unix socket path has a platform limit. The rig supplies a short, owned
+`/tmp/afconv-home.*` alias to the cell's state directory; the journal remains
+inside the evidence folder. Without that alias a long output path can trigger
+the in-process fallback and first-run setup instead of measuring hosted chat.
+The alias path is recorded in `state-alias.txt` and removed with other owned
+state unless `--keep` is used. First-run setup is not part of these comparisons.
