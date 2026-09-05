@@ -520,8 +520,9 @@ func namesEndpoint(list []string, name string) bool {
 // (affinity.go) — which also means the pin and the prefix note can no longer
 // disagree about which conversation an answer belonged to.
 //
-// Zero prompt or cached counts are "the frame did not say", and stay zero:
-// internal/lane gives no discount for a length nobody reported.
+// Unreported prompt and cached counts stay zero. A reported cold read also
+// carries zero cached tokens; neither invents a hit. internal/lane gives no
+// discount for a prompt length nobody reported.
 type settled struct {
 	lineage string
 	prompt  int

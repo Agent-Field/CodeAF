@@ -1,5 +1,17 @@
 # Models, context, and what it costs
 
+## Why a longer conversation does not get a full cache discount
+
+When choosing a provider, aforge can estimate that it still holds some of this
+conversation's earlier input. That estimate is capped at the input length the
+provider previously reported receiving for this conversation, and at the current
+request's estimated length. An unknown earlier length earns no discount. Requests
+running at the same time keep their own conversation identity and usage together.
+
+This affects routing estimates; it is not proof of a cache hit. A provider may
+evict cached input, and compaction or a rewrite can change earlier text even when
+the conversation identity stays the same.
+
 ## Which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is written in the status line. There are two doors to the picker:
