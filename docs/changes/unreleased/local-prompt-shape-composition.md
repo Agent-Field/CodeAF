@@ -65,9 +65,9 @@ worked examples.
 | task room, may fan out | 52,487 | 52,225 | -2,788 (-5.1%) |
 | task room, floor | 39,865 | 39,865 | -2,470 (-5.8%) |
 
-WHAT THIS PASS PROVES ABOUT THE REMAINDER. The family is near its floor as
-prose: what is left in those 6KB is field semantics, authority contracts and
-runtime guards, each stated once. The conversation's 36KB tool block is 23
-tools' worth of that, so a further order-of-magnitude reduction on the chat
-shape is a question about WHICH TOOLS a conversation opens with, not about how
-their fields are worded — and that is out of this lane's bounds.
+WHAT REMAINS UNPROVEN. This bounded edit found only small savings; it does not
+establish a minimum possible prompt size or prove that every remaining sentence
+is necessary. The conversation still carries a large tool block. A larger
+experiment should compare a concise equivalent contract and demand-loaded tool
+definitions, preserving access to capabilities and measuring discovery latency,
+correctness and cost together. Neither design has been validated by this patch.
