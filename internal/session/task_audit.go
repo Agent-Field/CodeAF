@@ -928,7 +928,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// worker ran (task_checks.go); a retry that recomputed it could be judging
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
-	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
+	door := auditDoorFor(node, ground.dir)
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
 	// landing quotes is the figure the checking actually had.
@@ -2089,13 +2089,6 @@ type toolReceipt struct {
 	tool   string
 	args   string
 	result string
-	// command is the shell line a bash receipt ran, read out of the call's
-	// arguments BEFORE they were flattened and cut for the packet. It is kept
-	// apart from args because two different readers want two different things:
-	// the packet wants one readable line, and the door wants the command exactly
-	// as it was typed, since a check is only re-runnable verbatim
-	// (task_checks.go's [ranChecks]). It is empty for every other tool.
-	command string
 }
 
 // lastToolReceipts is the tail of what a worker RAN, read off its transcript.
@@ -2143,17 +2136,6 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 			// The arguments are JSON and a pretty-printed call would spend six lines
 			// of the packet saying what one says (tools_standing.go's [oneLine]).
 			receipt.args = clip(oneLine(call.Function.Arguments), taskReportLineLimit)
-			// AND THE SHELL LINE IS KEPT WHOLE, uncut, for the door
-			// ([toolReceipt.command]). A command clipped to fit a packet is a
-			// command nobody can re-run.
-			if strings.EqualFold(call.Function.Name, approval.ToolBash) {
-				var fields struct {
-					Command string `json:"command"`
-				}
-				if json.Unmarshal([]byte(call.Function.Arguments), &fields) == nil {
-					receipt.command = fields.Command
-				}
-			}
 		}
 		out = append(out, receipt)
 	}

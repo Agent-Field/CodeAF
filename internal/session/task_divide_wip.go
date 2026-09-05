@@ -174,10 +174,13 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 			brief:      family.partBrief(index, part.Brief),
 			acceptance: part.Acceptance,
 			expects:    part.Expects,
-			model:      a.partModel(part, model, careful, grades, line),
-			parent:     parent,
-			depth:      a.config.taskDepth + 1,
-			owner:      a,
+			// AND WHAT THIS PART IS CHECKED BY, minus whatever turned out to be
+			// the whole family's rather than this part's ([liftSharedChecks]).
+			checks: part.Checks,
+			model:  a.partModel(part, model, careful, grades, line),
+			parent: parent,
+			depth:  a.config.taskDepth + 1,
+			owner:  a,
 			// AND THE WORLD IT STARTS IN, carried on the spec so that it is written
 			// onto the node and checkpointed in the same breath the node is admitted
 			// in ([TaskGraph.admit]). A part that existed for an instant without

@@ -29,7 +29,18 @@ func checkedNode(brief, acceptance string, receipts ...toolReceipt) *TaskNode {
 	return node
 }
 
-// THE DOOR IS THE CHECK THE WORK NAMED, AND IT IS THAT CHECK AND NOT ANOTHER.
+// declaringNode is a node whose CONTRACT declares its verification, which is the
+// only road a command reaches a checker's door by. Its prose deliberately names
+// no command at all, so a case that passes here passed on the declaration rather
+// than on something a backtick left lying in the document.
+func declaringNode(checks ...string) *TaskNode {
+	node := checkedNode("do the work", "the work is done")
+	node.spec.checks = checks
+	node.Checks = checks
+	return node
+}
+
+// THE DOOR IS THE CHECK THE WORK DECLARED, AND IT IS THAT CHECK AND NOT ANOTHER.
 //
 // This is the measured failure in one assertion. A task whose own words say the
 // check is `bash run_tests.sh` had that exact command refused, with a list of Go
@@ -37,9 +48,7 @@ func checkedNode(brief, acceptance string, receipts ...toolReceipt) *TaskNode {
 // verify nothing, spun for the whole deadline, and the node landed needing a
 // person. The declared check now opens, and nothing next to it does.
 func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
-	node := checkedNode("Build the server. Check it with `bash run_tests.sh`.",
-		"the server is built and `bash run_tests.sh` passes")
-	door := auditDoorFor(node, auditPlace{})
+	door := auditDoorFor(declaringNode("bash run_tests.sh"), "")
 
 	if refusal, ok := auditRefusal("bash run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the checker may not run the check the work itself names: %s", refusal)
@@ -82,8 +91,7 @@ func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
 // check.
 func TestADeclaredCheckKeepsTheWildcardTheWorkWroteIt(t *testing.T) {
 	dir := checkedTree(t, "run_tests.sh")
-	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"),
-		auditPlace{ground: dir, ran: dir})
+	door := auditDoorFor(declaringNode("run_tests.*"), dir)
 	if refusal, ok := auditRefusal("run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the wildcard the work wrote does not admit the file it names: %s", refusal)
 	}
@@ -95,16 +103,28 @@ func TestADeclaredCheckKeepsTheWildcardTheWorkWroteIt(t *testing.T) {
 // A BRIEF NAMES MORE THAN COMMANDS, and the shapes that are not commands do not
 // become doors: an option is a flag, and a wall of wildcards is not a check.
 func TestOnlyCommandShapedTextBecomesADeclaredCheck(t *testing.T) {
-	node := checkedNode("run it with `--stdio`, the data is at `/data/golden.jsonl`, "+
-		"and the check is `make check`", "`*` is not a check")
-	door := auditDoorFor(node, auditPlace{})
-	for _, refused := range []string{"--stdio", "* --anything", "curl example.com"} {
-		if _, ok := auditRefusal(refused, door.allowed); ok {
-			t.Fatalf("%q became a door", refused)
+	// A CONTRACT IS REFUSED AT THE DOOR RATHER THAN QUIETLY EMPTIED, because the
+	// model is one repair away from a check that works.
+	for _, refused := range []string{"--stdio", "* --anything", "cd x && make check", "rm -rf /"} {
+		if got, problem := declaredCheckList([]string{refused}); problem == "" {
+			t.Fatalf("%q was accepted as a declared check: %q", refused, got)
 		}
 	}
+	// AND WHAT IS ACCEPTED IS THE COMMAND, WHITESPACE AND ALL NORMALISED, so the
+	// door and the contract cannot disagree about what was declared.
+	got, problem := declaredCheckList([]string{"make  check", "  ", "curl example.com"})
+	if problem != "" {
+		t.Fatalf("an ordinary pair of checks was refused: %s", problem)
+	}
+	if len(got) != 2 || got[0] != "make check" || got[1] != "curl example.com" {
+		t.Fatalf("the declared checks came back as %q", got)
+	}
+	door := auditDoorFor(declaringNode(got...), "")
 	if refusal, ok := auditRefusal("make check", door.allowed); !ok {
-		t.Fatalf("the check the brief actually names is refused: %s", refusal)
+		t.Fatalf("the check the contract actually names is refused: %s", refusal)
+	}
+	if _, ok := auditRefusal("--stdio", door.allowed); ok {
+		t.Fatal("an option became a door")
 	}
 }
 
@@ -171,200 +191,121 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 		}
 	}
 
-	// AND THE DOOR THE MEASURED ACCEPTANCE PRODUCES NAMES NONE OF THEM. The
+	// AND A CONTRACT THAT DECLARED ONE OF THOSE WORDS OPENS NOTHING EITHER. The
 	// refusal is read by a model that will type whatever it is offered, so a word
-	// on that list is a command that is about to be run.
-	measured := checkedNode("port the rule across",
-		"the fix is on `origin`, cut from `main`, in `Agent-Field/agentfield`, and "+
-			"`js/polynomial-redos` no longer fires on `fix/codeql-56-url-substring-test`")
-	door := auditDoorFor(measured, auditPlace{ground: tree, ran: tree})
-	if len(door.checks) != 0 {
-		t.Fatalf("the measured acceptance still opens doors onto words: %q", door.checks)
+	// on that list is a command that is about to be run — and a declaration is not
+	// a promise that the thing declared exists.
+	declared := auditDoorFor(declaringNode("origin", "main", "Agent-Field/agentfield",
+		"js/polynomial-redos"), tree)
+	if len(declared.checks) != 0 {
+		t.Fatalf("a contract naming words that are not programs opened doors onto them: %q", declared.checks)
 	}
 	for _, word := range []string{"origin", "main", "Agent-Field/agentfield", "js/polynomial-redos"} {
-		if strings.Contains(door.offer(), word) {
-			t.Errorf("the checker is still told it may run %q:\n%s", word, door.offer())
+		if strings.Contains(declared.offer(), word) {
+			t.Errorf("the checker is still told it may run %q:\n%s", word, declared.offer())
 		}
 	}
 	// AND IT IS TOLD IT HAS NOTHING TO RUN, which is the honest reading of that
-	// acceptance and the one that ends the audit instead of spinning it.
-	if !strings.Contains(door.line(), "NOTHING THIS WORK DECLARES OR RAN") {
-		t.Fatalf("a node with no runnable check is not told so:\n%s", door.line())
+	// contract and the one that ends the audit instead of spinning it.
+	if !strings.Contains(declared.line(), "DECLARED NO REPEATABLE CHECK") {
+		t.Fatalf("a node with no runnable check is not told so:\n%s", declared.line())
 	}
 }
 
-// THE PERSON'S ACCOUNT NAMES NO CHECK IN EITHER SPELLING, AND THE WORK'S
-// ACCOUNT KEEPS BOTH.
+// NOTHING A NODE'S DOCUMENT MERELY SAYS IS A CHECKER'S DOOR — NOT THE PERSON'S
+// PASTED WORDS, NOT THE BRIEF, NOT THE FROZEN DONE-CONDITION.
 //
-// Nearly every bug report writes its reproduction in backticks, so leaving that
-// spelling outside the account boundary admitted the same pasted command the
-// prompt-line fix refused. A real tree makes every candidate runnable here;
-// only its provenance decides whether it is harvested.
-func TestThePersonsAccountNamesNoCheckInEitherSpelling(t *testing.T) {
-	tree := checkedTree(t, "backtick-check.sh", "prompt-check.sh")
-	forms := []struct {
-		name string
-		text string
-		want []string
-	}{
-		{"backticks", "Check with `backtick-check.sh`.", []string{"backtick-check.sh"}},
-		{"a shell prompt", "Check with:\n$ prompt-check.sh", []string{"prompt-check.sh"}},
-		{"both spellings", "Check with `backtick-check.sh`.\n$ prompt-check.sh", []string{"backtick-check.sh", "prompt-check.sh"}},
-	}
-	accounts := []struct {
-		name string
-		from checkSource
-		work bool
-	}{
-		{"the person's account", checksFromAsk, false},
-		{"the work's account", checksFromWork, true},
-	}
-	for _, form := range forms {
-		for _, account := range accounts {
-			t.Run(form.name+" from "+account.name, func(t *testing.T) {
-				got := declaredChecks(form.text, tree, account.from)
-				if !account.work {
-					if len(got) != 0 {
-						t.Fatalf("%s harvested runnable commands from %s: %q", form.name, account.name, got)
-					}
-					return
-				}
-				if len(got) != len(form.want) {
-					t.Fatalf("%s harvested %q from %s, want %q", form.name, got, account.name, form.want)
-				}
-				for _, command := range form.want {
-					if !containsWord(got, command) {
-						t.Errorf("%s did not harvest %q from %s: %q", form.name, command, account.name, got)
-					}
-				}
-			})
-		}
-	}
-}
-
-// NEITHER SPELLING IN THE PERSON'S PASTED REPRODUCTION IS A NODE CHECK, AND
-// BOTH SPELLINGS IN THE WORK'S OWN ACCOUNT STILL ARE.
-//
-// A measured tox run harvested `chmod 000 tox.ini` from the pasted issue and
-// tried it against the deliverable tree. On a tree holding that file, success
-// would make the project's own configuration unreadable. Provenance now closes
-// that road before either punctuation convention is read, while preserving a
-// check somebody actually authored as the work's promise.
-func TestAStepOutOfThePastedReproductionIsNeverANodeCheck(t *testing.T) {
+// A measured tox run harvested `chmod 000 tox.ini` from a pasted issue and tried
+// it against the deliverable tree, where success would have made the project's
+// own configuration unreadable. That reading is gone entirely: a command reaches
+// a node's checker by being DECLARED as verification and by no other road, so
+// prose that happens to be command-shaped is prose.
+func TestNothingInANodesProseBecomesACheckerDoor(t *testing.T) {
 	tree := checkedTree(t, "tox.ini", "run_tests.sh")
 
-	pasted := checkedNode("repair the tox configuration", "`run_tests.sh` passes")
-	pasted.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
-	fromPaste := auditDoorFor(pasted, auditPlace{ground: tree, ran: tree})
-	if !containsWord(fromPaste.checks, "run_tests.sh") {
-		t.Fatalf("the acceptance's backticked check was not harvested: %v", fromPaste.checks)
+	node := checkedNode("repair the tox configuration, checking with `run_tests.sh`",
+		"`run_tests.sh` passes")
+	node.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
+	door := auditDoorFor(node, tree)
+	if len(door.checks) != 0 {
+		t.Fatalf("a node that declared no verification still has checks: %q", door.checks)
 	}
-	if refusal, ok := auditRefusal("run_tests.sh", fromPaste.allowed); !ok {
-		t.Fatalf("the acceptance's backticked check did not open the node's door: %s", refusal)
-	}
-	if containsWord(fromPaste.checks, "chmod 000 tox.ini") {
-		t.Fatalf("a pasted reproduction step became a node check: %v", fromPaste.checks)
-	}
-	if containsWord(fromPaste.allowed, "chmod 000 tox.ini") {
-		t.Fatalf("a pasted reproduction step entered the node's door: %v", fromPaste.allowed)
-	}
-	if strings.Contains(fromPaste.offer(), "chmod 000 tox.ini") {
-		t.Fatalf("the node offered a pasted reproduction step:\n%s", fromPaste.offer())
-	}
-	if _, ok := auditRefusal("chmod 000 tox.ini", fromPaste.allowed); ok {
-		t.Fatal("the gate allowed a pasted reproduction step")
+	for _, refused := range []string{"chmod 000 tox.ini", "run_tests.sh", "bash run_tests.sh"} {
+		if _, ok := auditRefusal(refused, door.allowed); ok {
+			t.Fatalf("%q entered the door out of the node's own prose", refused)
+		}
+		if strings.Contains(door.offer(), refused) {
+			t.Fatalf("the node offered %q, which nobody declared:\n%s", refused, door.offer())
+		}
 	}
 
-	owned := auditDoorFor(checkedNode("repair it with:\n$ chmod 000 tox.ini", "it is repaired"),
-		auditPlace{ground: tree, ran: tree})
-	if !containsWord(owned.checks, "chmod 000 tox.ini") {
-		t.Fatalf("the work's own prompt line did not become a node check: %v", owned.checks)
+	// AND THE SAME DOCUMENT WITH THE CHECK DECLARED RUNS IT. What moved is where
+	// the command comes from, not whether a check can be made.
+	node.Checks = []string{"bash run_tests.sh"}
+	declared := auditDoorFor(node, tree)
+	if refusal, ok := doorRefusal("bash run_tests.sh", declared); !ok {
+		t.Fatalf("the declared check does not open the node's door: %s", refusal)
 	}
-	if refusal, ok := auditRefusal("chmod 000 tox.ini", owned.allowed); !ok {
-		t.Fatalf("the work's own prompt line did not open the node's door: %s", refusal)
-	}
-
-	named := checkedNode("repair the tox configuration", "it is repaired and `run_tests.sh` passes")
-	named.spec.request = "the reproduction says to run `chmod 000 tox.ini`"
-	fromBackticks := auditDoorFor(named, auditPlace{ground: tree, ran: tree})
-	if !containsWord(fromBackticks.checks, "run_tests.sh") {
-		t.Fatalf("the work's own backticked check was not harvested: %v", fromBackticks.checks)
-	}
-	if containsWord(fromBackticks.checks, "chmod 000 tox.ini") {
-		t.Fatalf("a backticked command in the person's words became a node check: %v", fromBackticks.checks)
-	}
-	if containsWord(fromBackticks.allowed, "chmod 000 tox.ini") {
-		t.Fatalf("a backticked command in the person's words entered the node's door: %v", fromBackticks.allowed)
-	}
-	if strings.Contains(fromBackticks.offer(), "chmod 000 tox.ini") {
-		t.Fatalf("the node offered a backticked command from the person's words:\n%s", fromBackticks.offer())
-	}
-	if _, ok := auditRefusal("chmod 000 tox.ini", fromBackticks.allowed); ok {
-		t.Fatal("the gate allowed a backticked command from the person's words")
+	if _, ok := doorRefusal("chmod 000 tox.ini", declared); ok {
+		t.Fatal("declaring one check opened the door to a step out of the pasted reproduction")
 	}
 }
 
-// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO CHECK ONTO A
-// NODE'S DOOR, IN EITHER SPELLING.
-//
-// The auto-started road puts [routeAskAcceptance] in front of the request when
-// nobody could write a separate done-condition. The measured tox transcript
-// must remain the person's account even while that frame occupies the node's
-// acceptance field.
-func TestANodesDoneWhenThatIsThePastedAskCarriesNoCheckOutOfIt(t *testing.T) {
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NOTHING ONTO A DOOR
+// EITHER. The auto-started road puts [routeAskAcceptance] in front of the request
+// when nobody could write a separate done-condition, and the measured tox
+// transcript stays the person's account while it sits in the acceptance field.
+func TestANodesDoneWhenThatIsThePastedAskCarriesNoStepOutOfIt(t *testing.T) {
 	tree := checkedTree(t, "tox.ini", "run_tests.sh")
 	node := checkedNode("repair the tox configuration", routeAskAcceptance+
 		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
-	door := auditDoorFor(node, auditPlace{ground: tree, ran: tree})
+	door := auditDoorFor(node, tree)
 
-	for _, command := range []string{"run_tests.sh", "chmod 000 tox.ini"} {
-		if containsWord(door.checks, command) ||
-			containsWord(door.allowed, command) ||
-			strings.Contains(door.offer(), command) {
-			t.Errorf("the ask-fallback done-condition opened a node door onto %q: %+v\n%s",
-				command, door.checks, door.offer())
-		}
-		if _, ok := auditRefusal(command, door.allowed); ok {
-			t.Errorf("the gate allowed %q out of the ask-fallback done-condition", command)
-		}
-	}
-}
-
-// WHAT THE WORK RAN, THE CHECKER MAY RUN AGAIN. The worker's own receipts are
-// already in the audit's packet so the judge can see which command the check is;
-// seeing it and not being allowed to run it is the door the measured audit stood
-// at for five minutes.
-func TestTheCheckerMayRerunWhatTheWorkItselfRan(t *testing.T) {
-	node := checkedNode("build it", "it builds", toolReceipt{
-		tool:    "bash",
-		command: "cargo build --release",
-		result:  "Finished release [optimized] target(s)",
-	})
-	door := auditDoorFor(node, auditPlace{})
-	if refusal, ok := auditRefusal("cargo build --release", door.allowed); !ok {
-		t.Fatalf("the checker may not re-run what the work ran: %s", refusal)
-	}
-	if _, ok := auditRefusal("cargo publish", door.allowed); ok {
-		t.Fatal("the work running one cargo command opened the door to every cargo command")
-	}
-}
-
-// A CHECK IS RE-RUN VERBATIM AS THE WORK RAN IT, OR IT IS NOT RE-RUN AT ALL.
-// A composed line cannot be re-run without taking it apart, and this gate does
-// not compose — so a composed receipt contributes nothing, and the dangerous
-// half of a composed line can never arrive as a door of its own.
-func TestAComposedCommandTheWorkRanIsNotADoor(t *testing.T) {
-	node := checkedNode("build it", "it builds",
-		toolReceipt{tool: "bash", command: "rm -rf build && cargo build --release 2>&1 | tail -5"},
-		toolReceipt{tool: "bash", command: "shutdown -h now"},
-	)
-	door := auditDoorFor(node, auditPlace{})
 	if len(door.checks) != 0 {
-		t.Fatalf("a composed line and a critical one became checks: %q", door.checks)
+		t.Fatalf("the ask-fallback done-condition opened a node door: %q\n%s", door.checks, door.offer())
 	}
-	for _, refused := range []string{"rm -rf build", "cargo build --release", "shutdown -h now"} {
-		if _, ok := auditRefusal(refused, door.allowed); ok {
-			t.Fatalf("the checker was handed %q out of a line it could never re-run", refused)
+	if _, ok := auditRefusal("chmod 000 tox.ini", door.allowed); ok {
+		t.Fatal("the gate allowed a prompt step out of the ask-fallback done-condition")
+	}
+}
+
+// WHAT THE WORK RAN IS EVIDENCE, NOT PERMISSION TO RUN IT AGAIN.
+//
+// This is the fourth measured failure in one assertion. A task was asked to run a
+// two-minute build script once and report its marker; the worker ran it, exit 0,
+// and the checker — handed that receipt as a door — ran the same script again for
+// another two minutes. The receipt is still in the checker's packet, where it
+// settles that the requested action was carried out; it is not a command the
+// checker may issue.
+func TestAWorkerReceiptIsNeverACheckerDoor(t *testing.T) {
+	dir := t.TempDir()
+	node := checkedNode("run the build script once and report its marker", "the marker is reported",
+		toolReceipt{tool: "bash", args: `{"command":"./slow-build.sh"}`, result: "exit 0 · wrote QUARTZLINE"},
+		toolReceipt{tool: "bash", args: `{"command":"cd ` + dir + ` && cargo build --release 2>&1 | tail -3"}`,
+			result: "Finished release"},
+		toolReceipt{tool: "bash", args: `{"command":"shutdown -h now"}`, result: "refused"},
+	)
+	door := auditDoorFor(node, dir)
+	if len(door.checks) != 0 {
+		t.Fatalf("what the worker ran became a door: %q", door.checks)
+	}
+	for _, refused := range []string{
+		"./slow-build.sh", "slow-build.sh",
+		// Including the command inside a composed line, which used to be read out
+		// of the receipt and handed over as a check of its own.
+		"cargo build --release", "cd " + dir + " && cargo build --release",
+		"shutdown -h now",
+	} {
+		if _, ok := doorRefusal(refused, door); ok {
+			t.Fatalf("the checker was handed %q out of a receipt", refused)
+		}
+	}
+	// AND THE RECEIPTS ARE STILL IN FRONT OF IT, whole, because that is how a
+	// checker settles that the requested action happened without repeating it.
+	packet := auditReceiptBlock(node.lastReceipts(), true)
+	for _, want := range []string{"./slow-build.sh", "QUARTZLINE"} {
+		if !strings.Contains(packet, want) {
+			t.Fatalf("the checker can no longer see that %q ran:\n%s", want, packet)
 		}
 	}
 }
@@ -473,7 +414,7 @@ func TestNoSpanIsHarvestedBeforeTheAccountIsAsked(t *testing.T) {
 // nobody answered. The window follows whether there is a check and nothing else
 // — never the size of the work.
 func TestAnAuditWithNothingToRunConcludesLongBeforeTheDeadline(t *testing.T) {
-	empty := auditDoorFor(checkedNode("write a paragraph about the API", "the paragraph is there"), auditPlace{})
+	empty := auditDoorFor(checkedNode("write a paragraph about the API", "the paragraph is there"), "")
 	if len(empty.checks) != 0 {
 		t.Fatalf("a node that declares and ran nothing has checks: %q", empty.checks)
 	}
@@ -483,13 +424,13 @@ func TestAnAuditWithNothingToRunConcludesLongBeforeTheDeadline(t *testing.T) {
 	// AND IT IS TOLD SO. A model that has not been told there is no door keeps
 	// looking for one, which is what the spin was made of.
 	line := empty.line()
-	for _, want := range []string{"NOTHING THIS WORK DECLARES OR RAN", "answer now"} {
+	for _, want := range []string{"DECLARED NO REPEATABLE CHECK", "answer now"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the auditor is never told it has nothing to run (%q missing):\n%s", want, line)
 		}
 	}
 
-	full := auditDoorFor(checkedNode("build it, checked with `make check`", "it builds"), auditPlace{})
+	full := auditDoorFor(declaringNode("make check"), "")
 	if window := full.window(); window != auditDeadline {
 		t.Fatalf("an audit with a check to run gets %s, want the full %s", window, auditDeadline)
 	}
@@ -594,9 +535,7 @@ func writeCheckFile(t *testing.T, dir, name, body string, mode os.FileMode) stri
 // the work never declared, still does not.
 func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 	dir := checkedTree(t, "run_tests.sh", "other.sh")
-	node := checkedNode("Build the server. Check it with `bash run_tests.sh`.",
-		"the server is built and `bash run_tests.sh` passes")
-	door := auditDoorFor(node, auditPlace{ground: dir, ran: dir})
+	door := auditDoorFor(declaringNode("bash run_tests.sh"), dir)
 
 	for _, spelling := range []string{
 		"run_tests.sh",
@@ -654,7 +593,7 @@ func TestOneFileIsOneCheckHoweverTheCheckerSpellsIt(t *testing.T) {
 // shut for the same reason it was shut before.
 func TestAWildcardCheckNamesTheFileOnDisk(t *testing.T) {
 	dir := checkedTree(t, "run_tests.sh", "other.sh")
-	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"), auditPlace{ground: dir, ran: dir})
+	door := auditDoorFor(declaringNode("run_tests.*"), dir)
 	for _, spelling := range []string{"run_tests.sh", "./run_tests.sh", "bash run_tests.sh"} {
 		if refusal, ok := doorRefusal(spelling, door); !ok {
 			t.Fatalf("the wildcard the work wrote does not admit %q: %s", spelling, refusal)
@@ -662,63 +601,6 @@ func TestAWildcardCheckNamesTheFileOnDisk(t *testing.T) {
 	}
 	if _, ok := doorRefusal("bash other.sh", door); ok {
 		t.Fatal("the wildcard matched a file it does not name")
-	}
-}
-
-// WHAT A WORKER'S LINE RUNS IS ITS FIRST STAGE, AND THE CHECKER MAY RUN THAT.
-//
-// Every receipt of the measured run was `cd <the tree> && cargo build --release
-// 2>&1 | tail -3`, so the old reading — which asked whether the WHOLE line was
-// one simple command — handed the auditor nothing, while the command the work
-// checked itself with sat in the middle of every one of them. The `cd` states the
-// directory the auditor is already standing in; the tail and the redirection only
-// read what the first stage printed.
-func TestTheCheckerRerunsTheCommandInsideAWorkersLine(t *testing.T) {
-	dir := t.TempDir()
-	elsewhere := t.TempDir()
-	node := checkedNode("build it", "it builds",
-		toolReceipt{tool: "bash", command: "cd " + dir + " && cargo build --release 2>&1 | tail -3"},
-	)
-	door := auditDoorFor(node, auditPlace{ground: dir, ran: dir})
-	if len(door.checks) != 1 || door.checks[0] != "cargo build --release" {
-		t.Fatalf("the command inside the worker's own line never became a check: %q", door.checks)
-	}
-	if refusal, ok := doorRefusal("cargo build --release", door); !ok {
-		t.Fatalf("the checker may not re-run what the work built with: %s", refusal)
-	}
-	// AND WHAT IT DERIVED IS STILL ONE COMMAND. The auditor composes nothing: the
-	// line it was read out of is refused exactly as it always was.
-	if _, ok := doorRefusal("cd "+dir+" && cargo build --release", door); ok {
-		t.Fatal("the checker was allowed to compose the line the check was read out of")
-	}
-
-	// AND IT IS THE TREE THE WORK RAN IN THAT A RECEIPT IS READ AGAINST, never the
-	// one the auditor stands in. The verdict is reached in a clean restore beside
-	// the node's own checkout, so in every real audit those are two directories,
-	// and a receipt naming the checkout is still the worker saying where it stood.
-	restore := auditDoorFor(node, auditPlace{ground: t.TempDir(), ran: dir})
-	if len(restore.checks) != 1 || restore.checks[0] != "cargo build --release" {
-		t.Fatalf("the worker's own directory was not read as the tree it ran in: %q", restore.checks)
-	}
-
-	// A DIRECTORY THAT IS NOT THIS TREE IS NOT A STATEMENT ABOUT THIS TREE, so the
-	// line stays composed and contributes nothing.
-	away := auditDoorFor(checkedNode("build it", "it builds",
-		toolReceipt{tool: "bash", command: "cd " + elsewhere + " && cargo build --release"},
-	), auditPlace{ground: dir, ran: dir})
-	if len(away.checks) != 0 {
-		t.Fatalf("a line that stepped out of the tree became a check: %q", away.checks)
-	}
-
-	// AND THE FLOOR UNDER A BLANKET ALLOW STILL STANDS ON WHAT WAS DERIVED. A
-	// critical command wrapped in a cd and a pipe is still a critical command.
-	critical := auditDoorFor(checkedNode("build it", "it builds",
-		toolReceipt{tool: "bash", command: "cd " + dir + " && rm -rf / 2>&1 | tail -1"},
-		toolReceipt{tool: "bash", command: "> out.txt | tail -1"},
-		toolReceipt{tool: "bash", command: "cd " + dir + " && make it || rm -rf /"},
-	), auditPlace{ground: dir, ran: dir})
-	if len(critical.checks) != 0 {
-		t.Fatalf("a derived command nobody would allow became a check: %q", critical.checks)
 	}
 }
 
@@ -734,8 +616,7 @@ func TestATwoWordSpellingMustNameTheFilesOwnInterpreter(t *testing.T) {
 	writeCheckFile(t, dir, "direct.py", "#!/usr/bin/python3\nprint(1)\n", 0o755)
 	writeCheckFile(t, dir, "found.sh", "#!/usr/bin/env bash\nexit 0\n", 0o755)
 	writeCheckFile(t, dir, "flagged.py", "#!/usr/bin/env -S python3 -u\nprint(1)\n", 0o755)
-	node := checkedNode("check it with `direct.py`, `found.sh` and `flagged.py`", "they pass")
-	door := auditDoorFor(node, auditPlace{ground: dir, ran: dir})
+	door := auditDoorFor(declaringNode("direct.py", "found.sh", "flagged.py"), dir)
 
 	for _, spelling := range []string{
 		// The program the line names, and any path that reaches that program.
@@ -795,8 +676,7 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 	// The executable bit alone is a file saying that running it happens, which is
 	// what makes the bare spellings work — but it names no program, so no word
 	// may stand in front of it.
-	marked := auditDoorFor(checkedNode("check it with `plain.sh`", "it passes"),
-		auditPlace{ground: dir, ran: dir})
+	marked := auditDoorFor(declaringNode("plain.sh"), dir)
 	for _, spelling := range []string{"plain.sh", "./plain.sh", filepath.Join(dir, "plain.sh")} {
 		if refusal, ok := doorRefusal(spelling, marked); !ok {
 			t.Fatalf("an executable check refused its own bare spelling %q: %s", spelling, refusal)
@@ -808,8 +688,7 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 
 	// A file with neither fact is data until the work says otherwise — and when
 	// the work says otherwise, that spelling and no other is the door.
-	declared := auditDoorFor(checkedNode("score it with `bash data.txt`", "it scores"),
-		auditPlace{ground: dir, ran: dir})
+	declared := auditDoorFor(declaringNode("bash data.txt"), dir)
 	if refusal, ok := doorRefusal("bash data.txt", declared); !ok {
 		t.Fatalf("the work's own spelling of its own check was refused: %s", refusal)
 	}
@@ -822,17 +701,14 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 		t.Fatalf("the refusal never says the file declares no interpreter:\n%s", refusal)
 	}
 
-	// AND WHAT THE WORKER ITSELF RAN COUNTS AS THE WORK SAYING SO, read out of a
-	// composed line the same way any other receipt is.
+	// AND A FILE THE WORKER MERELY RAN IS NOT DECLARED. The receipt says the run
+	// happened; it does not put the file under contract as verification.
 	ran := auditDoorFor(checkedNode("build it", "it builds",
-		toolReceipt{tool: "bash", command: "cd " + dir + " && bash ranonly.sh 2>&1 | tail -1"},
-	), auditPlace{ground: dir, ran: dir})
-	if refusal, ok := doorRefusal("bash ranonly.sh", ran); !ok {
-		t.Fatalf("the checker may not re-run the file the way the work ran it: %s", refusal)
-	}
-	for _, refused := range []string{"ranonly.sh", "bash ranonly.sh --flag", "rm ranonly.sh"} {
+		toolReceipt{tool: "bash", args: `{"command":"bash ranonly.sh"}`, result: "exit 0"},
+	), dir)
+	for _, refused := range []string{"bash ranonly.sh", "ranonly.sh", "./ranonly.sh"} {
 		if _, ok := doorRefusal(refused, ran); ok {
-			t.Fatalf("%q was admitted, and the work never ran it that way", refused)
+			t.Fatalf("%q was admitted on the strength of a receipt", refused)
 		}
 	}
 }

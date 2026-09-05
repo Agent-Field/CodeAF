@@ -333,7 +333,11 @@ func TestASettledNodeNeverContributesAStepOutOfThePastedAsk(t *testing.T) {
 	node.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
 	node.spec.brief = "repair the tox configuration"
 	node.brief = node.spec.brief
-	node.spec.acceptance = "the tox configuration remains readable and `run_tests.sh` passes"
+	node.spec.acceptance = "the tox configuration remains readable"
+	// THE NODE'S OWN CHECK IS THE ONE IT DECLARED, not one read out of its prose:
+	// a session harvests its units of work through the same door their own
+	// checkers use (task_checks.go).
+	node.Checks = []string{"run_tests.sh"}
 	node.graph.mu.Unlock()
 
 	checks := agent.sessionChecks()
@@ -777,13 +781,15 @@ func TestARunThatIsCarryingOnKeepsItsOwnWorkingMaterial(t *testing.T) {
 	}
 }
 
-// AND THE CHECKS A WORKER ACTUALLY RAN ARE THE SESSION'S CHECKS TOO.
+// AND THE CHECKS A UNIT OF WORK DECLARED ARE THE SESSION'S CHECKS TOO.
 //
-// A worker that hammered one command for an hour has said what the check is
-// more clearly than any document, and reading it through the same door that
-// node's own auditor used ([auditDoorFor]) is what keeps a session and its
-// units of work checking the same things.
-func TestTheSessionAlsoChecksWhatItsWorkersRan(t *testing.T) {
+// A task put under contract to be verified by one command has said what the
+// check is, and reading it through the same door that node's own checker used
+// ([auditDoorFor]) is what keeps a session and its units of work checking the
+// same things. What the worker merely RAN is not read here for the reason it is
+// not read there: a receipt is evidence, not a licence to repeat the work
+// (task_checks.go).
+func TestTheSessionAlsoChecksWhatItsWorkersDeclared(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
@@ -794,7 +800,8 @@ func TestTheSessionAlsoChecksWhatItsWorkersRan(t *testing.T) {
 	node.spec.brief = "port it"
 	node.brief = "port it"
 	node.spec.acceptance = "it is ported"
-	node.receipts = []toolReceipt{{command: "go test ./parser"}}
+	node.Checks = []string{"go test ./parser"}
+	node.receipts = []toolReceipt{{tool: "bash", args: `{"command":"go run ./cmd/port"}`}}
 	node.graph.mu.Unlock()
 
 	var found bool
@@ -804,7 +811,12 @@ func TestTheSessionAlsoChecksWhatItsWorkersRan(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("the session does not check what its own worker ran: %v", agent.sessionChecks())
+		t.Fatalf("the session does not check what its own unit of work declared: %v", agent.sessionChecks())
+	}
+	for _, check := range agent.sessionChecks() {
+		if strings.Contains(check, "cmd/port") {
+			t.Fatalf("the session picked up a command a worker merely ran: %v", agent.sessionChecks())
+		}
 	}
 }
 

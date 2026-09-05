@@ -134,7 +134,7 @@ func (a *Agent) sessionChecks() []string {
 			continue
 		}
 		checks = appendChecks(checks,
-			invocableChecks(tree, auditDoorFor(node, auditPlace{ground: tree, ran: tree}).checks))
+			invocableChecks(tree, auditDoorFor(node, tree).checks))
 	}
 	return trimChecks(checks)
 }

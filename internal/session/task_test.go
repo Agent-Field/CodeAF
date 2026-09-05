@@ -187,13 +187,17 @@ func verdictFromEvidence(marker, verified, refuted string) step {
 }
 
 // proposeCall is the model asking for one task, with the mark in the brief.
-func proposeCall(title, brief string) step {
+func proposeCall(title, brief string, checks ...string) step {
 	arguments, _ := json.Marshal(taskArguments{
 		Title:       title,
 		Summary:     "two lines the person reads",
 		Brief:       brief + "\n" + taskBriefMark,
 		Deliverable: "the file, at the path named in the brief",
 		Acceptance:  "the file is there",
+		// The proposal is where a command becomes something the node's checker may
+		// run, and a test that wants its checker to run one has to declare it here
+		// exactly as a real proposal would (task_checks.go).
+		Checks: checks,
 	})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse("call-task", "propose_task", string(arguments)), nil
@@ -1091,7 +1095,7 @@ func TestAuditOffMergesUnaudited(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and its test", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1145,7 +1149,7 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and its test", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1236,7 +1240,7 @@ func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Fix the failing test", "make TestHollow pass; the check is `go test ./...`"),
+			proposeCall("Fix the failing test", "make TestHollow pass", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: []step{
