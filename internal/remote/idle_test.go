@@ -71,7 +71,7 @@ func TestAnEngineWithNoWorkReadingIsIdleOnTheOldTerms(t *testing.T) {
 func TestAWaitingQuestionKeepsAConversationAlive(t *testing.T) {
 	sess := idleSession(&fakeAgent{})
 	sess.mu.Lock()
-	sess.held.raise(WireEvent(session.Event{Kind: session.EventConsentRequest, ID: 3}), 1, true)
+	sess.held.raise(WireEvent(session.Event{Kind: session.EventConsentRequest, ID: 3}), 1, nil)
 	sess.mu.Unlock()
 	if !sess.IdleSince().IsZero() {
 		t.Fatal("a conversation holding an unanswered card read as idle")
@@ -149,7 +149,7 @@ func TestRetiringRechecksAfterTheWorkReading(t *testing.T) {
 	// The moment the conversation is being asked about, somebody's question
 	// lands on it.
 	sess.mu.Lock()
-	sess.held.raise(WireEvent(session.Event{Kind: session.EventConsentRequest, ID: 4}), 1, true)
+	sess.held.raise(WireEvent(session.Event{Kind: session.EventConsentRequest, ID: 4}), 1, nil)
 	sess.mu.Unlock()
 	close(far.release)
 

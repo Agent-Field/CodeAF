@@ -503,7 +503,7 @@ func (sess *Session) IdleSince() time.Time {
 
 // idleSinceLocked is the half of the reading this package can answer itself.
 func (sess *Session) idleSinceLocked() time.Time {
-	if len(sess.surfaces) > 0 || len(sess.rings) > 0 || len(sess.held.waiting()) > 0 {
+	if len(sess.surfaces) > 0 || len(sess.rings) > 0 || sess.held.outstanding() > 0 {
 		return time.Time{}
 	}
 	return sess.empty
@@ -668,14 +668,17 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 // already in the replay.
 func (sess *Session) attach(s *server, hello Hello) error {
 	sess.mu.Lock()
-	// Attached counts the OTHERS, so it is read before this one is added
-	// (wire.go's Welcome.Attached states why the number is carried at all).
-	welcome := sess.welcomeLocked()
-	welcome.Encoding = s.encoding
-	welcome.Attached = len(sess.surfaces)
+	// THE ARRIVAL IS NUMBERED BEFORE THE WELCOME IS BUILT, because the welcome
+	// says which questions THIS surface is owed and the number is how a card
+	// names the surfaces that have already drawn it (held.go).
 	s.name = machineLabel(hello.Surface)
 	sess.arrivals++
 	s.arrived = sess.arrivals
+	// Attached counts the OTHERS, so it is read before this one is added
+	// (wire.go's Welcome.Attached states why the number is carried at all).
+	welcome := sess.welcomeLocked(s)
+	welcome.Encoding = s.encoding
+	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
 	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
@@ -700,8 +703,10 @@ func (sess *Session) attach(s *server, hello Hello) error {
 }
 
 // detach takes one connection out of the room, and — when it was the last one —
-// starts the clock an idle policy reads and turns every unanswered card into a
-// question nobody is looking at.
+// starts the clock an idle policy reads. IT IS NOT WHAT MAKES A CARD WAITING:
+// a killed terminal leaves without saying so, and this runs whenever its socket
+// gets around to reporting the end, which may be after the window that replaced
+// it has already been welcomed (held.go states the whole rule).
 func (sess *Session) detach(s *server) {
 	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
 	// else because leaving it is what ends the goroutine pumping frames at a
@@ -720,7 +725,6 @@ func (sess *Session) detach(s *server) {
 	}
 	if len(sess.surfaces) == 0 {
 		sess.empty = time.Now()
-		sess.held.roomEmptied()
 	}
 	sess.mu.Unlock()
 	if moved {
@@ -728,7 +732,7 @@ func (sess *Session) detach(s *server) {
 	}
 }
 
-func (sess *Session) welcomeLocked() Welcome {
+func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
 	// it was replaced before somebody has to spend a turn to discover it.
@@ -752,7 +756,7 @@ func (sess *Session) welcomeLocked() Welcome {
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
 		PlacesRoot:                 sess.engine.PlacesRoot,
 		Live:                       sess.liveLocked(),
-		Held:                       sess.held.waiting(),
+		Held:                       sess.held.waitingFor(s.arrived),
 		Persistent:                 sess.persistent,
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
@@ -941,18 +945,22 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 		return
 	}
 	seq := held.add(payload)
-	// A QUESTION RAISED INTO AN EMPTY ROOM WAITS INSTEAD OF EXPIRING, which is
-	// what [heldSet] is for; a question raised while somebody is watching is on
-	// their screen and only becomes a waiting one if they leave without
-	// answering it.
-	sess.held.raise(wire, id, len(sess.surfaces) == 0)
+	watching := sess.watchingLocked()
+	// A QUESTION WAITS INSTEAD OF EXPIRING FOR EVERY SURFACE THIS FRAME IS NOT
+	// GOING TO, which is what [heldSet] is for: the windows in the list below
+	// are about to draw it, and any other window — including one that has not
+	// dialled yet — is owed it on arrival.
+	drawn := make([]uint64, 0, len(watching))
+	for _, surface := range watching {
+		drawn = append(drawn, surface.arrived)
+	}
+	sess.held.raise(wire, id, drawn)
 	// A connect ask removes itself when its five-minute wait settles. That
 	// settling emits the next event, so reconcile here while the session lock is
 	// already held and do not leave a dead card keeping the host alive forever.
 	if pending, ok := sess.agent.(interface{ PendingConnect() []string }); ok {
 		sess.held.settleConnect(pending.PendingConnect())
 	}
-	watching := sess.watchingLocked()
 	sess.mu.Unlock()
 
 	// THE FACTS GO FIRST, AHEAD OF THE EVENT THAT MOVED THEM. A surface settles
@@ -1031,7 +1039,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.
 	sess.engine.Note = ""
-	welcome := sess.welcomeLocked()
+	welcome := sess.welcomeLocked(asked)
 	welcome.Attached = len(sess.surfaces) - 1
 	if welcome.Attached < 0 {
 		welcome.Attached = 0
@@ -1642,7 +1650,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodHeldQuestions:
 		sess.mu.Lock()
-		waiting := sess.held.waiting()
+		waiting := sess.held.waitingFor(s.arrived)
 		sess.mu.Unlock()
 		return json.Marshal(waiting)
 

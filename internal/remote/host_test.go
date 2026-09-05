@@ -365,6 +365,38 @@ func TestAQuestionLeftBehindBecomesOneThatIsWaiting(t *testing.T) {
 	}
 }
 
+// AND IT REACHES THE NEXT WINDOW BEFORE THE DEAD ONE HAS LEFT. This is the
+// ordering a killed terminal actually produces: it says nothing on its way out,
+// so the session only learns it is gone when its socket gets around to
+// reporting the end — which can be after the window that replaced it has been
+// welcomed. Nothing here detaches, and the card is still handed over, because
+// what makes a question waiting is that THIS surface has not been sent it.
+func TestTheNextWindowIsHandedTheCardBeforeTheOneItReplacedHasLeft(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	first := dialSession(t, sess)
+	first.hello(Hello{Version: Version})
+	first.ok(1, MethodSubmit, SubmitArgs{Text: "port the parser"})
+	stream := agent.stream(0)
+	stream <- session.Event{Kind: session.EventConsentRequest, ID: 5, Tool: "bash", Hint: "git push"}
+	// Receiving the frame is the barrier: the card has been recorded and this
+	// surface is on record as having drawn it.
+	first.recv()
+
+	back := dialSession(t, sess)
+	welcome := decode[Welcome](t, back.hello(Hello{Version: Version}).Payload)
+	if len(welcome.Held) != 1 || welcome.Held[0].Event.Unwire().ID != 5 {
+		t.Fatalf("the returning window was handed %+v, want the unanswered card", welcome.Held)
+	}
+
+	// And the window that already drew it is not handed it a second time.
+	again := decode[[]HeldQuestion](t, first.ok(2, MethodHeldQuestions, nil).Payload)
+	if len(again) != 0 {
+		t.Fatalf("a card already on somebody's screen was handed to them again: %d", len(again))
+	}
+}
+
 // ── more than one surface ───────────────────────────────────────────────────
 
 func TestASecondSurfaceIsToldItIsNotAlone(t *testing.T) {
@@ -433,13 +465,13 @@ func (sess *Session) liveSeq(id uint64) uint64 {
 	return 0
 }
 
-// heldCount is how many questions are waiting, read under the session's own
+// heldCount is how many questions are outstanding, read under the session's own
 // lock — a test that reached into the set directly would be racing the pump
 // that fills it.
 func (sess *Session) heldCount() int {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	return len(sess.held.waiting())
+	return sess.held.outstanding()
 }
 
 func waitForEngine(t *testing.T, done func() bool) {
