@@ -116,7 +116,11 @@ the tree:
   was A's and its prefix note says \"conversation-B\"".
 
 The overlap regression drives two real completions through the lanestub door on
-one client with two lineages, A long and B one token, so B overtakes A and the
-settlements arrive out of encode order. It is timing-shaped: the margin is
-~120ms against ~20ms, and the sighting-order assertion fails loudly with a
-message naming the margin if that ever stops holding.
+one client with two lineages. The ordering is FORCED, not timed: a `requestGate`
+in `Config.HTTPClient` holds A at its send until B has encoded, been answered
+and settled, and only then releases it. There are no sleeps. Every wait is
+bounded by one 10-second test context, and a single cleanup — registered after
+the server's, so it runs first — opens the gate, cancels both calls and waits
+for A to leave the wire before the listener closes. Both settlement paths are
+covered: the streamed epilogue, and the whole-body branch, reached by having the
+gate rewrite `stream` to false so the router answers in one piece.

@@ -504,17 +504,6 @@ func namesEndpoint(list []string, name string) bool {
 
 // ── FEEDING THE BELIEF ──────────────────────────────────────────────────────
 
-// laneAsk is what the last request for one model told the chooser about itself.
-//
-// WHY IT IS REMEMBERED AT ALL. A sighting arrives at [Client.noteVelocity] with
-// the timings and the endpoint that served, and with none of the request's own
-// facts: the seam carries no context and no usage frame. Two of those facts are
-// worth keeping — how long the prompt was, and which conversation it belonged
-// to — because the first is what tells a slow lane apart from a long prefill
-// and the second is what makes the next choice cache-aware. They are the
-// ESTIMATES the encoder computed a moment earlier rather than the exact figures
-// of the usage frame, which do not reach this seam; when the stream loop grows
-// a seam that carries the frame, this becomes the frame.
 // settled is what ONE answer's usage frame reported, carried together with the
 // lineage of the request that asked for it.
 //
@@ -581,35 +570,35 @@ func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, 
 	id := lanes.ID{Model: model, Lane: served}
 	now := laneNow()
 	lanes.Default().Ledger().Note(lanes.Sighting{
-		ID:           id,
-		TTFT:         ttft,
-		Gen:          generation,
-		Gap:          gap,
-		Tokens:       tokens,
+		ID:     id,
+		TTFT:   ttft,
+		Gen:    generation,
+		Gap:    gap,
+		Tokens: tokens,
 		// AND THE PROMPT LENGTH IS THE ANSWER'S OWN. It weights how much noise
-		// this reading carries ([lane.promptNoise]), and it used to be the
-		// adapter's pre-send estimate read back out of a per-model map — which
-		// attributed it to whichever request encoded last rather than to this
-		// one. A frame that reported no length leaves zero, which reads as the
-		// quietest noise bucket; that is the honest answer for a settlement
-		// nobody counted, and it is what this field already held whenever no
-		// ask had been remembered for the model.
+		// this reading carries ([lane.promptNoise]): a long prefill and a slow
+		// lane look alike on the clock and are told apart by this. It was once
+		// the adapter's pre-send estimate, looked up per model at settlement,
+		// which attributed it to whichever request encoded last. A frame that
+		// reported no length leaves zero, and zero reads as the quietest noise
+		// bucket — the honest answer for a settlement nobody counted.
 		PromptTokens: observed.prompt,
-		// AND WHAT THE ROUTER SAID IT READ BACK OUT OF THIS LANE'S CACHE. It is
-		// the usage frame's own figure and never the estimate beside it: the
-		// prompt length above is what this adapter computed before the send,
-		// and a cache hit invented from it would be a belief that a lane holds
-		// our prefix on evidence that says nothing about any lane at all.
+		// AND WHAT THE ROUTER SAID IT READ BACK OUT OF THIS LANE'S CACHE, from
+		// that same frame. A cache hit inferred from anything else — the prompt
+		// length beside it, this process's memory of where it sent the last
+		// request — would be a belief that a lane holds our prefix on evidence
+		// that says nothing about any lane at all.
 		CachedTokens: observed.cached,
 		At:           now,
 	})
-	// AND THE PREFIX NOTE CARRIES THE LENGTH THE ANSWER ITSELF REPORTED, not
-	// the estimate two lines above. `ask.prompt` is what this adapter computed
-	// before the send; the prefix memory prices a discount with its number, and
-	// a discount granted on a guess is the same mistake the cache figure above
-	// is passed through to avoid. An answer whose usage frame carried no prompt
-	// count leaves zero, which internal/lane reads as "not known" and gives
-	// nothing for.
+	// AND THE PREFIX NOTE IS FILED UNDER THE SETTLING REQUEST'S OWN LINEAGE, at
+	// the length that request's answer reported. The prefix memory prices a
+	// discount with both numbers, so both have to be this answer's: a length
+	// taken from an estimate would grant a discount no usage frame agreed to,
+	// and a lineage taken from whichever request encoded most recently would
+	// grant it to the wrong conversation. An answer whose frame carried no
+	// prompt count leaves zero, which internal/lane reads as "not known" and
+	// gives nothing for.
 	lanes.RememberPrefix(id, observed.lineage, observed.prompt, now)
 }
 

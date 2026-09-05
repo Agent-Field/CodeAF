@@ -1,7 +1,9 @@
 package provider
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -824,70 +826,230 @@ func TestSettledFromReadsTheAnswersOwnFrameAndTheCallersLineage(t *testing.T) {
 
 // ── TWO REQUESTS AT ONCE ────────────────────────────────────────────────────
 
+// requestGate holds ONE request at the wire and lets everything else past. It
+// is a barrier and not a delay: the test waits on [requestGate.reached] to know
+// the held call has encoded and reached its send, and closes
+// [requestGate.release] to let it finish. Nothing here is timed, so nothing here
+// is flaky under load.
+//
+// It sits in [Config.HTTPClient], which exists for this, so what is gated is the
+// real request/response boundary — the encode, the lane choice and the
+// settlement all happen exactly where they do in a shipped build.
+type requestGate struct {
+	inner   http.RoundTripper
+	hold    string
+	reached chan struct{}
+	release chan struct{}
+	// TWO ONCES AND NOT ONE. They guard two different closes, and sharing a
+	// single [sync.Once] between them makes the second a silent no-op — a gate
+	// that can be reached and never opened.
+	reachedOnce sync.Once
+	releaseOnce sync.Once
+	// whole makes the router answer in one body instead of a stream, so the
+	// same scenario covers the other settlement path.
+	whole bool
+}
+
+func newRequestGate(hold string, whole bool) *requestGate {
+	return &requestGate{
+		inner:   SharedTransport(),
+		hold:    hold,
+		reached: make(chan struct{}),
+		release: make(chan struct{}),
+		whole:   whole,
+	}
+}
+
+// open lets the held request go. It is safe to call twice, which is what makes
+// it usable both as the test's own release and as its cleanup.
+func (g *requestGate) open() { g.releaseOnce.Do(func() { close(g.release) }) }
+
+func (g *requestGate) RoundTrip(request *http.Request) (*http.Response, error) {
+	body := []byte(nil)
+	if request.Body != nil {
+		read, err := io.ReadAll(request.Body)
+		if err != nil {
+			return nil, err
+		}
+		request.Body.Close()
+		body = read
+	}
+	held := len(body) > 0 && strings.Contains(string(body), g.hold)
+	if g.whole && len(body) > 0 {
+		var shaped map[string]any
+		if err := json.Unmarshal(body, &shaped); err == nil {
+			if _, asked := shaped["stream"]; asked {
+				shaped["stream"] = false
+				delete(shaped, "stream_options")
+				if reshaped, err := json.Marshal(shaped); err == nil {
+					body = reshaped
+				}
+			}
+		}
+	}
+	if len(body) > 0 {
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		request.ContentLength = int64(len(body))
+		request.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(body)), nil
+		}
+	}
+	if held {
+		g.reachedOnce.Do(func() { close(g.reached) })
+		select {
+		case <-g.release:
+		case <-request.Context().Done():
+			return nil, request.Context().Err()
+		}
+	}
+	return g.inner.RoundTrip(request)
+}
+
+// gatedRouter is [stubbedRouter] with a barrier in front of the wire.
+func gatedRouter(t *testing.T, gate *requestGate) (*Client, *lanestub.Server, string) {
+	t.Helper()
+	const model = "openrouter/scripted-model"
+	server := lanestub.New(model,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{
+			TTFT: time.Millisecond, Rate: 4000, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+	client, err := NewClient(Config{
+		APIKey:     "test-key",
+		BaseURL:    server.URL(),
+		Model:      model,
+		Routing:    StaticRouting(RoutingLatency),
+		HTTPClient: &http.Client{Transport: gate},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lanes.HeardPrefsCarried(server.URL())
+	client.velocity = newVelocityLedger()
+	return client, server, model
+}
+
 // TestAnAnswerIsAttributedToItsOwnRequestWhenTwoOverlap is the lineage-isolation
 // law under parallel work, and it is the defect a per-model "last ask" map
 // could not avoid.
 //
 // ONE CLIENT SERVES SEVERAL REQUESTS AT ONCE — a fan-out's leaves, an errand
-// beside a turn, the two halves of a hedge — so "the most recent encode" and
-// "the request that is settling" are different questions. Here A encodes first
-// and settles LAST: it asks for a long answer, B for a one-token one, both
-// through the real completion door, so the ordering is the stub's own timing
-// and not a mock's. A settlement that looked the lineage up at the end would
-// read B's, and file A's prompt length — and the prompt-cache credit that comes
-// with it — against B's conversation.
+// beside a turn, the two halves of a hedge — so "the request that encoded most
+// recently" and "the request that is settling" are different questions. The
+// ordering here is FORCED rather than timed: A is held at its send until B has
+// encoded, been answered and settled, and only then released. A settlement that
+// looked its lineage up at the end would read B's — B is what "most recently
+// asked" means at that moment — and would file A's prompt length, and the
+// prompt-cache credit that comes with it, against B's conversation.
+//
+// Both settlement paths run the same scenario: the streamed epilogue and the
+// whole-body one, which is the branch a router that answers in one piece takes.
+// gateWait is how every wait in this test is bounded. A barrier that is never
+// released is the one failure mode a gated test adds, and left unbounded it
+// shows up ten minutes later as Go's own panic with no name on it. This says
+// which wait hung, in the test's own words, within the deadline the test set.
+func gateWait(t *testing.T, what string, ready <-chan struct{}, deadline <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-ready:
+	case <-deadline:
+		t.Fatalf("timed out waiting for %s", what)
+	}
+}
+
 func TestAnAnswerIsAttributedToItsOwnRequestWhenTwoOverlap(t *testing.T) {
-	client, server, model := stubbedRouter(t)
-	ledger := primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
+	for _, shape := range []struct {
+		name  string
+		whole bool
+	}{{"streamed", false}, {"whole body", true}} {
+		t.Run(shape.name, func(t *testing.T) {
+			const mark = "the-whole-transcript-so-far"
+			gate := newRequestGate(mark, shape.whole)
+			client, server, model := gatedRouter(t, gate)
+			ledger := primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
 
-	// A's prompt is long and B's is short, so the two lengths cannot be
-	// mistaken for one another in the ledger.
-	longPrompt := strings.Repeat("the whole transcript so far. ", 400)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		ctx := WithCacheKey(context.Background(), "conversation-A")
-		// Forty tokens at the lane's 400/s is ~120ms of streaming; B is one
-		// token and is gone in ~20ms.
-		if _, err := client.CompleteWithMessages(ctx, userMessages(longPrompt), ai.WithMaxTokens(40)); err != nil {
-			t.Errorf("A: %v", err)
-		}
-	}()
-	// A is encoded and on the wire before B is; B then overtakes it.
-	time.Sleep(15 * time.Millisecond)
-	ctxB := WithCacheKey(context.Background(), "conversation-B")
-	if _, err := client.CompleteWithMessages(ctxB, userMessages("hi"), ai.WithMaxTokens(1)); err != nil {
-		t.Fatalf("B: %v", err)
-	}
-	wg.Wait()
+			// ONE DEADLINE OVER THE WHOLE SCENARIO, and both requests are made
+			// under it, so a wedged gate fails this test rather than hanging it.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 
-	if got := len(server.Asks()); got != 2 {
-		t.Fatalf("%d requests reached the router, want the two this test overlaps", got)
-	}
-	sightings := ledger.sightings()
-	if len(sightings) != 2 {
-		t.Fatalf("%d sightings for two answers", len(sightings))
-	}
-	// B settled first because it asked for one token; A second.
-	short, long := sightings[0].PromptTokens, sightings[1].PromptTokens
-	if !(long > short) {
-		t.Fatalf("the settlements carry %d then %d prompt tokens — B's short prompt should settle "+
-			"first and A's long one second; if the order moved, the timing margin did", short, long)
-	}
+			finished := make(chan struct{})
+			done := make(chan error, 1)
+			// THE ONE CLEANUP, REGISTERED AFTER THE SERVER'S. Cleanups run last
+			// in first out, so this releases the gate, cancels the calls and
+			// waits for A to leave the wire BEFORE [lanestub.Server.Close] tries
+			// to shut down a listener a held request is still standing on.
+			t.Cleanup(func() {
+				gate.open()
+				cancel()
+				<-finished
+			})
 
-	// THE NOTE THE LAST SETTLEMENT LEFT IS A'S, because A answered last. A
-	// lineage read at settlement time out of a per-model map would be B's here:
-	// B encoded second, so it is what "most recently asked" means.
-	served := lanes.ID{Model: laneModel(model), Lane: "quicksilver"}
-	prefix, tokens, seen := lanes.RememberedPrefix(served)
-	if !seen {
-		t.Fatal("no prefix note survived two answers")
-	}
-	if prefix != "conversation-A" {
-		t.Fatalf("the last answer was A's and its prefix note says %q — A's cache was credited to another conversation", prefix)
-	}
-	if tokens != long {
-		t.Fatalf("the note carries %d tokens against A's settled %d", tokens, long)
+			// A's prompt is long and B's is short, so the two lengths cannot be
+			// mistaken for one another in the ledger.
+			longPrompt := strings.Repeat(mark+" ", 400)
+			go func() {
+				defer close(finished)
+				_, err := client.CompleteWithMessages(WithCacheKey(ctx, "conversation-A"), userMessages(longPrompt))
+				done <- err
+			}()
+
+			// A HAS ENCODED AND IS AT ITS SEND. Nothing about this waits on a
+			// clock: the gate closes this channel from inside RoundTrip.
+			select {
+			case <-gate.reached:
+			case err := <-done:
+				t.Fatalf("A finished without reaching the gate: %v", err)
+			case <-ctx.Done():
+				t.Fatal("A never reached the gate")
+			}
+
+			// B encodes SECOND and settles FIRST, while A is still held.
+			if _, err := client.CompleteWithMessages(WithCacheKey(ctx, "conversation-B"), userMessages("hi")); err != nil {
+				t.Fatalf("B: %v", err)
+			}
+			served := lanes.ID{Model: laneModel(model), Lane: "quicksilver"}
+			if got := len(ledger.sightings()); got != 1 {
+				t.Fatalf("%d settlements while A was held at the wire, want B's alone", got)
+			}
+			if prefix, _, _ := lanes.RememberedPrefix(served); prefix != "conversation-B" {
+				t.Fatalf("B settled and its prefix note says %q", prefix)
+			}
+
+			gate.open()
+			gateWait(t, "A to settle after its release", finished, ctx.Done())
+			if err := <-done; err != nil {
+				t.Fatalf("A: %v", err)
+			}
+
+			sightings := ledger.sightings()
+			if len(sightings) != 2 {
+				t.Fatalf("%d settlements for two answers", len(sightings))
+			}
+			short, long := sightings[0].PromptTokens, sightings[1].PromptTokens
+			if short <= 0 || long <= short {
+				t.Fatalf("the settlements carry %d then %d prompt tokens, want B's short prompt "+
+					"first and A's long one second", short, long)
+			}
+
+			// THE NOTE THE LAST SETTLEMENT LEFT IS A'S, because A answered last.
+			// A lineage read at settlement time out of a per-model map would be
+			// B's here: B encoded second, so it is what "most recently asked"
+			// means at the moment A lands.
+			prefix, tokens, seen := lanes.RememberedPrefix(served)
+			if !seen {
+				t.Fatal("no prefix note survived two answers")
+			}
+			if prefix != "conversation-A" {
+				t.Fatalf("the last answer was A's and its prefix note says %q — A's cache was "+
+					"credited to another conversation", prefix)
+			}
+			if tokens != long {
+				t.Fatalf("the note carries %d tokens against A's settled %d", tokens, long)
+			}
+			if got := len(server.Asks()); got != 2 {
+				t.Fatalf("%d completions reached the router, want the two this test overlaps", got)
+			}
+		})
 	}
 }
