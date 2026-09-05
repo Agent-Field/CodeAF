@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "528-reopened-conversation-jobs",
+  "readiness": "calibrated",
+  "why_this_issue": "A person reopens yesterday's conversation and the only door to the job log is gone. The fix is twelve lines in one file and the report names none of them.",
+  "provenance": {
+    "repo": "Agent-Field/aforge-v2",
+    "visibility": "private",
+    "issue": 528,
+    "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/528",
+    "issue_reported_at": "2026-09-03",
+    "issue_title": "chat: a reopened conversation draws none of the jobs it ran, and the job page becomes unreachable",
+    "fix_pr": 529,
+    "base_commit": "c300b6eb208397e9e8a61144899c619716d5aa1b",
+    "fix_commit": "5765033e07d0de5cf9568acaef2e7348d48ceb20",
+    "base_rule": "the first parent of the squash commit the fixing pull request left on dev",
+    "collected": "gh read-only plus this clone's object store; no field is guessed"
+  },
+  "workspace": {
+    "export": "git-archive",
+    "carries_git_history": false,
+    "at": "provenance.base_commit",
+    "notes": ""
+  },
+  "prompt": {
+    "source": "the issue, verbatim; only the brief above it is this suite's",
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# chat: a reopened conversation draws none of the jobs it ran, and the job page becomes unreachable\n\n## What happened\n\n2026-09-03, base `dev@f38d6c01a`.\n\nA conversation that ran background jobs yesterday draws **none of them** when it is\nreopened. The column beside the transcript has no `jobs` section at all — not an empty\none, not a `0 jobs`, nothing — and because that section is the **only** door to a job's\npage (there is no `/jobs` command and no key that opens one), the log of the work is no\nlonger reachable from the conversation that produced it. That is precisely the morning\nwhen the log is the only thing left.\n\nThe engine keeps its half of the promise. `jobrow.go`'s own header states it as the law:\n\n```\n// What is reused is the RECORD-ROW SEAM an adaptive run's family opened\n// ... and the checkpoint, so a conversation reopened tomorrow redraws what it\n// ran rather than an empty column beside a transcript full of jobs.\n```\n\nand the replay site says the same thing again, in the comment directly above the send:\n\n```\n// A BACKGROUND JOB GOES OUT ON ITS OWN LANE, restored or not. ...\n// A job replayed onto the task lane would reach a surface that correctly ignores\n// it, and a conversation reopened tomorrow would draw none of the work it ran\n// yesterday.\n```\n\nThe surface is the half that is missing. The restored rows go out as\n`session.EventJobUpdate` on the standing lane, and `internal/tui3`'s `taskEvent` — the\nreducer for that lane — has **no case for that kind**, so every restored job falls off\nthe end of the switch and is dropped. The turn's own hub (`app.go`) does have the case,\nwhich is why jobs are drawn perfectly while the window that started them is still open,\nand why this has gone unseen: it is only ever wrong across a restart.\n\nThe manual already documents the behaviour that does not happen —\n`internal/manual/chat/tasks.md` says *\"Coming back, or reopening it, redraws the jobs it\nran, settled\"* and *\"the `jobs` section redraws the jobs this conversation started,\nsettled\"*.\n\n## Replication\n\n**Deterministic (no model).** Everything here is in the repository; no key is needed\nbeyond a string the surface will accept, because nothing is ever sent.\n\n1. `make build && make demo-home DEMO_HOME=/tmp/aforge-demo` — quit the surface it opens.\n2. Pick any conversation folder in that home, e.g.\n   `$(find /tmp/aforge-demo/.aforge/v3/projects -name transcript.jsonl -printf '%h\\n' | head -1)`,\n   and write a task checkpoint beside the transcript — this is exactly the shape\n   `internal/session`'s `taskDocument`/`runRecord` writes for a background job that was\n   still going when aforge closed:\n\n   ```json\n   {\"type\":\"tasks\",\"version\":1,\"seq\":40,\n    \"nodes\":[],\n    \"runs\":[\n     {\"id\":31,\"title\":\"npm run dev\",\"kind\":\"job\",\"state\":\"failed\",\"stopped\":true,\n      \"report\":\"job 1 · log <that folder>/logs/jobs/1.log\",\"elapsed_ms\":2280000},\n     {\"id\":32,\"title\":\"make check\",\"kind\":\"job\",\"state\":\"done\",\n      \"report\":\"job 2 · log <that folder>/logs/jobs/2.log\",\"elapsed_ms\":540000}\n    ]}\n   ```\n\n   as `tasks.json` in that folder, and put any two files at those two log paths.\n3. `cd /tmp/aforge-demo/aforge-v2 && HOME=/tmp/aforge-demo OPENROUTER_API_KEY=sk-or-v1-demo <repo>/bin/aforge`,\n   then press enter on the top card to open that conversation.\n\n**What a developer sees today**, in the column: `standing` and its three rows, and then\nnothing. No `jobs` line.\n\n```\n│ standing\n│ ◦ the morning sweep\n│ ? CI on master\n│ ◦ the public API\n│ + /standing\n│\n```\n\n**What they should see** is the section, and the two rows under it when it is opened:\n\n```\n│ ▾ jobs · 2 ran\n│   make check        2 · done\n│   npm run dev    1 · stopped\n```\n\n**Field (real models, needs `OPENROUTER_API_KEY`).** In an ordinary conversation, ask for\nsomething to be run in the background — a dev server, a long build — so the model calls\n`bash` with `background:true` and the row appears in the `jobs` section. Quit with\n`ctrl+c` twice. Reopen the same conversation (`aforge resume`, or picking it off home).\nThe section is gone. A few cents, under a minute.\n\n## Where\n\n`internal/tui3/task.go`, `app.taskEvent` — the switch on `ev.Kind` for the standing lane\n(search `AN UPDATE IS ALSO WHAT MAKES THE \"@\" LIST STALE`). It has arms for\n`EventTaskProposal`, `EventTaskUpdate`, `EventTaskPhase`, `EventStandingProposal`,\n`EventTakeover` and `EventStandingUpdate`, and none for `EventJobUpdate`.\n\nThe engine side that sends them is `internal/session/task_run.go`,\n`Agent.replayTaskRoster` (search `A BACKGROUND JOB GOES OUT ON ITS OWN LANE`). The\nreducer that should receive them is `app.jobUpdate` in `internal/tui3/jobstate.go`, and\nthe section that draws them is `app.jobSection` in `internal/tui3/jobsection.go` — both\nalready exist and are already tested. Only the routing is missing.\n\n## The fix\n\n`app.taskEvent` grows the one arm the standing lane is missing, spelled the way the\nturn's hub already spells it in `app.go`:\n\n```go\ncase session.EventJobUpdate:\n\tif ev.Job != nil && a.jobUpdate(*ev.Job) {\n\t\ta.touch()\n\t}\n```\n\nThe person-facing behaviour is the sentence the manual already carries: reopening a\nconversation redraws the jobs it ran, settled — a job still going when aforge closed\ncomes back `stopped`, nothing is restarted, and its page opens on its log.\n\n## Acceptance\n\n- **e2e:** through the real binary, on the deterministic home above: after opening the\n  restored conversation the column names `jobs · 2 ran`, and opening the section draws\n  the rows `npm run dev` `1 · stopped` and `make check` `2 · done`. Today the string\n  `jobs` does not appear in the column at all.\n- **e2e:** the control — a conversation whose checkpoint has no job rows draws no `jobs`\n  line, no label and no `0 jobs`, exactly as it does today (the emptiness law).\n- **Unit:** `TestAReopenedConversationStillShowsItsJobs` in `internal/tui3` — three jobs\n  handed to `app.taskEvent` as `session.EventJobUpdate` are kept by the window and named\n  by `app.jobSection`; and `TestAJobReplayedOnTheStandingLaneOpensItsPage` — a job that\n  arrived on the standing lane can be looked up by its number, so its page has a record\n  to open.\n- The manual page that covers this already quotes the wording\n  (`internal/manual/chat/tasks.md`, \"the column comes back after a restart\") and needs no\n  change: it was right and the surface was wrong. The change entry's `invalidates` names\n  what people believed before.\n"
+  },
+  "acceptance": {
+    "kind": "held-out-test",
+    "held_out_paths": [
+      "internal/tui3/jobsreopen_test.go"
+    ],
+    "held_out_from": "provenance.fix_commit",
+    "guarded_paths": [
+      "internal/tui3/task.go"
+    ],
+    "command": "go test ./internal/tui3/ -run 'Reopen|Job' -count=1",
+    "run": "after the harness has stopped, from outside the workspace"
+  },
+  "arms": [
+    "aforge",
+    "pi",
+    "omp"
+  ],
+  "doors": {
+    "print": [
+      "aforge",
+      "pi",
+      "omp"
+    ],
+    "interactive": [
+      "aforge",
+      "pi",
+      "omp"
+    ]
+  },
+  "model_pin": "deepseek/deepseek-v4-flash-0731",
+  "calibration": {
+    "fails_at_base": {
+      "command": "git archive <base_commit> | tar -x -C w; git show <fix_commit>:internal/tui3/jobsreopen_test.go > w/internal/tui3/jobsreopen_test.go; cd w && GOPROXY=off go test ./internal/tui3/ -run 'Reopen|Job' -count=1",
+      "observed_at": "2026-09-05",
+      "build_ok": true,
+      "result": "2 behavioural failures: the standing lane replayed 3 jobs and the window kept 0; a replayed job could not be looked up by its number"
+    },
+    "passes_on_fix": {
+      "command": "git archive <fix_commit> | tar -x -C w; cd w && GOPROXY=off go test ./internal/tui3/ -run 'Reopen|Job' -count=1",
+      "observed_at": "2026-09-05",
+      "build_ok": true,
+      "result": "ok internal/tui3 3.6s"
+    }
+  }
+}

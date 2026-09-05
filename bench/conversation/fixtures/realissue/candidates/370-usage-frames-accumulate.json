@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "id": "370-usage-frames-accumulate",
+  "readiness": "rejected",
+  "why_this_issue": "A split usage frame would zero the call's token counts.",
+  "provenance": {
+    "repo": "Agent-Field/aforge-v2",
+    "visibility": "private",
+    "issue": 370,
+    "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/370",
+    "issue_reported_at": "2026-09-02",
+    "issue_title": "provider: a usage frame replaces the call's usage instead of accumulating it — a split frame would zero the token counts (and the reasoning count)",
+    "fix_pr": 405,
+    "base_commit": "79515001406f2c61bf02613896c78d4ad79b61c0",
+    "fix_commit": "7e54bd070a87a0f82020259de768f82265fa6d6e",
+    "base_rule": "the first parent of the squash commit the fixing pull request left on dev",
+    "collected": "gh read-only plus this clone's object store; no field is guessed"
+  },
+  "workspace": {
+    "export": "git-archive",
+    "carries_git_history": false,
+    "at": "provenance.base_commit",
+    "notes": ""
+  },
+  "prompt": {
+    "source": "the issue, verbatim; only the brief above it is this suite's",
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# provider: a usage frame replaces the call's usage instead of accumulating it — a split frame would zero the token counts (and the reasoning count)\n\n## Problem (latent, not yet observed on any provider we drive)\n\nIn the streamed read loop in `internal/provider/client.go`, a chunk that carries a\nusage object REPLACES what the response had accumulated:\n\n```go\nif chunk.Usage != nil {\n    response.Usage = chunk.Usage.usage()\n    reasoningTokens = chunk.Usage.reasoningTokens()\n}\n```\n\nA provider that reports token counts in one frame and then sends a later frame\ncarrying only cost — or only a subset of the fields — ends the call with the\nearlier counts **zeroed**. Note this takes `reasoningTokens` with it: the same\nreplace drops a reasoning count an earlier frame carried.\n\nNothing has been seen in the wild because every provider we currently drive\n(DeepSeek, Kimi) sends a single terminal usage frame. That is a property of\ntoday's providers, not of the protocol, so this is a defect waiting for a\nprovider that splits the frame.\n\nLine numbers are deliberately omitted: `client.go` moved twice on 2026-09-02.\nSearch for the `chunk.Usage != nil` branch in the streamed loop.\n\n## The law\n\nUsage ACCUMULATES across the frames of one call. A later frame never zeroes a\ncount an earlier frame carried. What the ledger bills and what the journal\nrecords is the whole of what the wire reported, in whatever order it arrived.\n\n## The fix, at the seam\n\nMerge non-zero fields into `response.Usage` rather than replacing the struct —\none merge helper, applied wherever a usage frame is folded in, so a second\nreader cannot drift from the first. `reasoningTokens` follows the same rule.\n\n## Acceptance (functional, required)\n\nA scripted two-frame stub: frame one carries the token counts, frame two carries\ncost only. The call ends with BOTH — counts from the first frame, cost from the\nsecond — and a reasoning count carried in frame one survives frame two. A single\nterminal frame must still behave exactly as it does today.\n\n## Provenance\n\nFound by reading, not by a failure: raised as a latent guess by the debug-record\nlane, and the code confirmed against `origin/dev` on 2026-09-02 by the #266 lane's\nsession. Deliberately NOT folded into PR #266 or #358 — independent defects want\nindependent revert handles, and `client.go` had three claimants that night.\n"
+  },
+  "acceptance": {
+    "kind": "held-out-test",
+    "held_out_paths": [
+      "internal/provider/usageframes_test.go"
+    ],
+    "held_out_from": "provenance.fix_commit",
+    "guarded_paths": [
+      "internal/provider/client.go"
+    ],
+    "command": "go test ./internal/provider/ -run 'Usage|Frame' -count=1",
+    "run": "after the harness has stopped, from outside the workspace"
+  },
+  "arms": [
+    "aforge",
+    "pi",
+    "omp"
+  ],
+  "doors": {
+    "print": [
+      "aforge",
+      "pi",
+      "omp"
+    ],
+    "interactive": [
+      "aforge",
+      "pi",
+      "omp"
+    ]
+  },
+  "model_pin": "deepseek/deepseek-v4-flash-0731",
+  "rejection": "The held-out test does not build at the base commit: it calls mergeUsage and usageWire.mergeInto, both introduced by the fix. Observed 2026-09-05 with GOPROXY=off go test ./internal/provider/ — 'undefined: mergeUsage', 'thinking.mergeInto undefined', build failed. That grades the reference implementation's shape: a correct repair that accumulates usage without those helpers scores zero. Kept here so the issue is not picked again unexamined."
+}
