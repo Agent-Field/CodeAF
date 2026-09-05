@@ -18,6 +18,9 @@ outside the container; candidates receive a sentinel. Pi is pinned to 0.84.2 and
 its custom provider advertises the 1,310,720 context capacity returned by the
 OpenRouter model catalog on September 5. Harness defaults for other settings and
 provider routing remain native, so this is not an isolated tool-loading ablation.
+Aforge also retains a $5 session cap; Pi has the common wall limit only. That
+additional cap must be reported if it binds rather than treated as an equal
+monetary budget.
 
 Candidate containers have host networking, including public network access. The
 corpus, reference implementation, grader tests, host credentials and Docker

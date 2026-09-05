@@ -99,6 +99,16 @@ known-red exclusion was retained; no new exclusions were added. This is a full
 suite with corrected affected-package reruns, not a claim that the initial
 full-suite invocation exited successfully.
 
+The first remote CI run at `b255c23c4` passed the light gate and seven of eight
+touched packages, including the full terminal suite (466.187 seconds). The
+session package exposed one more fixture dependency: the load-and-call acceptance
+test expected a media group without providing media, relying on a locally
+installed FFmpeg. Running that test with `/usr/bin:/bin` as PATH reproduced the
+failure on the Mac. The fixture now provides scripted media explicitly; the
+separate absent-capability tests retain their checks of unavailable groups. This
+is a test-environment correction, with no runtime change to the frozen complex
+comparison build. The failed CI log is retained and the corrected gates must pass.
+
 ## Live tool discovery smoke
 
 On `eccef810e`, a fresh hosted test profile received: "What is my daily budget

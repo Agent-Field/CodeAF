@@ -165,6 +165,10 @@ func TestATurnLoadsAGroupAndThenCallsTheToolItLoaded(t *testing.T) {
 	}}
 	agent := shelfAgent(t, recorder, func(config *Config) {
 		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		// The catalog assertion below exercises every group. Supply media
+		// explicitly so the fixture does not depend on a local FFmpeg install.
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
 	})
 
 	// THE FIRST REQUEST DOES NOT CARRY THE PAIR, which is the saving. It carries
