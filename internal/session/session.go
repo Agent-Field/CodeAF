@@ -2134,6 +2134,31 @@ type Agent struct {
 	// personSeq numbers those turns so that the same sentence typed twice is two
 	// events rather than one.
 	personSeq uint64
+	// personAt is when the last thing they typed was heard, which is the order
+	// their corrections are weighed in once a task can be reached through two
+	// doors of different speeds (assignment.go's [taskAssignment.lastSpokenApplied]).
+	personAt time.Time
+	// personScopeDenied says this machine could not produce the entropy a scope
+	// is made of, so no message of the person's can be named apart from another
+	// and the forwarding door refuses in those words rather than in the words
+	// for a turn nobody typed into.
+	personScopeDenied bool
+	// personScope is what [Agent.personSeq] is a sequence WITHIN: this session,
+	// this opening of it. The numbers themselves are not durable — they are
+	// counted as messages are heard and recounted from whatever history a reopen
+	// can replay, which compaction may have folded — so a session opened tomorrow
+	// can hand out the number 1 for a message that has nothing to do with the
+	// number 1 already written on a task's record. Minted once per agent and
+	// carried on every direction forwarded under it, so two lives cannot be
+	// mistaken for one (task_forward.go).
+	personScope string
+	// personHeard is the turn [Agent.personAsk] was typed into, and it is what
+	// tells "the person is asking for this right now" from "the person last said
+	// something two turns ago". A woken turn — a task landed, a job exited —
+	// leaves it where it was, so the forwarding door can refuse to send words the
+	// person is not currently saying under their live authority
+	// (task_forward.go).
+	personHeard uint64
 	// callOutcomes is whether a finished call came back a failure, by call id
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is

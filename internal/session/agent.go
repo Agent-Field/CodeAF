@@ -1327,11 +1327,17 @@ type SteerReceipt struct {
 	// no record was written. It is what a worker cites to revise the assignment
 	// (assignment.go) and what a surface can pair an outcome with later.
 	Direction uint64
+	// Again says this task already held these words, from the same message of the
+	// person's, so nothing was sent a second time and Direction is the receipt it
+	// was written down as the first time. Only a forward can answer it
+	// (task_forward.go): saying the same sentence into a room twice is saying it
+	// twice, and is delivered twice.
+	Again bool
 	// Landing is the engine's own sentence for what happened, drawn verbatim.
 	Landing string
 }
 
-// The three sentences a receipt can carry, and there is no fourth.
+// The sentences a receipt can carry, and there is no other.
 const (
 	// steerDeliveredWord is the ordinary case, and it says the one thing the
 	// person cannot see for themselves: the words crossed to another agent and
@@ -1357,6 +1363,12 @@ const (
 	// wait, which nothing in this harness can make true (assignment.go's
 	// publication boundary).
 	steerLateWord = "kept on the task's record — it was already landing, so this is for the next round rather than for the work coming home now"
+	// steerAgainWord is the fourth answer, and it belongs to one door only: the
+	// same message of the person's forwarded to the same task again
+	// (task_forward.go). The words are already on that record, so nothing was
+	// sent, and the sentence says that rather than reporting a second delivery
+	// that did not happen.
+	steerAgainWord = "already on the task's record from the same message — nothing was sent a second time"
 )
 
 // steerRecord is what the JOURNAL keeps about this line when it is a correction

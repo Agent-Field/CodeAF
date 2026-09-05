@@ -174,7 +174,7 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // (assignment.go, task_ledger.go). [SteerReceipt.Held] is how a surface tells
 // that apart from delivery, in the engine's own words.
 func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
-	return a.sayToTask(id, text, fromPerson)
+	return a.sayToTask(id, text, fromPerson, spokenSource{})
 }
 
 // relayToTask is THE OTHER SPEAKER, and it is not the person: the model calling
@@ -192,14 +192,19 @@ func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
 // keeps a relayed line from ever being cited to move the done-condition
 // (assignment.go).
 func (a *Agent) relayToTask(id uint64, text string) (SteerReceipt, error) {
-	return a.sayToTask(id, text, fromAgent)
+	return a.sayToTask(id, text, fromAgent, spokenSource{})
 }
 
-// sayToTask is the one road both doors take. The refusals are shared because
-// they are facts about the NODE — unknown, settled, being checked, nobody in
-// the room — and the origin decides only what the words arrive as and what they
-// are allowed to do to what the work is judged by.
-func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (SteerReceipt, error) {
+// sayToTask is the one road all three doors take. The refusals are shared
+// because they are facts about the NODE — unknown, settled, being checked,
+// nobody in the room — and the origin decides only what the words arrive as and
+// what they are allowed to do to what the work is judged by.
+//
+// source is the person's message a FORWARDED line was taken from
+// (task_forward.go), and 0 for anything said straight into the node. It travels
+// no further than the node's record, where it is what makes a repeated call the
+// same instruction rather than a second one.
+func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source spokenSource) (SteerReceipt, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return SteerReceipt{}, errors.New("nothing to say")
@@ -228,7 +233,7 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (SteerRe
 	// the node's record as a direction nobody has read, and the landing may not
 	// publish over one ([TaskNode.claimPublication]).
 	if node.lifeNow() == TaskPhaseChecking {
-		return heldForTask(node, text, origin), nil
+		return heldForTask(node, text, origin, source)
 	}
 	// Read BEFORE the line is handed over, because handing it over is what ends
 	// the wait: after the enqueue the honest answer to "was it waiting" has
@@ -250,7 +255,20 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (SteerRe
 	// (agent.go's [carryingDirection]) so that the drain which carries the words
 	// into a request is what marks the direction read. A refusal below forgets it
 	// again, so nothing is left on the record for words no reader took.
-	direction, inTime := node.heardDirection(text, directionOf(origin))
+	heard := node.heardDirection(text, directionOf(origin), source)
+	// AND WHAT THE RECORD SAID ABOUT WHERE THESE WORDS BELONG (assignment.go's
+	// [taskAssignment.hear]). The same message forwarded to the same task again
+	// answers the receipt already on the record and delivers nothing; a message
+	// older than one this task already holds is refused rather than admitted
+	// behind it, because the receipt it would take is a later id than the newer
+	// correction's (task_forward.go).
+	switch heard.order {
+	case directionAgain:
+		return SteerReceipt{Again: true, Direction: heard.id, Landing: steerAgainWord}, nil
+	case directionOutOfOrder:
+		return SteerReceipt{}, errSaidLaterAlready
+	}
+	direction := heard.id
 	if !node.openRoom().steerIn(conversationOf(node), a.spoken(text, waiting, origin, direction)) {
 		// AND THE ONE INSTANT THE PHASE READ ABOVE CANNOT COVER. The worker's
 		// reading can end between that read and this enqueue — the runner withdraws
@@ -261,7 +279,7 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (SteerRe
 		// window is. A node that has settled since is the honest refusal it always
 		// was.
 		if node.stateNow() == TaskRunning {
-			return SteerReceipt{Held: true, Direction: direction, Landing: heldWord(inTime)}, nil
+			return SteerReceipt{Held: true, Direction: direction, Landing: heldWord(heard.inTime)}, nil
 		}
 		node.forgetDirection(direction)
 		return SteerReceipt{}, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
@@ -275,7 +293,7 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (SteerRe
 	// the line over.
 	if origin == fromPerson && direction != 0 {
 		_ = node.openRoom().steerIn(conversationOf(node), delivery{
-			origin: fromRuntime, kind: msgNotice, note: briefNote(directionReceiptLine(direction)),
+			origin: fromRuntime, kind: msgNotice, note: briefNote(receiptLineFor(direction, source)),
 		})
 	}
 	return SteerReceipt{
@@ -289,9 +307,25 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin) (SteerRe
 // room to read it and the work is not over. It is a RECEIPT and not a refusal:
 // the words are kept, the landing revalidates against them, and the sentence
 // says both of those things to the person who typed them.
-func heldForTask(node *TaskNode, text string, origin messageOrigin) SteerReceipt {
-	direction, inTime := node.heardDirection(text, directionOf(origin))
-	return SteerReceipt{Held: true, Direction: direction, Landing: heldWord(inTime)}
+func heldForTask(node *TaskNode, text string, origin messageOrigin, source spokenSource) (SteerReceipt, error) {
+	heard := node.heardDirection(text, directionOf(origin), source)
+	switch heard.order {
+	case directionAgain:
+		return SteerReceipt{Again: true, Direction: heard.id, Landing: steerAgainWord}, nil
+	case directionOutOfOrder:
+		return SteerReceipt{}, errSaidLaterAlready
+	}
+	return SteerReceipt{Held: true, Direction: heard.id, Landing: heldWord(heard.inTime)}, nil
+}
+
+// receiptLineFor is which of the engine's two lines goes under the words: the
+// one for a person standing in this room, or the one that says they were not
+// (assignment.go).
+func receiptLineFor(direction uint64, source spokenSource) string {
+	if source.id.live() {
+		return forwardedReceiptLine(direction)
+	}
+	return directionReceiptLine(direction)
 }
 
 // heldWord is which of the two keepings this was: one the landing must still

@@ -142,9 +142,9 @@ var beltFacts = []beltFact{{
 	tools: []string{"propose_task", "tasks"},
 	holds: Config.mayProposeTask,
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
-		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering, and `tasks` with `scope: \"everywhere\"` groups every OTHER project holding live work.\n" +
+		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read, and say so when a row prints no transcript. A `[Task reference: ...]` block already carries those URIs.\n" +
-		"- `tasks` with `id` shows the call in flight, the steps, the spend and the last of what a running task said and did: pull it to SEE inside a run. Steer with `id` and `say`.\n" +
+		"- `tasks` with `id` shows the call in flight, the steps, the spend and the last of what a running task said and did: pull it to SEE inside a run. Steer with `id` and `say`; forward the person's own correction with `forward`.\n" +
 		// THE CONTINUE SENTENCE IS NOT REPEATED HERE. `tasks` own description
 		// carries it word for word ([tasksDescription]), and the prefix is a
 		// budget: what pays for the handoff law in prompts/system.md is this

@@ -457,6 +457,22 @@ type directionRecord struct {
 	From    string    `json:"from,omitempty"`
 	State   string    `json:"state,omitempty"`
 	Version uint64    `json:"version,omitempty"`
+	// Source is the person's message this was forwarded from (task_forward.go),
+	// absent on a line said into the node's own room and on every checkpoint
+	// written before forwarding existed.
+	Source *sourceRecord `json:"source,omitempty"`
+}
+
+// sourceRecord is [personSourceID] on disk. THE SCOPE IS WRITTEN WITH THE
+// NUMBER and is not optional: the number alone is one opening of one session's
+// count of the person's messages, and a later opening counts again from a
+// history that compaction may have folded. Restored without its scope it would
+// let a session recognise tomorrow's first message as a direction it already
+// holds — dropping a genuinely new correction as a repeat — which is the one
+// failure this pair exists to make impossible.
+type sourceRecord struct {
+	Scope string `json:"scope"`
+	Seq   uint64 `json:"seq"`
 }
 
 // harnessOfferRecord is one finished page as the checkpoint carries it: enough

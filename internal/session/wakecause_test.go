@@ -336,8 +336,9 @@ func TestARevisedTaskIsJudgedByItsRevisionAndCitedByItsOriginal(t *testing.T) {
 	node := graph.node(id)
 
 	// THE PERSON SAYS IT INTO THE ROOM AND THE WORKER FOLDS IT IN.
-	direction, kept := node.heardDirection(said, directionFromPerson)
-	if !kept {
+	heard := node.heardDirection(said, directionFromPerson, spokenSource{})
+	direction := heard.id
+	if !heard.fresh() {
 		t.Fatal("the person's direction was not recorded")
 	}
 	version, err := node.reviseAssignment(direction, 0, assignmentEdit{
@@ -403,7 +404,7 @@ func TestAResultInFlightKeepsTheTargetItWasComposedAgainst(t *testing.T) {
 	})
 	node := graph.node(id)
 
-	first, _ := node.heardDirection("make it CSV instead", directionFromPerson)
+	first := node.heardDirection("make it CSV instead", directionFromPerson, spokenSource{}).id
 	if _, err := node.reviseAssignment(first, 0, assignmentEdit{deliverable: "inventory.csv"}); err != nil {
 		t.Fatalf("first revision: %v", err)
 	}
@@ -412,7 +413,7 @@ func TestAResultInFlightKeepsTheTargetItWasComposedAgainst(t *testing.T) {
 	_, attempt, tag := node.resultOf()
 
 	// AND THE PERSON MOVES THE GOAL AGAIN BEFORE IT IS DELIVERED.
-	second, _ := node.heardDirection("no, TSV in the end", directionFromPerson)
+	second := node.heardDirection("no, TSV in the end", directionFromPerson, spokenSource{}).id
 	if _, err := node.reviseAssignment(second, 1, assignmentEdit{deliverable: "inventory.tsv"}); err != nil {
 		t.Fatalf("second revision: %v", err)
 	}

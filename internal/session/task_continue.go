@@ -105,7 +105,10 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 	// the finding below either way: recording it is what gives it a road to the
 	// done-condition, not a second copy of the words.
 	if strings.TrimSpace(words) != "" {
-		node.assignment.hear(words, directionFromPerson, time.Now())
+		// It carries no forwarding source: these words were typed at this door,
+		// about this task, so there is no earlier message to order them against
+		// and no repeat of them to recognise (task_forward.go).
+		node.assignment.hear(words, directionFromPerson, time.Now(), spokenSource{})
 	}
 	// Everything on the record is now in front of the next attempt: the words
 	// above, and anything said while the last one was finishing that no worker

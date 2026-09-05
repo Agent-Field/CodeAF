@@ -46,10 +46,9 @@ word and a fuller brief is written around them — the constraints this kind of 
 what was decided on your behalf, and what done means. It is the next section.
 
 Every task carries a title, a short summary, the brief, and a done-condition — the command
-that must pass, the behaviour that must hold, the output that must appear. The brief and
-the done-condition are frozen the moment the work is admitted. Steering can add a missing
-fact or correct a step, but it cannot change what the work is for. If the objective itself
-was wrong, the answer is to propose the work again.
+that must pass, the behaviour that must hold, the output that must appear. The original brief and
+done-condition stay on the record. A correction from you can change the effective
+assignment through `revise_assignment`; the task keeps both your words and its revision.
 
 You can keep working while a task runs. aforge tells you not to wait for it: its report
 arrives in the conversation when it lands.
@@ -2574,10 +2573,9 @@ steer into a task carries one: this sentence when the task was parked on its pie
 `· delivered` when it was taking steps and your line will land at the next one
 (*Reading a task page*).
 
-Nothing else about the task moves. What it was asked to do and what it will be checked
-against were frozen when it started, and steering never touches either — if the goal itself
-was wrong, the answer is a new task (*Does aforge change my task, or rewrite what I asked
-for?*).
+Your correction can change what the task is for through `revise_assignment`. The
+original assignment remains history; the current condition and your words are kept
+together (*When you change what a task is for while it is running*).
 
 **A task whose worker has just finished is refused out loud, never swallowed.** If the last
 piece reported in the instant before you pressed enter, there is nobody left in there to
@@ -3629,7 +3627,7 @@ What else you can do yourself, on a task that is running:
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
 | stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
-| change its brief or its done-condition | **cannot** — frozen; continue with your words as a finding, or propose new work |
+| change its brief or its done-condition | send your correction to the running task; its worker uses `revise_assignment` and keeps your words beside the new condition |
 | continue a failed or finished one | say `continue task 7`, or `tasks` with `id` and `continue` — same node, same copy |
 
 Steering sends your words into the task's own loop verbatim, and they land in its room as
@@ -3999,3 +3997,25 @@ That is the same node: same id, same brief, same working copy and journal, the l
 report as this round's finding. Starting the same brief again with `/task` or
 `propose_task` is new work with a new id, and it is the wrong door when the person
 means keep going.
+
+## Correcting a running task from the main conversation — forwarding your words
+
+Say which running task you mean and what should change. The main conversation can use
+`tasks` with its `id` and `forward: true` to send the message it is answering verbatim,
+as your own direction. The model chooses the recipient; it cannot supply replacement
+words. Its reply should say what it forwarded and to which task.
+
+`tasks` with `say` remains a message from the model. It cannot authorize an assignment
+revision. Task workers cannot use `forward`, and it cannot address another session.
+It cannot be combined with `say`, `continue`, or `resolve`. A result arriving by itself
+does not authorize forwarding an old message of yours.
+
+Repeating the same forward to the same task is acknowledged without sending twice.
+Typing the same sentence again is a new message. A receipt means the direction was
+kept, not that it was read or applied. A correction after publication has started is
+kept for a later round; it cannot recall work already coming home.
+
+A delayed forward cannot revise over a correction recorded with a later speaking time.
+For main-chat messages this is when the session reads them at a turn boundary, not
+the keypress time. This is local ordering, not a guarantee across machines or clock
+changes. Corrections do not automatically broadcast to a task's children.

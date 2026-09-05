@@ -110,6 +110,17 @@ import (
 // says which request that is (+23), and the handoff receipt lost the clause the
 // `# Critical` bullet above already carries (-33). Nothing was raised: the page
 // went 20,840 → 20,830 and the prefix is 47,958, which is 42 under.
+// AND THE FORWARDING DOOR PAID FOR ITSELF OUT OF THREE SECOND COPIES
+// (2026-09-04). The person steering from the main chat needs one more field on
+// `tasks` and one clause on the belt saying when to reach for it (+301, mostly
+// the field's own "their words, never yours"). Nothing was raised: the tool's
+// description lost the "continue task N" sentence and the URI sentence, both of
+// which the `continue` field and the belt's own citation bullet already carry
+// word for word; `id` lost "Running, it answers with its LIVE state", which the
+// belt bullet under it says at greater length; and the belt lost the
+// `scope: "everywhere"` clause the `scope` field governs. The tool block went
+// 27,128 → 27,169, the page 20,830 → 20,797, and the prefix is 47,966, which is
+// 34 under.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
