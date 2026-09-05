@@ -599,8 +599,9 @@ messages, exactly omp's split:
   message in the same turn. A short tool reaches its boundary first; a bash
   already running for 3 seconds is adopted as a job so the steer can land now,
   and one that is still younger than that is looked at once more when it
-  crosses the same 3 seconds, so a correction never waits for a long command's
-  ending or for the background-after clock.
+  crosses the same 3 seconds, so the handoff never waits for a long command's
+  ending or for the background-after clock. An explicit stop phrase reaches the
+  command at any age and never waits out that grace.
 - **Follow-up** (`ctrl+q`): queued to start a fresh turn the moment the
   current one yields.
 

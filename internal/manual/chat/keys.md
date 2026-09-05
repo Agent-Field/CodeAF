@@ -53,11 +53,18 @@ boundary. If a bash command has already been running for 3 seconds, aforge keeps
 alive as a job and lands your steer immediately. The clause names the job and
 `jobs output N` shows its output. A command that is still YOUNGER than 3 seconds when
 you steer is given those few seconds to finish on its own; if it is still running when
-they are up, it is kept alive as a job then, so **your correction never waits longer
-than about three seconds for a bash command** — not for the command's own ending and
-not for the background-after clock. The exact words `stop`, `kill it`, `cancel`,
-`abort`, `ctrl-c` and their tiny variants stop that long command instead, whether the
-command was already old or crossed those three seconds while your words waited.
+they are up, it is kept alive as a job then. So **a bash command holds your correction
+for about three seconds at most** — never for its own ending and never for the
+background-after clock. That is the bound on the handoff, not on the answer: the step
+may hold other tools as well, and the model's reply then takes as long as the model
+takes.
+
+The exact words `stop`, `kill it`, `cancel`, `abort`, `ctrl-c` and their tiny variants
+stop the command instead, **at any age** — a stop is not asked to wait out those three
+seconds, because they exist to let a short command finish and that is the one thing you
+have just said you do not want. If you then type something else, the model reads both
+lines in the order you sent them; the stopped command is not restarted by the second
+one.
 
 ## Enter, cmd+enter, shift+enter, and the waiting-message keys
 

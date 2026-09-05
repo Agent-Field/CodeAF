@@ -18,9 +18,12 @@ package session
 // itself walked ([Agent.steerRunningBashLocked]) with the same lock held. There
 // is no second rule about which commands may be adopted, no second sentence for
 // the tool result, and no second kind of job — the only new thing is WHEN the
-// one question is asked. A person's correction therefore reaches the model
-// inside [steerBashAge] whatever the command turns out to be, and a command
-// that finishes on its own inside that window is still never touched.
+// one question is asked. What that bounds is THE HANDOFF: the command is let go
+// of within [steerBashAge] of the correction's arrival plus whatever the
+// scheduler adds, whatever the command turns out to be. It is not a promise
+// about the model's answer — the batch may hold other tools, and the request
+// itself takes as long as a request takes — and a command that finishes on its
+// own inside that window is still never touched.
 //
 // ── WHAT MAKES A TIMER SAFE TO FIRE LATE ──
 //
@@ -42,12 +45,12 @@ package session
 //	has already landed is not steered again, and a queue with nothing left on it
 //	makes the firing inert.
 //
-// AND A STOP IS NEVER DEMOTED INTO CONTINUING WORK. If any correction still
-// waiting is one of the unmistakable stop phrases ([steerStopsBash]), the stop
-// arm is taken even when a later sentence was typed after it: a person who said
-// `stop` and then said something else has not un-said the stop, and a mechanism
-// that promoted their command into a healthy background job would be answering
-// them with the opposite of what they asked for.
+// AND A STOP NEVER WAITS FOR THIS FILE AT ALL. An unmistakable stop phrase
+// ([steerStopsBash]) acts on the commands in flight the instant it is typed,
+// whatever their age, and cancels any watch already armed ([Agent.Steer]): the
+// grace is a bargain about letting a SHORT COMMAND FINISH, and a person who
+// said `stop` is not asking for it to finish. So the delayed look never has a
+// stop to carry out, and never has to decide how long an old one stays true.
 //
 // ── ONE TIMER, AND THE LOCK IT DOES NOT TAKE THE LONG WAY ROUND ──
 //
@@ -139,9 +142,18 @@ func (a *Agent) stopSteerGraceLocked() {
 // steerGraceFired is the second look itself.
 func (a *Agent) steerGraceFired(watch *steerWatch) {
 	a.mu.Lock()
-	if a.steerGrace == watch {
-		a.steerGrace = nil
+	// THE AGENT MUST STILL BE HOLDING THIS ONE. A watch that was replaced or
+	// released has been let go of deliberately — by a second steer arming its
+	// own, by the turn's cleanup, by Close — and time.Timer.Stop cannot promise
+	// that a callback already on its way will not run. Nothing else here would
+	// refuse it: a replacement inside the same turn has the same turn number and
+	// the same calls, so this is the only check that tells the two apart, and
+	// without it the agent's one watch was one only by arithmetic.
+	if a.steerGrace != watch {
+		a.mu.Unlock()
+		return
 	}
+	a.steerGrace = nil
 	// A GENERATION IN FLIGHT MEANS THE BOUNDARY IS ALREADY COMING. The batch
 	// this watch was armed inside has ended, the request that carries the
 	// correction is out, and adopting anything now would be this timer
@@ -173,22 +185,26 @@ func (a *Agent) steerGraceFired(watch *steerWatch) {
 	}
 }
 
-// pendingSteerLocked is the correction this second look acts for: the one whose
-// words decide the arm and whose record carries the landing.
+// pendingSteerLocked is the correction this second look acts for: the LAST one
+// still waiting, and only that one.
 //
-// It is the LAST one still waiting, so a person who typed twice is answered by
-// what they said most recently — unless one of them was a stop, which wins
-// wherever it sits in the queue for the reason at the top of this file.
+// A PERSON'S NEWEST SENTENCE IS THEIR CURRENT DIRECTION. An older line does not
+// keep authority over a batch it never got to act on, including an older
+// `stop` — a stop that meant a command has already stopped one by the time it
+// could matter here ([Agent.Steer] takes that road at once), and one still
+// sitting on the queue behind a newer instruction is a directive the person has
+// moved on from. Reading it as standing authority would let a sentence they
+// typed and then superseded kill work they had just asked for.
+//
+// It is a position in the queue and never a reading of what the words mean.
+// Both sentences reach the model in the order they were typed, and what to do
+// about the pair of them is the model's to decide with them in front of it.
 func (a *Agent) pendingSteerLocked() *turnSteer {
 	var last *turnSteer
 	for _, message := range a.steering {
-		if message.steer == nil {
-			continue
+		if message.steer != nil {
+			last = message.steer
 		}
-		if steerStopsBash(message.steer.note.Words) {
-			return message.steer
-		}
-		last = message.steer
 	}
 	return last
 }

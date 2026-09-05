@@ -26,9 +26,11 @@ package session
 // [steerBashAge] is adopted as a job instead, making its tool result available
 // immediately without killing its process — and one still YOUNGER than that is
 // looked at once more when it crosses the same bound (steer_grace.go), so the
-// wait is the command's age and never the command's length. An unmistakable stop
-// phrase adopts and kills that job, because preserving work the person just
-// rejected would be the harness overruling them.
+// handoff waits on the command's age and never on the command's length. An
+// unmistakable stop phrase adopts and kills that command at ANY age, because
+// preserving work the person just rejected would be the harness overruling
+// them, and so would making them wait out a grace that exists to let a command
+// finish.
 //
 // ── PER-BOUNDARY, AND BATCHED WHEN THAT IS WHAT HAPPENED ──
 //
@@ -236,11 +238,19 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 		a.generation.cancel(errSteerCut)
 	} else if landed, jobs := a.steerRunningBashLocked(words, a.inFlightBash.snapshot()); landed != "" {
 		steer.note.Landing = landed
-		// AND A SIBLING STILL TOO YOUNG TO ADOPT IS COME BACK TO. Adopting one
-		// call out of a parallel batch leaves the step waiting on the rest of it,
-		// so this road arms the second look for the same reason the one below
-		// does (steer_grace.go).
-		a.armSteerGraceLocked()
+		if steerStopsBash(words) {
+			// A STOP HAS DEALT WITH EVERY COMMAND IN FLIGHT, at every age, so
+			// there is nothing left to come back to — and a watch armed by an
+			// earlier correction is released rather than left to fire into the
+			// wreckage of commands this one just ended (steer_grace.go).
+			a.stopSteerGraceLocked()
+		} else {
+			// AND A SIBLING STILL TOO YOUNG TO ADOPT IS COME BACK TO. Adopting
+			// one call out of a parallel batch leaves the step waiting on the
+			// rest of it, so this road arms the second look for the same reason
+			// the one below does (steer_grace.go).
+			a.armSteerGraceLocked()
+		}
 		defer func() {
 			for _, started := range jobs {
 				a.jobs.announceRow(started)
@@ -294,7 +304,13 @@ func (a *Agent) steerRunningBashLocked(words string, calls []*bare.BashCall) (st
 	var ids []int
 	var adoptedJobs []*job
 	for _, call := range calls {
-		if call.RunningFor() < steerBashAge {
+		// THE AGE IS A BARGAIN ABOUT LETTING A SHORT COMMAND FINISH, and a stop
+		// is the person saying they do not want it to. So a stop reaches a call
+		// of any age at once — waiting three seconds to obey `stop` would be the
+		// harness holding a cancellation the way it holds a correction — while
+		// every other sentence still lets a young call have its few seconds and
+		// is looked at again when they are up (steer_grace.go).
+		if !stop && call.RunningFor() < steerBashAge {
 			continue
 		}
 		var started *job

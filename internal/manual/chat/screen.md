@@ -2794,9 +2794,13 @@ words, and it is one of:
 A bash command that was still younger than 3 seconds when you steered gets
 `waiting for the running step`, and it is a wait of at most those few seconds: if the
 command is still running when they are up it is moved to the background exactly as an
-older one is, and your words go to the model then. The clause you were shown is not
-rewritten — it was true when it was sent — but the transcript's own record of the
-correction says which of the two actually happened.
+older one is, and your words go to the model then. Those seconds bound the handoff and
+not the reply — the step may hold other tools, and the model still has to answer. The
+clause you were shown is not rewritten, because it was true when it was sent, but the
+transcript's own record of the correction says which of the two actually happened.
+
+`stopped the running command` can appear at any age. A plain stop is never held for the
+three seconds; it reaches the command as soon as you send it.
 | `steering` | the plain working word, used when aforge sent no account at all |
 
 On a narrow frame the clause goes on a row of its own under the sentence rather than

@@ -120,10 +120,11 @@ func TestASteerGraceLeavesAQuickBashAlone(t *testing.T) {
 	}
 }
 
-// TWO CORRECTIONS, ONE WATCH, AND THE STOP WINS. The person said `stop` and
-// then said something else; the command is killed rather than promoted into a
-// healthy background job, and only one adoption happens.
-func TestASteerGraceKeepsAStopAStop(t *testing.T) {
+// AN EXPLICIT STOP DOES NOT WAIT OUT THE GRACE. The command is half a second
+// old — far too young to adopt for an ordinary correction — and `stop` reaches
+// it at once, because the grace exists to let a short command FINISH and that
+// is the one thing the person has said they do not want.
+func TestAnExplicitStopReachesAYoungCommandAtOnce(t *testing.T) {
 	t.Parallel()
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -134,23 +135,30 @@ func TestASteerGraceKeepsAStopAStop(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "start the server")
 	waitFor(t, "the foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
-	first := mustSteer(t, agent, "stop")
-	second := mustSteer(t, agent, "look at the config instead")
+	calls := agent.inFlightBash.snapshot()
+	if age := calls[0].RunningFor(); age >= steerBashAge {
+		t.Fatalf("the bash was already %s old, so this is not the young case", age)
+	}
+	sent := time.Now()
+	steered := mustSteer(t, agent, "stop")
+	// THE ACT IS DONE BY THE TIME Steer RETURNS, under the same lock — so this
+	// is a bound on the whole stop and not on a poll of its effects.
+	if waited := time.Since(sent); waited >= steerBashAge {
+		t.Fatalf("the stop took %s, want it not to wait out the %s grace", waited, steerBashAge)
+	}
+	// AND NO WATCH IS LEFT BEHIND to fire into commands this stop already ended.
 	agent.mu.Lock()
 	armed := agent.steerGrace
 	agent.mu.Unlock()
-	if armed == nil {
-		t.Fatal("no second look was armed for a young bash")
+	if armed != nil {
+		t.Fatal("an explicit stop left a second look armed")
 	}
-
-	turnEvents := collect(t, turn)
-	collect(t, first)
-	collect(t, second)
+	collect(t, turn)
+	if got := steerLanding(collect(t, steered)); got != "stopped the running command" {
+		t.Fatalf("steer landing = %q", got)
+	}
 	if got := roleText(completer.request(1), "tool"); !strings.Contains(got, "stopped by the person: stop") {
 		t.Fatalf("stopped tool result = %q", got)
-	}
-	if got, want := userLines(completer.request(1)), []string{"start the server", "stop", "look at the config instead"}; !equalStrings(got, want) {
-		t.Fatalf("second request users = %v, want %v", got, want)
 	}
 	waitFor(t, "the adopted job to settle killed", func() bool {
 		job := agent.jobs.find(1)
@@ -162,8 +170,44 @@ func TestASteerGraceKeepsAStopAStop(t *testing.T) {
 	if notesContain(agent, "job 1 exited") {
 		t.Fatal("a person-requested stop produced an owed exit note")
 	}
-	if kinds := steerEvents(turnEvents); len(kinds) == 0 {
-		t.Fatal("the turn carried no steer events at all")
+}
+
+// THE DELAYED LOOK CARRIES THE NEWEST DIRECTION AND NOTHING OLDER. A `stop`
+// that is still sitting on the queue behind a later instruction is a sentence
+// the person has moved on from, and it must not hold authority over a batch it
+// never acted on — the model reads both, in order, and decides.
+func TestTheDelayedSteerLookTakesTheNewestDirection(t *testing.T) {
+	t.Parallel()
+	waiting := func(words ...string) *Agent {
+		agent := &Agent{}
+		agent.steering = append(agent.steering, userMessage{message: textMessage("user", "job 1 exited 0")})
+		for _, one := range words {
+			agent.steering = append(agent.steering, steerMessage(&turnSteer{note: SteerNote{Words: one}}))
+		}
+		return agent
+	}
+	cases := []struct {
+		name  string
+		queue []string
+		want  string
+	}{
+		{"a superseded stop is not standing authority", []string{"stop", "keep it running, just tell me the date"}, "keep it running, just tell me the date"},
+		{"the newest is a stop", []string{"check the parser", "stop"}, "stop"},
+		{"one correction is its own newest", []string{"check the parser"}, "check the parser"},
+	}
+	for _, one := range cases {
+		t.Run(one.name, func(t *testing.T) {
+			steer := waiting(one.queue...).pendingSteerLocked()
+			if steer == nil {
+				t.Fatalf("no pending steer found in %v", one.queue)
+			}
+			if steer.note.Words != one.want {
+				t.Fatalf("the delayed look acts for %q, want %q", steer.note.Words, one.want)
+			}
+		})
+	}
+	if steer := waiting().pendingSteerLocked(); steer != nil {
+		t.Fatalf("a queue with no correction on it answered %q", steer.note.Words)
 	}
 }
 
@@ -187,7 +231,6 @@ func TestASteerGraceOnlyActsForWhatItWasArmedFor(t *testing.T) {
 
 	agent.mu.Lock()
 	watch := agent.steerGrace
-	agent.steerGrace = nil
 	agent.mu.Unlock()
 	if watch == nil {
 		t.Fatal("no second look was armed for a young bash")
@@ -198,19 +241,28 @@ func TestASteerGraceOnlyActsForWhatItWasArmedFor(t *testing.T) {
 	// It fires late enough that the age itself is no longer what refuses it.
 	time.Sleep(steerBashAge + 2*steerGraceMargin)
 
-	agent.steerGraceFired(&steerWatch{timer: watch.timer, turn: watch.turn + 1, calls: watch.calls})
+	// Each is INSTALLED before it is fired, so what refuses it is the identity
+	// under test and not the guard that answers a watch the agent let go of
+	// (which is TestAReplacedSteerGraceIsInertInItsOwnTurn's subject).
+	fire := func(one *steerWatch) {
+		agent.mu.Lock()
+		agent.steerGrace = one
+		agent.mu.Unlock()
+		agent.steerGraceFired(one)
+	}
+	fire(&steerWatch{timer: watch.timer, turn: watch.turn + 1, calls: watch.calls})
 	if list := agent.jobs.list(); list != "No background jobs." {
 		t.Fatalf("a timer from another turn adopted a command: %q", list)
 	}
-	agent.steerGraceFired(&steerWatch{timer: watch.timer, turn: watch.turn, calls: nil})
+	fire(&steerWatch{timer: watch.timer, turn: watch.turn, calls: nil})
 	if list := agent.jobs.list(); list != "No background jobs." {
 		t.Fatalf("a timer adopted a command it was never armed for: %q", list)
 	}
 
-	agent.steerGraceFired(watch)
+	fire(watch)
 	waitFor(t, "the armed second look to adopt its own command", func() bool { return agent.jobs.find(1) != nil })
-	// AND FIRING IT AGAIN CHANGES NOTHING: the correction has landed and the
-	// call is no longer in flight.
+	// AND FIRING IT AGAIN CHANGES NOTHING: the agent let go of it as it fired,
+	// the correction has landed, and the call is no longer in flight.
 	agent.steerGraceFired(watch)
 	if agent.jobs.find(2) != nil {
 		t.Fatal("a second firing adopted the command twice")
@@ -260,4 +312,54 @@ func TestASteerGraceDoesNotOutliveAnInterruptedTurn(t *testing.T) {
 	if list := agent.jobs.list(); list != "No background jobs." {
 		t.Fatalf("an interrupted turn left a job behind: %q", list)
 	}
+}
+
+// A WATCH THAT WAS REPLACED IS INERT INSIDE ITS OWN TURN. The turn number and
+// the calls are identical between the two — the only difference is which one
+// the agent is holding — so nothing but that check can refuse the first.
+func TestAReplacedSteerGraceIsInertInItsOwnTurn(t *testing.T) {
+	t.Parallel()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("replaced-bash", "bash", `{"command":"sleep 6; echo replaced-finished"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("changed course"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("and it finished"), nil },
+	}}
+	answerTheNamerOffTheQueue(completer)
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "run the suite")
+	waitFor(t, "the foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
+	first := mustSteer(t, agent, "check the parser while that runs")
+	agent.mu.Lock()
+	replaced := agent.steerGrace
+	agent.mu.Unlock()
+	second := mustSteer(t, agent, "and the lexer too")
+	agent.mu.Lock()
+	current := agent.steerGrace
+	agent.mu.Unlock()
+	if replaced == nil || current == nil || replaced == current {
+		t.Fatalf("two steers did not replace one watch: %p then %p", replaced, current)
+	}
+	if replaced.turn != current.turn {
+		t.Fatal("the second steer arrived in a different turn, so this is not the replacement case")
+	}
+	// Both timers come off the clock so that every firing below is one this test
+	// made, and it is made late enough that the age is not what refuses it.
+	replaced.timer.Stop()
+	current.timer.Stop()
+	time.Sleep(steerBashAge + 2*steerGraceMargin)
+
+	agent.steerGraceFired(replaced)
+	if list := agent.jobs.list(); list != "No background jobs." {
+		t.Fatalf("a watch the agent had already let go of adopted a command: %q", list)
+	}
+	agent.steerGraceFired(current)
+	waitFor(t, "the watch the agent is holding to adopt its command", func() bool { return agent.jobs.find(1) != nil })
+	if agent.jobs.find(2) != nil {
+		t.Fatal("one command was adopted twice")
+	}
+	collect(t, first)
+	collect(t, second)
+	collect(t, turn)
 }
