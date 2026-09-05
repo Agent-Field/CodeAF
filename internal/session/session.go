@@ -1722,17 +1722,9 @@ type Config struct {
 	// already in flight is never cut in half by it.
 	SpendRailUSD float64
 
-	// Unattended says NOBODY IS SITTING IN FRONT OF THIS SESSION — the door's
-	// `--yolo`, which until now reached this package only as an approval default
-	// (cmd/aforge's v3Policy) and said nothing about who was watching.
-	//
-	// IT IS NOT THE ARMING BIT ON ITS OWN. Together with a Budget it makes this
-	// session's principal a [Steward] (principal.go); alone it changes nothing
-	// whatever, because a flag that quietly started carrying a conversation on
-	// for hours would be the harness spending somebody's money on a sentence
-	// they did not write. The door says so in one line at launch. AND IT IS
-	// OVER-RULED BY [Config.Interactive]: a conversation somebody is steering
-	// is theirs to steer even under a ceiling.
+	// Unattended retains the legacy opt-in to automatic goal continuation.
+	// Together with Budget it selects a Steward only when Interactive is false.
+	// Tool approval policy is configured separately by the launch door.
 	Unattended bool
 
 	// Interactive says A PERSON IS STEERING THIS CONVERSATION — the door's own
@@ -1763,15 +1755,10 @@ type Config struct {
 	// on them would not be one model, it would be a broken one.
 	OneModel bool
 
-	// Budget is the ceiling an unattended session runs under: hours, dollars, or
-	// both. THE ZERO BUDGET IS NO CEILING, which is what every session has always
-	// had, and it is what leaves `--yolo` alone exactly as it was.
-	//
-	// It is separate from SpendRailUSD above and they are different rails for
-	// different questions. The rail REFUSES THE NEXT TURN once a conversation has
-	// spent its ceiling, whoever is driving it; this is what the Steward is
-	// allowed to spend CARRYING ON BY ITSELF, and reaching it ends the run with a
-	// report rather than with a refusal nobody reads.
+	// Budget bounds automatic continuation in a fixed headless run. For an
+	// interactive conversation it bounds new turn admission independently of
+	// who owns the goal; already running work may finish beyond the limit.
+	// SpendRailUSD remains a separate, adjustable conversation spending limit.
 	Budget Budget
 
 	// newerBuild is the cheap process-local reading that says this running

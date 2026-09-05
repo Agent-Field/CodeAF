@@ -1729,7 +1729,7 @@ cannot tell. It never goes the other way — a session you are sitting in front 
 row you set, and a blank row still means aforge asks you.
 
 **And a run you left going with a budget goes one step further, for the case where nobody
-could check the work at all.** On `--yolo` with `--max-hours` or `--max-cost`, a landing
+could check the work at all.** On a headless `--once --yolo` run with `--max-hours` or `--max-cost`, a landing
 nobody could say anything about is not put to anybody: the check has already been run twice,
 there is nobody to ask, and the work is taken as it stands. The landing says so and says
 why, under the task's own account of what it did:

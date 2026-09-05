@@ -78,8 +78,8 @@ there.
 | `--once "<text>"` | send one message, print the reply, and exit — no screen, nobody watching |
 | `--no-compact` | never shorten the conversation automatically |
 | `--yolo` | run every tool without asking, subject to the limits that nothing lifts |
-| `--max-hours <n>` | with `--yolo`: how many hours it may carry its own work on |
-| `--max-cost <n>` | with `--yolo`: how many dollars it may carry its own work on |
+| `--max-hours <n>` | with `--yolo`: elapsed-time limit; interactive chat checks before new turns |
+| `--max-cost <n>` | with `--yolo`: dollar limit; interactive chat checks before new turns |
 | `--one-model` | every text call this session makes runs on the session model |
 
 `--yolo` does not make aforge unstoppable: a small set of destructive commands
@@ -88,16 +88,15 @@ permissions page.
 
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
-`--yolo` on its own only changes what it asks you about. It still stops when the
-model stops talking — which is right when you are sitting there, because you are
-the one who says what happens next.
+`--yolo` changes tool approvals. Normal interactive chat remains a conversation you
+can steer, even with a budget: an unrelated question does not become a new assignment
+for running tasks, and the first request does not remain a fixed goal for every later
+reply. Tasks retain their own assignments until you revise them.
 
-Give it a budget as well and it carries its own work on:
+For a fixed unattended goal, use the one-message door with a budget:
 
-    aforge chat --yolo --max-hours 6
-    aforge chat --yolo --max-cost 20
-    aforge chat --yolo --max-hours 6 --max-cost 20
-    aforge chat --once "fix the failing test" --yolo --max-hours 6
+    aforge chat --once "finish the import fix" --yolo --max-hours 6
+    aforge chat --once "finish the import fix" --yolo --max-cost 20
 
 That posture is the same without a screen. The `--once` form above carries its
 own work on exactly as the conversation does, moves a long reply's work onto a
@@ -105,21 +104,30 @@ task at the same points, and has every ending read the same way. The only
 difference is how the decision is shown: there is no screen to draw its line on,
 so the line is kept in the transcript instead.
 
-Either number alone is enough; both together means whichever runs out first. You
-can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
-`AFORGE_MAX_COST`, and the flag always beats the variable.
+Either limit alone is enough; both means whichever runs out first. The defaults can
+come from `AFORGE_MAX_HOURS` and `AFORGE_MAX_COST`; explicit flags take precedence.
+A headless `--yolo` launch without a budget stops when the model stops.
 
-Without a budget none of that happens, and it tells you so in one line when it
-starts. If you are sitting there watching it, none of this applies to you: your
-session is exactly what it has always been, and nothing is ever deleted on your
-behalf.
+## Interactive chat limits · --max-hours · --max-cost
 
-`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
-built on the far machine, so set them there.
+In normal interactive chat, `--max-hours` and `--max-cost` are checked before a new
+turn starts, including a reply started by background work. They do not freeze the
+conversation's goal. The time limit uses the current engine session's clock; the
+money limit uses its recorded cumulative cost. An exhausted limit refuses the next
+turn before recording your message or calling a model.
+
+A turn already running and work already delegated may finish. These are not hard
+reservations across every concurrent task, so the final bill can exceed a limit.
+`/budget` remains a separate conversation spending limit; the stricter dollar limit
+applies. Launch limits are changed by relaunching with different flags. A refusal
+states which launch limit was reached.
+
+The local persistent host carries these launch settings. Explicit `--host` still
+refuses the budget flags at its door; configure that machine's launch instead.
 
 ## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
 
-With a budget, four things change, and only with a budget:
+For a fixed headless goal (`--once --yolo` with a budget), four things change:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
@@ -182,7 +190,7 @@ than on your bare sentence. A run measured before this said "not yet confirmed" 
 write seam and again at its ceiling, had both handovers thrown away by the two readers, and
 ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
 
-**And with a budget one reply may spend at most a third of the wall.** *Why did it move my
+**And for a fixed headless goal, one reply may spend at most a third of the wall.** *Why did it move my
 work to a task after five minutes; it kept running tests for ten minutes and then handed it
 over; why did it not hand over sooner.* The other three ways above all COUNT something —
 parts in a sketch, files changed, rounds spent — and a reply that spends its time reading

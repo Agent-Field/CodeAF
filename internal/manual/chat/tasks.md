@@ -3802,7 +3802,7 @@ there your row stands, and a blank row still means aforge asks you.
 
 ## Needs your look on a run I left going with --yolo — a check that could not run, and what taken as it stands means
 
-On a run you left going with a budget — `--yolo` **and** `--max-hours` or `--max-cost` —
+On a headless run with a budget — `--once --yolo` **and** `--max-hours` or `--max-cost` —
 there is nobody to put a card in front of, so a task nobody could check is not put to
 anybody. The check is asked twice first: one checker, then a **fresh** one with the same
 evidence and not a word about what the last one said. Only when the second try says nothing

@@ -80,6 +80,23 @@ to runtime-started turns, and separating interactive conversation policy from a 
 headless goal. Their final validation belongs below once integrated; the failed raw
 runs remain evidence and are not relabeled as passes.
 
+## Hosted stream follow-up, candidate f7e341d65
+
+The wake subscription alone did not pass the live follow-up case: 148s, $0.005210415,
+259,894 input and 5,122 output tokens. Unlike the preceding run, the journal contains
+the correct `RABANNIC` answer at 01:05:24Z and the complete build result at 01:06:29Z.
+Neither survived visibly in the captured chat. Hosted turn adoption reused the
+previous turn number and could discard a new stream while the old tail was draining.
+The fixed-goal controller also ordered a second invocation of the prepared action.
+This is a failed product run; correct hidden model output is not a passed chat test.
+
+The display repair routes hosted turns through the existing local follow-up/wake
+queue. Two deterministic regressions fail before the change and pass afterward:
+preserving a preceding answer across a hosted wake, and retaining a new hosted stream
+while the previous one drains. The focused TUI suite passed in 2.888s. The remote
+wake subscription passed its full package under the race detector in 20.497s, plus
+structural laws and the full manual package. Full integrated validation follows.
+
 ## Priorities after this wave
 
 1. Make result delivery an explicit user-facing obligation through provider failures:

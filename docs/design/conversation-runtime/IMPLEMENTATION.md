@@ -61,6 +61,23 @@ same run produced three defects — a path-token trimming bug (since fixed), the
 code fixes and regression tests. The run's own note stands: **it does not
 prove overall task efficiency or all steering behaviors.**
 
+## Interactive ownership and visible result turns
+
+The launch carries an explicit `Interactive` fact through local-host construction,
+new/resume options and principal selection. Tool approval (`--yolo`) and a budget no
+longer imply that an interactive conversation has a frozen first goal. Fixed headless
+runs retain their original goal behavior; task assignments retain their own revision
+rules. Interactive launch dollar/time limits are enforced at new-turn admission,
+including background wakes, separately from goal ownership. They permit work already
+in flight to finish and do not implement aggregate reservation across concurrent tasks.
+
+Hosted sessions subscribe once to runtime wake turns. The existing numbered stream,
+replay and fan-out path carries them to attached windows. Hosted turn adoption uses
+the same ordered queue as local wakes; a later reply cannot silently reuse the
+previous person's turn or disappear while its last events drain. This closes a display
+failure that unit-only transport testing did not catch. A visible reply still depends
+on successful model narration; retained results and transport delivery are distinct.
+
 ## What is measured, and what is not claimed
 
 Measured and test-backed, in-tree: compaction bounds a long frozen tool history to a
@@ -74,13 +91,12 @@ small tasks measured; it exercised the print door rather than the interactive pr
 infrastructure and checker failures, undercounted cost before the meter fix, and ran too few
 repetitions to support a claim either way.
 
-The interactive peer comparison (`INTERACTIVE-COMPARISON-PRELIMINARY.md`, 2026-09-04, pinned
-open model, one repetition per peer and case) records peer results only: both peers passed
-the mid-work revision case, and both failed the answer-while-working case — one answered only
-after the work finished, one displayed a corrupted answer. **Aforge's own final integrated
-run is pending**, so this is not yet a paired comparison, and one repetition with differing
-context sizes, caching and provider variability cannot establish a frontier in any direction.
-The earlier peers-01 run is superseded and must not be counted.
+The interactive comparison records peer and candidate outcomes, including failures.
+Both peers passed the initial mid-work revision case; both failed the first follow-up
+case. Aforge's early candidate failed both. Further live diagnostics separated model
+quality, display grouping and frozen-goal reruns. See `VALIDATION.md` for the tested
+revisions and final checks. One repetition with differing context sizes, caching and
+provider variability cannot establish a frontier in any direction.
 
 Any future comparison must name the tested door, workload, model, quality checks,
 repetitions, latency and actual cost. Unmeasured cells are not successes.

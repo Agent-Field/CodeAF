@@ -32,6 +32,8 @@ area are the pre-existing package lines: `internal/session` (engine), `internal/
 | **Context window** | `toolcompact.go`, `stub.go`, `turnfold.go` | the bounded *view* of frozen history sent to the provider: reduced tool results with retrievable pointers, a fold to a headroom target, a linear budget walk | implemented |
 | **End-of-turn handoff** | `turnhandoff.go` | whether the current request's work was handed to a task that is still live, so the turn can end without polling | implemented |
 | **Projection** | `task_status.go`; adapters in `internal/tui3/taskstatus.go` | one pure `ProjectTask(TaskFacts) TaskStatus`: presence, wait-on, change disposition, fault, attention | implemented |
+| **Conversation policy and limits** | `principal_wire.go`, `interactive_budget.go`, `rail.go`; launch shape adapters | interactive ownership independent of fixed-goal continuation and new-turn spending/time limits | implemented |
+| **Background reply transport** | `internal/remote/wakelane.go`, existing turn ring/replay, `internal/tui3/watching.go` and `followup.go` | one hosted wake subscription; ordered turn adoption shared with local wakes | implemented |
 | **Lifetime of a view** | `internal/remote/client.go` (`WorkOutlivesExit`, `Detach`), `internal/tui3/keeper.go` | whether closing a window ends the conversation, asked as a capability rather than guessed from a hostname | implemented |
 | **Lifecycle and scheduling** | `task_run.go`, `task_ledger.go` | the graph, the frontier, state transitions, the five landings | no seam; owns several questions at once |
 | **Evidence and outcome** | `task_audit.go`, `task_claims.go`, `taskgrade.go`, `task_checks.go` | did the work hold, and what is the record of it | no seam; reached through calls, not a value |
