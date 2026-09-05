@@ -76,7 +76,7 @@ func TestOneEscProducesAtMostOnePlannerPassAndOneTitleCall(t *testing.T) {
 	go func() { defer wg.Done(); _ = agent.nameAhead(asked) }()
 	go func() {
 		defer wg.Done()
-		_, _, _ = agent.checkpointBrief(context.Background(), &Usage{}, "test/model")
+		_, _, _, _ = agent.checkpointBrief(context.Background(), &Usage{}, "test/model")
 	}()
 	wg.Wait()
 	// nameAhead lands on a goroutine; give the one allowed call a moment to

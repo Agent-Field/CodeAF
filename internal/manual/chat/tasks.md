@@ -642,6 +642,38 @@ here until they land`.
 worker told to wait for your task 4 and task 8 would ask for them and be told `No tasks have
 run in this project yet.` — a duty it can never see the object of.
 
+## Waiting for a command you asked for does not become a task — my build was still running and it made a task out of waiting for it, it started a task just to check a file it had already written
+
+**A command you asked for is already yours, and waiting for it is not work anybody else can
+take.** When a reply crosses one of the lines above while a background command **this
+conversation started** is still running, the model writing the answer is shown that command
+by its number and its name — `job 1 (./slow-build.sh)` — and asked one extra question along
+with the brief: is everything else you asked for already done, so that all that is left is
+that ending? If it says yes, and names the number, **nothing is started**. No task, no lines,
+nothing added to your reply.
+
+**Nothing is finished and nothing is stopped either.** The command keeps running, your
+request stays open, and the ending comes back the way it always did: the moment the command
+exits, that ending starts a turn here on its own, and the reply you get is written with the
+result in front of it. This is the difference from the *both readers agree* drop above — that
+one is your request being **done**; this one is your request being **unfinished, in this
+conversation's own hands**.
+
+**It has to be verifiable or it does not happen.** The number must be one you were actually
+shown, the command must still be running when the answer comes back, and you must not have
+typed anything in between. If the command finished while the answer was being written, if a
+number was invented, or if you changed direction mid-reply, the work moves onto a task exactly
+as it would have — the direction this errs in is never to drop work on a doubt.
+
+**And a running command on its own changes nothing.** If there is real work left — three call
+sites still to rename, a suite never run — the reply is handed over as usual, with your build
+still running beside it. What holds the answer here is the remainder being only that ending,
+never the fact that something is running.
+
+**Watches are not this.** A watch is a command re-run on a timer with no ending of its own to
+wait for; a reply that stops "until the watch fires" is the other question — see *Waiting on
+something, and the limit on carrying on*.
+
 ## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
 
 **Reading is free. Writing is not.** The three points above count tool ROUNDS, which is the
