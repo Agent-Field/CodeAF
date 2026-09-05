@@ -182,8 +182,11 @@ So before the work moves, the same reading a stopped turn gets is taken:
   Nothing is killed and nothing is thrown away; what was running is where you left it.
 
 **And a handover it asked for is never dropped.** A long turn can normally talk its own
-handover out of happening: if the model says nothing is left AND the second reader's sketch
-says the same, the work stays where it is and the turn finishes. On a run with a budget that
+handover out of happening: if the model says nothing is left and the second reader's sketch
+does not name independent parts still to do, the work stays where it is and the turn
+finishes. It gets that **once per request**, whether or not the sketch agreed — a turn that
+says it is done and then keeps working is met by the next look with the claim already spent.
+On a run with a budget that
 only holds while the run's own owner agrees — and when it has just read the ending and said
 the ask is **not** finished, the work moves anyway, on its account of what is left rather
 than on your bare sentence. A run measured before this said "not yet confirmed" at its
@@ -216,8 +219,8 @@ one with six seconds to go. It happens
 towards it; and it needs a wall, so `--max-cost` on its own never triggers it.
 
 None of this applies to a session you are sitting in front of: your turn's work moves onto a
-task exactly as it always has, nothing is decided for you, and the two readers agreeing
-still leaves your answer where it is. There is no wall on your session, so there is no share
+task exactly as it always has, nothing is decided for you, and a reply that says nothing is
+left still leaves your answer where it is. There is no wall on your session, so there is no share
 of one either, however long your reply runs.
 
 ## What counts as still left · a task that died on the wire · it kept working after everything was finished

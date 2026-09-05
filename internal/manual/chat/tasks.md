@@ -467,13 +467,63 @@ nothing, and a look that produced nothing is the answer carrying on. The third p
 is what makes that safe.
 
 **The third point is not a question.** Past it aforge stops looking. The answer ends where it
-is, what is left of the work moves onto one task whatever the last sketch said, and two dim
-lines go into the transcript:
+is, what is left of the work moves onto one task whatever the last sketch said — unless the
+answer itself says nothing is left, which is the one thing that stops it (below) — and two
+dim lines go into the transcript:
 
 ```
 this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
+
+## It made a task out of work that was already done · why did it hand over when everything was written · the task redid what the answer had already written · it started again from my first message
+
+**When aforge stops to look at a long answer, it asks the model writing that answer whether
+anything is left.** If the answer is that nothing is — everything you asked for is already
+written — then **no task starts**, no line is added to your transcript, nothing is marked
+done and nothing is stopped. The reply you were already getting simply finishes.
+
+**That needs nothing to agree with it. It needs nothing to contradict it.** The second
+reader's sketch stops the drop only where the sketch names **independent parts still to
+do** — a reader saying positively that work is left. A reader that could not be reached, one
+that faulted, one that ran out of time, one that drew a single job, and one that drew
+`(waiting)` all say nothing about whether you are finished, and none of them is read as
+though it had said you were not. Measured before this: a reply wrote the CSV that was asked
+for, deleted the file it replaced and said it was done — and because the sketch at that
+moment read `(waiting)` for a build still running in the background, the whole request was
+handed to a fresh worker that started again from the first message and ran the clock out.
+
+**If something of your own is still running, this is not the road you are on.** A reply whose
+only remainder is a command it started waits for it here instead, and no task is made of the
+wait — see *Waiting for a command you asked for does not become a task*. If the reply instead
+says it is finished outright while that command is still going, the drop above applies and
+the command is untouched by it: nothing is killed, nothing is marked done, and its ending
+comes back to this conversation as the note it always would have.
+
+## It said it was done and then carried on · it started work after saying nothing was left · I typed something more and it made a task of it · I pressed escape and a task started anyway
+
+**A reply that says nothing is left is believed once per request.** If it then does ten more
+rounds of real tool work, aforge looks again, does not believe it a second time, and the work
+moves on in the ordinary way. Rounds spent only watching pieces you already handed out do not
+count towards those ten — see *Watching the pieces you handed out does not move your answer*.
+
+**Once, whether or not the second reader agreed.** A sketch reading `(done)` at the same
+moment is better evidence than the reply alone and still not proof — both can be wrong
+together — so agreement buys no extra drop.
+
+**Typing something new gives you a fresh one.** The count runs against the request, so a
+direction you add while the reply is running is a different request: it arrives with nothing
+spent, and a reply that discharges *that* is dropped on its own terms.
+
+**And a reply you interrupt starts nothing.** Press escape, or close the session out from
+under a running reply, and the handover goes no further: nothing is named, no brief is
+written, nothing is admitted. Nothing owns the request any more.
+
+**What this does not cover: a sketch naming work you have already done.** Where the second
+reader draws independent parts still to do, the work moves — even if those parts landed in
+the seconds after that reader was shown its account of them. The reading is one line drawn
+from a snapshot. What was closed is the opposite mistake: silence, a fault, or a shape with
+no parts in it are no longer read as a reader saying work remains.
 
 ## Can I give a task a short name?
 

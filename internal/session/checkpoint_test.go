@@ -1809,23 +1809,34 @@ func TestAMarkNobodyCouldReadIsJournaledAsAFailure(t *testing.T) {
 	}
 }
 
-// ── the ceiling's drop needs two minds ──────────────────────────────────────
+// ── the ceiling's drop is believed once ─────────────────────────────────────
 
-// THE RUNNING MODEL CANNOT DROP THE HANDOVER ON ITS OWN SAY-SO.
+// THE RUNNING MODEL IS BELIEVED ONCE, AND THEN IT IS MET.
 //
 // A model mid-grind declaring "everything is done" at round forty is that model
 // grading its own work at the exact moment it has a reason to. It was measured:
 // the handover was dropped and the same model then ground on for twenty more
-// rounds unwatched. So a declaration the mark's own reader contradicts moves the
-// work anyway — on the person's own sentence, because a continuation that spent
-// its answer on the token wrote no instruction to hand anybody.
-func TestTheCeilingIsNotDroppedOnTheRunningModelsSayS0Alone(t *testing.T) {
+// rounds unwatched.
+//
+// THE ANSWER TO THAT USED TO BE A SECOND READER and is now the turn's own budget
+// ([checkpointMeter.believeDone]). Corroboration could not tell a model that was
+// lying from a reader that had failed, drawn nothing, or drawn a shape without
+// parts in it — and on the frozen revision cells it turned three finished
+// requests into cold workers for exactly that reason
+// (completion_stale_test.go). So the claim is granted, and a turn that then does
+// [checkpointPrice] more rounds of real work has disproved it: the ceiling comes
+// back, the claim is spent, and the work moves — on the person's own sentence,
+// because a continuation that spent its answer on the token wrote no instruction
+// to hand anybody.
+func TestTheRunningModelsSayS0IsBelievedOnceAndThenMet(t *testing.T) {
 	const asked = "write the eight files I listed and smoke-check them"
 
-	rounds := checkpointMarkAt(checkpointMarks)
-	// A CHAIN AT EVERY MARK: the reader says work remains, all the way to the
-	// ceiling. The continuation then says it does not.
-	steps := append(grindingSteps(rounds+checkpointSlack, checkpointChainSketch, checkpointNothingLeft),
+	// A CHAIN AT EVERY MARK: the reader never says the work is done and never
+	// draws independent parts either, which is the live cells' own shape and the
+	// one corroboration could say nothing useful about. The continuation says
+	// nothing is left, at the ceiling and at the rung that comes back after it.
+	rounds := checkpointMarkAt(checkpointMarks) + checkpointPrice + checkpointSlack
+	steps := append(grindingSteps(rounds, checkpointChainSketch, checkpointNothingLeft),
 		finalAnswer("done"))
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	agent := checkpointAgent(t, &scriptedCompleter{steps: steps}, func(config *Config) { config.SessionFile = path })
@@ -1840,7 +1851,7 @@ func TestTheCeilingIsNotDroppedOnTheRunningModelsSayS0Alone(t *testing.T) {
 	node := ran.await(t)
 
 	if count := admitted(graph); count != 1 {
-		t.Fatalf("%d tasks were admitted; one mind grading itself does not drop a handover", count)
+		t.Fatalf("%d tasks were admitted; a turn that ground on past its own claim is not finished", count)
 	}
 	if !saidSomething(noticeTexts(collected), checkpointCeilingNote) {
 		t.Errorf("the ceiling moved the work and said nothing; notices were %q", noticeTexts(collected))
@@ -1850,9 +1861,24 @@ func TestTheCeilingIsNotDroppedOnTheRunningModelsSayS0Alone(t *testing.T) {
 	if node.spec.brief != asked {
 		t.Errorf("the task runs on %q, want the person's own sentence %q", node.spec.brief, asked)
 	}
-	if ceilings := journaledCeilings(t, path); len(ceilings) != 1 ||
-		ceilings[0].Decision != checkpointCeilingMoved {
-		t.Errorf("the ceiling journaled %+v, want %q", ceilings, checkpointCeilingMoved)
+	// AND THE FILE SAYS BOTH THINGS THAT HAPPENED, in order: the claim believed,
+	// and the same claim refused when the turn carried on working past it. A run
+	// that dropped once and a run that dropped forever used to read identically.
+	ceilings := journaledCeilings(t, path)
+	if len(ceilings) != 2 {
+		t.Fatalf("the ceiling journaled %+v, want the drop and the ending after it", ceilings)
+	}
+	if ceilings[0].Decision != checkpointCeilingNothing {
+		t.Errorf("the first ending journaled %q, want %q", ceilings[0].Decision, checkpointCeilingNothing)
+	}
+	if ceilings[1].Decision != checkpointCeilingMoved {
+		t.Errorf("the second ending journaled %q, want %q", ceilings[1].Decision, checkpointCeilingMoved)
+	}
+	// AND THE SECOND ENDING IS THE ONE THAT COST A TURN'S WORK MORE than the
+	// first, so a reader can see the grind the budget was spent on.
+	if ceilings[1].Rounds < ceilings[0].Rounds+checkpointPrice {
+		t.Errorf("the ceiling came back at round %d after a drop at %d, want %d rounds of work between them",
+			ceilings[1].Rounds, ceilings[0].Rounds, checkpointPrice)
 	}
 }
 

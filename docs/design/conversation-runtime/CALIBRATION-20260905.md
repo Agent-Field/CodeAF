@@ -71,6 +71,27 @@ Source `3cb79f3f8` adds two corrections after the frozen calibration:
 - Cache estimates cannot credit more input than a provider actually reported receiving for the remembered conversation. Newly appended context is no longer credited merely because the conversation identity matches. Missing lengths earn no credit. This remains an estimate: compaction, rewriting and eviction can invalidate a prefix.
 - Provider settlement carries a typed observation containing its own conversation identity and reported prompt/cache counts. The shared last-request-per-model map was removed. Previously overlapping requests could credit A’s result to B’s conversation. A barrier-based stub test forces out-of-order completion, fails with the old attribution, and passes in both streamed and whole-body paths; five repetitions with the race detector passed.
 
+A later correction addresses recommendation 1 above at the handoff boundary itself, not at
+its counters. A running turn that answers the handover ask with `NOTHING LEFT TO DO` is now
+dropped unless the second reader's sketch names independent parts still to do; a reading that
+was absent, faulted or drew no parts no longer stands in for a reader saying work remains.
+The accepted drop is charged once per request — including when the sketch agreed, because
+both readers can be wrong together — and the ceiling returns after `checkpointPrice` further
+worked rounds with the claim spent. A direction typed mid-turn changes the request and so
+arrives with the claim unspent. Separately, a handover whose owning context is already
+cancelled now admits nothing: the frozen `handoff-after/001` cell's only error line was
+`role:markreader message:context canceled`, which was read as a reader outage, and
+`launchRouteTask` takes no context, so the check is at the seam. Package regressions in
+`internal/session/completion_stale_test.go` cover each of these, including the running-command
+case driven through the real loop.
+
+**Limitations of that correction.** It does not address a sketch that names parts which have
+already been done: where the reader draws independent parts, the work still moves, and the
+harness has no way to distinguish a part genuinely left from one that landed after the reader
+was shown its account. Only the opposite mistake — silence read as remainder — is closed.
+There is **no live performance result** for it; the timeout verdict for cell
+`018-revision-midwork-aforge` and the measured table above are unchanged.
+
 The optional `multi-defect-pipeline` scenario contains four small independent defects and a combined CLI. Its 29 external cases compare input/output/status in a separate parent process. The original judge was rejected after unrepaired code rewrote its in-memory tests into no-ops; the committed regression preserves that counterexample. Further regressions cover import hangs, descendants that ignore termination, exited parents, and judge termination. Process-group cleanup is best effort on POSIX; a deliberately detached descendant is outside that guarantee. The fixture directory is not a filesystem sandbox, and it makes no claim about substantial parallel work or internal API coverage beyond the CLI.
 
 Final combined validation on `3cb79f3f8`:

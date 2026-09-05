@@ -41,7 +41,7 @@ package session
 // one, which can be DECLINED when the running model and the mark's own reader
 // both say nothing remains ([Agent.handOverRunningTurn]) — and a turn that wrote
 // its two files and finished is exactly that turn. A seam that re-fired every
-// round would ask those two minds the same question over and over and charge the
+// round would ask the reader and the model the same question over and over and charge the
 // person for each of them.
 
 import (
@@ -94,7 +94,7 @@ type writeMeter struct {
 	calls int
 	files map[string]bool
 	// spent says the seam has already opened its door in this turn, so that a
-	// handover the two minds declined is not asked for again every round after.
+	// handover this road declined is not asked for again every round after.
 	spent bool
 }
 
@@ -363,12 +363,13 @@ func writesAimedAt(cwd, program string, rest []string) []string {
 // evidence of nothing of the sort.
 //
 // THE MARK'S OWN READER IS ASKED, and that is what makes this safe to fire on a
-// counter. The handover can only be declined on TWO MINDS agreeing that nothing
-// remains, and the second of them is this reading; without it a turn that made
-// its two edits and finished would be converted into a task nobody needed.
-func (a *Agent) checkpointWriting(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, taken *Decision) bool {
+// counter: a drawing with independent parts in it is what refuses the
+// continuation's claim that nothing is left ([Agent.handOverRunningTurn]).
+// Without the reading at all, a turn that made its two edits and finished would
+// be weighed on the counter alone.
+func (a *Agent) checkpointWriting(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, taken *Decision) bool {
 	read := a.readMark(ctx)
 	a.journalMarkRead(read, 0, rounds, checkpointDecisionWrote)
 	return a.handOverRunningTurn(ctx, hub, turn, started, model,
-		writeSeamNote, checkpointSeamWrite, rounds, verdict, read, taken).moved
+		writeSeamNote, checkpointSeamWrite, rounds, meter, meter.raced, read, taken).moved
 }
