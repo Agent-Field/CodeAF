@@ -6,6 +6,27 @@ spec = importlib.util.spec_from_file_location('reconcile', Path(__file__).parent
 r = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r)
 class ReconcileTests(unittest.TestCase):
+    def test_canonical_slug_requires_exact_catalog_evidence(self):
+        row = dict(phase='settled', request_id='r', generation_id='g',
+                   model='deepseek/deepseek-v4-flash-0731', cost_usd=None)
+        data = dict(id='g', model='deepseek/deepseek-v4-flash-20260731',
+                    total_cost=0.00000076, cancelled=True)
+        self.assertFalse(r.valid_receipt(data, row))
+        identities = r.catalog_identities([dict(id=row['model'], canonical_slug=data['model'])])
+        evidence = []
+        got = r.reconcile([row], lambda _: data, evidence, identities)
+        self.assertEqual(got[0]['cost_usd'], data['total_cost'])
+        self.assertEqual(evidence[0]['model_identity']['canonical_slug'], data['model'])
+        self.assertFalse(r.valid_receipt(dict(data, model='deepseek/something-else'), row, identities))
+        self.assertFalse(r.valid_receipt(data, dict(row, model='deepseek/deepseek-v4-flash'), identities))
+
+    def test_ambiguous_or_missing_catalog_identity_is_not_authority(self):
+        self.assertEqual(r.catalog_identities([{'id':'m','canonical_slug':'a'},
+                                               {'id':'m','canonical_slug':'b'}]), {})
+        self.assertEqual(r.catalog_identities([None, {'id':'m'}, {'id':None,'canonical_slug':'x'}]), {})
+        self.assertFalse(r.valid_receipt({'id':'g','total_cost':0,'cancelled':True},
+                                         {'generation_id':'g'}))
+
     def test_matches_identity_and_completion(self):
         row = dict(phase='settled', request_id='r1', generation_id='g1', model='open-model', cost_usd=None)
         data = dict(id='g1', model='open-model', total_cost=0.2, finish_reason='stop')

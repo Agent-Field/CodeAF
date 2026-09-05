@@ -63,3 +63,9 @@ Each campaign uses fresh state. Its per-cell cap limits runtime, not a hard doll
 ## Calibration boundary correction
 
 The first new campaign was stopped when its driver closed an idle chat while a requested background action was still running. Those interactive outcomes require adjudication; they do not establish that a competitor abandoned work. The corrected driver observes the action's completion marker independently of chat readiness. Its idle confirmation interval and terminal teardown remain included in raw door duration; fine interaction witnesses are separate and have the driver's polling resolution. `STOP` in the campaign output directory requests a stop after the current cell, preserving all evidence.
+
+## Cancelled request accounting
+
+A real cancelled DeepSeek stream exposed a provider identity distinction: the requested catalog ID and the billing receipt's canonical slug differ. Reconciliation accepts that relationship only when the official model catalog explicitly maps the exact requested ID to that slug, and retains that identity evidence with the receipt. It never accepts a family-name match. The original ledger remains unchanged.
+
+Receipts can arrive after inference ends. The runner spends up to 30 seconds on read-only metadata recovery outside the timed interaction; unresolved cost stays unknown. A later explicit `lib/reconcile.py SOURCE FRESH_OUTPUT --wait-seconds 60` can recover delayed receipts without replaying inference. Derived reports must name the recovered ledger; do not overwrite raw observations or silently turn incomplete prices into zero.
