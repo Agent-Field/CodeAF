@@ -1055,6 +1055,67 @@ able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
 pieces of its own work out, two levels deep at most, and `tasks` shows it those
 pieces and nothing else.
 
+## Why did it say "loaded" before making a picture — load_capability, and the tools it does not carry
+
+Nothing is missing and nothing is being switched on. The less-used tools are
+**built and ready** and simply are not in the list aforge reads at the start of
+every turn; one call fetches a named group of them into that list, and they are
+there from the very next request onward — **inside the same turn**, so the work
+carries straight on without waiting for you to say anything else.
+
+The reason is the bill. Every tool aforge is holding sends its full description
+and arguments ahead of **every** request, on every step of every turn — so a verb
+reached for twice a week costs exactly what `read` costs. On a fully-wired
+machine the making verbs, the settings pair and the saved-procedure hands are
+about a third of that block. Held back, they cost nothing until the day they are
+wanted.
+
+There are up to three groups, and `load_capability` takes one name. Each group
+lists the tools **this machine actually has** — never a promise of what a group
+might contain elsewhere, so on a machine with no image model the `media` group
+names only what it can really do:
+
+- **`media`** — up to `generate_image`, `speak`, `generate_music`,
+  `generate_video` and `edit_video`. `edit_video` needs only ffmpeg; the other
+  four each need a model wired for them, and the ones this build lacks are not
+  named.
+- **`settings`** — `settings` and `change_setting`.
+- **`harnesses`** — `build_harness`, `list_harnesses`, `propose_subharness`
+  and `list_subharnesses`.
+
+A group with no surviving tools does not exist at all, and a build with nothing
+held back carries no `load_capability` either.
+
+`view_image` is **not** on a shelf. Looking at something you have just put in
+front of aforge is ordinary work in a conversation; making a film is not.
+
+What you see is one extra line before the work starts:
+
+```
+Loaded: generate_image, speak, … Their full descriptions are in your tool list
+from your next request, which is still this turn, and stay there for the rest of
+this session. Carry on now.
+```
+
+**It is not permission and it never was.** Loading changes which tools are in the
+list and touches no gate: `change_setting` asks you exactly as it always did,
+`generate_image` spends exactly what it always did, and a tool your
+`/settings` approvals refuse is refused the same after loading as before. Nor
+does it make anything possible — a machine with no video model has **no** `media`
+group at all, rather than one that loads and then fails.
+
+A group only ever appears if this build actually has its tools, so what
+`load_capability` offers is never a promise it cannot keep.
+
+**How long it lasts.** A loaded group stays in the tool list for the rest of the
+running session, and cannot be unloaded. Reopening the conversation tomorrow
+starts a fresh tool list, and aforge re-loads the groups by reading the
+`load_capability` calls already in this conversation's own transcript — so what
+it loaded yesterday it holds again today. The one gap is age: once a load has
+been compacted out of the transcript there is nothing left to read it back from,
+and aforge simply loads the group again the next time it needs it. Asking for a
+group that is already loaded is harmless and changes nothing.
+
 ## What aforge cannot do
 
 Plainly, so you do not have to find out the hard way.

@@ -247,7 +247,15 @@ func (a *Agent) belt() []bare.Tool {
 	// cannot generate a single frame, where cutting together footage the person
 	// already has is the only video work there is. It rides last because it is
 	// what the other five's output is assembled WITH.
-	return append(tools, a.videoEditTools()...)
+	tools = append(tools, a.videoEditTools()...)
+	// AND THE LAST STEP IS NOT A GATE. Everything above has already decided what
+	// this build can offer; this splits what survived into what the model carries
+	// from the first turn and what waits one call away on a named shelf, and puts
+	// `load_capability` where the shelved groups used to be
+	// (tools_capabilities.go). It removes no capability and adds none: a machine
+	// with no media models still has no media group, and a shelf with nothing on
+	// it puts no verb on this belt at all.
+	return a.shelveDeferred(tools)
 }
 
 // toolDefinitions builds the wire form of the belt, carrying each tool's

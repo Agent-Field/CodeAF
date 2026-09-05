@@ -73,6 +73,15 @@ func (c Config) hasStore() bool { return c.Memory != nil }
 // change to the person's machine made there is one they never saw made.
 func (c Config) maySeeSettings() bool { return !c.InTask }
 
+// shelvesCapabilities says whether this shape holds its rarely-reached tools
+// back on a named shelf, one `load_capability` call away, rather than carrying
+// them (tools_capabilities.go). It is the ONE reading of that question:
+// [Agent.shelveDeferred] is built from this same predicate, so a sentence
+// telling the model to load cannot be rendered for a shape whose belt carries
+// the tools directly — which a worker or a task node does, because the saving
+// is only worth having on a prefix re-sent every turn.
+func (c Config) shelvesCapabilities() bool { return !c.InTask }
+
 // mayWatch says whether `watch` belongs on this belt (tools.go). It comes off
 // inside a task because its whole delivery mechanism is a note arriving in a
 // conversation, and a node has none.
@@ -144,8 +153,15 @@ type beltFact struct {
 	tools []string
 	// holds is the belt's predicate, verbatim — not a second reading of it.
 	holds func(Config) bool
-	// present is the wording the page carried for everybody, unchanged.
+	// present is the wording the page carried for everybody, unchanged. It is
+	// the DIRECT case: the tools are in the tool list already.
 	present string
+	// shelved is the same sentence for a shape that holds these tools back
+	// (tools_capabilities.go): it names the group and the verb that fetches it,
+	// because a model told to reach for a verb that is one call away and not
+	// told about the call is a model that will be answered `Unknown tool`. An
+	// empty string means this fact's tools are never shelved.
+	shelved string
 	// absent is what a worker without the tool is told instead: what it cannot
 	// do from here, and what to do in its place. An empty string renders
 	// nothing, which is right where the absence needs no instruction.
@@ -199,7 +215,7 @@ var beltFacts = []beltFact{{
 }, {
 	tools: []string{"use_service"},
 	holds: Config.hasConnect,
-	present: "- A connected account is the person's own and you act in it on their behalf, so call `use_service` when the work needs one; nothing is connected without them saying yes, and its tools arrive on your NEXT turn. Most arrive as one `<id>_request` tool naming the address its paths hang off, with the service's published documentation as the schema: `get` is free to try, `post`, `put`, `patch` and `delete` are asked about first. A few serve named tools instead, and an account with more tools than a conversation holds answers with its whole list, so call again with `tools` naming the few this needs.\n" +
+	present: "- A connected account is the person's own and you act in it on their behalf, so call `use_service` when the work needs one; nothing is connected without them saying yes, and its tools arrive in your tool list on your next request, still this turn. Most arrive as one `<id>_request` tool naming the address its paths hang off, with the service's published documentation as the schema: `get` is free to try, `post`, `put`, `patch` and `delete` are asked about first. A few serve named tools instead, and an account with more tools than a conversation holds answers with its whole list, so call again with `tools` naming the few this needs.\n" +
 		"- Sending a message and putting something on a calendar reach other people in the person's name and cannot be undone, so they are asked first: write what they would have written, with real recipients and times, and never send twice because the first was not answered.\n" +
 		"- The person decides what each account may be used for, one sentence at a time: what they turned off is absent rather than failing, and a tool saying so is their standing answer, so do the rest without it and say what you could not do.",
 	// NOTHING IS SAID WHERE THERE IS NO HUB, and the three lines above travel
@@ -209,9 +225,15 @@ var beltFacts = []beltFact{{
 	// nothing to do instead.
 	absent: "",
 }, {
-	tools:   []string{"settings", "change_setting"},
+	// AND `load_capability` IS ONE OF THIS SENTENCE'S TOOLS, in the shelved
+	// wording only. It is true on exactly this predicate: [Agent.settingsTools]
+	// is gated on [Config.maySeeSettings] and nothing else, so a shape holding
+	// this fact has the settings group, and a non-empty shelf always carries the
+	// loading verb (tools_capabilities.go).
+	tools:   []string{"settings", "change_setting", loadCapabilityToolName},
 	holds:   Config.maySeeSettings,
 	present: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Relay a refusal as written and point at `/settings`.",
+	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group, so call `load_capability` and carry straight on: they are in your tool list on your next request, this same turn. Relay a refusal as written and point at `/settings`.",
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
 }}
 
@@ -252,14 +274,16 @@ var handoffFacts = []beltFact{{
 	// second-best road to point it at (fork.go's forkTools).
 	absent: "",
 }, {
-	tools:   []string{"build_harness"},
+	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,
 	present: "  - A shape of work that will recur: `build_harness`.",
+	shelved: "  - A shape of work that will recur: `build_harness`, in the `harnesses` group.",
 	absent:  "",
 }, {
-	tools:   []string{"propose_subharness"},
+	tools:   []string{"propose_subharness", loadCapabilityToolName},
 	holds:   Config.mayProposeSubharness,
 	present: "  - A shape of work a saved program ALREADY does: `propose_subharness`.",
+	shelved: "  - A shape of work a saved program ALREADY does: `propose_subharness`, in the `harnesses` group.",
 	absent:  "",
 }}
 
@@ -268,11 +292,15 @@ var handoffFacts = []beltFact{{
 // that cannot design one has no reason to carry the definition, and a worker
 // paid for both paragraphs on every request of every turn.
 var programFacts = []beltFact{{
-	tools: []string{"list_harnesses", "build_harness"},
+	tools: []string{"list_harnesses", "build_harness", loadCapabilityToolName},
 	holds: Config.mayDesignHarness,
 	present: "A **sub-harness** is a reusable recipe: a named, versioned procedure saved\n" +
 		"here, and offered by the turn when somebody's words match. `list_harnesses`\n" +
 		"lists them, `build_harness` designs one.",
+	shelved: "A **sub-harness** is a reusable recipe: a named, versioned procedure saved\n" +
+		"here, and offered by the turn when somebody's words match. `list_harnesses`\n" +
+		"lists them, `build_harness` designs one, and `load_capability` with\n" +
+		"`harnesses` puts both in your tool list on your next request, this same turn.",
 	absent: "",
 }, {
 	tools: []string{"list_subharnesses", "propose_subharness"},
@@ -280,6 +308,12 @@ var programFacts = []beltFact{{
 	present: "A **subharness** is a saved PROGRAM rather than a recipe: typed input, a typed\n" +
 		"answer, only the tools it declared. `list_subharnesses` lists them and\n" +
 		"`propose_subharness` offers one with your line about why it matched. NOTHING\n" +
+		"RUNS BECAUSE YOU PROPOSED IT: the person answers that card, so propose only when\n" +
+		"the work IS what a program is for.",
+	shelved: "A **subharness** is a saved PROGRAM rather than a recipe: typed input, a typed\n" +
+		"answer, only the tools it declared. `list_subharnesses` lists them and\n" +
+		"`propose_subharness` offers one with your line about why it matched, both from\n" +
+		"the same `harnesses` group. NOTHING\n" +
 		"RUNS BECAUSE YOU PROPOSED IT: the person answers that card, so propose only when\n" +
 		"the work IS what a program is for.",
 	absent: "",
@@ -415,6 +449,14 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 		text := fact.absent
 		if fact.holds(config) {
 			text = fact.present
+			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES.
+			// A worker or a task node carries these tools directly, so telling
+			// it to call `load_capability` — which is not on its belt at all —
+			// would be the very defect this file exists to prevent, written the
+			// other way round.
+			if fact.shelved != "" && config.shelvesCapabilities() {
+				text = fact.shelved
+			}
 		}
 		if text != "" {
 			lines = append(lines, text)

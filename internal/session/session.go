@@ -1855,6 +1855,24 @@ type Agent struct {
 	// It is under armMu with the belt, and written at the same door, because a
 	// tool on the belt without its record would be a tool judged by nothing.
 	served map[string]servedTool
+	// shelf is what this build HAS and the model is not carrying: the tools
+	// tools.go built and [Agent.shelveDeferred] held back, keyed by the group
+	// word `load_capability` loads them by, and shelfOrder is the order those
+	// groups are offered in (tools_capabilities.go). Both are nil whenever
+	// nothing was shelved, which is every belt that replaces itself wholesale.
+	//
+	// They are under armMu WITH the belt because they are the belt's other half:
+	// the loading door reads the shelf and appends to the belt in one hold, so
+	// two turns loading the same group cannot both find it unarmed.
+	//
+	// THE SHELF IS THE CONSTRUCTION-TIME PARTITION and is not emptied by a load:
+	// a loaded group is on the belt AND still listed here, which is why
+	// [Agent.offeredTools] joins the two and deduplicates rather than
+	// concatenating them. A reopened session rebuilds both from scratch and then
+	// re-arms what its own transcript says it loaded
+	// ([Agent.rearmLoadedCapabilities]).
+	shelf      map[string][]bare.Tool
+	shelfOrder []string
 	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
 	// hands the harness took, why, and what is left. Nil whenever the belt is
 	// whole, which is nearly always.
@@ -1863,7 +1881,7 @@ type Agent struct {
 	// dispatcher that found a name missing needs to know whether it was taken or
 	// never existed, and the two answers must not be able to disagree.
 	withdrawn *toolWithdrawal
-	// armMu guards those headers, that map, and nothing else. It is not mu:
+	// armMu guards those headers, those maps, the shelf and nothing else. It is not mu:
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
 	armMu sync.Mutex

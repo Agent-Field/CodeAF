@@ -1485,7 +1485,8 @@ func TestTheManualMentionsTheDivisionVerb(t *testing.T) {
 	// and wrong in exactly the way that gate exists to catch.
 	nest := newDivideNest(t, wideBrief, 0)
 	found := false
-	for _, tool := range nest.node.belt() {
+	nest.node.tools = nest.node.belt()
+	for _, tool := range nest.node.offeredTools() {
 		if !manual.Chat().Mentions(tool.Name) {
 			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
 		}

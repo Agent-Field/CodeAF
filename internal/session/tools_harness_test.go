@@ -260,8 +260,15 @@ func TestNoConversationCarriesTheAdaptiveVerb(t *testing.T) {
 
 // onBelt looks one hand up without failing the test when it is absent, which is
 // the whole point of the belt table above.
+//
+// IT ASKS WHAT THIS BUILD HAS, which is the question every gate in that table
+// means: the saved-procedure hands wait on the `harnesses` shelf until a
+// `load_capability` call fetches them (tools_capabilities.go), and shelving
+// changes when a schema is sent, never whether the gates above it passed. The
+// narrower question — is it in the tool block the model is reading right now —
+// is [Agent.hasTool], and capabilities_test.go is where the two are held apart.
 func onBelt(agent *Agent, name string) (bare.Tool, bool) {
-	for _, tool := range agent.tools {
+	for _, tool := range agent.offeredTools() {
 		if tool.Name == name {
 			return tool, true
 		}
