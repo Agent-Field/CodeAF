@@ -141,8 +141,14 @@ slug. OMP coding delegates used a separate GLM5.3-only guard.
 ## Validation scope and local delivery
 
 The full repository check is recorded in
-`/private/tmp/af-conversation-ops/final-make-check-02.log`. Its final outcome will be
-entered here when the run completes. The first full run is preserved separately as
+`/private/tmp/af-conversation-ops/final-make-check-02.log`: **PASS on 8cf8c62cf**.
+This includes vet, formatting, the whole test suite under the unchanged known-red
+ledger, packaged manual tests and the binary-size check. Full `internal/session`
+took 185.807s, `internal/remote` 18.621s and `internal/tui3` 465.307s. The packaged
+manual passed in 1.547s. The binary was 50,501,634 bytes against a 54,600,000-byte
+limit. The checkout remained unchanged throughout this successful run.
+
+The first full run is preserved separately as
 `final-make-check.log`: it found a missing conditional-tool fragment registration
 and lost continue-task wording. Both were fixed, and their focused regression suite
 passed (1.629s). That run also detected a documentation edit I made while its checkout
