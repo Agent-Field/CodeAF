@@ -2280,6 +2280,11 @@ type Agent struct {
 	// from the input goroutine while the loop installs and clears it.
 	generation *activeGeneration
 	steering   []userMessage
+	// steerGrace is the one armed second look at a correction that arrived
+	// while a foreground bash was still too young to adopt (steer_grace.go).
+	// There is at most one, it is replaced rather than added to, and every exit
+	// stops it.
+	steerGrace *steerWatch
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn

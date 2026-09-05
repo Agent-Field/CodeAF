@@ -1549,6 +1549,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// terms. Everything else on the queue drains exactly as it always has.
 			a.liftSteersLocked(hub)
 			_, unanswered := a.drainSteeringLocked(hub)
+			// AND THE SECOND LOOK AT A YOUNG COMMAND IS LET GO OF WITH THE TURN
+			// IT WAS ARMED IN. It re-checks this turn's number before it touches
+			// anything, so a leftover is inert either way; stopping it here is
+			// what keeps the timer's life the turn's life (steer_grace.go).
+			a.stopSteerGraceLocked()
 			a.running = false
 			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
 			// as they always have; an interrupted turn that never received
@@ -1728,6 +1733,16 @@ func (a *Agent) Interrupt() {
 	cancel := a.cancel
 	jobs := a.jobs
 	a.dropFollowUpsLocked()
+	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
+	// not later by the turn's own cleanup. The cancel below is made with the
+	// lock let go of, so a watch left armed has a real interval in which the
+	// turn is still running and the command's context is still alive — and what
+	// it would do there is hand the foreground command to the job registry,
+	// where it deliberately SURVIVES an interrupt (jobs.go). A person who
+	// pressed stop would be left with the command detached and still running,
+	// which is the opposite of what they asked for. The cleanup stops it again
+	// and that is idempotent (steer_grace.go).
+	a.stopSteerGraceLocked()
 	a.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -1896,6 +1911,9 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
+	// Nothing armed by a steer outlives the session that armed it
+	// (steer_grace.go).
+	a.stopSteerGraceLocked()
 	if a.closeDone == nil {
 		a.closeDone = make(chan struct{})
 	}
