@@ -9,35 +9,14 @@ import (
 	"time"
 )
 
-// THE CHECKS ARE THE ONES THE WORK NAMED, AND THEY ARE RUN IN A FRESH PROCESS.
-//
-// A session declares its checks from the acceptance the work composed — in
-// prose, in backticks or after a shell prompt (task_checks.go's
-// [declaredChecks]) — and a unit of work uses the same reading, so the two can
-// never disagree about what a check is.
-func TestTheSessionsChecksComeOffItsOwnAcceptance(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	steward := agent.steward()
-	steward.hear("port the parser; check it with `go build ./...`")
-	steward.setAcceptance("every fixture parses and `go test ./parser` passes")
-
-	checks := agent.sessionChecks()
-	want := map[string]bool{"go test ./parser": false}
-	for _, check := range checks {
-		if _, named := want[check]; named {
-			want[check] = true
+// Neither a composed acceptance nor a pasted request grants execution rights.
+func TestSessionAcceptanceDoesNotDeclareExecutableChecks(t *testing.T) {
+	for _, acceptance := range []string{"every fixture passes `go test ./parser`", "run `./deploy.sh` once", "finish:\n$ sh ./deploy.sh", routeAskAcceptance + "run `./deploy.sh`"} {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Unattended = true; c.Budget = Budget{Wall: time.Hour} })
+		agent.steward().setAcceptance(acceptance)
+		if got := agent.sessionChecks(); len(got) != 0 {
+			t.Fatalf("prose granted execution: %q => %v", acceptance, got)
 		}
-	}
-	for check, found := range want {
-		if !found {
-			t.Fatalf("the session does not check what its own words name: %q is missing from %v", check, checks)
-		}
-	}
-	if containsWord(checks, "go build ./...") {
-		t.Fatalf("a command the ask mentions is not the work's own promise, yet it became a session check: %v", checks)
 	}
 }
 
@@ -250,7 +229,7 @@ func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
 	})
 	promised.steward().hear("the pasted reproduction ends with:\n$ chmod 000 tox.ini")
 	promised.steward().setAcceptance("the fix passes:\n$ chmod 000 tox.ini")
-	if checks := promised.sessionChecks(); !containsWord(checks, "chmod 000 tox.ini") {
+	if checks := promised.sessionChecks(); len(checks) != 0 {
 		t.Fatalf("the same step declared by the acceptance is not a session check: %v", checks)
 	}
 }
@@ -467,7 +446,7 @@ func TestAPersonsStoppedTurnTakesNoSecondReading(t *testing.T) {
 // work it MADE is finished work — and what that buys is not a done answer taken
 // on trust but the second reading: the session's declared checks are run against
 // the tree, and they are what actually settles it.
-func TestInlineWorkWithNoTasksReachesTheTerminalCheck(t *testing.T) {
+func TestInlineWorkIsAssessedWithoutInventingARepeatableCheck(t *testing.T) {
 	tree := t.TempDir()
 	made := filepath.Join(tree, "test_auth.py")
 	if err := os.WriteFile(made, []byte("def test_scheme():\n    assert True\n"), 0o600); err != nil {
@@ -491,8 +470,8 @@ func TestInlineWorkWithNoTasksReachesTheTerminalCheck(t *testing.T) {
 	if got.Verb != DecideDone {
 		t.Fatalf("a session that wrote the whole fix itself was carried on: %+v", got)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Fatalf("the terminal check never ran over the work the session made: %v", err)
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("prose caused the action to run again: %v", err)
 	}
 }
 
@@ -512,7 +491,8 @@ func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	// nothing — the assertion below is about the CHECK. It is placed in the
 	// graph rather than admitted, because admitting one starts a worker and what
 	// is under test here is the reading taken after one has already landed.
-	landOne(agent, TaskDone, "port the parser", "")
+	node := landOne(agent, TaskDone, "port the parser", "")
+	node.Checks = []string{"false"}
 
 	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
 	if got.Verb != DecideCarryOn {
@@ -538,7 +518,8 @@ func TestADoneAtAHandoverIsCheckedAgainstTheTreeFirst(t *testing.T) {
 	steward := agent.steward()
 	steward.hear("port the parser; check it with `false`")
 	steward.setAcceptance("the parser builds and `false` passes")
-	landOne(agent, TaskDone, "port the parser", "")
+	node := landOne(agent, TaskDone, "port the parser", "")
+	node.Checks = []string{"false"}
 
 	got := agent.decideHandover(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
 	if got.Verb != DecideCarryOn {
@@ -820,6 +801,49 @@ func TestTheSessionAlsoChecksWhatItsWorkersDeclared(t *testing.T) {
 	}
 }
 
+// THE SESSION DOES NOT REDO WHAT A DELIVERED TASK ALREADY DID.
+//
+// The per-task checker stopped treating a receipt as a door, but the session runs
+// its own checks over the delivered tree when the ask is finished — so a command
+// the composed acceptance happens to name, which a task has just carried out, was
+// still going to be carried out a second time here, by the harness, after
+// delivery. Only the explicit repeatable contract contributes executable checks.
+func TestTheSessionDoesNotRerunAnActionADeliveredTaskAlreadyPerformed(t *testing.T) {
+	tree := t.TempDir()
+	writeCheckFile(t, tree, "deploy.sh", "#!/bin/sh\nexit 0\n", 0o755)
+	writeCheckFile(t, tree, "verify.sh", "#!/bin/sh\nexit 0\n", 0o755)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the release is out: `./deploy.sh` has run and `./verify.sh` passes")
+	node := landOne(agent, TaskDone, "ship the release", "deployed")
+	node.graph.mu.Lock()
+	// What the task DID, and what it was put under contract to be checked by.
+	node.receipts = []toolReceipt{{tool: "bash", args: `{"command":"sh ./deploy.sh"}`}}
+	node.Checks = []string{"./verify.sh"}
+	node.graph.mu.Unlock()
+
+	checks := agent.sessionChecks()
+	for _, check := range checks {
+		if strings.Contains(check, "deploy.sh") {
+			t.Fatalf("the session would deploy a second time after delivery: %v", checks)
+		}
+	}
+	// AND THE DECLARED CHECK IS STILL RUN. Suppressing the re-run must not
+	// suppress verification: a test the work declared stays runnable.
+	var kept bool
+	for _, check := range checks {
+		if strings.Contains(check, "verify.sh") {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatalf("the task's declared verification was dropped with the action: %v", checks)
+	}
+}
+
 // ── #468: A CHECK IS A COMMAND, NEVER A PATH ────────────────────────────────
 
 // A SPAN THAT CANNOT BE INVOKED IS NOT A FAILING CHECK, IT IS NOT A CHECK.
@@ -852,6 +876,8 @@ func TestASessionsCheckIsACommandAndNeverABarePath(t *testing.T) {
 	steward := agent.steward()
 	steward.hear("bump the version")
 	steward.setAcceptance("`version.py` reads 1.1 and `checks.sh` passes")
+	node := landOne(agent, TaskDone, "bump the version", "")
+	node.Checks = []string{"version.py", "checks.sh"}
 
 	checks := agent.sessionChecks()
 	for _, check := range checks {
@@ -866,7 +892,6 @@ func TestASessionsCheckIsACommandAndNeverABarePath(t *testing.T) {
 	// AND THE WHOLE ROAD ENDS AT DONE. The one unit of work finished, the one
 	// check that can be run passes, and there is no permanent failure left over
 	// from a span nobody could ever have typed.
-	landOne(agent, TaskDone, "bump the version", "")
 	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The version is bumped.")
 	if got.Verb != DecideDone {
 		t.Fatalf("a finished ask was carried on: %+v", got)

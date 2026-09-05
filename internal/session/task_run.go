@@ -2078,7 +2078,7 @@ func (n *TaskNode) instruction() string {
 	// THE ZERO COPY IS THE DOCUMENT AS IT HAS ALWAYS BEEN, byte for byte, and
 	// that is what every reader here is for. [TaskNode.instruction] has seven
 	// readers that are NOT the worker — the proposal card, the checkpoint, the
-	// ground ladder, the auditor's packet, [declaredChecks] (which resolves
+	// ground ladder, the auditor's packet, [auditDoorFor] (which resolves
 	// against the clean restore, a third directory that is neither the source
 	// nor the worker's copy), the naming and sizing readers, and the progress
 	// reader — and binding this one body would silently move all of them.

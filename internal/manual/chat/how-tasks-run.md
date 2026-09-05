@@ -2697,3 +2697,9 @@ its own: raising `no_progress` for work that is legitimately repetitive moves bo
 
 Both step limits are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
+
+## Which checks can the main conversation repeat?
+
+The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. Without declared task checks, the completion reader assesses the work and existing evidence; it does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
+
+Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed.

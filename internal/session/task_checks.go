@@ -577,98 +577,12 @@ func declaredCheckList(raw []string) ([]string, string) {
 			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +
 				", which is not something a read-only checker is allowed to run"
 		}
-		out = append(out, command)
 		if len(out) >= auditCheckCount {
-			break
+			return nil, "Invalid arguments: checks accepts at most " + strconv.Itoa(auditCheckCount) + " commands; combine checks explicitly rather than omitting any"
 		}
+		out = append(out, command)
 	}
 	return out, ""
-}
-
-// checkSource states whose account named a candidate check, and it is the one
-// question left in the prose harvest: a command belongs to the work, never to a
-// shell transcript in the person's pasted words.
-//
-// THE ZERO VALUE IS THE RESTRICTIVE ONE, AND THAT ORDER IS THE POINT. A caller
-// written later that forgets to name the account is handed the person's reading
-// rather than the work's — so a forgotten field costs a run one check it could
-// have made, which is recoverable, instead of costing the gate itself, which is
-// how `chmod 000 tox.ini` came out of a pasted reproduction and ran.
-type checkSource int
-
-const (
-	checksFromAsk checkSource = iota
-	checksFromWork
-)
-
-// declaredChecks is how a SESSION's own acceptance names its commands: every
-// command the work's OWN DOCUMENT names.
-//
-// IT IS NOT THE NODE'S DOOR ANY MORE and must not become one again. A task's
-// checker runs the contract's typed `checks` and nothing harvested out of prose
-// (see the third and fourth measured failures at the top of this file); what is
-// read here is the session's own acceptance, run by the harness against its own
-// deliverable tree ([Agent.sessionChecks]), where there is no second contract to
-// carry the commands and no worker whose work could be repeated by mistake.
-//
-// IT READS THE TWO CONVENTIONS PROSE HAS FOR NAMING A COMMAND and no others: a
-// span in backticks, and a line that opens with a shell prompt. Both are how a
-// person, a planner or a benchmark writes down "this is the thing to run", in
-// every language there is, which is exactly why they are the ones read here — a
-// rule that looked for a build system's name would be the constant this file
-// replaced, wearing a regexp.
-//
-// WHOSE ACCOUNT THE TEXT CAME FROM DECIDES WHETHER IT NAMES A CHECK AT ALL.
-// Either convention in the work's own brief or acceptance names a check; either
-// one in the person's pasted words names none. A measured tox run read
-// `chmod 000 tox.ini` out of a pasted reproduction and tried it against the
-// deliverable tree, where success would have made the project's configuration
-// unreadable without tripping the tree-moved guard. Nearly every bug report
-// backticks its reproduction, so exempting backticks was the same hole wearing
-// different punctuation.
-//
-// TWO FILTERS STAND BETWEEN A BACKTICK AND A DOOR, and they ask different
-// questions. [commandLike] asks whether the span has the SHAPE of one command —
-// a path, an option or a sentence fails it. [runnableHere] then asks whether it
-// is a command AT ALL WHERE THE CHECKER WILL BE STANDING, which is the question
-// the third measured failure at the top of this file was made of: prose
-// backticks a branch and a repository as readily as it backticks a build, and
-// every one of those has the shape of a command.
-//
-// THE GROUND IS THE DIRECTORY THE CHECKER WILL BE PUT IN, threaded down from the
-// caller that already knows it. A span resolved against any other directory
-// would be admitted or refused on the strength of a tree nobody is standing in.
-func declaredChecks(text, ground string, from checkSource) []string {
-	// ONLY THE WORK'S ACCOUNT NAMES A CHECK, IN EITHER SPELLING. Every value
-	// not explicitly identified as the work stays restrictive, so a new source
-	// added later cannot read the person's words merely because its caller
-	// forgot to classify it.
-	if from != checksFromWork {
-		return nil
-	}
-
-	var out []string
-	// The odd-numbered pieces of a split on the backtick are what was BETWEEN a
-	// pair of them. A fenced block splits into empty pieces around its own
-	// content, and the content itself carries newlines, so both fail
-	// [commandLike] on their own without a special case for fences.
-	spans := strings.Split(text, "`")
-	for index := 1; index < len(spans); index += 2 {
-		if command, ok := commandLike(spans[index]); ok && runnableHere(ground, command) {
-			out = append(out, command)
-		}
-	}
-	for _, raw := range strings.Split(text, "\n") {
-		line := strings.TrimSpace(raw)
-		if !strings.HasPrefix(line, "$ ") {
-			continue
-		}
-		command, ok := commandLike(strings.TrimPrefix(line, "$ "))
-		if ok && runnableHere(ground, command) {
-			out = append(out, command)
-		}
-	}
-	return out
 }
 
 // checkCommand answers HOW A DECLARED CHECK IS INVOKED where the checker is

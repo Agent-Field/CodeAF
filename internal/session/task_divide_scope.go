@@ -203,11 +203,8 @@ func scopeClaimedTwice(shared []string) string {
 // sharedCheckCommands is every command more than one part of this division is
 // ordered to run, normalised and in a stable order.
 //
-// IT DOES ITS OWN READING RATHER THAN ASKING [declaredChecks], and that is a fact
-// about where the sentences come from. That door harvests the two conventions
-// PROSE HAS FOR MARKING a command — a backticked span and a `$ `-prefixed line —
-// which is right for a document somebody wrote to be read. A done-condition is
-// not that document: real ones are plain sentences, "rank_test.go passes; go test
+// THIS IS A DUPLICATE-WORK LINT, NOT EXECUTABLE VERIFICATION. The checker only
+// reads typed declarations. This lint also compares done-condition clauses: real ones are plain sentences, "rank_test.go passes; go test
 // ./internal/tui3/... passes", with nothing marked at all, and a reading that
 // waited to be told would see no commands here on the day the waste happens.
 //

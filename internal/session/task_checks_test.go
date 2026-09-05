@@ -182,7 +182,7 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 				continue
 			}
 		}
-		got := declaredChecks("Check it with `"+one.span+"`, please.", one.ground, checksFromWork)
+		got := runnableChecks([]string{one.span}, one.ground)
 		if one.door && len(got) != 1 {
 			t.Errorf("%s (%q) is runnable here and did not become a check: %q", one.what, one.span, got)
 		}
@@ -346,64 +346,6 @@ func TestNoToolchainIsWrittenIntoTheAuditorsDoor(t *testing.T) {
 			return true
 		})
 	}
-}
-
-// NO SPAN IS HARVESTED BEFORE ITS ACCOUNT IS ASKED.
-//
-// The backtick loop once stood before the source test, so it could admit a
-// pasted reproduction even though the prompt-line loop below it was guarded.
-// This structural assertion keeps the account boundary in front of every loop;
-// the behavioural tests then prove what each side of that boundary observes.
-func TestNoSpanIsHarvestedBeforeTheAccountIsAsked(t *testing.T) {
-	fileSet := token.NewFileSet()
-	parsed, err := parser.ParseFile(fileSet, "task_checks.go", nil, 0)
-	if err != nil {
-		t.Fatalf("parsing task_checks.go: %v", err)
-	}
-	var declared *ast.FuncDecl
-	for _, declaration := range parsed.Decls {
-		function, ok := declaration.(*ast.FuncDecl)
-		if ok && function.Name.Name == "declaredChecks" {
-			declared = function
-			break
-		}
-	}
-	if declared == nil || declared.Body == nil {
-		t.Fatal("task_checks.go has no declaredChecks body to keep behind the account boundary")
-	}
-	if len(declared.Body.List) == 0 {
-		t.Fatal("declaredChecks has an empty body instead of an account guard")
-	}
-	guard, ok := declared.Body.List[0].(*ast.IfStmt)
-	if !ok {
-		t.Fatalf("declaredChecks starts with %T, want the account guard as its first statement", declared.Body.List[0])
-	}
-	mentionsFrom := false
-	ast.Inspect(guard.Cond, func(node ast.Node) bool {
-		if name, ok := node.(*ast.Ident); ok && name.Name == "from" {
-			mentionsFrom = true
-		}
-		return true
-	})
-	if !mentionsFrom {
-		t.Fatalf("declaredChecks' first condition at line %d does not ask the from parameter", fileSet.Position(guard.Pos()).Line)
-	}
-	if len(guard.Body.List) != 1 {
-		t.Fatalf("declaredChecks' account guard has %d body statements, want only the return", len(guard.Body.List))
-	}
-	if _, ok := guard.Body.List[0].(*ast.ReturnStmt); !ok {
-		t.Fatalf("declaredChecks' account guard contains %T, want only the return", guard.Body.List[0])
-	}
-	ast.Inspect(declared.Body, func(node ast.Node) bool {
-		switch node.(type) {
-		case *ast.ForStmt, *ast.RangeStmt:
-			if node.Pos() < guard.End() {
-				t.Errorf("declaredChecks has a loop at line %d before the account guard ends at line %d",
-					fileSet.Position(node.Pos()).Line, fileSet.Position(guard.End()).Line)
-			}
-		}
-		return true
-	})
 }
 
 // AN AUDITOR WITH NOTHING TO RUN CONCLUDES INSTEAD OF SPINNING.
@@ -818,26 +760,16 @@ func TestTheShebangNamesItsFirstWordAndEnvNamesTheNext(t *testing.T) {
 	}
 }
 
-// TestAForgottenAccountReadsAsThePersonsAndNotTheWorks pins the ORDER of the
-// [checkSource] constants, which is a safety property and not a detail.
-//
-// The gate this file exists for asks whose account a candidate came from, and
-// answers with a comparison against one of two values before reading either
-// spelling. Whichever of them is the zero is the answer a caller gets for free
-// when it forgets to say — and this gate's whole reason for being is that the
-// free answer used to be "the work's", so a pasted `$ chmod 000 tox.ini` was a
-// promise. A caller that forgets now loses every check that text could have
-// named. That is the failure this gate should have.
-func TestAForgottenAccountReadsAsThePersonsAndNotTheWorks(t *testing.T) {
-	var forgotten checkSource
-	if forgotten != checksFromAsk {
-		t.Fatal("the zero checkSource is not checksFromAsk, so a caller that forgets whose account this is harvests the person's pasted commands")
+// A declared list must not silently lose a required check at its size limit.
+func TestTooManyDeclaredChecksAreRefusedWithoutDroppingTheLast(t *testing.T) {
+	checks := make([]string, auditCheckCount+1)
+	for i := range checks {
+		checks[i] = "go test ./" + strings.Repeat("p", i+1)
 	}
-
-	ground := t.TempDir()
-	pasted := "To see it:\n\n$ echo reproduction-step\n\nand `echo named-check` is the check.\n"
-	got := declaredChecks(pasted, ground, forgotten)
-	if len(got) != 0 {
-		t.Errorf("the zero account harvested commands from the person's words: %q", got)
+	if got, problem := declaredCheckList(checks); problem == "" || len(got) != 0 {
+		t.Fatalf("overlong contract was partly admitted: %v, %q", got, problem)
+	}
+	if got, problem := declaredCheckList(checks[:auditCheckCount]); problem != "" || len(got) != auditCheckCount {
+		t.Fatalf("the documented limit was refused: %v, %q", got, problem)
 	}
 }
