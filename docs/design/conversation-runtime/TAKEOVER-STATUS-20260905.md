@@ -351,3 +351,66 @@ detector (35.177 seconds). The full enginehost package passes (13.865 seconds),
 with vet, formatting, packed manual, build and size gates. An accidentally
 started all-package gate was stopped and is not counted as validation; the
 intended enginehost gate completed successfully.
+
+
+## Production-readiness continuation
+
+The preceding reconnect fix passed both CI halves (run 33986235213). The next
+pass keeps correctness ahead of cost and does not change model routing, prices,
+automatic handoff thresholds or task allowances.
+
+The sole unlanded child from the corrected-proxy retry received an offline
+implementation diagnostic. Using a separate Git index, it preserves the saved
+worktree and excludes all candidate tests changes, then applies the resulting
+patch in the original frozen verifier. It passes **159/159 acceptance and 61/61
+regression assertions**. This does not replace the failed delivered-workspace
+score. It narrows the observed failure to timely completion and delivery; the
+saved implementation itself passes these assertions. Evidence is under
+`af653-native-quality-20260905/child-diagnostic` on Spark.
+
+A native ARM64 correctness environment now uses the same repository base and
+feature request, with the public Poetry-lock development dependencies and
+check-laws/compatible-mypy extras installed before the run. The native verifier
+passes its controls: base 0/159 acceptance and 61/61 regression; reference 159/159
+and 61/61. It retains both the raw delivered-workspace grade and a supplementary
+grade excluding candidate tests, with a predeclared 45-minute trial allowance.
+Different architecture, environment preparation and allowance mean this is not
+a paired performance comparison with the earlier emulated runs.
+
+Preparing the native binary exposed a cross-build defect: `make build` inherited
+GOOS/GOARCH into the manual generator, attempting to execute a Linux generator
+on macOS. Generation now clears those target variables, like the existing
+furrow fetcher. The final binary still uses the requested target. The old build
+failed with `exec format error`; the revised Linux ARM64 build completed and
+`file` confirms a statically linked AArch64 executable.
+
+Separately, a worker's deadline was only checked after completed tool events.
+A silent model request, command or promoted job could therefore defer the
+checkpoint until another event arrived. The runner now arms one timer for its
+current deadline, rearms on an allowed extension and disarms when stopped or
+finished. The existing progress decision, cancellation and delegated-parts pause
+rules remain. A deterministic silent-worker test fails before the change. A
+real-shell test confirms that an owed command can remain parked through one
+renewal, with no extra worker request, then stop when renewal is refused.
+
+The first full session/manual check found only the structural complexity gate:
+the combined timer/event drain exceeded its function ceiling. Event observation
+and accounting are now a separate method from waiting on events and the clock.
+No complexity allowance was raised and no test was skipped. Fresh final checks
+follow this refactoring.
+
+
+Final deadline/build gate passes: full session 181.020 seconds, manual 1.515
+seconds, packed manual 1.660 seconds, vet, formatting, build and binary size.
+The focused deadline/renewal/delegated-pause/complexity cases also pass under the
+race detector (three repetitions, 7.582 seconds). The binary remains under its
+54,600,000-byte ceiling. No new skips or expanded complexity allowances.
+
+The native public baseline passed 823 tests and 124 subtests with 6 expected
+failures in 55.87 seconds, but exited 1 because its default 100% coverage gate
+reported 76.4% on the unmodified repository. The trial therefore discloses this
+pre-existing failure and installed dependencies in a model-visible environment
+note, while retaining the original feature requirements and the repository's
+coverage settings. This preparation/prompt difference is explicit in the
+manifest; no hidden-test or reference-solution information is given to the
+candidate.

@@ -1206,6 +1206,12 @@ How a branch came home is spelled `merged`, `branch kept · <branch>`, `in your 
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
+A worker's deadline is watched even while a command, backgrounded check or model
+request produces no new events. At the deadline, the existing progress check
+decides whether to renew the allowance or stop and preserve partial work. Waiting
+on the worker's own command counts toward that allowance; waiting for delegated
+parts keeps the existing pause rule. An unfinished check is never a passing check.
+
 **A cancel is an interruption, never a finding about the work.** When aforge quits, a
 deadline on the whole session fires, or something outside the task ends it while the check
 is running, nobody has looked at the deliverable and nobody has said anything about it. So

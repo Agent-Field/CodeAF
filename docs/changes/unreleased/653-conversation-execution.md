@@ -4,6 +4,8 @@ title: Conversation work keeps attributable direction and results while its exec
 pr: 653
 surface: [chat, engine, docs]
 invalidates:
+  - "A worker's deadline was only noticed after a tool finished. The runner now watches the current allowance while commands, parked jobs and model requests are silent, retaining existing progress renewal and cancellation rules."
+  - "Cross-compiling with GOOS and GOARCH also cross-compiled the manual generator, which could not execute on the build host. Generation now runs for the host while the final binary still targets the requested platform."
   - "A temporary task-transcript read failure could be shown as absent history, and a finished task's page would stop trying. The page now retains its last successful reading, shows the failed read and retries through the same reader used to open it."
   - "The default local engine window could refuse a task click because it had no remote hostname. Task conversations now open through the available engine capability in either location, and transcript refreshes preserve expanded entries and accepted corrections waiting to be journaled."
   - "Every specialist tool schema rode with each chat request. Media, settings and saved-procedure tools now load in one step through `load_capability`, within the same turn; core tools and task-worker tool sets remain direct. Original tool names, permissions and execution paths are retained. Reopening restores load calls still present in the saved transcript."

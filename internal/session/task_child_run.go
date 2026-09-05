@@ -277,16 +277,58 @@ func (r *childRun) checkpoint(threshold string, renew bool) {
 // read that to the end rather than leaving a producer blocked on a channel
 // nobody is taking from.
 func (r *childRun) drain(events <-chan Event) {
-	for event := range events {
-		r.room.publish(event)
-		switch event.Kind {
-		case EventToolBegin:
-			fmt.Fprintf(r.log, "· %s\n", event.Hint)
-		case EventToolEnd, EventToolFailed:
-			r.step(event)
-		case EventError:
-			r.failure = event.Err
+	// A finished tool is not a clock: a silent command, parked job or model
+	// request may never produce the event that used to notice this deadline.
+	// Keep one timer for the current allowance. Renewals rearm it; stopping
+	// disarms it while we continue draining the canceled producer.
+	var expiry <-chan time.Time
+	var stopTimer func()
+	var armed time.Time
+	defer func() {
+		if stopTimer != nil {
+			stopTimer()
 		}
+	}()
+	for {
+		deadline := r.deadline
+		if r.stopped != "" || (r.runCtx != nil && r.runCtx.Err() != nil) {
+			deadline = time.Time{}
+		}
+		if !deadline.Equal(armed) {
+			if stopTimer != nil {
+				stopTimer()
+			}
+			expiry, stopTimer = nil, nil
+			armed = deadline
+			if !deadline.IsZero() {
+				expiry, stopTimer = r.child.taskClockTimer(deadline.Sub(r.now()))
+			}
+		}
+		select {
+		case <-expiry:
+			if r.runCtx == nil || r.runCtx.Err() == nil {
+				r.checkpoint("deadline checkpoint", true)
+			}
+		case event, open := <-events:
+			if !open {
+				return
+			}
+			r.observe(event)
+		}
+	}
+}
+
+// observe publishes and accounts for a worker event, independently of the
+// clock that bounds the wait for its next event.
+func (r *childRun) observe(event Event) {
+	r.room.publish(event)
+	switch event.Kind {
+	case EventToolBegin:
+		fmt.Fprintf(r.log, "· %s\n", event.Hint)
+	case EventToolEnd, EventToolFailed:
+		r.step(event)
+	case EventError:
+		r.failure = event.Err
 	}
 }
 

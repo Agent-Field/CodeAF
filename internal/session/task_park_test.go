@@ -388,6 +388,7 @@ func TestTheWaitOnItsPartsSpendsNoneOfTheParentsClock(t *testing.T) {
 	// inside the allowance whatever the machine is doing.
 	clock := newFakeClock()
 	nest.node.taskNow = clock.now
+	nest.node.taskTimer = clock.timer
 
 	done, stopped := runParent(t, nest, taskLimits{
 		maxSteps: 200, noProgress: 6, deadline: 150 * time.Millisecond,
@@ -435,6 +436,7 @@ func TestAWorkerThatSpendsItsAllowanceWorkingIsStillStopped(t *testing.T) {
 		return false, "it read the same file five times"
 	}
 	nest.node.taskNow = clock.now
+	nest.node.taskTimer = clock.timer
 
 	done, stopped := runParent(t, nest, taskLimits{
 		maxSteps: 200, noProgress: 6, deadline: 150 * time.Millisecond,
@@ -452,8 +454,9 @@ func TestAWorkerThatSpendsItsAllowanceWorkingIsStillStopped(t *testing.T) {
 // fakeClock is a clock a test moves on purpose. Its two calls are locked because
 // the run reads it from the runner's goroutine while the test writes it.
 type fakeClock struct {
-	mu sync.Mutex
-	at time.Time
+	mu     sync.Mutex
+	at     time.Time
+	timers map[chan time.Time]time.Time
 }
 
 func newFakeClock() *fakeClock { return &fakeClock{at: time.Now()} }
@@ -466,8 +469,33 @@ func (c *fakeClock) now() time.Time {
 
 func (c *fakeClock) advance(d time.Duration) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.at = c.at.Add(d)
-	c.mu.Unlock()
+	for ch, at := range c.timers {
+		if !c.at.Before(at) {
+			ch <- c.at
+			delete(c.timers, ch)
+		}
+	}
+}
+
+func (c *fakeClock) timer(after time.Duration) (<-chan time.Time, func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	if after <= 0 {
+		ch <- c.at
+	} else {
+		if c.timers == nil {
+			c.timers = make(map[chan time.Time]time.Time)
+		}
+		c.timers[ch] = c.at.Add(after)
+	}
+	return ch, func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		delete(c.timers, ch)
+	}
 }
 
 // AND THE HARNESS'S OWN CEILING NEVER STOOD OVER A NODE AT ALL, parked or
