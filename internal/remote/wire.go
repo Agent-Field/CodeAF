@@ -463,6 +463,11 @@ type LaunchShape struct {
 	OneModel  bool    `json:"oneModel,omitempty"`
 	MaxHours  float64 `json:"maxHours,omitempty"`
 	MaxCost   float64 `json:"maxCost,omitempty"`
+	// Interactive says the surface that opened this conversation is a screen
+	// somebody is typing into, so the session is steered rather than run to a
+	// goal of its own. Only the local dial fills it; a --once probe leaves it
+	// unset, and the engine maps it onto the session's own steering fact.
+	Interactive bool `json:"interactive,omitempty"`
 }
 
 // Same reports whether two shapes describe the same conversation. A nil shape

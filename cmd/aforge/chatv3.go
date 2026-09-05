@@ -248,7 +248,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			level:     level,
 			once:      strings.TrimSpace(*once),
 			pick:      pickSession,
-			shape:     v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost),
+			shape:     v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost, strings.TrimSpace(*once) == ""),
 		})
 		var taken *hostShapeTaken
 		var unreachable *hostUnreachable
@@ -288,11 +288,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		return err
 	}
 	seed := v3Options{
-		Model:     *model,
-		NoCompact: *noCompact,
-		Yolo:      *yolo,
-		OneModel:  *oneModel,
-		Budget:    chatBudget(*maxHours, *maxCost),
+		Model: *model,
+		// A TERMINAL DOOR IS STEERED unless --once is it: --once is the
+		// headless fork below. The seed carries the fact into the boot
+		// launch, the seam's /new and /resume, and the hosted shape.
+		Interactive: strings.TrimSpace(*once) == "",
+		NoCompact:   *noCompact,
+		Yolo:        *yolo,
+		OneModel:    *oneModel,
+		Budget:      chatBudget(*maxHours, *maxCost),
 	}
 	boot := seed
 	boot.Session = *file
@@ -648,6 +652,13 @@ type v3Options struct {
 	// NoCompact and Yolo are the two flags that change what a session may do.
 	NoCompact bool
 	Yolo      bool
+	// Interactive is the door's own fact that A PERSON IS STEERING THIS
+	// CONVERSATION — a screen somebody is typing into, here or over a hosted
+	// dial. It is not --yolo: yolo is approvals and says nothing about who is
+	// watching. The terminal doors set it; --once and every headless caller
+	// leave it unset, keeping the unattended goal owner (internal/session's
+	// principal.go reads it beside the budget).
+	Interactive bool
 	// OneModel settles every text call this session makes onto the session
 	// model. It is a MEASUREMENT POSTURE rather than a preference: a run whose
 	// spend and quality are being attributed to one model cannot have a tier
@@ -928,14 +939,13 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	if err != nil {
 		return nil, err
 	}
-	// AND WHO THIS SESSION IS WORKING FOR (internal/session's principal.go). The
-	// two rows are the flag and the ceiling, and they are set together because
-	// neither means anything without the other: --yolo alone is the approval
-	// posture it has always been, and a ceiling on an attended session was
-	// refused at the door. It is the ONE place they reach the engine, on
-	// [applyV3Governance]'s own law — every governance seam already exists on
-	// the other side, so this is a translation and never a second policy.
+	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
+	// principal.go): the unattended flag and its ceiling, plus the door's own
+	// steering fact read apart from both — the ONE place they reach the
+	// engine, on [applyV3Governance]'s own law, so this is a translation and
+	// never a second policy.
 	cfg.Unattended = opts.Yolo
+	cfg.Interactive = opts.Interactive
 	cfg.Budget = opts.Budget
 	// AND THE ACCOUNTS MANAGER IS THE PROCESS'S, not this launch's. Governance
 	// leaves the field empty for exactly this reason: an account connected on

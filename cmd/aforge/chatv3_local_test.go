@@ -142,15 +142,28 @@ func TestNoHostKeepsTheInProcessDoor(t *testing.T) {
 // nothing: nil is the engine's own defaults, which is what every remote surface
 // sends and what the engine reads.
 func TestTheLaunchShapeIsCarriedOnlyWhenSomethingWasAskedFor(t *testing.T) {
-	if shape := v3LaunchShape(false, false, false, 0, 0); shape != nil {
+	if shape := v3LaunchShape(false, false, false, 0, 0, false); shape != nil {
 		t.Fatalf("a bare launch carried a shape: %+v", shape)
 	}
-	shape := v3LaunchShape(true, false, true, 0, 12.5)
-	if shape == nil || !shape.Yolo || !shape.OneModel || shape.MaxCost != 12.5 || shape.NoCompact {
+	if bare := v3LaunchShape(false, false, false, 0, 0, true); bare == nil || !bare.Interactive {
+		t.Fatal("bare interactive launch lost its mode")
+	}
+	shape := v3LaunchShape(true, false, true, 0, 12.5, true)
+	if shape == nil || !shape.Yolo || !shape.OneModel || !shape.Interactive || shape.MaxCost != 12.5 || shape.NoCompact {
 		t.Fatalf("the shape carried %+v", shape)
 	}
 	if shape.Same(nil) {
 		t.Fatal("a shape with flags in it read as the engine's defaults")
+	}
+	// A --once probe is the one dial that is not steered, and the shape is
+	// where the engine learns it: Same would otherwise read a probe and a
+	// surface as one conversation.
+	probe := v3LaunchShape(true, false, true, 0, 12.5, false)
+	if probe.Same(shape) {
+		t.Fatal("a --once probe and a steered surface read as the same posture")
+	}
+	if said := launchShapeWords(shape); !strings.Contains(said, "interactive chat") {
+		t.Fatalf("an interactive shape is not named in the words a person reads: %q", said)
 	}
 }
 
@@ -158,7 +171,7 @@ func TestTheLaunchShapeIsCarriedOnlyWhenSomethingWasAskedFor(t *testing.T) {
 // sentence a person reads names both postures: the one running and the one they
 // asked for. Neither half alone is actionable.
 func TestTheShapeRefusalNamesWhatIsRunningAndWhatWasAsked(t *testing.T) {
-	said := hostShapeSentence(v3LaunchShape(true, false, false, 0, 0), nil)
+	said := hostShapeSentence(v3LaunchShape(true, false, false, 0, 0, true), nil)
 	for _, want := range []string{"--yolo", "the default posture", "ends when this terminal does"} {
 		if !strings.Contains(said, want) {
 			t.Fatalf("the sentence %q does not say %q", said, want)

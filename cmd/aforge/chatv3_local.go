@@ -165,14 +165,21 @@ func openChatV3Local(launch localLaunch) error {
 // v3LaunchShape is the per-launch posture as the wire carries it, or nil for a
 // launch that asked for nothing. Nil rather than a zero struct because nil is
 // what every other door sends and what the engine reads as its own defaults.
-func v3LaunchShape(yolo, noCompact, oneModel bool, maxHours, maxCost float64) *remote.LaunchShape {
+//
+// interactive is the dial's own fact — false for a --once probe, true for a
+// surface somebody is typing into — and it rides the shape because the session
+// it opens lives in the engine, which cannot tell the two apart any other way.
+func v3LaunchShape(yolo, noCompact, oneModel bool, maxHours, maxCost float64, interactive bool) *remote.LaunchShape {
 	shape := remote.LaunchShape{
-		Yolo:      yolo,
-		NoCompact: noCompact,
-		OneModel:  oneModel,
-		MaxHours:  maxHours,
-		MaxCost:   maxCost,
+		Yolo:        yolo,
+		NoCompact:   noCompact,
+		OneModel:    oneModel,
+		MaxHours:    maxHours,
+		MaxCost:     maxCost,
+		Interactive: interactive,
 	}
+	// A real screen carries its identity even without other flags. Nil remains
+	// the legacy default for callers that supplied no launch facts.
 	if (&shape).Same(nil) {
 		return nil
 	}
@@ -215,6 +222,10 @@ func launchShapeWords(shape *remote.LaunchShape) string {
 	}
 	if shape.MaxCost > 0 {
 		said = append(said, "--max-cost")
+	}
+	// Name the mode when it is the only difference between two launches.
+	if shape.Interactive {
+		said = append(said, "interactive chat")
 	}
 	return strings.Join(said, " ")
 }
