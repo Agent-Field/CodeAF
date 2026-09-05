@@ -35,6 +35,45 @@ is independent of what any endpoint reports about cache reads.
   `ForgetPrefixes` is exported: the transport that writes these notes is in
   another package. Nothing in the routing path calls it.
 
+## The attribution the length had to travel with (root review)
+
+The first cut of this change read the lineage at settlement out of
+`askFor(model)`, backed by `laneAsks` — a last-ask-per-model map written at
+encode time. That map answers **"which request encoded most recently"**, which
+is a different question from "whose answer is this".
+
+One `Client` serves several requests at once — a fan-out's leaves, an errand
+beside a turn, the two halves of a hedge. Encode A, encode B, and let A settle
+first: the map hands A's answer B's lineage, and B's conversation is credited
+with a prompt cache that A wrote. The mutex around the map made that
+misattribution free of data races; it did not make it true. Correcting the
+*length* while leaving the *lineage* looked up at the end would have filed a
+newly-accurate number against the wrong conversation.
+
+So the observation is now a small typed value, `settled{lineage, prompt,
+cached}`, built at the settlement site by `settledFrom(ctx, usage)`:
+
+- the lineage is `CacheKeyFrom(ctx)` — the settling request's own context, which
+  is the only thing that knows whose call it is. This is the same read
+  `noteEndpointAffinity` already does, so the affinity pin and the prefix note
+  can no longer disagree about which conversation an answer belonged to;
+- it replaces two trailing positional ints rather than adding a third;
+- `laneAsks`, `lanesState`, `rememberAsk` and `askFor` are **deleted**. Nothing
+  else read them, so there is no second, staler answer left behind.
+
+One consequence, stated plainly: `Sighting.PromptTokens` is now the settlement's
+observed prompt length instead of the pre-send estimate. It feeds
+`lane.promptNoise`, a three-bucket weight on how much noise a TTFT reading
+carries. A settlement whose frame reported no length now weights as the quietest
+bucket — which is exactly what the field already produced whenever no ask had
+been remembered for that model, and is a better failure than an estimate
+belonging to a different request. Output and generation timings keep their
+existing path untouched.
+
+Both settlement paths — the whole-response epilogue and the streamed one,
+including its no-first-token branch — build the observation the same way and
+still record the served identity read off the decode.
+
 Unchanged on purpose: `PrefixHold`, lineage isolation, the 256-entry bound and
 its oldest-first eviction, affinity release (`provider/affinity.go`), the
 sampler, provider fallback (`AllowFallbacks`), prices, and exact-model pins.
@@ -65,5 +104,19 @@ Nothing here has been measured against it and no saving is claimed.
 
 ## Evidence
 
-The growth case fails on the old behaviour and passes with the bound — the
-ablation is recorded in the session that made this change, not in the tree.
+Two ablations, each run in the session that made this change rather than left in
+the tree:
+
+- restoring `cachedTokens` to `return req.PromptTokens` fails
+  `TestAGrownPromptEarnsNoCreditForTokensTheLaneNeverSaw` with "a grown prompt
+  was credited 15502 cached tokens, want the 14972 the lane actually saw", and
+  `TestALengthNobodyReportedEarnsNoDiscount`;
+- restoring the lineage-from-last-encode attribution fails
+  `TestAnAnswerIsAttributedToItsOwnRequestWhenTwoOverlap` with "the last answer
+  was A's and its prefix note says \"conversation-B\"".
+
+The overlap regression drives two real completions through the lanestub door on
+one client with two lineages, A long and B one token, so B overtakes A and the
+settlements arrive out of encode order. It is timing-shaped: the margin is
+~120ms against ~20ms, and the sighting-order assertion fails loudly with a
+message naming the margin if that ever stops holding.

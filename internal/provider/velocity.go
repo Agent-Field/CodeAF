@@ -733,21 +733,21 @@ func noteServed(ctx context.Context, served, asked string) {
 // routing preference is not measured either. Measuring it would build a ledger
 // whose only possible use — demoting an endpoint on the next request — is a
 // thing this client has just promised not to do.
-// cached is how many of the prompt's tokens the ROUTER SAID it read back out
-// of that endpoint's cache, from the usage frame. It is the only direct
-// evidence there is that a lane really held our prefix — every other reading of
-// it is this process's own memory of where it sent the last request — and it is
-// passed through rather than estimated, because an estimate of a cache hit is a
-// discount nobody granted. Zero is "the frame did not say", which is also what
-// a cold prefix looks like; the belief treats them the same and is right to,
-// since neither is evidence of a cache.
+// observed is what the usage frame said and whose request it answered
+// (lanes.go's [settled]). Its cached count is how many of the prompt's tokens
+// the ROUTER SAID it read back out of that endpoint's cache. That is the only
+// direct evidence there is that a lane really held our prefix — every other
+// reading of it is this process's own memory of where it sent the last request
+// — and it is passed through rather than estimated, because an estimate of a
+// cache hit is a discount nobody granted. Zero is "the frame did not say",
+// which is also what a cold prefix looks like; the belief treats them the same
+// and is right to, since neither is evidence of a cache.
 //
-// promptTokens is that same frame's PROMPT length, and it travels for the
-// prefix memory's sake (lanes.go): the discount a lane earns for holding this
-// conversation is bounded by how long the prompt was when it last answered, and
-// that is a number only the settlement knows. Zero is "the frame did not say",
-// and internal/lane gives nothing for it.
-func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration, cached, promptTokens int) {
+// Its prompt length bounds the discount a lane earns for holding this
+// conversation, and its lineage says which conversation that was. Both travel
+// with the answer rather than being looked up at settlement, because a client
+// serves several requests at once and the most recent encode is not this one.
+func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration, observed settled) {
 	if c.velocity == nil || c.routing() == RoutingOff {
 		return
 	}
@@ -756,7 +756,7 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 	// (lanes.go). It is one call rather than two seams because the two are the
 	// same fact — who served, and how fast — and the strike ledger keeps its
 	// half only until the belief has been proven against it.
-	c.noteLane(model, served, ttft, tokens, elapsed, gap, cached, promptTokens)
+	c.noteLane(model, served, ttft, tokens, elapsed, gap, observed)
 }
 
 // notePacedProvider folds one provider-named 429 into the ledger, under the

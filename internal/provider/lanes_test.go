@@ -741,7 +741,7 @@ func TestTheUsageFrameTeachesTheLedgerWhatWasCached(t *testing.T) {
 	client, _, model := stubbedRouter(t)
 	ledger := primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
 
-	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 1536, 4096)
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, settled{lineage: "conversation-7", prompt: 4096, cached: 1536})
 	sightings := ledger.sightings()
 	if len(sightings) != 1 {
 		t.Fatalf("%d sightings for one answer", len(sightings))
@@ -752,7 +752,7 @@ func TestTheUsageFrameTeachesTheLedgerWhatWasCached(t *testing.T) {
 
 	// And a frame that said nothing carries nothing, which reads the same as a
 	// cold prefix — because neither is evidence of a cache.
-	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0, 4096)
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, settled{lineage: "conversation-7", prompt: 4096})
 	if got := ledger.sightings()[1].CachedTokens; got != 0 {
 		t.Fatalf("a frame that said nothing about caching taught %d cached tokens", got)
 	}
@@ -767,40 +767,127 @@ func (l *recordingLedger) judged() []lanes.Outcome {
 }
 
 // TestThePrefixNoteCarriesTheServedLaneAndTheSettledPromptLength is the
-// transport half of the cache-credit bound. Two facts have to arrive together
+// transport half of the cache-credit bound. Three facts have to arrive together
 // for the discount internal/lane grants to be honest: the note must be filed
 // against the lane that ACTUALLY SERVED — not the one the request asked for,
-// which a router is free to fall back from — and the length must be the one the
-// usage frame settled on, not this adapter's pre-send estimate.
+// which a router is free to fall back from — the length must be the one the
+// usage frame settled on, and the lineage must be the settling request's own.
 func TestThePrefixNoteCarriesTheServedLaneAndTheSettledPromptLength(t *testing.T) {
 	lanes.ForgetPrefixes()
 	t.Cleanup(lanes.ForgetPrefixes)
 	client, _, model := stubbedRouter(t)
 	primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
 
-	// What the adapter GUESSED before the send: a different number entirely.
-	client.rememberAsk(lanes.Request{Model: laneModel(model), Prefix: "conversation-7", PromptTokens: 12_000, Now: laneNow()})
-	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0, 14_972)
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0,
+		settled{lineage: "conversation-7", prompt: 14_972})
 
 	served := lanes.ID{Model: laneModel(model), Lane: "quicksilver"}
 	prefix, tokens, seen := lanes.RememberedPrefix(served)
 	if !seen {
 		t.Fatal("the lane that served the answer holds no prefix note")
 	}
-	if prefix != "conversation-7" {
-		t.Fatalf("the note names conversation %q", prefix)
-	}
-	if tokens != 14_972 {
-		t.Fatalf("the note carries %d prompt tokens, want the settled 14972 and not the 12000 estimate", tokens)
+	if prefix != "conversation-7" || tokens != 14_972 {
+		t.Fatalf("the note is %q at %d tokens, want conversation-7 at the settled 14972", prefix, tokens)
 	}
 	// And nothing was filed against a lane that did not answer.
 	if _, _, held := lanes.RememberedPrefix(lanes.ID{Model: laneModel(model), Lane: "DigitalOcean"}); held {
 		t.Fatal("a lane that did not serve the answer holds a prefix note")
 	}
 	// A settlement that reported no prompt length leaves the length UNKNOWN
-	// rather than substituting the estimate.
-	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0, 0)
+	// rather than substituting an estimate.
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0,
+		settled{lineage: "conversation-7"})
 	if _, tokens, _ := lanes.RememberedPrefix(served); tokens != 0 {
 		t.Fatalf("a settlement that reported no prompt length was remembered as %d tokens", tokens)
+	}
+}
+
+// TestSettledFromReadsTheAnswersOwnFrameAndTheCallersLineage pins the reader.
+// A frame that never arrived is the ordinary shape of a cut stream, and it
+// teaches nothing rather than crashing or inventing a number.
+func TestSettledFromReadsTheAnswersOwnFrameAndTheCallersLineage(t *testing.T) {
+	ctx := WithCacheKey(context.Background(), "conversation-7")
+	whole := settledFrom(ctx, &ai.Usage{
+		PromptTokens:        15_502,
+		PromptTokensDetails: &ai.PromptTokensDetails{CachedTokens: 14_972},
+	})
+	if whole.lineage != "conversation-7" || whole.prompt != 15_502 || whole.cached != 14_972 {
+		t.Fatalf("a settled frame read as %+v", whole)
+	}
+	if missing := settledFrom(ctx, nil); missing != (settled{lineage: "conversation-7"}) {
+		t.Fatalf("an answer with no usage frame read as %+v, want the lineage and two zeros", missing)
+	}
+	if bare := settledFrom(context.Background(), &ai.Usage{PromptTokens: 10}); bare.lineage != "" {
+		t.Fatalf("a call with no cache lineage invented %q", bare.lineage)
+	}
+}
+
+// ── TWO REQUESTS AT ONCE ────────────────────────────────────────────────────
+
+// TestAnAnswerIsAttributedToItsOwnRequestWhenTwoOverlap is the lineage-isolation
+// law under parallel work, and it is the defect a per-model "last ask" map
+// could not avoid.
+//
+// ONE CLIENT SERVES SEVERAL REQUESTS AT ONCE — a fan-out's leaves, an errand
+// beside a turn, the two halves of a hedge — so "the most recent encode" and
+// "the request that is settling" are different questions. Here A encodes first
+// and settles LAST: it asks for a long answer, B for a one-token one, both
+// through the real completion door, so the ordering is the stub's own timing
+// and not a mock's. A settlement that looked the lineage up at the end would
+// read B's, and file A's prompt length — and the prompt-cache credit that comes
+// with it — against B's conversation.
+func TestAnAnswerIsAttributedToItsOwnRequestWhenTwoOverlap(t *testing.T) {
+	client, server, model := stubbedRouter(t)
+	ledger := primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
+
+	// A's prompt is long and B's is short, so the two lengths cannot be
+	// mistaken for one another in the ledger.
+	longPrompt := strings.Repeat("the whole transcript so far. ", 400)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ctx := WithCacheKey(context.Background(), "conversation-A")
+		// Forty tokens at the lane's 400/s is ~120ms of streaming; B is one
+		// token and is gone in ~20ms.
+		if _, err := client.CompleteWithMessages(ctx, userMessages(longPrompt), ai.WithMaxTokens(40)); err != nil {
+			t.Errorf("A: %v", err)
+		}
+	}()
+	// A is encoded and on the wire before B is; B then overtakes it.
+	time.Sleep(15 * time.Millisecond)
+	ctxB := WithCacheKey(context.Background(), "conversation-B")
+	if _, err := client.CompleteWithMessages(ctxB, userMessages("hi"), ai.WithMaxTokens(1)); err != nil {
+		t.Fatalf("B: %v", err)
+	}
+	wg.Wait()
+
+	if got := len(server.Asks()); got != 2 {
+		t.Fatalf("%d requests reached the router, want the two this test overlaps", got)
+	}
+	sightings := ledger.sightings()
+	if len(sightings) != 2 {
+		t.Fatalf("%d sightings for two answers", len(sightings))
+	}
+	// B settled first because it asked for one token; A second.
+	short, long := sightings[0].PromptTokens, sightings[1].PromptTokens
+	if !(long > short) {
+		t.Fatalf("the settlements carry %d then %d prompt tokens — B's short prompt should settle "+
+			"first and A's long one second; if the order moved, the timing margin did", short, long)
+	}
+
+	// THE NOTE THE LAST SETTLEMENT LEFT IS A'S, because A answered last. A
+	// lineage read at settlement time out of a per-model map would be B's here:
+	// B encoded second, so it is what "most recently asked" means.
+	served := lanes.ID{Model: laneModel(model), Lane: "quicksilver"}
+	prefix, tokens, seen := lanes.RememberedPrefix(served)
+	if !seen {
+		t.Fatal("no prefix note survived two answers")
+	}
+	if prefix != "conversation-A" {
+		t.Fatalf("the last answer was A's and its prefix note says %q — A's cache was credited to another conversation", prefix)
+	}
+	if tokens != long {
+		t.Fatalf("the note carries %d tokens against A's settled %d", tokens, long)
 	}
 }
