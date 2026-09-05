@@ -3605,6 +3605,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	}
 	verdict.Work = true
 	verdict.Goal = sketch.head(goal)
+	// A check for the whole request does not become permission to repeat it in
+	// only one remainder. Checks for retained work are not assigned to this child.
+	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
+		verdict.Checks = nil
+	}
 	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
 	// after the parts stopped being only a paragraph.
 	//

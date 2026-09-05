@@ -95,7 +95,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 	model := a.model
 	a.mu.Unlock()
 	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model,
-		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask))
+		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask), ask)
 	if !ok {
 		// The ladder's lower rungs still say something true about a whole ask —
 		// "everything asked for below is actually done" over the person's own

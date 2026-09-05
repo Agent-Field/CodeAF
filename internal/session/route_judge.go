@@ -253,6 +253,10 @@ type routeVerdict struct {
 	// [taskPersonAcceptance]: a judgement nobody asked for must never be the
 	// reason work is refused.
 	Acceptance string `json:"acceptance"`
+	// Repeatable checks travel with the same request that declared them. A
+	// correction may keep the task useful while invalidating its old checks.
+	Checks        []string `json:"checks,omitempty"`
+	checksRequest string
 }
 
 // routeJudgeBrief is what the judge is told, and it is the work-or-words law in
@@ -301,7 +305,7 @@ const routeVerdictContract = `Answer with ONE JSON object and nothing else — n
 
 or
 
-  {"work": true, "wide": true, "goal": "...", "acceptance": "...", "why": "..."}
+  {"work": true, "wide": true, "goal": "...", "acceptance": "...", "checks": ["..."], "why": "..."}
 
   wide   true when the work is BROAD — many files, many sources, several
          independent parts — so the one worker that starts on it is allowed to
@@ -320,6 +324,11 @@ or
          the report names each pricing bug with its file and line" — and never
          write "the goal is met" or "the task is complete", which give the
          checker nothing to look at.
+  checks Optional. ONE simple command per entry that safely re-establishes the
+         result, such as a test, build or probe. The checker can run only these
+         declared commands. Do not put verification only in acceptance prose.
+         NEVER the requested action itself: a deploy, send or one-time job must
+         not be repeated. Omit checks when none are known or safe to repeat.
   why    ONE line, in a person's own words, saying what this looks like. It is
          shown to them beside the work, so write it as you would say it:
          "research across every package", "a sweep over forty files".`
@@ -462,7 +471,7 @@ func routeSubstantial(text string) bool {
 // conversation's own model rather than refusing — and an install with nothing
 // anywhere gets no judge at all, which is this feature absent rather than broken.
 func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, model, routeJudgeBrief, routeJudgeQuestion(asked, answered), asked)
 	if !ok {
 		return routeVerdict{}, false
 	}
@@ -507,7 +516,7 @@ func (a *Agent) askRouteJudge(ctx context.Context, model, asked, answered string
 // better reader's answer thrown away at no saving whatever ([routeWidth] is what
 // the two readings come to).
 func (a *Agent) confirmRouteWork(ctx context.Context, model, asked, answered string) (routeVerdict, bool) {
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model, routeJudgeBrief, routeJudgeQuestion(asked, answered), asked)
 	return verdict, ok && verdict.Work
 }
 
@@ -541,7 +550,7 @@ func routeWidth(screen, confirm routeVerdict) bool {
 // billing, the salvage ladder and the bounds each written field is held to — is
 // the same for all four calls, and a second spelling of it is how a confirm
 // slowly stops confirming what its screen answered.
-func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, brief, question string) (routeVerdict, bool) {
+func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, brief, question, asked string) (routeVerdict, bool) {
 	response, judge, err := a.callRole(ctx, role, model,
 		[]ai.Message{
 			textMessage("system", brief),
@@ -574,6 +583,7 @@ func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, br
 	// two spellings of that bound would be two answers to one question
 	// (task_shape.go's taskShapeAcceptanceLimit).
 	verdict.Acceptance = clip(strings.TrimSpace(verdict.Acceptance), taskShapeAcceptanceLimit)
+	verdict.checksRequest = asked
 	return verdict, true
 }
 
@@ -901,7 +911,7 @@ func (a *Agent) routeTriage(race *routeRace, meter *checkpointMeter) {
 func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
 	ctx, done := context.WithTimeout(ctx, routeRaceWindow)
 	defer done()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, "", routeAheadBrief, routeAheadQuestion(asked))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouter, "", routeAheadBrief, routeAheadQuestion(asked), asked)
 	if !ok || verdict.Goal == "" {
 		// A yes with nothing to run is not a yes: whoever is handed this cannot see
 		// the conversation, so an empty goal would start work nobody could describe.
@@ -935,7 +945,7 @@ func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, 
 func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
 	ctx, done := context.WithTimeout(ctx, routeRaceConfirmWindow)
 	defer done()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked))
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked), asked)
 	return verdict, ok && verdict.Work
 }
 
@@ -1035,6 +1045,7 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// in front of the generic stand-in ([routeAcceptance]).
 		brief:      verdict.Goal,
 		acceptance: routeAcceptance(verdict, a.taskRequest()),
+		checks:     routeChecks(verdict, a.taskRequest()),
 		model:      a.resolveTaskModel("").model,
 		// THE JUDGE'S OWN WIDE VERDICT ARMS THE TASK IT STARTS. It is the same
 		// judgement the sizing judge is asked at the typed door and the same one
@@ -1153,4 +1164,15 @@ func routeAcceptance(verdict routeVerdict, request string) string {
 		return routeAskAcceptance + asked
 	}
 	return routeFallbackAcceptance
+}
+
+// A routed check is still a declared check, with the same validation as an
+// explicit task proposal. A stale request or malformed list grants no commands;
+// neither can stop useful work from being handed over without those checks.
+func routeChecks(verdict routeVerdict, request string) []string {
+	if request == "" || verdict.checksRequest != request {
+		return nil
+	}
+	checks, _ := declaredCheckList(verdict.Checks)
+	return checks
 }

@@ -4,6 +4,8 @@ The work continues from the “Aforge clean” Codex thread, in isolated worktre
 `/private/tmp/af-runtime-next`, on `codex/conversation-execution`. Draft PR #653
 targets `dev`. The shared development checkout is not this worktree.
 
+For the latest results and remaining gaps, read [the quality checkpoint](QUALITY-20260905.md).
+
 ## Product direction
 
 One owner remains responsible for the requested outcome. Direct tools handle
@@ -484,3 +486,34 @@ The waiting-status fix passes the full provider/manual make-check gate
 (51.922 and 1.760 seconds), packed manual, vet, formatting, build and size.
 The real-wire wait/rescue/last-resort cases pass ten race repetitions
 (11.983 seconds). The no-alternative regression fails before the change.
+
+
+### Native recovery outcome and verification contract
+
+The recovery trial finished at 22:20 UTC: its terminal driver ended idle after
+1,488 seconds with no consent questions. Delivered code passes 159 acceptance
+and 61 regression checks under both the primary and candidate-test-exclusion
+policies. Independent public tests pass 823 cases and 124 subtests with six
+expected failures; independent mypy accepts 118 source files. The complete
+outcome and additional type-contract failure are in QUALITY-20260905.md.
+
+The trial is not a product-quality pass. Automatic review had no executable
+checks and its reading window expired. The task branch was retained, but the
+parent merged it into main without a request to do so. The extra typed interface
+probe is accepted by the checker and crashes at runtime; the reference has the
+same defect, exposing a limitation in the original benchmark's quality coverage.
+All 202 calls settled, but only 192 are priced. Both completed trials' temporary
+guard credentials were removed. Frozen candidates and scores remain untouched.
+
+The automatic route verdict previously had no checks field. It now carries the
+same declared verification contract as an explicit task proposal, bound to the
+request read by the router and validated by the same command parser. Whole-request
+checks are dropped when custody narrows the handoff to a remainder. This does not
+scrape worker receipts or acceptance prose into executable permissions.
+
+Both automatic entrances fail before the fix and pass with it, including a real
+shell verification command and refusal of an undeclared action. The full session
+make-check gate passes (183.408 seconds), manual (1.551), packed manual (1.590),
+vet, formatting, build and size. Final scope regressions pass ten race repetitions (3.263 seconds), and the
+partial-handoff test fails with its guard removed. A final manual make-check
+passes (1.475 seconds; packed 1.595) after the section heading was improved.

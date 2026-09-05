@@ -1342,7 +1342,7 @@ watched happen.** There is no list of build tools in aforge, and no setting that
 The commands its `bash` will accept come from two places:
 
 - **the `checks` the task was proposed with** — the commands whoever wrote the brief typed
-  into `propose_task`'s (or `divide_work`'s) `checks` field: the test, the build, the probe
+  into `propose_task`'s, `divide_work`'s or the automatic route's `checks` field: the test, the build, the probe
   that re-establishes the result. Each is one simple command, run as it was written, and a
   wildcard you wrote is honoured, so a check written `verify.*` admits `verify.sh`. A check
   that names nothing the checker could actually run where it stands is dropped rather than
@@ -1360,6 +1360,14 @@ worker ran**. A check that names no file is matched as a prefix, field by field,
 **Every refusal names what this particular check is allowed**, listing the declared checks
 first and the reading commands after them, so the model reads the door in the same breath as
 the no.
+
+## Does an automatic handoff keep the declared verification checks
+
+Automatic routing and a whole-request handoff carry their declared checks into the task,
+using the same validation as an explicit proposal. A changed request drops the earlier
+route's checks. When a handoff leaves work with the conversation, whole-request checks are
+not assigned to that partial task. Commands mentioned only in prose or past results do not
+become executable checks.
 
 ## Why the checker does not re-run what the task already ran
 
