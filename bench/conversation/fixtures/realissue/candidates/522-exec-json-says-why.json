@@ -1,11 +1,14 @@
 {
-  "schema": 1,
+  "schema": 2,
   "id": "522-exec-json-says-why",
+  "task_kind": "bug-existing-api",
   "readiness": "candidate",
-  "why_this_issue": "A script reading exec --json learns that a run failed and never why. Small, black-box observable from the command line, and the only non-TUI candidate here.",
+  "campaign_ready": false,
+  "why_this_issue": "A script reading exec --json learns that a run failed and never why. Black-box from the command line, and the only non-TUI candidate here.",
   "provenance": {
     "repo": "Agent-Field/aforge-v2",
     "visibility": "private",
+    "language": "go",
     "issue": 522,
     "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/522",
     "issue_reported_at": "2026-09-03",
@@ -23,8 +26,29 @@
     "notes": ""
   },
   "prompt": {
-    "source": "the issue, verbatim; only the brief above it is this suite's",
-    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# exec --json says a run failed and never says why: the failure envelope carries no error field\n\n## What happened\n\n2026-09-02, `dev@2d4c4dde8`, built with `make build`. `aforge exec --json`'s failure\nenvelope says a run failed and never says why:\n\n```\n$ echo \"say hi\" | AFORGE_BASE_URL=http://127.0.0.1:1 OPENROUTER_API_KEY=nokey \\\n    ./bin/aforge exec --json --turns 1\n{\"text\":\"\",\"stop\":\"error\",\"usage\":{\"calls\":0,\"prompt_tokens\":0,\"completion_tokens\":0,\"cached_tokens\":0,\"cost\":0},\"artifacts\":[],\"turns\":0,\"elapsed_ms\":121978}\n$ echo $?\n5\n```\n\nThe only copy of the reason went to the error stream:\n\n```\nerror: node task-1: after 3 node call attempts: after 3 attempts: execute request: Post \"http://127.0.0.1:1/chat/completions\": dial tcp 127.0.0.1:1: connect: connection refused\n```\n\nSo a script reading exec's standard output — which is the whole point of `--json` —\ncan learn **that** the run failed and never **why**: a rejected model id, a missing\nkey, an unreachable endpoint and a wall all produce the identical object. The same is\ntrue of the object written by `-o file`.\n\nIts sibling already shipped the right shape. `aforge do --json`'s envelope carries an\n`error` field with the sentence, alongside a non-zero exit — `headlessOutcome.Error`,\nset in `failedErrand` in `cmd/aforge/do.go`. `exec` never got it.\n\n## Replication\n\n**Deterministic (no model).**\n\nNothing but the binary. No API key, no network, no fixture — `AFORGE_BASE_URL` points\nat a port nothing listens on, so the call is refused locally:\n\n```sh\nmake build\necho \"say hi\" | AFORGE_BASE_URL=http://127.0.0.1:1 OPENROUTER_API_KEY=nokey \\\n  ./bin/aforge exec --json --turns 1\n```\n\nToday that prints the envelope quoted above: `\"stop\":\"error\"` and no field naming the\ncause, exit 5. Budget about two minutes of wall time — the retry ladder waits out its\nthree attempts before the run gives up.\n\nThe same envelope, with the same hole, is what `-o out.json` writes.\n\n**Field (real models).**\n\n`echo \"say hi\" | aforge exec --json --model nosuch/model-xyz` with a real\n`OPENROUTER_API_KEY`: the API returns 400 `nosuch/model-xyz is not a valid model ID`,\nand the envelope on stdout is again `\"stop\":\"error\"` with nothing saying so. Seconds,\nand no money — the call is rejected before any tokens are billed.\n\n## Where\n\n`cmd/aforge/exec.go`: the `execEnvelope` struct (search `json:\"stop\"`) has no error\nfield, and `buildExecEnvelope` (search `func buildExecEnvelope`) is called with the\noutcome alone, so it never sees `runErr`. `runExec` prints `runErr` to stderr at the\nline `fmt.Fprintln(os.Stderr, \"error:\", runErr)` and then builds the envelope from\n`outcome` only — three writes of one fact (stdout, `-o`, stderr) from two sources.\n\nThe shape it should have had is `headlessOutcome.Error` in `cmd/aforge/do.go`, set in\n`failedErrand`.\n\n## The fix\n\n`exec --json`'s failure envelope carries `error`: why the run did not work, in the\nsame words a person reads on the error stream, so a caller reading stdout and a caller\nreading stderr are never told two different things about one failure.\n\n- The field is `\"error\"` with `omitempty`, so a run that produced an answer carries no\n  error key at all rather than an empty one — the emptiness law on a machine contract.\n- The envelope is built in **one place** — `buildExecEnvelope(outcome, runErr)` — so\n  stdout, `-o` and stderr cannot disagree about a failure.\n- The single-leaf node id every error inside `exec` is wrapped with (`node task-1: `)\n  is machinery here: there is only ever the one node, and naming it pushes the cause\n  off the front of the line. It is stripped.\n- The exit code is unchanged: 5, as today.\n\n## Acceptance\n\n- **e2e:** the deterministic replication above — the object on stdout carries a\n  non-empty `error` naming `connection refused`, alongside `\"stop\":\"error\"` and exit\n  **5**; the sentence in the field does not begin `node task-1:`.\n- **e2e:** the control — a run that answers carries **no** `error` key in its envelope\n  at all (`grep -c '\"error\"'` is 0) and exits 0.\n- **Unit:** `buildExecEnvelope` is the one place the envelope is built: given a\n  non-nil `runErr` it fills `Error`, and given nil it leaves it empty and\n  `json.Marshal` omits the key.\n- The manual page that covers this quotes the new wording\n  (`internal/manual/chat/adaptive-runs.md`), and the change entry's `invalidates`\n  names what people believed before.\n"
+    "verbatim": false,
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# exec --json says a run failed and never says why: the failure envelope carries no error field\n\n## What happened\n\n2026-09-02, `dev@2d4c4dde8`, built with `make build`. `aforge exec --json`'s failure\nenvelope says a run failed and never says why:\n\n```\n$ echo \"say hi\" | AFORGE_BASE_URL=http://127.0.0.1:1 OPENROUTER_API_KEY=nokey \\\n    ./bin/aforge exec --json --turns 1\n{\"text\":\"\",\"stop\":\"error\",\"usage\":{\"calls\":0,\"prompt_tokens\":0,\"completion_tokens\":0,\"cached_tokens\":0,\"cost\":0},\"artifacts\":[],\"turns\":0,\"elapsed_ms\":121978}\n$ echo $?\n5\n```\n\nThe only copy of the reason went to the error stream:\n\n```\nerror: node task-1: after 3 node call attempts: after 3 attempts: execute request: Post \"http://127.0.0.1:1/chat/completions\": dial tcp 127.0.0.1:1: connect: connection refused\n```\n\nSo a script reading exec's standard output — which is the whole point of `--json` —\ncan learn **that** the run failed and never **why**: a rejected model id, a missing\nkey, an unreachable endpoint and a wall all produce the identical object. The same is\ntrue of the object written by `-o file`.\n\n## Replication\n\n**Deterministic (no model).**\n\nNothing but the binary. No API key, no network, no fixture — `AFORGE_BASE_URL` points\nat a port nothing listens on, so the call is refused locally:\n\n```sh\nmake build\necho \"say hi\" | AFORGE_BASE_URL=http://127.0.0.1:1 OPENROUTER_API_KEY=nokey \\\n  ./bin/aforge exec --json --turns 1\n```\n\nToday that prints the envelope quoted above: `\"stop\":\"error\"` and no field naming the\ncause, exit 5. Budget about two minutes of wall time — the retry ladder waits out its\nthree attempts before the run gives up.\n\nThe same envelope, with the same hole, is what `-o out.json` writes.\n\n**Field (real models).**\n\n`echo \"say hi\" | aforge exec --json --model nosuch/model-xyz` with a real\n`OPENROUTER_API_KEY`: the API returns 400 `nosuch/model-xyz is not a valid model ID`,\nand the envelope on stdout is again `\"stop\":\"error\"` with nothing saying so. Seconds,\nand no money — the call is rejected before any tokens are billed.\n",
+    "sha256": "eb6180fd6d884d3468f4598a8cf4772518494ccc95e4800ce04d6587a4d97f3d",
+    "derivation": {
+      "kept_sections": [
+        "What happened",
+        "Replication"
+      ],
+      "dropped_sections": [
+        "Where",
+        "The fix",
+        "Acceptance"
+      ],
+      "dropped_paragraphs": {
+        "Its sibling already shipped the right shape": 1
+      },
+      "rule": "ATX sections kept by heading allowlist (symptom, reproduction, stated law); diagnosis, fix and acceptance sections dropped whole",
+      "source_sha256": "636ba49f088c1afbead980eb1a9fc4857f5a9cc8b75a79a764538247de1daf5f",
+      "source_url": "https://github.com/Agent-Field/aforge-v2/issues/522",
+      "curated_at": "2026-09-05",
+      "curated_by": "bench/conversation/fixtures/realissue/curate.py",
+      "source": "the issue body as fetched with gh on 2026-09-05"
+    }
   },
   "acceptance": {
     "kind": "held-out-test",
@@ -32,9 +56,11 @@
       "cmd/aforge/exec_test.go"
     ],
     "held_out_from": "provenance.fix_commit",
-    "guarded_paths": [
+    "fix_paths": [
       "cmd/aforge/exec.go"
     ],
+    "guarded_paths": [],
+    "guards_note": "the acceptance command runs only the held-out cases, which are copied in after the harness has stopped; no file in the workspace is an instrument, so nothing is guarded. A regression run over the rest of the package is not in v1.",
     "command": "go test ./cmd/aforge/ -run 'Exec|JSON' -count=1",
     "run": "after the harness has stopped, from outside the workspace"
   },
@@ -58,6 +84,7 @@
   "model_pin": "deepseek/deepseek-v4-flash-0731",
   "blockers": [
     "the held-out file ALREADY exists at the base commit and the fix DELETED three lines of it — extraction has to preserve what the old cases asserted",
-    "not calibrated"
+    "no calibration: neither polarity observed",
+    "the extracted cases have not been read for private-helper dependence"
   ]
 }

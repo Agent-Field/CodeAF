@@ -1,11 +1,14 @@
 {
-  "schema": 1,
+  "schema": 2,
   "id": "403-named-file-is-never-scratch",
+  "task_kind": "bug-existing-api",
   "readiness": "candidate",
-  "why_this_issue": "A leaf edits the one file its brief names, and the growth governor calls the round a standstill. Real, observed on the shipped default model.",
+  "campaign_ready": false,
+  "why_this_issue": "A leaf edits the one file its brief names, and the growth governor calls the round a standstill. Observed on the shipped default model.",
   "provenance": {
     "repo": "Agent-Field/aforge-v2",
     "visibility": "private",
+    "language": "go",
     "issue": 403,
     "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/403",
     "issue_reported_at": "2026-09-02",
@@ -23,8 +26,29 @@
     "notes": ""
   },
   "prompt": {
-    "source": "the issue, verbatim; only the brief above it is this suite's",
-    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# resident: a file the request names is classed as scratch, so a leaf changing it is declared at a standstill\n\n## Observable failure\n\nA leaf edited the one file its brief names (2,330 lines changed on disk), ran out of its budget, and the growth governor refused the next round with `carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands`. The governor's own row says `produced: 0, scratch: 2, wrote: [<the named file>, …]`: the change was measured, and then classed as scratch, so it counted as nothing. Seen on the shipped default model in the replication for #386; the same measurement underlies #386's law, so this is a prerequisite for it.\n\nMechanism: the round measurement takes the job's focus from the plan (its sources and checks) and classes every changed file outside that shape as scratch. When the plan carries no focus for the file the request itself names, an edit to that file is scratch, `Produced` is zero, and two such rounds are a standstill.\n\n## Law\n\nA file the request names is never scratch: what a round produced is judged against what the request names, before what the plan chose to list.\n\n## Fix shape\n\n- The focus a round is measured against is the union of what the request names (paths present in the workspace that the request text spells) and what the plan lists; a change to a request-named file is `Relevant`.\n- When the request names nothing that exists, the plan's focus stands as today; when neither names anything, every changed source is relevant as today.\n- The standstill sentence is only produced when `Produced` is zero under that reading.\n\nNo thresholds; no new model call.\n\n## Replication\n\nA workspace with one large text file and a brief that names it and orders three edits to it in sequence after reading everything first; run headless on the shipped default with `--keep`. Expected today: after the second exhaustion the growth row carries `produced: 0` with the named file under `wrote`, and the standstill sentence is posted although the file changed.\n\n## Acceptance\n\n- A round that changed a file the request names records `produced ≥ 1` and is never refused as a standstill.\n- A round that changed only files the request does not name and the plan does not list still records them as scratch.\n- The replication above no longer posts the standstill sentence while the named file is changing.\n"
+    "verbatim": false,
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# resident: a file the request names is classed as scratch, so a leaf changing it is declared at a standstill\n\n## Observable failure\n\nA leaf edited the one file its brief names (2,330 lines changed on disk), ran out of its budget, and the growth governor refused the next round with `carrying on has stopped changing anything — twice over now, nothing was written or altered — so this is handed over as it stands`. The governor's own row says `produced: 0, scratch: 2, wrote: [<the named file>, …]`: the change was measured, and then classed as scratch, so it counted as nothing. Seen on the shipped default model in the replication for #386; the same measurement underlies #386's law, so this is a prerequisite for it.\n\n## Law\n\nA file the request names is never scratch: what a round produced is judged against what the request names, before what the plan chose to list.\n\n## Replication\n\nA workspace with one large text file and a brief that names it and orders three edits to it in sequence after reading everything first; run headless on the shipped default with `--keep`. Expected today: after the second exhaustion the growth row carries `produced: 0` with the named file under `wrote`, and the standstill sentence is posted although the file changed.\n",
+    "sha256": "9858fc718bf4fbc3628b4ab72f374d00605918af1e820e73e620c35746edce2e",
+    "derivation": {
+      "kept_sections": [
+        "Observable failure",
+        "Law",
+        "Replication"
+      ],
+      "dropped_sections": [
+        "Fix shape",
+        "Acceptance"
+      ],
+      "dropped_paragraphs": {
+        "^Mechanism: the round measurement": 1
+      },
+      "rule": "ATX sections kept by heading allowlist (symptom, reproduction, stated law); diagnosis, fix and acceptance sections dropped whole",
+      "source_sha256": "5f04a005a9fb9ed78600a7e710296c2ee9007d58ca97ed75a4f71d5a34bd1d6f",
+      "source_url": "https://github.com/Agent-Field/aforge-v2/issues/403",
+      "curated_at": "2026-09-05",
+      "curated_by": "bench/conversation/fixtures/realissue/curate.py",
+      "source": "the issue body as fetched with gh on 2026-09-05"
+    }
   },
   "acceptance": {
     "kind": "held-out-test",
@@ -32,9 +56,11 @@
       "internal/resident/progress_test.go"
     ],
     "held_out_from": "provenance.fix_commit",
-    "guarded_paths": [
+    "fix_paths": [
       "internal/resident/progress.go"
     ],
+    "guarded_paths": [],
+    "guards_note": "the acceptance command runs only the held-out cases, which are copied in after the harness has stopped; no file in the workspace is an instrument, so nothing is guarded. A regression run over the rest of the package is not in v1.",
     "command": "go test ./internal/resident/ -run 'Scratch|Progress' -count=1",
     "run": "after the harness has stopped, from outside the workspace"
   },
@@ -58,6 +84,7 @@
   "model_pin": "deepseek/deepseek-v4-flash-0731",
   "blockers": [
     "the held-out file ALREADY exists at the base commit — the fix appended 145 lines to it, so the added cases must be extracted before anything is held out",
-    "not calibrated"
+    "no calibration: nobody has seen the extracted cases fail at base or pass on the fix",
+    "the extracted cases have not been read for private-helper dependence, which is what rejected #370"
   ]
 }
