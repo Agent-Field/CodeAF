@@ -6,8 +6,8 @@ This is a proposed product direction, not a description of shipped behavior. It 
 
 - The main conversation supports ideation, decisions, high-level steering and continuity.
 - Capable models should accept substantial work and carry it through with little supervision.
-- Work happens in task conversations; tasks can delegate further as necessary.
-- The person can enter a task or subtask conversation to inspect and steer it, then return to the main discussion.
+- Substantial work happens in task conversations; ordinary work may stay inline. Tasks represent outcomes, and internal helpers are collapsed into activity by default.
+- The person can enter a task conversation to inspect and steer it, then return to the main discussion. Internal execution hierarchy is optional diagnostic detail, rather than the default navigation.
 - Tasks continue when the terminal closes; the owner explicitly confirmed this.
 - Quality, completion time and cost matter together. The product should handle work beyond coding.
 - The owner subsequently authorized implementation and refactoring on a local integration branch. The design below remains a target; `IMPLEMENTATION.md` distinguishes landed changes from work still in progress.
@@ -35,3 +35,10 @@ The immediate surface is Aforge's terminal chat. The interaction model should al
 ## Open choices for implementation
 
 Exact visual styling, keybindings, budget defaults, model allocation and deployment policies need implementation-stage decisions. They are not prerequisites to judging the product concept. Initial local-service hosting and bounded parallelism are recommendations in the design plan.
+
+## September 5 interaction prototype
+
+The owner approved the conversation-with-tasks direction and requested a prototype.
+[TASK-EXPERIENCE-PROTOTYPE.md](TASK-EXPERIENCE-PROTOTYPE.md) specifies the task
+identity, message and result boundaries and the rollout acceptance scenario.
+The interactive prototype uses simulated work; it does not change the live terminal.
