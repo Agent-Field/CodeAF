@@ -265,7 +265,10 @@ func referenceURL(t *testing.T, reference provider.ImageReference) string {
 func TestTheManualMentionsEveryMediaToolOnTheBelt(t *testing.T) {
 	agent, _ := newMediaAgent(t, &scriptedMedia{}, nil)
 	carried := 0
-	for _, tool := range agent.tools {
+	// THE FOUR ARE OFFERED AND NOT CARRIED, since the making verbs wait on the
+	// `media` shelf (tools_capabilities.go). What this gate is about is unchanged:
+	// a verb this build has owes a page whether the model is holding it yet or not.
+	for _, tool := range agent.offeredTools() {
 		switch tool.Name {
 		case "generate_image", "speak", "generate_music", "generate_video":
 			carried++
@@ -277,7 +280,7 @@ func TestTheManualMentionsEveryMediaToolOnTheBelt(t *testing.T) {
 		}
 	}
 	if carried != 4 {
-		t.Fatalf("a fully wired media belt carries %d of the four generation verbs", carried)
+		t.Fatalf("a fully wired media belt offers %d of the four generation verbs", carried)
 	}
 }
 

@@ -2314,13 +2314,18 @@ func beltNames(a *Agent) []string {
 	return out
 }
 
+// hasTool asks whether this build HAS the verb, which is what every
+// absence-law fixture in this package means by the question: a machine with no
+// video model does not have `generate_video`, and one with a model does. It
+// therefore reads what the build offers — the belt plus the shelf the rarely
+// reached verbs wait on (tools_capabilities.go) — because shelving changes when
+// a schema is sent and never whether the capability exists.
+//
+// The narrower question, "is it in the tool block the model is reading right
+// now", is [Agent.hasTool], and capabilities_test.go is where the two are held
+// apart.
 func hasTool(a *Agent, name string) bool {
-	for _, tool := range a.beltTools() {
-		if tool.Name == name {
-			return true
-		}
-	}
-	return false
+	return a.offers(name)
 }
 
 // A model must never be told about a hand it does not have: with no pair wired

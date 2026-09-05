@@ -234,6 +234,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the restart, silently. No lock is taken for the reason nothing else in
 		// this constructor takes one: the agent is not reachable yet.
 		agent.restorePersonTurnsLocked(restored)
+		// AND THE TOOL GROUPS AN EARLIER PROCESS OF THIS CONVERSATION LOADED.
+		// The belt above was rebuilt from scratch, so the rarely-reached
+		// families are back on their shelf — while the transcript just restored
+		// still says "Loaded: settings, change_setting". Without this the model
+		// would reach for what its own history says it holds and be answered
+		// `Unknown tool`, which is the defect beltfacts.go exists to prevent.
+		// The record is the journal's own `load_capability` calls; nothing is
+		// stored beside them (tools_capabilities.go).
+		agent.rearmLoadedCapabilities(restored)
 		// AND THE CONVERSATION ABOVE THE LATEST COMPACTION IS SHAPED HERE, ONCE,
 		// while the replayed messages are still in hand. It is shaped rather than
 		// kept as messages so the pictures a compacted region held are let go of

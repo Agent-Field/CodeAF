@@ -1026,6 +1026,11 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	hand.armMu.Lock()
 	hand.tools, hand.definitions = belt, definitions
 	hand.armMu.Unlock()
+	// AND THE SHELF GOES WITH THE BELT IT WAS BUILT BESIDE. `forkBelt` is an
+	// allowlist and never names `load_capability`, so a hand cannot reach a shelf
+	// in any case; clearing it is what makes the narrowing TOTAL rather than
+	// total-in-the-list-and-not-in-the-cupboard (tools_capabilities.go).
+	hand.clearShelf()
 	// EVERY HAND GETS ITS OWN INDEX OVER THE SAME CONTENT, and this copy is the
 	// "copy" in copy-on-write. What is shared is what the messages POINT AT —
 	// their text, their images — which nothing rewrites and which is where all

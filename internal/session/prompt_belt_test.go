@@ -54,7 +54,13 @@ type beltShape struct {
 // text it reads, and the part of that text composed for somebody ELSE.
 type mintedShape struct {
 	belt []bare.Tool
-	page string
+	// shelved is what this shape HAS and is not carrying: the tools held back
+	// for the tool block's sake, one `load_capability` call away
+	// (tools_capabilities.go). The page may name one — it is a verb the model can
+	// have — but only where the page also says how to fetch it, which is the
+	// extra half of the forward law below.
+	shelved []bare.Tool
+	page    string
 	// inherited is the caller's page a hand opens on. It is not this shape's to
 	// answer for — it was composed for the belt of the mind that forked — and
 	// what IS this shape's is everything after it.
@@ -139,7 +145,7 @@ var beltShapes = []beltShape{{
 			t.Fatalf("newHandAgent: %v", err)
 		}
 		t.Cleanup(func() { _ = hand.Close() })
-		return mintedShape{belt: hand.beltTools(), page: systemTextOf(hand), inherited: callersPage}
+		return mintedShape{belt: hand.beltTools(), shelved: hand.shelvedTools(), page: systemTextOf(hand), inherited: callersPage}
 	},
 }, {
 	// A standing check's probe (standing_run.go): the parent's config with the
@@ -197,8 +203,9 @@ func beltShapeAgent(t *testing.T, shape beltShape) mintedShape {
 		shape.build(t, config)
 	})
 	return mintedShape{
-		belt: agent.beltTools(),
-		page: renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)),
+		belt:    agent.beltTools(),
+		shelved: agent.shelvedTools(),
+		page:    renderSystemAt(agent.config, time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)),
 	}
 }
 
@@ -248,6 +255,15 @@ func TestEveryToolThePromptNamesIsOnThatShapesBelt(t *testing.T) {
 			}
 		}
 		carried := beltNameSet(belt)
+		// AND A SHELVED TOOL IS A VERB THIS SHAPE HAS. It is not in the tool block
+		// yet, so naming it is a promise only when the page also says how it
+		// arrives — which is `load_capability` and the group's own word
+		// (tools_capabilities.go). Naming it without those is the same defect as
+		// naming a tool nobody has, one round trip later.
+		shelved := beltNameSet(minted.shelved)
+		for name := range shelved {
+			carried[name] = true
+		}
 		// A SENTENCE THAT NAMES A TOOL IN ORDER TO SAY IT IS NOT HERE IS NOT A
 		// PROMISE. The absent-case fragments are exactly that ("There is no
 		// `watch` here"), so they come out before the page is read for names.
@@ -269,6 +285,21 @@ func TestEveryToolThePromptNamesIsOnThatShapesBelt(t *testing.T) {
 			}
 			if marker != "" && !strings.Contains(page, marker) {
 				t.Errorf("%s: the page names `%s` without the sentence that says what to do without it (%q)", shape.name, name, marker)
+			}
+		}
+		for name := range namesIn(residue) {
+			if !shelved[name] {
+				continue
+			}
+			if !strings.Contains(page, "`"+loadCapabilityToolName+"`") {
+				t.Errorf("%s: the page names `%s`, which waits on a shelf, and never names `%s` — the model will reach for it and be answered `Unknown tool: %s`",
+					shape.name, name, loadCapabilityToolName, name)
+				continue
+			}
+			group := capabilityGroupOf(name)
+			if group == "" || !strings.Contains(page, "`"+group+"`") {
+				t.Errorf("%s: the page names `%s` and tells the model to load, without ever naming the `%s` group it is in",
+					shape.name, name, group)
 			}
 		}
 	}

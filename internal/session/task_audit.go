@@ -2656,6 +2656,10 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	// label it (F38). The attempt is marked used so maybeTitle is a no-op.
 	auditor.titleTried = true
 	auditor.mu.Unlock()
+	// The shelf goes with the belt it was built beside, for the reason fork.go
+	// states: `auditBelt` is an allowlist, and a narrowing meant to be total has
+	// to empty the cupboard as well as the list (tools_capabilities.go).
+	auditor.clearShelf()
 	return auditor, nil
 }
 

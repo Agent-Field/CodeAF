@@ -20,7 +20,13 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	// that built the belt without one would let a conditional tool ship with no
 	// page — green, and wrong in exactly the way this test exists to catch.
 	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
-	tools := agent.belt()
+	// AND THE SHELF IS WALKED WITH THE BELT. A tool held back for the tool block's
+	// sake is a capability this build still has and a person can still ask about
+	// (tools_capabilities.go), so it goes on owing a page — a gate reading the
+	// carried belt alone would go green the day a verb was shelved, which is the
+	// one way shelving could quietly delete a feature.
+	agent.tools = agent.belt()
+	tools := agent.offeredTools()
 	if len(tools) == 0 {
 		t.Fatal("the belt is empty")
 	}
@@ -50,7 +56,8 @@ func TestTheManualMentionsTheDesignThreadsOwnTool(t *testing.T) {
 		reviseDesign: func(string) error { return nil },
 	}}
 	found := false
-	for _, tool := range agent.belt() {
+	agent.tools = agent.belt()
+	for _, tool := range agent.offeredTools() {
 		if !manual.Chat().Mentions(tool.Name) {
 			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
 		}
