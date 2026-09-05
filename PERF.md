@@ -1160,6 +1160,17 @@ only omit what the reader is already holding. On the inherited-brief road the
 address rides the prerequisite's HEADER, which the shared pot above does not
 clip. Pinned by `internal/session/task_result_e2e_test.go`.
 
+## Following through on a completion claim
+
+A turn may decline handoff once per request when its own continuation says no
+work remains and the other reader names no independent parts. Agreement does
+not grant another decline. The meter asks again after **10 additional rounds
+of real work**, using `checkpointPrice`, and does not grant the same request
+another completion decline. Watching existing work does not advance this count;
+a new direction changes the request. This adds no classifier or model call to
+an ordinary tool round. `internal/session/completion_stale_test.go` pins the
+bound, revised direction, and survival of commands already owned by the turn.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000

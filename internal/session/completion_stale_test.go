@@ -515,6 +515,50 @@ func TestACancelledTurnHandsNothingOver(t *testing.T) {
 	}
 }
 
+func TestCancellationDuringTheHandoffCannotStartATask(t *testing.T) {
+	for _, at := range []string{"continuation", "brief writer"} {
+		t.Run(at, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			path := filepath.Join(t.TempDir(), "session.jsonl")
+			steps := finishedScript(16, func() (string, error) { return "B\nComplete the report.", nil })
+			for index, original := range steps {
+				steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+					if askedForHandoff(messages) {
+						if at == "continuation" {
+							cancel()
+							return nil, context.Canceled
+						}
+						return textResponse("Finish the report and check its rows."), nil
+					}
+					if at == "brief writer" && askedToWriteHandoff(messages) {
+						cancel()
+						return nil, context.Canceled
+					}
+					return original(ctx, messages)
+				}
+			}
+			agent := finishedAgent(t, &scriptedCompleter{steps: steps}, path)
+			graph := stubbedGraph(agent, func(*TaskNode) {})
+			events, err := agent.Submit(ctx, theAsk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			collect(t, events)
+			if ctx.Err() == nil {
+				t.Fatal("the scripted cancellation point was not reached")
+			}
+			if count := admitted(graph); count != 0 {
+				t.Fatalf("cancellation during %s still admitted %d tasks", at, count)
+			}
+			rows := journaledCeilings(t, path)
+			if len(rows) != 1 || rows[0].Decision != checkpointCeilingAbandoned {
+				t.Fatalf("the canceled handoff journaled %+v", rows)
+			}
+		})
+	}
+}
+
 // ── and a drop leaves this conversation's own work exactly where it was ─────
 
 // A COMPLETION CLAIM IS NOT AN AWAIT CLAIM, AND NEITHER OF THEM STOPS ANYTHING.

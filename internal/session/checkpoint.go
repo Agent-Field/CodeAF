@@ -3293,21 +3293,8 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			Reason: over.reason, TaskID: over.taskID, Carry: over.carry,
 		})
 	}()
-	// A TURN NOBODY OWNS ANY MORE STARTS NOTHING, AND THAT IS THE FIRST LINE OF
-	// THIS FUNCTION.
-	//
-	// This is the seam, which is where the check belongs: every road below it
-	// spends money and one of them ADMITS A NODE, and [Agent.launchRouteTask]
-	// takes no context at all — a task started from here outlives the turn that
-	// started it by construction. On the frozen handoff-after cell the turn's
-	// context was already cancelled, the mark reader came back `context
-	// canceled`, and the road read that as a reader that could not be reached and
-	// handed the person's original sentence to a cold worker. Nothing above the
-	// seam could have caught it; nothing below it could have stopped it.
-	//
-	// IT IS NOT A LIVENESS POLL. The context is read once, here, on the one
-	// boundary that converts a turn into work — the loop has its own checks for
-	// its own purposes and this borrows none of them.
+	// A canceled turn cannot start durable work. Recheck after each model call:
+	// a failed reader may fall back to the original ask, but cancellation must not.
 	if ctx.Err() != nil {
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
 	}
@@ -3326,6 +3313,9 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// name, the phase clock and the two model calls below, because the whole
 	// point of an ending that stops the run is that none of them is spent.
 	reading, handover, ended := a.endTurnUnderSteward(ctx, hub, turn, started, model, taken)
+	if ctx.Err() != nil {
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
 	if ended {
 		return handover
 	}
@@ -3360,6 +3350,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// it, counting from here to whichever ending this road takes.
 	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, time.Now())
 	draft, remains, drafted, awaited := a.checkpointBrief(ctx, turn, model)
+	if ctx.Err() != nil {
+		a.endPhase()
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
 	// THE ONE PLACE AN AWAIT IS CONSUMED, and it is checked again here rather than
 	// trusted from a model call ago ([Agent.stillGranted]). Nothing moves: no task
 	// is admitted, nothing is marked done, no command is stopped, and the ending
@@ -3471,6 +3465,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
 	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	if ctx.Err() != nil {
+		a.endPhase()
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
+	}
 	// AND A RUNG THAT ASSIGNS WORK THIS CONVERSATION IS STILL HOLDING IS NOT A
 	// RUNG, which is the same law the drawing was reduced by one step earlier
 	// (checkpoint_custody.go) applied to the two rungs a MODEL wrote.
@@ -3662,6 +3660,9 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// they do is ask for it again.
 	if strings.TrimSpace(read.ownRemainder) != "" {
 		line += checkpointHeldRestNote
+	}
+	if ctx.Err() != nil {
+		return checkpointHandover{decision: checkpointCeilingAbandoned}
 	}
 	hub.send(Event{Kind: EventNotice, Text: line})
 	// AND THE TASK IS NAMED FROM THE PERSON'S OWN WORDS AND NEVER FROM THE DOWRY.

@@ -515,9 +515,10 @@ together — so agreement buys no extra drop.
 direction you add while the reply is running is a different request: it arrives with nothing
 spent, and a reply that discharges *that* is dropped on its own terms.
 
-**And a reply you interrupt starts nothing.** Press escape, or close the session out from
-under a running reply, and the handover goes no further: nothing is named, no brief is
-written, nothing is admitted. Nothing owns the request any more.
+**Interrupting a reply stops its handover.** Press escape, or close the session out from
+under a running reply, and it cannot start a task. This also applies if the interruption
+arrives while the handover is preparing its brief: a canceled model call does not fall
+back to starting a worker from your original message.
 
 **What this does not cover: a sketch naming work you have already done.** Where the second
 reader draws independent parts still to do, the work moves — even if those parts landed in
