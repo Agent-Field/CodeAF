@@ -236,6 +236,87 @@ until prompted passes it. Whether a result arrives on its own is a different
 question, tested live against the product's own task surface, and it is not in
 this suite.
 
+### `multi-defect-pipeline`, which is not in the battery
+
+One more coding scenario exists and is **not** run by default. Nothing above
+changes: `run.sh` with no `--scenarios` runs the same seven cells it always did,
+and `campaign.py plan` freezes the same six calibration slices. This one is
+asked for by name:
+
+```sh
+bench/conversation/run.sh --scenarios multi-defect-pipeline --arms aforge,pi,omp
+bench/conversation/campaign.py plan /tmp/multi.json --id multi --scenarios multi-defect-pipeline
+```
+
+It exists because the battery's coding cell is one boundary bug in one file, and
+the slow-work cells buy their busy window with a `sleep`. Neither is a piece of
+work with separable parts. This one is: a small Python project — standard
+library only, no dependencies, nothing downloaded — with **four independent
+defects, one in each of four modules**, and a command-line pipeline that joins
+them.
+
+| module | the defect | how it shows |
+|---|---|---|
+| `parsing.py` | commas split by hand instead of read as CSV | a quoted site name with a comma in it, and a leading byte order mark |
+| `validation.py` | a repeated identifier is only noticed on the very next record | the same `entry_id` used again four lines later |
+| `aggregate.py` | an ISO week number pasted onto the calendar year | Monday 2024-12-30 is in `2025-W01`, and 2027-01-01 is in `2026-W53` |
+| `report.py` | equal totals left in the order they were built | the same records in another order render differently |
+
+They are independent — the fixture's own tests assert that repairing one repairs
+one — and the pipeline's output is right only when all four are. The workspace
+carries the failing suite and `SPEC.md`, which is the contract.
+
+**The judge is outside the workspace and behavioural.** `judge/judge_dutylog.py`
+is copied to the cell's judge directory, imports a *copy* of the repaired
+project, and runs 34 cases on inputs the workspace never contained — different
+dates, different sites, minutes at exactly 1 and exactly 1440, an ISO year that
+is not the calendar year, ties, and the CLI as a subprocess. It never reads the
+project's source text: a rewrite that shares no line with the reference repair
+passes, and a module that answers the visible tests out of a lookup table fails.
+Both of those are tested (`test/fake/dutylog-alt`, `test/fake/dutylog-cheat`).
+
+Each module is one assertion and the pipeline is another, so a three-of-four
+repair says which one is missing. `tests/` and `SPEC.md` are checksummed before
+the run and the judge is checksummed before and after it; a file *added* under
+`tests/` is recorded and is not a failure.
+
+**It asserts nothing about shape.** Not how many agents ran, not whether a task
+was spawned, not whether the four repairs happened at once. A serial run that
+fixes all four in one turn passes exactly as a fan-out does, and should.
+
+What it does not establish, plainly:
+
+* **Nothing about useful parallelism.** It is one workload: four defects in
+  about 250 lines of Python. Whether that is enough independent work for
+  delegation to pay for its startup, context, coordination and integration is an
+  empirical question this fixture does not answer — it only makes the question
+  askable with a comparable, judged outcome instead of a sleep.
+* One language, one domain, one size, one prompt, and a judge with a finite
+  number of cases. A repair that satisfies all 34 can still be wrong about
+  something nobody wrote a case for.
+* The tamper checks are **detection, not prevention**: nothing here sandboxes a
+  filesystem. They say afterwards that the question was changed. The judge also
+  imports the repaired project into its own process, so a project that set out
+  to defeat its judge rather than to work has room to try; the checksums, the
+  copy it judges and the shape of the verdict are what would catch an ordinary
+  attempt, not a determined one.
+* The prompt names the four modules, because every arm must get the same task
+  and finding the work is not what is being compared here. It says nothing about
+  agents, tasks or parallelism.
+
+Its deterministic tests call no model:
+
+```sh
+python3 -m unittest discover -s bench/conversation/test -p 'test_dutylog*.py'
+```
+
+They build the fixture the way `run.sh` does and check that it fails in all four
+modules before any repair, that the reference repair and an unrelated correct
+implementation both pass, that three modules out of four never passes, and that
+a hard-coded answer, an edited test, a deleted test and a planted verdict are
+each caught. `test/selftest.sh` drives the same three outcomes through the real
+runner against fake binaries.
+
 ## Outcomes
 
 `pass`, `fail`, `timeout`, `crash`, `skipped`, `unsupported` are six different
@@ -417,6 +498,12 @@ checks the receipt reader counts a repeated message once — all three peers emi
 the same assistant message three times — and that a self-reported `$0` beside
 real tokens is read as unknown rather than free.
 
+The coding counterexamples are of the same kind: a fake that repairs all four
+defects of `multi-defect-pipeline` must pass, one that makes the workspace's own
+suite green by answering it from a table must FAIL on the external judge, and
+one whose behaviour is right but which edited a test file must fail on the
+checksum rather than on the behaviour.
+
 The interactive counterexamples are the ones to keep. A fake TUI that
 **blocks**, finishes the build, and then answers correctly, with the right
 derived token and the right build marker, must FAIL. A fake that answers
@@ -442,7 +529,7 @@ without answering a request whose headers it already sent, and a priced call
 beside it must **not** be reported as the total. An admission with no
 settlement — what an abrupt shutdown leaves — reads as unknown too.
 
-At the time of writing it is 101 checks, all passing, and it needs `tmux` and
+At the time of writing it is 112 checks, all passing, and it needs `tmux` and
 `curl`; a missing dependency is reported as skipped and exits non-zero rather
 than green.
 

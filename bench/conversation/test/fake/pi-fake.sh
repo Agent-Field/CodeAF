@@ -20,6 +20,17 @@
 #   zeroprice    real tokens and a self-reported cost of zero, which is a price
 #                table of zeroes rather than a free call
 #
+# Three modes edit files instead of talking, for the coding cells. They are
+# stand-ins for three different outcomes that a transcript cannot tell apart:
+#
+#   repair       the reference repair, copied in from outside the workspace: the
+#                cell must PASS
+#   cheat        the same repair except that one module answers the visible
+#                tests from a table: the workspace's own suite goes green and
+#                the external judge must still FAIL the cell
+#   tamper       the reference repair AND an edited test file: behaviour is
+#                right and the question was changed, which must FAIL
+#
 # Running it leaves FAKE_MARKER behind, which is how the dry-run test proves
 # that composing an invocation did not execute one.
 set -uo pipefail
@@ -89,6 +100,19 @@ fi
 # runs.
 [ -n "${FAKE_MARKER:-}" ] && date +%s >> "$FAKE_MARKER"
 
+# The coding cells are worked, not answered: this runs in the cell's workspace,
+# and the files it copies come from outside it — a fake that carried its own
+# answer would be testing nothing about where the judge lives.
+case "$MODE" in
+  repair|cheat|tamper)
+    cp "${FAKE_REPAIR_SRC:?repair source}"/*.py dutylog/ || exit 9
+    [ "$MODE" = "cheat" ] && { cp "${FAKE_CHEAT_SRC:?cheat source}/aggregate.py" \
+      dutylog/aggregate.py || exit 9; }
+    [ "$MODE" = "tamper" ] && { printf '\n# adjusted while working\n' \
+      >> tests/test_report.py || exit 9; }
+    ;;
+esac
+
 if [ "$MODE" = "hang" ]; then
   # Longer than any cap this suite sets, so the cap is what ends it.
   sleep 3600
@@ -99,6 +123,11 @@ fi
 # answer is a matter of reading it — this is a test of the rig, not of anything
 # that has to reason.
 answer() {
+  case "$MODE" in
+    repair|cheat|tamper)
+      printf 'I fixed the four modules under dutylog/ and the pipeline now runs.'
+      return ;;
+  esac
   if [ "$MODE" = "badoutput" ]; then
     printf 'The net revenue is $1.00, the leading region is atlantis with $0.50, and 99 rows were refunded.'
     return

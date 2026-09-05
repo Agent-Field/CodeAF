@@ -18,8 +18,16 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 MODEL = "deepseek/deepseek-v4-flash-0731"
-SCENARIOS = {"data-tally", "research-brief", "writing-memo", "code-fix",
-             "followup-while-working", "revision-midwork"}
+# The calibration battery: the six comparable slices, and what a campaign plans
+# when nobody says otherwise.
+CALIBRATION_SCENARIOS = {"data-tally", "research-brief", "writing-memo", "code-fix",
+                         "followup-while-working", "revision-midwork"}
+# Selectable by name, and deliberately not part of that default. A scenario that
+# joined the battery silently would change what every later campaign measured
+# and would make its numbers incomparable with the ones already collected;
+# --scenarios multi-defect-pipeline is a separate experiment, planned on purpose.
+EXTRA_SCENARIOS = {"multi-defect-pipeline"}
+SCENARIOS = CALIBRATION_SCENARIOS | EXTRA_SCENARIOS
 
 
 def sha(path):
@@ -177,7 +185,7 @@ def execute(args):
     print("All planned cells recorded; analysis must still check comparability and sample size.")
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("plan")
@@ -185,14 +193,18 @@ def main():
     p.add_argument("--id", required=True)
     p.add_argument("--aforge", default=str(ROOT.parents[1] / "bin/aforge"))
     p.add_argument("--arms", default="aforge,pi,omp")
-    p.add_argument("--scenarios", default=",".join(sorted(SCENARIOS)))
+    p.add_argument("--scenarios", default=",".join(sorted(CALIBRATION_SCENARIOS)))
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--seed", type=int, default=20260905)
     p.add_argument("--cap", type=int, default=240)
     p = sub.add_parser("run")
     p.add_argument("manifest")
     p.add_argument("--out", required=True)
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
     try:
         (plan if args.command == "plan" else execute)(args)
     except (ValueError, OSError) as error:

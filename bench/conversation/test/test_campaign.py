@@ -39,6 +39,31 @@ class CampaignTests(unittest.TestCase):
                 self.assertCountEqual([r["arm"] for r in first["schedule"]
                     if r["block_id"] == block and r["scenario"] == scenario], ["aforge", "pi", "omp"])
 
+    def test_the_default_battery_is_the_six_calibration_slices(self):
+        # An added scenario must not join the battery by existing: every earlier
+        # campaign planned the six, and a seventh appearing on its own would
+        # change what "the default" measured without anybody choosing it.
+        self.assertEqual(campaign.CALIBRATION_SCENARIOS,
+                         {"data-tally", "research-brief", "writing-memo", "code-fix",
+                          "followup-while-working", "revision-midwork"})
+        parser = campaign.build_parser()
+        planned = parser.parse_args(["plan", "manifest.json", "--id", "x"]).scenarios.split(",")
+        self.assertCountEqual(planned, campaign.CALIBRATION_SCENARIOS)
+        for scenario in campaign.EXTRA_SCENARIOS:
+            self.assertNotIn(scenario, planned)
+
+    def test_an_extra_scenario_can_be_planned_when_it_is_asked_for(self):
+        self.args.scenarios = "multi-defect-pipeline"
+        manifest = self.plan()
+        self.assertEqual({row["scenario"] for row in manifest["schedule"]},
+                         {"multi-defect-pipeline"})
+        self.assertEqual(len(manifest["schedule"]), 9)
+
+    def test_a_scenario_this_rig_does_not_define_is_refused(self):
+        self.args.scenarios = "data-tally,invented-slice"
+        with self.assertRaisesRegex(ValueError, "supported comparable scenarios"):
+            self.plan()
+
     def test_manifest_never_overwrites(self):
         self.plan()
         with self.assertRaises(FileExistsError):
