@@ -192,7 +192,7 @@ func loadCapabilityDescription(shelf map[string][]bare.Tool, order []string) str
 	for _, name := range order {
 		lines.WriteString(" " + name + ": " + strings.Join(toolNames(shelf[name]), ", ") + ".")
 	}
-	return "Load one specialist tool group. Available groups:" + lines.String() +
+	return "Load one additional tool group. Available groups:" + lines.String() +
 		" Full schemas arrive on the next model request; continue in this same turn. " +
 		"Tools stay loaded while this engine runs. After reopening, load any missing group again. " +
 		"Existing permissions still apply. Do not reload tools already listed."

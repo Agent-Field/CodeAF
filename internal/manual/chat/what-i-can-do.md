@@ -1057,7 +1057,7 @@ pieces and nothing else.
 
 ## Why did it say "loaded" before making a picture — load_capability, and the tools it does not carry
 
-Chat keeps everyday tools directly available and loads specialist tool descriptions
+Chat keeps everyday tools directly available and loads additional tool descriptions
 when needed. `load_capability` adds one group to the tool list. The full descriptions
 and arguments arrive on the next model request **within the same turn**; aforge
 continues without waiting for another message from you.
@@ -1072,12 +1072,10 @@ There are up to three groups. The catalog lists only tools available on this mac
   `list_harnesses`, `propose_subharness` and `list_subharnesses`.
 
 An empty group is absent. Loading changes the tool list; the original tools retain
-their permission checks and costs. A failed load is reported as a tool error. Task
-workers keep their tools directly available, and a fork or auditor cannot load tools
-outside its restricted tool set.
+their permission checks and costs. A failed load is reported as a tool error. A task keeps its tools directly available.
 
 **Why load them later?** Full tool descriptions travel with every model request.
-Deferring specialist descriptions reduces ordinary request size, at the cost of one
+Deferring these descriptions reduces ordinary request size, at the cost of one
 extra model request on first use and a changed provider prefix when a group loads.
 The small catalog still travels with ordinary requests. This saves schema bytes;
 it does not guarantee a lower bill or a faster answer on every task.

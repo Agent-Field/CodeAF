@@ -467,8 +467,11 @@ func TestTheModelArgumentIsAdvertisedOnlyWithAPicker(t *testing.T) {
 	for _, verb := range []string{"generate_image", "speak", "generate_music", "generate_video"} {
 		for _, withPick := range []bool{true, false} {
 			agent := build(withPick)
+			if text, failed := runTool(t, agent, loadCapabilityToolName, `{"group":"media"}`); failed {
+				t.Fatalf("loading media: %s", text)
+			}
 			var schema map[string]any
-			for _, definition := range agent.definitions {
+			for _, definition := range agent.beltDefinitions() {
 				if definition.Function.Name == verb {
 					schema = definition.Function.Parameters
 				}
