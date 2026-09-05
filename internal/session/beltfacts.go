@@ -255,13 +255,22 @@ var programFacts = []beltFact{{
 	absent: "",
 }}
 
+// revisionFacts uses the same capability predicate as the tool and joins the
+// other conditional fragments, so the prompt contract can check both directions.
+var revisionFacts = []beltFact{{
+	tools:   []string{"revise_assignment"},
+	holds:   Config.mayRevise,
+	present: strings.TrimRight(revisePrompt, "\n"),
+}}
+
 // allBeltFacts is every row, for the tests that hold the whole table to the
 // law rather than one section of it.
 func allBeltFacts() []beltFact {
-	all := make([]beltFact, 0, len(beltFacts)+len(handoffFacts)+len(programFacts))
+	all := make([]beltFact, 0, len(beltFacts)+len(handoffFacts)+len(programFacts)+len(revisionFacts))
 	all = append(all, beltFacts...)
 	all = append(all, handoffFacts...)
-	return append(all, programFacts...)
+	all = append(all, programFacts...)
+	return append(all, revisionFacts...)
 }
 
 // renderBeltFacts composes the section for one shape.

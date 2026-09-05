@@ -119,6 +119,47 @@ when exact calculations or transformations matter. Redundant uncertainty wording
 shortened to keep the existing fixed-prefix budget unchanged. The follow-up rerun
 below evaluates these changes; this failed candidate remains in the evidence.
 
+## Latest follow-up candidate 1209ea81e
+
+The remaining follow-up rerun took 88s. The prepared action ran exactly once, the
+build finished, and its `BUILD-OK marker=QUARTZLINE` result remained visible in chat.
+The completion turn did not reopen the unrelated question. These are direct live
+observations of the delivery and causal-reply repairs.
+
+The full scenario still **failed**: the model returned `RABBANNIC` instead of
+`RABANNIC`. It replied during the work window, but an incorrect reply does not pass
+the correct-answer timing check. The prompt's deterministic-computation guidance did
+not make the model use a tool in this instance. Do not call this a renderer failure
+or hard-code this particular string as a harness remedy.
+
+Total cost is unknown: 13 of 16 admitted calls were priced. The receipt records
+117,039 input and 2,432 output tokens. The earlier revision pass was on 1e1756b6f;
+it has not been relabeled as a pass on this later prompt revision. All live model
+calls in these comparison cells were guarded to the exact DeepSeek V4 Flash 0731
+slug. OMP coding delegates used a separate GLM5.3-only guard.
+
+## Validation scope and local delivery
+
+The full repository check is recorded in
+`/private/tmp/af-conversation-ops/final-make-check-02.log`. Its final outcome will be
+entered here when the run completes. The first full run is preserved separately as
+`final-make-check.log`: it found a missing conditional-tool fragment registration
+and lost continue-task wording. Both were fixed, and their focused regression suite
+passed (1.629s). That run also detected a documentation edit I made while its checkout
+was being monitored; the fresh run keeps the worktree unchanged throughout. No test
+or known-red exception was added for these failures. Documentation-only commits may
+follow the final source candidate. The configured known-red
+ledger has not grown. Focused budget tests passed under the race detector (2.207s),
+as did causal-wake and prefix regressions (10.353s). The unchanged fixed-prefix
+budget remains 48,000 bytes.
+
+Work is integrated locally on `santosh/conversation-runtime` in
+`/private/tmp/af-conversation`, with its own `bin/aforge`. The original QA checkout
+and shared `dev` were not modified by this wave. Owned merged delegate worktrees,
+CLI profile and GLM forwarding process were removed; raw evidence and its short
+state aliases are retained. The binary's dirty marker reflects an unrelated tracked
+`internal/.DS_Store` change, which has been preserved outside our commits.
+
 ## Priorities after this wave
 
 1. Make result delivery an explicit user-facing obligation through provider failures:

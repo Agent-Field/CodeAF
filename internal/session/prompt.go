@@ -205,12 +205,9 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(workerPrompt, "\n"))
 	}
-	// AND THE VERB THAT MOVES WHAT THE WORK IS JUDGED BY, on the predicate that
-	// puts it on the belt (assignment_tool.go): a worker handed no graph has no
-	// assignment to revise.
-	if config.mayRevise() {
+	if text := renderBeltFacts(config, revisionFacts, "\n\n"); text != "" {
 		out.WriteString("\n\n")
-		out.WriteString(strings.TrimRight(revisePrompt, "\n"))
+		out.WriteString(text)
 	}
 	// A node that may hand work out is told how to decide; a node standing on
 	// the floor of the tree is not, because it has no propose_task to decide

@@ -54,7 +54,7 @@ import (
 // comment beside it is free. Every rule the old description stated is still
 // stated; what went is the rhetoric, and the sentences the schema's own fields
 // say better. A rule belongs in the field it governs and appears ONCE.
-const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers, forwards, continues or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered, continued or resolved."
+const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, forwards, continues or settles one. 'continue task N' uses continue. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered, continued or resolved."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
