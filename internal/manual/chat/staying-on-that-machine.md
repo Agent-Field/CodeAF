@@ -283,6 +283,11 @@ goes on showing the work.
 A turn that was already running when a window attaches is picked up part-way through in the
 same way, with the part it missed drawn in first.
 
+And so is a turn nobody in the room started: a finished task's landing note starts a turn
+of the conversation's own, and it streams to every attached window the same way — told the
+moment it begins, drawn as it runs, closed when it ends. A window that attaches while it
+runs picks it up part-way like any other running turn.
+
 ## Does my window come back and steal the keyboard after my wifi drops
 
 No. A connection coming back is not somebody arriving.

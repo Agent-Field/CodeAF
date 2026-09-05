@@ -385,6 +385,12 @@ type Session struct {
 	// a session swap, a conversation closing.
 	lanes map[laneName]map[*server]*laneFeed
 
+	// wakeStop is the way out of this conversation's one subscription to the
+	// turns it starts itself (wakelane.go). Nil is a conversation whose agent
+	// has no wake lane to hold — a scripted engine — or one whose subscription
+	// was left by a swap and not yet retaken.
+	wakeStop *wakeWatch
+
 	// driver is the one surface that may put words into this conversation, and
 	// arrivals is what "newest" means when the keyboard has to find one. Both
 	// are driver.go's, and that file is the whole of the rule.
@@ -412,7 +418,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 	if engine == nil {
 		return nil
 	}
-	return &Session{
+	sess := &Session{
 		engine:     engine,
 		agent:      engine.Agent,
 		persistent: persistent,
@@ -423,6 +429,12 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		lanes:      map[laneName]map[*server]*laneFeed{},
 		empty:      time.Now(),
 	}
+	// The conversation watches its own turns from the moment it exists, so a
+	// wake that runs while nobody is attached still mints the stream an
+	// arriving surface reads in its welcome — and the turn itself is journalled
+	// either way, because the engine is the only writer of the session file.
+	sess.watchOwnTurns()
+	return sess
 }
 
 // Workspace is the directory this conversation works in — the answer a host
@@ -572,6 +584,10 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	// 11's subscription goes the same way (standinglane.go).
 	sess.closeTaskLanes()
 	sess.closeLanes()
+	// The wake lane goes with them and for the same reason: it is a rail, and
+	// a rail left open on a conversation being flushed is a subscription the
+	// sweep has already decided is over (wakelane.go).
+	sess.stopWakeLane()
 	if agent == nil || already {
 		return nil
 	}
@@ -869,6 +885,14 @@ func (sess *Session) replayLocked(cursors []StreamCursor) []Frame {
 func (sess *Session) mint() (id, generation uint64) {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+	return sess.mintLocked()
+}
+
+// mintLocked is [Session.mint] for a caller already holding sess.mu — the
+// wake lane, which has to ask whether the conversation it is about to name a
+// stream in is still the one its lane belongs to, and has to ask it in the
+// same hold of the lock that does the naming (wakelane.go).
+func (sess *Session) mintLocked() (id, generation uint64) {
 	sess.streams++
 	sess.rings[sess.streams] = &ring{first: 1}
 	return sess.streams, sess.generation
@@ -1026,9 +1050,12 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	// ACTUALLY OPEN. The subscriptions above belonged to the agent just closed;
 	// each is reopened on the new one, which replays the new graph's roster
 	// (tasklane.go). It happens after the close so no lane can be handed rows
-	// from a conversation on its way out.
+	// from a conversation on its way out — the wake lane with the rest of them,
+	// because a wake queued on the old conversation's lane must never mint a
+	// stream in the one that replaced it.
 	sess.retakeTaskLanes()
 	sess.retakeLanes()
+	sess.retakeWakeLane()
 	return json.Marshal(welcome)
 }
 

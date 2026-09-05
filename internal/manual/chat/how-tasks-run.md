@@ -972,6 +972,13 @@ aforge draws a dim line with the task's identity mark, its name, and the exact w
 originally asked it to handle. That line is part of the transcript and returns when you
 resume the conversation. The finished-task card still stays above the input as before.
 
+That reply streams onto every window that is open on the conversation — one this terminal
+holds, or one attached through the session host — as it is written, and a window that
+opens while it is running picks it up part-way. It used to be that a conversation held by
+a session host answered in its journal only: the window sat at idle, the task card said
+done, and the answer was waiting in the transcript for whoever opened the conversation
+next. The turn now crosses the wire like any other.
+
 An ordinary reply to something you typed has no such line. If an old task has no recorded
 request, the line shows its identity mark and name alone rather than an empty quotation.
 If several tasks arrive before one answer, their lines are stacked in arrival order above
