@@ -3308,6 +3308,17 @@ is that the slices are declared before any of them starts, and two hands claimin
 path is refused outright. A hand reaching outside its slice is refused too, by aforge and not
 by good manners, and it carries on inside its own.
 
+**A hand that declares an empty slice only reads.** `"scope": []` asks for a hand with no
+`edit` and no `write` at all — not a hand that is asked nicely to leave things alone, but one
+that has no way to change a file. That is what four sources, four datasets or four files to
+compare want, and before it existed the only way to get four readers was to hand each of them
+paths it never meant to touch. Readers claim nothing, so **two of them may look at the same
+file** and neither collides with a writing hand beside it. A fork can mix them freely.
+
+**The `scope` key is always required.** An empty list is a request; a missing key is a slip,
+and it is refused rather than read as one — the reply is told to name the paths, or to send
+`[]` if the hand only reads.
+
 ## How a hand's slice of files is spelled, and when a fork is refused over it
 
 The paths a hand may write are **relative to your working copy** — `src/parser.rs`,
@@ -3345,8 +3356,9 @@ hand as each report lands.
 
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
-repository in a state two of them fought over. They also cannot get around the reply's write
-allowance: what they change spends the same allowance when their reports come home.
+repository in a state two of them fought over. A hand that declared `[]` does not carry those
+two tools in the first place. They also cannot get around the reply's write allowance: what
+they change spends the same allowance when their reports come home.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
@@ -3356,8 +3368,9 @@ the same transcript and the same instructions the answer that forked it was read
 for word, because that shared page is what makes a copy of a mind cheap to make. Those
 instructions were written for the belt the **caller** carries, which is a much longer list,
 so a short note is added under them naming what is actually this reader's: `read`, `grep`,
-`find`, `ls`, `read_document`, `manual`, `edit`, `write` and `bash`. Nothing else is on a
-hand's belt however the page above the note reads, and a call for anything else is answered
+`find`, `ls`, `read_document`, `manual`, `edit`, `write` and `bash`. A hand that only reads
+gets seven of those — `edit` and `write` are absent — and its note says so. Nothing else is on
+a hand's belt however the page above the note reads, and a call for anything else is answered
 `Unknown tool` rather than run.
 
 **They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
