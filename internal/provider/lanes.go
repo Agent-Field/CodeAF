@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
@@ -446,7 +445,6 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	}
 	lambda := c.laneValueOfTime(knobs)
 	ask := c.laneRequest(model, knobs, request, lambda)
-	c.rememberAsk(ask)
 	choice := lanes.Default().Chooser().Choose(ask)
 	named := pin.pinned()
 	// AND A PIN THE WIRE HAS ALREADY REFUSED FOR THIS MODEL READS AS `auto`
@@ -506,41 +504,45 @@ func namesEndpoint(list []string, name string) bool {
 
 // ── FEEDING THE BELIEF ──────────────────────────────────────────────────────
 
-// laneAsk is what the last request for one model told the chooser about itself.
+// settled is what ONE answer's usage frame reported, carried together with the
+// lineage of the request that asked for it.
 //
-// WHY IT IS REMEMBERED AT ALL. A sighting arrives at [Client.noteVelocity] with
-// the timings and the endpoint that served, and with none of the request's own
-// facts: the seam carries no context and no usage frame. Two of those facts are
-// worth keeping — how long the prompt was, and which conversation it belonged
-// to — because the first is what tells a slow lane apart from a long prefill
-// and the second is what makes the next choice cache-aware. They are the
-// ESTIMATES the encoder computed a moment earlier rather than the exact figures
-// of the usage frame, which do not reach this seam; when the stream loop grows
-// a seam that carries the frame, this becomes the frame.
-type laneAsk struct {
-	prompt int
-	prefix string
-	at     time.Time
+// THE LINEAGE TRAVELS WITH THE ANSWER BECAUSE A CLIENT SERVES MORE THAN ONE
+// REQUEST AT A TIME. This used to be read back out of a last-ask-per-model map
+// at settlement, and that map answers "which request encoded most recently",
+// which is a different question. Two calls on one client — a fan-out's leaves,
+// an errand beside a turn, the two halves of a hedge — encode A then B, and A
+// settles first: the map hands A's answer B's lineage, and B is credited with a
+// prompt cache A wrote. A mutex makes that misattribution race-free; it does not
+// make it true. The context of the call that is settling is the only thing that
+// knows whose call it is, so the lineage is read from there ([CacheKeyFrom]) at
+// the moment the answer lands, exactly as the affinity pin already reads it
+// (affinity.go) — which also means the pin and the prefix note can no longer
+// disagree about which conversation an answer belonged to.
+//
+// Zero prompt or cached counts are "the frame did not say", and stay zero:
+// internal/lane gives no discount for a length nobody reported.
+type settled struct {
+	lineage string
+	prompt  int
+	cached  int
 }
 
-// rememberAsk keeps the last ask per model, so the answer can be attributed.
-func (c *Client) rememberAsk(ask lanes.Request) {
-	if ask.Model == "" {
-		return
+// settledFrom reads one answer's usage frame and the lineage of the request it
+// answered. It is nil-safe for the reason [ai.Usage.CacheReadTokens] is: a frame
+// that never arrived is the ordinary shape of a cut stream.
+func settledFrom(ctx context.Context, usage *ai.Usage) settled {
+	observed := settled{lineage: CacheKeyFrom(ctx)}
+	if usage == nil {
+		return observed
 	}
-	c.laneAsks.mu.Lock()
-	defer c.laneAsks.mu.Unlock()
-	if c.laneAsks.last == nil {
-		c.laneAsks.last = map[string]laneAsk{}
+	if usage.PromptTokens > 0 {
+		observed.prompt = usage.PromptTokens
 	}
-	c.laneAsks.last[ask.Model] = laneAsk{prompt: ask.PromptTokens, prefix: ask.Prefix, at: ask.Now}
-}
-
-// askFor reads back what the last request for a model said about itself.
-func (c *Client) askFor(model string) laneAsk {
-	c.laneAsks.mu.Lock()
-	defer c.laneAsks.mu.Unlock()
-	return c.laneAsks.last[model]
+	if read := usage.CacheReadTokens(); read > 0 {
+		observed.cached = read
+	}
+	return observed
 }
 
 // noteLane folds one timed answer into the belief, and remembers which
@@ -552,7 +554,7 @@ func (c *Client) askFor(model string) laneAsk {
 // ledger keeps, for the reason it keeps it: crediting an anonymous measurement
 // to some lane is how a belief learns a fact about a machine that was never
 // asked.
-func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, cached int) {
+func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, observed settled) {
 	served = strings.TrimSpace(served)
 	model = laneModel(model)
 	// A BELIEF SITE (#433), keyed on the same answer the wire is: what is being
@@ -567,32 +569,37 @@ func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, 
 	}
 	id := lanes.ID{Model: model, Lane: served}
 	now := laneNow()
-	ask := c.askFor(model)
 	lanes.Default().Ledger().Note(lanes.Sighting{
-		ID:           id,
-		TTFT:         ttft,
-		Gen:          generation,
-		Gap:          gap,
-		Tokens:       tokens,
-		PromptTokens: ask.prompt,
-		// AND WHAT THE ROUTER SAID IT READ BACK OUT OF THIS LANE'S CACHE. It is
-		// the usage frame's own figure and never the estimate beside it: the
-		// prompt length above is what this adapter computed before the send,
-		// and a cache hit invented from it would be a belief that a lane holds
-		// our prefix on evidence that says nothing about any lane at all.
-		CachedTokens: cached,
+		ID:     id,
+		TTFT:   ttft,
+		Gen:    generation,
+		Gap:    gap,
+		Tokens: tokens,
+		// AND THE PROMPT LENGTH IS THE ANSWER'S OWN. It weights how much noise
+		// this reading carries ([lane.promptNoise]): a long prefill and a slow
+		// lane look alike on the clock and are told apart by this. It was once
+		// the adapter's pre-send estimate, looked up per model at settlement,
+		// which attributed it to whichever request encoded last. A frame that
+		// reported no length leaves zero, and zero reads as the quietest noise
+		// bucket — the honest answer for a settlement nobody counted.
+		PromptTokens: observed.prompt,
+		// AND WHAT THE ROUTER SAID IT READ BACK OUT OF THIS LANE'S CACHE, from
+		// that same frame. A cache hit inferred from anything else — the prompt
+		// length beside it, this process's memory of where it sent the last
+		// request — would be a belief that a lane holds our prefix on evidence
+		// that says nothing about any lane at all.
+		CachedTokens: observed.cached,
 		At:           now,
 	})
-	lanes.RememberPrefix(id, ask.prefix, now)
-}
-
-// lanesState is the small mutable half of this file: the last ask per model.
-// It is on the client rather than in a package variable because two clients in
-// one process talk to two routers, and a prompt one of them sent is not
-// evidence about the other's lanes.
-type lanesState struct {
-	mu   sync.Mutex
-	last map[string]laneAsk
+	// AND THE PREFIX NOTE IS FILED UNDER THE SETTLING REQUEST'S OWN LINEAGE, at
+	// the length that request's answer reported. The prefix memory prices a
+	// discount with both numbers, so both have to be this answer's: a length
+	// taken from an estimate would grant a discount no usage frame agreed to,
+	// and a lineage taken from whichever request encoded most recently would
+	// grant it to the wrong conversation. An answer whose frame carried no
+	// prompt count leaves zero, which internal/lane reads as "not known" and
+	// gives nothing for.
+	lanes.RememberPrefix(id, observed.lineage, observed.prompt, now)
 }
 
 // ── THE ONE THING internal/lane MAY NOT OWN ─────────────────────────────────

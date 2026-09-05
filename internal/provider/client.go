@@ -127,10 +127,6 @@ type Client struct {
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
 	velocity *velocityLedger
-	// laneAsks is what the last request for each model told the belief about
-	// itself (lanes.go). It is on the client because a prompt one router was
-	// sent is not evidence about another's lanes.
-	laneAsks lanesState
 	// pins is which endpoint holds each prompt lineage's cache (affinity.go).
 	// It is read at the same moment the velocity ledger is — encode time — and
 	// written from the same answers, and the two never disagree: a lane the
@@ -892,7 +888,7 @@ func (c *Client) completionInOnePiece(
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
 		0,
-		response.Usage.CacheReadTokens(),
+		settledFrom(ctx, response.Usage),
 	)
 	// Both epilogues or neither: the whole-body path reads the same fourth
 	// failure plane the streamed one does, and for the same reason — every
@@ -1805,10 +1801,10 @@ func (c *Client) completeWithMessagesStreaming(
 			outputTokens(response, content.String()),
 			generation.Sub(firstToken),
 			widestGap,
-			response.Usage.CacheReadTokens(),
+			settledFrom(ctx, response.Usage),
 		)
 	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0)
+		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, settledFrom(ctx, response.Usage))
 	}
 	// A reply that is the model's own tool grammar as text ends the call as a
 	// cut even though every stream bound was met: the endpoint answered 200 and
