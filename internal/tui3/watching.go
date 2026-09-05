@@ -239,36 +239,24 @@ func (a *app) watchFollowing() tea.Cmd {
 	}
 }
 
-// followTurn draws a turn this window did not start, and goes back to waiting.
-//
-// THE SENTENCE GOES IN FIRST WHERE THERE IS ONE. A reply with no question above
-// it is a screen that has lost the thread, and the message that opened this turn
-// was typed on another machine — so the engine sends it and this puts it where
-// the person's own message would have gone ([Turn.Said]).
-//
-// A TURN ALREADY BEING DRAWN WINS. If this window is somehow holding a stream —
-// it took the keyboard a moment ago and its own submit is in flight — the turn
-// it is drawing is the one it knows the whole of, and a second adoption would
-// draw the same reply twice.
+// followTurn queues a hosted turn through the same admission path as a local
+// wake. The previous stream may still be draining on this window even though
+// the engine has started its next turn; dropping that arrival loses the answer.
 func (a *app) followTurn(msg followingMsg) tea.Cmd {
 	next := a.watchFollowing()
-	if msg.turn.Events == nil || a.stream != nil {
+	if msg.turn.Events == nil || msg.turn.Events == a.stream {
 		return next
 	}
-	// THE GREETING GOES WHEN THE CONVERSATION BEGINS, and a turn started on the
-	// other machine is the conversation beginning. Every other road to this
-	// (welcome.go's [app.dismissWelcome]) is a keystroke, and a watcher presses
-	// none — driven over a real connection, the reply landed in the transcript
-	// with the greeting still sitting on top of it.
-	a.dismissWelcome()
-	if said := strings.TrimSpace(msg.turn.Said); said != "" {
-		a.turn++
-		a.sel = -1
-		a.disarmQuit()
-		a.said(entry{kind: entryUser, text: said, turn: a.turn, began: a.now(), context: a.turnContext()})
-		a.follow()
+	for _, pending := range a.follows {
+		if pending.ch == msg.turn.Events {
+			return next
+		}
 	}
-	return tea.Batch(a.takeStream(msg.turn.Events), next)
+	a.dismissWelcome()
+	said := strings.TrimSpace(msg.turn.Said)
+	a.follows = append(a.follows, queued{text: said, ch: msg.turn.Events, woken: said == ""})
+	a.touch()
+	return tea.Batch(a.startFollow(), next)
 }
 
 // ── learning that it moved, with nobody touching this keyboard ──────────────

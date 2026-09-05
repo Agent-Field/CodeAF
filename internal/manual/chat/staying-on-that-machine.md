@@ -446,3 +446,11 @@ nothing a person accomplishes by typing it. The third flag beside them is `--sto
 the one a person really does type; it has its own section above. None of them appear in
 `aforge`'s usage text, because `aforge engine` itself does not — it is the far half of
 `--host` and a surface dials it.
+
+## Background replies while another reply finishes
+
+On a hosted conversation, a finished task or background command can start a reply
+without another message from you. It appears as a new turn, preserving earlier
+answers above it. If your window is still drawing the previous reply, it finishes
+that stream before drawing the queued reply. Returning midway through a reply uses
+the same stream and its recorded events.
