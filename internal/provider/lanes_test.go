@@ -741,7 +741,7 @@ func TestTheUsageFrameTeachesTheLedgerWhatWasCached(t *testing.T) {
 	client, _, model := stubbedRouter(t)
 	ledger := primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
 
-	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 1536)
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 1536, 4096)
 	sightings := ledger.sightings()
 	if len(sightings) != 1 {
 		t.Fatalf("%d sightings for one answer", len(sightings))
@@ -752,7 +752,7 @@ func TestTheUsageFrameTeachesTheLedgerWhatWasCached(t *testing.T) {
 
 	// And a frame that said nothing carries nothing, which reads the same as a
 	// cold prefix — because neither is evidence of a cache.
-	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0)
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0, 4096)
 	if got := ledger.sightings()[1].CachedTokens; got != 0 {
 		t.Fatalf("a frame that said nothing about caching taught %d cached tokens", got)
 	}
@@ -764,4 +764,43 @@ func (l *recordingLedger) judged() []lanes.Outcome {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return append([]lanes.Outcome(nil), l.outcomes...)
+}
+
+// TestThePrefixNoteCarriesTheServedLaneAndTheSettledPromptLength is the
+// transport half of the cache-credit bound. Two facts have to arrive together
+// for the discount internal/lane grants to be honest: the note must be filed
+// against the lane that ACTUALLY SERVED — not the one the request asked for,
+// which a router is free to fall back from — and the length must be the one the
+// usage frame settled on, not this adapter's pre-send estimate.
+func TestThePrefixNoteCarriesTheServedLaneAndTheSettledPromptLength(t *testing.T) {
+	lanes.ForgetPrefixes()
+	t.Cleanup(lanes.ForgetPrefixes)
+	client, _, model := stubbedRouter(t)
+	primed(t, model, laneBelief(model, "quicksilver", 400, 70, 0.25))
+
+	// What the adapter GUESSED before the send: a different number entirely.
+	client.rememberAsk(lanes.Request{Model: laneModel(model), Prefix: "conversation-7", PromptTokens: 12_000, Now: laneNow()})
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0, 14_972)
+
+	served := lanes.ID{Model: laneModel(model), Lane: "quicksilver"}
+	prefix, tokens, seen := lanes.RememberedPrefix(served)
+	if !seen {
+		t.Fatal("the lane that served the answer holds no prefix note")
+	}
+	if prefix != "conversation-7" {
+		t.Fatalf("the note names conversation %q", prefix)
+	}
+	if tokens != 14_972 {
+		t.Fatalf("the note carries %d prompt tokens, want the settled 14972 and not the 12000 estimate", tokens)
+	}
+	// And nothing was filed against a lane that did not answer.
+	if _, _, held := lanes.RememberedPrefix(lanes.ID{Model: laneModel(model), Lane: "DigitalOcean"}); held {
+		t.Fatal("a lane that did not serve the answer holds a prefix note")
+	}
+	// A settlement that reported no prompt length leaves the length UNKNOWN
+	// rather than substituting the estimate.
+	client.noteLane(model, "quicksilver", 300*time.Millisecond, 40, time.Second, 0, 0, 0)
+	if _, tokens, _ := lanes.RememberedPrefix(served); tokens != 0 {
+		t.Fatalf("a settlement that reported no prompt length was remembered as %d tokens", tokens)
+	}
 }

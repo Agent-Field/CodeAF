@@ -552,7 +552,7 @@ func (c *Client) askFor(model string) laneAsk {
 // ledger keeps, for the reason it keeps it: crediting an anonymous measurement
 // to some lane is how a belief learns a fact about a machine that was never
 // asked.
-func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, cached int) {
+func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, cached, promptTokens int) {
 	served = strings.TrimSpace(served)
 	model = laneModel(model)
 	// A BELIEF SITE (#433), keyed on the same answer the wire is: what is being
@@ -583,7 +583,29 @@ func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, 
 		CachedTokens: cached,
 		At:           now,
 	})
-	lanes.RememberPrefix(id, ask.prefix, now)
+	// AND THE PREFIX NOTE CARRIES THE LENGTH THE ANSWER ITSELF REPORTED, not
+	// the estimate two lines above. `ask.prompt` is what this adapter computed
+	// before the send; the prefix memory prices a discount with its number, and
+	// a discount granted on a guess is the same mistake the cache figure above
+	// is passed through to avoid. An answer whose usage frame carried no prompt
+	// count leaves zero, which internal/lane reads as "not known" and gives
+	// nothing for.
+	lanes.RememberPrefix(id, ask.prefix, promptTokens, now)
+}
+
+// promptTokensOf is the settled answer's own prompt length, and zero when no
+// usage frame said. It is nil-safe for the reason [ai.Usage.CacheReadTokens] is:
+// a frame that never arrived is the ordinary shape of a cut stream, and the two
+// numbers this file reads out of a settlement are read the same way.
+//
+// ZERO IS "NOT KNOWN" AND IT TRAVELS AS ZERO. internal/lane's prefix memory
+// gives no discount for an unknown length, which is the whole point: the caller
+// must not substitute this adapter's pre-send estimate here.
+func promptTokensOf(usage *ai.Usage) int {
+	if usage == nil || usage.PromptTokens <= 0 {
+		return 0
+	}
+	return usage.PromptTokens
 }
 
 // lanesState is the small mutable half of this file: the last ask per model.

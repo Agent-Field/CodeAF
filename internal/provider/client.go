@@ -893,6 +893,7 @@ func (c *Client) completionInOnePiece(
 		c.clock().Sub(began),
 		0,
 		response.Usage.CacheReadTokens(),
+		promptTokensOf(response.Usage),
 	)
 	// Both epilogues or neither: the whole-body path reads the same fourth
 	// failure plane the streamed one does, and for the same reason — every
@@ -1806,9 +1807,10 @@ func (c *Client) completeWithMessagesStreaming(
 			generation.Sub(firstToken),
 			widestGap,
 			response.Usage.CacheReadTokens(),
+			promptTokensOf(response.Usage),
 		)
 	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0)
+		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0, 0)
 	}
 	// A reply that is the model's own tool grammar as text ends the call as a
 	// cut even though every stream bound was met: the endpoint answered 200 and

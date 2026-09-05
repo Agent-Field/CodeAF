@@ -741,7 +741,13 @@ func noteServed(ctx context.Context, served, asked string) {
 // discount nobody granted. Zero is "the frame did not say", which is also what
 // a cold prefix looks like; the belief treats them the same and is right to,
 // since neither is evidence of a cache.
-func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration, cached int) {
+//
+// promptTokens is that same frame's PROMPT length, and it travels for the
+// prefix memory's sake (lanes.go): the discount a lane earns for holding this
+// conversation is bounded by how long the prompt was when it last answered, and
+// that is a number only the settlement knows. Zero is "the frame did not say",
+// and internal/lane gives nothing for it.
+func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration, cached, promptTokens int) {
 	if c.velocity == nil || c.routing() == RoutingOff {
 		return
 	}
@@ -750,7 +756,7 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 	// (lanes.go). It is one call rather than two seams because the two are the
 	// same fact — who served, and how fast — and the strike ledger keeps its
 	// half only until the belief has been proven against it.
-	c.noteLane(model, served, ttft, tokens, elapsed, gap, cached)
+	c.noteLane(model, served, ttft, tokens, elapsed, gap, cached, promptTokens)
 }
 
 // notePacedProvider folds one provider-named 429 into the ledger, under the
