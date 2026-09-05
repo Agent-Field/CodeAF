@@ -3768,7 +3768,24 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
 	}
 	note.WriteString(taskMergeNote(notice))
+	note.WriteString(taskBranchFollowup(notice))
 	return note.String()
+}
+
+// A saved artifact does not expand the request. The native repository trial
+// kept an unchecked branch correctly, but its parent read the landing as work
+// to finish by merging into main. Carry the workflow boundary to that reader.
+func taskBranchFollowup(notice TaskNotice) string {
+	if notice.Branch == "" || unsavedLanding(notice.Report) {
+		return ""
+	}
+	if notice.Merge != mergeKept && notice.Merge != mergeConflicted && notice.Merge != mergeAborted {
+		return ""
+	}
+	return "\nThe work remains on its task branch. Inspect and test it there. " +
+		"This completion notice does not expand the person's request: preserve their " +
+		"branch and review instructions. Do not merge or switch the conversation's " +
+		"checkout unless their request calls for it."
 }
 
 // taskMergeNote is the landing's one branch sentence, kept outside [taskNote]

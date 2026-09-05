@@ -4,6 +4,7 @@ title: Conversation work keeps attributable direction and results while its exec
 pr: 653
 surface: [chat, engine, docs]
 invalidates:
+  - Kept task branches now carry an explicit reminder to preserve the requested branch and review workflow; a completion notice is not a request to merge into main. This is model guidance, not a shell restriction.
   - 'Automatic routing carried acceptance prose but could not declare runnable checks. Its checks field now reaches whole-request tasks through the existing verification contract; changed requests and partial handoffs do not inherit those commands.'
   - 'A first-prompt wait could say it was trying another lane even when no rescue request started. It now says it is still waiting and reserves switching for an actual rescue.'
   - "Incomplete bash arguments could open a permission card even in an allow-by-default session. Invalid shell input now returns an actionable argument error to the model without execution or consent; corrected commands still pass through all existing approval rules."

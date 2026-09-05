@@ -142,8 +142,8 @@ the sentence naming the files that clashed, with the branch kept so nothing is l
 **Where your checkout is on a protected branch, the branch is kept instead and your
 checkout is not touched.** `main`, `master`, `dev`, `develop`, `development`, `staging`,
 `stage`, `trunk`, `production`, `prod`, `release` and any remote's default branch are never
-written by aforge. You get the sentence on its own — `its branch chat/agentfield-b22fb8 was
-kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+merged into by automatic task landing. You get the sentence on its own — `its branch chat/agentfield-b22fb8 was
+kept: your checkout is on dev, which tasks do not merge into automatically`
 — and it is not a failure: the work is finished and on that branch, and `git merge` takes
 it whenever you want it. The same keep happens when you are on a different branch than when
 the work was cut, when you moved that branch to another commit yourself after the cut, or

@@ -162,7 +162,7 @@ func TestC7AProtectedCheckoutKeepsCompletedWorkOnItsTaskBranch(t *testing.T) {
 				t.Fatalf("merge = %q (%s), want %q", merge, detail, mergeKept)
 			}
 			wantSentence := "its branch " + tree.branch + " was kept: your checkout is on " + branch +
-				", which aforge never writes to — merge it when you are ready"
+				", which tasks do not merge into automatically"
 			if !strings.Contains(detail, wantSentence) {
 				t.Fatalf("landing detail does not say why the branch was kept:\n%s", detail)
 			}
@@ -190,6 +190,11 @@ func TestC7AProtectedCheckoutKeepsCompletedWorkOnItsTaskBranch(t *testing.T) {
 			note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true})
 			if strings.Count(note, wantSentence) != 1 {
 				t.Fatalf("completion note does not carry the protected sentence once:\n%s", note)
+			}
+			for _, want := range []string{"Inspect and test it there", "preserve their branch and review instructions", "Do not merge or switch"} {
+				if !strings.Contains(note, want) {
+					t.Fatalf("the parent was not told the branch workflow boundary (%q):\n%s", want, note)
+				}
 			}
 		})
 	}

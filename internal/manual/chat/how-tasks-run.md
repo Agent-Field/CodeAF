@@ -423,16 +423,16 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, aforge never writes to a protected branch, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
+## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
 
-A finished task never writes a protected branch. The protected names are `main`, `master`,
+Automatic task landing never merges into a protected branch. The protected names are `main`, `master`,
 `dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
 `release`; any branch a remote names as its default counts too. The task is still **done**.
 Its branch is kept, its working copy is given back, and the card says `branch kept · task/x`.
 
 You will see one exact reason:
 
-- `its branch task/x was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+- `its branch task/x was kept: your checkout is on dev, which tasks do not merge into automatically`
 - `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
 - `its branch task/x was kept: your checkout is not on a branch — check one out and merge it`
 - `its branch task/x was kept: feat/x has moved on since the work was cut — merge it where you want it`
@@ -917,7 +917,7 @@ Then, when there were changes, `changed: a.go, b.go`, and one line saying
 where the branch went:
 
 - `its branch task/… merged into yours`
-- `its branch task/… was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+- `its branch task/… was kept: your checkout is on dev, which tasks do not merge into automatically`
 - `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
 - `its branch task/… was kept: your checkout is not on a branch — check one out and merge it`
 - `its branch task/… was kept: feat/x has moved on since the work was cut — merge it where you want it`
@@ -2725,3 +2725,17 @@ A background command or fired watch owes a report of its new outcome. That reply
 checked against the background news, rather than an unrelated question you asked
 while waiting. Task reports carry their own current assignment. If several outcomes
 arrive together, they keep their separate reply obligations through the combined note.
+
+
+## Does a finished task let the conversation merge its kept branch
+
+A kept branch is the saved result. The completion message tells the conversation
+to inspect and test the work there, preserve your branch and review instructions,
+and merge or switch the conversation's checkout only when your request calls for
+it. A task finishing does not expand your request. Asking for a branch and a
+commit does not by itself ask for a merge into main.
+
+This guidance accompanies the automatic landing protection; it is not a general
+shell restriction. An agent with shell access can still run Git commands. Task
+settlement continues to follow `task.settle`, and existing permission rules still
+apply to commands the agent chooses.

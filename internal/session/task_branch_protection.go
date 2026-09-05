@@ -19,7 +19,7 @@ func aforgeGitIdentity() []string {
 	return []string{"-c", "user.name=" + aforgeGitName, "-c", "user.email=" + aforgeGitEmail}
 }
 
-// protectedBranchNames is THE ONE LIST of branch names aforge never writes to.
+// protectedBranchNames is THE ONE LIST of branch names automatic task landing leaves unchanged.
 // The manual names every entry and a structural test holds that page against
 // this value, so changing the policy cannot leave the person reading an older
 // list.
@@ -157,7 +157,7 @@ func (t taskTree) keptLandingSentence() string {
 	case t.home != "" && current != t.home:
 		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — merge it where you want it"
 	case protectedBranch(t.root, current):
-		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which aforge never writes to — merge it when you are ready"
+		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which tasks do not merge into automatically"
 	case branchMovedByPerson(t.root, current, t.homeSha):
 		return "its branch " + t.branch + " was kept: " + current + " has moved on since the work was cut — merge it where you want it"
 	}

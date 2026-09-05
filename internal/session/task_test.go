@@ -931,7 +931,7 @@ func TestTaskNodeWorkIsKeptOffThePersonsProtectedBranch(t *testing.T) {
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(list, notice.Where) {
 		t.Fatalf("finished working copy stayed registered:\n%s", list)
 	}
-	want := "its branch " + notice.Branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+	want := "its branch " + notice.Branch + " was kept: your checkout is on main, which tasks do not merge into automatically"
 	if !strings.Contains(notice.Report, want) {
 		t.Fatalf("report = %q, want protected sentence %q", notice.Report, want)
 	}
@@ -1391,6 +1391,9 @@ func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
 	// NOTHING MERGED and nothing was thrown away.
 	if notice.Merge != mergeAborted {
 		t.Fatalf("merge = %q, want aborted — unverified work must not land", notice.Merge)
+	}
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true}); !strings.Contains(note, "Do not merge or switch") || !strings.Contains(note, "leave the choice with them") {
+		t.Fatalf("the parent did not receive the review and branch boundaries:\n%s", note)
 	}
 	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
 		t.Fatal("an unverified node's branch was deleted: the work is gone")

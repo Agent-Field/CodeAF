@@ -517,3 +517,29 @@ make-check gate passes (183.408 seconds), manual (1.551), packed manual (1.590),
 vet, formatting, build and size. Final scope regressions pass ten race repetitions (3.263 seconds), and the
 partial-handoff test fails with its guard removed. A final manual make-check
 passes (1.475 seconds; packed 1.595) after the section heading was improved.
+
+
+### Branch follow-up guidance and a stronger public quality check
+
+Kept-branch notices now explicitly preserve the person's requested branch and
+review workflow. The protected-branch sentence describes automatic task landing,
+removing its invitation to merge whenever ready. This is model guidance; it does
+not claim to prevent arbitrary shell writes. Real repository regressions cover
+protected-branch completion and an inconclusive review. An initial regression
+caught the use of `cameHome`, whose meaning includes a correctly kept branch;
+the new guidance now tests the actual kept/conflicted/aborted outcomes instead.
+The final full session/manual make-check passes (185.713/1.982 seconds), packed
+manual 1.589, vet, formatting, build and size. Focused branch/routing/settlement
+cases pass three race repetitions (7.603 seconds).
+
+The portable supplemental diagnostic `bench/deepswe/validated-contract.py`
+requires clean source checking, rejection of the invalid caller at its argument
+boundary, and successful type checking plus execution of the tuple-aware caller.
+It fails for both frozen Validated implementations. A positive control aliases
+the established Result implementation into the same probes and passes all four
+conditions. This control validates the diagnostic, not a repaired Validated.
+Fleet jobs 20260905-225653-000281 and 20260905-225915-000282 retain the output in
+`type-contract-paired-{delivered,gold}` and `type-contract-result-control` under
+the native recovery artifact root. No model calls or network were used inside
+these verification containers. The new diagnostic never replaces the frozen
+159+61 scores.

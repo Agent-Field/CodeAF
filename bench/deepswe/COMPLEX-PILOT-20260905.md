@@ -62,3 +62,22 @@ failed preflight remains recorded separately from the corrected retry.
 One pair can expose a concrete failure. It cannot establish quality equivalence,
 win rate, a frontier, or broad efficiency. The product takeover report records
 results and limitations as independent grading finishes.
+
+
+## Supplemental public type-contract check
+
+The native follow-up found an API substitution error that both the generated
+implementation and reference pass through the original acceptance suite.
+`validated-contract.py` adds a separate, public diagnostic:
+
+```sh
+python bench/deepswe/validated-contract.py --repo /path/to/returns --out /tmp/validated-contract-run
+```
+
+Use the repository's prepared Python environment and a fresh output directory.
+The script checks all library sources and two external callers with incremental
+checking disabled. A callback expecting one integer must reject `Invalid((1, 2))`
+at the call boundary. A callback expecting the error tuple must type-check and
+successfully recover it. A source error or timeout cannot satisfy the required
+argument-type rejection. Logs and `result.json` preserve every command and exit.
+The script does not modify the repository or replace its frozen benchmark score.
