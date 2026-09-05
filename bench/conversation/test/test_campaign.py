@@ -44,6 +44,20 @@ class CampaignTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.plan()
 
+    def test_imported_package_change_is_detected_with_unchanged_entry(self):
+        (self.root / 'package.json').write_text('{"name":"fixture"}')
+        entry = self.root / 'cli.js'
+        entry.write_text('import "./agent.js"')
+        implementation = self.root / 'agent.js'
+        implementation.write_text('const prompt = "original"')
+        self.args.aforge = str(entry)
+        self.plan()
+        implementation.write_text('const prompt = "changed"')
+        with patch.object(campaign.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'package changed'):
+                campaign.execute(argparse.Namespace(manifest=self.args.manifest, out=str(self.root/'out')))
+            run.assert_not_called()
+
     def test_changed_binary_refused_before_execution(self):
         self.plan()
         self.binary.write_bytes(b"different executable")

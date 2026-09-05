@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import random
 import shutil
 import subprocess
@@ -32,6 +33,30 @@ def inputs():
             if p.is_file() and p.suffix in {".sh", ".py"} and "test" not in p.parts}
 
 
+def executable_identity(path):
+    """A JS entry point is not its implementation; freeze its package too."""
+    path = Path(path)
+    identity = {"entry_sha256": sha(path)}
+    if path.suffix not in {".js", ".mjs", ".cjs"}:
+        return identity
+    package = next((parent for parent in path.parents if (parent / "package.json").is_file()), None)
+    if package is None:
+        raise ValueError("script entry has no package identity: " + str(path))
+    files = {}
+    # Installed package code, prompts and data are part of the harness. Nested
+    # dependencies are not claimed frozen; record that boundary explicitly.
+    for directory, dirs, names in os.walk(package):
+        dirs[:] = sorted(d for d in dirs if d not in {"node_modules", ".git"})
+        for name in sorted(names):
+            file = Path(directory) / name
+            if file.is_file():
+                files[str(file.relative_to(package))] = sha(file)
+    identity.update(package_root=str(package), package_file_count=len(files),
+                    package_sha256=hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest(),
+                    boundary="installed package; external runtime and nested dependencies not frozen")
+    return identity
+
+
 def plan(args):
     arms = args.arms.split(",")
     scenarios = args.scenarios.split(",")
@@ -47,7 +72,7 @@ def plan(args):
         if not path or not Path(path).is_file():
             raise ValueError("binary missing: " + arm)
         path = str(Path(path).resolve())
-        binaries[arm] = {"path": path, "sha256": sha(path)}
+        binaries[arm] = {"path": path, "sha256": sha(path), "identity": executable_identity(path)}
     rng = random.Random(args.seed)
     schedule = []
     for repetition in range(args.repeats):
@@ -66,6 +91,8 @@ def plan(args):
                 "binaries": binaries, "rig_inputs": inputs(), "schedule": schedule,
                 "maximum_cell_seconds": len(schedule) * args.cap,
                 "quality_rule": "verdict pass AND every assertion pass",
+                "machine": {"system": platform.system(), "release": platform.release(),
+                            "architecture": platform.machine(), "cpu_count": os.cpu_count()},
                 "condition_id": "clean-profile-v2;fresh-state;slow60;no-shared-live-load"}
     with open(args.manifest, "x") as handle:
         json.dump(manifest, handle, indent=2)
@@ -81,6 +108,8 @@ def execute(args):
     for arm, binary in manifest["binaries"].items():
         if sha(binary["path"]) != binary["sha256"]:
             raise ValueError(arm + " binary changed since planning")
+        if binary.get("identity") and executable_identity(binary["path"]) != binary["identity"]:
+            raise ValueError(arm + " package changed since planning")
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     receipt = out / "manifest.json"
