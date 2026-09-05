@@ -41,6 +41,10 @@ const (
 	beltFactsToken    = "BELT_FACTS"
 	handoffFactsToken = "HANDOFF_FACTS"
 	programFactsToken = "PROGRAM_FACTS"
+	// AND THE FOURTH IS A WHOLE SECTION AND NOT A RUN OF SENTENCES. What keeps
+	// working after the window closes is `stand`'s section from its heading down
+	// ([standingFacts]), so the token stands where the heading stood.
+	standingFactsToken = "STANDING_FACTS"
 )
 
 // ── the predicates ──────────────────────────────────────────────────────────
@@ -89,6 +93,17 @@ func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
 // a.connect is never reassigned afterwards, so this is settled for the life of
 // the agent at the moment the prompt is rendered.
 func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
+
+// mayStand says whether `stand` belongs on this belt, and it is
+// [Config.standingStore] — the ONE reading of that availability, which
+// [Agent.standingTools] builds the tool from (tools_standing.go). It is not a
+// second reading of the two fields: the belt and the page must not be able to
+// disagree about whether anything can be scheduled from here.
+//
+// It is the sharpest absence on the belt — a model told it can leave something
+// behind will plan a whole reply around one — and it is the predicate the page's
+// standing section is composed from.
+func (c Config) mayStand() bool { return c.standingStore() != nil }
 
 // mayFork says whether `fork` belongs on this belt (fork.go). It is off in a
 // hand and nowhere else, which is the whole of the depth-one law: a chat turn
@@ -139,6 +154,21 @@ type beltFact struct {
 
 // beltFacts is the whole of it, in the order the section reads.
 var beltFacts = []beltFact{{
+	// THE CLOCK, whose second sentence is the one place the session facts named a
+	// conditional verb for everybody. The first sentence is true of every shape —
+	// the `Project` footer is rendered for all of them — and the second was
+	// telling a worker with no `stand` to reach for `when.in`, which is the
+	// defect this file was written for, one section further down the same page.
+	tools:   []string{"stand"},
+	holds:   Config.mayStand,
+	present: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so NEVER run `date` for it. It does not tick inside a turn, so when a MINUTE matters use `stand`'s `when.in` or the `now:` line a `stand` result ends with.",
+	// AND THE ABSENT CASE MUST NOT CONTRADICT ITSELF. It cannot say NEVER run
+	// `date` and in the same breath send the model to the clock, because with no
+	// `stand` the shell IS the only clock: the rule stays what it is for the
+	// four facts the footer already gives, and the one case it does not cover is
+	// named as the exception.
+	absent: "- YOU KNOW WHAT TIME IT IS: `Project`'s `Now` line gives local time to the minute, offset, zone by name and weekday, so never shell out for any of those four. It does not tick inside a turn, so a moment that must be exact to the MINUTE is the one case for a single `date` call.",
+}, {
 	tools: []string{"propose_task", "tasks"},
 	holds: Config.mayProposeTask,
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
@@ -255,6 +285,86 @@ var programFacts = []beltFact{{
 	absent: "",
 }}
 
+// standingFacts is `# Things that keep working after this window`, and it is a
+// WHOLE SECTION composed from one predicate rather than a run of bullets.
+//
+// The section used to open by saying it was about a tool — "When your tool list
+// carries `stand`" — which is the page admitting in its own first clause that it
+// is writing 2.4KB for readers who do not have the verb. Every worker in a task
+// room is one of those: a node is handed no standing store (task_run.go), and so
+// are `--once` and a firing's own headless session (tools.go states why). They
+// were paying for the waking kinds, the card's four answers, the RFC3339
+// arithmetic and the background-checks row on every request of every turn, for a
+// tool that is not on their belt — and the clause that named the condition is
+// gone from the present case because the predicate below IS that condition.
+//
+// The absent case is the sentence the page already carried for it, which is why
+// this row leaves [promptNamesBeyondTheBelt] with one entry fewer: that ledger is
+// for what predates the seam, and this no longer does.
+var standingFacts = []beltFact{{
+	tools: []string{"stand"},
+	holds: Config.mayStand,
+	present: "# Things that keep working after this window\n" +
+		"Some of what a person says is not work for now but something to leave behind\n" +
+		"with `stand`: \"remind me at 6\", \"tell me when CI goes red\",\n" +
+		"\"every Monday draft the update\", \"always run the tests\". Doing one instead\n" +
+		"of proposing it answers a request they did not make. Send their sentence\n" +
+		"verbatim, what wakes it, what a firing does, and its rails; the card prices it.\n" +
+		"\n" +
+		"WAKING OR HOLDING. A standing sentence naming a moment, a rhythm or a condition\n" +
+		"gets the waking kind it names: `at`, `every`, `file`, `idle`, `probe`. One\n" +
+		"naming none of them, a rule or preference (\"always ...\", \"we use X here\"), is\n" +
+		"`when.kind: hold`: it never fires and never spends, riding into every\n" +
+		"conversation and task it reaches, and is sent with no `does` and no `rails`.\n" +
+		"\n" +
+		"UNSURE MEANS INSTRUCTION PLUS AN OFFER: bind it to the work in front\n" +
+		"of you AND offer the standing version in one line at the end of your reply.\n" +
+		"Never a card on a guess.\n" +
+		"\n" +
+		"SAYING WHEN. For a distance from now (\"in 1 minute\") ALWAYS send `when.in` with\n" +
+		"a Go duration (\"1m\", \"1h30m\") and NEVER work a stamp out for it, since aforge\n" +
+		"resolves it against the real clock as you call. For a moment they NAMED (\"at 6\")\n" +
+		"work the RFC3339 stamp out from `Now` yourself, in the same offset, as `when.at`.\n" +
+		"One or the other, never both. A MOMENT ALREADY GONE IS REFUSED: work it out\n" +
+		"again from THE TIME THE TOOL GAVE YOU, the `now:` line every `stand` result ends\n" +
+		"with. AND NEVER TELL THEM YOU CANNOT HOLD A TIMER: \"remind me in 1 minute\" is a\n" +
+		"standing one-off, `when.in: \"1m\"` with `does.kind: say`, and that IS the timer.\n" +
+		"\n" +
+		"A CARD OFFERS `yes, set it up`, an outright no, `just once` on anything but a\n" +
+		"one-off reminder, and `change when or where`, whose answer returns as their own\n" +
+		"words to re-propose with.\n" +
+		"\n" +
+		"WHERE A FIRING ARRIVES: the person, not a room, so never promise a reminder\n" +
+		"\"here\" as though this window were the only door. NOTHING STANDS UNTIL THEY SAY\n" +
+		"YES, and an unanswered card declines. Say what now stands and what it costs, and\n" +
+		"never re-ask an answered card.\n" +
+		"\n" +
+		"BACKGROUND CHECKS ARE ON AND NOBODY IS ASKED: the first thing that ever stands\n" +
+		"turns on this machine's own timer, so items are checked with no aforge window\n" +
+		"open. Never promise otherwise, and turn the `background checks` row in /settings\n" +
+		"if they ask.\n" +
+		"\n" +
+		"A LINE THAT OPENS `[something you set up fired]` IS NEWS AND NOT A REQUEST: the\n" +
+		"thing already ran, so relay it to the person in one line and never call `stand`\n" +
+		"again for it.",
+	// AND THE ABSENT CASE NAMES NO VERB, which is what lets the section go with
+	// it: a heading over one sentence is a heading nobody needs, and a sentence
+	// naming a tool this belt does not carry is the lie the whole file exists to
+	// prevent (prompt_belt_test.go asks it of every shape).
+	//
+	// IT DENIES SCHEDULING AND NOTHING ELSE. An earlier wording said nothing
+	// this agent does keeps working once the window closes, which is far wider
+	// than the missing verb and false on this build: work handed to a task
+	// outlives the turn that started it, is checkpointed and comes home on its
+	// own (task_run.go), and a session is restored rather than lost. What
+	// [Config.mayStand] actually decides is whether a thing can be left to fire
+	// LATER, so that is the whole of what this sentence says.
+	absent: "NOTHING CAN BE SCHEDULED FROM HERE: there is no way to leave a reminder, a\n" +
+		"rhythm or a condition to watch behind you, so say so plainly rather than\n" +
+		"promising to check back later. Work already handed off is a different thing\n" +
+		"and is not affected.",
+}}
+
 // revisionFacts uses the same capability predicate as the tool and joins the
 // other conditional fragments, so the prompt contract can check both directions.
 var revisionFacts = []beltFact{{
@@ -266,11 +376,34 @@ var revisionFacts = []beltFact{{
 // allBeltFacts is every row, for the tests that hold the whole table to the
 // law rather than one section of it.
 func allBeltFacts() []beltFact {
-	all := make([]beltFact, 0, len(beltFacts)+len(handoffFacts)+len(programFacts)+len(revisionFacts))
-	all = append(all, beltFacts...)
-	all = append(all, handoffFacts...)
-	all = append(all, programFacts...)
+	all := make([]beltFact, 0, len(revisionFacts))
+	for _, section := range promptSections {
+		all = append(all, section.facts...)
+	}
 	return append(all, revisionFacts...)
+}
+
+// promptSection is one place prompts/system.md hands over to a predicate: the
+// token that stands there, the rows composed into it, and how they are parted.
+//
+// THE LIST IS THE COMPOSITION AND THE MEASUREMENT AT ONCE. [promptWithBeltFacts]
+// walks it to build the page an agent reads, and prefixbudget_test.go walks the
+// same list to build the widest page any agent can be handed — so a section
+// added here is composed and weighed without a second edit, which is the drift
+// the fourth token would otherwise have introduced.
+type promptSection struct {
+	token string
+	facts []beltFact
+	// join is the page's own separator: bullets sit on consecutive lines, whole
+	// paragraphs and sections are parted by a blank one.
+	join string
+}
+
+var promptSections = []promptSection{
+	{token: beltFactsToken, facts: beltFacts, join: "\n"},
+	{token: handoffFactsToken, facts: handoffFacts, join: "\n"},
+	{token: programFactsToken, facts: programFacts, join: "\n\n"},
+	{token: standingFactsToken, facts: standingFacts, join: "\n\n"},
 }
 
 // renderBeltFacts composes the section for one shape.
@@ -294,9 +427,10 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 // whole of the fixed prefix that depends on the shape, which is why
 // prefixbudget_test.go weighs this and not [systemPrompt].
 func promptWithBeltFacts(config Config) string {
-	page := strings.Replace(systemPrompt, beltFactsToken, renderBeltFacts(config, beltFacts, "\n"), 1)
-	page = strings.Replace(page, handoffFactsToken, renderBeltFacts(config, handoffFacts, "\n"), 1)
-	page = strings.Replace(page, programFactsToken, renderBeltFacts(config, programFacts, "\n\n"), 1)
+	page := systemPrompt
+	for _, section := range promptSections {
+		page = strings.Replace(page, section.token, renderBeltFacts(config, section.facts, section.join), 1)
+	}
 	// AND THE HOLE A WHOLE SECTION LEFT IS CLOSED. A table that renders nothing
 	// — the saved-programs paragraphs on a worker, which has neither verb —
 	// leaves its blank line behind, and the page would open a paragraph gap of
@@ -331,5 +465,4 @@ func promptWithBeltFacts(config Config) string {
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
 	"remember": "Without `remember`, say plainly that memory is off",
-	"stand":    "Without `stand` this build cannot watch anything",
 }
