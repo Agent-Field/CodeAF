@@ -184,7 +184,9 @@ So before the work moves, the same reading a stopped turn gets is taken:
 **And a handover it asked for is never dropped.** A long turn can normally talk its own
 handover out of happening: if the model says nothing is left and the second reader's sketch
 does not name independent parts still to do, the work stays where it is and the turn
-finishes. On a run with a budget that
+finishes. It gets that **once per request**, whether or not the sketch agreed — a turn that
+says it is done and then keeps working is met by the next look with the claim already spent.
+On a run with a budget that
 only holds while the run's own owner agrees — and when it has just read the ending and said
 the ask is **not** finished, the work moves anyway, on its account of what is left rather
 than on your bare sentence. A run measured before this said "not yet confirmed" at its

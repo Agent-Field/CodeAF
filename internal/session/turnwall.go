@@ -143,7 +143,7 @@ const checkpointDecisionRanLong = "ran long"
 // AND IT FIRES ONLY WHERE A TASK STILL FITS. Past the share, the wall's remainder
 // is read off the same clock, and under [taskAllowance] the door stays shut: the
 // road behind it can only start a task, a task that cannot be set up and checked
-// is not an offer, and asking the two minds about it would put their calls on
+// is not an offer, and asking the reader and the model about it would put their calls on
 // the bill for nothing. The allowance's own boundary is inside for the share's
 // reason turned around: exactly the allowance left is still enough.
 func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) bool {

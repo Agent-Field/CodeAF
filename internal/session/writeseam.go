@@ -41,7 +41,7 @@ package session
 // one, which can be DECLINED when the running model and the mark's own reader
 // both say nothing remains ([Agent.handOverRunningTurn]) — and a turn that wrote
 // its two files and finished is exactly that turn. A seam that re-fired every
-// round would ask those two minds the same question over and over and charge the
+// round would ask the reader and the model the same question over and over and charge the
 // person for each of them.
 
 import (
@@ -94,7 +94,7 @@ type writeMeter struct {
 	calls int
 	files map[string]bool
 	// spent says the seam has already opened its door in this turn, so that a
-	// handover the two minds declined is not asked for again every round after.
+	// handover this road declined is not asked for again every round after.
 	spent bool
 }
 

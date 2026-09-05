@@ -476,7 +476,7 @@ this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
 
-## It made a task out of work that was already finished — why did it start a task when everything was done, the task redid what the answer had already written, it started again from my first message
+## It made a task out of work that was already done · why did it hand over when everything was written · the task redid what the answer had already written · it started again from my first message
 
 **When aforge stops to look at a long answer, it asks the model writing that answer whether
 anything is left.** If the answer is that nothing is — everything you asked for is already
@@ -493,16 +493,37 @@ for, deleted the file it replaced and said it was done — and because the sketc
 moment read `(waiting)` for a build still running in the background, the whole request was
 handed to a fresh worker that started again from the first message and ran the clock out.
 
-**And a reply that says it is done and then keeps working is met.** That answer is believed
-**once**. If the reply carries on and finishes ten more rounds of real tool work after
-saying nothing was left, aforge looks again, does not believe it a second time, and the work
-moves onto a task in the ordinary way. Rounds spent only watching work already handed out do
-not count towards those ten — see *Watching the pieces you handed out does not move your
-answer*.
-
 **If something of your own is still running, this is not the road you are on.** A reply whose
 only remainder is a command it started waits for it here instead, and no task is made of the
-wait — see *Waiting for a command you asked for does not become a task*.
+wait — see *Waiting for a command you asked for does not become a task*. If the reply instead
+says it is finished outright while that command is still going, the drop above applies and
+the command is untouched by it: nothing is killed, nothing is marked done, and its ending
+comes back to this conversation as the note it always would have.
+
+## It said it was done and then carried on · it started work after saying nothing was left · I typed something more and it made a task of it · I pressed escape and a task started anyway
+
+**A reply that says nothing is left is believed once per request.** If it then does ten more
+rounds of real tool work, aforge looks again, does not believe it a second time, and the work
+moves on in the ordinary way. Rounds spent only watching pieces you already handed out do not
+count towards those ten — see *Watching the pieces you handed out does not move your answer*.
+
+**Once, whether or not the second reader agreed.** A sketch reading `(done)` at the same
+moment is better evidence than the reply alone and still not proof — both can be wrong
+together — so agreement buys no extra drop.
+
+**Typing something new gives you a fresh one.** The count runs against the request, so a
+direction you add while the reply is running is a different request: it arrives with nothing
+spent, and a reply that discharges *that* is dropped on its own terms.
+
+**And a reply you interrupt starts nothing.** Press escape, or close the session out from
+under a running reply, and the handover goes no further: nothing is named, no brief is
+written, nothing is admitted. Nothing owns the request any more.
+
+**What this does not cover: a sketch naming work you have already done.** Where the second
+reader draws independent parts still to do, the work moves — even if those parts landed in
+the seconds after that reader was shown its account of them. The reading is one line drawn
+from a snapshot. What was closed is the opposite mistake: silence, a fault, or a shape with
+no parts in it are no longer read as a reader saying work remains.
 
 ## Can I give a task a short name?
 
