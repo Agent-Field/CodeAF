@@ -1192,16 +1192,15 @@ func watchUpdateSummary(name, text string) string {
 	return summary
 }
 
-// briefNote is A NODE'S OWN BRIEF, HELD RATHER THAN ASKED. It exists for one
-// caller: a worker whose work was handed out in parts before it started, whose
-// runner queues the brief here and parks until every part has reported
-// (task_run.go's [runTaskChild]).
+// briefNote carries instructions composed by the runtime, including a worker
+// opening or landing. Its journal mark prevents a descendant from quoting the
+// composed brief as a new statement the person actually typed.
 //
 // It owes NO answer — `wake` is false — because nothing here starts a turn. A
 // node's turns are its runner's to start ([Agent.wakeLocked] declines inside a
 // task), and the turn this line is read in is the one the last report begins.
 func briefNote(text string) userMessage {
-	return userMessage{message: textMessage("user", text)}
+	return userMessage{message: textMessage("user", text), authored: true}
 }
 
 // steerNote is a line the PERSON said into a running node. It owes an answer

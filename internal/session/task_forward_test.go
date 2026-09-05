@@ -81,7 +81,7 @@ func askingContext(t *testing.T, agent *Agent, words string) context.Context {
 	agent.mu.Lock()
 	agent.running = true
 	agent.turnSeq++
-	agent.rememberAskLocked(briefNote(words))
+	agent.rememberAskLocked(userText(words))
 	agent.mu.Unlock()
 	return requestContext(agent)
 }
@@ -91,7 +91,7 @@ func askingContext(t *testing.T, agent *Agent, words string) context.Context {
 func (f *forwarding) steersOn(t *testing.T, words string) context.Context {
 	t.Helper()
 	f.session.mu.Lock()
-	f.session.rememberAskLocked(briefNote(words))
+	f.session.rememberAskLocked(userText(words))
 	f.session.mu.Unlock()
 	return requestContext(f.session)
 }

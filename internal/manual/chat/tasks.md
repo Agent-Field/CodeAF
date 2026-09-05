@@ -4019,3 +4019,10 @@ A delayed forward cannot revise over a correction recorded with a later speaking
 For main-chat messages this is when the session reads them at a turn boundary, not
 the keypress time. This is local ordering, not a guarantee across machines or clock
 changes. Corrections do not automatically broadcast to a task's children.
+
+## Does a child treat its parent's brief as something I said?
+
+A worker opening and its finishing instructions are runtime notes, not new messages
+from you. When the worker hands a piece onward, these composed instructions are not
+quoted as your words, including after reopening the journal. The original person
+request remains available separately, together with the child's assigned scope.

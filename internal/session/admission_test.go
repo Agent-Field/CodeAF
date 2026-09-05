@@ -746,3 +746,29 @@ func TestAHandlePointsAtAResultThatCanBeFetched(t *testing.T) {
 		t.Fatalf("the line the call id leads to is not the result:\n%s", found)
 	}
 }
+
+// A composed opening remains runtime context when a worker hands work onward.
+func TestWorkerBriefNeverBecomesAPersonQuote(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = filepath.Join(t.TempDir(), "worker.jsonl")
+	})
+	brief := briefNote("A composed parent brief, including its own constraints")
+	agent.mu.Lock()
+	agent.recordUserLocked(brief)
+	agent.rememberAskLocked(brief)
+	if len(agent.personTurns) != 0 || agent.personAsk != "" {
+		agent.mu.Unlock()
+		t.Fatal("runtime brief was attributed to the person")
+	}
+	agent.restorePersonTurnsLocked(agent.messages)
+	if len(agent.personTurns) != 0 {
+		agent.mu.Unlock()
+		t.Fatal("replayed runtime brief became a person quote")
+	}
+	agent.rememberAskLocked(userText("My actual correction"))
+	if len(agent.personTurns) != 1 || agent.personTurns[0].text != "My actual correction" {
+		agent.mu.Unlock()
+		t.Fatal("actual person correction was lost")
+	}
+	agent.mu.Unlock()
+}

@@ -192,7 +192,7 @@ func (r *childRun) open(instruction string) error {
 		r.child.enqueueNote(briefNote(instruction))
 		return nil
 	}
-	events, err := r.child.Submit(r.runCtx, instruction)
+	events, err := r.child.submitUser(r.runCtx, briefNote(instruction))
 	if err != nil {
 		return err
 	}
@@ -587,7 +587,7 @@ func (r *childRun) landIfStopped() {
 	restore := r.child.withdrawTools(landingBelt, landingWithdrawal)
 	landing := landingInstruction(r.child.beltTools())
 	savedInLanding := false
-	if events, err := r.child.Submit(r.ctx, landing); err == nil {
+	if events, err := r.child.submitUser(r.ctx, briefNote(landing)); err == nil {
 		savedInLanding = r.drainLanding(events)
 	}
 	lostItsCheck := r.child.landingLostTheCheck()
