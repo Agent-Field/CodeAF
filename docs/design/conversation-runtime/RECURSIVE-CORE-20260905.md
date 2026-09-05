@@ -85,7 +85,12 @@ Use realistic repository tasks to evaluate this change. The current Validated
 pilot exposed a grader collection conflict and a compressed-error proxy defect;
 it cannot justify a wholesale architecture rewrite or an efficiency ranking.
 The corrected-proxy Aforge trial retains the original runtime so that those
-experimental conditions are kept separate from future policy changes.
+experimental conditions are kept separate from future policy changes. It reached
+the 30-minute deadline with implementation in the child worktree but no feature
+integrated into the main workspace. The child was awaiting a full test run.
+The delivered patch scored 0/159 acceptance and 61/61 regression assertions.
+This supports investigating ownership timing, test execution and integration;
+it does not establish that deleting a particular policy would have passed.
 
 The target is one recursive loop with a reliable task lifecycle. The remaining
 engineering is mostly about deleting duplicate decisions while preserving the

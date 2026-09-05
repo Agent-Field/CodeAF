@@ -287,6 +287,12 @@ func TestWorkGoesOnAfterTheWindowIsCutAndTheNextWindowIsInTheSameConversation(t 
 		t.Fatalf("submit: %v", err)
 	}
 
+	// Keep a standing subscription on the first window so the returning
+	// window's lane check also verifies that this one was eventually released.
+	_, stopFirst := first.Agent().WatchHarnessDesigns()
+	t.Cleanup(stopFirst)
+	waitUntil(t, "the first window subscribed", func() bool { return far.watching() == 1 })
+
 	// The terminal goes away without saying anything.
 	_ = first.Close()
 
@@ -307,9 +313,10 @@ func TestWorkGoesOnAfterTheWindowIsCutAndTheNextWindowIsInTheSameConversation(t 
 	if got, want := second.Welcome().SessionFile, workspace+"/j.jsonl"; got != want {
 		t.Fatalf("the second window opened %q, want %q", got, want)
 	}
-	if second.Welcome().Attached != 0 {
-		t.Fatalf("the second window was told %d others were attached", second.Welcome().Attached)
-	}
+	// Closing the client socket does not wait for the server to process EOF.
+	// The replacement may be welcomed before the old surface detaches, so its
+	// arrival snapshot can still count that surface. Conversation continuity
+	// must hold in either order; the lane check below verifies eventual cleanup.
 
 	// AND ITS STANDING LANE IS SUBSCRIBED TO THE SAME CONVERSATION. A card
 	// raised after the reconnect reaches the window that came back, which is the

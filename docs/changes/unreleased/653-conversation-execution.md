@@ -21,3 +21,8 @@ the next execution plan. The plan distinguishes direct work, short forks and
 durable tasks; its proposed consolidation is not yet implemented in full.
 See docs/design/conversation-runtime/EXECUTION-PLAN.md and VALIDATION.md for
 scope, evidence and limitations. Keep the PR draft while that work continues.
+
+The reconnect fixture now allows the replacement window to arrive before the
+server processes the old socket's EOF. It checks retained conversation identity
+and eventual standing-subscription cleanup instead of assuming an arrival-time
+attachment count of zero.

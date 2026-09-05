@@ -291,3 +291,63 @@ to a forced handoff that never happened. Its recorded request traffic was
 71,984,610 bytes across 120 calls for Aforge and 17,282,734 across 76 for Pi;
 19 Aforge requests carried no tools. These are workload observations with failed
 outcomes, not proof that every helper call is unnecessary or a cost comparison.
+
+
+### Corrected-proxy complex retry: deadline without delivery
+
+The diagnostic retry completed at the 1,800-second limit (`door.json` reports
+1,801 seconds and `ended: cap`). Its runtime binary hash is unchanged from the
+original pilot, `593d7400b068b3182cbad72ae73842b8b06615ce8f94edd87d32be6db1b2a7aa`;
+only the proxy correction was introduced. Both the original verifier and the
+predeclared test-isolation diagnostic returned **0/159 acceptance, 61/61
+regression**. This is a failed delivery, not an efficiency result.
+
+The final main-workspace patch contains a QEMU ruff core dump, with no feature
+implementation. The sole child, task 2, has implementation and test edits in its
+isolated worktree, but they were not integrated before the deadline. Those
+unlanded files were not substituted into either score and have not received an
+independent correctness grade. The final task record is paused for resumption
+after the harness stopped the engine; this does not constitute completion.
+
+The main conversation investigated for 10 minutes 26 seconds and 58 tool calls
+before the runtime moved the work into that task. At 18:51:02 UTC the child
+started `python -m pytest tests/ -q -p no:cacheprovider`, piped through `tail -30`,
+with a 600-second timeout. It became background job 4 after 30 seconds. Its
+result had not reached the child journal when the harness stopped at about
+19:00:48 UTC. Toolchain preparation also encountered missing test plugins and a
+QEMU ruff crash. These observations identify time spent and an undelivered
+result; they do not isolate policy overhead from model behavior, environment
+setup or emulated execution speed.
+
+All 126 admitted calls used the exact allowed model; 126 have settlement
+records, but only 122 have prices after read-only reconciliation. Total cost
+therefore remains **unknown**. Recorded request traffic is 56,331,950 bytes. The
+retry is not a new paired comparison, and it cannot establish a cost ratio.
+Its evidence is retained on Spark under
+`/home/santosh/bench-artifacts/af653-complex-guard-retry-20260905`, including the
+manifest, native screen, complete saved state, both grades and reconciled
+receipts. The owned temporary guard credential was removed at job completion.
+
+The next architectural change should shorten the path from assignment to a
+stable owner, preserve that owner's context, and make test progress and result
+integration dependable. Additional nested wrappers for ordinary tools would
+not address the failure observed here. The UI fixes in this wave have passed
+their local gates, but this complex run prevents claiming that substantial
+end-to-end developer work is reliable yet.
+
+
+CI run 33985211705 passed the full terminal suite (468.315 seconds) and session
+suite (162.085 seconds), but failed a reconnect fixture that required the new
+window's arrival snapshot to report zero other attachments. Client socket close
+does not acknowledge server EOF processing: the replacement may arrive before
+the old connection detaches, as the server's detach contract explicitly allows.
+The fixture now retains conversation identity, completed work and eventual lane
+cleanup checks without asserting that unsupported arrival order. Separate
+simultaneously attached-window tests still check the attachment count.
+
+The old reconnect assertion reproduced 20 failures in 300 local runs. With the
+first window explicitly subscribed, all 300 revised runs pass under the race
+detector (35.177 seconds). The full enginehost package passes (13.865 seconds),
+with vet, formatting, packed manual, build and size gates. An accidentally
+started all-package gate was stopped and is not counted as validation; the
+intended enginehost gate completed successfully.
