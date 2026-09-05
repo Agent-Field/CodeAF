@@ -841,8 +841,19 @@ type hostSeams struct {
 }
 
 func newHostSeams(client *remote.Client) hostSeams {
+	initial := client.Held()
+	var readInitial atomic.Bool
 	return hostSeams{
-		Link: client.LinkNote, Ping: client.Ping, Notice: client.TakeNotice, Held: client.HeldQuestions,
+		Link: client.LinkNote, Ping: client.Ping, Notice: client.TakeNotice,
+		Held: func() ([]remote.HeldQuestion, error) {
+			// Arrival and replay share one snapshot. Re-querying before drawing
+			// it could hide a question re-emitted since arrival: the server has
+			// sent it live, while the client already reserved it for this welcome.
+			if !readInitial.Swap(true) {
+				return initial, nil
+			}
+			return client.HeldQuestions()
+		},
 		Driving: client.Driver, DrivingChanged: client.DriverChanged, Take: client.Take,
 		Follow: client.Follow,
 	}
