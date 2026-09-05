@@ -51,6 +51,9 @@ scenario_turns() {
 scenario_check() {
   local work="$1" transcript="$2" cell="$3"
   local door="$cell/door.json"
+  local invocations
+  invocations="$(wc -l < "$work/.phases/build-invocations" 2>/dev/null | tr -d '[:space:]')"
+  check "the prepared action ran exactly once" "$([ "$invocations" = "1" ] && echo 1 || echo 0)"
   local sent started finished
   sent="$(door_field "$door" midwork_sent_at)"
   started="$(door_field "$door" work_started_at)"

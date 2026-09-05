@@ -27,7 +27,10 @@ fixture_slowwork() {
 #!/bin/sh
 # Stands in for a build: it takes a while and then writes its result. The two
 # marker files are what the benchmark reads to know when the work actually ran.
-python3 -c 'import time; print(time.time())' > "$phases/build-started"
+echo invocation >> "$phases/build-invocations"
+if [ ! -s "$phases/build-started" ]; then
+  python3 -c 'import time; print(time.time())' > "$phases/build-started"
+fi
 sleep $seconds
 echo "BUILD-OK marker=QUARTZLINE" > "$work/build.log"
 python3 -c 'import time; print(time.time())' > "$phases/build-finished"

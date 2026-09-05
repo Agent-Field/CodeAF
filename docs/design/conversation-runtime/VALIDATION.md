@@ -63,6 +63,23 @@ word. Both peers honored the output-format correction. OMP's installed MCP disco
 was still present despite disabled skills, rules and extensions, weakening isolation.
 These facts are observations, not a ranking of the harnesses in general.
 
+## Corrected hosted comparison, candidate 0c76ea5ca
+
+The corrected run used the short state alias, the same 60-second fixture and the
+same exact DeepSeek model as the peers. Both Aforge cells failed. Follow-up: 86s total,
+incorrect `RABBANIC` in the model response and no build-result narration on screen.
+Revision: 183s, valid CSV produced but superseded Markdown also left behind. The
+fixed session goal was visibly trying to restore the Markdown requirement after the
+person changed it. Multiple build starts overwrote a phase marker and also spoiled
+its ordering witness. The fixture now counts invocations and keeps the first start.
+Both cells have unknown total cost due missing upstream usage; token receipts were
+155,235 input / 2,560 output and 772,819 input / 23,523 output respectively.
+
+These failures prompted two additional bounded repairs: subscribing hosted sessions
+to runtime-started turns, and separating interactive conversation policy from a frozen
+headless goal. Their final validation belongs below once integrated; the failed raw
+runs remain evidence and are not relabeled as passes.
+
 ## Priorities after this wave
 
 1. Make result delivery an explicit user-facing obligation through provider failures:

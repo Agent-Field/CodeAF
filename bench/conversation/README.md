@@ -467,3 +467,8 @@ inside the evidence folder. Without that alias a long output path can trigger
 the in-process fallback and first-run setup instead of measuring hosted chat.
 The alias path is recorded in `state-alias.txt` and removed with other owned
 state unless `--keep` is used. First-run setup is not part of these comparisons.
+
+The slow-work fixture records every invocation and preserves its first start
+timestamp. Both interactive scenarios reject repeating the prepared action.
+Previously a second run could overwrite the start marker and make a correctly
+timed user correction look early; that failure is now measured directly.
