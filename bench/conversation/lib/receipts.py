@@ -31,6 +31,7 @@ import argparse
 import glob
 import json
 import os
+import math
 import sys
 
 
@@ -51,6 +52,15 @@ def jsonl(path):
         return
 
 
+def plausible_cost(value):
+    """A cost the provider could actually have charged: a finite number, not
+    negative. A NaN or an infinity parses as JSON in Python and sums as a
+    number, so it has to be refused explicitly rather than by accident."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value) and value >= 0
+
+
 def read_guard_usage(path):
     """What the provider said it charged, for every call in this cell.
 
@@ -60,11 +70,18 @@ def read_guard_usage(path):
     stay tokens: no price is invented from them here.
 
     The guard opens a row when it ADMITS a request and closes one when the
-    request ends. Both are read, and they must agree: an admission with no
-    settlement is a call that was made and never accounted for — the client
-    hung up, the upstream failed after generating, the guard was killed — and
-    a total that just leaves it out is a smaller number than what was spent.
-    So it makes the whole cell's cost unknown."""
+    request ends, and both carry the same request id. The only sound way to
+    know every admitted call was accounted for is to pair them id by id:
+    counting admissions against settlements can be fooled by a torn ledger
+    where one settlement is written twice and another is missing, and the
+    counts agree while a billed call went unrecorded. So: an admission with no
+    settlement, a settlement naming an admission that never was, a repeated
+    id on either side, or a cost that is not a finite non-negative number —
+    any of these makes the whole cell's cost unknown rather than part-counted.
+
+    One shape is still read without ids: the rows the guard wrote before it
+    recorded admissions have no phase and no request id, and evidence from
+    those runs still reads. Everything else must reconcile exactly."""
     rows = [row for row in jsonl(path) if isinstance(row, dict)]
     if not rows:
         return None
@@ -72,17 +89,46 @@ def read_guard_usage(path):
                  or row.get("prompt_tokens") is not None]
     if not inference:
         return None
-    # A row with no phase is a settlement: that is the shape the guard wrote
-    # before admissions were recorded, and evidence from those runs still reads.
-    admitted = [row for row in inference if row.get("phase") == "admitted"]
-    settled = [row for row in inference if row.get("phase") != "admitted"]
-    priced = [row for row in settled if isinstance(row.get("cost_usd"), (int, float))]
-    unsettled = len(admitted) - len(settled)
+    admitted_ids = []
+    settlements = {}
+    legacy = []
+    repeated = []
+    malformed = []
+    for row in inference:
+        phase = row.get("phase")
+        request_id = row.get("request_id")
+        if phase and (not isinstance(request_id, str) or not request_id):
+            malformed.append("missing request identity")
+            continue
+        if phase not in (None, "", "admitted", "settled", "generation"):
+            malformed.append("unknown phase")
+            continue
+        if phase == "generation":
+            continue
+        if phase == "admitted":
+            if request_id in admitted_ids:
+                repeated.append(("admission", request_id))
+            else:
+                admitted_ids.append(request_id)
+        elif phase == "settled":
+            if request_id in settlements:
+                repeated.append(("settlement", request_id))
+            else:
+                settlements[request_id] = row
+        elif not phase and not request_id:
+            # The shape the guard wrote before admissions were recorded.
+            legacy.append(row)
+    orphan_ids = [request_id for request_id in settlements
+                  if request_id not in admitted_ids]
+    unaccounted = [request_id for request_id in admitted_ids
+                   if request_id not in settlements]
+    settled_rows = list(settlements.values()) + legacy
+    priced_rows = [row for row in settled_rows if plausible_cost(row.get("cost_usd"))]
     got = {
-        "calls": max(len(admitted), len(settled)),
+        "calls": len(admitted_ids) or len(settled_rows),
         "models": [],
-        "tokens_in": sum(int(row.get("prompt_tokens") or 0) for row in settled) or None,
-        "tokens_out": sum(int(row.get("completion_tokens") or 0) for row in settled) or None,
+        "tokens_in": sum(int(row.get("prompt_tokens") or 0) for row in settled_rows) or None,
+        "tokens_out": sum(int(row.get("completion_tokens") or 0) for row in settled_rows) or None,
         "cost_usd": None,
         "cost_source": "none",
         "notes": [],
@@ -91,18 +137,40 @@ def read_guard_usage(path):
         model = row.get("model")
         if model and model not in got["models"]:
             got["models"].append(model)
-    if unsettled > 0:
+    if legacy and (admitted_ids or settlements):
+        malformed.append("mixed legacy and identified ledger")
+    if malformed:
+        got["notes"].append("invalid ledger: " + "; ".join(malformed))
+    if repeated:
+        got["notes"].append(
+            "the usage ledger repeated %s — a torn ledger, so the cell's cost is "
+            "unknown rather than part-counted"
+            % ", ".join("%s for %s" % pair for pair in repeated))
+    if orphan_ids:
+        got["notes"].append(
+            "the usage ledger settled %d call(s) no admission booked — a torn "
+            "ledger, so the cell's cost is unknown rather than part-counted"
+            % len(orphan_ids))
+    if unaccounted:
         got["notes"].append(
             "%d of %d admitted calls never settled — billed and unaccounted, so the "
             "cell's cost is unknown rather than part-counted"
-            % (unsettled, len(admitted)))
-    elif len(priced) == len(settled) and settled:
-        got["cost_usd"] = sum(float(row["cost_usd"]) for row in priced)
-        got["cost_source"] = "guard-upstream"
-    else:
+            % (len(unaccounted), len(admitted_ids)))
+    implausible = [request_id for request_id, row in settlements.items()
+                   if row.get("cost_usd") is not None
+                   and not plausible_cost(row.get("cost_usd"))]
+    if implausible:
         got["notes"].append(
-            "upstream priced %d of %d calls — cost left unknown rather than part-counted"
-            % (len(priced), len(settled)))
+            "the provider's usage named a cost that cannot be a price for %d call(s) "
+            "— cost unknown rather than part-counted" % len(implausible))
+    if not (repeated or orphan_ids or unaccounted or implausible or malformed):
+        if settled_rows and len(priced_rows) == len(settled_rows):
+            got["cost_usd"] = sum(float(row["cost_usd"]) for row in priced_rows)
+            got["cost_source"] = "guard-upstream"
+        elif settled_rows:
+            got["notes"].append(
+                "upstream priced %d of %d calls — cost left unknown rather than part-counted"
+                % (len(priced_rows), len(settled_rows)))
     return got
 
 
