@@ -1,31 +1,40 @@
 #!/usr/bin/env bash
-# multi-defect-pipeline — substantial independent work, and the integration of
-# it, through the print door.
+# multi-defect-pipeline — a multi-module correctness fixture, through the print
+# door.
 #
 # One small Python project with four independent defects, one each in parsing,
 # validation, aggregation and rendering, plus the command-line pipeline that
 # joins them. Each defect is found and fixed on its own; the pipeline's output
-# is only right when all four are. That is the whole shape of this cell: real
-# separable work whose parts have to come back together.
+# is only right when all four are. The four repairs are small — a CSV reader, a
+# set instead of a variable, an ISO year, a tie-break — so this is a calibration
+# fixture for separable work and its integration, not a demonstration that there
+# is enough work here to be worth splitting up.
 #
 # IT ASSERTS NOTHING ABOUT SHAPE. Not how many agents ran, not whether a task
 # was spawned, not whether the work was done in parallel or in one long turn. A
 # harness that repairs all four modules serially passes exactly as a harness
 # that fans out does, and should: the person asked for working software.
 #
-# The judge is external, and it is behavioural: it imports the repaired project
-# from a copy, runs it on inputs the workspace never contained, and runs the CLI
-# as a subprocess. It never reads the source text, so a rewrite passes and a
-# lookup table keyed on the visible test data does not. The workspace's own
-# suite is the map, not the mark: it is checksummed before the run, and it is
-# the judge outside that decides.
+# The judge is external and black-box: it runs the repaired project's own
+# command line as a child process, on inputs the workspace never contained, and
+# reads stdout, stderr and the exit status. It never imports the candidate and
+# never reads its source, so a rewrite passes, a lookup table keyed on the
+# visible test data does not, and candidate code cannot reach into the process
+# that holds the expected answers. The workspace's own suite is the map, not the
+# mark: it is checksummed before the run, and the judge outside decides.
 
 SCENARIO_WORKLOAD="coding"
 SCENARIO_DOOR="print"
 SCENARIO_ARMS="aforge omp pi opencode"
-# Four modules of work, not one boundary: this cap is a spend backstop, and a
-# harness still running at it has produced nothing.
+# The runtime cap: how long the harness may run before the cell is recorded as a
+# timeout. It bounds time, not money — what a run costs depends on what it asked
+# the provider for, and the guard's ledger is what says so.
 SCENARIO_CAP_S="${SCENARIO_CAP_S:-1200}"
+# The judging cap, which is separate and much smaller: this fixture is a few
+# hundred lines of standard library and a correct run of the whole judge takes
+# under two seconds. Judging happens after the harness has stopped, so nothing
+# the runner does bounds it — this does.
+SCENARIO_JUDGE_CAP_S="${SCENARIO_JUDGE_CAP_S:-90}"
 SCENARIO_GUARDS="four independent defects, and a pipeline that needs all four"
 
 # shellcheck source=../fixtures/dutylog.sh
@@ -105,12 +114,18 @@ check_group() {
   esac
 }
 
+# same_sum answers, without judging: a missing file is not the same file.
+same_sum() {
+  local got
+  got="$(shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1)"
+  [ -n "$got" ] && [ "$got" = "$2" ]
+}
+
 check_same_sum() {
-  local description="$1" path="$2" want="$3" got
-  got="$(shasum -a 256 "$path" 2>/dev/null | cut -d' ' -f1)"
-  if [ -z "$got" ]; then
+  local description="$1" path="$2" want="$3"
+  if [ ! -f "$path" ]; then
     fail "$description — the file is gone: $(basename "$path")"
-  elif [ "$got" = "$want" ]; then
+  elif same_sum "$path" "$want"; then
     pass "$description"
   else
     fail "$description — it was modified: $(basename "$path")"
@@ -122,31 +137,40 @@ scenario_check() {
   local verdict="$judge/judge-verdict.json"
   local copy="$cell/judged-copy"
 
-  # ── the marker, before it is used ───────────────────────────────────────
+  # ── the instruments, before they are used ───────────────────────────────
   #
-  # The judge and the guard manifest live beside the cell rather than in the
-  # workspace, and nothing the harness was asked to do goes near them. Checking
-  # is detection, not prevention: nothing here sandboxes a filesystem.
+  # The judge and the guard manifest live beside the cell rather than inside the
+  # directory the harness was pointed at. That is a location, not a sandbox: an
+  # agent can reach them, and these checksums say afterwards whether it did. A
+  # changed instrument is not run: a corrupted judge that has been detected must
+  # not then be executed, and a corrupted manifest cannot verify anything.
   if [ -z "$SCENARIO_JUDGE_SUM" ] || [ -z "$SCENARIO_GUARD_SUM" ]; then
     fail "no checksums were taken for the judge — the tamper checks did not run"
     return
   fi
-  check_same_sum "the judge was not modified during the run" \
-    "$judge/judge_dutylog.py" "$SCENARIO_JUDGE_SUM"
-  check_same_sum "the guard manifest was not modified during the run" \
-    "$judge/workspace-guard.json" "$SCENARIO_GUARD_SUM"
+  if ! same_sum "$judge/judge_dutylog.py" "$SCENARIO_JUDGE_SUM"; then
+    fail "the judge was not modified during the run — it was, so it was not run"
+    note "the scenario's behavioural checks did not run: the judge changed"
+    return
+  fi
+  pass "the judge was not modified during the run"
 
   # ── the question is still the question ──────────────────────────────────
-  if python3 "$CONV_ROOT/fixtures/dutylog/manifest.py" verify \
-       "$work" "$judge/workspace-guard.json" > "$cell/workspace-guard.log" 2>&1; then
-    pass "tests/ and SPEC.md were not edited or deleted"
+  if ! same_sum "$judge/workspace-guard.json" "$SCENARIO_GUARD_SUM"; then
+    fail "the guard manifest was not modified during the run — it was, so nothing it says is trusted"
   else
-    fail "tests/ and SPEC.md were edited or deleted — see workspace-guard.log"
-    note "guard=$(grep -aE '^(changed|missing):' "$cell/workspace-guard.log" | tr '\n' ' ' | tr ',' ';')"
+    pass "the guard manifest was not modified during the run"
+    if python3 "$CONV_ROOT/fixtures/dutylog/manifest.py" verify \
+         "$work" "$judge/workspace-guard.json" > "$cell/workspace-guard.log" 2>&1; then
+      pass "tests/ and SPEC.md were not edited or deleted"
+    else
+      fail "tests/ and SPEC.md were edited or deleted — see workspace-guard.log"
+      note "guard=$(grep -aE '^(changed|missing):' "$cell/workspace-guard.log" | tr '\n' ' ' | tr ',' ';')"
+    fi
+    local added
+    added="$(grep -ac '^added:' "$cell/workspace-guard.log" 2>/dev/null | tail -1)"
+    record "files_added_under_guard" "${added:-0}"
   fi
-  local added
-  added="$(grep -ac '^added:' "$cell/workspace-guard.log" 2>/dev/null | tail -1)"
-  record "files_added_under_guard" "${added:-0}"
 
   # ── the judge ───────────────────────────────────────────────────────────
   #
@@ -158,32 +182,31 @@ scenario_check() {
     fail "the workspace could not be copied for judging"
     return
   fi
-  if python3 "$judge/judge_dutylog.py" --project "$copy" --out "$verdict" \
-       > "$cell/judge.log" 2>&1 && [ -s "$verdict" ]; then
+  # The judge bounds each of its own child processes; this bounds the judge. A
+  # candidate that hangs on import, or one whose CLI spawns something that
+  # outlives it, costs this cell SCENARIO_JUDGE_CAP_S and a recorded failure —
+  # never the runner's attention. -k follows an ignored TERM with a KILL.
+  #
+  # This does NOT reach the candidate's own processes: the judge starts each of
+  # them in a new session, so they are not in the group timeout(1) signals. The
+  # judge ends those groups itself, on its signalled path as well as its
+  # ordinary one, which is where that guarantee actually lives.
+  "$TIMEOUT_BIN" -k 10 "$SCENARIO_JUDGE_CAP_S" \
+    python3 "$judge/judge_dutylog.py" --project "$copy" --out "$verdict" \
+    > "$cell/judge.log" 2>&1
+  local judge_exit=$?
+  if [ "$judge_exit" -eq 0 ] && [ -s "$verdict" ]; then
     pass "the judge ran to completion"
+  elif [ "$judge_exit" -eq 124 ] || [ "$judge_exit" -eq 137 ]; then
+    fail "the judge ran to completion — it hit the ${SCENARIO_JUDGE_CAP_S}s judging cap and was killed"
+    note "judge_timeout=${SCENARIO_JUDGE_CAP_S}s"
+    return
   else
-    fail "the judge did not complete — see judge.log"
+    fail "the judge did not complete (exit $judge_exit) — see judge.log"
     return
   fi
   check_same_sum "the judge was not rewritten while it judged" \
     "$judge/judge_dutylog.py" "$SCENARIO_JUDGE_SUM"
-
-  # The code under judgement runs in the judge's own process, so a verdict is
-  # believed only when it is the shape this fixture ships: every case accounted
-  # for, and the project it names is the copy that was handed to it. This is a
-  # sanity check on the artifact, not a sandbox — see the README.
-  check "the verdict accounts for the whole fixture and names the copy it judged" \
-    "$(CONV_VERDICT="$verdict" CONV_COPY="$copy" python3 -c '
-import json, os
-try:
-    got = json.load(open(os.environ["CONV_VERDICT"]))
-except Exception:
-    print(0); raise SystemExit(0)
-print(1 if got.get("cases", 0) >= 30
-      and os.path.realpath(got.get("project", "")) == os.path.realpath(os.environ["CONV_COPY"])
-      and set(got.get("groups", {})) == {"parsing", "validation", "aggregate", "report", "integration"}
-      else 0)
-' 2>/dev/null)"
 
   # One assertion per module, so a three-of-four repair says which one is
   # missing, and one for the pipeline that needs all four.

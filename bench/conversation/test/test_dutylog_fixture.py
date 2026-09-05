@@ -25,9 +25,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 CONV_ROOT = Path(__file__).resolve().parents[1]
@@ -85,12 +87,17 @@ class FixtureCase(unittest.TestCase):
         for module in modules:
             shutil.copy(Path(source) / (module + ".py"), self.project / "dutylog")
 
-    def judge(self, project=None):
+    def judge(self, project=None, budget=None, per_call=None, wall=120):
         out = Path(self.tmp.name) / "verdict.json"
+        env = dict(CHILD_ENV)
+        if budget is not None:
+            env["DUTYLOG_BUDGET_S"] = str(budget)
+        if per_call is not None:
+            env["DUTYLOG_CLI_TIMEOUT_S"] = str(per_call)
         done = subprocess.run(
             [sys.executable, str(CELL.judge / "judge_dutylog.py"),
              "--project", str(project or self.project), "--out", str(out)],
-            capture_output=True, text=True, env=CHILD_ENV)
+            capture_output=True, text=True, env=env, timeout=wall)
         self.assertEqual(done.returncode, 0, done.stderr)
         return json.loads(out.read_text()), out
 
@@ -140,7 +147,9 @@ class FixtureCase(unittest.TestCase):
         verdict, _ = self.judge()
         self.assertTrue(verdict["passed"], verdict["groups"])
         self.assertEqual(verdict["failed"], 0)
-        self.assertGreaterEqual(verdict["cases"], 30)
+        self.assertGreaterEqual(verdict["cases"], 20)
+        for group in ("integration",) + MODULE_GROUPS:
+            self.assertGreaterEqual(verdict["groups"][group]["cases"], 4, group)
 
     def test_the_reference_repair_turns_the_visible_suite_green(self):
         self.repair(*MODULES)
@@ -202,6 +211,182 @@ class FixtureCase(unittest.TestCase):
         self.assertFalse(verdict["passed"])
         self.assertEqual(self.failing_groups(verdict),
                          sorted(("integration",) + MODULE_GROUPS))
+
+    def test_a_project_that_hangs_on_import_is_a_verdict_within_the_budget(self):
+        # Reported by root review: the judge used to import the candidate into
+        # its own process, so this slept for as long as it liked.
+        (self.project / "dutylog" / "__init__.py").write_text(
+            "import time\ntime.sleep(600)\n")
+        started = time.monotonic()
+        verdict, _ = self.judge(budget=4, per_call=1, wall=60)
+        self.assertLess(time.monotonic() - started, 45)
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(any("killed" in failure["detail"] or "budget" in failure["detail"]
+                            for state in verdict["groups"].values()
+                            for failure in state["failed"]), verdict["groups"])
+
+    # ── the lifecycle of the candidate's own processes ─────────────────────
+    #
+    # These stage a candidate CLI that leaves something behind, and each cleans
+    # up after itself in a `finally` — a test of a process-killing helper must
+    # not depend on that helper working to avoid leaking the process it staged.
+
+    def plant_cli(self, body):
+        (self.project / "dutylog" / "cli.py").write_text(body)
+
+    def wait_for_pid_file(self, marker, within=20):
+        for _ in range(int(within * 20)):
+            if marker.exists() and marker.read_text().strip():
+                return int(marker.read_text().strip())
+            time.sleep(0.05)
+        self.fail("the counterexample never recorded its descendant")
+
+    def force_kill(self, pid):
+        if pid is None:
+            return
+        for attempt in (signal.SIGKILL,):
+            try:
+                os.kill(pid, attempt)
+            except (ProcessLookupError, PermissionError):
+                return
+
+    def assert_gone(self, pid, within=15):
+        for _ in range(int(within * 20)):
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, PermissionError):
+                return
+            time.sleep(0.05)
+        self.fail("a process the judge started outlived it: pid %d" % pid)
+
+    # A descendant written as its own file: the planted CLI starts it, and it
+    # records its pid so the test can insist afterwards that it is gone.
+    DESCENDANT = """import os, signal, time
+{ignore}open({marker!r}, "w").write(str(os.getpid()))
+time.sleep(600)
+"""
+    LEADER = """import subprocess, sys, time
+from pathlib import Path
+helper = str(Path(__file__).with_name("_descendant.py"))
+marker = Path({marker!r})
+{spawn}
+for _ in range(500):  # do not exit before the descendant has named itself
+    if marker.exists():
+        break
+    time.sleep(0.02)
+{tail}
+"""
+
+    def plant_descendant(self, marker, ignore_term=True, quiet=False, leader_exits=False):
+        (self.project / "dutylog" / "_descendant.py").write_text(self.DESCENDANT.format(
+            ignore="signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if ignore_term else "",
+            marker=str(marker)))
+        spawn = ("quiet = open(os.devnull, 'w')\n"
+                 "subprocess.Popen([sys.executable, helper], stdout=quiet, stderr=quiet)"
+                 if quiet else "subprocess.Popen([sys.executable, helper])")
+        self.plant_cli(self.LEADER.format(
+            marker=str(marker),
+            spawn=("import os\n" + spawn) if quiet else spawn,
+            tail="raise SystemExit(0)" if leader_exits else "time.sleep(600)"))
+
+    def test_a_descendant_that_ignores_term_and_holds_the_pipes_is_still_killed(self):
+        # (a) The leader dies on TERM. Its child ignores TERM, inherited stdout,
+        # and never closes it: waiting for the leader and then reading the pipe
+        # is how this hangs forever.
+        marker = Path(self.tmp.name) / "stubborn.pid"
+        self.plant_descendant(marker)
+        pid = None
+        try:
+            verdict, _ = self.judge(budget=4, per_call=1, wall=90)
+            pid = self.wait_for_pid_file(marker)
+            self.assertFalse(verdict["passed"])
+            self.assert_gone(pid)
+        finally:
+            self.force_kill(pid)
+
+    def test_a_descendant_of_a_leader_that_exited_normally_is_not_left_running(self):
+        # (b) The CLI starts something with its own stdio, prints nothing and
+        # exits 0. Nothing times out, so only the ordinary path can clean up.
+        marker = Path(self.tmp.name) / "orphan.pid"
+        self.plant_descendant(marker, ignore_term=False, quiet=True, leader_exits=True)
+        pid = None
+        try:
+            verdict, _ = self.judge(wall=120)
+            pid = self.wait_for_pid_file(marker)
+            self.assertFalse(verdict["passed"], "a CLI that prints nothing cannot pass")
+            self.assert_gone(pid)
+        finally:
+            self.force_kill(pid)
+
+    def test_terminating_the_judge_takes_the_candidates_processes_with_it(self):
+        # (c) What the scenario's own watchdog does. The judge is signalled; the
+        # candidate's group is in a different session and would not hear it.
+        marker = Path(self.tmp.name) / "signalled.pid"
+        self.plant_descendant(marker)
+        out = Path(self.tmp.name) / "verdict.json"
+        judge = subprocess.Popen(
+            [sys.executable, str(CELL.judge / "judge_dutylog.py"),
+             "--project", str(self.project), "--out", str(out)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(CHILD_ENV, DUTYLOG_BUDGET_S="120", DUTYLOG_CLI_TIMEOUT_S="90"))
+        pid = None
+        try:
+            pid = self.wait_for_pid_file(marker)
+            judge.terminate()
+            judge.communicate(timeout=30)
+            self.assertNotEqual(judge.returncode, 0, "a terminated judge did not report it")
+            self.assertFalse(out.exists(), "a killed judge must not leave a verdict")
+            self.assert_gone(pid)
+        finally:
+            if judge.poll() is None:
+                judge.kill()
+                judge.communicate(timeout=15)
+            self.force_kill(pid)
+
+    def test_a_command_that_hangs_is_killed_with_its_descendants(self):
+        marker = Path(self.tmp.name) / "grandchild.pid"
+        (self.project / "dutylog" / "cli.py").write_text(
+            "import os, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])\n"
+            "open(%r, 'w').write(str(child.pid))\n"
+            "time.sleep(600)\n" % str(marker))
+        verdict, _ = self.judge(budget=4, per_call=1, wall=60)
+        self.assertFalse(verdict["passed"])
+        self.assertTrue(marker.exists(), "the counterexample never started its grandchild")
+        pid = int(marker.read_text())
+        for _ in range(50):  # the kill is signalled, not instantaneous
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, PermissionError):
+                break
+            time.sleep(0.1)
+        else:
+            os.kill(pid, 9)
+            self.fail("a grandchild of the judged CLI outlived the judge")
+
+    def test_candidate_code_cannot_rewrite_the_judges_own_cases(self):
+        # The exact counterexample from the root review: all four defects left
+        # in place, and only dutylog/__init__.py changed, to replace the judge's
+        # case bodies with no-ops. It passed 34 of 34 when the judge imported
+        # the candidate. The judge is a parent now, and this is a child.
+        (self.project / "dutylog" / "__init__.py").write_text(
+            "import sys\n"
+            "main = sys.modules.get('__main__')\n"
+            "cases = getattr(main, 'CASES', None)\n"
+            "if cases is not None:\n"
+            "    main.CASES = [(group, name, lambda *a, **k: None) for group, name, _ in cases]\n"
+            "    for group in getattr(main, 'GROUPS', ()):\n"
+            "        pass\n")
+        verdict, _ = self.judge()
+        self.assertFalse(verdict["passed"], "the supplied forgery still passes")
+        self.assertEqual(self.failing_groups(verdict),
+                         sorted(("integration",) + MODULE_GROUPS))
+
+    def test_the_judge_never_imports_the_candidate(self):
+        source = (CELL.judge / "judge_dutylog.py").read_text()
+        for forbidden in ("import_module", "importlib", "sys.path.insert"):
+            self.assertNotIn(forbidden, source,
+                             "the judge is back to loading candidate code in-process")
 
     def test_the_judge_is_not_in_the_workspace(self):
         inside = {path.name for path in CELL.work.rglob("*")}

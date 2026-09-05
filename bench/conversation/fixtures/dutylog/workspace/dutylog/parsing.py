@@ -1,7 +1,8 @@
 """Read a duty log CSV as text, keeping the line each record came from.
 
 Nothing here decides whether a record is *sensible* — that is validation's job.
-This module's only contract is the file format in SPEC.md: RFC 4180 quoting, an
+This module's only contract is the file format in SPEC.md: RFC 4180 quoting
+minus newlines inside quoted fields, which SPEC.md puts out of scope, plus an
 optional byte order mark, blank lines that are not records, and a line number
 that survives both of those so an error message can point at the right line.
 """

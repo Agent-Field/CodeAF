@@ -266,18 +266,41 @@ They are independent — the fixture's own tests assert that repairing one repai
 one — and the pipeline's output is right only when all four are. The workspace
 carries the failing suite and `SPEC.md`, which is the contract.
 
-**The judge is outside the workspace and behavioural.** `judge/judge_dutylog.py`
-is copied to the cell's judge directory, imports a *copy* of the repaired
-project, and runs 34 cases on inputs the workspace never contained — different
-dates, different sites, minutes at exactly 1 and exactly 1440, an ISO year that
-is not the calendar year, ties, and the CLI as a subprocess. It never reads the
-project's source text: a rewrite that shares no line with the reference repair
-passes, and a module that answers the visible tests out of a lookup table fails.
-Both of those are tested (`test/fake/dutylog-alt`, `test/fake/dutylog-cheat`).
+**The judge is black-box and it is a parent process.** `judge/judge_dutylog.py`
+is copied to the cell's judge directory and runs the repaired project's own
+command line as a child, on 29 cases of input the workspace never contained —
+different dates and sites, minutes at exactly 1 and exactly 1440, an ISO year
+that is not the calendar year, an unpadded timestamp, ties, and the whole
+pipeline. It reads stdout, stderr and the exit status, and nothing else: not the
+project's source text, and not its functions.
+
+That last part is not a preference. An earlier version imported the candidate's
+modules and called them, and a root review showed what that costs: a
+`dutylog/__init__.py` that replaced the judge's own case list with no-ops
+returned `cases: 34, failed: 0, passed: true` with the judge's checksum intact.
+The parent must not import the candidate. Both counterexamples are now tests —
+that one, and a module that answers the visible tests out of a lookup table
+(`test/fake/dutylog-cheat`) — as is the property they protect: a rewrite that
+shares no line with the reference repair passes (`test/fake/dutylog-alt`).
+
+Judging each module through the command line is less coverage than calling its
+functions was. A module's internal contract is checked only as far as the CLI
+reveals it, on inputs chosen so that exactly one defect can change the answer;
+the workspace's own unittest suite still describes the modules directly, as
+developer guidance rather than as the mark.
+
+**Everything is bounded.** Each child runs in its own process group with a
+deadline and is killed by group, so a CLI that spawns something does not leave
+it behind; the whole judging run has a budget, and the scenario wraps the judge
+in `timeout -k`. A project that sleeps on import costs the cell its judging cap
+and a recorded failure. Before the review it cost the cell nothing and the run
+everything: the runner's cap covers the harness, not the checks that follow it.
 
 Each module is one assertion and the pipeline is another, so a three-of-four
 repair says which one is missing. `tests/` and `SPEC.md` are checksummed before
-the run and the judge is checksummed before and after it; a file *added* under
+the run and the judge is checksummed before and after it. A changed instrument
+is **not used**: a judge whose checksum moved is reported and not executed, and
+a guard manifest whose checksum moved verifies nothing. A file *added* under
 `tests/` is recorded and is not a failure.
 
 **It asserts nothing about shape.** Not how many agents ran, not whether a task
@@ -286,20 +309,24 @@ fixes all four in one turn passes exactly as a fan-out does, and should.
 
 What it does not establish, plainly:
 
-* **Nothing about useful parallelism.** It is one workload: four defects in
-  about 250 lines of Python. Whether that is enough independent work for
-  delegation to pay for its startup, context, coordination and integration is an
-  empirical question this fixture does not answer — it only makes the question
-  askable with a comparable, judged outcome instead of a sleep.
+* **Nothing about useful parallelism, and not much work.** Each of the four
+  repairs is small — use `csv.reader`, keep a set instead of a variable, take
+  the ISO year, add a tie-break — in about 250 lines of Python. This is a
+  multi-module correctness and calibration fixture. Whether independent work of
+  this size is worth splitting up is an empirical question it does not answer,
+  and answering it needs bigger held-out workloads and a serial ablation to
+  compare against.
 * One language, one domain, one size, one prompt, and a judge with a finite
-  number of cases. A repair that satisfies all 34 can still be wrong about
-  something nobody wrote a case for.
-* The tamper checks are **detection, not prevention**: nothing here sandboxes a
-  filesystem. They say afterwards that the question was changed. The judge also
-  imports the repaired project into its own process, so a project that set out
-  to defeat its judge rather than to work has room to try; the checksums, the
-  copy it judges and the shape of the verdict are what would catch an ordinary
-  attempt, not a determined one.
+  number of black-box cases. A repair that satisfies all 29 can still be wrong
+  about something nobody wrote a case for, and about anything a module does that
+  its command line does not show.
+* The judge and the answer keys are **outside the directory the harness was
+  pointed at, which is a location and not a sandbox**. Nothing stops a process
+  from walking up one directory. The checksums are detection: they say
+  afterwards that an instrument moved, and the scenario then refuses to use it.
+  What is now structural rather than detected is the process boundary — the
+  candidate runs as a child, and the parent holding the expected answers never
+  imports it.
 * The prompt names the four modules, because every arm must get the same task
   and finding the work is not what is being compared here. It says nothing about
   agents, tasks or parallelism.
@@ -313,8 +340,9 @@ python3 -m unittest discover -s bench/conversation/test -p 'test_dutylog*.py'
 They build the fixture the way `run.sh` does and check that it fails in all four
 modules before any repair, that the reference repair and an unrelated correct
 implementation both pass, that three modules out of four never passes, and that
-a hard-coded answer, an edited test, a deleted test and a planted verdict are
-each caught. `test/selftest.sh` drives the same three outcomes through the real
+a hard-coded answer, an edited test, a deleted test, a planted verdict, a
+project that hangs on import, a CLI that leaves a grandchild running, and the
+review's own `__init__.py` forgery are each caught. `test/selftest.sh` drives the same three outcomes through the real
 runner against fake binaries.
 
 ## Outcomes
