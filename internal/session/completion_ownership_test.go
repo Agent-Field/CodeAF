@@ -487,6 +487,22 @@ func TestUnreadDirectionBeforeTheOfferIsNoGround(t *testing.T) {
 	}
 }
 
+func TestQueuedSubmitCannotAuthorizeAwait(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.mu.Lock()
+	agent.running, agent.turnSeq = true, 4
+	agent.hub = newEventHub()
+	hub := agent.hub
+	agent.mu.Unlock()
+	defer hub.close()
+	if _, err := agent.Submit(context.Background(), "Also produce a JSON copy."); err != nil {
+		t.Fatal(err)
+	}
+	if agent.awaitGroundNow().sound {
+		t.Fatal("an unread Submit message authorized waiting on the older request")
+	}
+}
+
 // AND A SESSION THAT IS NOT RUNNING A TURN, OR IS CLOSED, IS NO GROUND EITHER.
 func TestOnlyARunningOpenTurnIsGround(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, func(*Config) {})
@@ -537,6 +553,11 @@ func TestTheAwaitedCommandsEndingWakesTheConversation(t *testing.T) {
 	steps := make([]step, 24)
 	for index := range steps {
 		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			for _, message := range messages {
+				if message.Role == "user" && strings.Contains(messageText(message), "job 1 exited 0") {
+					return textResponse("The build finished successfully and the report is ready."), nil
+				}
+			}
 			switch {
 			case askedForSketch(messages):
 				return textResponse("(waiting)\nWaiting for the build that was started."), nil
@@ -619,7 +640,7 @@ func TestTheAwaitedCommandsEndingWakesTheConversation(t *testing.T) {
 	// THE ENDING IS IN THE CONVERSATION AS THE JOB'S OWN NEWS, and the model
 	// answered AFTER it — which is the whole return path this decline rests on:
 	// `job 1 exited 0` arrives as a note and the turn it starts speaks.
-	if !answeredAfterTheEnding(agent, "job 1 exited") {
+	if !answeredAfterTheEnding(agent, "job 1 exited", "The build finished successfully and the report is ready.") {
 		t.Fatalf("nothing was said after the command's ending:\n%s", transcriptText(agent))
 	}
 	// AND NOTHING WAS DONE TWICE. The command ran once and no task was started
@@ -637,14 +658,14 @@ func TestTheAwaitedCommandsEndingWakesTheConversation(t *testing.T) {
 
 // answeredAfterTheEnding reports that the conversation said something of its own
 // after one note landed in it.
-func answeredAfterTheEnding(agent *Agent, note string) bool {
+func answeredAfterTheEnding(agent *Agent, note, answer string) bool {
 	messages := agent.snapshot()
 	for index, message := range messages {
 		if message.Role != "user" || !strings.Contains(messageText(message), note) {
 			continue
 		}
 		for _, later := range messages[index+1:] {
-			if later.Role == "assistant" && strings.TrimSpace(messageText(later)) != "" {
+			if later.Role == "assistant" && strings.Contains(messageText(later), answer) {
 				return true
 			}
 		}

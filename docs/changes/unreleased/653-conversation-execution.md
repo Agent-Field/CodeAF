@@ -4,6 +4,7 @@ title: Conversation work keeps attributable direction and results while its exec
 pr: 653
 surface: [chat, engine, docs]
 invalidates:
+  - "A writing turn could delegate a wait for its own command to a task with no access to that command. The handoff call can now explicitly await live owned operations, with unread messages and changed requests invalidating that decision; the original completion notice still returns to its owner."
   - "A fork required every hand to claim writable paths, including readers. An explicit empty scope now creates a reading hand without edit or write tools; missing or null scope is still refused."
   - "Task coordination text could be confused with a person's revision. The conversation runtime now carries attributed directions and effective assignment revisions, while agent coordination cannot rewrite user authority."
   - "A compact task card was also the result available to the conversation. Full results now remain separately retrievable, with bounded excerpts for presentation."

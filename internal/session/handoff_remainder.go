@@ -91,15 +91,11 @@ func (a *Agent) awaitGroundNow() awaitGround {
 	if a.closed || !a.running {
 		return awaitGround{}
 	}
-	for _, message := range a.steering {
-		// Unread direction, however it arrived: the person's own splice into this
-		// turn ([userMessage.steer]) or a line said into this node from outside it
-		// ([userMessage.steered]). The loop empties this queue at the next
-		// boundary, so anything still on it is a sentence the model that has just
-		// answered was never shown.
-		if message.steer != nil || message.steered {
-			return awaitGround{}
-		}
+	// Submit can enqueue an ordinary user message without a steer receipt.
+	// Any unread message can change what the owner owes, so the next boundary
+	// must incorporate the whole queue before an await can be granted.
+	if len(a.steering) != 0 {
+		return awaitGround{}
 	}
 	return awaitGround{epoch: requestEpoch{turn: a.turnSeq, steer: a.steerSeq.Load()}, sound: true}
 }
