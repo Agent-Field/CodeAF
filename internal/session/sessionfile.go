@@ -608,7 +608,7 @@ type journalMark struct {
 // Reason is the reason WHERE THERE IS ONE and is empty everywhere else, which is
 // the emptiness law and is most of the time: `dropped:no-brief` has the whole
 // [journalCarry] ladder above it saying why each rung produced nothing, and
-// `dropped:nothing-left` has no reason to give — two minds agreed the work was
+// `dropped:nothing-left` has no reason to give — nothing contradicted the work being
 // done. `dropped:work-already-out` carries one, because the decision word alone
 // does not say what was already out, and an autopsy grepping the word should get
 // the why in the same line (checkpoint.go's carryHeldWork).

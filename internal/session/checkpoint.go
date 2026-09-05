@@ -756,6 +756,20 @@ type checkpointMeter struct {
 	// fact about ONE answer. A counter that remembered yesterday's carry-ons
 	// would refuse to carry on a conversation that had never asked for it.
 	carriedOn int
+	// claimedDone says this turn has already had ONE uncorroborated declaration
+	// that nothing was left believed ([Agent.handOverRunningTurn]). A second one
+	// is not believed, which is the bound that lets the first be.
+	//
+	// IT IS SPENT ONLY BY A CLAIM AND NEVER BY EVIDENCE. Where the mark's own
+	// reader drew a done shape too, two minds agreed and nothing was claimed, so
+	// nothing is charged and the turn may still be believed later.
+	claimedDone bool
+	// askAgainAt is the round the ceiling stands on AFTER a believed claim, and
+	// zero on every turn that has not made one. It is what makes a drop safe to
+	// grant on one mind: a turn that said it was finished and then did
+	// [checkpointPrice] more rounds of real work has disproved its own claim, and
+	// the ceiling is there to meet it.
+	askAgainAt int
 	// marks is how many of the ladder's rungs have already fired.
 	marks int
 	// shareSpent says the wall's share has already opened its door in this turn,
@@ -922,6 +936,17 @@ func (m *checkpointMeter) round(worked bool) int {
 		return 0
 	}
 	m.rounds++
+	// AND A TURN THAT SAID IT WAS FINISHED IS MET AGAIN IF IT CARRIES ON WORKING.
+	//
+	// This rung stands in front of the ladder's own count — the ceiling may
+	// already have fired, and the write seam may have dropped long before it —
+	// because what it bounds is not how much a turn has cost but a CLAIM the
+	// harness believed. It is the reason the drop no longer needs a second mind:
+	// see [Agent.handOverRunningTurn].
+	if m.askAgainAt > 0 && m.rounds >= m.askAgainAt {
+		m.askAgainAt = 0
+		return checkpointMarks
+	}
 	if m.marks >= checkpointMarks {
 		return 0
 	}
@@ -930,6 +955,29 @@ func (m *checkpointMeter) round(worked bool) int {
 	}
 	m.marks++
 	return m.marks
+}
+
+// mayBelieveDone reports that a declaration this turn makes about its own
+// completion has not been believed before, and so may be believed now.
+//
+// A NIL METER ANSWERS YES, which is the door looped.go and the seams reach this
+// road through when there is no turn meter to charge. It is the fail-open
+// direction on the one question where erring the other way manufactures the
+// duplicate work this whole road exists to avoid.
+func (m *checkpointMeter) mayBelieveDone() bool { return m == nil || !m.claimedDone }
+
+// believeDone charges one claim and arms the ceiling to ask again after
+// [checkpointPrice] more rounds of real work.
+//
+// IT IS THE SAME PRICE THE LADDER CHARGES FOR ITS FIRST LOOK AT ANY TURN, taken
+// from that constant rather than written again here: a turn that has just said
+// it is finished is, for this purpose, a turn nobody has looked at yet.
+func (m *checkpointMeter) believeDone() {
+	if m == nil {
+		return
+	}
+	m.claimedDone = true
+	m.askAgainAt = m.rounds + checkpointPrice
 }
 
 // ── the sketch ──────────────────────────────────────────────────────────────
@@ -2321,7 +2369,7 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// ten to be noticed (writeseam.go). It fires once, and past it the marks and
 	// the ceiling govern the turn exactly as they always did.
 	if a.writeMeterNow().pastAllowance() {
-		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced, taken)
+		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter, taken)
 	}
 	// AND THE BATCH IS PRICED FOR WHAT IT WAS. A round the turn spent looking at
 	// work it already has out is not a round of work, and the ladder does not move
@@ -2335,7 +2383,7 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// takes the mark ladder below and is never asked the clock, so the two
 	// readings can neither race nor be paid for twice at one step.
 	if wallShareIsAsked(mark, calls) && a.pastTurnWallShare(meter, started) {
-		return a.checkpointOverWallShare(ctx, hub, turn, started, model, meter.rounds, meter.raced, taken)
+		return a.checkpointOverWallShare(ctx, hub, turn, started, model, meter.rounds, meter, taken)
 	}
 	if mark == 0 {
 		return false
@@ -2355,13 +2403,13 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 		}
 		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
 		return a.handOverRunningTurn(ctx, hub, turn, started, model,
-			checkpointSplitNote, checkpointSeamMark, rounds, meter.raced, read, taken).moved
+			checkpointSplitNote, checkpointSeamMark, rounds, meter, meter.raced, read, taken).moved
 	}
 	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
 	// did: it decided nothing, and the ceiling line written a moment later is
 	// where what happened to the turn is recorded.
 	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
-	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read, taken)
+	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, taken)
 }
 
 // checkpoints reports whether this turn may be checkpointed at all.
@@ -3052,8 +3100,9 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 // grading its own work, which is exactly the reading this whole file was rebuilt
 // to stop relying on. It was measured doing it: a turn declared nothing was left
 // at the ceiling, the handover was dropped, and the same model then ground on for
-// twenty more rounds unwatched. So the drop needs two minds
-// ([Agent.handOverRunningTurn]).
+// twenty more rounds unwatched. So the drop is believed ONCE and the ceiling
+// comes back to meet a turn that carries on working past its own claim
+// ([Agent.handOverRunningTurn], [checkpointMeter.believeDone]).
 //
 // EVERYTHING ELSE IT DOES IS [Agent.handOverRunningTurn]'S. It contributes the
 // two things that are its own: the line, and a verdict ARMED TO SPLIT. This turn
@@ -3065,22 +3114,23 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 //
 // THE SKETCH RIDES ALONG WHEN THERE IS ONE, and it now does two jobs rather than
 // one. A drawing of what is left is exactly what the worker's first paragraph
-// should be — and it is the second mind the remains contract needs, because the
-// only thing that can stop the ceiling is the two of them agreeing.
+// should be — and where it draws INDEPENDENT PARTS it is a second mind stating
+// that work remains, which is the one reading that refuses a completion claim
+// ([Agent.handOverRunningTurn]).
 //
 // AND THIS IS THE ONE MOMENT THAT WRITES ITSELF DOWN. What the ceiling did to a
 // turn used to exist nowhere: a run where the handover was dropped and a run where
 // it never fired read identically in the file, which is why the measured failure
 // could not be attributed without re-reading provider logs. So one line, with the
 // round it fired on and what it decided (sessionfile.go's [journalCeiling]).
-func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
+func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
 	verdict.Wide = true
 	// AND THE ROW IS NOT WRITTEN HERE ANY MORE. It is written by the function
 	// below, on every way out it has, because the ending is decided there and the
 	// two other doors into it were leaving the file silent — see the seam
 	// constants above. This road's remaining job on that line is nothing.
 	return a.handOverRunningTurn(ctx, hub, turn, started, model,
-		checkpointCeilingNote, checkpointSeamCeiling, rounds, verdict, read, taken).moved
+		checkpointCeilingNote, checkpointSeamCeiling, rounds, meter, verdict, read, taken).moved
 }
 
 // handOverRunningTurn ENDS A TURN THAT IS STILL RUNNING and moves what is left
@@ -3104,7 +3154,7 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // parts at the head of it, the task, the gap, and a turn sealed with the
 // transcript left in a state the next turn can open on.
 //
-// AND IT CAN DECLINE, ON TWO MINDS AGREEING AND NEVER ON ONE.
+// AND IT CAN DECLINE, ON A CLAIM NO READING CONTRADICTS, ONCE PER TURN.
 //
 // The ground is the one no clock can see for itself: the model answering the
 // dowry ask with [checkpointNothingLeft]. Every clock here decides on evidence
@@ -3119,20 +3169,33 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // twenty more rounds with nobody watching — the failure this whole file exists to
 // prevent, let through by the one door built to be kind to it.
 //
-// So the declaration is CORROBORATED against the sketch the mark's own reader
-// drew at that same moment ([checkpointSketch.saysDone]). Two minds agreeing that
-// nothing remains is evidence; one mind saying so about itself is a claim. When
-// they agree, NOTHING HAPPENS: no task, no line, no gap spent, no turn sealed —
-// the turn carries on and its own answer stands, which is the honest outcome for
-// a turn that was already finishing. When they do not, the work moves, and it
-// moves on the person's own sentence, because a continuation that answered with
-// the token wrote no instruction to hand anybody. That is the same fallback a
-// dowry of machine markup gets, for the same reason: a task that could not start
-// at all would be the guarantee broken.
+// SO THE CLAIM IS WEIGHED AGAINST WHAT CONTRADICTS IT AND NOT AGAINST WHAT
+// AGREES WITH IT. That is the correction the frozen revision cells forced: the
+// declaration used to need the mark's reader to have drawn `(done)` at the same
+// moment, and a reader that failed, was never reached, or drew a shape with no
+// parts in it was spent as though it had said work was left. It had said
+// nothing. Three measured cells ended with a finished request handed to a cold
+// worker on the person's original sentence for want of a corroboration nobody
+// was in a position to give.
 //
-// THE MARK'S OWN SPLIT CAN NEVER BE DROPPED, and it needs no rule of its own to
-// say so. A sketch with independent parts in it is a reader stating that work
-// remains, so it cannot corroborate a claim that none does.
+// WHAT REFUSES A CLAIM IS A DRAWING WITH INDEPENDENT PARTS IN IT
+// ([checkpointSketch.split]) — a reader stating positively that work remains —
+// and nothing else. THE MARK'S OWN SPLIT THEREFORE STILL CANNOT BE DROPPED, and
+// it needs no rule of its own to say so: that road is only entered on a drawing
+// that says exactly this.
+//
+// AND THE MODEL GRADING ITSELF IS BOUNDED BY THE TURN'S OWN BUDGET. The claim is
+// believed once ([checkpointMeter.believeDone]); a turn that then does
+// [checkpointPrice] more rounds of real work has disproved it, and the ceiling is
+// armed to come back and meet it with the claim spent. Where the reader DID draw
+// `(done)` nothing is charged, because two minds agreeing is evidence rather than
+// a claim. When the drop is granted, NOTHING HAPPENS: no task, no line, no gap
+// spent, no turn sealed — the turn carries on and its own answer stands, which is
+// the honest outcome for a turn that was already finishing. When it is refused,
+// the work moves on the person's own sentence, because a continuation that
+// answered with the token wrote no instruction to hand anybody. That is the same
+// fallback a dowry of machine markup gets, for the same reason: a task that could
+// not start at all would be the guarantee broken.
 //
 // THE PERSON'S OWN WORDS ARE READ FIRST AND ARE NEVER WRITTEN BY ANYBODY. They
 // ride the spec's request, verbatim, exactly as they do on every other door into
@@ -3146,7 +3209,7 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // written before the turn began — the race's own, from the request alone — would
 // be the one thing on the table that knows least, which is why it is dropped
 // where the other two fields of that verdict are kept.
-func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line, seam string, rounds int, verdict routeVerdict, read checkpointRead, taken *Decision) (over checkpointHandover) {
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line, seam string, rounds int, meter *checkpointMeter, verdict routeVerdict, read checkpointRead, taken *Decision) (over checkpointHandover) {
 	// ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
 	//
 	// IT IS A DEFER BECAUSE THERE ARE SEVERAL WAYS OUT of this function and the
@@ -3255,7 +3318,42 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// A PERSON'S SESSION IS UNTOUCHED: [Person] never reads this road at all,
 		// so [stewardReading.carriesOn] is false and the decline stands exactly
 		// as it did.
-		if sketch.saysDone() && !reading.carriesOn() {
+		// AND THE DRAWING IS READ FOR WHAT IT CONTRADICTS, NOT FOR WHETHER IT
+		// AGREES. This is the change the measured cell forced. The sketch is a
+		// cheaper reader answering a different question a moment earlier, from an
+		// account of the work rather than the work itself, and requiring it to
+		// say `(done)` made SILENCE into evidence of remainder: on the frozen
+		// revision cell its reader drew one waiting part while the person's CSV
+		// was already written, and on the cell after it the reader could not be
+		// reached at all. Both handed a finished request to a cold worker
+		// carrying the person's original sentence, which is the duplicate work
+		// this file exists to prevent, arriving through the door built to be kind.
+		//
+		// SO ONLY A POSITIVE READING OF REMAINDER REFUSES THE CLAIM: a drawing
+		// with independent parts in it is a second mind stating that work is
+		// left, and it still moves the turn ([checkpointSketch.split], which is
+		// also why THE MARK'S OWN SPLIT CAN STILL NEVER BE DROPPED — that road is
+		// only entered on a drawing that says exactly this). A reading that is
+		// absent, failed, or drew a shape with no parts in it says nothing about
+		// the remainder and no longer stands in for a reader that said work was
+		// left.
+		//
+		// AND THE MODEL GRADING ITS OWN WORK IS BOUNDED BY THE TURN'S OWN BUDGET
+		// INSTEAD ([checkpointMeter.believeDone]). The measured failure the two
+		// minds were written for — a turn declared nothing was left, the drop was
+		// granted, and the same model ground on for twenty more rounds unwatched
+		// — is now met by the ceiling asking again ten worked rounds later, with
+		// the claim spent and the work handed over. That is a strictly tighter
+		// bound than corroboration ever was: two readers can both be wrong at
+		// once, and when they were, nothing came back at all.
+		//
+		// WHERE THE READER DID SAY `(done)` NOTHING IS CHARGED. Two minds
+		// agreeing is evidence rather than a claim, so the turn keeps its one
+		// claim and the ceiling is not armed to come back.
+		if !read.sketch.split() && meter.mayBelieveDone() && !reading.carriesOn() {
+			if !sketch.saysDone() {
+				meter.believeDone()
+			}
 			// NOTHING HAPPENS, and that includes the line AND the ladder's own lines.
 			// A person told their answer was being moved and then left watching it
 			// finish where it was would have been told something that did not happen,

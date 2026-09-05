@@ -467,13 +467,42 @@ nothing, and a look that produced nothing is the answer carrying on. The third p
 is what makes that safe.
 
 **The third point is not a question.** Past it aforge stops looking. The answer ends where it
-is, what is left of the work moves onto one task whatever the last sketch said, and two dim
-lines go into the transcript:
+is, what is left of the work moves onto one task whatever the last sketch said — unless the
+answer itself says nothing is left, which is the one thing that stops it (below) — and two
+dim lines go into the transcript:
 
 ```
 this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
+
+## It made a task out of work that was already finished — why did it start a task when everything was done, the task redid what the answer had already written, it started again from my first message
+
+**When aforge stops to look at a long answer, it asks the model writing that answer whether
+anything is left.** If the answer is that nothing is — everything you asked for is already
+written — then **no task starts**, no line is added to your transcript, nothing is marked
+done and nothing is stopped. The reply you were already getting simply finishes.
+
+**That needs nothing to agree with it. It needs nothing to contradict it.** The second
+reader's sketch stops the drop only where the sketch names **independent parts still to
+do** — a reader saying positively that work is left. A reader that could not be reached, one
+that faulted, one that ran out of time, one that drew a single job, and one that drew
+`(waiting)` all say nothing about whether you are finished, and none of them is read as
+though it had said you were not. Measured before this: a reply wrote the CSV that was asked
+for, deleted the file it replaced and said it was done — and because the sketch at that
+moment read `(waiting)` for a build still running in the background, the whole request was
+handed to a fresh worker that started again from the first message and ran the clock out.
+
+**And a reply that says it is done and then keeps working is met.** That answer is believed
+**once**. If the reply carries on and finishes ten more rounds of real tool work after
+saying nothing was left, aforge looks again, does not believe it a second time, and the work
+moves onto a task in the ordinary way. Rounds spent only watching work already handed out do
+not count towards those ten — see *Watching the pieces you handed out does not move your
+answer*.
+
+**If something of your own is still running, this is not the road you are on.** A reply whose
+only remainder is a command it started waits for it here instead, and no task is made of the
+wait — see *Waiting for a command you asked for does not become a task*.
 
 ## Can I give a task a short name?
 
