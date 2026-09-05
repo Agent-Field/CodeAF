@@ -144,16 +144,19 @@ const fixedPrefixBudget = 48_000
 // is also the page the person's own conversation reads, which is the one that
 // is paid for on every turn of every day.
 func widestPage() string {
-	widest := func(facts []beltFact, join string) string {
-		lines := make([]string, 0, len(facts))
-		for _, fact := range facts {
+	page := systemPrompt
+	// THE SAME LIST THE PAGE IS COMPOSED FROM (beltfacts.go's [promptSections]),
+	// walked with every row in its PRESENT case. A section added there is weighed
+	// here without a second edit, so the budget cannot go on measuring a page the
+	// composer stopped building.
+	for _, section := range promptSections {
+		lines := make([]string, 0, len(section.facts))
+		for _, fact := range section.facts {
 			lines = append(lines, fact.present)
 		}
-		return strings.Join(lines, join)
+		page = strings.Replace(page, section.token, strings.Join(lines, section.join), 1)
 	}
-	page := strings.Replace(systemPrompt, beltFactsToken, widest(beltFacts, "\n"), 1)
-	page = strings.Replace(page, handoffFactsToken, widest(handoffFacts, "\n"), 1)
-	return strings.Replace(page, programFactsToken, widest(programFacts, "\n\n"), 1)
+	return page
 }
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
