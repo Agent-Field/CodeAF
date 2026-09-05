@@ -1116,7 +1116,7 @@ func orchestrateRootBrief(request, goal string) string {
 	// AND NO ADMISSION CONTEXT: an adaptive run's root is composed from a goal
 	// somebody wrote for it rather than admitted through the graph's doors, so
 	// there is no conversation behind it to quote (admission.go).
-	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	return composeBrief(briefWhole, request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
 }
 
 // orchestrateBrief is a node's whole world: what the run as a whole was asked

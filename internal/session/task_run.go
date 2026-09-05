@@ -154,12 +154,19 @@ const (
 	// decomposition (task.go's fan-out law), and each answers a different way
 	// for it to run away.
 	//
-	// TWO LEVELS, because the third has nothing left to divide. The conversation
-	// grooms a piece of work; that node finds two or three genuinely independent
-	// parts inside it and hands them out; a part of a part is a step, and a step
-	// belongs in the hands that are already holding it. A deeper tree also costs
-	// what nobody sees: every level adds a worktree, an audit and a wait, so the
-	// third level is where fanning out starts being slower than working.
+	// TWO LEVELS IS A CHOSEN BOUND AND NOT A MEASURED FLOOR. The shape it is cut
+	// for: the conversation grooms a piece of work, that node finds two or three
+	// genuinely independent parts inside it and hands them out, and a part of a
+	// part is usually a step — which belongs in the hands already holding it. The
+	// cost is what makes the bound cheap to keep: every level adds a worktree, an
+	// audit and a wait, and it adds them to work that is by then small, so a third
+	// level buys parallelism where there is least of it left to buy.
+	//
+	// NOBODY HAS MEASURED A THREE-LEVEL TREE HERE, and this comment used to read
+	// as though somebody had. What is known is the cost per level above; what is
+	// not known is where the crossover actually falls, and it will not be one
+	// number for every kind of work. Raising the cap is a wave with a measurement
+	// in it, not a constant edit.
 	//
 	// FIVE CHILDREN, because a node handing out more than that has not
 	// decomposed its work, it has shredded it — and it still has to read every
@@ -2048,7 +2055,13 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 	// and the done-condition, and the block that says so carries their later
 	// words verbatim, so the worker reads the same account the auditor will.
 	now := n.assignmentLocked()
-	return composeBrief(n.spec.request, now.brief, now.deliverable,
+	// AND WHETHER THE MESSAGE ABOVE IS THIS WORKER'S WHOLE JOB, which is the
+	// parent and nothing else (task_brief.go's [briefPieceRule]). It is read
+	// here, on the one road that composes a worker's document — the opening
+	// request and every repair round — so a piece reads the same scope rule
+	// however its turn came to start: admitted, restored from a checkpoint,
+	// continued (task_continue.go) or re-entered after a revision.
+	return composeBrief(n.briefRoleLocked(), n.spec.request, now.brief, now.deliverable,
 		withFamilyChecks(now.acceptance, n.Family),
 		expectsSection(n.spec.expects), n.spec.admission.restored(),
 		n.spec.origin, taskCopyFor(tree))
@@ -2135,7 +2148,7 @@ func (n *TaskNode) checkTexts() []checkText {
 	// (admission.go). What is harvested here becomes a CHECK this work is judged
 	// against; the quotes are things that were said, and a sentence somebody
 	// typed in passing must never become a requirement nobody agreed to.
-	account := composeBrief("", work, now.deliverable, acceptance,
+	account := composeBrief(briefWhole, "", work, now.deliverable, acceptance,
 		expectsSection(n.spec.expects), AdmissionContext{}, n.spec.origin, taskCopy{})
 	if account != "" {
 		texts = append(texts, checkText{text: account, from: checksFromWork})
@@ -2150,6 +2163,22 @@ func (n *TaskNode) request() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.spec.request
+}
+
+// briefRoleLocked says whether this node owns the whole of the person's ask or
+// one piece another task cut out of it, for a caller already holding the
+// graph's lock.
+//
+// THE PARENT IS THE WHOLE OF THE QUESTION, and it is on the spec, so it is the
+// same answer for a node admitted a moment ago and for one rebuilt from a
+// checkpoint. Both roads that hand work out set it — `propose_task`
+// (task.go's [Agent.proposeTask]) and `divide_work` (task_divide_wip.go) — so
+// neither can produce a piece that reads the whole-job rule.
+func (n *TaskNode) briefRoleLocked() briefRole {
+	if n.spec.parent != 0 {
+		return briefPiece
+	}
+	return briefWhole
 }
 
 // origin is the pointer to the person's original words, frozen with the rest
@@ -5619,7 +5648,7 @@ func cutDeclaration(line string) (string, bool) {
 }
 
 // declarationWord is the one spelling, said once here and once in the node's
-// own prompt (prompts/task.md's "What comes home"), because a prompt that asked
+// own prompt (prompts/worker.md's "What comes home"), because a prompt that asked
 // for a word this did not read would be a promise the harness does not keep.
 const declarationWord = "files:"
 

@@ -47,6 +47,46 @@ const (
 // and it is not the one the model wrote.
 const briefAskRule = "This is the message this work came out of. Where anything below reads differently from it, their words are what was asked for."
 
+// briefRole is whether the person's message above is this worker's WHOLE job or
+// the job one piece of it was cut from. It is one enum rather than a bool
+// because the two readings are different documents, and the caller that knows
+// which is the graph ([TaskNode.spec] carries the parent).
+type briefRole uint8
+
+const (
+	// briefWhole: nobody stands between this worker and the person's ask.
+	briefWhole briefRole = iota
+	// briefPiece: this node was handed out by another task, through
+	// `propose_task` or `divide_work`.
+	briefPiece
+)
+
+// briefPieceRule is [briefAskRule] for a node that owns ONE PIECE of the
+// message above it.
+//
+// THE MEASURED READING IT CLOSES. Every descendant inherits the person's whole
+// message verbatim (task.go's [Agent.taskRequest]) and used to be handed the
+// whole-job rule with it: "where anything below reads differently, their words
+// are what was asked for". A part briefed to run one script, under a message
+// asking for that script AND a count of something else, can read that sentence
+// as instructions to do both — and where the message says the work should go to
+// a task, as licence to hand its own piece out again. Neither is what the person
+// asked THIS worker for, and nothing else in the document said so.
+//
+// WHAT IT MUST NOT DO IS SILENCE THEM. Their words still govern this piece: the
+// paraphrase above is the model's and theirs is not, so a real disagreement
+// about THIS work is still theirs to win, and a piece that cannot be done
+// without going against them is a report and not a quiet widening.
+const briefPieceRule = "This is the message the whole job came out of, and this task is ONE PIECE of it: do what THE WORK and DONE WHEN below name, and leave the rest of that message to whoever kept it — including handing work out, which is not yours to do again. Their words still govern your piece: where anything below reads differently from them about it, theirs are what was asked for, and if your piece cannot be done without going against them, say so in your report rather than widening the work."
+
+// askRule is the rule that opens the document, chosen by the role.
+func (role briefRole) askRule() string {
+	if role == briefPiece {
+		return briefPieceRule
+	}
+	return briefAskRule
+}
+
 // briefOriginRule is the one line that says what the pointer is FOR. The
 // restatement above is bounded; this is where the uncut words live, and the
 // brief still governs what ships.
@@ -86,7 +126,7 @@ const briefAskLimit = 6000
 // a word of it is laid out, and where that leaves two spellings of one folder in
 // the same document — the person's quoted path and the copy's — the mapping is
 // said outright in a section of its own rather than smuggled into the quotation.
-func composeBrief(request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
+func composeBrief(role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
 	request = briefAskText(request)
 	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
@@ -122,7 +162,10 @@ func composeBrief(request, work, deliverable, acceptance, expects string, heard 
 		}
 		out.WriteString("\n\n" + body)
 	}
-	section(briefAskHeading, briefAskRule, request)
+	// AND WHOSE JOB THE MESSAGE IS, in the rule over it rather than in a section
+	// of its own: their words are printed once and unedited either way, and what
+	// changes is what this worker is being told they are FOR.
+	section(briefAskHeading, role.askRule(), request)
 	// AND WHICH FOLDER EVERY ADDRESS UNDER IT MEANS, second, because it is what
 	// the reader needs BEFORE the first path rather than after the last one.
 	section(briefCopyHeading, briefCopyRule, stated)

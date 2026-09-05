@@ -135,7 +135,7 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	own := newTaskCopy("/x/repo", "/s/trees/1")
 
 	// The person typed the path; the model wrote the contract from it.
-	opening := composeBrief("fix /x/repo/internal/widget.go", "change /x/repo/internal/widget.go",
+	opening := composeBrief(briefWhole, "fix /x/repo/internal/widget.go", "change /x/repo/internal/widget.go",
 		"/x/repo/internal/widget.go", "/x/repo/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
 	if !strings.Contains(opening, briefCopyHeading) || !strings.Contains(opening, briefCopyRule) {
 		t.Fatalf("the copy was never stated:\n%s", opening)
@@ -159,7 +159,7 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 
 	// AND A BRIEF THAT NEVER SPELLED THE FOLDER OUT GETS THE DOCUMENT IT HAS
 	// ALWAYS GOT — the emptiness law, and the reason this is not unconditional.
-	quiet := composeBrief("make the widget say new", "change internal/widget.go", "internal/widget.go", "it says new", "", AdmissionContext{}, taskOrigin{}, own)
+	quiet := composeBrief(briefWhole, "make the widget say new", "change internal/widget.go", "internal/widget.go", "it says new", "", AdmissionContext{}, taskOrigin{}, own)
 	if strings.Contains(quiet, briefCopyHeading) {
 		t.Fatalf("a brief that named no folder got a section about one:\n%s", quiet)
 	}
@@ -169,7 +169,7 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	// leaves every address in this contract exactly as written — and a section
 	// saying the addresses below are the worker's own would be stating a mapping
 	// that did not happen.
-	sibling := composeBrief("fix /x/repo-old/internal/widget.go", "change /x/repo-old/internal/widget.go",
+	sibling := composeBrief(briefWhole, "fix /x/repo-old/internal/widget.go", "change /x/repo-old/internal/widget.go",
 		"/x/repo-old/internal/widget.go", "/x/repo-old/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
 	if strings.Contains(sibling, briefCopyHeading) {
 		t.Fatalf("a brief that named only a sibling repository was told its addresses had moved:\n%s", sibling)
@@ -181,7 +181,7 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	// AND THE ORIGIN POINTER IS NEVER BOUND: a journal address lives outside
 	// every worktree, so a bound one would name a file that is not there.
 	journal := taskOrigin{journal: "/x/repo/.aforge/v3/sessions/abc.jsonl", line: 12}
-	pointed := composeBrief("", "change /x/repo/internal/widget.go", "", "", "", AdmissionContext{}, journal, own)
+	pointed := composeBrief(briefWhole, "", "change /x/repo/internal/widget.go", "", "", "", AdmissionContext{}, journal, own)
 	if !strings.Contains(pointed, "/x/repo/.aforge/v3/sessions/abc.jsonl") {
 		t.Fatalf("the pointer at the person's own journal was moved into the copy:\n%s", pointed)
 	}

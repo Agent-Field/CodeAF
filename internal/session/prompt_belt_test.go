@@ -103,6 +103,7 @@ var beltShapes = []beltShape{{
 	build: func(t *testing.T, config *Config) {
 		config.InTask = true
 		config.tasker = graphForShape(t)
+		config.taskID = 1
 		config.taskDepth = 1
 	},
 }, {
@@ -113,6 +114,7 @@ var beltShapes = []beltShape{{
 	build: func(t *testing.T, config *Config) {
 		config.InTask = true
 		config.tasker = graphForShape(t)
+		config.taskID = 2
 		config.taskDepth = taskDepthLimit
 	},
 }, {
@@ -121,6 +123,7 @@ var beltShapes = []beltShape{{
 	name: "a node with no graph",
 	build: func(t *testing.T, config *Config) {
 		config.InTask = true
+		config.taskID = 3
 	},
 }, {
 	// A hand (fork.go): this mind copied inside the turn, on a fixed allowlist

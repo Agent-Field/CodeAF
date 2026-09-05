@@ -348,7 +348,7 @@ func TestTheWorkerIsToldQuotesAreSaidAndNotSettled(t *testing.T) {
 		ID: "chat/s1/p2", Speaker: admissionPerson, Text: "keep the CSV column order",
 		Source: "/tmp/s.jsonl",
 	}}}
-	opening := composeBrief("rewrite the importer", "edit importer.go", "importer.go", "it streams",
+	opening := composeBrief(briefWhole, "rewrite the importer", "edit importer.go", "importer.go", "it streams",
 		"", compiled, taskOrigin{}, taskCopy{})
 
 	for _, want := range []string{
@@ -366,7 +366,7 @@ func TestTheWorkerIsToldQuotesAreSaidAndNotSettled(t *testing.T) {
 		t.Fatalf("the quotes were printed above the contract:\n%s", opening)
 	}
 	// AND AN EMPTY CONTEXT DRAWS NOTHING — the emptiness law.
-	plain := composeBrief("rewrite the importer", "edit importer.go", "", "", "",
+	plain := composeBrief(briefWhole, "rewrite the importer", "edit importer.go", "", "", "",
 		AdmissionContext{}, taskOrigin{}, taskCopy{})
 	if strings.Contains(plain, admissionQuotesHeading) || strings.Contains(plain, admissionEvidenceHeading) {
 		t.Fatalf("a task with no context got a heading over nothing:\n%s", plain)

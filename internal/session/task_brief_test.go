@@ -16,7 +16,7 @@ import (
 // person said, in their own words, then the work, then what must exist at the
 // end, then what done means.
 func TestASpawnedTaskOpensOnThePersonsOwnWordsThenTheContract(t *testing.T) {
-	opening := composeBrief(
+	opening := composeBrief(briefWhole,
 		"make the pricing page match the new tiers, and don't touch the tests",
 		"edit docs/pricing.md against internal/billing/tiers.go",
 		"docs/pricing.md, one table, four rows",
@@ -52,7 +52,7 @@ func TestASpawnedTaskOpensOnThePersonsOwnWordsThenTheContract(t *testing.T) {
 // applied to a document. A node restored from a checkpoint written before
 // requests were carried has no request, and reads as it always did.
 func TestABriefWithNothingToSayInAPartLeavesThatPartOut(t *testing.T) {
-	opening := composeBrief("", "sweep the deprecated calls", "", "the build passes", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	opening := composeBrief(briefWhole, "", "sweep the deprecated calls", "", "the build passes", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
 	for _, unwanted := range []string{briefAskHeading, briefMakeHeading, briefOriginHeading} {
 		if strings.Contains(opening, unwanted) {
 			t.Fatalf("an empty part got a heading anyway:\n%s", opening)
@@ -68,7 +68,7 @@ func TestABriefWithNothingToSayInAPartLeavesThatPartOut(t *testing.T) {
 // printing them twice would read as two instructions that happen to agree.
 func TestAPersonAuthoredTaskDoesNotSayTheSameThingTwice(t *testing.T) {
 	words := "rewrite the importer so it streams"
-	opening := composeBrief(words, words, "", "it streams", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	opening := composeBrief(briefWhole, words, words, "", "it streams", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
 	if got := strings.Count(opening, words); got != 1 {
 		t.Fatalf("the person's words appear %d times:\n%s", got, opening)
 	}
@@ -81,7 +81,7 @@ func TestAPersonAuthoredTaskDoesNotSayTheSameThingTwice(t *testing.T) {
 // person who pasted a log must not be paid for once per node. The cut is marked
 // so a worker can see it was cut.
 func TestTheVerbatimAskIsBoundedAndSaysSo(t *testing.T) {
-	opening := composeBrief(strings.Repeat("x", briefAskLimit*2), "work", "", "done", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	opening := composeBrief(briefWhole, strings.Repeat("x", briefAskLimit*2), "work", "", "done", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
 	if len(opening) > briefAskLimit+2000 {
 		t.Fatalf("an unbounded ask reached the worker: %d bytes", len(opening))
 	}
@@ -197,7 +197,7 @@ func TestASubTaskInheritsTheSentenceThatStartedTheFamily(t *testing.T) {
 // draws nothing — the emptiness law, applied to a pointer.
 func TestTheOriginSectionNamesTheJournalPathAndLine(t *testing.T) {
 	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
-	opening := composeBrief(
+	opening := composeBrief(briefWhole,
 		"make the pricing page match the new tiers",
 		"edit docs/pricing.md",
 		"docs/pricing.md, one table",
@@ -229,7 +229,7 @@ func TestTheOriginSectionNamesTheJournalPathAndLine(t *testing.T) {
 
 func TestAnEmptyOriginDrawsNoSection(t *testing.T) {
 	for _, origin := range []taskOrigin{{}, {line: 12}} {
-		opening := composeBrief("ask", "work", "make", "done", "", AdmissionContext{}, origin, taskCopy{})
+		opening := composeBrief(briefWhole, "ask", "work", "make", "done", "", AdmissionContext{}, origin, taskCopy{})
 		if strings.Contains(opening, briefOriginHeading) || strings.Contains(opening, "grep or read") {
 			t.Fatalf("an empty origin still drew a pointer:\n%s", opening)
 		}
