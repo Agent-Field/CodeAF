@@ -92,6 +92,9 @@ def execute(args):
     # that silently drops its original latency, cost, or failure.
     rows = []
     for cell in manifest["schedule"]:
+        if (out / "STOP").exists():
+            print("Stop requested; completed evidence retained, remaining attempts not run.")
+            return
         cell_out = out / ("%03d-%s-%s" % (cell["ordinal"], cell["scenario"], cell["arm"]))
         finished = cell_out / "campaign-row.json"
         if finished.exists():

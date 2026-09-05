@@ -159,7 +159,12 @@ door_wait_idle() {
     if [ -n "$ARM_ASK_RE" ] && screen_matches "$ARM_ASK_RE" "$screen"; then
       DOOR_ASK_OBSERVED=1
     fi
-    if door_is_busy "$screen"; then
+    # A free composer is the intended state while work runs in the background.
+    # Do not close its terminal before the fixture's requested action finishes.
+    if [ -n "${SCENARIO_WORK_START:-}" ] && [ -s "$SCENARIO_WORK_START" ] &&
+       [ -n "${SCENARIO_WORK_DONE:-}" ] && [ ! -s "$SCENARIO_WORK_DONE" ]; then
+      quiet_since=""
+    elif door_is_busy "$screen"; then
       quiet_since=""
     else
       if door_is_ready "$screen"; then

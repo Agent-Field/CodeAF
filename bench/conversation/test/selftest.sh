@@ -317,6 +317,15 @@ sys.exit(0 if a and b and float(a) < float(b) else 1)
   # derived token and the right build marker, in a final transcript that looks
   # perfect. Steering that arrives after the work is not steering.
   say "blocking (the right answer, given only after the build finished):"
+  say "idlework (the composer is free while the requested action runs):"
+  FAKE_TUI_MODE=idlework FAKE_TUI_BUSY=14 CONV_SLOW_SECONDS=10 \
+  CONV_POLL=1 CONV_QUIET=3 CONV_READY_WAIT=25 CONV_BUSY_WAIT=25 \
+  PI_BIN="$FAKE/tui-fake.sh" \
+    case_run idlework --unguarded --arms pi --scenarios followup-while-working --cap 60
+  [ "$(field "$CASE_RESULTS" verdict)" = "pass" ] \
+    && ok "an idle composer does not end its still-running background action" \
+    || bad "the driver killed a background action when the composer became free"
+
   tui_case blocking blocking
   grep -q 'RABANNIC' "$CASE_OUT/evidence/followup-while-working-pi/scrollback.txt" \
     && ok "the transcript does end with the correct answer" \

@@ -479,3 +479,9 @@ The report now uses **binary outcome success**, separates exact scenario/door/mo
 Cancelled streams may lack their final usage event. The guard records generation IDs, request identities, and timing without prompt contents. After the owned runtime stops, `reconcile.py` can obtain read-only generation billing metadata from OpenRouter. It preserves the raw ledger and writes a derived ledger and receipts; ID/model mismatches, unfinished records, or unavailable prices stay unknown. No inference is retried to recover a price.
 
 The product goals, staged comparison protocol, holdout requirement, and proposed acceptance margins are in [PARETO.md](../../docs/design/conversation-runtime/PARETO.md). Run `python3 -m unittest discover -s bench/conversation/test -p 'test_*.py'` alongside the existing shell selftest when changing measurement code.
+
+### A free chat is not a finished background action
+
+Once a scenario's work-start marker exists, the terminal driver keeps observing until its work-finish marker or the cap, even if the composer becomes idle. Otherwise an agent that correctly frees the chat can have its background action killed by the rig. The `idlework` counterexample stages exactly that shape; the previous driver failed it. This fixes the observation boundary, not a product runtime. Interactive evidence collected before this correction must be adjudicated before comparing it.
+
+Create `STOP` in a campaign's output directory to stop after the current cell finishes. The runner preserves completed cells and does not begin another. Remove that file before explicitly resuming. The per-cell cap still bounds a cell already in flight.

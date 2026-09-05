@@ -59,3 +59,7 @@ If a competitor dominates a slice, that slice becomes optimization work. If trad
 `bench/conversation/campaign.py plan <manifest.json> --id <name>` creates a frozen randomized plan without spending. `campaign.py run <manifest.json> --out <evidence-directory>` executes sequentially and resumes completed cells; a partial cell requires adjudication. `summary.sh <evidence-directory>/results.jsonl` reports exact scenario/door/model/effort slices and refuses unsupported comparison claims.
 
 Each campaign uses fresh state. Its per-cell cap limits runtime, not a hard dollar budget. The manifest states the maximum cell-time sum. No automatic scheduled campaign exists, and no expensive confirmation run is implicit in merely generating a plan.
+
+## Calibration boundary correction
+
+The first new campaign was stopped when its driver closed an idle chat while a requested background action was still running. Those interactive outcomes require adjudication; they do not establish that a competitor abandoned work. The corrected driver observes the action's completion marker independently of chat readiness. Its idle confirmation interval and terminal teardown remain included in raw door duration; fine interaction witnesses are separate and have the driver's polling resolution. `STOP` in the campaign output directory requests a stop after the current cell, preserving all evidence.

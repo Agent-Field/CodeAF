@@ -111,12 +111,22 @@ while :; do
     first_done=1
     # The busy window. The build runs for real in the background so that the
     # scenario's own file assertions have something true to check.
-    if [ -x ./slow-build.sh ]; then ./slow-build.sh > slow-build.out 2>&1 & fi
+    if [ -x ./slow-build.sh ]; then
+      if [ "$MODE" = "idlework" ]; then
+        (./slow-build.sh > slow-build.out 2>&1; printf 'the build finished: %s\n' "$(cat build.log)") &
+      else
+        ./slow-build.sh > slow-build.out 2>&1 &
+      fi
+    fi
     started="$(date +%s)"
     followup=""
     while [ $(( $(date +%s) - started )) -lt "$BUSY_SECONDS" ]; do
       repaint
-      printf '⠙ Working...\nElapsed %ss\n' "$(( $(date +%s) - started ))"
+      if [ "$MODE" = "idlework" ]; then
+        status
+      else
+        printf '⠙ Working...\nElapsed %ss\n' "$(( $(date +%s) - started ))"
+      fi
       if [ "$MODE" = "blocking" ]; then
         # A foreground agent: nothing typed is even read until the work ends.
         sleep 1

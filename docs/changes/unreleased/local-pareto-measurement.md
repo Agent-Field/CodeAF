@@ -9,3 +9,5 @@ invalidates:
 ---
 
 A frozen campaign manifest records executable and rig hashes, expected arms, random block order, and operating conditions. Legacy pilot output remains descriptive; small samples and incomplete ledgers do not establish a Pareto frontier. Work is local and no publication is authorized by this change.
+
+Calibration also found that the driver equated an idle composer with completed work and could close a terminal while its requested background action still ran. It now waits for the fixture's completion witness or the cap. An idle-background regression fails against the previous driver and passes after the fix. Campaigns can stop between cells through an owned STOP file.
