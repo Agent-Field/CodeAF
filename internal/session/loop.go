@@ -2018,6 +2018,9 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		if tool.Name != call.Function.Name {
 			continue
 		}
+		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
+			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true})
+		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
 			// A REFUSED DOOR IS THE HARNESS'S OWN ANSWER. The tool never ran, the

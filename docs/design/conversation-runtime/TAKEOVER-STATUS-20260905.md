@@ -414,3 +414,48 @@ note, while retaining the original feature requirements and the repository's
 coverage settings. This preparation/prompt difference is explicit in the
 manifest; no hidden-test or reference-solution information is given to the
 candidate.
+
+
+### Native trial found malformed calls becoming permission questions
+
+The first launch preflight ended before inference because the copied executable
+had lost its execute permission. Review also found the initial verifier Dockerfile
+retained a second FROM line pointing to the corpus image; a corrected verifier
+uses exactly the prepared native base. The corrected verifier checks Python's
+build platform (`aarch64 linux-aarch64`), not just Docker's architecture label,
+and its fresh `native-control-base` and `native-control-gold` controls pass at
+0/159 plus 61/61, and 159/159 plus 61/61. The earlier image/build logs remain.
+The paid native trial started at 21:28:07 UTC on runtime `8ae9d135e` using that
+corrected verifier. Its own manifest and rig snapshots identify all inputs.
+
+That frozen trial reached a permission card for a model-emitted bash call whose
+arguments were only `{`. An unreadable command cannot be matched by approval,
+so the defensive policy converted allow to prompt. This is safe against execution
+but creates a product dead end: the person has no actual command to authorize.
+The trial remains untouched, with that blocked state retained as evidence.
+
+The next runtime rejects malformed/missing/empty/wrong-type bash commands before
+asking approval, returns the shared actionable argument-error wording and counts
+it as a model input failure. It never executes or guesses the missing command.
+A corrected command still goes through the existing pre-action and approval
+chain. The regression drives an invalid call, model correction, real shell run
+and receipt of its output, without a consent event; the old code fails all five
+invalid-input cases. Approval policy rules themselves are unchanged.
+
+The native trial also exposed an overbroad environment hint: clearing every
+pytest addopt disabled this repository's doctest/import setup and broke public
+test collection. A new public baseline run verifies the narrower command
+`python -m pytest tests/ -q -p no:cacheprovider --no-cov`, preserving repository
+options and executing 823 passing tests, 6 expected failures and 124 passing
+subtests in 33.49 seconds (exit 0). A later trial must disclose the corrected
+hint as another experimental difference, not silently rewrite the frozen prompt.
+
+The invalid-shell fix passes the final full session/approval/manual make-check
+gate (181.859, 0.541 and 1.477 seconds), plus vet, formatting, packed manual,
+build and size. Recovery, control-byte scrubbing and consent/denial/floor tests
+pass three race repetitions (12.264 seconds). The first full run exposed one
+old raw-control-byte fixture expecting invalid JSON to reach a consent card;
+it now asserts no consent, no execution and a safe actionable error. Valid JSON
+with an escaped control byte still exercises the existing card-scrubbing path.
+The preceding deadline/build revision `8ae9d135e` passed both CI halves
+(run 33992899226). The first native trial remains frozen at its permission card.

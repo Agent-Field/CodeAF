@@ -4,6 +4,7 @@ title: Conversation work keeps attributable direction and results while its exec
 pr: 653
 surface: [chat, engine, docs]
 invalidates:
+  - "Incomplete bash arguments could open a permission card even in an allow-by-default session. Invalid shell input now returns an actionable argument error to the model without execution or consent; corrected commands still pass through all existing approval rules."
   - "A worker's deadline was only noticed after a tool finished. The runner now watches the current allowance while commands, parked jobs and model requests are silent, retaining existing progress renewal and cancellation rules."
   - "Cross-compiling with GOOS and GOARCH also cross-compiled the manual generator, which could not execute on the build host. Generation now runs for the host while the final binary still targets the requested platform."
   - "A temporary task-transcript read failure could be shown as absent history, and a finished task's page would stop trying. The page now retains its last successful reading, shows the failed read and retries through the same reader used to open it."

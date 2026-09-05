@@ -18,9 +18,7 @@ import (
 // question on screen says one thing and the call underneath it is another.
 // Cutting the newline was never enough.
 
-// escapedCall is one bash call whose command carries an escape, spelled the two
-// ways it can arrive: as JSON's own escape, and as a raw byte in text that does
-// not parse as JSON at all.
+// escapedCall is one valid bash call whose command carries a JSON escape.
 func escapedCall(t *testing.T, args string) Event {
 	t.Helper()
 	completer := &scriptedCompleter{steps: []step{
@@ -68,14 +66,38 @@ func TestAGlossCarriesNoEscapeToTheCard(t *testing.T) {
 }
 
 func TestARawControlByteNeverReachesTheCardEither(t *testing.T) {
-	// A raw byte inside a JSON string is not valid JSON, so the arguments pass
-	// through as their own text — which is the path that used to carry it.
-	asked := escapedCall(t, "{\"command\":\"git status\x1b[2A\"}")
-	if strings.ContainsAny(asked.Hint, "\x1b\x07") {
-		t.Fatalf("the card's headline carries a control byte: %q", asked.Hint)
+	// A raw control byte makes the JSON invalid. Reject it before consent,
+	// without echoing terminal instructions into the repair message.
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("raw-control", "bash", "{\"command\":\"git status\x1b[2A\"}"), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			result := roleText(messages, "tool")
+			if !strings.Contains(result, invalidArgumentsPrefix) || strings.ContainsAny(result, "\x1b\x07") {
+				t.Errorf("expected a safe argument repair, got %q", result)
+			}
+			return textResponse("done"), nil
+		},
+	}}
+	runs := make(chan string, 1)
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionPrompt}
+		config.AskConsent = true
+	})
+	for index := range agent.tools {
+		if agent.tools[index].Name == "bash" {
+			agent.tools[index] = countingTool("bash", runs, nil)
+		}
 	}
-	if strings.ContainsAny(asked.Args, "\x1b\x07") {
-		t.Fatalf("the arguments carry a control byte: %q", asked.Args)
+	events := drainAnswering(t, mustSubmit(t, agent, "run it"), func(request Event) {
+		agent.ResolveConsent(request.ID, false)
+	})
+	if countKind(events, EventConsentRequest) != 0 {
+		t.Fatal("invalid JSON reached the consent card")
+	}
+	if len(runs) != 0 {
+		t.Fatal("invalid JSON executed a command")
 	}
 }
 

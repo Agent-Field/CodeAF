@@ -80,6 +80,25 @@ type toolArgumentError struct {
 	repair string
 }
 
+// A command that cannot be decoded is a model input error, not a permission
+// question. Reject it without executing anything, before approval can ask a
+// person to approve an absent command. Valid commands still use the full gate.
+func invalidBashArguments(name string, args json.RawMessage) string {
+	if name != "bash" {
+		return ""
+	}
+	var parsed struct {
+		Command string `json:"command"`
+	}
+	if err := decodeToolArguments(args, &parsed); err != nil {
+		return invalidArgumentsPrefix + err.Error()
+	}
+	if strings.TrimSpace(parsed.Command) == "" {
+		return invalidArgumentsPrefix + `command is required — send a JSON object with a non-empty "command" string`
+	}
+	return ""
+}
+
 func (e *toolArgumentError) Error() string { return e.repair }
 
 // decodeToolArguments reads one tool call's arguments into a Go value, accepting
