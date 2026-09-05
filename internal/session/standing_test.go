@@ -1930,15 +1930,19 @@ func TestTheSteeringLineReadsAsNewsAndNotAsARequest(t *testing.T) {
 	if !strings.Contains(line, "Do not call stand again") {
 		t.Fatalf("the injected line does not forbid setting it up again: %q", line)
 	}
-	// AND THE PROMPT SAYS THE SAME THING IN ONE SENTENCE, so the framing is not
-	// the only place the model can learn it (CLAUDE.md's manual law applies to
-	// system.md too: it must not lie, and it must not be silent about a rule the
-	// engine enforces).
-	if !strings.Contains(systemPrompt, standingNewsFrame) {
-		t.Fatalf("system.md never mentions %q", standingNewsFrame)
+	// The actual prompt must carry the same rule as the injected news. Standing
+	// instructions are composed from capability availability, so checking the raw
+	// template would miss the page the standing-capable agent actually receives.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.System = ""
+		config.standingItems = &fakeStanding{}
+	})
+	page := systemTextOf(agent)
+	if !strings.Contains(page, standingNewsFrame) {
+		t.Fatalf("the rendered prompt never mentions %q", standingNewsFrame)
 	}
-	if !strings.Contains(systemPrompt, "never call `stand`\nagain for it") {
-		t.Fatal("system.md does not tell the model to leave a fired item alone")
+	if !strings.Contains(page, "never call `stand`\nagain for it") {
+		t.Fatal("the rendered prompt does not tell the model to leave a fired item alone")
 	}
 }
 
