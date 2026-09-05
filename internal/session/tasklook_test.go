@@ -108,8 +108,13 @@ func TestTheHandoffReceiptSaysTheSessionIsToldWhenTheWorkLands(t *testing.T) {
 	if !strings.Contains(tasksDescription, "Never to WAIT for handed-off work") {
 		t.Fatalf("the tasks description does not rule out polling:\n%s", tasksDescription)
 	}
-	if !strings.Contains(tasksDescription, "continue task N") {
-		t.Fatalf("the tasks description does not name the person's continue words:\n%s", tasksDescription)
+	// AND THE PERSON'S OWN CONTINUE WORDS ARE ASKED OF THE WHOLE DEFINITION.
+	// They were in the description AND in the `continue` field, which is one
+	// trigger phrase written twice in the same block of text the model reads
+	// before it calls. The field owns it — it is the field's own door — so this
+	// asks the tool, not one half of it.
+	if !strings.Contains(tasksDescription+tasksSchemaJSON, "continue task N") {
+		t.Fatalf("nothing in the tasks tool names the person's continue words:\n%s\n%s", tasksDescription, tasksSchemaJSON)
 	}
 }
 
