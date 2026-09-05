@@ -1630,6 +1630,13 @@ const (
 	// checkpointCeilingTrivial is the spawn floor (spawnfloor.go): the ask
 	// itself is one command, so nothing moves, whatever the work has cost.
 	checkpointCeilingTrivial = "dropped:trivial-ask"
+	// checkpointCeilingAwaiting is the ending a handover takes when the only
+	// thing left of the request is the ending of an operation this conversation
+	// started and is already owed (handoff_remainder.go). It is spelled apart
+	// from `dropped:nothing-left` because the obligation is still OPEN: nothing
+	// was finished, nothing was accepted, no command was stopped, and the wake
+	// that was always coming is what brings the result back.
+	checkpointCeilingAwaiting = "dropped:awaiting-own-work"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -1702,6 +1709,13 @@ const (
 	carrySkipped     = "skipped"
 	carryNothingLeft = "nothing-left"
 	carryEmpty       = "empty"
+	// carryAwaited is the draft rung answering that what is left is the ending of
+	// an operation this conversation is already owed, by number
+	// (handoff_remainder.go). It is spelled apart from `nothing-left` because the
+	// two are different facts about the ask: one says it is discharged, this one
+	// says a named obligation is still outstanding and is this conversation's to
+	// receive.
+	carryAwaited = "awaited"
 )
 
 // What the JOURNAL is told when the reason is the harness's own and not a
@@ -3210,7 +3224,32 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// [phaseHeldBeat]), so the two calls below are one stage with one clock on
 	// it, counting from here to whichever ending this road takes.
 	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, time.Now())
-	draft, remains, drafted := a.checkpointBrief(ctx, turn, model)
+	draft, remains, drafted, awaited := a.checkpointBrief(ctx, turn, model)
+	// ── THE ONE PLACE AN AWAIT IS CONSUMED ──────────────────────────────────
+	//
+	// THE ONLY THING LEFT IS AN ENDING THIS CONVERSATION IS ALREADY OWED, and it
+	// said which one. Nothing moves: no task is admitted, nothing is marked done,
+	// no command is stopped and the obligation stays exactly where it was. What
+	// brings the result back is the wake that was always coming — the job's own
+	// ending note ([Agent.enqueueJobNote]) — and the turn that note starts is read
+	// for what remains like any other (handoff_remainder.go states the whole law).
+	//
+	// IT IS A DIFFERENT ENDING FROM THE DECLINE BELOW AND IS SPELLED APART FROM
+	// IT. That one is two minds agreeing the request is FINISHED; this one is the
+	// request being unfinished, with the unfinished part in this conversation's
+	// own hands. The row says which ([checkpointCeilingAwaiting]) and names the
+	// operation ([awaitDecision.awaitedRow]).
+	//
+	// AND THE GOAL OWNER'S CARRY-ON OUTRANKS IT, on exactly the terms it outranks
+	// the two-minds decline: an unattended session whose principal has just read
+	// this ending and said the ask is not finished is not talked over by a reading
+	// of what the running model claimed. A person's session never reads this road
+	// ([stewardReading]), so an attended conversation is decided by the two
+	// runtime facts and the model's typed answer alone.
+	if awaited.granted && !reading.carriesOn() {
+		a.endPhase()
+		return checkpointHandover{decision: checkpointCeilingAwaiting, reason: awaited.awaitedRow()}
+	}
 	if !remains {
 		// AND THE PRINCIPAL'S CARRY-ON OUTRANKS BOTH MINDS. The decline rests on
 		// two readers of the WORK agreeing that none of it is left; the session's
@@ -3905,14 +3944,21 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 // So it reports the brief AND whether there is anything to hand over, which are
 // two facts rather than one: falling back to the person's ask and dropping the
 // handover are opposite answers to opposite failures.
-func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep) {
+func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep, awaitDecision) {
 	// DO NOT RE-READ THE CONVERSATION FOR A REDIRECT. The measured stall sent
 	// fifty-seven messages to write a brief the person had just spoken in one
 	// sentence (F13). Their words stand as the brief; the draft rung is skipped.
 	if a.interrupt.redirecting() {
-		return "", true, carryStep{rung: carryRungDraft, outcome: carrySkipped, reason: carryRedirect}
+		return "", true, carryStep{rung: carryRungDraft, outcome: carrySkipped, reason: carryRedirect},
+			awaitDecision{refused: awaitNotClaimed}
 	}
-	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
+	// AND THE ASK CARRIES THIS CONVERSATION'S OWN LIVE OPERATIONS WHERE THERE ARE
+	// ANY (handoff_remainder.go). The offer and the epoch are taken TOGETHER and
+	// before the call, because what the answer will be verified against is what
+	// the model was actually shown and the request it was shown it for.
+	offered := a.awaitableOperations()
+	offeredAt := requestEpochAt(a)
+	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk+awaitOfferBlock(offered)))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
 	// observer that types deltas into the room as the assistant speaking, and this
@@ -3932,7 +3978,8 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 		// machine markup, and the caller's journal cannot tell a fault from a
 		// degeneration it was never told about.
 		reason, said := carryFault(err)
-		return "", true, carryStep{rung: carryRungDraft, outcome: carryFailed, reason: reason, said: said}
+		return "", true, carryStep{rung: carryRungDraft, outcome: carryFailed, reason: reason, said: said},
+			awaitDecision{refused: awaitNotClaimed}
 	}
 	// The person pays for it on the turn it belongs to rather than out of the
 	// auxiliary pocket, because this is the conversation's own model reading the
@@ -3950,7 +3997,30 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that
 	// is about the WORK rather than about the document.
 	if declaresNothingLeft(brief) {
-		return "", false, carryStep{rung: carryRungDraft, outcome: carryNothingLeft}
+		return "", false, carryStep{rung: carryRungDraft, outcome: carryNothingLeft},
+			awaitDecision{refused: awaitNotClaimed}
+	}
+	// AND THE AWAIT CONTRACT IS READ NEXT, in front of every reading that is about
+	// the DOCUMENT, because it is the other answer that is about the WORK.
+	//
+	// IT IS THE SECOND OF TWO WORK ANSWERS AND NEVER A THIRD SPELLING OF THE
+	// FIRST: `NOTHING LEFT TO DO` says the request is discharged, and this says a
+	// named ending is still owed to this conversation (handoff_remainder.go). A
+	// claim the runtime cannot verify falls through to the lines below and is read
+	// as the brief it also is, which is what keeps an ambiguity from costing
+	// anybody their work.
+	if claimed, ok := readAwaitClaim(brief); ok {
+		if decided := a.confirmAwait(claimed, offered, offeredAt); decided.granted {
+			return "", true, carryStep{rung: carryRungDraft, outcome: carryAwaited,
+				reason: decided.awaitedRow()}, decided
+		} else if decided.refused != "" {
+			// A REFUSED CLAIM IS NOT A BRIEF EITHER. The answer was the token and
+			// some numbers, so there is nothing in it a worker could open on; the
+			// rung is degenerate and the ladder descends to the writer, which is
+			// exactly what happens to any other answer nobody could work from.
+			return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
+				reason: decided.refused, said: carrySaidNothingNew}, decided
+		}
 	}
 	// An empty reply, a whitespace one and a sentinel are all the same failure to
 	// this line: nothing came back that anybody could work from.
@@ -3962,18 +4032,19 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// with a document that will drag its own repetition into the spec.
 	if !briefIsProse(brief) {
 		return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
-			reason: carryNotProse, said: carrySaidNothingNew}
+			reason: carryNotProse, said: carrySaidNothingNew}, awaitDecision{refused: awaitNotClaimed}
 	}
 	if briefRepeats(brief) {
 		return "", true, carryStep{rung: carryRungDraft, outcome: carryDegenerate,
-			reason: carryDraftLooped, said: carrySaidNothingNew}
+			reason: carryDraftLooped, said: carrySaidNothingNew}, awaitDecision{refused: awaitNotClaimed}
 	}
 	// THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, and that constant rather
 	// than a second number of this file's own (task_shape.go's
 	// taskShapeBriefLimit): two spellings of one bound are two answers to the
 	// question of how long a worker's instruction may be.
 	brief = clip(brief, taskShapeBriefLimit)
-	return brief, true, carryStep{rung: carryRungDraft, outcome: carryWritten, chars: len(brief)}
+	return brief, true, carryStep{rung: carryRungDraft, outcome: carryWritten, chars: len(brief)},
+		awaitDecision{refused: awaitNotClaimed}
 }
 
 // writeHandoff is the OTHER HALF of the dowry: the mastermind that turns what the
