@@ -80,8 +80,8 @@ func TestTheTaskPromptTeachesTheNothingToDoReportLeadsWithOneCheck(t *testing.T)
 		"what you went looking for that would have made the work\nnecessary",
 		"The depth\nof your checking follows the size of what your answer changes",
 	} {
-		if !strings.Contains(taskPrompt, want) {
-			t.Errorf("prompts/task.md does not say %q", want)
+		if !strings.Contains(workerPrompt, want) {
+			t.Errorf("prompts/worker.md does not say %q", want)
 		}
 	}
 }
@@ -124,7 +124,7 @@ func TestTheAuditPromptTeachesTheSameProportion(t *testing.T) {
 func TestProportionIsTaughtAsAPrincipleAndNeverAsAThreshold(t *testing.T) {
 	for _, taught := range []struct{ name, text string }{
 		{"prompts/system.md", section(systemPrompt, "- DEPTH OF CHECKING FOLLOWS", "\n- ")},
-		{"prompts/task.md", section(taskPrompt, "WHEN THE ANSWER IS THAT NOTHING NEEDED DOING", "\n\n")},
+		{"prompts/worker.md", section(workerPrompt, "WHEN THE ANSWER IS THAT NOTHING NEEDED DOING", "\n\n")},
 		{"the auditor's prompt", section(auditPrompt, "How deep you look follows", "\n\n")},
 	} {
 		if taught.text == "" {

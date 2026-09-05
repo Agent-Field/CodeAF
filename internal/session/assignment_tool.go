@@ -61,7 +61,10 @@ type reviseArguments struct {
 // graph, so it cannot reach this even in principle, which is the same wall that
 // already keeps it from proposing work (task_run.go's [Agent.newTaskAgentOn]).
 func (a *Agent) assignmentTools() []bare.Tool {
-	if !a.config.InTask || a.config.tasker == nil || a.config.taskID == 0 {
+	// The page that teaches this verb renders on the same predicate
+	// ([Config.mayRevise]), so the belt and prompts/revise.md cannot disagree
+	// about whether this worker has an assignment to move.
+	if !a.config.mayRevise() {
 		return nil
 	}
 	return []bare.Tool{{

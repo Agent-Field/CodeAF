@@ -304,7 +304,7 @@ func refusedGitVerb(verb string, rest []string) string {
 //
 // IT DOES NOT OFFER `git add`, and the prompt is why: a node's deliverable is
 // every path it passed to write or edit, staged BY NAME on the landing road
-// (prompts/task.md's "What comes home", task_run.go's stageTaskWork). A refusal
+// (prompts/worker.md's "What comes home", task_run.go's stageTaskWork). A refusal
 // that sent a worker off to stage its own work would be the harness contradicting
 // its own brief in the one sentence the worker is certain to read.
 const taskGitInstead = "Look with git status, diff, log and show — any branch, as much as you want. What you write with write and edit in this copy comes home on its own."

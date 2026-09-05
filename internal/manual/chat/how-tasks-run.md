@@ -579,6 +579,14 @@ window is set to 0 rather than reusing a window measured for another model.
 would arrive in a conversation it does not have, and a permanent change to your machine
 that no transcript ever showed you is exactly what a task must not be able to make.
 
+**A piece is told it owns the piece.** Your message travels to every task and sub-task
+verbatim, and a task that was cut out of it opens on one line saying so: do what this brief
+and its `done when` name, and leave the rest of that message to whoever kept it — including
+handing work out, which a piece does not repeat. Your words still win about the piece it was
+given, and where its brief cannot be done without going against you, it says so in its report
+instead of quietly widening the job. A top-level task, with nobody between it and you, still
+reads your message as the whole of what was asked for.
+
 **It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
 out when its brief holds parts that do not need each other — at most **5**, and a piece it
 hands out cannot hand out more — and `tasks` is how it then watches them. Inside a task
@@ -649,6 +657,12 @@ from a worker's belt, and its instructions say what to do instead:
   instructions tell it that the record of earlier work is not reachable from
   where it stands, and to say so plainly when you refer to something it cannot
   see, rather than inventing it.
+
+A worker on the floor still gets the whole of a worker's own instructions — that
+nobody is there to answer a question, that a line you send in arrives in its next
+turn, what its report is for, and that it writes only inside its own copy. What
+it does not get is the page about handing work out, because it has no verb for
+that.
 
 And **it cannot design or offer a saved shape of work.** `build_harness` and
 `list_harnesses` want a store to write the page into, a runner, and somebody
