@@ -35,7 +35,7 @@ func TestAHandThatDeclaresAnEmptyScopeReadsAndCannotWrite(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	seed, system := agent.forkSeed()
 
-	hand, err := agent.newHandAgent(forkPart{Role: "read the sources", scopeGiven: true},
+	hand, err := agent.newHandAgent(forkPart{Role: "read the sources", Scope: []string{}},
 		seed, system, &handLeash{limit: forkRounds})
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestAReadingHandIsNeverToldItMayWrite(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	seed, system := agent.forkSeed()
 
-	hand, err := agent.newHandAgent(forkPart{Role: "read the sources", scopeGiven: true},
+	hand, err := agent.newHandAgent(forkPart{Role: "read the sources", Scope: []string{}},
 		seed, system, &handLeash{limit: forkRounds})
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestAReadingHandIsNeverToldItMayWrite(t *testing.T) {
 		}
 	}
 
-	charge := forkCharge(0, forkArguments{Parts: []forkPart{{Role: "read the sources", scopeGiven: true}}})
+	charge := forkCharge(0, forkArguments{Parts: []forkPart{{Role: "read the sources", Scope: []string{}}}})
 	if !strings.Contains(charge, "YOU WRITE NOTHING") {
 		t.Errorf("a reading hand's charge does not say it writes nothing:\n%s", charge)
 	}

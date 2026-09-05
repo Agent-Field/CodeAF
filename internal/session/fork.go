@@ -267,33 +267,6 @@ type forkPart struct {
 	Role  string   `json:"role"`
 	Scope []string `json:"scope"`
 	Grade string   `json:"grade,omitempty"`
-
-	// scopeGiven says the call actually carried a `scope` key. An empty scope
-	// asks for a READ-ONLY hand, and an omitted key is a slip, so the two have to
-	// be told apart — after decoding into a slice they look the same.
-	scopeGiven bool
-}
-
-// UnmarshalJSON reads a part and remembers whether `scope` was there.
-//
-// The inner type drops the methods so this does not call itself; the pointer
-// field beside it is what records presence, and it shadows the embedded `scope`
-// because encoding/json prefers the shallower field of the same name. A `null`
-// is not a declaration, so it leaves the flag alone.
-func (p *forkPart) UnmarshalJSON(data []byte) error {
-	type plain forkPart
-	var wire struct {
-		plain
-		Scope *[]string `json:"scope"`
-	}
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return err
-	}
-	*p = forkPart(wire.plain)
-	if wire.Scope != nil {
-		p.Scope, p.scopeGiven = *wire.Scope, true
-	}
-	return nil
 }
 
 // readOnly reports whether this hand may write nothing at all. It is read after
@@ -508,14 +481,16 @@ func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, 
 			return parsed, fmt.Sprintf("Invalid arguments: hand %d has no role, and a hand that is not told what "+
 				"makes it different from its siblings will do what they are doing.", index+1)
 		}
-		// THE KEY IS REQUIRED, AND AN EMPTY LIST MEANS SOMETHING. A hand that
+		// THE KEY IS REQUIRED, AND AN EMPTY LIST MEANS SOMETHING.
+		// JSON decoding preserves [] as a non-nil empty slice; absent and null
+		// remain nil, so no custom decoder or duplicate presence field is needed. A hand that
 		// declares `"scope": []` is asking to READ and write nothing, which is an
 		// honest thing to want — four sources, four datasets, four files to
 		// compare — and until this it had to invent paths it did not intend to
 		// touch. A MISSING key is not that request: it is a slip, and reading it
 		// as read-only would turn a typo into a hand that silently does half the
 		// work it was told to do.
-		if !part.scopeGiven {
+		if part.Scope == nil {
 			return parsed, fmt.Sprintf("Invalid arguments: hand %d gives no scope. Every hand needs one: the "+
 				"paths it may write, or [] if it only reads.", index+1)
 		}
@@ -525,7 +500,6 @@ func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, 
 			// stops it writing is its BELT ([forkBelt]) — an empty write scope
 			// is unrestricted at the guard (orchestrate.go's [writeGuard]), so
 			// the scope could never be the mechanism here.
-			parsed.Parts[index].Scope = nil
 			continue
 		}
 		// THE SCOPE IS NORMALIZED BEFORE IT IS JUDGED, and everything below reads

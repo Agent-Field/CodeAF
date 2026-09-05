@@ -3309,10 +3309,9 @@ path is refused outright. A hand reaching outside its slice is refused too, by a
 by good manners, and it carries on inside its own.
 
 **A hand that declares an empty slice only reads.** `"scope": []` asks for a hand with no
-`edit` and no `write` at all — not a hand that is asked nicely to leave things alone, but one
-that has no way to change a file. That is what four sources, four datasets or four files to
-compare want, and before it existed the only way to get four readers was to hand each of them
-paths it never meant to touch. Readers claim nothing, so **two of them may look at the same
+`edit` and no `write` tool. Its shell keeps the existing restricted orientation policy;
+this is a tool policy, not an operating-system sandbox. It can inspect sources, datasets
+or files without declaring a file to change. Readers claim nothing, so **two of them may look at the same
 file** and neither collides with a writing hand beside it. A fork can mix them freely.
 
 **The `scope` key is always required.** An empty list is a request; a missing key is a slip,
