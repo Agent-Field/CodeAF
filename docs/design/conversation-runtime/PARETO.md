@@ -1,5 +1,15 @@
 # Measuring and improving the conversation harness
 
+## Current evidence
+
+[Calibration 02](CALIBRATION-20260905.md) records 36 frozen runs across Aforge,
+Pi and OMP. Aforge is not yet at the target: the observed small-task cost gap
+remains, and each chat slice passed only one of two attempts. The next priority
+is unnecessary handoff/checking and the rendered request size. Bounded cache
+accounting and request-specific attribution landed after those measurements;
+their performance effect has not been measured. The optional multi-module
+fixture has passed offline validation but has not had a live comparison.
+
 ## What we are trying to establish
 
 Aforge should let someone discuss the next idea while their work progresses in tasks. Its result must be correct, its latest instructions respected, and its progress visible. Nested tasks are an implementation choice, not a quality score. Extra agents count only when their useful parallel work outweighs startup, context, coordination, verification, and integration.

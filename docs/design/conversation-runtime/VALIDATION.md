@@ -11,6 +11,14 @@ two side-question cases and one of two revision cases; the other revision timed
 out. Steering handoff improved, but a Pareto or production-reliability claim is
 not established. The sections below retain the earlier wave's evidence.
 
+Post-calibration source `3cb79f3f8` also passed `make check`, plus 92 Python tests
+and all 112 offline benchmark checks. It includes bounded cache-credit lengths,
+request-specific provider observations, and the reviewed multi-module fixture.
+It has not been substituted for the measured candidate in the comparison.
+The full provider package under `-race` still exposes an allocation-count test
+failure reproduced on unchanged baseline `389ab7594`; focused concurrency race
+tests passed and no skip was added. See the calibration report for exact scope.
+
 This is a local development wave, not a release or a claim that the harness is on a
 universal cost/time/quality frontier. The integration branch is
 `santosh/conversation-runtime`; the shared `dev` checkout and the prior consolidated
