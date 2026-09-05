@@ -1733,6 +1733,16 @@ func (a *Agent) Interrupt() {
 	cancel := a.cancel
 	jobs := a.jobs
 	a.dropFollowUpsLocked()
+	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
+	// not later by the turn's own cleanup. The cancel below is made with the
+	// lock let go of, so a watch left armed has a real interval in which the
+	// turn is still running and the command's context is still alive — and what
+	// it would do there is hand the foreground command to the job registry,
+	// where it deliberately SURVIVES an interrupt (jobs.go). A person who
+	// pressed stop would be left with the command detached and still running,
+	// which is the opposite of what they asked for. The cleanup stops it again
+	// and that is idempotent (steer_grace.go).
+	a.stopSteerGraceLocked()
 	a.mu.Unlock()
 	if cancel != nil {
 		cancel()

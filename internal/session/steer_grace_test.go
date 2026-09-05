@@ -12,6 +12,7 @@ package session
 import (
 	"context"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -362,4 +363,87 @@ func TestAReplacedSteerGraceIsInertInItsOwnTurn(t *testing.T) {
 	collect(t, first)
 	collect(t, second)
 	collect(t, turn)
+}
+
+// THE WINDOW INSIDE Interrupt. It takes a.mu, drops the follow-ups, LETS GO OF
+// THE LOCK, and only then cancels the turn — so between those two moments the
+// turn is still running, the watch is still armed, and the command's context is
+// still alive. A firing there would promote the foreground command into a job,
+// and a background job deliberately survives an interrupt: the person who
+// pressed stop would be left with the command detached and still running.
+//
+// The gate is the whole test. a.cancel is wrapped so that Interrupt blocks
+// exactly where the window is, which is the only way to fire into an interval
+// the scheduler otherwise closes in microseconds.
+func TestASteerGraceCannotDetachWorkInsideAnInterrupt(t *testing.T) {
+	t.Parallel()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("detach-bash", "bash", `{"command":"sleep 30"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("unreachable"), nil },
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	turn := mustSubmit(t, agent, "start the long one")
+	waitFor(t, "the foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
+	steered := mustSteer(t, agent, "actually look at the log")
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var arrived, opened sync.Once
+	letGo := func() { opened.Do(func() { close(release) }) }
+	// THE GATE IS OPENED WHATEVER HAPPENS BELOW, including a t.Fatal, or the
+	// interrupting goroutine would hold this turn open until the test binary's
+	// own timeout.
+	t.Cleanup(letGo)
+
+	agent.mu.Lock()
+	watch := agent.steerGrace
+	real := agent.cancel
+	// Close cancels too, so both sides are once-only: the gate is about the ONE
+	// pass Interrupt makes through here.
+	agent.cancel = func() {
+		arrived.Do(func() { close(entered) })
+		<-release
+		real()
+	}
+	agent.mu.Unlock()
+	if watch == nil {
+		t.Fatal("no second look was armed for a young bash")
+	}
+	// Off the clock, so the only firing is the one this test makes.
+	watch.timer.Stop()
+
+	go agent.Interrupt()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Interrupt never reached the cancel")
+	}
+	// Interrupt is past its lock boundary and the turn it is stopping is still
+	// alive: this is the interval, and the grace is now behind us.
+	time.Sleep(steerBashAge + 2*steerGraceMargin)
+	if len(agent.inFlightBash.snapshot()) != 1 {
+		t.Fatal("the command was already gone, so this is not the window under test")
+	}
+
+	agent.steerGraceFired(watch)
+	if list := agent.jobs.list(); list != "No background jobs." {
+		t.Fatalf("a stop the person asked for detached the command instead: %q", list)
+	}
+	if queued := steeringQueue(agent); !containsString(queued, "actually look at the log") {
+		t.Fatalf("the correction left the queue inside an interrupt: %v", queued)
+	}
+
+	letGo()
+	collect(t, turn)
+	events := collect(t, steered)
+	for _, event := range events {
+		if event.Kind == EventSteerConsumed {
+			t.Fatal("a steer landed inside a turn the person stopped")
+		}
+	}
+	if list := agent.jobs.list(); list != "No background jobs." {
+		t.Fatalf("an interrupted turn left a job behind: %q", list)
+	}
 }

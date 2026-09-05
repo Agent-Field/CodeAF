@@ -52,6 +52,12 @@ job.
   therefore acts for the LATEST still-pending correction only — a superseded
   stop is a directive the person moved on from, not standing authority, and
   both lines reach the model in order for it to decide.
+- `Interrupt` stops the watch INSIDE its own `a.mu` block, before it releases
+  the lock to call cancel. That gap is a real interval — the turn is still
+  running and the command's context still alive — and a firing inside it would
+  hand the foreground command to the job registry, where a job deliberately
+  survives an interrupt: the person who pressed stop would be left with the
+  command detached and running. The later cleanup stops it again, idempotently.
 - The watch is stopped by the turn's cleanup, by `Abandon` and by `Close`, and
   a firing whose watch the agent is no longer holding returns at once — a
   replacement inside one turn shares the turn number and the calls, so that is
@@ -66,7 +72,9 @@ job.
 adopted once and its exit still arriving; a quick command left alone with an
 inert late timer; an explicit stop reaching a half-second-old command at once
 and leaving no watch armed; the newest-direction rule including a superseded
-stop; a watch replaced inside its own turn firing inertly; the armed-for
+stop; a watch replaced inside its own turn firing inertly; a firing into
+`Interrupt`'s own unlock-then-cancel window, gated by wrapping `a.cancel`;
+the armed-for
 identities (wrong turn, foreign calls, a repeat firing); and an interrupted
 turn leaving no job and no consumed steer.
 
@@ -84,6 +92,12 @@ Two defects found in the first commit and fixed here:
    explicit stop now acts immediately at any age instead, which removes the
    question rather than answering it; no classifier and no resume vocabulary
    were added.
+3. `Interrupt` released a.mu before cancelling and never stopped the watch, so
+   a firing in that window could detach the very command the person had just
+   stopped. `TestASteerGraceCannotDetachWorkInsideAnInterrupt` holds Interrupt
+   at the gap by wrapping `a.cancel`, and fails against the second commit with
+   `a stop the person asked for detached the command instead: "job 1 · running
+   · 0ms · sleep 30"`.
 
 A live functional probe (root, `grace-live-before/ADJUDICATION.md`) measured the
 original accepted → consumed gap at 30.620791s, which is the background-after
