@@ -269,5 +269,38 @@ class ExclusionTests(unittest.TestCase):
         self.assertIn("measurement", out)
 
 
+
+# These counterexamples use the real writer's legacy noncomparable cost flag.
+class ReviewCounterexamples(unittest.TestCase):
+    def test_actual_missing_billing_failure_is_not_dropped(self):
+        out = run_pareto([base(verdict='fail', cost_usd=None, comparable='no', reason='cost not self-reported'), base()])
+        self.assertIn('1/2', out)
+        self.assertIn('cost withheld', out)
+
+    def test_manifest_arm_missing_everywhere_cannot_disappear(self):
+        cells = PairedBlockTests.paired(2)
+        for cell in cells: cell['expected_arms'] = ['pi','cc','omp']
+        out = run_pareto(cells)
+        self.assertIn('no attempt for omp', out)
+        self.assertIn('nothing is compared', out)
+
+    def test_incomplete_billing_never_gets_cost_interval_or_frontier(self):
+        cells = PairedBlockTests.paired(5)
+        cells[0]['cost_usd'] = None
+        out = run_pareto(cells)
+        self.assertIn('interval withheld to avoid survivor bias', out)
+        self.assertIn('observed nondominance is withheld', out)
+
+    def test_condition_changes_refuse_comparison(self):
+        cells = PairedBlockTests.paired(5)
+        for cell in cells: cell['condition_id'] = 'clean'
+        cells[0]['condition_id'] = 'ambient'
+        out = run_pareto(cells)
+        self.assertIn('condition_id differs', out)
+
+    def test_nonfinite_cost_is_not_a_free_or_usable_run(self):
+        out = run_pareto([base(cost_usd=float('nan'))])
+        self.assertIn('cost withheld', out)
+
 if __name__ == "__main__":
     unittest.main()

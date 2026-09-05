@@ -40,6 +40,7 @@ from run-to-run noise.
 import argparse
 import collections
 import json
+import math
 import random
 import sys
 
@@ -84,8 +85,12 @@ def attempt_status(cell):
     if verdict in ("unsupported", "skipped"):
         return False, "%s: %s" % (verdict, cell.get("reason") or "no reason recorded")
     if cell.get("comparable") != "yes":
-        return False, "not comparable: %s" % (cell.get("reason") or "no reason recorded")
-    if not (cell.get("checks") or []):
+        # Old run.sh marks missing billing as noncomparable. It is still a real
+        # quality attempt; dropping it would erase failures with lost receipts.
+        reasons = [x.strip() for x in (cell.get("reason") or "").split(";") if x.strip()]
+        if not reasons or any(x not in {"cost not self-reported", "cost not fully accounted"} for x in reasons):
+            return False, "not comparable: %s" % (cell.get("reason") or "no reason recorded")
+    if not (cell.get("checks") or []) and verdict not in {"timeout", "crash"}:
         return False, "the cell made no assertions, so success cannot be judged"
     return True, ""
 
@@ -105,7 +110,8 @@ def wall_of(cell):
     if value is None or value == "":
         return None
     try:
-        return float(value)
+        number = float(value)
+        return number if not isinstance(value, bool) and math.isfinite(number) and number >= 0 else None
     except (TypeError, ValueError):
         return None
 
@@ -115,7 +121,8 @@ def cost_of(cell):
     if value is None:
         return None
     try:
-        return float(value)
+        number = float(value)
+        return number if not isinstance(value, bool) and math.isfinite(number) and number >= 0 else None
     except (TypeError, ValueError):
         return None
 
@@ -126,7 +133,7 @@ def percentile(values, fraction):
     if not values:
         return None
     ordered = sorted(values)
-    rank = max(1, int(round(fraction * len(ordered))))
+    rank = max(1, math.ceil(fraction * len(ordered)))
     return ordered[min(rank, len(ordered)) - 1]
 
 
@@ -213,11 +220,14 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
             continue
         by_block[cell.get("block_id")].append(cell)
 
-    # The expected arms are inferred from the data, because nothing in a
-    # results file states them. The union is the conservative choice: an arm
-    # that ran in any block is expected everywhere, so a block missing it is
-    # rejected rather than quietly shrunk to the arms it happens to have.
-    expected_arms = sorted({cell.get("arm") for cell in cells})
+    # A campaign declares expected arms before running. Older paired imports
+    # can only use the observed union; they cannot certify a planned competitor
+    # which is absent from the entire file.
+    declarations = {tuple(sorted(cell["expected_arms"])) for cell in cells if cell.get("expected_arms")}
+    if len(declarations) > 1:
+        print("inconsistent expected_arms; nothing is compared")
+        return
+    expected_arms = list(next(iter(declarations))) if declarations else sorted({cell.get("arm") for cell in cells})
     if len(expected_arms) < 2:
         print("\n== experiment %s  (stratum: %s)" % (experiment_id, stratum_label(stratum)))
         print("   fewer than two arms appear; a single arm is not a comparison")
@@ -238,6 +248,14 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
             rejections.append("block %s: unbalanced — no attempt for %s"
                               % (block_id, ", ".join(map(str, missing))))
             continue
+        if set(arms_in_block) != set(expected_arms):
+            rejections.append("block %s: unexpected arm" % block_id)
+            continue
+        if any(cell.get("condition_id") is not None for cell in cells):
+            conditions = {cell.get("condition_id") for cell in block_cells}
+            if None in conditions or len(conditions) != 1:
+                rejections.append("block %s: condition_id differs or is missing" % block_id)
+                continue
         kept[block_id] = {cell.get("arm"): cell for cell in block_cells}
 
     # An arm measured at two versions is two different arms wearing one name,
@@ -245,17 +263,21 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
     versions = collections.defaultdict(set)
     for block in kept.values():
         for arm, cell in block.items():
-            versions[arm].add(str(cell.get("arm_version")))
+            versions[arm].add((str(cell.get("arm_version")), str(cell.get("arm_binary_sha256"))))
     mixed = {arm: vs for arm, vs in versions.items() if len(vs) > 1}
+    condition_versions = {cell.get("condition_id") for block in kept.values() for cell in block.values()}
+    if len(condition_versions) > 1:
+        rejections.append("condition_id changed across blocks; comparison refused")
+        kept = {}
     if mixed:
         for arm, vs in sorted(mixed.items(), key=lambda item: str(item[0])):
             rejections.append("arm %s: arm_version is inconsistent (%s); the whole comparison"
                               " for this experiment and stratum is refused"
-                              % (arm, ", ".join(sorted(vs))))
+                              % (arm, ", ".join(str(v) for v in sorted(vs))))
         kept = {}
 
     print("\n== experiment %s  (stratum: %s)" % (experiment_id, stratum_label(stratum)))
-    print("   expected arms (inferred from the data): %s" % ", ".join(map(str, expected_arms)))
+    print("   expected arms (declared if available, otherwise inferred): %s" % ", ".join(map(str, expected_arms)))
     print("   blocks: %d paired, %d rejected" % (len(kept), len(rejections)))
     for reason in rejections:
         print("   rejected — %s" % reason)
@@ -275,8 +297,8 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
         print_stats_row(arm, stats_by_arm[arm])
 
     if len(blocks) >= 5 and len(expected_arms) >= 2:
-        print("   paired differences (second arm minus first), deterministic bootstrap"
-              " 95%% interval over %d blocks:" % len(blocks))
+        print("   paired differences (second arm minus first), 95%% bounds over %d blocks;"
+              " exact binomial for success, paired bootstrap for cost/time:" % len(blocks))
         for i in range(len(expected_arms)):
             for j in range(i + 1, len(expected_arms)):
                 arm_a, arm_b = expected_arms[i], expected_arms[j]
@@ -295,14 +317,25 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
                         va, vb = transform(a), transform(b)
                         if va is not None and vb is not None:
                             diffs.append(vb - va)
-                    if not diffs:
-                        print("       %-8s — no pair with both sides measured" % metric)
+                    if len(diffs) != len(pairs):
+                        print("       %-8s — incomplete measurements; interval withheld to avoid survivor bias" % metric)
                         continue
-                    interval = bootstrap_ci(diffs)
+                    if metric == "success":
+                        # Bootstrap resampling cannot discover unseen failures.
+                        # Exact binomial bounds retain uncertainty at 5/5 and
+                        # 0/5; two 97.5% marginal intervals give a conservative
+                        # 95% bound for their difference by the union bound.
+                        a_bounds = binomial_interval(sum(success(a) for a, _ in pairs), len(pairs), 0.025)
+                        b_bounds = binomial_interval(sum(success(b) for _, b in pairs), len(pairs), 0.025)
+                        interval = (b_bounds[0]-a_bounds[1], b_bounds[1]-a_bounds[0])
+                    else:
+                        interval = bootstrap_ci(diffs)
                     sign = "+" if interval[0] > 0 else ("−" if interval[1] < 0 else "")
                     print("       %-8s mean %+.4f  95%% CI [%+.4f, %+.4f]  (over %d pair(s))"
                           % (metric, sum(diffs) / len(diffs), interval[0], interval[1],
                              len(diffs)))
+                    if metric == "success":
+                        print("         conservative exact binomial difference bound; repeated identical fixtures do not establish task diversity")
                     if interval[0] > 0 or interval[1] < 0:
                         print("         the interval excludes zero — evidence about these"
                               " blocks only, not a general claim")
@@ -315,12 +348,32 @@ def pair_experiment(experiment_id, stratum, cells, excluded):
         print("   fewer than 5 paired blocks: no interval is computed, and the"
               " figures above carry no confidence beyond these %d block(s)." % len(blocks))
 
+    if any(not s["cost_complete"] or s["missing_wall"] for s in stats_by_arm.values()):
+        print("   incomplete cost/time coverage: observed nondominance is withheld")
+        return
     observed = observed_nondominated(expected_arms, stats_by_arm)
     print("   observed, not dominated on these blocks: %s"
           % (", ".join(map(str, sorted(observed, key=str))) or "nothing"))
     print("   exploratory only: this lists what no other arm beat on these blocks;"
           " it is not a frontier, not a ranking, and not a claim about any run"
           " or condition not printed above.")
+
+
+def binomial_interval(successes, n, alpha=0.05):
+    """Invert binomial tails, retaining uncertainty even when every attempt wins."""
+    def solve(k, upper_tail, target):
+        lo, hi = 0.0, 1.0
+        for _ in range(60):
+            p = (lo+hi)/2
+            indices = range(k, n+1) if upper_tail else range(k+1)
+            value = sum(math.comb(n, i)*p**i*(1-p)**(n-i) for i in indices)
+            if (value < target) == upper_tail:
+                lo = p
+            else:
+                hi = p
+        return (lo+hi)/2
+    return (0.0 if successes == 0 else solve(successes, True, alpha/2),
+            1.0 if successes == n else solve(successes, False, alpha/2))
 
 
 def bootstrap_ci(diffs):
@@ -343,9 +396,9 @@ def observed_nondominated(arms, stats_by_arm):
     above is the only place this report speaks with one."""
     def dominates(a, b):
         sa, sb = stats_by_arm[a], stats_by_arm[b]
-        if sa["mean_wall"] is None or sb["mean_wall"] is None:
+        if sa["missing_wall"] or sb["missing_wall"] or sa["mean_wall"] is None or sb["mean_wall"] is None:
             return False
-        if sa["cost_complete"] != sb["cost_complete"]:
+        if not sa["cost_complete"] or not sb["cost_complete"]:
             return False
         at_least = (sa["n_success"] / sa["n_attempted"] >= sb["n_success"] / sb["n_attempted"]
                     and sa["mean_wall"] <= sb["mean_wall"])

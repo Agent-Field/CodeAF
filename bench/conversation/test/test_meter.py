@@ -140,6 +140,8 @@ class MeterCase(unittest.TestCase):
     def tearDownClass(cls):
         cls.guard_server.shutdown()
         cls.upstream_server.shutdown()
+        cls.guard_server.server_close()
+        cls.upstream_server.server_close()
         cls.tmp.cleanup()
 
     def setUp(self):
@@ -178,7 +180,8 @@ class MeterCase(unittest.TestCase):
         return response.status, b"".join(chunks)
 
     def rows(self, phase=None):
-        out = [json.loads(line) for line in open(self.usage_path) if line.strip()]
+        with open(self.usage_path) as handle:
+            out = [json.loads(line) for line in handle if line.strip()]
         if phase:
             out = [row for row in out if row.get("phase") == phase]
         return out
@@ -281,7 +284,8 @@ class MeterCase(unittest.TestCase):
         self.ask({"model": MODEL,
                   "messages": [{"role": "user", "content": "SECRET-PROMPT-MARKER"}],
                   "stream": True})
-        ledger = open(self.usage_path).read()
+        with open(self.usage_path) as handle:
+            ledger = handle.read()
         self.assertNotIn("SECRET-PROMPT-MARKER", ledger)
 
     def test_client_disconnect_settles_unknown_with_generation_id(self):
@@ -410,6 +414,19 @@ class MeterCase(unittest.TestCase):
     def test_empty_ledger_reads_as_nothing(self):
         self.write_rows([])
         self.assertIsNone(self.read())
+
+    def test_missing_identity_or_mixed_ledger_is_unknown(self):
+        for rows in ([self.admitted(None), self.settled(None, cost=0.1)],
+                     [self.admitted('r'), self.settled('r', cost=0.1),
+                      dict(path='/chat/completions',cost_usd=0.1)]):
+            self.write_rows(rows)
+            self.assertIsNone(self.read()['cost_usd'])
+
+    def test_torn_row_cannot_disappear_from_accounting(self):
+        self.write_rows([self.admitted('r'), self.settled('r', cost=0.1)])
+        with open(self.usage_path, 'a') as handle:
+            handle.write('{"phase":"admitted"')
+        self.assertIsNone(self.read()['cost_usd'])
 
     def test_live_evidence_shape_reads_unknown(self):
         # The shape the 2026-09-03 followup run actually wrote: sixteen

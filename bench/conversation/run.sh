@@ -411,7 +411,7 @@ for scenario in $SCENARIOS; do
     # CHILD_ENV was built above: only PATH, HOME, TERM, LANG, TMPDIR, the
     # OpenRouter key and the arm's own variables survive. A peer that never sees
     # another provider's key cannot bill one.
-    started="$(now_s)"; code=""; timed_out=0
+    started="$(python3 -c 'import time; print(time.monotonic())')"; code=""; timed_out=0
     if [ "$SCENARIO_DOOR" = "print" ]; then
       # The cap is a spend backstop, not a work limit: a harness still running
       # at the cap has produced nothing and is recorded as a timeout, and on a
@@ -429,7 +429,7 @@ for scenario in $SCENARIOS; do
       [ "$DOOR_ENDED" = "cap" ] && timed_out=1
       : > "$cell/stdout.log"
     fi
-    wall=$(( $(now_s) - started ))
+    wall="$(python3 -c 'import sys,time; print(round(time.monotonic()-float(sys.argv[1]),3))' "$started")"
 
     # The conversation is hosted by default, so a cell that ends without
     # stopping its host leaves a daemon behind. This stops that host and only
@@ -451,11 +451,19 @@ for scenario in $SCENARIOS; do
 
     # ── receipts ──────────────────────────────────────────────────────────
     receipt="$cell/receipt.json"
+    # Stop the owned host above and close the ledger before reading it. Billing
+    # recovery runs after the measured user interaction and cannot change it.
+    guard_stop
+    usage_ledger="$cell/guard-usage.jsonl"
+    if [ "$UNGUARDED" != "1" ] && [ -s "$usage_ledger" ]; then
+      if python3 "$CONV_LIB/reconcile.py" "$usage_ledger" "$cell/guard-reconciled.jsonl" 2>> "$cell/stderr.log"; then
+        usage_ledger="$cell/guard-reconciled.jsonl"
+      fi
+    fi
     python3 "$CONV_LIB/receipts.py" --kind "$(arm_receipt_kind "$arm")" \
       --path "$(arm_receipt_path "$arm" "$cell" "$SCENARIO_DOOR")" --stdout "$cell/stdout.log" \
-      --guard-usage "$cell/guard-usage.jsonl" \
+      --guard-usage "$usage_ledger" \
       --out "$receipt" --reply "$cell/reply.txt" 2>> "$cell/stderr.log"
-    guard_stop
 
     read -r cost cost_source tokens_in tokens_out turns models <<EOF
 $(CONV_RECEIPT="$receipt" python3 -c '
@@ -565,7 +573,7 @@ print("; ".join(got.get("notes") or []))
 ')"
       record "cost" "unknown${receipt_note:+ — $receipt_note}"
       comparable="no"
-      comparable_reason="${comparable_reason:+$comparable_reason; }cost not self-reported"
+      comparable_reason="${comparable_reason:+$comparable_reason; }cost not fully accounted"
     else
       record "cost_usd" "$cost"
     fi

@@ -162,9 +162,7 @@ the guard's audit names what was asked for:
 A harness that reported no usage gets `cost_usd: null` and
 `cost_source: "none"` — never `0`. Zero is a measurement; null is the absence of
 one, and a frontier that reads an absence as a zero puts the quietest harness on
-top. Cells without a cost, and cells whose billed model cannot be named, are
-marked `comparable: no` and are excluded from every comparison with their
-reason attached.
+top. Cells without a cost remain in the attempt/success denominator, but cost comparisons are withheld. Cells whose billed model cannot be named are excluded with their reason attached.
 
 An all-zero usage block is also an absence, not a zero: a refused or failed
 call still emits one, and recording it as a $0 run would put a harness that
@@ -185,13 +183,13 @@ and a different set on every box. A live pane in this lane showed omp mounting
 MCP tools and failing one of them out of `~/.claude.json`, and pi listing
 thirty-odd skills out of `~/.agents/skills`.
 
-Only documented flags are used, and what a CLI does not offer is reported rather
+Only documented flags and settings are used, and what a CLI does not offer is reported rather
 than worked around — a benchmark that edits somebody's dotfiles to look fair has
 stopped measuring the thing people run.
 
 | arm | turned off | still loaded |
 |---|---|---|
-| omp 18.1.2 | `--no-skills --no-extensions --no-rules` | **user-level MCP from `~/.claude.json`** — no documented flag disables it; `mcp.enableProjectConfig` covers the project file only |
+| omp 18.1.2 | `--no-skills --no-extensions --no-rules` | third-party discovery disabled in the owned profile through `disabledProviders`; native profile starts empty |
 | pi 0.84.2 | `--no-skills --no-extensions` | — |
 | aforge | nothing needed: `AFORGE_HOME` moves the whole state root, so a cell starts with no ambient skills or extensions | — |
 
@@ -450,8 +448,7 @@ than green.
 
 ## What this does not establish
 
-One machine, one model, one effort rung, one attempt per cell. Quality is the
-fraction of a cell's own assertions that passed, which measures what the cell
+One machine, one model, one effort rung. Legacy runs have no paired repetition metadata; the campaign runner adds it. Quality is binary: the verdict and every assertion must pass. This measures what the cell
 checks and nothing else — the writing cell counts words and facts, not whether
 the memo is any good. The conversation cells use a sleeping script as the slow
 job, so they measure whether a followup lands and the work survives, not how a
@@ -472,3 +469,13 @@ The slow-work fixture records every invocation and preserves its first start
 timestamp. Both interactive scenarios reject repeating the prepared action.
 Previously a second run could overwrite the start marker and make a correctly
 timed user correction look early; that failure is now measured directly.
+
+## Paired campaigns and conservative reports
+
+`campaign.py plan /tmp/experiment.json --id experiment-name --repeats 2` freezes binary and rig hashes and randomizes complete arm blocks. This is offline. `campaign.py run /tmp/experiment.json --out /tmp/experiment-evidence` explicitly executes the plan; failures remain, infrastructure gaps stop the run, completed cells resume without inference, and partial cells require adjudication. Model inference is limited by per-cell runtime caps, not an aggregate dollar cap.
+
+The report now uses **binary outcome success**, separates exact scenario/door/model/effort strata, and keeps failure costs. Legacy runs are descriptive only. Declared expected arms prevent an entirely missing competitor from disappearing. Paired intervals require at least five complete blocks; missing billing/time prevents the corresponding interval. Equal small all-success samples do not prove equivalence. An observed nondominated set is exploratory and withheld if cost/time coverage is incomplete.
+
+Cancelled streams may lack their final usage event. The guard records generation IDs, request identities, and timing without prompt contents. After the owned runtime stops, `reconcile.py` can obtain read-only generation billing metadata from OpenRouter. It preserves the raw ledger and writes a derived ledger and receipts; ID/model mismatches, unfinished records, or unavailable prices stay unknown. No inference is retried to recover a price.
+
+The product goals, staged comparison protocol, holdout requirement, and proposed acceptance margins are in [PARETO.md](../../docs/design/conversation-runtime/PARETO.md). Run `python3 -m unittest discover -s bench/conversation/test -p 'test_*.py'` alongside the existing shell selftest when changing measurement code.

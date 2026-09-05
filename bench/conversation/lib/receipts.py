@@ -82,7 +82,23 @@ def read_guard_usage(path):
     One shape is still read without ids: the rows the guard wrote before it
     recorded admissions have no phase and no request id, and evidence from
     those runs still reads. Everything else must reconcile exactly."""
-    rows = [row for row in jsonl(path) if isinstance(row, dict)]
+    rows = []
+    torn = False
+    try:
+        with open(path, errors="replace") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        torn = True
+                    else:
+                        rows.append(row)
+                except ValueError:
+                    torn = True
+    except OSError:
+        return None
     if not rows:
         return None
     inference = [row for row in rows if row.get("path", "").find("chat/completions") >= 0
@@ -93,7 +109,7 @@ def read_guard_usage(path):
     settlements = {}
     legacy = []
     repeated = []
-    malformed = []
+    malformed = ["unreadable ledger row"] if torn else []
     for row in inference:
         phase = row.get("phase")
         request_id = row.get("request_id")

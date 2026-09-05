@@ -306,7 +306,10 @@ class Guard(http.server.BaseHTTPRequestHandler):
         # treats it as one.
         request_id = self.open_account(payload.get("model"),
                                        normalised=rewritten, usage_include_added=added_usage,
-                                       stream_usage_added=stream_usage_added)
+                                       stream_usage_added=stream_usage_added,
+                                       at_unix=time.time(), request_bytes=len(body),
+                                       message_count=len(payload.get("messages") or []),
+                                       tool_count=len(payload.get("tools") or []))
         self.relay(body, payload.get("model"), added_usage=added_usage, request_id=request_id)
 
     def open_account(self, model, **fields):

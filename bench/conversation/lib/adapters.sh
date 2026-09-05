@@ -229,10 +229,9 @@ arm_role_pin() {
 # benchmark that edits somebody's dotfiles to look fair has stopped measuring
 # the thing people run.
 #
-#   omp 18.1.2   --no-skills --no-extensions --no-rules
-#                (no flag for user-level MCP from ~/.claude.json; its config
-#                 offers mcp.enableProjectConfig, which covers the project file
-#                 only — recorded as a known difference)
+#   omp 18.1.2   --no-skills --no-extensions --no-rules, plus discovery-source
+#                disabling in this cell's fresh profile (docs/settings.md at
+#                v18.1.2). Model providers are a separate namespace.
 #   pi 0.84.2    --no-skills --no-extensions
 #   aforge       nothing needed: AFORGE_HOME moves the whole state root, so a
 #                cell starts with no ambient skills or extensions at all
@@ -243,7 +242,7 @@ arm_baseline() {
   case "$1" in
     omp)
       ARM_BASELINE_FLAGS=(--no-skills --no-extensions --no-rules)
-      ARM_BASELINE_NOTE="skills/extensions/rules off; user MCP from ~/.claude.json cannot be disabled by any documented flag and is still loaded"
+      ARM_BASELINE_NOTE="skills/extensions/rules off; third-party discovery sources disabled in the owned profile"
       ;;
     pi)
       ARM_BASELINE_FLAGS=(--no-skills --no-extensions)
@@ -376,7 +375,21 @@ arm_isolate() {
         # reaches a composer (observed on 18.1.2), so the one key that says
         # setup is done is written. Only this branch takes ownership.
         mkdir -p "$profile_root/agent"
-        printf 'setupVersion: 2\n' > "$profile_root/agent/config.yml"
+        # Profiles isolate OMP state but still discover other tools' user files.
+        # Disable those documented discovery sources without editing user files.
+        cat > "$profile_root/agent/config.yml" <<'YAML'
+setupVersion: 2
+disabledProviders:
+  - claude
+  - codex
+  - gemini
+  - github
+  - opencode
+  - cursor
+  - agents-md
+mcp:
+  enableProjectConfig: false
+YAML
         ARM_CLEANUP_PATH="$profile_root"
         CONV_OMP_PROFILE_ACTIVE="$profile"
         ARM_ISOLATION="omp profile $profile created by this run under \$HOME/.omp/profiles"

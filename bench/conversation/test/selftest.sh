@@ -633,7 +633,7 @@ print(got["cost_source"], "null" if got["cost_usd"] is None else got["cost_usd"]
   # it, and its usage block never arrives — the guard must record that quietly
   # and not answer a request whose headers it has already sent.
   GUARD_PORT="$G_PORT" python3 - <<'PYDROP'
-import http.client, json, os
+import http.client, json, os, socket, struct
 body = json.dumps({"model": "deepseek/deepseek-v4-flash-0731",
                    "messages": [{"role": "user", "content": "hi"}],
                    "stream": True, "stream_delay": 3})
@@ -642,7 +642,10 @@ conn.request("POST", "/v1/chat/completions", body=body,
              headers={"Authorization": "Bearer test-sentinel",
                       "Content-Type": "application/json"})
 response = conn.getresponse()
-response.read1(64)      # take the first event, then walk away
+response.read1(64)      # take the first event, then abort before usage exists
+# A clean FIN can still receive billing; an RST stages the missing-receipt case.
+conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+response.close()
 conn.close()
 PYDROP
   for _ in $(seq 1 60); do
@@ -738,8 +741,8 @@ SUMMARY="$WORKDIR/summary.txt"
 python3 "$CONV_ROOT/lib/pareto.py" "$WORKDIR"/*/evidence/results.jsonl > "$SUMMARY" 2>&1
 grep -q 'excluded from every figure' "$SUMMARY" \
   && ok "excluded cells are listed with their reasons" || bad "the summary does not list exclusions"
-grep -qE 'not dominated' "$SUMMARY" \
-  && ok "the frontier is reported per workload" || bad "no frontier line in the summary"
+grep -q 'DESCRIPTIVE ONLY' "$SUMMARY" && ! grep -q 'observed, not dominated' "$SUMMARY" \
+  && ok "unpaired legacy evidence makes no frontier claim" || bad "legacy evidence was ranked or not described"
 say
 
 printf 'selftest: %d passed, %d failed, %d skipped\n' "$PASSED" "$FAILED" "$SKIPPED"
