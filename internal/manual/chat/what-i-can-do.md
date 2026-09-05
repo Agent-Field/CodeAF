@@ -896,13 +896,15 @@ to a different conversation.
 
 ## Can you hand a piece of work off to run on its own?
 
-Yes. `propose_task` proposes a task with a `title`, `summary`, `brief` and
-`acceptance`, plus optional `depends_on`, `model`, `max_steps` and
-`no_progress`. `tasks` looks at what exists — searching, reading output, sending
+Yes. `propose_task` proposes a task with a `title`, `summary`, `brief`,
+`deliverable` and `acceptance`, plus optional `checks`, `depends_on`, `model`,
+`max_steps` and `no_progress`. `tasks` looks at what exists — searching, reading output, sending
 a message, or resolving one.
 
-Both are available in the conversation only. Inside a running task they are off,
-along with `watch`.
+The main conversation can hand work off. A task can also hand out pieces of its
+assigned work while below the two-level depth limit; a leaf at that limit does
+the remaining work itself. `tasks` inside a task is scoped to the pieces it
+handed out. `watch` remains absent inside tasks.
 
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.

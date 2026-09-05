@@ -1,6 +1,6 @@
 # Modules: where the responsibilities are, and where the seams are
 
-**Read as of the integration line at `15ebb5d61`.** Every row marked *implemented* names
+**Read as of the local `santosh/conversation-runtime` wave, 2026-09-04.** Every row marked *implemented* names
 code in this tree. Every row marked *proposed* is a plan and nothing more. `PLAN.md`,
 `PRODUCT.md` and `COMMUNICATION.md` describe intended behavior and are not claims about
 what ships.
@@ -24,6 +24,9 @@ area are the pre-existing package lines: `internal/session` (engine), `internal/
 | **Delivery** | `mailbox.go` | who is addressed (`conversationID{session, task}`), who is speaking (`messageOrigin`), what kind of message it is (`messageKind`), one hand-over (`deliverTo`) and one answer (`deliveryReceipt`) | implemented |
 | **Durable acknowledgement** | `mailbox.go` (`durableDelivery`, `deliveryID`, `Agent.hasRecorded`), `task_store.go` | the difference between a message a live reader accepted and one the recipient's own record holds | implemented |
 | **Assignment and revision** | `assignment.go`, `assignment_tool.go` | the frozen admitted spec plus a revision overlay; which origins may move the done-condition | implemented |
+| **Person-message forwarding** | `task_forward.go`, `assignment.go` | immutable request-bound source, one chosen address, retry identity and local correction ordering; uses the room delivery path | implemented |
+| **Verification authority** | `task_checks.go`, `task_run.go` | explicit current check declarations, distinct from action receipts and acceptance prose | implemented |
+| **Causal result wake** | `wakecause.go`, `task_result.go` | result, attempt and effective reply obligation travel together | implemented |
 | **Admission context** | `admission.go`, `admission_compile.go` | one bounded, attributed selection of conversation excerpts and tool-output handles per admission door | implemented |
 | **Result** | `task_result.go` | the full answer kept apart from the compact card, with a retrievable overflow reference | implemented |
 | **Context window** | `toolcompact.go`, `stub.go`, `turnfold.go` | the bounded *view* of frozen history sent to the provider: reduced tool results with retrievable pointers, a fold to a headroom target, a linear budget walk | implemented |
@@ -82,8 +85,9 @@ that boundary is on the node, not in the mailbox.
 **Not guaranteed:** discussion is not direction. There is no classifier model call deciding
 whether a sentence was "really" an instruction; the rule is structural (which door the words
 came through, and which origin they carry). An ordinary question asked in a room does not
-rewrite the acceptance condition, and a genuine correction typed anywhere *other* than into
-the task is not automatically routed to it — see §4.
+rewrite the acceptance condition, and a correction typed in the main chat reaches the selected task only when the model
+uses `forward`. The actual person message is bound to the model request; `say` remains
+coordination. No automatic broadcasting is implemented.
 
 ### 2.4 Admission context (`admission.go`)
 
@@ -172,9 +176,9 @@ Stated plainly, because each of these is easy to read into the sections above.
 
 - **No distributed runtime and no exactly-once external effects.** Everything here is local
   and in-process. The durable acknowledgement bounds *re-telling*, not *re-doing* (§2.2).
-- **No main-chat correction addressed at a task.** Steering *inside a task room* works
-  (§2.3). A correction typed in the main chat is not routed or broadcast to running tasks,
-  because nothing decides which tasks such a line concerns. This is the live UX gap.
+- **No automatic correction broadcast.** Main chat can forward the person message to one
+  selected task, and the person can type directly into a task room. Neither door revises
+  descendants automatically; receipt is distinct from reading and applying a correction.
 - **No universal durable constraint ledger.** Admission context is a bounded selection, not a
   record of every constraint a person has ever stated (§2.4).
 - **No general Pareto superiority.** Specific costs are measurably reduced and covered by
@@ -194,11 +198,10 @@ The shape is already the extension point, and it costs nothing today:
 - **`mailbox` is a two-method interface.** `address()` and `accept(delivery) deliveryReceipt`
   are satisfiable by something that speaks to another process. The receipt already
   distinguishes nobody / closed / accepted, which is the vocabulary a remote delivery needs.
-- **Origin is a field, not an inference.** Adding `fromRemotePerson` or an authenticated
-  peer origin is an enum case plus a policy decision in `directionOf`, not a rewrite of
-  authority checks scattered across call sites.
-- **Durable ids already exist.** `deliveryID` is composed from checkpoint facts, so replay
-  protection across a restart and replay protection across a peer are the same mechanism.
+- **Origin is a field, not an inference.** A future authenticated peer origin would be admitted at this boundary, then interpreted
+  by the centralized authority rule. An enum value alone would not establish authority.
+- **Durable ids already exist.** `deliveryID` is composed from checkpoint facts, providing a local basis for retry recognition. Remote replay protection would still need
+  authenticated sender identity, persistence and a defined retention policy.
 
 What such a step would additionally require, and what deliberately does not exist now:
 authenticated authority (an origin claim from another process must be verified, not

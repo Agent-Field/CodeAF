@@ -1,6 +1,6 @@
 # Conversation runtime implementation
 
-Local integration line at `15ebb5d61`. This is a working record of what has merged into that
+Local integration line: `santosh/conversation-runtime` (2026-09-04 working wave). This is a working record of what has merged into that
 line, what is still open, and what the available evidence does and does not establish. It
 describes the local integration only; nothing here is published or claimed as released.
 
@@ -26,33 +26,39 @@ alongside it (`mailbox_test.go`, `assignment_test.go`, `admission_test.go`,
 `internal/remote/detach_test.go`, `internal/tui3/detachexit_test.go`). Focused tests are not
 a substitute for the integrated suite or a live product walkthrough.
 
-## Open — assigned, not shipped
+## Additional integrated boundaries
 
-These lanes are active elsewhere. **Nothing below is in this line yet, and none of it should
-be described as working here.**
+- **Explicit verification contract.** `checks` declarations at admission and revision are
+  the only source of executable completion checks, for tasks and the main session.
+  Worker receipts and acceptance prose are evidence, not permission to repeat an action.
+  A revision clears previous check authority unless new checks are explicitly supplied.
+  Unrunnable checks do not become claims that commands passed.
+- **Causal result wake.** A completed result, attempt, and reply obligation are captured
+  together and carried through delivery and journal replay. Completion answers the request
+  that caused the task, including its effective revision, rather than the latest unrelated
+  question in the main conversation.
+- **Worker scope and capabilities.** Every node worker, including a depth-limited leaf,
+  receives its role and assigned scope. Revision and delegation instructions are conditional
+  on the tools actually available. The original request is preserved as overall context,
+  not silently assigned in full to every child.
+- **Main-chat corrections.** `tasks` with `forward: true` sends the real person message
+  attached to the model request to one selected task. `say` remains agent coordination.
+  Forwarding shares the room's delivery and assignment receipt path. Source identity allows
+  retries to be acknowledged without duplicate delivery; newer applied corrections cannot
+  be overwritten by a delayed forward with an earlier recorded speaking time.
 
-- **Verification / replay.** A live run found that the audit door treated a work receipt as
-  permission to replay the action, re-running a two-minute script. A fix is assigned to the
-  verification lane; still active, not integrated.
-- **Causal wake.** The same run found that the main completion reader judged a task's result
-  against the person's latest, unrelated question rather than against the request that caused
-  the work. Fix code exists in a separate lane and is under test there: a landing is taken
-  whole — the notice a surface draws, the attempt it belongs to and its reply tag together
-  under one lock (`TaskNode.resultOf`) — and carried so a woken turn is judged against the
-  request the result was owed to, with assignment-revision tests alongside it. **Pending until
-  root confirms integration**; it is not in this line and this document does not claim it
-  works.
-- **Final integrated live validation.** The rig exists (above); the candidate's own final
-  integrated interactive run has not been made. Existence of the harness is not a result from
-  it.
+## Validation still pending
+
+Final integrated live runs and `make check` are recorded separately below once completed.
+Focused tests are evidence for individual boundaries, not for the complete experience.
 
 ## What the live evidence actually shows
 
 From root's `host-live-02` run, two behaviors were observed to pass: the main conversation
 answered an unrelated question in a few seconds while a task ran, with no polling; and a task
 continued with the terminal closed, with no interruption marker and the same start time. The
-same run produced three defects — a path-token trimming bug (since fixed), the audit replay
-above, and the completion-reader causality above. The run's own note stands: **it does not
+same run produced three defects — a path-token trimming bug (since fixed), the audit replay, and the completion-reader causality. All three now have
+code fixes and regression tests. The run's own note stands: **it does not
 prove overall task efficiency or all steering behaviors.**
 
 ## What is measured, and what is not claimed
@@ -87,10 +93,11 @@ repetitions, latency and actual cost. Unmeasured cells are not successes.
 - **Admission context is deliberately partial.** It is not a durable universal constraint
   ledger and does not guarantee that every relevant earlier statement is selected. A reference
   is only useful if the recipient can open it.
-- **Steering is per-room.** A person steering *inside a task room* works: the line is recorded
-  on that task as a person-origin direction and moves what the work is judged by. A correction
-  typed in the **main chat and addressed at a task is not implemented** — nothing decides which
-  running tasks a main-chat line concerns, and nothing broadcasts it. This is the candid UX gap.
+- **Steering chooses one task.** Main-chat forwarding is model-addressed, not an automatic
+  classifier or broadcast. The receipt does not prove the worker read or applied it. Task
+  workers cannot forward under the person's authority. Original speaking time means when
+  this session drained the message, not when the key was pressed; ordering across clock
+  changes is not guaranteed. A publication already claimed cannot be recalled.
 - **Attempt identity and assignment revision answer different questions** and must stay
   distinct.
 - **Cross-session communication is out of scope.** The addressing and origin shape should
