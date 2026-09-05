@@ -3153,7 +3153,7 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 //
 // THERE IS EXACTLY ONE ANSWER THAT LEAVES THE TURN RUNNING, and it is not a third
 // sketch: it is the model saying nothing remains at all
-// ([checkpointNothingLeft]) AND THE MARK'S OWN READER AGREEING. The ceiling
+// ([checkpointNothingLeft]) with no independent remainder named by the sketch. The ceiling
 // exists to move A GRIND somewhere it is watched, and a turn that is finishing is
 // not a grind — but a running model declaring itself finished is the model
 // grading its own work, which is exactly the reading this whole file was rebuilt
