@@ -44,6 +44,11 @@ class ReconcileTests(unittest.TestCase):
     def test_no_inference_or_fetch_for_priced_calls(self):
         def unexpected(_): self.fail('priced calls require no recovery')
         self.assertEqual(r.reconcile([dict(phase='settled',cost_usd=0.1)], unexpected, [])[0]['cost_usd'],0.1)
+        observed = dict(phase='generation',request_id='r',generation_id='g')
+        priced = dict(observed,phase='settled',cost_usd=0.1)
+        self.assertFalse(r.needs_recovery([observed,priced]))
+        self.assertTrue(r.needs_recovery([observed]))
+        self.assertTrue(r.needs_recovery([observed,dict(priced,cost_usd=None)]))
     def test_killed_guard_identity_can_recover_without_replaying(self):
         rows = [dict(phase='admitted',request_id='r',model='m'),
                 dict(phase='generation',request_id='r',model='m',generation_id='g')]

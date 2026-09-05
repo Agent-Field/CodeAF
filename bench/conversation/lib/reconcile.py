@@ -39,6 +39,14 @@ def valid_receipt(data, row, identities=None):
             and (data.get("finish_reason") is not None or data.get("cancelled") is True))
 
 
+def needs_recovery(rows):
+    settled = {row.get("request_id") for row in rows if row.get("phase") == "settled"}
+    return any(row.get("generation_id") and
+               ((row.get("phase") == "settled" and row.get("cost_usd") is None) or
+                (row.get("phase") == "generation" and row.get("request_id") not in settled))
+               for row in rows)
+
+
 def reconcile(rows, fetch, evidence, identities=None):
     # A guard killed after receiving a generation ID may never write settlement.
     # Reconstruct only one-to-one recorded identities; duplicates stay invalid.
@@ -103,9 +111,7 @@ def main():
         except Exception:
             return None
 
-    needs_recovery = any(row.get("phase") in {"generation", "settled"}
-                         and row.get("cost_usd") is None and row.get("generation_id") for row in rows)
-    catalog = get_json("https://openrouter.ai/api/v1/models") if needs_recovery else None
+    catalog = get_json("https://openrouter.ai/api/v1/models") if needs_recovery(rows) else None
     identities = catalog_identities(catalog.get("data", [])) if isinstance(catalog, dict) else {}
 
     def fetch(generation):

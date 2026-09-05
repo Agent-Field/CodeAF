@@ -33,6 +33,7 @@ in its own environment and is never logged.
 import argparse
 import http.server
 import json
+import math
 import os
 import sys
 import threading
@@ -465,15 +466,26 @@ class Guard(http.server.BaseHTTPRequestHandler):
             self.write_line(self.usage_path, row)
             return
         cost = usage.get("cost")
+        valid_cost = (not isinstance(cost, bool) and isinstance(cost, (int, float))
+                      and math.isfinite(cost) and cost >= 0)
         row.update({
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
             "total_tokens": usage.get("total_tokens"),
-            "cost_usd": float(cost) if isinstance(cost, (int, float)) else None,
+            "cost_usd": float(cost) if valid_cost else None,
         })
-        if not isinstance(cost, (int, float)):
+        # Keep the provider's cache/reasoning counts for attribution. A cache hit
+        # can change the bill without any harness improvement; absent is unknown.
+        for field, names in (("prompt_tokens_details", ("cached_tokens", "cache_write_tokens")),
+                             ("completion_tokens_details", ("reasoning_tokens",))):
+            details = usage.get(field)
+            if isinstance(details, dict):
+                row[field] = {name: details[name] for name in names
+                              if isinstance(details.get(name), int)
+                              and not isinstance(details[name], bool) and details[name] >= 0}
+        if not valid_cost:
             row["note"] = "; ".join(part for part in
-                                    (note, "upstream usage carried no cost") if part)
+                                    (note, "upstream usage carried no valid cost") if part)
         self.write_line(self.usage_path, row)
 
 

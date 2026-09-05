@@ -35,6 +35,30 @@ import receipts  # noqa: E402
 MODEL = "deepseek/deepseek-v4-flash-0731"
 
 
+class SettlementValidationTests(unittest.TestCase):
+    def settle(self, usage):
+        meter = object.__new__(guard.Guard)
+        meter.usage_path, meter.path = 'unused', '/chat/completions'
+        rows = []
+        meter.write_line = lambda path, row: rows.append(row)
+        meter.settle('r', MODEL, json.dumps({'id':'g','usage':usage}).encode(), '')
+        return rows[0]
+
+    def test_invalid_price_is_not_coerced_into_real_dollars(self):
+        for cost in (True, False, -1, float('nan'), float('inf'), '0.1'):
+            with self.subTest(cost=cost):
+                self.assertIsNone(self.settle({'cost':cost})['cost_usd'])
+        self.assertEqual(self.settle({'cost':0})['cost_usd'], 0)
+
+    def test_cache_and_reasoning_counts_survive_without_arbitrary_content(self):
+        got = self.settle({'cost':.1, 'prompt_tokens_details':{'cached_tokens':10,
+                           'cache_write_tokens':3, 'unexpected':'private text'},
+                           'completion_tokens_details':{'reasoning_tokens':5}})
+        self.assertEqual(got['prompt_tokens_details'], {'cached_tokens':10,'cache_write_tokens':3})
+        self.assertEqual(got['completion_tokens_details'], {'reasoning_tokens':5})
+        self.assertNotIn('prompt_tokens_details', self.settle({'cost':.1}))
+
+
 class Upstream(http.server.BaseHTTPRequestHandler):
     """A stand-in provider. It streams two chunks, then a usage chunk, then
     [DONE] — and the usage chunk is sent ONLY when the request actually asked
