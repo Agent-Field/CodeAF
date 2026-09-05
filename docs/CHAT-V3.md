@@ -597,7 +597,10 @@ messages, exactly omp's split:
 - **Steer** (plain Enter mid-turn): stops the model generation that is running,
   keeps its partial reply, and injects the person's words as the next user
   message in the same turn. A short tool reaches its boundary first; a bash
-  already running for 3 seconds is adopted as a job so the steer can land now.
+  already running for 3 seconds is adopted as a job so the steer can land now,
+  and one that is still younger than that is looked at once more when it
+  crosses the same 3 seconds, so a correction never waits for a long command's
+  ending or for the background-after clock.
 - **Follow-up** (`ctrl+q`): queued to start a fresh turn the moment the
   current one yields.
 

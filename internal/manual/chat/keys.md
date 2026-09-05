@@ -51,8 +51,13 @@ cannot accept a tool call with no result.
 If a short tool is running, aforge lets it finish and lands your words at that
 boundary. If a bash command has already been running for 3 seconds, aforge keeps it
 alive as a job and lands your steer immediately. The clause names the job and
-`jobs output N` shows its output. The exact words `stop`, `kill it`, `cancel`,
-`abort`, `ctrl-c` and their tiny variants stop that long command instead.
+`jobs output N` shows its output. A command that is still YOUNGER than 3 seconds when
+you steer is given those few seconds to finish on its own; if it is still running when
+they are up, it is kept alive as a job then, so **your correction never waits longer
+than about three seconds for a bash command** — not for the command's own ending and
+not for the background-after clock. The exact words `stop`, `kill it`, `cancel`,
+`abort`, `ctrl-c` and their tiny variants stop that long command instead, whether the
+command was already old or crossed those three seconds while your words waited.
 
 ## Enter, cmd+enter, shift+enter, and the waiting-message keys
 
