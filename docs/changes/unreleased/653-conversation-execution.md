@@ -4,6 +4,7 @@ title: Conversation work keeps attributable direction and results while its exec
 pr: 653
 surface: [chat, engine, docs]
 invalidates:
+  - "Every specialist tool schema rode with each chat request. Media, settings and saved-procedure tools now load in one step through `load_capability`, within the same turn; core tools and task-worker tool sets remain direct. Original tool names, permissions and execution paths are retained. Reopening restores load calls still present in the saved transcript."
   - "A returning window could miss an unanswered question until the old connection detached. Questions are now offered per window, and the initial welcome and event replay deliver each held question once."
   - "A writing turn could delegate a wait for its own command to a task with no access to that command. The handoff call can now explicitly await live owned operations, with unread messages and changed requests invalidating that decision; the original completion notice still returns to its owner."
   - "A fork required every hand to claim writable paths, including readers. An explicit empty scope now creates a reading hand without edit or write tools; missing or null scope is still refused."

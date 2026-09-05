@@ -1160,6 +1160,25 @@ only omit what the reader is already holding. On the inherited-brief road the
 address rides the prerequisite's HEADER, which the shared pot above does not
 clip. Pinned by `internal/session/task_result_e2e_test.go`.
 
+## Specialist tool discovery
+
+Chat starts with core tools and one local `load_capability` registry operation
+for available media, settings and saved-procedure groups. Loading appends the
+original schemas on the next request within the same turn, preserving the
+existing order, execution path and permissions. Workers retain their direct
+belts. No new inference call selects or constructs a group, although first use
+needs an additional model request to call the loaded tool.
+
+The standard prefix fixture measured **47,606 → 44,347 bytes**, including the
+heavier wording that explains discovery; `fixedPrefixBudget` stays **48,000**.
+The fully enabled tool block measured **40,595 → 26,740 bytes**, including its
+**708-byte** loader. `TestShelvingTakesMoreOffTheToolBlockThanItPutsOn` compares
+complete encoded blocks and requires net savings at least **four times** the
+loader's encoded size. Byte savings are not measured provider tokens, cache
+hits, latency or bills. Loading changes the prefix once; repeat loading leaves
+it unchanged. Reopening restores load calls still in saved history; a load
+compacted away may be needed again.
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no

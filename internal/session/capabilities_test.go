@@ -677,9 +677,8 @@ func TestAConversationIsPromisedNoVerbItCannotReach(t *testing.T) {
 
 // ── reopening ───────────────────────────────────────────────────────────────
 
-// A REOPENED CONVERSATION HOLDS WHAT IT ALREADY LOADED, and this is the test
-// that makes the sentence "for the rest of this session" true rather than
-// hopeful.
+// A reopened conversation restores groups named by load calls still in its
+// saved transcript.
 //
 // A new process rebuilds the belt from scratch, so the groups go back on the
 // shelf — while the transcript it just replayed still says "Loaded:
@@ -907,9 +906,22 @@ func TestShelvingTakesMoreOffTheToolBlockThanItPutsOn(t *testing.T) {
 	if loader == 0 {
 		t.Fatal("this shape shelved nothing, so there is no saving to weigh")
 	}
-	saved := len(held) - loader
-	t.Logf("the tool block carries %d bytes and holds back %d, for %d saved after the %d-byte loading verb",
-		len(carried), len(held), saved, loader)
+	// Encode the complete comparison block, including its actual array framing.
+	// Adding two separately encoded array lengths overcounts the saving.
+	complete := make([]ai.ToolDefinition, 0, len(agent.beltDefinitions())+len(shelved))
+	for _, definition := range agent.beltDefinitions() {
+		if definition.Function.Name != loadCapabilityToolName {
+			complete = append(complete, definition)
+		}
+	}
+	complete = append(complete, shelved...)
+	before, err := json.Marshal(complete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := len(before) - len(carried)
+	t.Logf("the full tool block is %d bytes; discovery carries %d, saving %d after its %d-byte loading verb",
+		len(before), len(carried), saved, loader)
 	// A FLOOR AND NOT THE MEASUREMENT. What is pinned is that the trade is worth
 	// making by a wide margin; the exact figure is in the change entry, and a
 	// group that stopped paying its way would fall through this.

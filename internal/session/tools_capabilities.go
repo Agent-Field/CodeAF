@@ -192,14 +192,10 @@ func loadCapabilityDescription(shelf map[string][]bare.Tool, order []string) str
 	for _, name := range order {
 		lines.WriteString(" " + name + ": " + strings.Join(toolNames(shelf[name]), ", ") + ".")
 	}
-	return "Load one group of tools onto your tool list. They are built and ready on this machine; " +
-		"they wait here so the list you read every turn stays short. Groups, by the tools each holds:" +
-		lines.String() +
-		" The tools arrive with their full descriptions in your tool list on your NEXT REQUEST, which is " +
-		"still this same turn — so call this and then CARRY ON WORKING immediately, and never wait for the " +
-		"person to say something else. Loading lasts for the rest of this session. Loading a group you " +
-		"already hold is harmless and changes nothing, so do not spend a call on it. It is not permission: " +
-		"each tool still asks the person exactly as it would have."
+	return "Load one specialist tool group. Available groups:" + lines.String() +
+		" Full schemas arrive on the next model request; continue in this same turn. " +
+		"Tools stay loaded while this engine runs. After reopening, load any missing group again. " +
+		"Existing permissions still apply. Do not reload tools already listed."
 }
 
 func loadCapabilitySchema(order []string) string {
@@ -257,13 +253,12 @@ func (a *Agent) loadCapability(want string) (string, bool) {
 			" are in your tool list now. Use them; do not ask again.", false
 	}
 	return "Loaded: " + strings.Join(armed, ", ") +
-		". Their full descriptions are in your tool list from your next request, which is still this turn, " +
-		"and stay there for the rest of this session. Carry on now.", false
+		". Full schemas arrive on your next model request. Continue in this same turn. " +
+		"These tools remain loaded while this engine runs.", false
 }
 
 // rearmLoadedCapabilities puts back the groups an EARLIER PROCESS of this
-// conversation loaded, and it is why the sentences above may promise the rest
-// of the session rather than the rest of the process.
+// conversation loaded, when those calls remain in the saved transcript.
 //
 // A reopened session rebuilds its belt from scratch (agent.go's New), so
 // without this the replayed transcript would still carry "Loaded: settings,

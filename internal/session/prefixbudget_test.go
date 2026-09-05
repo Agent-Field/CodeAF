@@ -132,27 +132,14 @@ import (
 // `scope: "everywhere"` clause the `scope` field governs. The tool block went
 // 27,128 → 27,169, the page 20,830 → 20,797, and the prefix is 47,966, which is
 // 34 under.
-// AND THE SHELF GAVE 2,920 BYTES BACK (2026-09-05). The tools a conversation
-// reaches for rarely — the five making verbs, the settings pair, the four
-// saved-procedure hands — are built exactly as before and held on a named shelf
-// one `load_capability` call away (tools_capabilities.go). Nothing was removed
-// and no gate moved: this is the same belt, sent later. On the shape this test
-// weighs, the tool block went 27,081 → 23,779 — 4,296 bytes held back for the
-// 994 the loading verb costs — and the page went 20,527 → 20,909, paying 382
-// bytes for the sentences that say how a shelved verb arrives and, in the same
-// breath, that it arrives on the NEXT REQUEST of this same turn. A page that
-// names `settings` without naming the verb that fetches it is the `Unknown
-// tool` defect beltfacts.go exists for, reached one round trip later; a page
-// that says "next turn" buys the same defect by making the model stop and wait.
-// The prefix is 44,688, which is 3,312 under, and the budget is NOT lowered to
-// meet it: the headroom was bought and belongs to the next law that needs
-// stating. On a fully-wired machine — media models, a store, the harness
-// registry — the same change takes the tool block 40,597 → 27,081 and holds
-// back 14,565 bytes for the 1,049 the loading verb costs there.
-//
-// THE PAGE FIGURE IS THE WIDEST OF THE TWO PRESENT CASES. A shape that carries
-// these tools directly — every worker and every task node — reads the shorter
-// sentence and never the load one, so it pays none of the 382.
+// Specialist discovery (2026-09-05) reduced this fixture's tool block from
+// 27,079 to 23,438 bytes. The widest prompt grew from 20,527 to 20,909 bytes
+// to explain loading, leaving 44,347 combined: 3,259 fewer than the 47,606
+// baseline. The 48,000-byte cap stays unchanged. With every media model and
+// saved procedure configured, the complete tool block is 40,595 bytes and
+// discovery carries 26,740, including its 708-byte loader. Measure whole JSON
+// arrays rather than adding separately encoded array sizes.
+// widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
