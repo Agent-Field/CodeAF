@@ -36,6 +36,7 @@ import json
 import os
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -130,6 +131,38 @@ def usage_in_tail(tail):
         if start >= 0:
             try:
                 found = usage_from(json.loads(text[start:]))
+            except ValueError:
+                found = None
+    return found
+
+
+def generation_id_in_tail(tail):
+    """The generation id the response chunks wore, so an unpriced call can be
+    matched against the provider's own records later. Only the id is read —
+    the tail is never written anywhere, so no content travels with it."""
+    text = tail.decode("utf-8", "replace")
+    found = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("data:"):
+            line = line[5:].strip()
+            if not line or line == "[DONE]":
+                continue
+        if not line.startswith("{"):
+            continue
+        try:
+            blob = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(blob, dict) and isinstance(blob.get("id"), str):
+            found = blob["id"]
+    if found is None:
+        start = text.find("{")
+        if start >= 0:
+            try:
+                blob = json.loads(text[start:])
+                if isinstance(blob, dict) and isinstance(blob.get("id"), str):
+                    found = blob["id"]
             except ValueError:
                 found = None
     return found
@@ -250,7 +283,19 @@ class Guard(http.server.BaseHTTPRequestHandler):
         if self.measure and isinstance(payload, dict) and "usage" not in payload:
             payload["usage"] = {"include": True}
             added_usage = True
-        if added_usage or rewritten:
+        # Request standard streaming accounting as well as OpenRouter's usage
+        # extension. Other options survive; this does not cure cancelled streams,
+        # which may end before any usage arrives.
+        stream_usage_added = False
+        if self.measure and payload.get("stream") is True:
+            options = payload.get("stream_options")
+            if not isinstance(options, dict):
+                options = {}
+            if options.get("include_usage") is not True:
+                options["include_usage"] = True
+                payload["stream_options"] = options
+                stream_usage_added = True
+        if added_usage or stream_usage_added or rewritten:
             body = json.dumps(payload).encode()
 
         # ADMISSION IS THE ACCOUNTING EVENT, not completion. From here the call
@@ -260,7 +305,8 @@ class Guard(http.server.BaseHTTPRequestHandler):
         # no settlement is what an unknown cost looks like, and the reader
         # treats it as one.
         request_id = self.open_account(payload.get("model"),
-                                       normalised=rewritten, usage_include_added=added_usage)
+                                       normalised=rewritten, usage_include_added=added_usage,
+                                       stream_usage_added=stream_usage_added)
         self.relay(body, payload.get("model"), added_usage=added_usage, request_id=request_id)
 
     def open_account(self, model, **fields):
@@ -287,6 +333,13 @@ class Guard(http.server.BaseHTTPRequestHandler):
                                          method=self.command)
         tail = bytearray()
         sent_headers = False
+        # Timings are taken here rather than reconstructed later, because an
+        # unknown settlement is only reconcilable against what the provider
+        # knows: when the call happened and which generation it was. Nothing
+        # derived from the request body is recorded — no prompt, no key.
+        started = time.monotonic()
+        first_byte = None
+        generation_id = None
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 self.send_response(response.status)
@@ -305,6 +358,19 @@ class Guard(http.server.BaseHTTPRequestHandler):
                     chunk = reader(65536) if reader else response.read(1)
                     if not chunk:
                         break
+                    if first_byte is None:
+                        first_byte = time.monotonic()
+                    tail.extend(chunk)
+                    if len(tail) > TAIL_BYTES:
+                        del tail[:len(tail) - TAIL_BYTES]
+                    if request_id and generation_id is None:
+                        generation_id = generation_id_in_tail(bytes(tail))
+                        if generation_id:
+                            # Save identity before forwarding so a killed process
+                            # leaves enough evidence for post-run billing lookup.
+                            self.write_line(self.usage_path, dict(phase="generation",
+                                request_id=request_id, generation_id=generation_id,
+                                model=model, path=self.path, scope=self.scope))
                     try:
                         self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
                         self.wfile.flush()
@@ -312,17 +378,23 @@ class Guard(http.server.BaseHTTPRequestHandler):
                         # The caller hung up. Nothing more can be said to it —
                         # a second response after headers is a protocol error —
                         # but the call was still made, and may still be billed.
+                        # The upstream is closed with it, so the usage chunk
+                        # that ends the stream never arrives; the settlement
+                        # carries the generation id and timings instead, which
+                        # is what a later reconciliation needs. No billing
+                        # recovery call runs on the measured path. A separate
+                        # post-run metadata reader can reconcile this generation.
                         self.close_connection = True
                         self.settle(request_id, model, bytes(tail),
-                                    "client disconnected mid-stream")
+                                    "client disconnected mid-stream",
+                                    outcome="client-disconnect",
+                                    started=started, first_byte=first_byte)
                         self.audit(decision="allow", phase="ended", request_id=request_id,
                                    path=self.path, model=model, ended="client-disconnect")
                         return
-                    tail.extend(chunk)
-                    if len(tail) > TAIL_BYTES:
-                        del tail[:len(tail) - TAIL_BYTES]
                 self.wfile.write(b"0\r\n\r\n")
-                self.settle(request_id, model, bytes(tail), "")
+                self.settle(request_id, model, bytes(tail), "",
+                            outcome="completed", started=started, first_byte=first_byte)
                 self.audit(decision="allow", phase="ended", request_id=request_id,
                            path=self.path, model=model,
                            upstream_status=response.status, usage_include_added=added_usage)
@@ -340,12 +412,14 @@ class Guard(http.server.BaseHTTPRequestHandler):
             # after generating. Whatever usage came back is read; otherwise the
             # row settles unknown.
             self.settle(request_id, model, payload,
-                        "upstream returned HTTP %d" % error.code)
+                        "upstream returned HTTP %d" % error.code,
+                        outcome="upstream-error", started=started, first_byte=first_byte)
             self.audit(decision="allow", phase="ended", request_id=request_id,
                        path=self.path, model=model, upstream_status=error.code)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
-            self.settle(request_id, model, bytes(tail), "connection lost")
+            self.settle(request_id, model, bytes(tail), "connection lost",
+                        outcome="connection-lost", started=started, first_byte=first_byte)
             self.audit(decision="allow", phase="ended", request_id=request_id,
                        path=self.path, model=model, ended="connection-lost")
         except Exception as error:
@@ -356,18 +430,32 @@ class Guard(http.server.BaseHTTPRequestHandler):
                 self.close_connection = True
                 self.audit(decision="allow", phase="ended", request_id=request_id,
                            path=self.path, model=model, ended=type(error).__name__)
-            self.settle(request_id, model, bytes(tail), reason)
+            self.settle(request_id, model, bytes(tail), reason,
+                        outcome="upstream-failed", started=started, first_byte=first_byte)
 
-    def settle(self, request_id, model, tail, note):
+    def settle(self, request_id, model, tail, note, outcome=None,
+               started=None, first_byte=None):
         """Close an admitted call's accounting row with what the provider said
         it charged — or with an explicit unknown. No usage block means no
         figure; never a zero, which would read as a free call, and never
-        silence, which would read as a call that did not happen."""
+        silence, which would read as a call that did not happen.
+
+        Beyond the price, the row carries what a reconciliation against the
+        provider's own records needs — the generation id the chunks wore, when
+        the first byte arrived, how long the call ran, how it ended — and
+        nothing from the request itself: no prompt, no credential."""
         if not request_id or not self.usage_path:
             return
         usage = usage_in_tail(tail) if tail else None
+        now = time.monotonic()
         row = {"scope": self.scope, "request_id": request_id, "phase": "settled",
-               "model": model, "path": self.path, "cost_usd": None, "note": note}
+               "model": model, "path": self.path, "cost_usd": None, "note": note,
+               "generation_id": generation_id_in_tail(tail) if tail else None,
+               "outcome": outcome,
+               "ttfb_ms": round((first_byte - started) * 1000.0, 3)
+               if started is not None and first_byte is not None else None,
+               "elapsed_ms": round((now - started) * 1000.0, 3)
+               if started is not None else None}
         if usage is None:
             row["note"] = "; ".join(part for part in
                                     (note, "upstream returned no usage block") if part)
