@@ -2179,7 +2179,7 @@ you` — and then up to three more dim lines, each of which is a button as well 
 
 ```
 ctrl+. earlier
-w · click seam — widen
+alt+w widen · click seam
 ❯ ctrl+g hide
 ```
 
@@ -2188,8 +2188,10 @@ when the full-screen task page (`/history`) has something this column cannot giv
 words on it say which: `ctrl+. earlier` when the project's record holds work this
 session never ran, and `ctrl+. view more` when the only thing held back is a family the
 column has folded. There is never more than one such line.
-`w · click seam — widen` appears only while a title is actually being cut by its own
-indent. The `❯` door is always there, and its `❯` is drawn in ink rather than dim
+`alt+w widen · click seam` appears only while a title is actually being cut by its own
+indent, **and only from 120 columns up** — that is the only width with a wider tier to
+offer, so on a 100-to-119 column frame there is no line and the column's two leftmost
+cells are part of the row rather than a handle. The `❯` door is always there, and its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses. With no foreground command to keep it
 reads `❯ ctrl+g hide`; while a command owns that chord it reads only `❯ hide`, because
 a hint may name only a key that works on that frame.
@@ -2204,7 +2206,9 @@ cell:
   row, `→` opens it, `←` folds it away again. `esc` gives the keyboard back.
 - **With the pointer:** hover the row and its state glyph turns into `▸`; click that one
   cell to open it, and `▾` in the same cell to close it. Clicking anywhere else on the
-  row opens that task's room, as it always did.
+  row opens that task's room, as it always did — and so does that same cell on any frame
+  where the triangle is **not** drawn in it, because then it is holding the row's state
+  and a state is not a control.
 - The fold is remembered per row, exactly as a family's fold is, and it lasts as long as
   the conversation does.
 
@@ -2252,7 +2256,7 @@ a task, or a standing order — *The empty screen* page says why.) Once it stand
 
 ```
 tasks
-⠙ ◆ Fix the nil-map                                                     #7
+⠙ Fix the nil-map                                                       #7
 + /task
 
 standing

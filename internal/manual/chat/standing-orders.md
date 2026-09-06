@@ -197,7 +197,7 @@ always was. `standing` is under it, and it is the orders standing over this conv
 
 ```
 tasks
-⠙ ◆ Fix the nil-map     #7
+⠙ Fix the nil-map       #7
 + /task
 
 standing

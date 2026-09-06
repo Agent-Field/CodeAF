@@ -686,6 +686,7 @@ func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
 // looking at.
 func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	a, _, _ := taskApp(t)
+	a.file = "/w/.aforge/v3/sessions/-w/current/session.jsonl"
 	a.profileDir = t.TempDir()
 	// One node, nothing folded, and no record: the column is showing the whole of
 	// what there is to show.
@@ -701,6 +702,7 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("1", "ship-the-port", "Ship the port", time.Minute),
 	}
+	a.comp.tasks[0].SessionID = a.taskSheetSelfID()
 	for _, gone := range []string{taskSheetMoreHint, taskSheetPastHint} {
 		if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, gone) {
 			t.Fatalf("the column offered %q for a row it is already drawing:\n%s", gone, rail)

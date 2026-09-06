@@ -1410,19 +1410,27 @@ When two or more workers are running anywhere in the live work, the section labe
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
 zero or one running worker there is no tail at all, so the label remains `tasks`.
 
-## What is the diamond symbol next to each task?
+## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
-A task's row opens with two cells: the **state** glyph, which changes as the work does, and
-a dim `◆` — one marker, the same on every task, saying only that this row is a piece of
-work. Then the name, then its id as `#7`, dim, at the far end — and the id stands down when
-the name would be left under 12 cells.
+**On the column at the right there is no diamond.** A task's row there opens with one cell,
+the **state** glyph, which changes as the work does. Then the name, then its id as `#7`,
+dim, at the far end — and the id stands down when the name would be left under 12 cells.
+Every row of that column leads the same way, family rows included, so it reads downward as
+one column of states.
+
+The `◆` is still on the surfaces that hold more than tasks: the proposal card, the card
+that lands, the notes in the conversation, and a queued task's chip on the strip above the
+conversation. It is one marker, the same on every task, saying only that this row is a
+piece of work — which is worth a cell where tasks sit among other things, and worth nothing
+in a column that is only tasks. It used to be on the column too, where it cost two of the
+twenty-two cells the name has and pushed each row's detail line two cells out of line under
+its own title. On a terminal with no colours or no unicode the marker is `#`.
 
 The marker used to be one of eight shapes in one of six colours, picked from the task's id,
 so that a given task wore `◆` teal everywhere. That is gone. It had to be learned, it was
 relearned every session because ids start again in each conversation, and it told you
 nothing you could act on — the `#7` already says which task, and the state glyph and its
-word already say what it is doing. On a terminal with no colours or no unicode the marker is
-`#`, and nothing is lost with it, because nothing was carried by it.
+word already say what it is doing.
 
 **The name is the task's own title, cut to its first three words** — `Fix the nil-map`,
 `Collect the sources` — and that is the name it wears everywhere: the column, the strip
@@ -1892,10 +1900,13 @@ rest state, so a person who starts typing is typing, not navigating.
 | `ctrl+g` | keep a foreground command when one can be kept; otherwise close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
-When depth has forced a title to be cut, the footer adds `w · click seam — widen` (or
-`w · click seam — narrow` once it is wide); that hint is clickable as well as available
+When depth has forced a title to be cut, the footer adds `alt+w widen · click seam` (or
+`alt+w narrow · click seam` once it is wide); that hint is clickable as well as available
 from the keyboard, and so is the `❯` door line under it. The latter includes `ctrl+g`
-only when no foreground command owns the chord.
+only when no foreground command owns the chord. **Both the hint and the seam appear only
+from 120 columns up**, which is the only width that lends a wider tier — on a 100-to-119
+column frame the footer says nothing about widening and the column's left edge is part of
+the row, not a handle.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
@@ -1915,11 +1926,44 @@ this conversation's work and into another one's; old work is walked on the task 
 
 The cursor follows the task, not the row, when families reorder or fold around it.
 
-With the pointer, a row takes the hover background step. On a family root, only hovering
-the glyph cell reveals its disclosure triangle (`▾` open, `▸` folded). Click that glyph
-cell or the root's `▸ +N` badge to toggle the family; click its title to open the room.
-A click that hits no task still belongs to the column and does nothing. A click moves the
-cursor but does not hand the roster the keyboard.
+With the pointer, a row takes the hover background step. The next section has the whole of
+what a click on the column does.
+
+## Clicking the tasks on the right — I cannot open a task from the sidebar, clicking a row does nothing, the list jumps instead of opening
+
+**Anywhere on a task's row opens that task's room.** The state glyph, the name, the `#7`,
+the blank cells after it — the whole visible row is that one door, at every width the
+column stands at. A click moves the column's cursor to what was clicked but does not hand
+the roster the keyboard; the draft is still where you type.
+
+Exactly two things on a row mean something else, and **both of them are drawn on the screen
+at the moment you press them**:
+
+- **The `▸ +N` badge** at the right of a folded family's root. It is what says work is
+  hidden under that row, so pressing it opens the family. It is on screen all the time.
+- **The disclosure triangle**, which appears in the leading cell of a family root — and of
+  a finished row holding a detail block back — **only while the pointer is on that row**
+  (`▾` open, `▸` folded). While it is drawn, pressing it folds; the rest of the row still
+  opens the task.
+
+With the pointer anywhere else, that leading cell is the task's **state**, and pressing a
+state opens the work it is the state of. It used to fold the list instead, whether or not
+a triangle was drawn there — so a press aimed at a family root or a finished task made the
+list jump and opened nothing. It was easiest to hit straight after walking into or out of
+another task, because that is when the surface forgets where the pointer is and the
+triangle is not drawn.
+
+**Two other cells used to swallow presses and no longer do.** The column's two leftmost
+cells are the resize handle only from 120 columns up; on a narrower frame there is no
+wider tier to pull to, so those cells are part of the row like any other. And the column
+answers only for the rows it actually draws — a press below its last row belongs to the
+message box, the legend or the status line under it, not to the column.
+
+A click inside the column that lands on no task at all still belongs to the column and
+does nothing, rather than closing the task page you are reading.
+
+**A second click on the row of the task you are already inside is the way back out** — the
+same row, the same press, and the page closes. `esc` does the same thing.
 
 ## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
 

@@ -126,8 +126,11 @@ const (
 	// every row of it reacts — which is this file's own law read the other way
 	// round: the set that lights is the set [app.press] acts on, and in the
 	// roster that is all of it. What the hover buys beyond the background step is
-	// the disclosure triangle a family root reveals in its glyph cell, which is
-	// the whole of the column's fold affordance at rest.
+	// the disclosure triangle a family root reveals in its glyph cell — and that
+	// cell is a fold ONLY on the frames where the triangle is drawn in it, which
+	// is this law read strictly: the press reads the span the layout recorded
+	// (task.go's [app.railLead]), so a state cell nobody is pointing at is the
+	// row's, and the row is the node's door.
 	// hoverForming is a row of the forming block at the transcript tail
 	// (formingblock.go); index is the wait it belongs to. It is a kind of its own
 	// rather than a hoverEntry because that one is keyed by ENTRY and this block

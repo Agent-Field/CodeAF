@@ -1235,6 +1235,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// chat will go on describing it from a version that no longer exists.
 		{"what is the diamond symbol next to each task", "tasks"},
 
+		// AND THE ONE THE OWNER ACTUALLY ASKED, in their own words: the column of
+		// work on the right, and a press on it that opened nothing. Three cells
+		// answered a click and changed nothing on screen — the seam at a width
+		// with no wider tier, the state glyph on a row that could fold, and every
+		// row of the frame under the column's last one. Somebody meeting any of
+		// them asks about the sidebar, not about a fold.
+		{"the tasks on the right side I am unable to open it", "tasks"},
+		{"clicking a task in the sidebar does nothing", "tasks"},
+		{"I click a task on the right and the list jumps instead of opening", "tasks"},
+		{"how do I open a task from the column on the right", "tasks"},
+		// And the two organising questions behind it, asked of the same column.
+		{"why is there no diamond on the sidebar tasks", "tasks"},
+		{"can I click the left edge of the task column", "tasks"},
+
 		// And the question the division road left standing on the other page.
 		// A run used to be what broad work reached for; a chat turn cannot open
 		// one at all now, and somebody who expected a planner and watched one

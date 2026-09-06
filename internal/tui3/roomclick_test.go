@@ -37,8 +37,10 @@ func clickRailNode(t *testing.T, a *app, id uint64) {
 	top := a.bodyTop()
 	for y := top; y < top+a.viewHeight(); y++ {
 		if node := a.railNodeAt(y); node != nil && node.id == id {
-			// Past the seam and past the state cell, on the title: the two cells
-			// before it are the column's handle and the one after them folds.
+			// Past the seam and past the state cell, on the title. The two cells
+			// before it are the column's handle at this width, and the one after
+			// them is the fold while the pointer is on it (task.go's
+			// [app.railLead]) — this press wants neither.
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
 				Y: y, Button: tea.MouseLeft})
 			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,

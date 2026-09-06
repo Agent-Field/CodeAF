@@ -63,6 +63,18 @@ func railText(a *app, height int) []string {
 	return out
 }
 
+// mustRailRow is [railRowFor] over the whole visible column, for the tests that
+// would be lying if the row were missing.
+func mustRailRow(t *testing.T, a *app, title string) string {
+	t.Helper()
+	row, ok := railRowFor(a, a.viewHeight(), title)
+	if !ok {
+		t.Fatalf("the column has no row for %q:\n%s", title,
+			strings.Join(railText(a, a.viewHeight()), "\n"))
+	}
+	return row
+}
+
 // railRowFor is the drawn row a node's title is on, and whether there is one.
 func railRowFor(a *app, height int, title string) (string, bool) {
 	for _, row := range railText(a, height) {
@@ -130,10 +142,13 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 			t.Fatalf("row %d is %d cells wide, want at most %d:\n%q", i, w, railCols, row)
 		}
 	}
-	// A NODE IN A TREE WEARS ITS STATE AND NOT ITS IDENTITY: the column of glyphs
-	// is read downward, so the identity cell a flat row carries is not on it.
-	if strings.Contains(got[1], plain(a.taskMark(identFor(2)))) {
-		t.Fatalf("a tree row carries the identity cell as well as the state:\n%q", got[1])
+	// EVERY ROW ON THIS COLUMN WEARS ITS STATE AND NOTHING ELSE: the column of
+	// glyphs is read downward, and the identity ◆ is not spent on any row of it —
+	// tree or flat (task.go's [app.railLead]).
+	for i, row := range got {
+		if strings.Contains(row, plain(a.taskMark(identFor(2)))) {
+			t.Fatalf("row %d carries the identity cell as well as the state:\n%q", i, row)
+		}
 	}
 }
 
@@ -293,9 +308,9 @@ func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 	}
 }
 
-// THE GLYPH CELL IS THE FOLD AND THE REST OF THE ROW IS THE DOOR. One row, two
+// THE DISCLOSURE IS THE FOLD AND THE REST OF THE ROW IS THE DOOR. One row, two
 // targets, and which one a press meant is a question about the column it landed
-// in (room.go's [app.railPress]).
+// in AND about what the frame actually drew there (room.go's [app.railPress]).
 func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
@@ -311,7 +326,18 @@ func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) 
 	}
 	glyph := a.bodyWidth() + ansi.StringWidth(railSeam)
 
-	// The glyph cell folds the family and opens no room.
+	// THE POINTER IS ON THE ROW FIRST, and that is not fixture ceremony: it is the
+	// only state in which that cell is a disclosure at all. At rest it draws the
+	// root's STATE, and a state is not a control — which is what
+	// [TestTheStateCellOpensTheTaskWhenNoDisclosureIsDrawnOnIt] holds the other
+	// end of.
+	a.setHover(glyph, rootY)
+	if !strings.Contains(mustRailRow(t, a, "Ship the port"), glyphOpen) {
+		t.Fatalf("the cell about to be pressed is not drawn as a disclosure:\n%q",
+			mustRailRow(t, a, "Ship the port"))
+	}
+
+	// The disclosure folds the family and opens no room.
 	drive(t, a, tea.MouseClickMsg{X: glyph, Y: rootY, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: glyph, Y: rootY, Button: tea.MouseLeft})
 	if a.roomOpen() {

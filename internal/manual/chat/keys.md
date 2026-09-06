@@ -1946,8 +1946,10 @@ modal page with no message box, or an answer to a question drawn on screen, pres
 empty box — and widening a column is neither, so it took a chord. The bare `w` still works
 on the **full-frame roster** (`ctrl+t` under about 100 columns, where the roster is drawn
 over the whole frame and there is no message box on screen). The column's own footer says
-`alt+w widen · click seam` or `alt+w narrow · click seam`, and dragging or clicking the
-seam does the same thing with the pointer.
+`alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam — the
+column's two leftmost cells — does the same thing with the pointer. Both the offer and
+the handle exist only from 120 columns up, which is the only frame that lends the wider
+tier; narrower than that those two cells belong to the row under them and open its task.
 
 **`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
 and close the family. On a row whose **work has finished** they open and close that row's

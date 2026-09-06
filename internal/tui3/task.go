@@ -3009,6 +3009,23 @@ func (a *app) railColumns(width int) int {
 	return railColsFor(width)
 }
 
+// railCanWiden reports whether the third tier is ON OFFER at this frame — the
+// person's own answer reaches [app.railColumns] only from [railFloor] up, and
+// the roster drawn over the body has no column to widen at all.
+//
+// IT IS ONE QUESTION BECAUSE IT IS ASKED BY BOTH HANDS AND BY THE HANDLE. The
+// footer names the chord only where it works ([app.railOffersResize]) and the
+// seam is only a handle where it works (room.go's [app.railSeamAt]) — and the
+// seam is the half that had it wrong: it claimed the two leftmost cells of every
+// row at EVERY width the column stands at, so between [railSlimFloor] and
+// [railFloor], where widening does nothing, those cells swallowed the press and
+// changed nothing on screen. Two dead columns of a twenty-four-column list, down
+// the edge a hand crossing from the conversation reaches first.
+func (a *app) railCanWiden() bool {
+	width, _ := a.size()
+	return a.railShowing() && !a.railFull() && width >= railFloor
+}
+
 // railShowing reports whether the frame has a roster on it right now.
 //
 // THE COLUMN IS PERMANENT. It stands from the session's first frame, before any
@@ -3251,11 +3268,18 @@ type railLine struct {
 	// head says this is the entry's FIRST line, which is the one a marker goes
 	// on: a two-line node with two markers would read as two nodes.
 	head bool
-	// glyph is the row's STATE CELL in the column's own coordinates, and badge
-	// the ▸ +N a folded root wears. They are written at LAYOUT and read by the
-	// click, which is the bargain the strip's chips make (taskstrip.go): the
-	// geometry is recorded where it is decided, because a hit-test that
-	// recomputed it would be measuring a row the frame has not drawn.
+	// glyph is the row's FOLD CELL in the column's own coordinates, and badge the
+	// ▸ +N a folded root wears. They are written at LAYOUT and read by the click,
+	// which is the bargain the strip's chips make (taskstrip.go): the geometry is
+	// recorded where it is decided, because a hit-test that recomputed it would
+	// be measuring a row the frame has not drawn.
+	//
+	// glyph IS EMPTY ON EVERY FRAME WHERE THAT CELL IS NOT A CONTROL, which is
+	// most of them: the cell holds the row's state until the pointer is on a row
+	// that can fold, and only then does it become ▾ or ▸ ([app.railLead] says
+	// why the press may not work this out for itself). An empty span is a span
+	// that holds no column, so the cells fall to the row and the row is the
+	// node's door.
 	glyph hudSpan
 	badge hudSpan
 	// hint says this line is the footer's widen offer, which is pressable and
@@ -4419,8 +4443,7 @@ func (a *app) railMoreAt(x, y int) bool {
 // title earns the offer on its own; focus and the pointer make it visible while
 // a person is already acting on the roster. The frame still has the final say.
 func (a *app) railOffersResize() bool {
-	width, _ := a.size()
-	if width < railFloor || a.railFull() {
+	if !a.railCanWiden() {
 		return false
 	}
 	return a.railCramped || a.railHold || a.hoveringRailArea()
@@ -4477,7 +4500,7 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // railEntryRows is one row of the forest: WHAT IT IS on the first line, and what
 // is true of it on the second.
 //
-//	⠙ ◆ Fix nil-map           #7     a node that belongs to no family
+//	⠙ Fix nil-map             #7     a node that belongs to no family
 //	  bash go test ./… · 42s
 //	⠙ Ship the port            #1     and a family, drawn whole
 //	├─ ✓ Read the law          #2
@@ -4487,17 +4510,19 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 //	└─ ◌ Wire the seam         #5
 //	⠙ Port the parser        ▸ +7     the same family, folded
 //
-// A ROOTLESS ROW OPENS WITH TWO GLYPHS AND A TREE ROW WITH ONE. On a flat row
-// the first is the STATE and the second is the node's own identity, which never
-// changes at all (taskident.go) — a person tracking one node out of four tracks
-// the second one, and it is the same mark the proposal card wore. Down a tree
-// the neighbours are already named by the connectors they hang from, and the
-// question left over is which limb is still moving: so the column is a column of
-// STATES and it can be read downward.
+// EVERY ROW OPENS WITH ONE GLYPH AND IT IS THE STATE. A flat row used to lead
+// with two — the state and the node's own ◆ — and the second bought nothing
+// here: it is the same mark on every task, the tree rows never carried it, and
+// this column holds nothing but tasks, so it marked a distinction the column
+// does not contain while spending two of the twenty-two cells the name has
+// ([app.railLead] states the whole of it). Down a tree the neighbours are
+// already named by the connectors they hang from, and the question left over is
+// which limb is still moving: so the column is a column of STATES and it can be
+// read downward, flat rows and family rows alike.
 //
-// THE NAME LEADS AND THE HANDLE TRAILS. The glyphs and the title are what a
-// person reads down this column — the state, the node's own mark, and the words
-// they themselves approved — and the id is what identifies the node to the
+// THE NAME LEADS AND THE HANDLE TRAILS. The glyph and the title are what a
+// person reads down this column — the state, and the words they themselves
+// approved — and the id is what identifies the node to the
 // MACHINE: the number the engine says in its own sentences ("task 7 finished",
 // session's task_run.go), the thing to type when you go looking for the branch,
 // and the least interesting fact on the row. So it is dim, it is at the far end,
@@ -4512,15 +4537,17 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // PRESENCE list — the question it answers is "what is alive", and a sentence
 // clipped to twenty-two cells answers no question at all.
 //
-// It reports the glyph cell's columns and the badge's alongside the rows,
-// because both are pressable and both are narrower than the row they are on.
+// It reports the FOLD cell's columns and the badge's alongside the rows, because
+// both are pressable and both are narrower than the row they are on — and
+// because everything else on the row is the node's own door, so a target
+// recorded where nothing is drawn is a click the task swallows.
 func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan) {
 	node := e.node
 	if node == nil {
 		return nil, hudSpan{}, hudSpan{}
 	}
 	prefix, at := a.railPrefix(e.stems)
-	glyph, lead := a.railLead(e)
+	glyph, lead, folds := a.railLead(e)
 	room := width - at - ansi.StringWidth(lead)
 	// The trailing slot: a folded root says how much it is standing for, every
 	// other row says its handle, and both stand down when the title cannot afford
@@ -4561,7 +4588,17 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 			rows = append(rows, a.railUnderStem(e)+under)
 		}
 	}
-	return rows, hudSpan{from: at, to: at + ansi.StringWidth(glyph)}, badge
+	// THE CELL IS A TARGET ONLY WHERE IT IS DRAWN AS ONE. At rest it holds the
+	// STATE — a spinner, a tick, a demand — and a state is not a control; the
+	// disclosure appears in its place under the pointer and only there
+	// ([app.railLead]). An empty span holds no column ([hudSpan.holds] asks
+	// [hudSpan.pressable] first), so on every other frame these cells belong to
+	// the row, which is the node's door.
+	cell := hudSpan{}
+	if folds {
+		cell = hudSpan{from: at, to: at + ansi.StringWidth(glyph)}
+	}
+	return rows, cell, badge
 }
 
 // railSaysMore reports whether this row is allowed the block under its title.
@@ -4651,7 +4688,8 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 	return rows
 }
 
-// railLead is the row's glyph cell and the whole lead it sits in, air included.
+// railLead is the row's glyph cell, the whole lead it sits in, air included, and
+// whether that cell IS A FOLD CONTROL on this frame.
 //
 // THE DISCLOSURE IS THE POINTER'S AND IT REPLACES THE STATE. A family root under
 // the pointer trades its state cell for ▾ or ▸ — one cell, in place, so nothing
@@ -4663,7 +4701,28 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 // the same gesture on the same map ([app.railTucks]). One fold vocabulary down
 // the column: what is hiding something says so under the hand, and ▸ opens it
 // whether what it is hiding is a subtree or two lines of its own history.
-func (a *app) railLead(e railEntry) (string, string) {
+//
+// THE THIRD ANSWER IS WHAT THE PRESS READS, and returning it is the whole of the
+// fix: [app.railPress] used to fold whenever a row COULD disclose — a family
+// root, a landed row with a block tucked under it — while the cell only DRAWS
+// the triangle under the pointer. So a press on a root this surface was not
+// holding a hover for folded the family with a STATE glyph on screen, and the
+// task the person was aiming at never opened. Opening a room drops the hover
+// ([app.dropHover]) and a pointer that has not moved since sends no motion to
+// put it back, so the very next click after opening anything landed in exactly
+// that gap. The set that LIGHTS is the set that acts, which is hover.go's own
+// law; this is the one answer both halves now read.
+//
+// AND THE ROW NO LONGER CARRIES THE ◆. It is one marker drawn as furniture,
+// saying "this row is a task" and nothing else (taskident.go) — a distinction
+// this column does not contain, because every node row on it is a task and the
+// tree rows never wore it at all. It cost two cells of NAME on the narrowest
+// surface here, on flat rows only, so two rows of the same kind led differently
+// and the under-block — indented two cells by [app.railUnderCols] — sat two
+// cells to the left of the title it belongs to. Dropping it buys the name those
+// cells and squares the block up under it. Every other place a task is drawn
+// keeps the marker, because those places hold more than tasks.
+func (a *app) railLead(e railEntry) (string, string, bool) {
 	glyph := a.railTreeGlyph(e.node)
 	if e.folded && e.worst != nil {
 		// A FOLDED ROOT WEARS THE WORST THING UNDER IT. The row is standing for a
@@ -4671,17 +4730,15 @@ func (a *app) railLead(e railEntry) (string, string) {
 		// rather than what its root happens to be doing.
 		glyph = a.railTreeGlyph(e.worst)
 	}
-	if a.hoveringRail(e.node) && (e.root || a.railTucks(e)) {
+	fold := a.hoveringRail(e.node) && (e.root || a.railTucks(e))
+	if fold {
 		mark := a.linearMark(glyphOpen, glyphOpenASCII)
 		if e.folded || (!e.root && a.railTuckShut(e.node)) {
 			mark = a.linearMark(glyphShut, glyphShutASCII)
 		}
 		glyph = a.pal.accent(mark)
 	}
-	if e.root || len(e.stems) > 0 {
-		return glyph, glyph + " "
-	}
-	return glyph, glyph + " " + a.taskMark(e.node.ident) + " "
+	return glyph, glyph + " ", fold
 }
 
 // railPrefix is the connectors for one row, painted, and the CELLS they cost. A
@@ -4714,8 +4771,11 @@ func (a *app) railPrefix(stems []bool) (string, int) {
 // would put a gap in the vertical line the eye is following down the family. The
 // row's own elbow becomes a stem — or blank air, where the node was the last of
 // its siblings — and the node's own stem is added when it has children drawn
-// below it. The two cells on the end are the same two the flat row has always
-// used to hold its under-block off its title.
+// below it. The two cells on the end are the flat row's WHOLE lead — the state
+// glyph and its air ([app.railLead]) — so an under-row now starts in the same
+// column as the title it belongs to. It did not while the flat row also carried
+// a ◆: the block sat two cells to its left, and squaring that up is half of why
+// the marker went.
 func (a *app) railUnderStem(e railEntry) string {
 	var out strings.Builder
 	for _, more := range e.stems {
@@ -5048,7 +5108,7 @@ const railSep = " · "
 
 // ── THE ELAPSED CLOCK ───────────────────────────────────────────────────────
 //
-//	⠙ ◆ Fix nil-map
+//	⠙ Fix nil-map
 //	  bash go test ./…            under ten seconds: no number at all
 //	  bash go test ./… · 24s      dim, because it is only slow
 //	  bash go test ./… · 1m 8s    warn, because it is now the reason you are waiting

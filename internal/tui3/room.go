@@ -2017,14 +2017,15 @@ func (a *app) goHome() {
 // closing the room, which would make the column a person aims at to switch rooms
 // the column that throws them out.
 //
-// A ROW IS A DOOR AND ITS GLYPH CELL IS A FOLD. Anywhere on a node's row opens
-// that node's room, which is what every row of this column has always done; the
-// one cell that means something else is the STATE CELL of a family root, where a
-// press folds the family instead — and that is the same cell the pointer reveals
-// a ▾ or ▸ in, so the affordance and the target are the same two columns
-// (task.go's [app.railEntryRows]). A folded root's ▸ +N is the other half of it:
-// the count is what says there is something hidden, so pressing the count opens
-// it.
+// A ROW IS A DOOR AND ONLY A DRAWN CONTROL IS ANYTHING ELSE. Anywhere on a
+// node's row opens that node's room, which is what every row of this column has
+// always done, and the cells that mean something else are the ones the frame put
+// there to be pressed and no others: a folded root's `▸ +N`, where the count is
+// what says something is hidden, and the glyph cell ON THE FRAMES WHERE IT IS
+// DRAWN AS A DISCLOSURE, which is while the pointer is on a row that can fold.
+// Both come from spans the layout recorded (task.go's [app.railEntryRows]), so
+// the target is always exactly what is on screen; the press does not ask what
+// KIND of row it hit, because a row that could fold is not a fold control.
 //
 // The press moves the roster's cursor to what was pressed but does NOT take the
 // keyboard: clicks focus what was clicked, and the draft is where this surface
@@ -2048,9 +2049,13 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if !a.railAt(x, y) {
 		return nil, false
 	}
-	// THE SEAM IS THE COLUMN'S HANDLE. It answers before rows do because the
-	// same two cells run through node rows and the footer alike: grabbing the
-	// handle changes the column, never opens whatever happens to sit behind it.
+	// THE SEAM IS THE COLUMN'S HANDLE WHERE THERE IS A TIER TO PULL IT TO. It
+	// answers before rows do because the same two cells run through node rows and
+	// the footer alike: grabbing the handle changes the column, never opens
+	// whatever happens to sit behind it. Where the frame lends no second tier
+	// there is no handle, so those two cells are the row's like every other cell
+	// on it ([app.railSeamAt], and task.go's [app.railCanWiden] for the whole of
+	// why).
 	if a.railSeamAt(x, y) {
 		a.railWiden(!a.railWide)
 		return nil, true
@@ -2096,15 +2101,20 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	}
 	a.railWhere = railSpotOf(e)
 	at := x - a.railLeft() - ansi.StringWidth(railSeam)
+	// THE WHOLE ROW IS THE NODE'S DOOR AND THE TWO EXCEPTIONS ARE DRAWN. A press
+	// falls through to the room unless it landed on something the frame put there
+	// to be pressed — the `▸ +N` a folded root wears at rest, and the disclosure
+	// the glyph cell becomes under the pointer — and BOTH are read from spans the
+	// layout recorded rather than from a question about what kind of row this is
+	// (task.go's [app.railEntryRows]). Asking the row's kind was the bug: a family
+	// root and a landed row with a block tucked under it CAN fold, so their
+	// leading cells folded on every press, while the cell they folded from was
+	// drawing the row's state on every frame where the pointer was not already on
+	// it. A person aiming at a task got a list that jumped instead of a page.
 	switch {
-	case e.root && line.badge.holds(at):
+	case line.badge.holds(at):
 		a.railSetOpen(e.node, true)
-	case (e.root || a.railTucks(e)) && line.glyph.holds(at):
-		// THE GLYPH CELL IS THE DISCLOSURE ON BOTH KINDS OF ROW: a family root
-		// folds its subtree, and a row that has landed folds its own block back
-		// under itself (task.go's [app.railSaysMore]). The set that LIGHTS under
-		// the pointer is the set that acts, which is hover.go's own law — both
-		// halves ask [app.railTucks].
+	case line.glyph.holds(at):
 		a.railToggle(e.node)
 	default:
 		if e.node.run != "" {
@@ -2116,9 +2126,11 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	return a.takeRoomPump(), true
 }
 
-// railSeamAt reports whether a pointer is on the visible two-cell handle.
+// railSeamAt reports whether a pointer is on the visible two-cell handle — which
+// is a handle only where there is a tier to pull it to (task.go's
+// [app.railCanWiden] says what it cost when it was not).
 func (a *app) railSeamAt(x, y int) bool {
-	if !a.railAt(x, y) || a.railFull() {
+	if !a.railAt(x, y) || !a.railCanWiden() {
 		return false
 	}
 	left := a.railLeft()
@@ -2129,15 +2141,22 @@ func (a *app) railSeamAt(x, y int) bool {
 // is the press's guard and the hover's alike (hover.go), because a column that
 // answered a click it would not light under the pointer is a column that
 // disagrees with itself about what it is.
+//
+// IT IS BOUNDED BOTH WAYS, and the vertical bound is the same one the closed
+// column's edge already keeps (task.go's [app.railGripAt]): the roster is drawn
+// into the BODY REGION and nowhere else — [app.railRows] returns exactly
+// [app.viewHeight] lines, footer included — so a column that answered for every
+// row of the frame was answering for the composer, the legend and the status
+// line under it. [app.railPress] takes what [app.railAt] gives it and returns
+// "taken" whether or not a line resolves, so those rows lost every press landing
+// in the roster's last thirty columns: the box did not focus, the hint did not
+// act, and nothing at all happened. Below the region a press is somebody else's.
 func (a *app) railAt(x, y int) bool {
-	switch {
-	case a.railFull():
-		top := a.bodyTop()
-		return top >= 0 && y >= top && y < top+a.viewHeight()
-	case !a.railShowing() || x < a.bodyWidth():
+	if !a.railFull() && (!a.railShowing() || x < a.bodyWidth()) {
 		return false
 	}
-	return true
+	top := a.bodyTop()
+	return top >= 0 && y >= top && y < top+a.viewHeight()
 }
 
 // railLeft is the screen column the roster's own lines start at: the frame's

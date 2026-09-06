@@ -2575,8 +2575,9 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	for _, want := range []string{
 		// THE HEAD IS THE NAME AND THE NODE'S OWN MARK (taskident.go): the title
 		// the engine wrote is cut to the two-or-three-word name, and the identity
-		// cell that will follow this node onto the rail and onto the card that
-		// lands rides beside the question glyph.
+		// cell that will follow this node onto the card that lands rides beside
+		// the question glyph. The rail does not carry it — that column holds
+		// nothing but tasks, so the mark tells nothing apart there.
 		taskHeadCorner + " " + glyphAsk + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
 		"The parser drops a key",
 		"[ yes ]  [ redirect ]  [ no ]",
@@ -3132,12 +3133,13 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	// the rail rather than losing the one handle back to the work, so the
 	// assertion is on the two halves and not on one line.
 	rail = plain(strings.Join(a.railRows(12), "\n"))
-	// TWO GLYPHS OPEN EVERY ROW: the state mark, then the node's own identity
-	// cell, which is derived from the id alone and never changes (taskident.go).
+	// ONE GLYPH OPENS EVERY ROW AND IT IS THE STATE. The identity ◆ is not on this
+	// column: it is the same cell on every task, this column holds nothing but
+	// tasks, and the two cells belong to the name here (task.go's [app.railLead]).
 	for _, want := range []string{
-		glyphQueued + " " + plain(a.taskMark(identFor(8))) + " Mix audio",
-		glyphBad + " " + plain(a.taskMark(identFor(9))) + " Collect sources",
-		glyphDone + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
+		glyphQueued + " Mix audio",
+		glyphBad + " Collect sources",
+		glyphDone + " Fix the nil-map",
 		"conflicted ·", "task/fix-nil-map",
 		// A STOPPED NODE DID NOT CRASH. session marks its branch "aborted"; the
 		// rail says what that is — it stopped, and the work is still on the branch
@@ -3514,6 +3516,8 @@ func rosterText(a *app, height int) string {
 
 func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	a, _, _ := taskApp(t)
+	// Use the wide tier so this aggregate test can see every count.
+	a.width, a.railWide = 160, true
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{
 			Merge: mergeWordMerged,
@@ -3558,10 +3562,14 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 			t.Fatalf("the roster still draws the %q heading:\n%s", railGroupWords[g], rail)
 		}
 	}
-	// TWO GLYPHS OPEN A ROW WITH NO FAMILY AROUND IT: the state, then the node's
-	// own identity cell (taskident.go).
-	if !strings.Contains(rail, glyphBad+" "+plain(a.taskMark(identFor(4)))+" Render titles") {
-		t.Fatalf("the flat row lost one of its two glyphs:\n%s", rail)
+	// ONE GLYPH OPENS A ROW WITH NO FAMILY AROUND IT, and it is the state — the
+	// same lead a family row has, so the column reads downward as one column of
+	// states (task.go's [app.railLead]).
+	if !strings.Contains(rail, glyphBad+" Render titles") {
+		t.Fatalf("the flat row does not lead with its state:\n%s", rail)
+	}
+	if strings.Contains(rail, plain(a.taskMark(identFor(4)))+" Render titles") {
+		t.Fatalf("the identity ◆ is back on the rail, two cells from the name:\n%s", rail)
 	}
 	// THE ID IS META: the title leads the row and the handle trails it, dim.
 	if !strings.Contains(rail, "#2") || strings.Contains(rail, "#2 Fix") {
@@ -3569,7 +3577,7 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	}
 	// AND THE FOOTER SAYS THE WHOLE, in the group vocabulary.
 	for _, want := range []string{railSigma + "$1.42", "312k tok", "1 running", "1 needs you",
-		"1 parked", "2 done"} {
+		"1 queued", "1 waiting", "2 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the footer does not say %q:\n%s", want, rail)
 		}
@@ -3997,7 +4005,9 @@ func clickRail(t *testing.T, a *app, node int) {
 		t.Fatalf("the roster has no node row %d", node)
 	}
 	// The press lands on the row's first TEXT cell: the two cells before it are
-	// the seam, which is the column's resize handle now (room.go's railPress).
+	// the seam, which is the column's resize handle at this width (room.go's
+	// railPress). That cell holds the row's STATE, and a state is not a control —
+	// so this is the node's door like every other cell on the row.
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
 }
