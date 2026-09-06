@@ -930,7 +930,7 @@ func (a *app) roomOpen() bool { return a.room != nil }
 // highlight: a mark for "where you are" on a surface you have not gone anywhere
 // on is a mark that means nothing.
 func (a *app) roomStandingOn(node *taskNode) bool {
-	if a.room == nil || node == nil {
+	if a.room == nil || node == nil || a.roomIsGuest() {
 		return false
 	}
 	if run := a.orchOf(); run != nil {
@@ -945,15 +945,28 @@ func (a *app) roomStandingOn(node *taskNode) bool {
 	return node.id != 0 && a.room.id == node.id
 }
 
-// openRoomFor opens the room of the node with this id, or closes it when it is
-// already the room on screen. It is what BOTH doors resolve to — the rail click
-// and the transcript walk — so a second press on either is always the way back.
+// openRoomFor toggles compact task controls and transcript links within the same
+// conversation. Sidebar rows use openRailRoom so a repeated click stays inside.
+// A guest with the same task number belongs to a different conversation.
 func (a *app) openRoomFor(id uint64, title string) {
-	if a.room != nil && a.room.id == id {
+	if a.room != nil && !a.roomIsGuest() && a.room.id == id {
 		a.closeRoom()
 		return
 	}
 	a.openRoom(id, title)
+}
+
+// openRailRoom makes list selection idempotent. Repeated clicks must not close
+// the page or replace its draft, scroll position and live subscription.
+func (a *app) openRailRoom(node *taskNode) {
+	if node == nil || a.roomStandingOn(node) {
+		return
+	}
+	if node.run != "" {
+		a.openOrchRoom(node.run, node.node)
+	} else {
+		a.openRoom(node.id, node.title)
+	}
 }
 
 // openRoomAt is the KEYBOARD door: enter on a selected proposal row opens that
@@ -2117,11 +2130,7 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	case line.glyph.holds(at):
 		a.railToggle(e.node)
 	default:
-		if e.node.run != "" {
-			a.openOrchRoom(e.node.run, e.node.node)
-		} else {
-			a.openRoomFor(e.node.id, e.node.title)
-		}
+		a.openRailRoom(e.node)
 	}
 	return a.takeRoomPump(), true
 }

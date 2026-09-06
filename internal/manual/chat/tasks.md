@@ -4384,3 +4384,10 @@ to the conversation that owns the work. If its status connection closes, the foo
 A reading view continues checking its owner after the task finishes. If that
 conversation opens something else, the page explains that it is showing its last
 reading and stops asking. Finished local task pages still stop polling normally.
+
+## Double-clicking a task in the chat sidebar
+
+A sidebar row opens its task. Clicking the selected row again keeps that page, its
+draft and reading position open. Press `esc` or click the page's back control to
+return to the main conversation. A foreign task does not select a local sidebar
+row merely because both tasks have the same number.

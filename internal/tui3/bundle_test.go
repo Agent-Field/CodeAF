@@ -4091,10 +4091,15 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 		t.Fatal("the rail went away when the room opened")
 	}
 
-	// A second click on the same row is the way back.
+	// Repeated selection keeps the page open; leaving is a separate action.
+	opened := a.room
 	clickRail(t, a, 0)
+	if a.room != opened {
+		t.Fatal("a second click replaced or closed the selected task")
+	}
+	drive(t, a, key("esc"))
 	if a.roomOpen() {
-		t.Fatal("a second click on the open room's row did not close it")
+		t.Fatal("Escape did not leave the task")
 	}
 }
 

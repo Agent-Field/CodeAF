@@ -97,3 +97,8 @@ attachment count of zero.
 A finished guest task continues checking that its owning conversation is still
 open; replacement now produces the same last-known explanation as for running
 work. A page already marked lost ignores late journal reads and stops polling.
+
+Repeated selection in the chat sidebar now keeps the task page open, including
+its draft and reading state. The row no longer toggles closed on a second click.
+A guest task no longer marks a local task with the same number as selected; opening
+that local row switches to the local task instead of treating it as the guest.

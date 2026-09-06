@@ -4205,12 +4205,7 @@ func (a *app) railEnter() tea.Cmd {
 	if at < 0 || entries[at].node == nil {
 		return nil
 	}
-	node := entries[at].node
-	if node.run != "" {
-		a.openOrchRoom(node.run, node.node)
-	} else {
-		a.openRoomFor(node.id, node.title)
-	}
+	a.openRailRoom(entries[at].node)
 	return a.takeRoomPump()
 }
 
