@@ -314,6 +314,17 @@ const ringEvents = 4096
 func Serve(in io.Reader, out io.Writer, opts Options) error {
 	return ServeAttach(in, out, AttachOptions{
 		Open: func(hello Hello) (*Session, error) {
+			// A JOIN IS REFUSED HERE, BEFORE ANYTHING IS BOOTED. [Hello.Join] asks
+			// for a conversation that is ALREADY OPEN and says it will take nothing
+			// else, and this door has none to offer: it opens the pipe's own
+			// conversation, and that conversation is this pipe's whole life. Booting
+			// one to answer a join would do the exact thing the flag exists to
+			// prevent — start a model to answer a question about work somebody
+			// believes is already running somewhere else — and the connection would
+			// then be bound to a transcript nobody asked for.
+			if hello.Join {
+				return nil, errors.New("this engine opens one conversation for one connection, so there is none already open here to join")
+			}
 			engine, err := opts.Boot(hello)
 			if err != nil {
 				return nil, err
@@ -656,11 +667,52 @@ func (sess *Session) agentOf(conversation string) (WrappedAgent, bool) {
 	return sess.agent, true
 }
 
+// steerConversation is the conversation ONE correction has to be delivered to,
+// out of the two names a connection can carry: what it JOINED (bound at the
+// door, and never sent again) and what this send CLAIMED ([TaskSteerArgs.Session],
+// the conversation the surface believed it was addressing). False is a
+// correction that must not be delivered at all.
+//
+// NEITHER NAME OVERRIDES THE OTHER. A bound connection that claims a different
+// conversation is refused rather than served under either reading, because one
+// of the two beliefs is wrong and there is no way to tell which. A bound
+// connection that claims nothing is checked against its binding, so a swap
+// cannot answer it with the replacement's task of the same number. An unbound
+// connection — an ordinary window, which FOLLOWS its session — is checked
+// against its claim alone, exactly as before, and an empty claim is a caller
+// making none.
+func steerConversation(joined, claimed string) (string, bool) {
+	joined, claimed = strings.TrimSpace(joined), strings.TrimSpace(claimed)
+	if joined == "" {
+		return claimed, true
+	}
+	if claimed != "" && !sameTranscript(claimed, joined) {
+		return "", false
+	}
+	return joined, true
+}
+
 // ErrJoinedGone is a joined connection finding that the conversation it joined
 // is not the one this session is running any more. It is a fact and not a
 // failure: the window that owns the session opened something else in it, and a
 // reader bound to the old one has nothing left to read.
 var ErrJoinedGone = errors.New("engine: that conversation is not open here any more")
+
+// joinRefusal is what a hello that said [Hello.Join] is told when the
+// conversation it named is not the one this session is running.
+//
+// IT NAMES WHAT WAS ASKED FOR, because the surface that asked is holding a row
+// it read off a disk a moment ago and the useful fact is which conversation the
+// engine could not give it. AND A JOIN THAT NAMED NOTHING MEETS THE SAME
+// REFUSAL: an unknown identity is not a match ([Session.agentOf] states the same
+// law for a call), so it is answered rather than quietly turned into a surface
+// that follows whatever this session opens next.
+func joinRefusal(asked string) error {
+	if asked = strings.TrimSpace(asked); asked == "" {
+		return fmt.Errorf("%w: a join has to name the conversation it wants", ErrJoinedGone)
+	}
+	return fmt.Errorf("%w: %s", ErrJoinedGone, asked)
+}
 
 // serving picks the agent AND the record reader together, under ONE lock, and
 // refuses when a joined connection's conversation has been replaced.
@@ -753,8 +805,26 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 // the write lock across the whole arrival makes the two orders one: a pump that
 // snapshotted this surface waits behind the welcome, and a pump that did not is
 // already in the replay.
+//
+// ── AND A JOIN IS CONFIRMED BEFORE ANYTHING IS TOUCHED ──
+//
+// The host matched [Hello.Session] against the conversations it holds and then
+// LET GO OF ITS OWN LOCK (internal/enginehost's Host.open); this is the first
+// moment the session's lock is taken. A [MethodSessionOpen] landing in that gap
+// used to be absorbed silently, because what was recorded here was the
+// conversation that turned out to be open rather than the one the hello asked
+// for — after which [Session.serving], [Session.laneIsOwnedLocked] and
+// [Session.agentOf] all compared the replacement against itself and passed
+// forever. So the hello's own name is what is checked, and a mismatch is a
+// refusal at the door: nothing is numbered, nothing is added to the room, and
+// the keyboard is not touched, because a connection that is about to be told
+// "no" must not first take the keys off the window that owns the work.
 func (sess *Session) attach(s *server, hello Hello) error {
 	sess.mu.Lock()
+	if hello.Join && !sameTranscript(hello.Session, sess.engine.SessionFile) {
+		sess.mu.Unlock()
+		return joinRefusal(hello.Session)
+	}
 	// THE ARRIVAL IS NUMBERED BEFORE THE WELCOME IS BUILT, because the welcome
 	// says which questions THIS surface is owed and the number is how a card
 	// names the surfaces that have already drawn it (held.go).
@@ -774,9 +844,10 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// flag is recorded so no later hand-on can give it the keyboard either.
 	s.watching = hello.Watch
 	if hello.Join {
-		// WHAT THIS CONNECTION IS BOUND TO is the conversation as it stands right
-		// now, under this same lock — not the string the hello sent, which the
-		// host matched loosely, and not a reading taken a moment later.
+		// WHAT THIS CONNECTION IS BOUND TO is the conversation it named, confirmed
+		// against the one open under this same lock a few lines above. The engine's
+		// own spelling of the path is what is kept, because every later comparison
+		// is against that field and one spelling saves a clean on every call.
 		s.joined = sess.engine.SessionFile
 	}
 	if !s.watching && (!hello.Back || sess.driver == nil) {
@@ -1396,7 +1467,12 @@ func (s *server) handshake(line []byte) error {
 	if err != nil {
 		return s.refuse("engine: " + err.Error())
 	}
-	if sess == nil || sess.agent == nil {
+	// THE AGENT IS READ UNDER THE SESSION'S OWN LOCK. A host hands out sessions
+	// that other connections are already driving, and [Session.swap] replaces
+	// this field under that lock — so a bare read here is one goroutine reading
+	// what another is writing, which is a race whatever the answer turns out to
+	// be.
+	if sess == nil || sess.current() == nil {
 		return s.refuse("engine: the workspace opened no conversation")
 	}
 	s.session = sess
@@ -1406,6 +1482,16 @@ func (s *server) handshake(line []byte) error {
 	arrived := sess.attach(s, hello)
 	s.write.Unlock()
 	if arrived != nil {
+		// A JOIN REFUSED AT THE DOOR IS A REFUSAL AND NOT A BROKEN PIPE. The
+		// sentence goes down the wire the way every other handshake refusal does —
+		// it cannot be sent from inside [Session.attach], which runs with this
+		// connection's writer held — and the session is let go of first, because
+		// this connection never entered the room and [server.leave] must not take
+		// it out of one.
+		if errors.Is(arrived, ErrJoinedGone) {
+			s.session = nil
+			return s.refuse(arrived.Error())
+		}
 		return arrived
 	}
 	// AND ONLY THEN IS THE REST OF THE ROOM TOLD who has the keyboard now. It
@@ -1561,7 +1647,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// and this was delivered to the conversation it named. There is no third
 		// ordering, and nothing is ever re-aimed at the task with that number in
 		// the conversation that replaced it.
-		steerAgent, mine := sess.agentOf(args.Session)
+		//
+		// AND A BOUND CONNECTION IS HELD TO ITS BINDING. [Session.serving] above
+		// checked it, but that was a separate hold of the lock: a swap landing
+		// between the two would have left this call to be decided by whatever the
+		// caller claimed — and a caller claiming nothing would have been answered
+		// by the replacement. Both names are enforced, and neither overrides the
+		// other ([steerConversation]).
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed {
+			return json.Marshal(TaskSteered{Elsewhere: true})
+		}
+		steerAgent, mine := sess.agentOf(want)
 		if !mine {
 			return json.Marshal(TaskSteered{Elsewhere: true})
 		}

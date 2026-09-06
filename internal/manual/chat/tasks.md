@@ -2123,6 +2123,15 @@ that opened the page cannot offer that subscription, the page still shows the tr
 adds one line saying so: `this window cannot ask that conversation what its work is doing
 now — the state above is what the list last said`.
 
+**If that window opens something else while your page is opening, the page does not open.**
+The engine refuses rather than handing you whatever is open there now, and the tasks page
+says so — nothing is drawn under the wrong name, and nothing is taken from the window that
+owns the work:
+
+```
+could not open that conversation · engine: that conversation is not open here any more
+```
+
 **And it works where the engine is local.** `--host` and `--at` do not draw rows for other
 conversations at all — the presence those rows are minted from is on the engine's machine and
 is not carried across the connection — so over a remote session there is no such row and no

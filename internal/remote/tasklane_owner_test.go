@@ -72,7 +72,8 @@ func guestOn(t *testing.T, sess *Session) *Client {
 		_ = engine.Close()
 	}()
 	client, err := Dial(surface, "loopback", Hello{
-		Version: Version, Surface: "reader", Join: true, Watch: true,
+		Version: Version, Surface: "reader",
+		Session: joinedTranscript, Join: true, Watch: true,
 	})
 	if err != nil {
 		_ = surface.Close()
