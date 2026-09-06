@@ -68,42 +68,14 @@ task restores the main conversation's status.
 Retained-branch notices for stopped, conflicted, moved and detached work now
 offer inspection without directing a merge or checkout change. The requested
 delivery workflow continues to govern the parent follow-up.
-The task-navigation work in this draft is deliberately confined to which task a
-row opens and who owns it. It does not carry per-task drafts or room entry and
-exit state, and it does not change how a direction is sent or identified; those
-are separate lanes of the same PR. Three seams they share. The recovery card over
-another window's work is opened through `taskSheetInside`, so a lane that adds
-per-task reading or draft state must clear or key it by the same owner the card
-records. The conversation-and-number pair is now the single identity a row is
-resolved by, which a stable message id should quote rather than re-derive from a
-number. And a task page opened onto another conversation carries a `taskGuest`
-(`app.roomIsGuest`) whose id belongs to that conversation.
 
-The drafts hook, exactly: a per-task draft keyed by (current session, room id) will
-ALIAS — a read-only page onto a foreign task 7 and this window's own task 7 are the
-same key. The guest carries the two fields that disambiguate it,
-`taskGuest.session` (the transcript the engine confirmed) and
-`taskGuest.sessionID` (its conversation id); `app.roomGuest()` returns it and is
-nil on every ordinary room, so the key is `roomGuest() == nil ? currentSession :
-guest.sessionID`. The simpler option is to key nothing at all on a guest page:
-it is deliberately read-only — there is no steering door, `roomSteerDoors` answers
-`(nil, false)`, and the composer says it is reading — so no partial send path
-bypasses the reliable-send identity that lane is adding, and a page with no
-editable composer needs no draft slot.
-
-One fact that lane needs and this one did not fix, deliberately, because it is the
-drafts lane's own seam. THE GUEST PAGE'S BOX IS STILL `app.input`, the main
-conversation's own editor: view.go's frame runs it through
-`app.roomSteerLaneRows`, which on a guest supplies the placeholder
-`Reading this task` and refuses the send with the words above, leaving the text in
-the box. So the placeholder and the refusal are right and the STORAGE is not —
-characters typed on a read-only page land in the main conversation's draft and are
-still there on the way back. Whoever adds per-recipient drafts should either give
-the guest page a box of its own keyed by `guest.sessionID`, or make the row
-non-editable outright (draw the lane sentence, leave `app.caret` false, and route
-no printable key into `app.input` while `app.roomIsGuest()`); the second is the
-smaller change and matches the page's design, which is that it reads and does not
-write.
+Task rows resolve by conversation and task number. A local reading view joins an
+already running conversation without taking its keyboard or starting an engine.
+Its status subscription remains bound to that conversation across replacement,
+and loss of live status leaves a last-known explanation and a `reading` footer.
+The guest composer is keyed by its confirmed transcript and task number, so it
+cannot replace the main draft or the draft of a local task with the same number.
+Sending, stopping, and changing task controls remain with the owning conversation.
 
 The reconnect fixture now allows the replacement window to arrive before the
 server processes the old socket's EOF. It checks retained conversation identity

@@ -3108,6 +3108,9 @@ func (a *app) stateWord() (string, string) {
 		return word, a.pal.accent(word)
 	}
 	if a.room != nil && !a.orchOpen() {
+		if guest := a.roomGuest(); guest != nil && (guest.lost || a.roomGuestStale()) {
+			return "reading", a.pal.dim("reading")
+		}
 		if node := a.roomNode(); node != nil {
 			word := a.roomStateWord(node)
 			return word, a.taskStateInk(node)(word)

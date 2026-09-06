@@ -694,6 +694,8 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 	// window has.
 	room.done = !ask.item.runs
 	a.room = room
+	// The foreign transcript is part of the recipient key because task ids restart.
+	a.retargetComposer(guestRecipient(guest.session, room.id))
 	a.sel = -1
 	a.dropHover()
 	a.touch()

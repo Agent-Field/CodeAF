@@ -4275,3 +4275,11 @@ A worker opening and its finishing instructions are runtime notes, not new messa
 from you. When the worker hands a piece onward, these composed instructions are not
 quoted as your words, including after reopening the journal. The original person
 request remains available separately, together with the child's assigned scope.
+
+## Drafts while reading another conversation’s task
+
+A task page opened from another conversation keeps a separate draft, identified by that
+conversation and task. Its words do not replace your conversation draft or a local task
+with the same number. The page is a reading view: sending, steering, and stopping belong
+to the conversation that owns the work. If its status connection closes, the footer says
+`reading` and the page keeps the last known state with an explanation.
