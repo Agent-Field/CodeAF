@@ -2973,6 +2973,11 @@ func (a *app) yoloSegment() string {
 // else.
 func (a *app) stateSegment() (string, string) {
 	word, painted := a.stateWord()
+	// A task page reports its own state. The main conversation's spinner and
+	// clock do not describe the work being read here.
+	if a.room != nil && !a.orchOpen() {
+		return word, painted
+	}
 	if a.state != stateWorking || a.asking() || a.copy.on {
 		return word, painted
 	}
@@ -3101,6 +3106,13 @@ func (a *app) stateWord() (string, string) {
 	// (dragselect.go).
 	if word := a.dragWord(); word != "" {
 		return word, a.pal.accent(word)
+	}
+	if a.room != nil && !a.orchOpen() {
+		if node := a.roomNode(); node != nil {
+			word := a.roomStateWord(node)
+			return word, a.taskStateInk(node)(word)
+		}
+		return "reading", a.pal.dim("reading")
 	}
 	// AND THE STOP OUTRANKS THE QUESTION, on that same reading turned around. A
 	// card still standing between the esc and the stream's close is asking about

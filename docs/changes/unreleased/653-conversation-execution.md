@@ -32,6 +32,10 @@ durable tasks; its proposed consolidation is not yet implemented in full.
 See docs/design/conversation-runtime/EXECUTION-PLAN.md and VALIDATION.md for
 scope, evidence and limitations. Keep the PR draft while that work continues.
 
+The task page's footer now reports the task's state instead of the main
+conversation's state and clock. Copy feedback retains priority; leaving the
+task restores the main conversation's status.
+
 The reconnect fixture now allows the replacement window to arrive before the
 server processes the old socket's EOF. It checks retained conversation identity
 and eventual standing-subscription cleanup instead of assuming an arrival-time

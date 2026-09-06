@@ -3584,6 +3584,10 @@ While you are in a room the status line names that node: `<mark> <task name> · 
 <model>`. Press the `task <model>` part and the ordinary model picker opens, aimed at that
 task. Choose a row and that task moves onto it.
 
+The footer's state also belongs to the open task: working, queued, awaiting your
+look, or its recorded outcome. It does not borrow the main conversation's idle
+state or running clock. Leaving the task restores the conversation's status.
+
 **On a narrow window that line gives way in one order.** The task's *name* is drawn whole
 for as long as the row can hold it; then `task <model>` is dropped **whole** rather than
 shortened, because a bare model id in the one spot that has only ever held the
