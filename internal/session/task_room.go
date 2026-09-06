@@ -396,6 +396,14 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 		node.admit.Lock()
 		defer node.admit.Unlock()
 	}
+	return a.deliverTaskDirection(node, text, origin, source)
+}
+
+// deliverTaskDirection answers a repeat or admits a new direction on the node
+// selected by sayToTask. Named messages keep that caller's admission lock through
+// the receipt and delivery, so another ask cannot observe an unfinished write.
+func (a *Agent) deliverTaskDirection(node *TaskNode, text string, origin messageOrigin, source spokenSource) (SteerReceipt, error) {
+	id := node.id
 	// So the RECORD answers first, because the record outlives the run
 	// ([TaskNode.heardBefore]). A name this task has never heard falls straight
 	// through to the state check exactly as before, which is every ordinary send.
