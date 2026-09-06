@@ -216,7 +216,22 @@ import (
 // The number moves rather than riding version 10 for [MethodTaskWatch]'s
 // reason: an older engine answers the new subscription with "no such method"
 // and leaves a lane permanently dark with nothing on the screen saying so.
-const Version = 11
+//
+// VERSION 12 CARRIES [Hello.Join] AND [Hello.Watch], AND THE NUMBER IS THE
+// ENFORCEMENT. Both are SAFETY fields — one says "never start a conversation",
+// the other says "never give me the keyboard" — and both are omitempty booleans,
+// which is exactly the shape a version-11 engine DISCARDS in silence. That
+// engine would then do the two things the fields exist to prevent, before the
+// surface ever sees a welcome to check: boot a whole conversation to answer a
+// question about work that is running, and hand a reader the keyboard off the
+// window that owns the work. Neither is recoverable by a check afterwards.
+//
+// So the guarantee is the door's, not the flag's. The version is compared before
+// [AttachOptions.Open] is called and before [Session.attach] runs, by BOTH
+// builds — and a version-11 engine enforces it against a version-12 surface
+// using code that has been there since version 1. That is the only mechanism in
+// this protocol an old peer can be trusted to run.
+const Version = 12
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -562,6 +577,42 @@ type Hello struct {
 	// they are sitting at. So a returning surface drives only if the keyboard is
 	// going spare, and a NEW one always drives.
 	Back bool `json:"back,omitempty"`
+
+	// Join says this hello wants a conversation THAT IS ALREADY OPEN and will
+	// take nothing else. [Session] names the transcript to look for, and a host
+	// that is not running it answers an error rather than starting it.
+	//
+	// IT EXISTS BECAUSE "OPEN OR CREATE" IS THE WRONG VERB FOR A SECOND VIEW. A
+	// surface that wants to READ one task of a conversation running next door is
+	// asking about work that exists; booting a whole session so that the question
+	// has an answer would start a model, take the transcript's lock away from
+	// nobody, and hand back a conversation with none of the work in it. So the
+	// two intentions are two flags rather than one hopeful one.
+	//
+	// AND IT IS MATCHED ON THE TRANSCRIPT AND NOT ON THE KEY. A host keys its
+	// conversations by whatever the FIRST hello said — which for the ordinary
+	// launch is the empty string, meaning "this workspace's latest" — so a second
+	// surface naming the same conversation by its file would miss it and be given
+	// a new one. The file is the identity every other part of this program uses
+	// for a conversation, so it is the one a join is answered on.
+	Join bool `json:"join,omitempty"`
+
+	// Watch says this surface is HERE TO READ and must never be given the
+	// keyboard — not on arrival, not when the driver leaves, not ever.
+	//
+	// [Back] IS NOT THIS, and reading it as this is the bug that made the flag
+	// necessary. A returning surface takes the keyboard when it is going spare,
+	// which is right for a redial and wrong for a second view somebody opened to
+	// look at one piece of work: the window that owns the conversation may simply
+	// have detached for a moment, and it would come back to find a reader driving
+	// it. A watcher is refused the keyboard even when there is no driver at all,
+	// so the conversation is left with none rather than with the wrong one.
+	//
+	// IT IS THE SURFACE'S OWN DECLARATION AND THE ENGINE STILL DECIDES. Nothing
+	// here is a permission — the engine enforces it, in the one place that owns
+	// who drives (driver.go) — and a watcher that tries to type anyway is refused
+	// with a sentence rather than dropped.
+	Watch bool `json:"watch,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".

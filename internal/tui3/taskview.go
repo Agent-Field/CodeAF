@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -124,12 +123,74 @@ const (
 // and a tail reading "another window · " with nothing after it would be a
 // separator standing in for a fact. So the name is added or it is not, and the
 // row is honest either way.
-func taskAwayNote(name string) string {
+func taskAwayNote(name string) string { return taskAwayWord + taskAwayNoteName(name) }
+
+// taskAwayNoteName is the second half of that tail on its own — the separator
+// and the name, or nothing at all — because two words now open it: `another
+// window`, and [taskOpenHereWord] for a conversation this same terminal holds.
+// One rule about the empty case, spelled once.
+func taskAwayNoteName(name string) string {
 	if name = strings.TrimSpace(name); name == "" {
-		return taskAwayWord
+		return ""
 	}
-	return taskAwayWord + railSep + name
+	return railSep + name
 }
+
+// ── THE CARD OVER WORK THIS WINDOW CANNOT OPEN ──────────────────────────────
+//
+// A person who presses one of those rows is asking one question — what do I do
+// about this — and the answer is a LABEL AND AN ACTION, not an essay. It was
+// four sentences for a while, two of which were claims this surface is in no
+// position to make: that the work is running perfectly well, and that it will
+// land in this project's history. The first is a guess about another process and
+// the second is a promise about a run that may be stopped, may fail, and may be
+// in a window that is about to close. Both are gone.
+//
+// WHAT IS LEFT IS WHAT IS KNOWN: where the work is, and the one thing to do
+// about it.
+//
+// AND THIS CARD IS THE LAST RUNG AND NOT THE FIRST. A row whose conversation
+// this terminal is holding, or whose conversation the engine will hand this
+// window a second view onto, opens the WORK — taskowner.go's ladder, which
+// [tasksPlace.enter] walks before it comes here. The card is what a row gets
+// when every one of those rungs is genuinely absent.
+const (
+	// taskAwayCardNoRoom is the refusal in one clause, said only where there is
+	// no door at all — a row another PROCESS is running that this window has no
+	// capability to join. A room is a live lane onto a task in a conversation
+	// this surface is connected to ([taskRoomAgent], and [taskGuest] for a
+	// borrowed one); with neither, going to that window is the way.
+	taskAwayCardNoRoom = "go to that window to read it, steer it or stop it."
+)
+
+// taskAwayCardWhere is the card's first line: which window is running this.
+//
+// IT NAMES THE WINDOW IN THE ROW'S OWN WORD ([taskAwayWord]), so the row a
+// person pressed and the page it opened say the same thing about the same place.
+// A window nothing has named is still a place, and the sentence stops rather
+// than trailing off after a colon — [taskAwayNote]'s law said in prose.
+//
+// IT CLAIMS NOTHING ABOUT HOW THE WORK IS GOING. `running` here is the presence
+// file's own word for what that window says it has out, which is the same claim
+// the ROW makes; anything further would be this window reporting on a process it
+// cannot see.
+func taskAwayCardWhere(window string) string {
+	if window = strings.TrimSpace(window); window == "" {
+		return "this is running in " + taskAwayWord + " on this project."
+	}
+	return "this is running in " + taskAwayWord + " on this project: " + window + "."
+}
+
+// taskOpenHereWord is the note on a row whose conversation THIS TERMINAL is
+// holding — one aforge, several conversations, all of them alive (keeper.go).
+//
+// IT IS `open` AND NOT `another window`, and the difference is the whole of what
+// the row is for. Those conversations write the same presence file every other
+// terminal reads, so without this they arrived wearing `another window` and the
+// card under them said `go to that window` — about a window that is this one,
+// reached with `tab`. The keeper's own person-facing word for the fact is
+// `open`, which is what the status line and home already spell.
+const taskOpenHereWord = "open in this terminal"
 
 // THE FOOT, AS SCREEN 1e SPELLS IT.
 //
@@ -143,12 +204,24 @@ func taskAwayNote(name string) string {
 // twice. What is left is the imperative grammar of the design — `open`, `go`,
 // `type` — in place of the older third-person one this page used to spell.
 //
+// AND THE `type to filter` CLAUSE HAS SINCE LEFT THIS LINE FOR THE BOX. The
+// design put it here because there was nowhere else for it: the box below said
+// `say what you want done` on every place, which on this one was an invitation to
+// send a message into a slot that only narrows the list, and a foot clause was the
+// only correction available. The box says the true sentence itself now
+// ([tasksTypeWord], place_tasks.go's [placeTasks.resting]), so this line stopped
+// repeating it — one screen may not name one thing twice. What the foot keeps
+// that the box cannot say is `esc clear the filter`, which is only true while a
+// filter is on.
+//
 // EVERY CLAUSE IS TRUE OF THE ROW UNDER THE CURSOR OR IT IS NOT DRAWN. That is
 // this surface's own law — no key does anything that is not drawn on screen
 // right now, and nothing is named that is not bound (verbstrip.go states it) —
 // and it is why the design's one static line is assembled rather than quoted:
-// `enter` opens a ROOM only over a node this window is holding, and a page whose
-// only rows are another window's work has no `enter` at all.
+// `enter` opens a ROOM only over a node this window is holding, a CARD over work
+// another conversation ran, and over work another WINDOW is running the card
+// that says where that window is — three doors, three clauses, and the row under
+// the cursor decides which of them is said.
 const (
 	// tasksEnterRoomWord is enter over a node THIS session's graph is holding:
 	// the room, which is what every other list of work on this surface opens.
@@ -161,16 +234,58 @@ const (
 	// window is running. It is 1e's grammar said about the other door, which is
 	// the only honest thing a foot can do over a row that has no room.
 	tasksEnterInsideWord = "enter go inside it"
+	// tasksEnterAwayWord is enter over work ANOTHER WINDOW is running. There is
+	// no room — the node is in another process's graph — and nothing has landed
+	// for a mention to point at, so what the key opens is the card that says
+	// which window has it and what to do about it (taskrecord.go's away band).
+	//
+	// THE CLAUSE PROMISES THE ANSWER AND NOT THE WORK, because that is what is on
+	// the other side of the key. `enter go inside it` here would be the foot
+	// promising a transcript this window cannot reach, which is the same lie as
+	// the inert row this clause replaced.
+	tasksEnterAwayWord = "enter where it is running"
+	// tasksEnterOpenWord is enter over work one of THIS TERMINAL'S OTHER
+	// CONVERSATIONS is running. One aforge holds any number of them and every one
+	// is alive (keeper.go), so the row arrived through the same presence reading a
+	// stranger's would — and the door is a switch: the conversation on screen is
+	// stowed still running, and the one that owns the work comes forward standing
+	// in that task's own room.
+	//
+	// IT NAMES THE CONVERSATION AND NOT THE ROOM, because that is the surprising
+	// half. A person who presses this ends up somewhere else, and a foot that said
+	// `open its room` would have promised them the page without the journey.
+	tasksEnterOpenWord = "enter go to that conversation"
+	// tasksEnterJoinWord is enter over work ANOTHER conversation on the engine is
+	// running, which this window can join as a second view (taskowner.go's
+	// [app.openOwnerRoom]). The page is that task's own transcript, live.
+	//
+	// IT PROMISES READING AND NOT STEERING. The keyboard for that task belongs to
+	// the window that owns it (internal/remote's driver.go), and this view is
+	// given it only if the engine says it is going spare — so the clause claims
+	// the half that is always true and the box on the page says the rest.
+	tasksEnterJoinWord = "enter read it as it runs"
 	// tasksVerbsWord opens the design's second clause. What follows it is the
 	// verbs that EXIST for the row under the cursor, joined by the design's own
 	// comma — and the clause is absent entirely when the row has none.
 	tasksVerbsWord = "→ verbs: "
 	tasksVerbGap   = ", "
-	// tasksTypeWord is the design's third clause, and it is the only place on the
-	// frame that says the filter exists at all: a record of two thousand tasks is
-	// reached by remembering a word of a title, and nothing else on screen
+	// tasksTypeWord says the filter exists at all: a record of two thousand tasks
+	// is reached by remembering a word of a title, and nothing else on screen
 	// suggests a letter would do anything.
-	tasksTypeWord = "type to filter"
+	//
+	// IT IS THE BOX'S OWN RESTING SENTENCE NOW AND NOT THE FOOT'S THIRD CLAUSE
+	// (place_tasks.go's [placeTasks.resting]). It began as a foot clause because
+	// the box below it was saying `say what you want done` — the router's sentence
+	// on every place — and a person reading an invitation to give an instruction,
+	// two rows under the list their keystrokes were about to filter, was being
+	// told the wrong thing by the louder of the two rows. Correcting the foot
+	// never reached that: the box went on saying it. So the sentence moved into
+	// the slot it is about, and the foot stopped repeating it.
+	//
+	// IT NAMES WHAT THE TYPING NARROWS. `type to filter` in a box a person may
+	// have just been typing a message into is keystrokes going somewhere they
+	// cannot see; `this list` is the whole of the difference.
+	tasksTypeWord = "type to filter this list"
 	// tasksClearFilterWord takes that clause's place while a filter is on. It is
 	// the one fact the keyboard has that just MOVED — esc clears the filter first
 	// and closes the place second ([app.taskSheetKeyPress]) — and the clause it
@@ -263,16 +378,18 @@ type elsewhereAgent interface {
 	Elsewhere() session.Elsewhere
 }
 
-// keeperAwareAgent is [elsewhereAgent] told which other windows are OURS
-// (session's taskelsewhere.go).
+// A SECOND CONVERSATION OF THIS PROCESS USED TO BE LEFT OUT OF THE READING, and
+// it is not any more. It writes the same presence file every other terminal
+// reads, so it arrived on our own rows as `another window` and the card under it
+// said `go to that window` — about a window that is this one, reached with
+// `tab`. The reading was therefore narrowed by [app.heldSessions], which removed
+// the wrong sentence by removing the ROW, and with it the only sign that a
+// conversation open in this terminal had work running in it.
 //
-// A second conversation of this process on the same project writes the same
-// presence file every other terminal reads, so without this it would arrive on
-// our own away rows as `another window` — and `go to that window to act on it`
-// is the wrong answer when the window is this one and the way there is `tab`.
-type keeperAwareAgent interface {
-	ElsewhereExcept(others ...string) session.Elsewhere
-}
+// The same list now CLASSIFIES instead of excluding ([tasksMine.here]): the row
+// is drawn, it says [taskOpenHereWord], and pressing it switches to that
+// conversation and opens the task's room (taskowner.go). One list, the honest
+// job.
 
 // elsewhere is the reading this surface is currently drawing from. IT NEVER
 // TOUCHES THE DISK except the very first time it is asked — every later refresh
@@ -301,33 +418,40 @@ func (a *app) refreshElsewhere() {
 		return
 	}
 	a.away = elsewhereCache{at: a.now(), read: true}
-	if aware, ok := a.agent.(keeperAwareAgent); ok {
-		a.away.held = aware.ElsewhereExcept(a.behindIDs()...)
-		return
-	}
 	agent, ok := a.agent.(elsewhereAgent)
 	if !ok {
 		return
 	}
+	// THE WHOLE READING, MINUS THIS CONVERSATION. The engine leaves the session
+	// it is asked from out of its own answer and nothing else
+	// (internal/session's [Agent.ElsewhereExcept]), which is exactly right: a
+	// surface knows its own graph better than any file, and every other live
+	// conversation on this project is something this window has to be able to
+	// draw — including the ones this same process is holding.
 	a.away.held = agent.Elsewhere()
 }
 
-// behindIDs is the session id of every conversation this process holds and is
-// not drawing.
+// heldSessions is the session id of every conversation this process holds and is
+// not drawing, as a set.
 //
 // THE ID IS THE SESSION FOLDER'S NAME, which is what [session.Place.ID] answers
 // and what the presence file carries — so it is arithmetic on the transcript
-// path rather than a question for the agent. A legacy flat journal has no
-// folder to name and contributes nothing, which costs at most one stale
-// `another window` row on a session shape that predates presence entirely.
-func (a *app) behindIDs() []string {
+// path rather than a question for the agent ([taskSessionOf] spells it once for
+// every caller). A legacy flat journal has no folder to name and contributes
+// nothing, which costs at most one row saying `another window` about a window
+// that is this one, on a session shape that predates presence entirely.
+//
+// IT NAMES WHAT THIS TERMINAL CAN REACH, which is what makes it a classifier
+// rather than a filter: a row in this set is a row whose owner is one `tab`
+// away, and taskowner.go's ladder turns that into a door.
+func (a *app) heldSessions() map[string]bool {
 	if len(a.behind) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(a.behind))
+	out := make(map[string]bool, len(a.behind))
 	for _, held := range a.behind {
-		if dir := homeBucketOf(held.conv.SessionFile); dir != "" {
-			out = append(out, filepath.Base(filepath.Dir(held.conv.SessionFile)))
+		if id := taskSessionOf(held.conv.SessionFile); id != "" {
+			out[id] = true
 		}
 	}
 	return out
@@ -358,14 +482,18 @@ func (a *app) recordRuns(entry *session.TaskIndexEntry) bool {
 // taskSheetAwayRows is every piece of work another window on this project has
 // out, as rows this page can draw.
 //
-// A ROW HERE IS READ AND NOT PRESSED, and that is deliberate rather than
-// unfinished. The two doors this surface has onto a piece of work are a ROOM,
-// which is a live lane onto a node in THIS session's graph, and a MENTION, which
-// mints a pointer block out of a landed row's outcome, branch and transcript
-// ([app.mentionTask]). Work running in another window has neither: no node here
-// to open, and nothing landed to point at. So the cursor steps over these rows
-// ([tasksItem.pick]) and they say what they are for — knowing that the
-// directory is busy, and where.
+// A ROW HERE HAS NEITHER OF THIS SURFACE'S TWO DOORS ONTO WORK, AND IS PRESSED
+// ANYWAY. The doors are a ROOM, which is a live lane onto a node in THIS
+// session's graph, and a MENTION, which mints a pointer block out of a landed
+// row's outcome, branch and transcript ([app.mentionTask]); work running in
+// another window has no node here to open and nothing landed to point at.
+//
+// What changed is what the row does about that. It used to take no cursor at all
+// ([tasksItem.pick] tells the whole story), which left a person aiming at a row
+// as visible as its neighbours and getting silence. It now opens the card that
+// says which window has the work and what to do about it
+// ([app.taskSheetAwayCard]) — the refusal as a page rather than as a keystroke
+// that does nothing.
 //
 // A TASK NOTHING NAMED IS LEFT OFF. A row with no words on it says nothing a
 // person can act on, which is the same refusal [session.recordTaskIndexEntry]
@@ -400,10 +528,15 @@ func taskSheetEntryID(id string) uint64 {
 // IT ASKS THE TITLE AS WELL AS THE ID, because an id is not unique across the
 // file: ids restart with every conversation, so "#7" names one node in this
 // session and a different one in every conversation before it (task_index.go
-// says so on [session.TaskIndexEntry.ID]). Two conversations that ran a task
-// numbered 7 with the same words ran the same errand twice, and showing one row
-// for it is an understatement rather than a claim about work that never
-// happened.
+// says so on [session.TaskIndexEntry.ID]).
+//
+// AND THE TITLE IS A SECOND CHECK RATHER THAN THE OWNER CHECK. It was read as
+// one for a while — two conversations that ran a task numbered 7 with the same
+// words were taken for one errand run twice — and that is exactly the pair a
+// family handing the same work out twice produces, so the reading resolved
+// another conversation's row to this session's node. The owner is asked first
+// now ([app.taskSheetOwnsEntry]) and this is what settles a row whose owner
+// nothing can name.
 func taskSheetSameWork(title string, entry *session.TaskIndexEntry) bool {
 	want := strings.TrimSpace(strings.ToLower(title))
 	if want == "" {
@@ -417,11 +550,58 @@ func taskSheetSameWork(title string, entry *session.TaskIndexEntry) bool {
 	return false
 }
 
+// taskSheetOwnsEntry reports whether a row of the record belongs to THE
+// CONVERSATION THIS WINDOW IS SITTING IN. [app.taskSheetSelfID] is next door in
+// taskowner.go with the rest of the identity arithmetic.
+//
+// A NAMED OWNER IS BELIEVED, AND AN UNKNOWN SELF IS NOT A LICENCE. The rule is
+// two lines and the second one is the whole of the fix:
+//
+//   - A row that NAMES NO CONVERSATION is this window's by provenance. Nothing
+//     else can have written it: the only rows that reach this surface without an
+//     owner are the ones [app.taskSheetOwnRows] mints out of THIS session's own
+//     graph, before its journal has a folder to be named after
+//     ([app.taskIndexHolds] says why a graph row can carry no conversation id).
+//   - A row that names one is ours only if it names US. An earlier reading let a
+//     window whose own id was unknown claim ANY row, on the argument that a
+//     comparison needs two names — and the conclusion it drew from not knowing
+//     was the dangerous one. A record that says `this belongs to session X` is a
+//     fact; a window that cannot say whether it is X has not contradicted it,
+//     and must not act as though it had.
+//
+// WHAT THAT COSTS, HONESTLY. A conversation whose journal id and whose folder
+// name genuinely disagree loses the ROOM on its own landed rows and gets the
+// card instead — one door narrower, and never somebody else's task. That is the
+// trade, and it is the right way round: the failure this replaced opened a live
+// room drawing a different task's transcript.
+func (a *app) taskSheetOwnsEntry(entry *session.TaskIndexEntry) bool {
+	owner := strings.TrimSpace(entry.SessionID)
+	if owner == "" {
+		return true
+	}
+	return owner == a.taskSheetSelfID()
+}
+
 // taskSheetNodeFor is the live node a record row names, or nil for work another
 // conversation ran. It is what decides whether enter opens a room or writes a
 // mention ([app.taskSheetEnter]).
+//
+// THE OWNER IS ASKED BEFORE THE ID, AND THAT IS THE WHOLE OF THE FIX. Node ids
+// restart with every conversation, so `7` names a different piece of work in
+// every one of them — and the id-and-title rule below reads a row FROM ANOTHER
+// CONVERSATION numbered 7 with the same words as this session's own node 7. The
+// title was supposed to be the guard, and it is not one: a family that hands the
+// same errand out twice, a task somebody proposed again in a second terminal,
+// and a run replayed out of a checkpoint all produce exactly that pair. What
+// happened then was the worst shape a navigation defect can take — the row
+// opened a room, the room drew a transcript, and the transcript belonged to a
+// DIFFERENT task with the same number. A wrong page that looks right is worse
+// than no page at all, so the owner vetoes first.
 func (a *app) taskSheetNodeFor(entry *session.TaskIndexEntry) *taskNode {
 	if entry == nil {
+		return nil
+	}
+	if !a.taskSheetOwnsEntry(entry) {
 		return nil
 	}
 	node := a.tasks[taskSheetEntryID(entry.ID)]

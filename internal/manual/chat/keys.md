@@ -1368,11 +1368,17 @@ first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` ed
 every section at once and is shown at the foot as `filter · port`. `→` opens the row's
 verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
 still queued or running. Its foot is assembled from what is true of the row under the
-cursor — `enter open its room · → verbs: stop it · type to filter` over a task this window is
-running, `enter go inside it` on a task another conversation ran, which has no room to open,
-no `enter` clause at all where the row under the cursor has no door — which is a page
-holding only work running in other aforge windows — and `esc clear the filter` in place of
-`type to filter` while you are typing one. On a machine that has run **nothing at all**,
+cursor — `enter open its room · → verbs: stop it · type to filter this list` over a task this
+window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
+and one of three clauses on a task another aforge **window** is running:
+`enter go to that conversation` when this terminal is holding that conversation, which
+switches to it standing in that task's room; `enter read it as it runs` when the engine is
+running it and this window can join, which opens that task's own live transcript, read-only;
+and `enter where it is running` when nothing here can reach it, which opens the card that
+says which window has it — and
+`esc clear the filter` in place of `type to filter this list` while you are typing one. The
+clause names the list because the message box is on the same frame two rows above, and while
+this page is up your keystrokes go to the filter and not to that box. On a machine that has run **nothing at all**,
 where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
 there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
 walks the cursor. The tasks pages describe what is on it.
@@ -1384,6 +1390,11 @@ message box** and closes the page. Its foot reads
 `m puts it in your message · ↑↓ scroll`; `esc back` is in the head's right corner instead,
 said once. Clicking its head row or its foot goes
 back to the list; its body is read.
+
+**Inside the card over another window's task** (`enter` on a row noted `another window`):
+the same keys, minus the mention. Its foot reads `↑↓ scroll` — with `esc back` beside it
+where the head has no room for its corner — and `m` does nothing: nothing has landed for a
+`@` name to point at. `esc` or `←` backs out to the list.
 
 **Rewind timeline** (`/rewind`, or `tab` from inside the quick `esc` `esc` mode): `esc`
 clears the search first and closes the page second · `up`/`ctrl+p`, `down`/`ctrl+n` move ·
@@ -1955,7 +1966,7 @@ on the `jobs` label toggles the section; `enter` on a job row opens that job's p
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
 cards a tap opens, its foot is a `‹ back` bar in place of the key legend
-`enter open its room · type to filter`, and the strip that opens it is one full-width door
+`enter open its room · type to filter this list`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 

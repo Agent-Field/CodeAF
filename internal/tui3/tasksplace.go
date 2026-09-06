@@ -85,17 +85,34 @@ type tasksItem struct {
 	// it can be read from, and window is what that window is CALLED.
 	away   bool
 	window string
+	// here says the window named above is ANOTHER CONVERSATION OF THIS PROCESS.
+	// One terminal holds any number of conversations, all of them running
+	// (keeper.go), and every one of them writes the same presence file every
+	// other terminal on the project reads — so its work arrives on this page
+	// through the away authority like a stranger's, and the way to it is `tab`
+	// rather than another terminal. It is a fact about THE WINDOW, not about the
+	// door: what the door is is decided once, in [app.taskOwnerOf].
+	here bool
 }
 
-// pick reports whether the CURSOR may stand on this row.
+// pick reports whether the CURSOR may stand on this row, and EVERY ROW OF WORK
+// THIS PAGE DRAWS ANSWERS YES.
 //
-// ANOTHER WINDOW'S WORK IS READ AND NOT PRESSED. The two doors this surface has
-// onto a piece of work are a ROOM, which is a live lane onto a node in THIS
-// session's graph, and the record CARD, which is minted out of a landed row.
-// Work running in another window has neither — no node here to open, and nothing
-// landed to point at — so the cursor steps over it rather than promising a door
-// that does not exist ([app.taskSheetAwayRows] states the same law).
-func (i tasksItem) pick() bool { return !i.away }
+// A VISIBLE ROW IS NEVER INERT. This used to answer false for work another
+// window is holding, on the argument that the two doors onto a piece of work —
+// a ROOM, which is a live lane onto a node in THIS session's graph, and the
+// record CARD, which is minted out of a landed row — are both missing for it.
+// The argument was sound about the doors and wrong about the row: a person
+// reading a list where nine rows take the cursor and the tenth silently refuses
+// it has been handed a screen that appears broken, and the answer they needed —
+// WHICH window is running this, and that they have to go there — was the one
+// thing pressing it could not tell them. So the row is pressed, and what it
+// opens is the card that says exactly that ([app.taskSheetAwayCard]).
+//
+// The door it opens is still not a room and still not a mention. Nothing here
+// invents a lane into another process's graph; what changed is that the refusal
+// is now a page a person can read rather than a keystroke that does nothing.
+func (i tasksItem) pick() bool { return true }
 
 // tasksMine is what the window drawing this page knows that no file does yet.
 //
@@ -113,6 +130,12 @@ type tasksMine struct {
 	rows []tasksMineRow
 	// away is what the other windows on this project have out right now.
 	away []session.ElsewhereTask
+	// here is which of those windows are conversations THIS PROCESS is holding,
+	// by conversation id ([app.heldSessions]). The presence reading cannot tell —
+	// a stowed conversation of this terminal writes the same file as a terminal
+	// across the desk — and the difference decides whether the row's door is a
+	// switch or a second view onto the engine.
+	here map[string]bool
 }
 
 // tasksMineRow is one of those rows: the work, and whether it is happening.
@@ -219,7 +242,10 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 			ID: task.Task.ID, Label: title, Title: title,
 			Status: task.Task.State, SessionID: task.SessionID,
 		}
-		put(tasksKeyOf(entry), tasksItem{entry: entry, runs: true, away: true, window: task.Session})
+		put(tasksKeyOf(entry), tasksItem{
+			entry: entry, runs: true, away: true, window: task.Session,
+			here: mine.here[strings.TrimSpace(task.SessionID)],
+		})
 	}
 
 	// A FAMILY STANDS TOGETHER under its most urgent member's section. Splitting
@@ -313,8 +339,20 @@ func tasksInTimeOrder(items []tasksItem, now time.Time) []tasksItem {
 // world's own row for the session that ran it where the scan found one, and this
 // conversation otherwise — which is the honest answer for work this window
 // started and no file has heard about yet.
+//
+// AND THE FALLBACK IS ONLY EVER OFFERED FOR OUR OWN WORK. A row NAMES its owner
+// ([session.TaskIndexEntry.SessionID]), and where that name is somebody else's
+// and the scan has not met them, the honest answer is that this surface does not
+// know the conversation — not this one. Falling through was a quiet
+// misattribution with a person-visible face: the card over a task another window
+// is running opened `out of <the conversation you are sitting in>`, which is the
+// one sentence on that page a person would act on, and it named the wrong owner.
+// A row with nothing behind it is the emptiness law's own answer, and every
+// reader of this already drops an empty title ([tasksFacts],
+// [app.taskCardSourceLine]).
 func tasksRowFor(world session.World, mine tasksMine, entry session.TaskIndexEntry) session.SessionRow {
-	if id := strings.TrimSpace(entry.SessionID); id != "" {
+	id := strings.TrimSpace(entry.SessionID)
+	if id != "" {
 		for _, project := range world.Projects {
 			for _, row := range project.Sessions {
 				if row.ID == id {
@@ -322,6 +360,14 @@ func tasksRowFor(world session.World, mine tasksMine, entry session.TaskIndexEnt
 				}
 			}
 		}
+	}
+	// A NAME THIS SURFACE CANNOT PLACE IS STILL A NAME. The scan did not find the
+	// conversation, so nothing here knows what it is called — but it is not this
+	// one unless it says so, and no substitute for an owner is better than the
+	// wrong owner ([app.taskSheetOwnsEntry] refuses on the same rule, and states
+	// what it costs).
+	if id != "" && id != strings.TrimSpace(mine.row.ID) {
+		return session.SessionRow{}
 	}
 	return mine.row
 }
@@ -655,7 +701,8 @@ func tasksUnderWord(kids int) string {
 }
 
 // at is the work drawn on one painted line, and whether the cursor may stand
-// there. Prose, air and another window's rows are deliberately holes.
+// there. Prose and air are deliberately holes; every row of WORK is a stop,
+// whoever owns it ([tasksItem.pick] states why).
 func (r tasksReading) at(lines []tasksLine, i int) (tasksItem, bool) {
 	if i < 0 || i >= len(lines) || lines[i].kind != tasksLineTask {
 		return tasksItem{}, false
@@ -690,31 +737,34 @@ func (r tasksReading) head(width int, edge bool) string {
 		since = " since " + start
 	}
 	if r.whole == 0 {
-		return "work aforge ran on its own. nothing" + since + "."
+		return tasksHeadWord + " · nothing" + since
 	}
-	// THE FIGURE GETS ITS NOUN. `10,` is a number a person has to guess the unit
-	// of, and the comma after it spliced two clauses that were not a sentence —
-	// worse at sixty cells, where `10 since aug 20` read as if 10 were a sum of
-	// money. The count and the spend are one clause each, and the noun comes
-	// from the same helper the rest of this file counts with.
-	said := "work aforge ran on its own. " + itoa(r.whole) + " " + plural("piece", r.whole) + " of work" + since
-	// AND THE SPEND CLAUSE IS THE FIRST THING A NARROW FRAME GIVES UP, because
-	// the alternative is [placeHeadRow] cutting the sentence — and a figure with
-	// its end cut off is a wrong number, which is the one thing rowfit.go's law
-	// forbids anywhere on this surface. The count and the window edge are what a
-	// person reads this line for; the spend has a whole place of its own.
-	full := said + "."
+	// IT IS A HEADING AND NO LONGER A PARAGRAPH. It read `work aforge ran on its
+	// own. 14 pieces of work since aug 2, $34.10 between them.` — three clauses,
+	// the widest thing on the page, and the first thing every reader met. Two of
+	// them were wrong to lead with: the sentence taught the machinery's own idea
+	// of itself (`ran on its own`) instead of naming the place, and the SPEND is
+	// not what a person opens this page to find out. What they want is what is
+	// happening, which is four rows below and was being pushed down by prose.
+	//
+	// So: the place, the count, the window edge, in the punctuation every other
+	// heading on this surface uses.
+	said := tasksHeadWord + railSep + itoa(r.whole) + " " + plural("piece", r.whole) + " of work" + since
+	// THE SPEND IS LAST AND IS THE FIRST THING A NARROW FRAME GIVES UP, because
+	// the alternative is [placeHeadRow] cutting the line — and a figure with its
+	// end cut off is a wrong number, which is the one thing rowfit.go's law
+	// forbids anywhere on this surface. It has a whole place of its own.
 	if r.wholeCost > 0 {
-		between := " between them"
-		if r.whole == 1 {
-			between = " of it"
-		}
-		if whole := said + ", " + dollars(r.wholeCost) + between + "."; width <= 0 || ansi.StringWidth(whole) <= width {
+		if whole := said + railSep + dollars(r.wholeCost); width <= 0 || ansi.StringWidth(whole) <= width {
 			return whole
 		}
 	}
-	return full
+	return said
 }
+
+// tasksHeadWord names the place, in the word the switcher's own tab spells
+// (pages.go's [pageTasks]). One name for one place.
+const tasksHeadWord = "tasks"
 
 func tasksWindowStart(win session.UsageWindow) string {
 	win = win.Normalized()
@@ -823,13 +873,21 @@ func tasksSectionWord(section tasksSection) string {
 	case tasksRunning:
 		return taskSheetNowHead
 	case tasksParked:
-		// ONE WORD FOR ONE FACT, AND IT IS THE COLUMN'S. The rail already calls
-		// these nodes `parked` in its heading and in its footer, so the word is
-		// read out of the rail's own vocabulary rather than spelled a second time
-		// here — a second spelling is how the two surfaces came to disagree.
+		// ONE WORD FOR ONE FACT, AND IT IS THE COLUMN'S. The word is read out of
+		// the rail's own vocabulary rather than spelled a second time here — a
+		// second spelling is how the two surfaces came to disagree.
+		//
+		// THE COLUMN SPLITS WHAT THIS PAGE DOES NOT, and `waiting` is the honest
+		// word for both halves. The rail says `queued` for work with nothing in its
+		// way but a slot and `waiting` for work blocked behind other work; this
+		// section holds both, and every row in it is waiting for something.
 		return railGroupWords[railParked]
 	case tasksToday:
-		return "done today"
+		// `done today` HELD FAILURES. Three rows under it, one of them `× install
+		// the render toolchain · failed` — and `done` is the word this surface uses
+		// for work that came off. What is actually true of every row here is that
+		// it ENDED today, whatever it ended as, and each row still says which.
+		return "finished today"
 	default:
 		return taskSheetPastHead
 	}
@@ -882,8 +940,26 @@ func tasksRow(line tasksLine, width int, now time.Time, pal palette) string {
 	glyph, glyphInk := tasksGlyph(item, pal)
 	lead := glyph + " "
 	facts := tasksFacts(line, now, pal)
+	room := width - ansi.StringWidth(lead)
+	// THE SPEND ONLY EVER FILLS SPACE THE OTHER FACTS DID NOT WANT.
+	//
+	// Being LAST in the rank is not enough, and this row is where that showed.
+	// The fitter degrades a fact before it drops it ([rowTail], law 2), so a
+	// hundred-and-twenty-column frame cut `Annual is the default and the monthly
+	// price stays visible beside it.` down to `2 files` — and then spent the cells
+	// that bought on `$0.27`. The person lost the sentence saying what the work
+	// came to and kept the one figure they did not open this page for, which is
+	// the same inversion the reorder was meant to end, arriving through the
+	// spelling ladder instead of through the order.
+	//
+	// So money is asked a question no other fact is asked: is every fact ahead of
+	// it being said WHOLE? If any of them had to be shortened, the row has already
+	// run out of room for what it is about, and the figure is not drawn at all.
+	if !tasksSpendEarnsCells(tasksLabel(item.entry), facts, room) {
+		facts = facts[:len(facts)-1]
+	}
 	plan := rowPlan{primary: tasksLabel(item.entry), fields: tasksFields(facts)}
-	label, tail := plan.fit(width - ansi.StringWidth(lead))
+	label, tail := plan.fit(room)
 	left := glyphInk(glyph) + " " + tasksLabelInk(item, pal)(label)
 	if tail == "" {
 		return fit(left, width)
@@ -908,17 +984,32 @@ type tasksFact struct {
 // tasksFacts is the ranked prefix: what a person scanning this list reads, in
 // the order they read it.
 //
-// THE ORDER IS THE ARGUMENT. A SHUT FOLD'S COUNT comes first because it is not
-// a fact about the work at all — it is the row saying that three more rows are
-// behind it, which is the difference between a page a person believes they have
-// read and one they have not. The note is next because it is the only thing
-// that can CORRECT the glyph — a claim of running with nobody behind it, or work
-// happening in another window — and a row whose mark and whose words disagree is
-// worse than a row missing a fact. The age follows, because every section here
-// is named by time and the age is what a person scans down; then money, the
-// figure nobody can recover by looking; then where the work came from, then what
-// came of it, and last the kind — a setting somebody chose before the work
-// started, which is news to nobody afterwards.
+// THE ORDER IS THE ARGUMENT, AND THE TAIL IS SPENT FROM THE END, so this is also
+// what a narrow frame gives up and in which order.
+//
+// A SHUT FOLD'S COUNT comes first because it is not a fact about the work at all
+// — it is the row saying that three more rows are behind it, which is the
+// difference between a page a person believes they have read and one they have
+// not. The note is next because it is the only thing that can CORRECT the glyph —
+// a claim of running with nobody behind it, or work happening in another window —
+// and a row whose mark and whose words disagree is worse than a row missing a
+// fact. The age follows, because every section here is named by time and the age
+// is what a person scans down. Then WHERE THE WORK CAME FROM and WHAT IT IS
+// DOING, which are the two facts a person acts on: whose it is, and whether it
+// needs them.
+//
+// AND MONEY IS LAST. It used to sit fourth, in front of the owner and the state,
+// and it was also the only fact on the row with an ink of its own — so `$3.10`
+// was the loudest thing on a row whose state word had been cut off to make room
+// for it. Nobody opens this page to find out what work cost; the spend has a
+// place of its own, and this row's job is to say what the work is and what it
+// needs.
+//
+// THE KIND IS GONE ENTIRELY. It spelled `adaptive` next to `18 of 40` on a
+// running row — an implementation word competing with the progress a person was
+// actually reading, describing a setting somebody chose before the work started
+// that changes nothing they can do now. A capability that changes no action is
+// not a fact worth a cell.
 func tasksFacts(line tasksLine, now time.Time, pal palette) []tasksFact {
 	item := line.item
 	entry := item.entry
@@ -947,11 +1038,35 @@ func tasksFacts(line tasksLine, now time.Time, pal palette) []tasksFact {
 		{field: fold},
 		{field: rowSay(tasksNote(item))},
 		{field: tasksAgeField(item, now)},
-		{field: money, ink: placeMoneyInk(pal)},
 		{field: rowSay(source)},
 		{field: tasksMiddleField(entry)},
-		{field: rowSay(session.TaskKindWord(entry.Kind))},
+		{field: money, ink: placeMoneyInk(pal)},
 	}
+}
+
+// tasksSpendEarnsCells reports whether the money fact ([tasksFacts] puts it
+// last) has earned the cells it would take: every fact ahead of it fits at its
+// LONGEST spelling in the room the name leaves behind.
+//
+// IT MEASURES AND DOES NOT DRAW. The answer is handed back to [tasksRow], which
+// drops the fact before fitting, so there is still exactly one fitter deciding
+// what a row says — this only decides what is offered to it.
+func tasksSpendEarnsCells(name string, facts []tasksFact, room int) bool {
+	if len(facts) == 0 {
+		return true
+	}
+	money := facts[len(facts)-1].field
+	if !money.known() {
+		// Nothing to weigh: a row that cost nothing says nothing about cost.
+		return true
+	}
+	plan := rowPlan{primary: name}
+	left := room - ansi.StringWidth(plan.label(room)) - rowGutter
+	if left <= 0 {
+		return false
+	}
+	whole := rowAll(tasksFields(facts[:len(facts)-1]))
+	return ansi.StringWidth(whole) <= left
 }
 
 // tasksFields is the facts as the fitter takes them.
@@ -1115,6 +1230,14 @@ func tasksLabelInk(item tasksItem, pal palette) func(string) string {
 // about the work, only the fact that the window went.
 func tasksNote(item tasksItem) string {
 	if item.away {
+		// A CONVERSATION OF THIS TERMINAL IS NOT `another window`. It arrives
+		// through the same presence reading, because that is the only authority for
+		// work nothing has landed a row for yet — but the place it is in is this
+		// one, and a row that said otherwise sent a person looking for a terminal
+		// they are already sitting at ([taskOpenHereWord]).
+		if item.here {
+			return taskOpenHereWord + taskAwayNoteName(item.window)
+		}
 		return taskAwayNote(item.window)
 	}
 	if item.entry.Live() && !item.runs {

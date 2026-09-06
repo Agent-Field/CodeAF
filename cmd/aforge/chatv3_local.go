@@ -151,6 +151,11 @@ func openChatV3Local(launch localLaunch) error {
 		return runHostOnce(agent, launch.once)
 	}
 	options := hostOptions(client, agent, "", welcome, launch.pick)
+	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
+	// here rather than inside [hostOptions] because it is a second DIAL of this
+	// road and not a use of this client's connection, and this is the door that
+	// knows the road (chatv3_taskowner.go says what makes it safe).
+	options.OpenTaskOwner = localTaskOwnerDoor(welcome.Workspace)
 	// The draft this terminal has half-typed is keyed by the workspace and NOT
 	// by a machine, because there is no machine: a person who takes the host
 	// road today and the in-process door tomorrow is in the same place both

@@ -198,6 +198,20 @@ type place interface {
 	window(a *app, key string) bool
 	// box is the composer this place types into — the shared one by default.
 	box(a *app) *editor
+	// resting is WHAT THAT BOX SAYS WITH NOTHING TYPED IN IT, and "" takes the
+	// router's own sentence.
+	//
+	// IT EXISTS BECAUSE THE SLOT WAS TELLING A LIE ON ONE PLACE. Every place's
+	// box row said `say what you want done` — which is exactly right where the box
+	// sends a message, and exactly wrong on the tasks place, where the box IS the
+	// filter and every printable key narrows the list. A person read an invitation
+	// to give an instruction, typed one, and watched their history disappear
+	// instead. The box was always the place's own editor ([placeTasks.box] has
+	// returned the query for as long as the place has existed) and the pointer has
+	// always resolved a caret against whatever was drawn there
+	// (placemouse.go's [app.placeBoxPress]); the only thing that was shared and
+	// should not have been is the sentence.
+	resting(a *app) string
 	// note is the one line a place may say about what it is HOLDING, drawn under
 	// the rule and above the composer.
 	note(a *app, width int) []string
@@ -265,6 +279,7 @@ func (placeBase) verbs(a *app) []verb                     { return nil }
 func (placeBase) alt(a *app, letter rune) bool            { return false }
 func (placeBase) window(a *app, key string) bool          { return false }
 func (placeBase) note(a *app, width int) []string         { return nil }
+func (placeBase) resting(a *app) string                   { return "" }
 func (placeBase) changed(a *app, since time.Time) int     { return 0 }
 func (placeBase) summary(a *app) string                   { return "" }
 func (placeBase) press(a *app, y int) bool                { return false }
@@ -1438,9 +1453,22 @@ const (
 	mapCloseWords = "esc close"
 )
 
-// placeRestWord is what this place's box row says with nothing typed in it, and
-// it is the same sentence on every place — home included (SCREEN 2b).
+// placeRestWord is what this place's box row says with nothing typed in it.
+//
+// IT IS THE SAME SENTENCE ON EVERY PLACE THAT SENDS ONE — home included (SCREEN
+// 2b) — AND THE PLACE'S OWN WHERE THE BOX DOES SOMETHING ELSE. The design's
+// argument for one sentence is that the box is one box wherever you stand, and
+// that argument holds exactly as far as the box doing one thing. On the tasks
+// place it does not: there is no message to send from there, every printable key
+// goes to the filter ([placeTasks.box]), and the shared prompt was inviting an
+// instruction into a slot that could only ever narrow a list ([place.resting]
+// carries the whole of that story).
 func (a *app) placeRestWord() string {
+	if pl := a.showing(); pl != nil {
+		if said := strings.TrimSpace(pl.resting(a)); said != "" {
+			return "› " + said
+		}
+	}
 	return "› " + placeRestWord
 }
 

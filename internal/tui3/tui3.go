@@ -269,6 +269,70 @@ type Conversation struct {
 	ApplyApprovals   func() error
 }
 
+// TaskOwnerAsk names the conversation a task page wants to look into.
+//
+// IT IS THE TRANSCRIPT AND NOT THE SESSION ID, because that is what the wire
+// already carries ([remote.Hello.Session] is "an explicit session file to
+// open") and what every other door on this surface passes around. The id is
+// what the RECORD joins on; the path is what a door opens.
+type TaskOwnerAsk struct {
+	// Session is the owner's transcript, exactly as the record spells it.
+	Session string
+	// Workspace is the project that conversation belongs to, so a door that has
+	// to choose an engine has the same answer the row was read under.
+	Workspace string
+}
+
+// TaskOwnerView is one attached view onto somebody else's conversation.
+//
+// EVERY FIELD IS A CAPABILITY OR THE END OF ONE. There is no agent here and no
+// session: a page that held either would be a second surface, and this is a
+// reader with a way to close itself.
+//
+// IT READS AND DOES NOT WRITE, deliberately. The ask was to be able to SEE work
+// running in another conversation; typing into it needs that conversation's
+// keyboard, a message identity the owning window would recognise, and a draft
+// belonging to the task rather than to the conversation on screen — none of which
+// a reader needs and all of which are somebody else's lane. So the door attaches
+// as a watcher ([remote.Hello.Watch]) and there is no steering field to misuse.
+type TaskOwnerView struct {
+	// Session is the transcript the engine ACTUALLY opened, and the caller
+	// checks it against what it asked for before drawing anything. An engine
+	// that answered about a different conversation — a key that did not match,
+	// a session that had been replaced — would otherwise put one task's
+	// transcript under another task's name, which is the exact failure the
+	// owner check exists to end.
+	Session string
+	// Room reads one task's journal tail on the owner's machine, which is the
+	// same bounded reading a hosted room already makes ([Options.TaskRoom]). It
+	// is the whole capability: nil is a view with nothing to show, which the
+	// surface refuses rather than draws.
+	Room func(id uint64, tail int) (session.TaskRecord, error)
+	// Watch is THE OWNER'S OWN ACCOUNT OF WHAT ITS WORK IS DOING: the standing
+	// task subscription that conversation already publishes
+	// ([remote.MethodTaskWatch]), which replays its whole roster the moment it is
+	// opened and then pushes one notice per change. It hands back the lane and the
+	// way out of it.
+	//
+	// IT EXISTS BECAUSE THE JOURNAL CANNOT ANSWER THE QUESTION. A reading is a
+	// report, a tail and whether the file is still there ([session.TaskRecord] has
+	// no state), and the row the page was opened from is a photograph of one
+	// moment. Without this the page had to GUESS whether the work was still going,
+	// and the only thing near enough to guess from was the presence directory of
+	// the workspace THIS window happens to be in — which does not contain another
+	// project's conversation at all, so a task in one read as finished the instant
+	// it was opened.
+	//
+	// Nil is a door that cannot offer it. The page then says what the row said and
+	// says that it is the last thing this window was told, rather than claiming a
+	// present it cannot see.
+	Watch func() (<-chan session.Event, func())
+	// Close gives back THIS VIEW'S connection and nothing else. The conversation
+	// goes on running, the window that owns it keeps its keyboard, and the
+	// engine is untouched.
+	Close func() error
+}
+
 // OpenRouterFlow is one browser connection that will hand this profile a model
 // key. The concrete loopback listener belongs to the door, not the surface;
 // this is the smallest seam the setup screen needs to show it, wait for it and
@@ -420,6 +484,38 @@ type Options struct {
 	// what the hosted door and every test that predates this seam are.
 	Open  func(workspace, transcript string) (Conversation, error)
 	Start func(workspace string) (Conversation, error)
+
+	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
+	// RUNNING, for as long as one task page is on screen: a reader for that
+	// task's journal, and the close that gives the view back.
+	//
+	// IT IS CALLED OFF THE PROGRAM LOOP, always ([app.openOwnerRoom] runs it as a
+	// command and numbers the ask). This is a socket and a round trip, and a
+	// surface that waited for it on the keystroke would stop drawing and stop
+	// answering `esc` for as long as another process took to reply.
+	//
+	// IT IS THE ANSWER TO "I CANNOT CLICK INTO THAT TASK". The tasks place draws
+	// every piece of work this project has run, and the rows a person most wants
+	// are the ones happening right now — in the conversation next door, which
+	// this window has no lane into. The lane exists: `aforge chat` is a SURFACE
+	// talking to this workspace's engine over a socket (cmd/aforge's
+	// chatv3_local.go), and that engine holds every conversation open. So the door
+	// dials the engine it is already talking to, names the conversation with
+	// [remote.Hello.Join] — take the one that is already open, never start one —
+	// and [remote.Hello.Watch], which refuses this view the keyboard by
+	// construction. The work is not restarted, not interrupted and not moved, and
+	// the window that owns it does not lose control of it.
+	//
+	// IT IS A SEPARATE SEAM FROM [Options.Open] BECAUSE IT MUST NOT SWAP
+	// ANYTHING. Open resumes a conversation and, over a socket, tells the engine
+	// which session THIS connection is on — which would take every attached
+	// window with it. This one opens a second connection, uses it, and closes it.
+	//
+	// Nil is a window that cannot do this: an in-process launch, a test, a build
+	// with no engine road. The surface then says one line and offers the card,
+	// which is what a capability that cannot work is owed (a capability that
+	// cannot work is absent, not broken).
+	OpenTaskOwner func(TaskOwnerAsk) (TaskOwnerView, error)
 
 	// AnchorWorkspace gives a project-less conversation the repository or folder
 	// the person named. It returns the resolved path because a repository subdir

@@ -1378,9 +1378,21 @@ bar disappeared* below.
 
 The roster is a forest. Each root task is followed by its whole family, with children
 joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
-urgent member: needs you, running, idle, parked, then done. There are no state-group
+urgent member: needs you, running, queued, waiting, then done. `queued` is admitted work
+with nothing in its way but a slot; `waiting` is admitted work held behind other work, and
+the row says what it is held behind. (They were `idle` and `parked`, which were two
+unrelated words for one shape of fact and disagreed with the tasks page, where the same
+node read `parked`.) There are no state-group
 headings. The footer keeps those totals as counts, such as
 `2 need you · 3 running · 12 done`.
+
+**The pieces INSIDE a family are ranked the same way.** They used to be drawn in the order
+the session admitted them, so a run that hands four errands out and finishes them one at a
+time read `done, done, running, running` — with the only rows anybody was watching at the
+bottom of the block. The same ladder now applies all the way down: needs you, running,
+queued, waiting, done, with admission order deciding between two pieces in the same state.
+Two settled siblings therefore never trade places while you are looking at them. The kin
+line under a task's own page shows the same order.
 
 Folding belongs to each node. Families with a running, needs-you, or idle member start
 open. Settled families and families containing only parked work start folded to their
@@ -1398,9 +1410,19 @@ When two or more workers are running anywhere in the live work, the section labe
 the count as a quiet tail, for example `tasks · 4 working`. The number is the payload. At
 zero or one running worker there is no tail at all, so the label remains `tasks`.
 
-A task's row opens with two glyphs answering two questions: its state, which changes, and
-its own identity mark, which never does. Then the name, then its id as `#7`, dim, at the far
-end — and the id stands down when the name would be left under 12 cells.
+## What is the diamond symbol next to each task?
+
+A task's row opens with two cells: the **state** glyph, which changes as the work does, and
+a dim `◆` — one marker, the same on every task, saying only that this row is a piece of
+work. Then the name, then its id as `#7`, dim, at the far end — and the id stands down when
+the name would be left under 12 cells.
+
+The marker used to be one of eight shapes in one of six colours, picked from the task's id,
+so that a given task wore `◆` teal everywhere. That is gone. It had to be learned, it was
+relearned every session because ids start again in each conversation, and it told you
+nothing you could act on — the `#7` already says which task, and the state glyph and its
+word already say what it is doing. On a terminal with no colours or no unicode the marker is
+`#`, and nothing is lost with it, because nothing was carried by it.
 
 **The name is the task's own title, cut to its first three words** — `Fix the nil-map`,
 `Collect the sources` — and that is the name it wears everywhere: the column, the strip
@@ -1735,7 +1757,7 @@ ctrl+. earlier
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   tasks place opens with every task this machine has run on it, grouped by what you do next
-  — `needs your look`, `running`, `parked`, `done today`, `earlier`. `/history` is the same page.
+  — `needs your look`, `running`, `waiting`, `finished today`, `earlier`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
   `ctrl+. view more`. There is only ever one such line.
@@ -1921,40 +1943,54 @@ The page takes the whole frame, the way the settings panel does. `esc` closes it
 pages here take the frame — the settings panel, this one, and `/home` — and **only one of
 them is ever up**: opening any one closes the other two.
 
-It opens on one sentence saying what it is holding — for example
-`work aforge ran on its own. 148 pieces of work since aug 11, $34.10 between them.` The
-count is every row the time window holds, the date is the far edge of that window, and the
-money is what those rows are known to have cost. One row reads `1 piece of work … $0.27 of
-it.` A window with no known start drops the `since`, and rows nobody priced drop the money:
-zero means "nobody published a price", never "free". **A frame too narrow for the whole
-sentence drops the money clause** rather than cutting the line, because half a figure is a
+It opens on one heading saying what it is holding — for example
+`tasks · 148 pieces of work since aug 11 · $34.10`. The count is every row the time window
+holds, the date is the far edge of that window, and the money is what those rows are known
+to have cost. A window with no known start drops the `since`, and rows nobody priced drop
+the money: zero means "nobody published a price", never "free". **A frame too narrow for
+the whole line drops the money clause** rather than cutting it, because half a figure is a
 wrong number.
+
+It used to be a paragraph — `work aforge ran on its own. 148 pieces of work since aug 11,
+$34.10 between them.` — which was the widest thing on the page, taught the machinery's own
+idea of itself before naming anything, and pushed the rows a person came for further down.
+The place's name, its count and its window are what the line is for.
 
 **The count is a claim about the PLACE and never about what you have typed.** With a filter
 on, the sentence goes on counting every row the window holds — a word that matches nothing
 does not make the machine's history empty. What matched is said on the note line at the
 bottom instead: `filter · zzz · nothing matches`.
 
-**When the time window holds none of it, that sentence says `work aforge ran on its own.
-nothing since jul 29.`** — in words, because a `0` there is the figure the emptiness law
-forbids, and with the date still on it because the date is what says the window is the
-reason. The sentence stays on the frame in that state: it is the only thing naming the
+**When the time window holds none of it, that line says `tasks · nothing since jul 29`** —
+in words, because a `0` there is the figure the emptiness law forbids, and with the date
+still on it because the date is what says the window is the reason. The sentence stays on the frame in that state: it is the only thing naming the
 window the four shift-arrows move, so a page that replaced it with the teaching prose
 would have swallowed the way back. The teaching prose is for a machine that has run
 nothing IN ANY WINDOW, which is a different screen.
 
 Under it, **five sections, in the order you act on them**: `needs your look`, `running`,
-`parked`, `done today`, then `earlier`. `running` is work a worker is actually inside;
-`parked` is work that has been admitted and that nothing is doing — waiting behind the
-piece that needs a person, or behind a slot — and it is the word the column uses for the
-same nodes. A parked row **carries no age at all**: it has not started, so there is nothing
-to count from. Nothing is grouped by whose work it is — a task this
-conversation started sits beside one another window is running and one a session you closed
-last week finished, filed by what you would do about it next.
+`waiting`, `finished today`, then `earlier`. `running` is work a worker is actually inside;
+`waiting` is work that has been admitted and that nothing is doing — behind the piece that
+needs a person, or behind a slot. A waiting row **carries no age at all**: it has not
+started, so there is nothing to count from. Nothing is grouped by whose work it is — a task
+this conversation started sits beside one another window is running and one a session you
+closed last week finished, filed by what you would do about it next.
 
-Each row is one line: a state glyph, then **the name, whole**, and then a dim tail of
-facts joined by ` · ` — how long ago, what it cost, the conversation or project it came out
-of, what it is doing or what it came to, and its kind (`adaptive`, `saved shape`, or `job`).
+`finished today` is **everything that ended today, however it ended** — work that came off,
+work that failed, work somebody stopped. It was called `done today` and held all three,
+which made `done` untrue of some of its own rows; each row still says which it was.
+
+Each row is one line: a state glyph, then **the name, whole**, and then a dim tail of facts
+joined by ` · ` — how long ago, the conversation or project it came out of, what it is doing
+or what it came to, and last what it cost.
+
+**The tail is ordered by what you would act on**, and it is spent from the right, so the
+cost is the first thing a narrow frame gives up. It used to sit second, in front of the
+conversation and in front of the state, and it is the only fact on the row with a colour of
+its own — so `$3.10` was the loudest thing on a row whose state word had been cut off to
+make room for it. The row's **kind** is no longer drawn at all: `adaptive` beside `18 of 40`
+was an implementation word competing with the progress you were reading, about a choice made
+before the work started that changes nothing you can do now.
 
 **The name keeps every cell it asks for before a fact gets one**, and is shortened only
 where the frame cannot hold it alone; the facts behind it are dropped from the end as the
@@ -1995,7 +2031,7 @@ this window's own live work, and the window next door are read together and join
 conversation and the id, with the freshest of them winning.
 
 **A family can be folded away.** Where it is, the section's own heading says so —
-`done today · 2 of 5 shown` — and `→` opens it. Everything else the window holds has a
+`finished today · 2 of 5 shown` — and `→` opens it. Everything else the window holds has a
 line, and the page scrolls —
 `↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
 the list runs on below the bottom of the window: three rows, each a step fainter, saying
@@ -2007,7 +2043,7 @@ At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by secti
 not the rows drawn, which is why it can read a larger number than you can count on the
 screen when a family is folded. The section heading is where that difference is said. It
 reads such as
-`2 needs your look · 3 running · 12 done today · 148 earlier` — a section with nothing in it
+`2 needs your look · 3 running · 12 finished today · 148 earlier` — a section with nothing in it
 is not counted at all — and under it the keys.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
@@ -2031,7 +2067,7 @@ the one fact it was opened to report.
 The list is as long as the record is — internal to aforge each project's record keeps the
 most recent 2000 tasks — and the page scrolls rather than cutting it.
 
-## Work running in another aforge window — a task started in my other terminal
+## Work running in another aforge window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing, can I read another conversation's task over ssh
 
 Two aforge windows open on one directory can see each other's running work, and `/history`
 is where they see it.
@@ -2052,15 +2088,60 @@ running
 ```
 
 - The right-hand note is dim and says `another window`, followed by that window's own name
-  when it has settled on one. A window nothing has named says only `another window`.
+  when it has settled on one. A window nothing has named says only `another window`. A row
+  whose conversation **this terminal** is holding says `open in this terminal` instead.
 - The row's glyph is the task's own state, so `▸` is running and `◌` is queued behind
   something.
-- **These rows are read, not pressed.** The cursor steps straight over them and `enter` does
-  nothing: a room is a live lane onto a task in *this* session's work, and a `@` mention
-  resolves against work that has **landed** — a task still running in another window is
-  neither. Go to that window to act on it. On a page whose only rows are another window's,
-  the foot reads `type to filter` and nothing else — it names no `enter` and no verb,
-  because neither does anything there.
+- **These rows are pressed, and every one of them opens something.** The cursor stands on
+  them like any other row of work, `enter` and a click are the same door, and which door it
+  is depends on where the work actually is. The foot always names the one you have.
+
+**`enter go to that conversation`** — the work belongs to another conversation **this
+terminal** is holding. Pressing it switches to that conversation, standing in that task's
+own room. The conversation you were in goes on running, exactly as it does for any other
+switch, and `tab` comes back.
+
+**`enter read it as it runs`** — the work belongs to a conversation the engine is running
+that this window can join. Pressing it opens **that task's own transcript**, live, updating
+as the work goes. The trail at the top reads `reading in <that conversation>` so nothing on
+the page can be mistaken for this conversation's own work. `esc` returns.
+
+This page is **read-only**. The keyboard for that task belongs to the window that owns it,
+so the message box says `Reading this task… (esc: main)` and sending anything answers
+`this window is reading this task — go to the conversation that owns it to steer or stop
+it`, with your words still in the box. There is no stop, no model change and no effort
+change on it either: those act on work, and this window is looking at somebody else's.
+Nothing about opening it takes control away from the window that owns the work, and closing
+the page gives the connection back.
+
+**What the page says about the work is what that conversation says about it.** The reading
+opens a standing subscription to the owner's own task list — the same one every window
+attached to a conversation gets — so the state on the page is the owner's, live: work that
+lands while you are reading it stops saying it is running, and the page stops asking for more
+of a journal that has ended. Nothing is inferred from files on this machine. If the door
+that opened the page cannot offer that subscription, the page still shows the transcript and
+adds one line saying so: `this window cannot ask that conversation what its work is doing
+now — the state above is what the list last said`.
+
+**And it works where the engine is local.** `--host` and `--at` do not draw rows for other
+conversations at all — the presence those rows are minted from is on the engine's machine and
+is not carried across the connection — so over a remote session there is no such row and no
+such page. What you get there is the ordinary record card.
+
+**`enter where it is running`** — nothing on this machine can reach that conversation. What
+opens is a card saying where the work is and the one thing to do about it:
+
+  ```
+  this is running in another window on this project: docs pass.
+  go to that window to read it, steer it or stop it.
+  ```
+
+  A window that has not settled on a name says only `this is running in another window on
+  this project.` `esc` backs out to the list.
+
+- **That card offers no mention.** A `@` name resolves against work that has **landed** and
+  this has not, so the card's foot is `↑↓ scroll · esc back` with no `m puts it in your
+  message` on it, and `m` does nothing there.
 - **A task nothing has named is left off**, because a row with no words on it says nothing
   anybody can act on.
 - They **leave on their own** when that window closes or finishes the work. Nothing
@@ -2176,10 +2257,14 @@ wisp · /Users/ada/code/wisp
 - Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
   itself and nothing wider.
 
-## Searching the task page: type to filter, find an old task by name
+## Searching the task page: type to filter, find an old task by name, why does the tasks box say type to filter this list, my cursor jumped to another task while I was reading
 
 **Just type.** On the task page every printable key — letters, digits and the space —
-builds a filter, and both sections narrow against it as you go:
+builds a filter, and both sections narrow against it as you go. The message box at the foot
+of this place says so itself: it rests on `type to filter this list` rather than the
+`say what you want done` every other place shows, because there is nothing to send from here
+and a box inviting an instruction over a slot that only filters was the one thing on the
+screen telling you the wrong story.
 
 ```
 filter · parser
@@ -2317,7 +2402,7 @@ answer a key — but each is reshaped so a finger can do the flow end to end:
    cells apart, the strip at phone width is a single full-width row that says what is there
    and that it opens: `▸ 3 tasks · 1 running`. The `▸` is the same fold glyph the rest of
    the phone screen folds with, the count is how many tasks are live, and the tail is the
-   most urgent of them — `running`, or `needs you`, or `idle`. One task still draws the
+   most urgent of them — `running`, or `needs you`, or `queued`. One task still draws the
    door: `▸ 1 task · running`. A tap **anywhere** on the row opens the roster page.
 2. **The roster is a list of cards.** Each task is a two-line card a thumb goes into — its
    name and state on top, and what it came to with how long ago under it. The list
@@ -2344,7 +2429,7 @@ door — they are the ones above, reshaped:
 - **The roster's rows** are two-line cards, each a full-width target, and one press opens it
   — a room, or the record card — which is what a click already did at every width.
 - **The roster's foot** is a `‹ back` band in place of the key legend
-  `enter open its room · type to filter`. Tap it to go back to the conversation.
+  `enter open its room`. Tap it to go back to the conversation.
 - **The record card's foot.** `m puts it in your message · ↑↓ scroll` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
@@ -2396,7 +2481,9 @@ which the outcome above is the first sentence.
 - **`out of <conversation>` names where the work came from**, spelled the way the row on the
   list spells it, so the page is never a smaller answer than the row that opened it. It is
   the project's name where nothing has titled the conversation yet, and it is left off
-  where nothing knows either.
+  where nothing knows either — including where the row belongs to a conversation this
+  machine's scan has never met. It is never filled in with the conversation you are
+  sitting in: that is the one answer that is certainly wrong.
 - **Work that failed did not land.** The clock clause follows the state in front of it:
   `done · landed 3h ago`, and `failed · stopped 8d ago` — `landed` is this program's word
   for work that arrived, and it was drawn over a run nothing came of.
@@ -2454,6 +2541,32 @@ A landed task of this session's, already drawn on the column, does not earn the 
 would be offering to show you what you are looking at. So a first-ever session in a fresh
 directory, with nothing folded and no record behind it, has no door line at all, and that
 is not a bug. It is never drawn as a count of nothing.
+
+## Which task a row opens — two tasks numbered 7, a row opened a different task, the wrong transcript
+
+**A task is named by two things: the conversation that ran it and its number inside that
+conversation.** Numbers start again at 1 in every conversation, so `7` names a different
+piece of work in each of them, and the tasks page can be holding several rows numbered 7 at
+once — one this window is running, one an earlier conversation ran, one a window next door
+has out.
+
+Pressing a row opens **that row's** task, and the owner is what decides which door it gets:
+
+- a row this conversation is holding opens its **room** — the live page, with the box
+  talking to it;
+- a row another conversation ran opens its **card** — the record, and the last thing that
+  task said;
+- a row another aforge **window** is running opens the card that says which window has it
+  (above).
+
+A row's title is not what identifies it. Two conversations that ran a task numbered 7 with
+the same words are two pieces of work, and the page opens the one you pressed. It did not
+always: the number and the title were the whole of the match, so a landed row from a
+conversation that closed months ago could open this window's live task 7 — a room that drew
+a real transcript belonging to a different task. If you are on a build that does that, the
+tell is the room's header naming work you did not press.
+
+`enter` and a click are the same door on every one of these rows, at every width.
 
 ## Walking into a task's room
 
@@ -2812,9 +2925,9 @@ is nothing to say:
 - **`handed out: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
   the session met them. The state is the same word the roster uses: `queued`, `working`,
   `finishing`, `waiting`, `done`, `incomplete`, `failed`, `stopped`, `needs your look`. A piece that is
-  itself held behind another piece says only `parked` here — the word the column uses for
-  it, and not `queued`, which would promise a scheduler that is not coming; open its own
-  room to see what it is behind.
+  itself held behind another piece says only `waiting` here — the word the column uses for
+  it, and not `queued`, which is the column's word for work with nothing in its way but a
+  slot; open its own room to see what it is behind.
 - **what this task waits on** is on the accent line itself, as its state word:
   `waits: <title>` names the prerequisites that have not finished. It is there rather than
   on a line of its own so the header never says the same thing twice.
@@ -4042,13 +4155,14 @@ stop, one word, wherever you reach it from.
 
 Pressing `x` on a run that has already finished does nothing but say so.
 
-## The tasks place — grouped work, folds, filtering and time-window keys
+## The tasks place — grouped work, folds, filtering and time-window keys, my cursor jumped to another task while I was reading
 
 The **tasks** place is the machine-wide history of work aforge ran, grouped by what you do
-next: `needs your look`, `running`, `parked`, `done today`, then `earlier` — where
-`parked` is admitted work nothing is doing, drawn with no age on it. Each task row can include
-its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
-cost, and age from the landing time its own record carries. Zero or unknown cost is left
+next: `needs your look`, `running`, `waiting`, `finished today`, then `earlier` — where
+`waiting` is admitted work nothing is doing, drawn with no age on it, and `finished today`
+is everything that ended today however it ended. Each task row can include its conversation
+or project, activity, age from the landing time its own record carries, and last its
+measured cost. The row's kind is not drawn. Zero or unknown cost is left
 blank, and so is an age whose older record never carried that landing time. A section with
 nothing in it is absent.
 
@@ -4057,10 +4171,21 @@ scrolls — there is no `▸ N more` and no fold to open. The window's own edge 
 the sentence the page opens on (`… since aug 11`), and nowhere else.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
-`↑` and `↓` move among task rows and skip the head sentence, the blank lines, the section
-words and any row another window is running. `enter` opens the task's **room** when it is a
-task this conversation is holding, and otherwise goes **inside** it — the record card. A row
-another window is running answers nothing at all.
+**The message box at the foot of this place says `type to filter this list`**, not `say what
+you want done` — on the tasks place there is no message to send and every printable key goes
+to the filter, so the box says what typing into it actually does. Every other place keeps the
+shared prompt. `↑` and `↓` move among task rows and skip the head sentence, the blank lines
+and the section words. `enter` opens the task's **room** when it is a task this conversation
+is holding, and otherwise goes **inside** it — the record card. Rows another window is running
+take the cursor too, and what `enter` does with one is *Opening a task another window is
+running*, below.
+
+**The cursor stays on the row it is on while the list re-files itself.** The page re-groups
+every few seconds, and a task finishing moves out of `running` and into `finished today` —
+which shifts every row below it. The cursor is remembered by the conversation-and-number pair
+that identifies the work, not by which line it was on, so a task landing while you are
+reading cannot move what `enter` is about to open. If the row you were on leaves the page
+entirely, the cursor parks on the nearest row that is still there.
 
 `shift+←` and `shift+→` move the time window backward and forward. `shift+↑` zooms from
 days to weeks and then months; `shift+↓` zooms back in. The window is re-grouped from the
@@ -4075,7 +4200,7 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · type to filter · alt+. map · tab next place
+enter open its room · → verbs: stop it · alt+. map · tab next place
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
@@ -4084,12 +4209,21 @@ changes with the cursor:
 - `enter open its room` over a task **this conversation is holding** — it has a room.
 - `enter go inside it` over work **another conversation ran** — no room exists, so `enter`
   opens the record card instead.
-- **no `enter` clause at all** over work **another window is running**: the cursor cannot
-  stop there, so naming a key would be the page promising a door it has not got.
+- `enter go to that conversation` over work running in a conversation **this terminal is
+  already holding**: the row switches to it and stands in that task's room.
+- `enter read it as it runs` over work running in a conversation **the local engine holds**
+  but this window is not in — the read-only page described in *Opening a task another window
+  is running*.
+- `enter about that window` over work this machine cannot reach at all, which opens the card
+  naming where it is.
 - `→ verbs: stop it` **only while the row has that verb** — see below.
-- `type to filter`, which is the only thing on screen that says the filter exists. While a
-  filter is on, that clause becomes `esc clear the filter`, because that is the key whose
+- `esc clear the filter`, **only while a filter is on**, because that is the key whose
   meaning just moved.
+
+**The filter is not named on this line.** It used to be — `type to filter` sat here to
+correct the message box two rows below, which was saying `say what you want done` over a slot
+that could only ever narrow the list. The box says the true sentence itself now, so repeating
+it on the foot would be one screen naming one thing twice.
 
 **`→` opens the row's verbs, and the tasks place has exactly one: `s stop it`.** It is
 offered over a task **this conversation is holding** that is still `queued` or `running` —

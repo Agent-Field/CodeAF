@@ -190,8 +190,10 @@ the place tab bar itself** (§4.4).
   `incomplete` / an age.
 - **Seams**: `TaskIndex()` (`/home/santosh/af-home/internal/session/task_index.go:437`) read
   off-loop through `a.loadTasks()` (`taskmention.go:109`); other windows through
-  `elsewhereAgent.Elsewhere()` / `ElsewhereExcept` (interfaces `taskview.go:355-369`, impl
-  `/home/santosh/af-home/internal/session/taskelsewhere.go:143,:154`), refreshed on a 3-second
+  `elsewhereAgent.Elsewhere()` (interface `taskview.go`, impl
+  `/home/santosh/af-home/internal/session/taskelsewhere.go:143,:154`) — the WHOLE reading minus
+  this conversation, with the ones this process holds classified rather than filtered out
+  (`app.heldSessions`, `tasksMine.here`, `taskowner.go`) — refreshed on a 3-second
   gate (`elsewhereEvery` :338, `refreshElsewhere` :393) — **and that refresh is synchronous, from
   inside layout** (:371-379). The card's journal tail is a `tea.Cmd` (`taskrecord.go:183`).
   Nothing shells out.

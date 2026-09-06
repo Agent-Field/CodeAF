@@ -81,14 +81,27 @@ func TestARootsRoomListsEveryPieceAndClaimsNoParent(t *testing.T) {
 			t.Fatalf("the spawned row is missing %q:\n%s", want, row)
 		}
 	}
-	// The order is the one the session met them in, which is the order the
-	// roster draws them in and the only order a family is allowed to use.
-	if at, then := strings.Index(row, "Read the law"), strings.Index(row, "Wire the seam"); at > then {
-		t.Fatalf("the pieces are out of the order the session met them in:\n%s", row)
+	// THE ORDER IS THE ROSTER'S, AND THE ROSTER'S ORDER CHANGED. It was arrival
+	// order alone, which put every settled piece of a family in front of the ones
+	// still going — a run that hands four errands out and finishes them one at a
+	// time read `done, done, running, running`, with the only rows anybody was
+	// watching at the bottom. Both surfaces now rank a family's members the way
+	// the column already ranked whole families: what needs a person, then what is
+	// running, then what is waiting, then what is over (task.go's [app.railKin]).
+	//
+	// So `Write the tree` (running) leads, `Wire the seam` (queued) follows, and
+	// `Read the law` (done) is last — and arrival order still decides between two
+	// pieces in the same state, which is what keeps the block still under somebody
+	// reading it.
+	live, queued, over := strings.Index(row, "Write the tree"),
+		strings.Index(row, "Wire the seam"), strings.Index(row, "Read the law")
+	if live > queued || queued > over {
+		t.Fatalf("the family's pieces are not ranked by what they need (%d/%d/%d):\n%s",
+			live, queued, over, row)
 	}
 }
 
-// A CHILD HELD BEHIND ANOTHER SAYS "parked" AND NOT THE WHOLE DEPENDENCY. The
+// A CHILD HELD BEHIND ANOTHER SAYS "waiting" AND NOT THE WHOLE DEPENDENCY. The
 // prerequisite's name belongs to the page a person would open to act on it; a
 // header row carrying three tasks' business says least about the one it is for.
 //

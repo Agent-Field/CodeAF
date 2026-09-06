@@ -256,7 +256,7 @@ func TestTheHistoryPageSeparatesItsSectionsWithABlankLine(t *testing.T) {
 	// AND THE PAGE OPENS ON WHAT IT IS HOLDING rather than on air: a blank line
 	// under the router's own rule would be the head of the page drifting away
 	// from it.
-	if got := strings.TrimSpace(plain(rows[0])); !strings.HasPrefix(got, "work aforge ran on its own.") {
+	if got := strings.TrimSpace(plain(rows[0])); !strings.HasPrefix(got, tasksHeadWord+railSep) {
 		t.Fatalf("the page opens on %q rather than on what it is holding", got)
 	}
 }

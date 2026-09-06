@@ -30,11 +30,16 @@ func railKinship(a *app, parent uint64, kids ...uint64) {
 // railRun plants one adaptive run: a root the person started, and the tree its
 // planner spawned under it.
 //
+// THE NODES ARRIVE IN ID ORDER AND THE COLUMN DOES NOT DRAW THEM IN IT. A
+// family's members are ranked by what they need — running, then waiting, then
+// over — with arrival order deciding between two in the same state (task.go's
+// [app.railKin]), so the drawn shape is:
+//
 //	1 Ship the port        running
-//	├─ 2 Read the law      done
 //	├─ 3 Write the tree    running
 //	│  └─ 4 Cut goldens    queued
-//	└─ 5 Wire the seam     queued
+//	├─ 5 Wire the seam     queued
+//	└─ 2 Read the law      done
 func railRun(a *app) {
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{}))
@@ -93,12 +98,22 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	want := []string{
 		// The column opens with the margin's own section label (margin.go), and the
 		// family is drawn whole under it.
+		//
+		// AND THE MEMBERS ARE RANKED, which is what changed here. They used to be
+		// drawn in the order the session met them, so a run that finishes its
+		// pieces one at a time put every settled row in front of the ones still
+		// going — `done, done, running, running`, with the only rows anybody was
+		// watching at the bottom of the block. The column already ranked whole
+		// FAMILIES this way and stopped at the family boundary; it now goes all the
+		// way down (task.go's [app.railKin]). Arrival order still separates two
+		// pieces in the same state, so #5 (queued) leads #2 (done) by state and
+		// nothing settled ever trades places with anything else settled.
 		"│ " + marginTasksWord,
 		"│ " + spin + " Ship the port           #1",
-		"│ ├─ " + glyphDone + " Read the law         #2",
 		"│ ├─ " + spin + " Write the tree       #3",
 		"│ │  └─ " + glyphQueued + " Cut the goldens   #4",
-		"│ └─ " + glyphQueued + " Wire the seam        #5",
+		"│ ├─ " + glyphQueued + " Wire the seam        #5",
+		"│ └─ " + glyphDone + " Read the law         #2",
 	}
 	got := railText(a, 12)
 	if len(got) < len(want) {
@@ -122,8 +137,11 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	}
 }
 
-// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT, and inside it nothing is
-// ever re-sorted: the session's own admission order is the shape.
+// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT, and its members stand
+// the same way inside it — the same ladder at both scales, with the session's own
+// admission order breaking ties at each (task.go's [app.railKin] and
+// [app.railForest]). Every family here holds one child, so what this pins is the
+// outer half; [TestAFamilyIsDrawnWholeUnderItsRoot] pins the inner one.
 func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
 	a, _, _ := taskApp(t)
 	// A settled family, then a running one, then a family with a kept branch in

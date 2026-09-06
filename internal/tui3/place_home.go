@@ -733,7 +733,10 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 	// out empty, and a click resolved against the index of the source would open
 	// the row after the one under the pointer.
 	var named []session.TaskIndexEntry
-	for _, entry := range row.Tasks.Rows {
+	// THE SAME RANK THE BAND USES, for the same reason: this card folds at three
+	// too, and the row that is asking for something must not be the one behind the
+	// fold (homeband_work.go's [homeWorkOrder]).
+	for _, entry := range homeWorkOrder(row) {
 		label := strings.TrimSpace(entry.Label)
 		if label == "" {
 			label = strings.TrimSpace(entry.Title)

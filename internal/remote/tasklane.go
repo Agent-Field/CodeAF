@@ -74,12 +74,47 @@ func (f *taskFeed) leave() {
 	})
 }
 
+// laneIsOwnedLocked reports whether this surface may hold a lane on the
+// conversation that is open RIGHT NOW. It is called with the session's lock
+// held, and it is the lane's half of [Session.serving]'s law.
+//
+// AN ORDINARY WINDOW FOLLOWS ITS SESSION and is always owed a lane: the person
+// took that conversation somewhere else and the rail goes with them. A
+// connection that said [Hello.Join] asked for ONE conversation, was told which
+// one it got, and is drawing rows under that name — so when the owner replaces
+// it, that surface is owed nothing rather than the replacement's rows.
+func (sess *Session) laneIsOwnedLocked(s *server) bool {
+	if s == nil || s.joined == "" {
+		return true
+	}
+	return sameTranscript(s.joined, sess.engine.SessionFile)
+}
+
 // watchTasks opens this surface's lane, replacing whatever it held.
 //
 // THE OLD ONE IS LEFT BEFORE THE NEW ONE IS OPENED, because the two would
 // otherwise both be pumping the same rows onto one screen — and after a swap the
 // older lane belongs to a conversation this surface has already been told it is
 // no longer in.
+//
+// ── AND THE AGENT IS CHOSEN WITH THE IDENTITY, UNDER ONE LOCK ──
+//
+// [server.invoke] checks a joined connection's conversation before it dispatches
+// ([Session.serving]) and this runs afterwards, on its own reading of
+// sess.agent — so a [MethodSessionOpen] landing in between would have been
+// checked against the old conversation and served by the new one's agent. Worse,
+// [Session.retakeTaskLanes] reopens every subscribed surface on the replacement
+// with nobody asking at all, which is how a guest came to be pushed the new
+// owner's task 7 under the name of the one it joined. Both are closed by taking
+// the agent and the binding in the SAME hold, here and again where the lane is
+// installed: a swap is either before this reading or after it, and there is no
+// third ordering.
+//
+// A BOUND SURFACE WHOSE CONVERSATION IS GONE IS LEFT WITH NOTHING, which is the
+// truthful picture — its own rows are on a conversation this session is not
+// running any more, and it may not be shown somebody else's. It keeps its
+// connection, its place in the room and whatever the driver rules already said
+// about it: nothing here boots a surface or moves the keyboard.
 func (sess *Session) watchTasks(s *server) {
 	sess.mu.Lock()
 	agent, generation, closed := sess.agent, sess.generation, sess.closed
@@ -87,12 +122,13 @@ func (sess *Session) watchTasks(s *server) {
 	if _, here := sess.surfaces[s]; here {
 		watching = true
 	}
+	owned := sess.laneIsOwnedLocked(s)
 	previous := sess.tasklanes[s]
 	delete(sess.tasklanes, s)
 	sess.mu.Unlock()
 
 	previous.leave()
-	if closed || !watching || agent == nil {
+	if closed || !watching || !owned || agent == nil {
 		return
 	}
 	door, ok := agent.(taskLaneAgent)
@@ -108,8 +144,10 @@ func (sess *Session) watchTasks(s *server) {
 	sess.mu.Lock()
 	_, here := sess.surfaces[s]
 	// A conversation that was swapped or closed while the roster was being built
-	// gets nothing: this lane is already about the wrong agent.
-	if sess.closed || !here || sess.generation != generation {
+	// gets nothing: this lane is already about the wrong agent. The binding is
+	// asked again with it, because a surface that asked for one conversation must
+	// not be handed a lane that was opened on another while it waited.
+	if sess.closed || !here || sess.generation != generation || !sess.laneIsOwnedLocked(s) {
 		sess.mu.Unlock()
 		feed.leave()
 		return
@@ -130,6 +168,11 @@ func (sess *Session) watchTasks(s *server) {
 // and a dead pipe both stop the SENDING and neither stops the reading. The range
 // ends when [taskFeed.leave] closes the subscription, which every road out of a
 // connection reaches.
+//
+// THE BINDING IS ASKED ON EVERY FRAME, beside the generation and the feed, and
+// it is asked here rather than trusted from the open because an event already on
+// this channel when the conversation was replaced would otherwise go out after
+// it. What a bound surface may be sent is decided at the moment of sending.
 func (sess *Session) pumpTasks(s *server, generation uint64, lane <-chan session.Event, feed *taskFeed) {
 	defer guard.Recover("remote/engine task lane")
 	quiet := false
@@ -145,7 +188,8 @@ func (sess *Session) pumpTasks(s *server, generation uint64, lane <-chan session
 			continue
 		}
 		sess.mu.Lock()
-		stale := sess.generation != generation || sess.tasklanes[s] != feed
+		stale := sess.generation != generation || sess.tasklanes[s] != feed ||
+			!sess.laneIsOwnedLocked(s)
 		sess.mu.Unlock()
 		if stale {
 			quiet = true
@@ -173,6 +217,13 @@ func (sess *Session) dropTaskLane(s *server) {
 // the one that replaced it. So each is left and reopened on the new agent, which
 // replays the new conversation's roster — usually nothing at all, which is the
 // correct picture of a conversation that has just been started.
+//
+// A SURFACE BOUND TO THE CONVERSATION THAT WAS JUST REPLACED IS LEFT AND NOT
+// REOPENED ([Session.watchTasks] decides that, so this reads the same for every
+// surface). It is the whole reason this automatic reopening needed guarding: it
+// asks for nobody's permission, and without the check it handed a guest the new
+// owner's roster — with its own task 7 in it — under the name of the
+// conversation the guest actually joined.
 func (sess *Session) retakeTaskLanes() {
 	sess.mu.Lock()
 	surfaces := make([]*server, 0, len(sess.tasklanes))

@@ -89,6 +89,13 @@ func (a *app) roomApprovalCard() *harnessCard {
 	if a.room == nil || a.room.orch != nil {
 		return nil
 	}
+	// AND NEVER ON A PAGE READ THROUGH ANOTHER CONVERSATION. The cards are this
+	// window's own questions, keyed by an id that means something else over there
+	// — so a guest page would draw a local design's approval block, and its two
+	// keys would answer it ([app.roomIsGuest]).
+	if a.roomIsGuest() {
+		return nil
+	}
 	node := a.tasks[a.room.id]
 	if node == nil || node.kind != session.TaskKindHarness {
 		return nil
@@ -112,6 +119,9 @@ func (a *app) roomApprovalCard() *harnessCard {
 // phase goes back to "designing" and this row goes away with it, which is right,
 // because at that moment there is nothing to approve.
 func (a *app) roomApprovalAsking() bool {
+	if a.roomIsGuest() {
+		return false
+	}
 	node := a.tasks[a.room.id]
 	return a.taskAwaitsPerson(node)
 }

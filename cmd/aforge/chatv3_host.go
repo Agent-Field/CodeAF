@@ -515,6 +515,31 @@ func correctHostChoices(agent *remote.Agent, launch hostLaunch, welcome remote.W
 // hostOptions assembles the surface. Everything the far machine knows comes off
 // the welcome; everything this machine keeps on the person's behalf is resolved
 // here, exactly as the local door resolves it.
+//
+// ── LOOKING INTO ANOTHER CONVERSATION'S TASK IS NOT WIRED HERE, AND SAYING SO ──
+//
+// [tui3.Options.OpenTaskOwner] is deliberately left nil on this road, which the
+// surface reads as a capability this window has not got: the row still takes the
+// cursor and still answers `enter`, and what it opens is the card naming where
+// the work is (internal/tui3's taskowner.go). That is the absence law rather
+// than a gap somebody forgot.
+//
+// THE REASON IS THAT THE ROWS DO NOT EXIST ON THIS ROAD AT ALL. A row belonging
+// to another conversation is minted from the PRESENCE DIRECTORY of the project,
+// read off this process's own disk (internal/tui3's [app.refreshElsewhere], which
+// asserts [session.Agent.Elsewhere] and gets nothing over a connection —
+// [remote.Agent] does not implement it). Over `--host` and `--at` the conversation
+// is on the far machine and its neighbours' presence files are on the far
+// machine's disk, so this surface never learns they are there and draws no such
+// row for the door to be behind.
+//
+// WIRING THE DOOR ALONE WOULD NOT FIX THAT and would be worse than leaving it:
+// it would be a capability that could never be reached, which this codebase
+// leaves off rather than ships broken. What the road actually owes first is the
+// presence reading crossing the wire — a method on the protocol answering
+// `Elsewhere` for the engine's machine — and that is a lane of its own with a
+// version bump in it. Until it lands, the honest claim is the one the manual
+// makes: reading another conversation's task works where the engine is local.
 func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcome remote.Welcome, pick bool) tui3.Options {
 	// THE PICKER'S LIST IS RESOLVED WITHOUT CREDENTIALS. The catalog is opened
 	// with whatever this machine happens to have — usually nothing, because the

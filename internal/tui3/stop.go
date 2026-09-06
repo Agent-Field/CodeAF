@@ -250,6 +250,15 @@ func (a *app) stopHere() stopTarget {
 		return stopJobTarget(job)
 	}
 	if a.room != nil {
+		// A PAGE READ THROUGH ANOTHER CONVERSATION STOPS NOTHING. The stop door is
+		// this window's engine and the id is another conversation's, so `x` here
+		// would end whatever this session calls task 7 — healthy work, on a page
+		// that is not about it ([app.roomIsGuest]). The target is empty, which is
+		// how every other unstoppable row on this surface is already handled: the
+		// verb is not offered and the key does nothing.
+		if a.roomIsGuest() {
+			return stopTarget{}
+		}
 		return a.stopTaskTarget(a.tasks[a.room.id])
 	}
 	return a.stopTaskTarget(a.railFocusNode())

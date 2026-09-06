@@ -34,6 +34,7 @@ package tui3
 // fold line with nothing above it saying what it was about.
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -54,11 +55,47 @@ func init() {
 	registerHomeBand(homeBand{name: "work", order: bandOrderWork, draw: drawWorkBand})
 }
 
+// homeWorkOrder is the order this band and the card behind it draw a
+// conversation's work in: WHAT WANTS A PERSON, then what is still going, then
+// everything that is over — and inside each of those, the record's own order,
+// which is newest first with live work counted as now
+// (internal/session's [sortTaskIndex]).
+//
+// THE RECORD'S ORDER ALONE WAS NOT ENOUGH, AND THE FOLD IS WHY. Both readers
+// show three pieces of work and fold the rest behind `▸ N more`
+// ([homeWorkTasks], place_home.go's [homeCardTasks]), and the record ranks by
+// WHEN. Live work sorts to the top of that because an unfinished row is dated
+// now — but a task that stopped and wants somebody's look carries the moment it
+// stopped, so three tasks finishing after it push the one row on the card that
+// is asking for something behind a fold. The person's own instruction was that
+// work needing them be easy to find, and it was findable everywhere except the
+// screen they open first.
+//
+// IT IS A STABLE SORT OVER THE RECORD'S SLICE AND NEVER A NEW READING. Nothing
+// is filtered, nothing is re-dated, and two rows in the same rank keep the order
+// the index gave them — so this changes which rows survive the fold and changes
+// nothing else.
+func homeWorkOrder(row session.SessionRow) []session.TaskIndexEntry {
+	rows := append([]session.TaskIndexEntry(nil), row.Tasks.Rows...)
+	rank := func(entry session.TaskIndexEntry) int {
+		status := taskEntryStatus(entry, row.Runs(entry))
+		switch {
+		case status.Attention:
+			return 0
+		case !status.Settled():
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rank(rows[i]) < rank(rows[j]) })
+	return rows
+}
+
 // drawWorkBand is the band, one group of lines per task.
 func drawWorkBand(a *app, ctx bandContext) []string {
 	row, width, now, pal := ctx.subject.row, ctx.width, ctx.now, ctx.pal
 	var groups [][]string
-	for _, entry := range row.Tasks.Rows {
+	for _, entry := range homeWorkOrder(row) {
 		group := homeWorkName(entry, width, now, pal)
 		group = append(group, homeWorkUnder(entry, row, width, pal)...)
 		groups = append(groups, group)

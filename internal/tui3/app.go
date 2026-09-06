@@ -748,6 +748,18 @@ type app struct {
 	start           func(workspace string) (Conversation, error)
 	open            func(workspace, transcript string) (Conversation, error)
 	anchorWorkspace func(path string) (string, error)
+	// openTaskOwner attaches a second view onto a conversation that is already
+	// running, for the length of one task page (tui3.go's [Options.OpenTaskOwner]
+	// states the whole contract, taskowner.go is the only caller). Nil is a
+	// window with no engine road, which answers with the card instead.
+	openTaskOwner func(TaskOwnerAsk) (TaskOwnerView, error)
+	// taskOwnerGen numbers the attaches this window has asked for and taskOwnerAt
+	// is the one still in flight. An answer carrying an older number is a view
+	// nobody wants any more: it is CLOSED on arrival rather than drawn, which is
+	// what keeps a slow engine from opening a page over whatever the person went
+	// to instead ([app.tookTaskOwner]).
+	taskOwnerGen uint64
+	taskOwnerAt  taskOwnerAsk
 	// workspace is the directory this conversation is about, whole; place is
 	// its base name, which is what the status line has room for. The whole path
 	// is what history is keyed by and what the @ completion walks.
@@ -2203,6 +2215,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:               opts.Fresh,
 		start:               opts.Start,
 		open:                opts.Open,
+		openTaskOwner:       opts.OpenTaskOwner,
 		anchorWorkspace:     opts.AnchorWorkspace,
 		errand:              opts.Errand,
 		standingRoot:        opts.StandingRoot,
@@ -3539,6 +3552,20 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case roomRecordMsg:
 		return a, tea.Batch(a.farRoomRead(msg), a.wake())
 
+	case taskOwnerMsg:
+		// A SECOND VIEW ONTO ANOTHER CONVERSATION HAS ARRIVED, or has not
+		// (taskowner.go). It is delivered here rather than waited for on the
+		// keystroke because reaching the engine is a round trip and this loop draws
+		// the frames.
+		return a, tea.Batch(a.tookTaskOwner(msg), a.wake())
+
+	case taskGuestNoticeMsg:
+		// AND THE CONVERSATION THAT OWNS THE WORK HAS SAID SOMETHING ABOUT IT. It
+		// is the only authority for what another window's task is doing, and the
+		// only thing on this surface allowed to move a guest page's state
+		// (taskowner.go's [app.tookGuestNotice]).
+		return a, tea.Batch(a.tookGuestNotice(msg), a.wake())
+
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
 
@@ -3910,6 +3937,15 @@ func (a *app) paint() tea.Cmd {
 	// `incomplete` off that reading, and the history page draws a row per piece
 	// of work another window is holding (taskview.go's [app.refreshElsewhere],
 	// which keeps its own short window so this clock cannot outpace the disk).
+	//
+	// A PAGE READ THROUGH ANOTHER CONVERSATION IS DELIBERATELY NOT ON THIS LIST.
+	// It briefly was, because that page had to guess whether the work it was
+	// showing was still going and this was the nearest reading to guess from — and
+	// it was the wrong reading: presence is written per WORKSPACE, so a guest page
+	// onto a conversation in another project looked for it here and found nothing,
+	// then read the absence as the work being over. That page now hears it from
+	// the conversation that owns it (taskowner.go's [app.tookGuestNotice]), so
+	// this clock has nothing to tell it and does not spin the disk for it.
 	if a.railStanding() || a.at(pageTasks) {
 		a.refreshElsewhere()
 	}

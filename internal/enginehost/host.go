@@ -275,6 +275,12 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	if h.closed || h.retiring {
 		return nil, errors.New("engine host: this host is shutting down")
 	}
+	// A JOIN TAKES A CONVERSATION THAT IS ALREADY HERE AND NOTHING ELSE. It is
+	// matched on the transcript rather than on the key, and it never reaches the
+	// boot below — [remote.Hello.Join] says why both halves of that are the point.
+	if hello.Join {
+		return h.joinedLocked(hello.Session)
+	}
 	if existing := h.sessions[key]; existing != nil && !existing.Ended() {
 		// THE WHOLE PRODUCT IS THIS LINE: the conversation was already running,
 		// possibly mid-turn, and the surface is joining it rather than starting
@@ -292,6 +298,35 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	h.sessions[key] = sess
 	h.quiet = time.Time{}
 	return sess, nil
+}
+
+// joinedLocked is the live conversation writing one transcript, and an error
+// naming what was asked for when there is none.
+//
+// THE REFUSAL IS A SENTENCE AND NOT A BOOT. The caller is a surface that wants a
+// second view onto work it believes is running; if that belief is stale — the
+// window closed a second ago, the conversation ended — the honest answer is that
+// it is not here, and the surface has a recovery state for exactly that. Starting
+// a conversation would answer a question nobody asked with a model somebody pays
+// for.
+//
+// The file is compared cleaned, because one side of this walked a directory and
+// the other read a presence file, and neither promises the other's spelling.
+func (h *Host) joinedLocked(file string) (*remote.Session, error) {
+	want := strings.TrimSpace(file)
+	if want == "" {
+		return nil, errors.New("engine host: a join has to name a conversation")
+	}
+	want = filepath.Clean(want)
+	for _, sess := range h.sessions {
+		if sess == nil || sess.Ended() {
+			continue
+		}
+		if open := strings.TrimSpace(sess.File()); open != "" && filepath.Clean(open) == want {
+			return sess, nil
+		}
+	}
+	return nil, fmt.Errorf("engine host: that conversation is not open here: %s", want)
 }
 
 // whois is the host answering what it is and what it will do about a request to

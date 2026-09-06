@@ -456,6 +456,29 @@ func (sess *Session) Attached() int {
 // Ended reports that this conversation is over — somebody said goodbye through
 // [MethodClose], or the pipe that was its whole life went away. A host reaps
 // one that says so.
+// File is the transcript this conversation is writing.
+//
+// IT IS THE ONE IDENTITY A CONVERSATION HAS OUTSIDE THIS PACKAGE. A host keys
+// its sessions by whatever the first hello said, which is a launch's word and
+// not the conversation's own; the file is what the world scan, the presence
+// files, the task index and the surface all name a conversation by. So a caller
+// answering "is the conversation in this file already open here" asks this
+// ([Hello.Join] is that caller).
+//
+// It is read under the session's own lock because a swap writes it
+// ([Session.swap]).
+func (sess *Session) File() string {
+	if sess == nil {
+		return ""
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if sess.engine == nil {
+		return ""
+	}
+	return sess.engine.SessionFile
+}
+
 func (sess *Session) Ended() bool {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
@@ -633,6 +656,48 @@ func (sess *Session) agentOf(conversation string) (WrappedAgent, bool) {
 	return sess.agent, true
 }
 
+// ErrJoinedGone is a joined connection finding that the conversation it joined
+// is not the one this session is running any more. It is a fact and not a
+// failure: the window that owns the session opened something else in it, and a
+// reader bound to the old one has nothing left to read.
+var ErrJoinedGone = errors.New("engine: that conversation is not open here any more")
+
+// serving picks the agent AND the record reader together, under ONE lock, and
+// refuses when a joined connection's conversation has been replaced.
+//
+// THE PAIR IS THE POINT. They used to be taken under two separate locks, so a
+// [Session.swap] landing between them handed one call the OLD agent and the NEW
+// conversation's record reader — two halves of two different conversations
+// answering one question about a task id that means something in each.
+//
+// AND THE IDENTITY IS RE-CHECKED ON EVERY CALL, not once at the door. A welcome
+// proves whose conversation this was at the instant of attaching; another window
+// on the same session can call [MethodSessionOpen] a second later and replace it
+// underneath, and every read after that would be answered by the replacement —
+// under the name the reader is still drawing. `want` is empty for an ordinary
+// surface, which FOLLOWS its session wherever the person takes it; it is set
+// only for a connection that said [Hello.Join], which asked for one conversation
+// and must be told rather than quietly moved.
+func (sess *Session) serving(want string) (WrappedAgent, func(string, int) (session.TaskRecord, error), error) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if want != "" && !sameTranscript(want, sess.engine.SessionFile) {
+		return nil, nil, ErrJoinedGone
+	}
+	return sess.agent, sess.engine.TaskRecord, nil
+}
+
+// sameTranscript compares two paths to one journal. Both sides of this arrived
+// as text — one off a hello, one out of an engine — and neither promises the
+// other's spelling.
+func sameTranscript(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
 // ── the ring of a running turn ──────────────────────────────────────────────
 
 // ring is one running stream's recent events, oldest kept first. It is a window
@@ -705,8 +770,16 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	sess.empty = time.Time{}
 	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
 	// new one (driver.go states the whole rule, [Hello.Back] states why the
-	// difference is load-bearing).
-	if !hello.Back || sess.driver == nil {
+	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
+	// flag is recorded so no later hand-on can give it the keyboard either.
+	s.watching = hello.Watch
+	if hello.Join {
+		// WHAT THIS CONNECTION IS BOUND TO is the conversation as it stands right
+		// now, under this same lock — not the string the hello sent, which the
+		// host matched loosely, and not a reading taken a moment later.
+		s.joined = sess.engine.SessionFile
+	}
+	if !s.watching && (!hello.Back || sess.driver == nil) {
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
@@ -1161,6 +1234,16 @@ type server struct {
 	// room filled up, which is how "the newest" is decided (driver.go).
 	name    string
 	arrived uint64
+	// watching is [Hello.Watch]: this surface reads and never drives. It is kept
+	// on the connection because the decision is made in three places — arrival,
+	// the hand-on when a driver leaves, and the guard in front of every door that
+	// types — and all three have to agree (driver.go).
+	watching bool
+	// joined is the transcript a [Hello.Join] connection asked for, and "" for an
+	// ordinary surface. It is re-checked on every call ([Session.serving]),
+	// because a welcome proves whose conversation this was at the instant of
+	// arriving and another window can replace it a second later.
+	joined string
 
 	// pending is the stream a call has just opened and dispatch has not yet let
 	// speak. It is one slot rather than a queue because one reader makes one
@@ -1412,9 +1495,22 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}()
 
 	sess := s.session
-	agent := sess.current()
+	agent, readRecord, err := sess.serving(s.joined)
+	if err != nil {
+		return nil, err
+	}
 	if agent == nil {
 		return nil, errors.New("engine: no conversation is open")
+	}
+	// A WATCHER MAY DO THE FEW THINGS ON A LIST AND NOTHING ELSE, and the list is
+	// the way round it is for the reason every other guard on this surface is a
+	// denial: a door added next year cannot forget an allow-list. The driver rule
+	// below covers the doors that TYPE, which is not the same set — switching a
+	// model, resolving a card, reviving a node, opening another session and
+	// closing this one all change the conversation without a word being said, and
+	// every one of them was open to a reader before this ([Hello.Watch]).
+	if s.watching && !watcherMay(call.Method) {
+		return nil, fmt.Errorf("%s (%s)", watchingWord, call.Method)
 	}
 	// THE DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
 	// the check is here rather than in each of them so that a door added later
@@ -1443,13 +1539,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if path == "" {
 			return json.Marshal(session.TaskRecord{})
 		}
-		sess.mu.Lock()
-		read := sess.engine.TaskRecord
-		sess.mu.Unlock()
-		if read == nil {
+		// The reader is the one that came WITH this agent ([Session.serving]), so
+		// the journal path and the reading are the same conversation's.
+		if readRecord == nil {
 			return nil, errors.New("engine: this engine cannot read its record")
 		}
-		record, err := read("file://"+path, args.Tail)
+		record, err := readRecord("file://"+path, args.Tail)
 		if err != nil {
 			return nil, err
 		}

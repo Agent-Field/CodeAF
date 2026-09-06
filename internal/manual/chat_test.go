@@ -259,6 +259,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},
+		// The navigation wave: opening a task somebody else's conversation is
+		// running, what that page can and cannot say, and the two things about the
+		// tasks place a person meets before any of it — what the box does, and why
+		// the cursor did not stay where they left it.
+		{"I cannot click into a running task", "tasks"},
+		{"open a task another window is running", "tasks"},
+		{"why is that task page read only", "tasks"},
+		{"the task page says it cannot ask what the work is doing", "tasks"},
+		{"can I read another conversation's task over ssh", "tasks"},
+		{"why does the tasks box say type to filter this list", "tasks"},
+		{"my cursor jumped to another task while I was reading", "tasks"},
+		{"why is the finished piece at the bottom of the family", "tasks"},
 		{"can aforge parallelize my task", "tasks"},
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
@@ -1208,6 +1220,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my task is waiting on its pieces", "tasks"},
 		{"why did it warn me about another window", "tasks"},
 		{"two windows working on the same files", "tasks"},
+		// And the two navigation questions the same page now answers. The first
+		// is asked in front of a row noted `another window`, which used to answer
+		// nothing at all when it was pressed; the second by somebody whose page
+		// opened work they did not aim at, which is what a number alone bought.
+		{"the task is running in another window can I open it", "tasks"},
+		{"two tasks numbered 7", "tasks"},
+		// And the one a person asks about a mark they cannot read: the per-task
+		// shape-and-colour alphabet is gone, and the page has to say so or the
+		// chat will go on describing it from a version that no longer exists.
+		{"what is the diamond symbol next to each task", "tasks"},
 
 		// And the question the division road left standing on the other page.
 		// A run used to be what broad work reached for; a chat turn cannot open

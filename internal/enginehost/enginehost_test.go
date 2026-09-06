@@ -207,6 +207,66 @@ func TestTwoSurfacesAskingForTheSameThingGetTheSameConversation(t *testing.T) {
 	}
 }
 
+// A JOIN TAKES A CONVERSATION THAT IS ALREADY HERE AND STARTS NOTHING.
+//
+// This is what makes it safe for a task page to look into work running next door.
+// The keys and the transcripts deliberately DISAGREE here, because that is the
+// ordinary case: the surface that opened the conversation said nothing at all
+// about a session — the empty string, meaning "this workspace's latest" — so it is
+// filed under "" while the file it is writing has a name. A join asking by key
+// would miss it and be handed a whole new conversation, which is a model started
+// so that somebody could read a transcript.
+func TestAJoinFindsTheOpenConversationByItsFileAndNeverStartsOne(t *testing.T) {
+	h := stubHost(t, "/home/somebody/api")
+	booted := 0
+	boot := h.opts.Boot
+	h.opts.Boot = func(hello remote.Hello) (*remote.Engine, error) {
+		booted++
+		return boot(hello)
+	}
+
+	// The ordinary launch: no session named, so the key is "" and the file is
+	// whatever the engine opened.
+	open, err := h.open(remote.Hello{Version: remote.Version})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if booted != 1 {
+		t.Fatalf("the first hello booted %d conversations", booted)
+	}
+
+	joined, err := h.open(remote.Hello{Version: remote.Version, Session: open.File(), Join: true})
+	if err != nil {
+		t.Fatalf("join the conversation that is already open: %v", err)
+	}
+	if joined != open {
+		t.Fatal("a join was handed a different conversation from the one running")
+	}
+	if booted != 1 {
+		t.Fatalf("a join booted a conversation: %d boots", booted)
+	}
+
+	// AND A JOIN ONTO A CONVERSATION NOBODY IS RUNNING IS A SENTENCE, NOT A BOOT.
+	// A stale row on somebody's screen must not be able to start a session.
+	stale, err := h.open(remote.Hello{
+		Version: remote.Version,
+		Session: "/home/somebody/api/gone-an-hour-ago.jsonl",
+		Join:    true,
+	})
+	if err == nil {
+		t.Fatal("a join onto a conversation nobody is running opened something")
+	}
+	if stale != nil {
+		t.Fatalf("a refused join handed back a conversation: %v", stale)
+	}
+	if booted != 1 {
+		t.Fatalf("a stale join booted a conversation: %d boots", booted)
+	}
+	if !strings.Contains(err.Error(), "gone-an-hour-ago.jsonl") {
+		t.Fatalf("the refusal does not say what was asked for: %v", err)
+	}
+}
+
 // A conversation somebody deliberately ended is not handed out again: the next
 // hello opens a new one, which is what /new and a fresh window both mean.
 func TestAClosedConversationIsNotHandedOutAgain(t *testing.T) {

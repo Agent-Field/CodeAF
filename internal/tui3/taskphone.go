@@ -56,10 +56,18 @@ func taskCardPhone(width int) bool { return layoutTier(width) == tierPhone }
 // TWO TARGETS AND NOT THREE. The bar carries what a thumb can do and the card
 // has exactly two of those — the scroll is the screen itself, and a target
 // saying `↑↓ scroll` would be a target that does nothing when it is pressed.
+// AND OVER ANOTHER WINDOW'S WORK IT CARRIES ONE. There is nothing landed for a
+// mention to point at, so the chip is absent rather than drawn dead — the same
+// answer the wide foot gives ([taskAwayCardKeys] says why), on the tier where a
+// dead chip is worst: a thumb has no hover to discover with and finds out by
+// pressing.
 func (a *app) taskCardBar(width int) (string, []hudSpan) {
 	back := homeSheetBackWord
 	if a.pal.ascii {
 		back = homeSheetBackASCII
+	}
+	if a.taskSheet.awayOwner.on {
+		return phoneBar(width, []string{back}, a.pal)
 	}
 	return phoneBar(width, []string{back, taskPhoneMentionWord}, a.pal)
 }

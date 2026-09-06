@@ -2452,7 +2452,15 @@ const (
 // The word each group wears, in the roster's heading and in its footer alike.
 // One vocabulary: a person who reads "needs you" at the top must not have to
 // learn that the bottom calls the same thing "blocked".
-var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "parked", "done"}
+// `idle` AND `parked` WERE TWO WORDS FOR ONE SHAPE OF FACT, and neither said it.
+// `idle` reads as a machine doing nothing when the node is admitted and about to
+// start, `parked` is the machinery's own word, and the tasks page — which does
+// not split the two — had to pick one of them and so called slot-queued work
+// `parked` while the column called it `idle`. The pair is now `queued` (nothing
+// in its way but a slot) and `waiting` (blocked behind other work), which keeps
+// the distinction the groups exist for and is readable without learning it. The
+// dependency reason still rides on the row ([app.railWaits]).
+var railGroupWords = [railGroupCount]string{"needs you", "running", "queued", "waiting", "done"}
 
 // railGroupOf places one node.
 //
@@ -2783,6 +2791,28 @@ func (a *app) railKin() (kids map[string][]*taskNode, byKey map[string]*taskNode
 			kids = map[string][]*taskNode{}
 		}
 		kids[up] = append(kids[up], node)
+	}
+	// AND EACH SET OF CHILDREN IS PUT IN THE ORDER THE COLUMN ALREADY PUTS
+	// FAMILIES IN: what will not move without a person first, then what is
+	// running, then what is waiting, then what is over.
+	//
+	// THE FAMILIES WERE SORTED AND THEIR MEMBERS WERE NOT, which showed on exactly
+	// the rows the sort exists for. A run that hands out four pieces finishes them
+	// one at a time, and the finished ones arrived FIRST — so the block under an
+	// open family read `done, done, running, running`, with the only rows anybody
+	// was watching at the bottom of it. The person's own instruction was that
+	// active work be easy to find, and it was easy to find down to the level the
+	// ordering stopped at.
+	//
+	// TIES KEEP ARRIVAL ORDER, which is what makes this safe to do under somebody
+	// who is reading: the slice is already in [app.taskOrder]'s order and the sort
+	// is stable, so two settled siblings never trade places and the block is still
+	// the family in the order the session met it wherever the states agree.
+	for up := range kids {
+		under := kids[up]
+		sort.SliceStable(under, func(i, j int) bool {
+			return a.railGroupOf(under[i]) < a.railGroupOf(under[j])
+		})
 	}
 	return kids, byKey
 }

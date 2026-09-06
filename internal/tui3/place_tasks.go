@@ -59,6 +59,16 @@ type tasksPlace struct {
 	// replaces the snapshot whole whenever a node lands.
 	detail   session.TaskIndexEntry
 	detailOn bool
+	// awayOwner is set while the card is standing over work ANOTHER WINDOW on
+	// this project is running, and it is the whole of what that card's recovery
+	// band is drawn from (taskrecord.go's [app.taskCardAwayRows]).
+	//
+	// IT IS HELD BESIDE THE ROW AND NOT INSIDE IT. [session.TaskIndexEntry] is
+	// the RECORD's shape and no record row exists for work that has not landed —
+	// the row the card was opened from was minted out of the other window's
+	// presence file ([readTasks]), and the one fact that mints it, WHICH window,
+	// has nowhere to live on a record entry.
+	awayOwner tasksAwayOwner
 	// detailTop is the card's own scroll. The report under it is as long as the
 	// node made it, and the card is read rather than walked, so an offset is the
 	// only thing that moves ([clampTop], expand.go).
@@ -95,6 +105,17 @@ type tasksPlace struct {
 	// and they are what [tasksPlace.regroup] hangs on.
 	awayAt time.Time
 	mineAt uint64
+}
+
+// tasksAwayOwner is the window a piece of work belongs to, when that window is
+// not this one. The zero value is "this card is over an ordinary record row",
+// which is every card but one.
+type tasksAwayOwner struct {
+	on bool
+	// window is what the other window CALLS itself, and it is "" for a window
+	// that has not settled on a name — which is a place with no name rather than
+	// no place ([taskAwayCardWhere] keeps that half).
+	window string
 }
 
 // taskSheetRows is the place's own page size: what pgup and pgdown move by, and
@@ -193,9 +214,82 @@ func (p *tasksPlace) regroup(a *app) {
 	if at.Equal(p.awayAt) && stamp == p.mineAt {
 		return
 	}
+	// THE CURSOR IS REMEMBERED BY WHAT IT IS ON, ACROSS THE REBUILD.
+	//
+	// [tasksPlace.cursor] is a LINE of a layout this replaces whole, and the
+	// layout moves for reasons that have nothing to do with the person: a task
+	// finishing leaves the `running` section and joins `finished today`, and every
+	// row below where it was shifts by one. The cursor stayed on the number and so
+	// changed which piece of work it was on — silently, on a three-second beat,
+	// between somebody reading a row and pressing enter on it. That is the
+	// wrong-task failure this whole lane exists to end, arriving through the clock
+	// instead of through a bad match.
+	//
+	// The name is the pair the record identifies a row by, which is the same name
+	// the verb strip already binds to ([placeTasks.rowID]) and the same discipline
+	// the roster (task.go's [railSpot]) and home (home.go's restores) have always
+	// kept. A row that is genuinely gone falls back to the settle every other
+	// rebuild uses, which parks on the nearest row rather than nowhere.
+	was, held := p.rowAt(a, p.cursor)
 	p.awayAt, p.mineAt = at, stamp
 	p.mine = a.taskSheetMine()
 	p.reading = readTasks(p.world, p.mine, p.reading.win, p.reading.seen, p.reading.now)
+	if !held {
+		return
+	}
+	if line, found := p.lineOf(a, was); found {
+		p.cursor = line
+	}
+}
+
+// rowAt is the piece of work one line of THIS PLACE'S CURRENT reading is about,
+// named by the pair that identifies it.
+//
+// IT LAYS THE HELD READING OUT DIRECTLY and never goes through
+// [app.tasksFiltered], because that is the door [tasksPlace.regroup] is called
+// FROM — asking it again from inside would be the freshness check calling itself.
+func (p *tasksPlace) rowAt(a *app, line int) (tasksKey, bool) {
+	r := p.filtered(a)
+	width, _ := a.size()
+	item, ok := r.at(r.lay(width), line)
+	if !ok {
+		return tasksKey{}, false
+	}
+	return tasksKeyOf(item.entry), true
+}
+
+// lineOf is the line the work named by one key is on, in the reading this place
+// is holding now.
+func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
+	r := p.filtered(a)
+	width, _ := a.size()
+	lines := r.lay(width)
+	for at := range lines {
+		if item, ok := r.at(lines, at); ok && tasksKeyOf(item.entry) == want {
+			return at, true
+		}
+	}
+	return 0, false
+}
+
+// filtered is [app.tasksFiltered] WITHOUT the freshness check on the front of
+// it: the same reading, the same folds, the same query, taken from what this
+// place is holding at this instant.
+func (p *tasksPlace) filtered(a *app) tasksReading {
+	r := p.reading
+	r.open = p.opened
+	needle := a.taskSheetFilter()
+	if needle == "" {
+		return r
+	}
+	kept := make([]tasksItem, 0, len(r.items))
+	for _, item := range r.items {
+		if tasksMatches(item, needle) {
+			kept = append(kept, item)
+		}
+	}
+	r.items = kept
+	return r
 }
 
 // taskSheetDays is how far back the place opens on, and the four time keys walk
@@ -217,6 +311,11 @@ func (a *app) taskSheetMine() tasksMine {
 		mine.rows = append(mine.rows, tasksMineRow{entry: entry, runs: a.recordRuns(&entry)})
 	}
 	mine.away = a.taskSheetAwayRows()
+	// AND WHICH OF THOSE WINDOWS ARE THIS ONE'S OWN CONVERSATIONS. The presence
+	// files cannot say — a stowed conversation of this terminal writes the same
+	// file as a terminal across the desk — and the difference is the difference
+	// between `tab` and walking to another machine.
+	mine.here = a.heldSessions()
 	return mine
 }
 
@@ -253,10 +352,29 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 // files, none of which the graph keeps — and [session.Agent.TaskIndex] has
 // already merged this session's live state over it, so it is no staler either.
 // What the graph contributes is the work no row anywhere names yet.
+// AND A WINDOW THAT CANNOT NAME ITSELF LEAVES ITS OWN NODES TO THE GRAPH. The
+// pair is what stops one piece of work being drawn twice, and the pair needs a
+// name on both halves: a window with no journal folder ([app.taskSheetSelfID] is
+// "" for one) files its graph rows under no conversation while the index files
+// the same nodes under the conversation that wrote them, and the two keys do not
+// meet. What that drew was the worst possible shape — the same task under
+// `running` AND a second copy under `earlier` reading `incomplete`, because the
+// index copy could not be attributed and so could not be judged live. So an
+// index row that this window cannot attribute and that one of its OWN nodes
+// answers to by id and title is dropped in favour of the node: the graph is the
+// one authority that is certainly ours, its row opens the right room, and its
+// state is the live one. The cost is that a genuinely foreign row wearing the
+// same number and the same words is not drawn while this window is nameless,
+// which is a row missing from a history rather than a wrong page.
 func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 	self := a.taskSheetSelfRow().ID
 	rows := make([]session.TaskIndexEntry, 0, len(a.comp.tasks)+len(a.taskOrder))
-	rows = append(rows, a.comp.tasks...)
+	for i := range a.comp.tasks {
+		if self == "" && a.taskNodeAnswersTo(&a.comp.tasks[i]) {
+			continue
+		}
+		rows = append(rows, a.comp.tasks[i])
+	}
 	for _, id := range a.taskOrder {
 		node := a.tasks[id]
 		if node == nil || a.taskIndexHolds(node) {
@@ -295,6 +413,20 @@ func (a *app) taskIndexHolds(node *taskNode) bool {
 		}
 	}
 	return false
+}
+
+// taskNodeAnswersTo reports that one of THIS session's own nodes wears the id
+// and the words a record row does, WITHOUT asking who owns the row.
+//
+// IT IS DELIBERATELY THE UNATTRIBUTED MATCH, and it has exactly one caller
+// ([app.taskSheetOwnRows]) for exactly the case where attribution is impossible.
+// Everywhere else the owner vetoes first ([app.taskSheetNodeFor] says why, at
+// length): the id alone names a different task in every conversation, so this is
+// never a reason to OPEN anything. It is only ever a reason not to draw the same
+// work twice.
+func (a *app) taskNodeAnswersTo(entry *session.TaskIndexEntry) bool {
+	node := a.tasks[taskSheetEntryID(entry.ID)]
+	return node != nil && taskSheetSameWork(node.title, entry)
 }
 
 // taskNodeEnded is when a node of this session's graph LANDED, and the zero time
@@ -391,24 +523,16 @@ func (a *app) tasksFiltered() tasksReading {
 	// through this function, and a check on one of them would be the page fresh
 	// in its body and stale in its foot.
 	a.taskSheet.regroup(a)
-	r := a.taskSheet.reading
-	// THE FOLDS ARE THE PLACE'S AND THE ROWS ARE THE READING'S, joined here at
-	// the one door onto both. A snapshot is replaced whole every time a node
-	// lands ([tasksPlace.regroup]), so a fold kept on the reading would shut
-	// itself under somebody who had just opened it.
-	r.open = a.taskSheet.opened
-	needle := a.taskSheetFilter()
-	if needle == "" {
-		return r
-	}
-	kept := make([]tasksItem, 0, len(r.items))
-	for _, item := range r.items {
-		if tasksMatches(item, needle) {
-			kept = append(kept, item)
-		}
-	}
-	r.items = kept
-	return r
+	// THE FOLDS ARE THE PLACE'S AND THE ROWS ARE THE READING'S, joined in
+	// [tasksPlace.filtered] at the one door onto both. A snapshot is replaced
+	// whole every time a node lands ([tasksPlace.regroup]), so a fold kept on the
+	// reading would shut itself under somebody who had just opened it.
+	//
+	// THE JOIN IS A METHOD ON THE PLACE so that the rebuild above can use it too:
+	// it has to know which row the cursor was on BEFORE it replaces the reading,
+	// and it cannot ask this function for it without asking the freshness check to
+	// run inside itself.
+	return a.taskSheet.filtered(a)
 }
 
 // tasksMatches asks the query of one row.
@@ -675,12 +799,41 @@ func (a *app) taskSheetMove(delta int) {
 // down about that piece of work and the last thing the node itself said, drawn
 // over this place with the list still underneath.
 //
-// WORK ANOTHER WINDOW IS RUNNING ANSWERS NOTHING AT ALL, because the cursor
-// never stands on it ([tasksItem.pick] says why).
+// WORK ANOTHER WINDOW IS RUNNING OPENS THE ONE PAGE THIS WINDOW CAN HONESTLY
+// DRAW ABOUT IT: the card, standing over the same row, saying which window has
+// the work, why there is no room here, and that the row lands in this project's
+// record when that window finishes ([app.taskSheetAwayCard]). It used to answer
+// nothing at all, because the cursor could not reach the row — and a person who
+// aimed at a row that appeared as pressable as its nine neighbours and got
+// silence had no way of telling a refusal from a surface that had broken.
 func (p *tasksPlace) enter(a *app) tea.Cmd {
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil
+	}
+	if item.away {
+		// THE LADDER IS WALKED BEFORE THE CARD IS DRAWN, which is the whole of
+		// what changed here. Work in another conversation is not one situation but
+		// three — a conversation this terminal is holding, a conversation the
+		// engine will hand this window a second view onto, and a window this
+		// surface has no road to at all — and only the third of them has nothing
+		// behind the key ([app.taskOwnerOf] ranks them).
+		//
+		// A RUNG THAT REFUSES FALLS THROUGH TO THE NEXT AND FINALLY TO THE CARD.
+		// The person pressed a row and is owed a page either way; why it is the
+		// card rather than the work is said on [app.pageMsg] beside it.
+		owner := a.taskOwnerOf(item)
+		switch owner.reach {
+		case reachOpen:
+			if cmd, went := a.openTaskInOwner(owner, item); went {
+				return cmd
+			}
+		case reachAttach:
+			if cmd, went := a.openOwnerRoom(owner, item); went {
+				return cmd
+			}
+		}
+		return a.taskSheetAwayCard(item)
 	}
 	entry := item.entry
 	node := a.taskSheetNodeFor(&entry)
@@ -711,7 +864,31 @@ func (a *app) taskSheetInside(entry *session.TaskIndexEntry) tea.Cmd {
 	a.taskSheet.detailTop = 0
 	a.taskSheet.tail, a.taskSheet.tailRead = "", false
 	a.taskSheet.tailKept, a.taskSheet.tailUnread = false, false
+	// AND THE OWNER IS CLEARED HERE, at the one door that opens a card, so a card
+	// over an ordinary record row can never inherit the recovery band of the away
+	// row somebody opened before it ([app.taskSheetAwayCard] sets it back after).
+	a.taskSheet.awayOwner = tasksAwayOwner{}
 	return a.readTaskTail(*entry)
+}
+
+// taskSheetAwayCard opens the card over work ANOTHER WINDOW on this project is
+// running: the same card, over the same row, with the band that says where the
+// work is and what to do about it.
+//
+// IT IS THE CARD AND NOT A FOURTH SURFACE. Every other row of this page that has
+// no room behind it opens exactly this page (taskrecord.go's whole argument),
+// and a separate refusal screen for one kind of row would be a second thing to
+// learn for the case a person understands least.
+//
+// WHAT IT DOES NOT DO IS INVENT A RECORD. The row was minted out of the other
+// window's presence file and carries a title, a state and its owner and nothing
+// else, so the card draws exactly those and says why the rest is missing —
+// rather than a page of blanks that reads as a card which failed to load.
+func (a *app) taskSheetAwayCard(item tasksItem) tea.Cmd {
+	entry := item.entry
+	cmd := a.taskSheetInside(&entry)
+	a.taskSheet.awayOwner = tasksAwayOwner{on: true, window: item.window}
+	return cmd
 }
 
 // window is the four time keys, and it re-groups the CACHED world rather than
@@ -1047,10 +1224,23 @@ func (p *tasksPlace) hint(a *app) string {
 	item, ok := a.taskSheetCurrent()
 	switch {
 	case !ok:
-		// A PAGE WHOSE ONLY ROWS ARE ANOTHER WINDOW'S PROMISES NOTHING ABOUT
-		// enter, because enter does nothing there. A foot still offering a room
-		// over work this window cannot open would be the page lying about its own
-		// door.
+		// A PAGE WITH NO ROW UNDER THE CURSOR PROMISES NOTHING ABOUT enter,
+		// because enter does nothing there. That is a page a filter has emptied
+		// now: work another window is running takes the cursor like any other row
+		// and has its own clause below.
+	case item.away:
+		// AND THAT CLAUSE SAYS WHAT IS REALLY BEHIND THE KEY, which is the same
+		// ladder enter walks and not a guess at it: the foot asks [app.taskOwnerOf]
+		// the question enter will ask, so the word under the cursor is the door the
+		// next keystroke actually opens.
+		switch a.taskOwnerOf(item).reach {
+		case reachOpen:
+			parts = append(parts, tasksEnterOpenWord)
+		case reachAttach:
+			parts = append(parts, tasksEnterJoinWord)
+		default:
+			parts = append(parts, tasksEnterAwayWord)
+		}
 	case a.taskSheetNodeFor(&item.entry) != nil:
 		parts = append(parts, tasksEnterRoomWord)
 	default:
@@ -1070,10 +1260,15 @@ func (p *tasksPlace) hint(a *app) string {
 		}
 		parts = append(parts, tasksVerbsWord+strings.Join(words, tasksVerbGap))
 	}
+	// AND THE FILTER IS NAMED ONCE, IN THE SLOT IT IS ABOUT. The foot used to
+	// carry `type to filter this list` at rest, because the box two rows under it
+	// was saying `say what you want done` and somebody had to correct it. The box
+	// says the true sentence itself now ([placeTasks.resting]), so repeating it
+	// here would be the frame naming one thing twice on one screen — the defect
+	// this page's own title row was removed for. What the foot keeps is the fact
+	// the box CANNOT show: that while a filter is on, esc means the filter.
 	if a.taskSheetFiltering() {
 		parts = append(parts, tasksClearFilterWord)
-	} else {
-		parts = append(parts, tasksTypeWord)
 	}
 	return strings.Join(parts, railSep)
 }
@@ -1274,6 +1469,16 @@ func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.chan
 // box is the type-to-filter box: every printable key is the filter, which is the
 // one thing this page can do with a letter.
 func (placeTasks) box(a *app) *editor { return &a.taskSheet.query }
+
+// resting is what that box says when nothing is typed in it, and it is THIS
+// PLACE'S sentence rather than the router's (pages.go's [place.resting]).
+//
+// `say what you want done` stood here for as long as the place has existed, two
+// rows under a list the same keystrokes filter — an invitation to give an
+// instruction, over a box that cannot take one. The words are the FOOT's, moved
+// into the slot they are about: one sentence, in the place a person is looking
+// when they wonder what typing here will do.
+func (placeTasks) resting(a *app) string { return tasksTypeWord }
 
 // bar is the phone lane's foot: the key legend becomes a `‹ back` band a thumb
 // leaves by (taskphone.go). The count above it stays — a bar is the way out, and

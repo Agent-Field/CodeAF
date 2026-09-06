@@ -125,6 +125,43 @@ func (a *app) taskSteerDoors() (taskSteerDoor, bool) {
 	return door, ok
 }
 
+// roomGuest is the view the page on screen is being read through, and nil on an
+// ordinary room — which is every room but one (taskowner.go).
+func (a *app) roomGuest() *taskGuest {
+	if a.room == nil {
+		return nil
+	}
+	return a.room.guest
+}
+
+// roomIsGuest is THE ONE QUESTION EVERY ACTION ON A ROOM ASKS, and it is spelled
+// once because the answer is the same for all of them: this page is a READING of
+// another conversation's work, so nothing on it may reach into this window's
+// graph.
+//
+// THE IDS COLLIDE BY DESIGN, which is what makes this dangerous rather than
+// merely wrong. Task ids restart with every conversation, so a page onto another
+// conversation's task 7 usually sits beside a perfectly real local task 7 — and a
+// door that fell through to [app.tasks] would not fail. It would stop healthy
+// local work, or move it onto another model, silently, while the person was
+// looking at somebody else's task. So every one of those doors is ABSENT here
+// rather than aimed somewhere safer.
+func (a *app) roomIsGuest() bool { return a.roomGuest() != nil }
+
+// roomSteerDoors is the door THE PAGE ON SCREEN types into: this conversation's
+// own, and NONE on a page being read through somebody else's.
+//
+// IT IS ASKED IN PLACE OF [app.taskSteerDoors] AT EXACTLY ONE CALL SITE, which
+// is what keeps this narrow: everything else on the surface that steers is
+// steering its own conversation's work, and the one thing that might not be is
+// the box under a room.
+func (a *app) roomSteerDoors() (taskSteerDoor, bool) {
+	if a.roomIsGuest() {
+		return nil, false
+	}
+	return a.taskSteerDoors()
+}
+
 // taskModelDoor is the fourth door onto a node (internal/session's
 // [Agent.RetargetTask]): the person's explicit pick of another model for THIS
 // node, taking effect on its next turn.
@@ -158,6 +195,14 @@ func (a *app) taskModelDoors() (taskModelDoor, bool) {
 // not answer.
 func (a *app) roomModelMovable() bool {
 	if a.room == nil || a.room.orch != nil {
+		return false
+	}
+	// AND A PAGE READ THROUGH SOMEBODY ELSE'S CONVERSATION MOVES NOTHING. The door
+	// behind this ([app.taskModelDoors]) is THIS window's engine, so it would
+	// retarget whatever this conversation calls by the same number
+	// ([app.roomIsGuest]). The word is still drawn — a person is entitled to read
+	// what the work ran on — and it does not light.
+	if a.roomIsGuest() {
 		return false
 	}
 	node := a.roomNode()
@@ -272,6 +317,20 @@ type taskRoom struct {
 	// design node's room. It is display-only: no journal line is minted for live
 	// telemetry, and the next event replaces this string in place.
 	harnessProgress string
+
+	// guest is set when this page is a task in ANOTHER CONVERSATION, read
+	// through a second view onto the engine that is already running it
+	// (taskowner.go). It is a field on this struct for [taskRoom.orch]'s reason:
+	// everything a room promises — esc restores the transcript, the rail stays,
+	// the scroll is the room's own — has to hold here too, and the only way to
+	// guarantee that is for this to BE a room.
+	//
+	// IT REPLACES THE PAGE'S TWO SEAMS AND NOTHING ELSE. Where it is set, the
+	// journal is read through it ([app.readRoomRecord]) and a line is steered
+	// through it ([app.steer]); every other field means exactly what it means on
+	// an ordinary room. The surface's own agent, conversation and drafts are
+	// untouched, which is what makes this a view rather than a switch.
+	guest *taskGuest
 
 	// The reader's own position. It is HERE and not on the app because that is
 	// the whole promise of esc: the conversation's scroll is not touched while a
@@ -634,9 +693,26 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 
 // Capture the reader and identity before leaving the program loop, for both
 // the first read and refreshes. A window switch cannot change an in-flight read.
+//
+// A GUEST PAGE READS THROUGH ITS OWN VIEW. The journal belongs to another
+// conversation and this window's own reader would ask its own engine session
+// about an id that means something else there — the same wrong-owner failure as
+// opening the room, one layer down. The view is captured here with everything
+// else, so a page closed mid-read cannot be answered by a connection that has
+// since been given back ([taskRoom.gen] discards it either way).
 func (a *app) readRoomRecord() tea.Cmd {
 	if a.room == nil {
 		return nil
+	}
+	if guest := a.room.guest; guest != nil {
+		read, id, gen := guest.room, a.room.id, a.room.gen
+		if read == nil {
+			return nil
+		}
+		return func() tea.Msg {
+			record, err := read(id, session.TaskJournalTail)
+			return roomRecordMsg{gen: gen, record: record, err: err}
+		}
 	}
 	read, fallback, id, gen := a.farRoomRecord, a.farRecord, a.room.id, a.room.gen
 	uri := ""
@@ -667,11 +743,32 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	if msg.err == nil {
 		a.refreshRoomRecord(msg.record.Journal)
 	}
+	// A GUEST PAGE TAKES ONE THING FROM THE READING AND ONE ONLY: whether the
+	// conversation it joined is still the conversation it joined. What the WORK is
+	// doing is not in a journal at all and is never guessed from one — that comes
+	// from the owner's own lane (taskowner.go's [app.tookGuestNotice]).
+	a.tookGuestRecord(msg)
 	a.room.resolveUnfinished()
 	a.roomTouched()
 	prefetch := a.prefetchRoomPictures()
-	node := a.tasks[a.room.id]
-	a.room.done = roomRowDone(node)
+	// AND A GUEST WHOSE CONVERSATION IS GONE STOPS ASKING. Retrying would be a
+	// beat forever against an engine that has already given its final answer
+	// ([taskGuest.lost]); the page keeps what it last read and says why.
+	if a.roomIsGuest() {
+		if a.room.guest.lost || (a.room.done && msg.err == nil) {
+			return prefetch
+		}
+		return tea.Batch(prefetch, farRoomTick(a.room.gen))
+	}
+	// A GUEST PAGE KEEPS THE ANSWER IT OPENED WITH. `is the work over` is read
+	// off THIS session's roster, and a task in another conversation has no row
+	// there — [roomRowDone] answers true for a node it has never seen, which
+	// would put `task finished` under work that is running in the window next
+	// door. What the row on the tasks place said is the only reading this window
+	// has, and [app.openOwnerRoom] set it on the way in.
+	if a.room.guest == nil {
+		a.room.done = roomRowDone(a.tasks[a.room.id])
+	}
 	if a.room.done && msg.err == nil {
 		return prefetch
 	}
@@ -744,9 +841,26 @@ func (a *app) closeRoom() {
 	if a.room.stop != nil {
 		a.room.stop()
 	}
+	// AND A GUEST VIEW IS GIVEN BACK WITH THE PAGE, which is the whole of what
+	// makes looking into somebody else's conversation free. It is THIS VIEW'S
+	// connection and nothing else: the conversation goes on running, the window
+	// that owns it keeps its keyboard, and the engine is untouched
+	// (tui3.go's [TaskOwnerView.Close]).
+	guest := a.room.guest
+	if guest != nil {
+		guest.release()
+		a.room.guest = nil
+	}
 	// The clock thaws where it was frozen, at the value it would have had all
 	// along: nothing was stopped, only unreported (task.go's [app.taskNow]).
-	a.thawNode(a.room.id)
+	//
+	// A GUEST PAGE FROZE NOTHING AND THAWS NOTHING. Its id belongs to another
+	// conversation's graph and very probably also to a node of this one; thawing
+	// on the way out would report a local node's clock as having run through a
+	// page that was never about it.
+	if guest == nil {
+		a.thawNode(a.room.id)
+	}
 	a.room = nil
 	// AND THE BOX GOES BACK TO THE CONVERSATION, HOLDING THE CONVERSATION'S OWN
 	// WORDS (recipient.go). The line typed at the node stays with the node — esc
@@ -1052,8 +1166,18 @@ func (a *app) steer() tea.Cmd {
 		a.raiseGuard(line, "")
 		return nil
 	}
-	doors, ok := a.taskSteerDoors()
+	// A GUEST PAGE DOES NOT STEER. The task belongs to another conversation and
+	// this window's own door would send the line to whatever node wears that
+	// number HERE — a message the person believes a worker read, delivered to a
+	// different worker. So the door is absent, the words stay in the box, and the
+	// page says where the keyboard for this work is
+	// (taskowner.go's [roomGuestReadingWord]).
+	doors, ok := a.roomSteerDoors()
 	if !ok {
+		if a.roomGuest() != nil {
+			a.roomNote(roomGuestReadingWord)
+			return nil
+		}
 		a.roomNote(roomUnavailableRefusal.line())
 		return nil
 	}
@@ -2361,9 +2485,11 @@ func (a *app) roomKinRows(width int) []string {
 	}
 	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
 	// everywhere else on the surface. The order is [app.railKin]'s, which is the
-	// order the session met them — the one order a family is allowed to use,
-	// because any other moves a row a person is watching for a reason they
-	// cannot see.
+	// column's own: what needs a person first, then what is running, then what is
+	// waiting, then what is over — with arrival order keeping the peace inside
+	// each of those. It used to be arrival order alone, and on the block this line
+	// exists for — a run that hands four pieces out and finishes them one by one —
+	// that put every settled piece in front of the ones still going.
 	var spawned []string
 	// Each piece gets an EQUAL SHARE of what is left after the lead and the
 	// separators between them, less its own state word: the names are the
@@ -2430,9 +2556,23 @@ func (a *app) roomKinWord(node *taskNode) string {
 
 // roomNode is the node the open room is about, or nil when this surface has
 // never had an update for it.
+//
+// A GUEST PAGE ANSWERS WITH ITS OWN NODE AND NEVER WITH THE LOCAL GRAPH'S, and
+// this is the single most important line in the guest lane. Task ids restart with
+// every conversation ([session.TaskIndexEntry.ID] states it), so a page opened
+// onto another conversation's task 7 is very often standing beside THIS
+// conversation's task 7 — a different piece of work, with a different title, a
+// different model and a different state. Every reader of this function is a
+// header, a state word, a clock, a model, a kin row or an action; answering any
+// of them out of [app.tasks] would describe the wrong work and then let a key act
+// on it. The guest's node is built once from the row that was pressed and is
+// never in that map ([taskGuest.node]).
 func (a *app) roomNode() *taskNode {
 	if a.room == nil {
 		return nil
+	}
+	if guest := a.room.guest; guest != nil {
+		return guest.node
 	}
 	return a.tasks[a.room.id]
 }
@@ -2460,12 +2600,32 @@ func (a *app) roomMark(node *taskNode) string {
 // is written over a path rather than over the open room so that the day a node's
 // own page grows a door into the node it spawned, the breadcrumb is already the
 // thing on screen.
+// A GUEST PAGE HANGS OFF THE CONVERSATION THAT OWNS IT AND NOT OFF THIS ONE.
+// `main` is this surface's one name for the conversation on screen, and a page
+// read through another conversation is not under it: a trail reading `main ▸
+// Port the parser` would say this window started that work. So the root is whose
+// it is, and a person reading the top of the page knows before they read a word
+// of the transcript ([taskGuest.owner]).
 func (a *app) roomTrail() string {
 	trail := roomCrumbRoot
+	if guest := a.roomGuest(); guest != nil {
+		trail = roomGuestOwnerWord + guestOwnerName(guest.owner)
+	}
 	for _, step := range a.roomPath() {
 		trail += roomCrumbSep + step
 	}
 	return trail
+}
+
+// guestOwnerName is what to call the conversation a page is being read through,
+// and [taskAwayWord] for one nothing has named — which is the same word the row
+// and the recovery card use for a window with no title, so the three places a
+// person meets this fact sound like one program.
+func guestOwnerName(owner string) string {
+	if owner = strings.TrimSpace(owner); owner == "" {
+		return taskAwayWord
+	}
+	return owner
 }
 
 // roomPath is the titles of the rooms between the conversation and the page on
@@ -2769,10 +2929,24 @@ func (a *app) roomRows(width int) []row {
 	// perfectly healthy session: a task opened the moment it is started has
 	// journaled nothing yet, and one that is queued has not begun. The words
 	// differ by what is true (roomYetWord above), the rule does not.
-	if room.readFailed {
+	switch {
+	case room.guest != nil && room.guest.lost:
+		// THE CONVERSATION UNDER THIS PAGE WAS REPLACED, and there is nothing to
+		// retry. Everything above stays — it is what this window did read, and it
+		// was true when it read it — and this is the last line of it.
+		out = append(out, row{text: a.pal.dim(fit(taskGuestGoneWord, width)), entry: -1})
+	case room.readFailed:
 		out = append(out, row{text: a.pal.dim(fit(roomReadFailedWord, width)), entry: -1})
-	} else if len(out) == 0 && room.harnessProgress == "" {
+	case len(out) == 0 && room.harnessProgress == "":
 		out = a.roomRecordRows(out, width)
+	}
+	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
+	// whatever it did read. It is not a refusal and not an error — the transcript
+	// above it is real — it is the one thing the page cannot know, said rather
+	// than papered over with a state word that stopped being true (taskowner.go's
+	// [app.roomGuestStale]).
+	if a.roomGuestStale() {
+		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, width)), entry: -1})
 	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
@@ -3076,6 +3250,15 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// names a node out here — the box is the same box either way, and "who is
 		// listening" is the question it exists to answer.
 		lane = orchSteerLane + roomSteerBack
+	}
+	if a.roomIsGuest() {
+		// A BORROWED PAGE DOES NOT OFFER A KEYBOARD IT DOES NOT HAVE. This window is
+		// a second view onto a conversation another window is driving, and the
+		// steering door is genuinely absent here ([app.roomSteerDoors]) — so a
+		// placeholder reading `Steer <task>…` would be the box promising a delivery
+		// nothing behind it can make, which is the one thing a placeholder must
+		// never do. It says what the page IS instead, and keeps the way out.
+		lane = roomGuestLane + roomSteerBack
 	}
 	if a.room.done {
 		lane = a.roomFinishedRefusal().fit(room)
