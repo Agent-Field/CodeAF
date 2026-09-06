@@ -73,7 +73,7 @@ not an assertion that the behavior is broken.
 | Priority | Workstream and current evidence | Definition of done |
 | --- | --- | --- |
 | **P1** | **One tested build reaches the user.** Confirmed old executable paths above; existing failing window not directly inspected. | A documented launch path opens the tested client, reports client/engine revisions, enters the existing task, sends a direction to the correct task, returns and reconnects with work intact. No destructive host restart or silent old-binary reuse. |
-| **P1** | **Recipient-owned drafts and task messages. Confirmed misdelivery.** A disposable probe typed an unsent main draft, clicked task 7 and pressed Enter; the engine received that draft as task steering. Opening/closing rooms does not swap `a.input`. | Main, task A and task B independently preserve text, caret, compact pastes and attachments. Switching views never changes an unsent message's recipient. Submission clears only the accepted recipient's draft. Test Escape, direct task switches, project switches, reconnect and crash recovery. Treat a question as a question; do not silently reinterpret every task message as a scope revision. |
+| **P1** | **Recipient-owned drafts and task messages. Draft isolation fixed at `810f6e4f8`; send/guest integration pending.** Main, task and run composers now retain their own text, caret, paste blocks and attachment tray, including structured crash recovery. The original misdelivery regression is covered by permanent tests. Guest and asynchronous-send integration remain unqualified. | Main, task A and task B independently preserve text, caret, compact pastes and attachments. Switching views never changes an unsent message's recipient. Submission clears only the accepted recipient's draft. Test Escape, direct task switches, project switches, reconnect and crash recovery. Treat a question as a question; do not silently reinterpret every task message as a scope revision. |
 | **P1** | **Every visible task has an understandable opening action. Confirmed gap.** Other-window live rows are unpickable by design. Same-window rail/strip/Tasks entry points do work in tests. | Mouse and keyboard open the same stable task from the rail, Tasks, home/project views and another window. Identify the owning conversation and project. Show a recoverable error for a missing/unsupported owner; do not leave an apparently selectable row inert. |
 | **P1** | **Non-blocking send and reliable acknowledgements. Confirmed source risks.** `steer()` synchronously calls the remote method from the UI path; the ordinary call deadline is ten seconds. `TaskSteerArgs` contains only ID/text, and direct `SteerTask` supplies no stable spoken-source ID. | Send runs asynchronously. Show pending, received and applied distinctly; Escape/navigation remain responsive. Retain the draft after a failed or uncertain send. Retry a lost acknowledgement with the same message ID and apply it once, including after reconnect and from another window. A second intentional identical message remains distinct. |
 | **P1** | **A retained result remains usable when narration fails. Observed historical failure; integrated recovery unproven.** Artifacts and result references are retained, but a failed final model answer has previously left no substantive visible delivery. | Immediately expose the saved artifact, originating request and truthful failure state. One retry delivers the answer without rerunning completed work or duplicating the completion notice. Test provider failure during final narration, reconnect, and a newer unrelated main-chat question. |
@@ -118,7 +118,7 @@ visual redesign or another agent orchestration layer.
 | Compact task door when attention is needed | New failing-before/passing-after click regressions at 44/80/99 columns | In-memory terminal render and wire reader |
 | Phone attention priority | New failing-before/passing-after state test | No physical phone/terminal screenshot |
 | Old subscription release | Reproduced missing callback; corrected constructor releases exactly once | Does not certify every stream resource under long-duration load |
-| Draft recipient isolation | Desired-behavior probe failed: main text was sent to task 7 | Remains unfixed; temporary failing test was removed after preserving the evidence |
+| Draft recipient isolation | Original desired-behavior probe failed; permanent recipient/durable-draft regressions now pass in the full UI suite at `810f6e4f8` | Combined guest/send ownership still under implementation |
 | Other-window task opening | Existing test deliberately asserts an inert row | Missing capability remains |
 | Revision, protected branch, detach, reconnect | Independent targeted session/host/remote tests passed (1.424s/1.172s/2.223s) | Component evidence, not complete live-work proof |
 | Code generation quality | Prior native trial: 159+61 checks; 823 public cases and 124 subtests; supplemental type-contract failure | Historical trial on an earlier runtime; one task is not a success rate |
@@ -156,33 +156,23 @@ Operator logs are under `/private/tmp/af-production-audit-20260906/`:
   `internal/enginehost/persistent_test.go`, `internal/remote/tasklane.go`.
 - Historical evidence: `QUALITY-20260905.md`, `IMPLEMENTATION.md`, `VALIDATION.md`.
 
-## Reproducing the remaining draft defect
+## Reproducing recipient and crash recovery checks
 
-On this branch, put the following disposable test in
-`internal/tui3/qa_recipient_probe_test.go` and run
-`go test ./internal/tui3 -run '^TestQARecipientIsolation$' -count=1` without a model
-key. It expresses the required behavior and currently fails. Remove the disposable
-file after the probe; it is not a new skipped test or a passing assertion that
-enshrines the bug. The complete fix should retain and extend it to cover all
-recipient-owned editor state.
+The original disposable probe exposed a main draft being sent into task 7.
+The implementation at `810f6e4f8` closes that defect; it is no longer an expected
+failure. Permanent tests in `internal/tui3/recipientdraft_test.go`,
+`draftkeep_test.go` and `draftcrash_test.go` cover recipient switching, caret,
+paste and attachment state, write failures, ordered writes and stale legacy
+exports. Run them with no model key:
 
-```go
-package tui3
-
-import "testing"
-
-func TestQARecipientIsolation(t *testing.T) {
-    a, engine := localTaskRoomLab(t)
-    a.input.setText("Unsent discussion for the main conversation")
-    clickRail(t, a, 0)
-    drive(t, a, key("enter"))
-    engine.mu.Lock()
-    defer engine.mu.Unlock()
-    if len(engine.steered) != 0 {
-        t.Fatalf("main draft was sent to task %v: %q", engine.ids, engine.steered)
-    }
-}
+```sh
+env -u OPENROUTER_API_KEY go test -race ./internal/tui3 \
+  -run 'Test.*Draft|Test.*Recipient|Test.*Composer|Test.*Paste|Test.*Reunion|Test.*Recover|Test.*Save' \
+  -count=1 -timeout15m
 ```
+
+These tests do not claim that the still-unintegrated send queue persists a message
+before transmission, or that a guest page has its final recipient binding.
 
 ## Validation appendix
 
@@ -280,3 +270,28 @@ subdued identity marker is being implemented. No updated actual-user terminal
 or release is implied: the existing iTerm inspection restriction and old-running-
 binary findings above still apply. No new live Aforge developer-task evaluation
 was run in this follow-up; the authorized Claude CLI work is separate.
+
+## Recipient draft integration checkpoint — `810f6e4f8`
+
+The Claude CLI Opus draft implementation was reviewed, corrected and integrated.
+Each recipient owns text, cursor, compact paste blocks, attachment paths and a
+slot for unresolved sends. Structured JSON is authoritative; the plain text file
+is a legacy export. An empty record prevents cleared or submitted text from
+returning after a crash between those writes. A newer failed save retires older
+queued writes. Unknown records are preserved, missing paste blocks block sending,
+and write failures are shown. No new skips or storage caps were introduced.
+
+The focused race suite passed in **46.655s**, including the coordinator's two
+previously failing stale-export crash cases. The integration's full offline
+`make check PKGS='./internal/tui3 ./internal/manual' TEST_FLAGS='-count=1'` passed:
+**UI 497.447s**, manual 2.015s, whole-tree vet, packed manual 1.568s, canonical
+build and **50,653,298 / 54,600,000 bytes**. Logs: `drafts-focused-third.log` and
+`drafts-integration-gate.log` under the Opus operations directory above.
+
+The broader navigation review deliberately retained five failures in
+`navigation-focused-third.log`: missing guest-loss explanation, task-row cost
+priority, duplicate live/history work, and two observer/protocol tests. Sending
+review also found a premature recall entry and an acknowledgement that preceded
+durable message identity. These are being corrected in separate worktrees; their
+changes are not in this checkpoint. No live-model quality or actual-terminal
+qualification follows from the draft gate.
