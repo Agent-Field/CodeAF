@@ -3782,7 +3782,7 @@ func taskBranchFollowup(notice TaskNotice) string {
 	if notice.Merge != mergeKept && notice.Merge != mergeConflicted && notice.Merge != mergeAborted {
 		return ""
 	}
-	return "\nThe work remains on its task branch. Inspect and test it there. " +
+	return "\nThe work remains on task branch " + notice.Branch + ". Inspect and test it there. " +
 		"This completion notice does not expand the person's request: preserve their " +
 		"branch and review instructions. Do not merge or switch the conversation's " +
 		"checkout unless their request calls for it."
@@ -3808,7 +3808,7 @@ func taskMergeNote(notice TaskNotice) string {
 		// of this report. The emptiness law is why nothing is written here rather
 		// than a line with a hole where a branch name would go.
 		if notice.Branch != "" {
-			return "\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready"
+			return "\nits branch " + notice.Branch + " did not merge cleanly and was kept — inspect the retained branch before deciding what to do next"
 		}
 		return ""
 	case mergeAborted:
@@ -3827,7 +3827,7 @@ func taskMergeNote(notice TaskNotice) string {
 			return ""
 		case len(notice.Changed) > 0:
 			return "\nit was stopped; what it made is committed on its branch " +
-				notice.Branch + ", which was kept — merge that branch to take the work"
+				notice.Branch + ", which was kept for inspection"
 		default:
 			return "\nit was stopped; its branch " + notice.Branch + " was kept"
 		}

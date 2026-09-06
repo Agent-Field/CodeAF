@@ -433,8 +433,8 @@ Its branch is kept, its working copy is given back, and the card says `branch ke
 You will see one exact reason:
 
 - `its branch task/x was kept: your checkout is on dev, which tasks do not merge into automatically`
-- `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
-- `its branch task/x was kept: your checkout is not on a branch — check one out and merge it`
+- `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — inspect the retained task branch before choosing a destination`
+- `its branch task/x was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
 - `its branch task/x was kept: feat/x has moved on since the work was cut — merge it where you want it`
 
 Take it with `git merge task/x` on the branch where you want the work. `git branch --list
@@ -918,11 +918,11 @@ where the branch went:
 
 - `its branch task/… merged into yours`
 - `its branch task/… was kept: your checkout is on dev, which tasks do not merge into automatically`
-- `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
-- `its branch task/… was kept: your checkout is not on a branch — check one out and merge it`
+- `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — inspect the retained task branch before choosing a destination`
+- `its branch task/… was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
 - `its branch task/… was kept: feat/x has moved on since the work was cut — merge it where you want it`
-- `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`
-- `it was stopped; what it made is committed on its branch task/…, which was kept — merge that branch to take the work`
+- `its branch task/… did not merge cleanly and was kept — inspect the retained branch before deciding what to do next`
+- `it was stopped; what it made is committed on its branch task/…, which was kept for inspection`
 - `it was stopped; its branch task/… was kept` (when it made nothing)
 - `it worked directly in the workspace: there was no repository to branch`
 
@@ -1920,7 +1920,7 @@ without exception:
 - a task that needs your look keeps its branch;
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
-  `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
+  `its branch task/… did not merge cleanly and was kept — inspect the retained branch before deciding what to do next`;
 - a finished task on a protected branch, whose branch or commit moved after the cut, or
   whose checkout became detached,
   stays **done** and keeps its branch for you to merge where you choose;

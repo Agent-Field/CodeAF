@@ -1279,8 +1279,9 @@ or `branch kept · <branch>`.
 `branch kept · <branch>` on a **done** task means the work finished but your checkout was
 on a protected branch, was on a different branch than when the work was cut, moved to a
 different commit by your own work after the cut, or was detached. The branch named
-there holds the finished work; the how-tasks-run page explains the exact reason and how to
-merge it where you want it.
+there holds the finished work; the how-tasks-run page explains the exact reason.
+Inspect that branch and keep the delivery workflow you requested. A task finishing
+does not by itself request a merge or a checkout change.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
 branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the

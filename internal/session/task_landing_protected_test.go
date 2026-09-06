@@ -212,7 +212,7 @@ func TestC8AMovedOrDetachedCheckoutKeepsTheTaskBranch(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "moved.txt"), "kept\n")
 		mustGit(t, repo, "checkout", "-b", "other")
 		merge, detail, _ := tree.comeHome("write after the move", []string{"moved.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — merge it where you want it"
+		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — inspect the retained task branch before choosing a destination"
 		if merge != mergeKept || !strings.Contains(detail, want) {
 			t.Fatalf("landing = %q, %q; want moved-checkout keep", merge, detail)
 		}
@@ -230,7 +230,7 @@ func TestC8AMovedOrDetachedCheckoutKeepsTheTaskBranch(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "detached.txt"), "kept\n")
 		mustGit(t, repo, "checkout", "--detach")
 		merge, detail, _ := tree.comeHome("write while detached", []string{"detached.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — check one out and merge it"
+		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 		if merge != mergeKept || !strings.Contains(detail, want) {
 			t.Fatalf("landing = %q, %q; want detached-checkout keep", merge, detail)
 		}

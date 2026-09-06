@@ -153,9 +153,9 @@ func (t taskTree) keptLandingSentence() string {
 	current := currentBranch(t.root)
 	switch {
 	case current == "":
-		return "its branch " + t.branch + " was kept: your checkout is not on a branch — check one out and merge it"
+		return "its branch " + t.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 	case t.home != "" && current != t.home:
-		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — merge it where you want it"
+		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — inspect the retained task branch before choosing a destination"
 	case protectedBranch(t.root, current):
 		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which tasks do not merge into automatically"
 	case branchMovedByPerson(t.root, current, t.homeSha):

@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+func TestRetainedBranchNoticePreservesRequestedWorkflow(t *testing.T) {
+	for _, merge := range []string{mergeKept, mergeConflicted, mergeAborted} {
+		notice := TaskNotice{ID: 7, Title: "Port the parser", State: TaskUnverified,
+			Branch: "task/parser", Merge: merge, Changed: []string{"parser.go"}}
+		note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true})
+		if !strings.Contains(note, notice.Branch) || !strings.Contains(note, "unless their request calls for it") {
+			t.Fatalf("%s: missing retained branch or workflow boundary: %s", merge, note)
+		}
+		for _, direction := range []string{"merge it yourself", "merge that branch", "check one out and merge", "merge it where"} {
+			if strings.Contains(note, direction) {
+				t.Fatalf("%s: notice directs an unrequested merge: %s", merge, note)
+			}
+		}
+	}
+}
+
 // WHAT THE MODEL IS TOLD WHEN A NODE LANDS.
 //
 // The note is the model's only account of work it handed off, and it is about to
