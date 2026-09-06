@@ -2739,3 +2739,21 @@ This guidance accompanies the automatic landing protection; it is not a general
 shell restriction. An agent with shell access can still run Git commands. Task
 settlement continues to follow `task.settle`, and existing permission rules still
 apply to commands the agent chooses.
+
+
+## Why does the task shortcut stay when no worker is running
+
+In a narrow terminal, the compact task shortcut stays visible while a task is
+running, queued or needs your attention. Click it to inspect that work; on the
+smallest layout it opens the Tasks page, where Enter or a tap opens a task.
+The phone summary names **needs you** before running work, so a pending decision
+is not hidden behind another worker's progress. The shortcut disappears when
+none of those tasks remain. A wide terminal uses its task list instead.
+
+
+## Does switching task views stop the work
+
+Opening another task changes the task you are viewing. It does not cancel either
+task or its commands. Escape returns to the main conversation without stopping
+work. Updates from the previous view cannot replace the newly opened task. Use
+the task's stop action when you intend to stop execution.

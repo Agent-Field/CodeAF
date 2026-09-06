@@ -130,10 +130,13 @@ func (a *app) stripPhoneDoor(width int) (string, bool) {
 
 // stripPhoneState is the most urgent thing among the live nodes, in the same
 // word the roster heads its sections with — `1 running`, or `2 needs you`, or
-// `3 idle`. It walks [stripOrder], running first, and takes the first group with
-// anyone in it, which is the chip the packed row would have led with.
+// `3 idle`. A decision comes first because this compact summary has no other
+// row on which to show it; the expanded strip still names each running task.
 func (a *app) stripPhoneState() string {
 	members := a.railMembers()
+	if n := len(members[railAttention]); n > 0 {
+		return itoa(n) + " " + railGroupWords[railAttention]
+	}
 	for _, g := range stripOrder {
 		if n := len(members[g]); n > 0 {
 			return itoa(n) + " " + railGroupWords[g]

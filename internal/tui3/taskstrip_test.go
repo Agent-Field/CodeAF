@@ -98,8 +98,13 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 	// conversation.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
+	if !a.stripShowing() {
+		t.Fatal("queued work lost its navigation shortcut")
+	}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Write the auth tests", session.TaskDone,
+		session.TaskNotice{Merge: mergeWordMerged})})
 	if a.stripShowing() || stripText(a) != "" {
-		t.Fatalf("the strip outlived the running work:\n%q", stripText(a))
+		t.Fatalf("the strip outlived the unfinished work:\n%q", stripText(a))
 	}
 	if a.bodyTop() != 0 {
 		t.Fatalf("the strip kept its row after it stopped drawing: top=%d", a.bodyTop())

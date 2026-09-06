@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -167,8 +168,8 @@ const (
 //
 // The column leads with what is asking for a decision because a person reads it
 // top to bottom looking for work to do. The strip leads with what is RUNNING
-// because it is a presence row: it exists at all only while something is
-// running, and the first chip is the thing a person is waiting on. What is
+// because its expanded chips can name each item. The row stays while work is
+// running, queued or needs attention; the compact phone summary puts attention first. What is
 // parked and what is done are not on it — a strip is the live set, and the
 // roster is where a session's history lives.
 var stripOrder = [...]railGroup{railRunning, railAttention, railIdle}
@@ -220,7 +221,7 @@ func (a *app) stripShowing() bool {
 		return false
 	}
 	for _, id := range a.taskOrder {
-		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
+		if node := a.tasks[id]; node != nil && slices.Contains(stripOrder[:], a.railGroupOf(node)) {
 			return true
 		}
 	}

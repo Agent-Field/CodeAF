@@ -4,6 +4,9 @@ title: Conversation work keeps attributable direction and results while its exec
 pr: 653
 surface: [chat, engine, docs]
 invalidates:
+  - The model-switch notification test now observes the synchronous receipt instead of competing with the live beat for its queue; the race reproduced on the unchanged baseline. Routing behavior is unchanged.
+  - Switching directly between task views now releases the previous transcript subscription, as Escape already did; navigation does not cancel execution.
+  - The narrow task shortcut now remains clickable for queued work and tasks needing attention even after the last worker stops; its phone summary prioritizes a waiting decision.
   - A conversation-and-tasks interaction prototype and product architecture are now available under docs/design/conversation-runtime; these are simulated design work, not changes to the live terminal or execution behavior.
   - Kept task branches now carry an explicit reminder to preserve the requested branch and review workflow; a completion notice is not a request to merge into main. This is model guidance, not a shell restriction.
   - 'Automatic routing carried acceptance prose but could not declare runnable checks. Its checks field now reaches whole-request tasks through the existing verification contract; changed requests and partial handoffs do not inherit those commands.'

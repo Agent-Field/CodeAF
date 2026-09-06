@@ -455,6 +455,9 @@ const roomTail = 120
 // — and three copies of the same eight fields is three chances for the fourth
 // one to be built wrong.
 func (a *app) newRoom(id uint64, title string) *taskRoom {
+	// Replacing a view must release its subscription just as Escape does.
+	// Leaving the old lane open does not keep useful work running; it leaks a reader.
+	a.closeRoom()
 	a.roomGen++
 	r := &taskRoom{
 		id: id, title: title, gen: a.roomGen,
