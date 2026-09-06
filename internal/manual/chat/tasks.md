@@ -4283,3 +4283,7 @@ conversation and task. Its words do not replace your conversation draft or a loc
 with the same number. The page is a reading view: sending, steering, and stopping belong
 to the conversation that owns the work. If its status connection closes, the footer says
 `reading` and the page keeps the last known state with an explanation.
+
+A reading view continues checking its owner after the task finishes. If that
+conversation opens something else, the page explains that it is showing its last
+reading and stops asking. Finished local task pages still stop polling normally.

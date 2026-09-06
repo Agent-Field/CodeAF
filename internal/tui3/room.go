@@ -706,7 +706,7 @@ func (a *app) readRoomRecord() tea.Cmd {
 	}
 	if guest := a.room.guest; guest != nil {
 		read, id, gen := guest.room, a.room.id, a.room.gen
-		if read == nil {
+		if read == nil || guest.lost {
 			return nil
 		}
 		return func() tea.Msg {
@@ -738,6 +738,9 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	if a.room == nil || a.room.gen != msg.gen {
 		return nil
 	}
+	if guest := a.roomGuest(); guest != nil && guest.lost {
+		return nil
+	}
 	a.room.loading = false
 	a.room.readFailed = msg.err != nil
 	if msg.err == nil {
@@ -755,7 +758,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	// beat forever against an engine that has already given its final answer
 	// ([taskGuest.lost]); the page keeps what it last read and says why.
 	if a.roomIsGuest() {
-		if a.room.guest.lost || (a.room.done && msg.err == nil) {
+		if a.room.guest.lost {
 			return prefetch
 		}
 		return tea.Batch(prefetch, farRoomTick(a.room.gen))
@@ -795,7 +798,7 @@ func (a *app) farRoomPoll(gen int) tea.Cmd {
 	if a.room == nil || a.room.gen != gen {
 		return nil
 	}
-	if a.room.done && !a.room.readFailed {
+	if a.room.done && !a.room.readFailed && !a.roomIsGuest() {
 		return nil
 	}
 	return a.readRoomRecord()

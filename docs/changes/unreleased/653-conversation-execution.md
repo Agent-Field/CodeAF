@@ -81,3 +81,7 @@ The reconnect fixture now allows the replacement window to arrive before the
 server processes the old socket's EOF. It checks retained conversation identity
 and eventual standing-subscription cleanup instead of assuming an arrival-time
 attachment count of zero.
+
+A finished guest task continues checking that its owning conversation is still
+open; replacement now produces the same last-known explanation as for running
+work. A page already marked lost ignores late journal reads and stops polling.

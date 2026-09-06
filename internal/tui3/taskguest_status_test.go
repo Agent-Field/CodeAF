@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -79,5 +80,33 @@ func TestGuestFooterDoesNotCallLastKnownWorkRunning(t *testing.T) {
 	a.room.guest.lost = true
 	if got, _ := a.stateWord(); got != "reading" {
 		t.Fatalf("lost footer = %q", got)
+	}
+}
+
+func TestFinishedGuestStillLearnsThatItsOwnerWasReplaced(t *testing.T) {
+	a, door := guestLab(t)
+	door.watching()
+	enterAway(t, a)
+	ownerSays(t, a, session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 7, State: session.TaskDone}})
+	first := a.farRoomPoll(a.room.gen)
+	if first == nil {
+		t.Fatal("finished guest stopped checking its owner")
+	}
+	if next := a.farRoomRead(first().(roomRecordMsg)); next == nil {
+		t.Fatal("successful finished read did not rearm owner check")
+	}
+	a.room.guest.room = func(uint64, int) (session.TaskRecord, error) {
+		return session.TaskRecord{}, errors.New(taskGuestGoneMark)
+	}
+	cmd := a.farRoomPoll(a.room.gen)
+	if cmd == nil {
+		t.Fatal("finished guest never read its replaced owner")
+	}
+	a.farRoomRead(cmd().(roomRecordMsg))
+	if !a.room.guest.lost || !strings.Contains(roomText(a), taskGuestGoneWord) {
+		t.Fatal("finished guest concealed owner replacement")
+	}
+	if cmd := a.farRoomPoll(a.room.gen); cmd != nil {
+		t.Fatal("lost guest continued polling")
 	}
 }

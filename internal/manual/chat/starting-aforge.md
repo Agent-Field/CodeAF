@@ -148,7 +148,12 @@ For a fixed headless goal (`--once --yolo` with a budget), four things change:
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
 
-## Why did it stop at a task that was finished · it ended without starting more work · why did it not hand the work over
+## Why did it stop at a task that was finished
+
+If it ended without starting more work, or did not hand the work over, the
+budgeted run checked whether anything remained before starting another task.
+
+## It ended without starting more work · why did it not hand the work over
 
 With a budget, **every** way a turn ends is read, not just the ones where the model stops
 talking. A long turn can also end by having its work moved onto a task — when a second
