@@ -55,6 +55,27 @@ type aside struct {
 	// [app.leavingDraft] assembles exactly this string for the same reason).
 	draft string
 	chips []chip
+	// pastes are the documents the draft's compact tokens stand for
+	// (pastechip.go). They travel with the sentence because the sentence is
+	// meaningless without them: a draft restored with `[paste 1 · 42 lines]` in
+	// it and nothing behind the tag would send the tag to a model as though those
+	// were the words.
+	pastes []pasteChip
+	// sends are the conversation's own messages that have left the box and not
+	// settled (recipient.go's [outboxSnapshot]). They travel with the draft
+	// because a message nobody has answered for is the same kind of fact as one
+	// nobody has sent yet: words the person typed that are still theirs.
+	sends []outboxSnapshot
+	// composers are the unsent lines typed into this conversation's TASK PAGES,
+	// each under its own reader (recipient.go). Main's own box is [aside.draft]
+	// above and is deliberately not in here.
+	//
+	// THEY ARE KEPT WITH THE CONVERSATION AND NEVER WITH THE PERSON, which is the
+	// opposite of the rule the draft follows, and for the reason the room id below
+	// follows the same one: a task id means something only inside the graph that
+	// minted it, so a line typed at task 7 belongs to the conversation task 7 is
+	// running in and to no other.
+	composers map[recipient]composerState
 	// offset is where they were reading and stick whether they were pinned to
 	// the foot of the transcript.
 	offset int
@@ -217,12 +238,20 @@ func (a *app) front() Conversation {
 // The caller is what decides where the agent goes — the keeper, or
 // [app.closeFront], which closes it for real.
 func (a *app) detachConversation() *aside {
+	main := a.mainComposer()
 	side := &aside{
 		// The box and the parked messages, in the order they would have been
 		// sent (quitarm.go's [app.leavingDraft] is the same assembly the door
 		// out of the program makes, and for the same reason).
+		//
+		// THE THREE ARE READ THROUGH MAIN AND NOT OFF THE SCREEN (recipient.go).
+		// A conversation can be put down while a task's page is in front, and the
+		// box then holds that page's steering line — which is not this
+		// conversation's unsent message and must not come back as one.
 		draft:  a.leavingDraft(),
-		chips:  a.chips,
+		chips:  main.chips,
+		pastes: main.pastes,
+		sends:  main.sends,
 		offset: a.offset,
 		stick:  a.stick,
 		since:  a.now(),
@@ -234,6 +263,11 @@ func (a *app) detachConversation() *aside {
 	if a.room != nil {
 		side.room = a.room.id
 	}
+	// AND EVERY PAGE'S OWN UNSENT LINE GOES WITH THE CONVERSATION ITS PAGES
+	// BELONG TO (recipient.go). It is taken after the box above and before
+	// [app.clearConversation] below forgets the lot, and it includes the line in
+	// the box right now when a page is the thing holding it.
+	side.composers = a.composersAside()
 	// THE DEBOUNCE IS DISARMED HERE AND THE FILE IS THE CALLER'S BUSINESS. A
 	// save armed by this conversation must not fire after the switch and write
 	// this box under the NEXT conversation's name (draft.go's [draftSaveMsg]
@@ -342,8 +376,17 @@ func (a *app) clearConversation() {
 	a.offset, a.stick = 0, true
 	// The box goes with the conversation it was typed at: the sidecar is holding
 	// it, and the arriving conversation has its own.
+	//
+	// ALL OF THE BOXES, which is what [app.forgetComposers] adds (recipient.go):
+	// the compact pastes the tokens in the sentence stood for, and every task
+	// page's own unsent line. A stash carried across would be words addressed to
+	// nodes the arriving conversation has never heard of, in a numbering its own
+	// tasks will reuse — the same argument the rail, the folds and the lane
+	// generations are cleared on above.
 	a.input.setText("")
 	a.chips = nil
+	a.pastes = nil
+	a.forgetComposers()
 	a.parks = nil
 	a.touch()
 }
@@ -525,10 +568,17 @@ func (a *app) adoptTurn(events <-chan session.Event, stop func()) tea.Cmd {
 
 // restoreAside puts the person's own readings back.
 func (a *app) restoreAside(side *aside) tea.Cmd {
+	// THE BOX IS LAID OUT ON MAIN FIRST AND THE PAGES' OWN LINES ARE PUT BEHIND
+	// IT (recipient.go), in that order: the room reopened at the foot of this
+	// function goes through the same door a rail click does, and that door is what
+	// lays this conversation's task page back out over the top.
+	a.restoreComposers(side.composers)
 	if side.draft != "" {
 		a.input.setText(side.draft)
 	}
 	a.chips = side.chips
+	a.pastes = side.pastes
+	a.sends = side.sends
 	a.offset, a.stick = side.offset, side.stick
 	// THE COUNTDOWN IS HANDED BACK RATHER THAN RESTAMPED, and only to a question
 	// THE ENGINE STILL HOLDS. It is consumed by [app.startAskClock] when the

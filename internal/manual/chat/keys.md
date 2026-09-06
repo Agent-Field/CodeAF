@@ -894,11 +894,44 @@ rule and nothing else. While the call is out that same slot turns a small spinne
 of the words; when the answer lands the block appears under the box, and the box itself
 has still not moved.
 
+## Every recipient keeps its own message box — I typed something for you and it went to a task
+
+**The box belongs to whoever it is talking to.** The conversation has one unsent
+sentence, and every task page you open has its own. Opening a task's page, pressing
+`esc` to come back, or clicking straight from one task to another never moves a word
+from one of them to another.
+
+What each one keeps: the text, where the caret is in it, its compact `[paste 1 · 42
+lines]` chips with the documents behind them, and anything on its tray. So a
+half-written message for the model is exactly as you left it when you come back from a
+task, caret included, and a correction you started typing at a task is still there when
+you open that task again.
+
+**`enter` sends the box you are looking at, and clears only that one.** Steering a task
+empties that task's box and leaves the conversation's sentence and every other task's
+alone. If steering is refused and you answer the question with `[m]` — send it to the
+main conversation instead — the words that go are the ones you typed at the task, and
+your unsent sentence for the model is still in the box you come back to.
+
+**All of it is kept on disk, per recipient**, and comes back after a crash or a restart:
+the conversation's sentence with its caret, and each task page's own line with its
+documents and tray. A task page's line is never restored into the conversation, and never
+into a different conversation's task that happens to have the same number. The section
+below is the whole of how that is written down.
+
+Before this, there was one box and one set of words in it: typing a message for the
+model, clicking a task and pressing `enter` sent that message to the task, with nothing
+on the screen looking any different at any point.
+
 ## Your unsent draft is kept
 
 The half-written message survives closing the window, a crash, `/new`, and a session
 that has moved on. There is nothing to press; it is automatic.
 
+- **Every recipient's box is kept, each to itself.** Quitting while a task's page is
+  open writes the sentence you had for the model *and* the correction you were typing
+  at the worker; the next launch puts each one back where it was typed. Nothing typed
+  at a task ever comes back in a box pointed at the model.
 - It is written 300ms after you stop typing, and again synchronously on quit before
   anything else happens.
 - **Anything still waiting for an answer is folded in on quit.** A message you parked
@@ -923,8 +956,50 @@ that has moved on. There is nothing to press; it is automatic.
   deleted. A process id that cannot be checked is treated as still alive — aforge
   errs toward leaving your sentence on disk.
 - CR and CRLF in a restored draft are normalised to LF.
-- A failed write is dropped in silence. No draft is kept at all if aforge was started
-  without a draft file.
+- No draft is kept at all if aforge was started without a draft file.
+
+## What a crash does to your draft — what is saved, what comes back, what it will not send
+
+Everything the box is holding is written to one record per conversation, and the plain
+file you can read sits beside it.
+
+- **One record, and a plain file beside it.** `draft-<id>-<n>-<pid>.json` is the record
+  and is what a restore reads: every box's words and caret, the documents behind its
+  `[paste 1 · 42 lines]` chips, its tray, each stamped with the machine, the project and
+  the conversation it belongs to. `draft-<id>-<n>-<pid>.txt` is your sentence in plain
+  text, exactly as it always was — a build that has never heard of the record still reads
+  and writes it, and it is what a restore falls back on where there is no record.
+- **A sent or cleared box stays empty.** The record is the answer even when it has
+  nothing to say. It is written before the plain file, so a crash between the two can
+  leave that file still holding the sentence you just sent; the record is believed
+  instead, and the stale file is cleared away when it is found. An empty record is left
+  behind saying "this box is empty" rather than deleted, and goes when the conversation
+  is closed.
+- **Nothing is dropped to make it fit.** There is no size limit and nothing is
+  truncated: a pasted log of any size is written down with the sentence it belongs to.
+- **What comes back is what you left, and what is wrong with it is said.** An attachment
+  whose file was deleted meanwhile is still on the tray, and the conversation says
+  `a restored draft still names a file that is gone · shot.png`; `enter` names it again
+  if you send it anyway. A `[paste 1 · 42 lines]` tag restored from a plain file with no
+  record behind it keeps its place in your sentence, and the conversation says
+  `a pasted block could not be restored · its tag is still in the draft`. Nothing is
+  edited out of your words for you.
+- **And `enter` will not send that message.** With a compact tag whose text is gone, the
+  conversation and a task page both refuse with `a pasted block could not be restored ·
+  the words were not sent`, and your whole line stays in the box: sending would hand the
+  model the tag instead of the document, and deleting the tag would send a different
+  message from the one on your screen. Paste the block again, or delete the tag.
+- **If it cannot be written, you are told**: `this draft could not be saved`, with the
+  reason. A record aforge cannot read — a later build's, or a half-finished write — is
+  never overwritten either; it is moved aside as `<name>.json.unreadable-<number>` and
+  the new one written in its place.
+- **A task page's line follows its conversation, not the window.** Open that
+  conversation tomorrow in a different window and its lines come with it; open a
+  different conversation and they are neither shown to you nor deleted.
+- **Only the newest record for a conversation is read.** If two windows each left
+  one — two crashes — the later one wins outright, so a box you emptied is not
+  refilled by the earlier one. The earlier record is left on disk untouched rather
+  than merged or deleted; nothing in aforge offers it back to you.
 
 ## Getting back something you typed before
 

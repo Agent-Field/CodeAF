@@ -547,6 +547,12 @@ func (a *app) openRoom(id uint64, title string) {
 	// somebody is watching ([app.tallyNode], Decision 4).
 	a.tallyNode(id, room.entries)
 	a.room = room
+	// AND THE BOX STARTS TALKING TO THIS NODE (recipient.go). Whatever was being
+	// written for the conversation — or for the node whose page this one replaced
+	// — is stashed under its own reader, and this node's own unsent line, caret,
+	// paste chips and tray are laid back out. Nothing is carried across: an
+	// unsent draft has not changed its mind about who it is for.
+	a.retargetComposer(taskRecipient(id))
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
 	// The journal records what was said and never where the saying went, so the
@@ -614,6 +620,12 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 	room := a.newRoom(node.id, title)
 	room.done, room.loading = roomRowDone(node), true
 	a.room = room
+	// The hosted door owes the composer exactly what the local one owes it
+	// ([app.openRoom]): this page's own words, and nobody else's. It is still THIS
+	// conversation's node, on another machine — a page reading ANOTHER
+	// conversation's journal is a different reader, and this one line is all that
+	// changes for it (recipient.go's [guestRecipient]).
+	a.retargetComposer(taskRecipient(node.id))
 	a.sel = -1
 	a.dropHover()
 	a.touch()
@@ -736,9 +748,18 @@ func (a *app) closeRoom() {
 	// along: nothing was stopped, only unreported (task.go's [app.taskNow]).
 	a.thawNode(a.room.id)
 	a.room = nil
+	// AND THE BOX GOES BACK TO THE CONVERSATION, HOLDING THE CONVERSATION'S OWN
+	// WORDS (recipient.go). The line typed at the node stays with the node — esc
+	// is a way out of a page and never a decision to throw a sentence away — and
+	// the half-written message this window had for the model is exactly where it
+	// was, caret included. It is done through the OWNER rather than through the
+	// room that was just put down, so a page whose kind is not a node's (a run's,
+	// roomorch.go) is stashed under its own name.
+	a.retargetComposer(mainRecipient)
 	// The guard is a question about a line typed at THIS node. Leaving the room
 	// takes it down: the two answers it offers are both about a page that is no
-	// longer on screen, and the words are still in the box either way.
+	// longer on screen, and the words are not lost either way — they stay with
+	// the page they were typed at, and come back with it (recipient.go).
 	a.guard = nil
 	a.dropHover()
 	a.touch()
@@ -1011,6 +1032,14 @@ func (a *app) steer() tea.Cmd {
 	if room == nil || line == "" {
 		return nil
 	}
+	// A COMPACT TAG WITH NOTHING BEHIND IT STOPS THE SEND HERE TOO (draftkeep.go's
+	// [app.missingPaste]). [app.pastesUnfolded] below would hand the worker the tag
+	// as though it were the document, and a correction is the last message that can
+	// afford to be half of itself.
+	if tag := a.missingPaste(line); tag != "" {
+		a.roomNote(draftOrphanSendWord + " · " + tag)
+		return nil
+	}
 	// A RUN'S PAGE STEERS THE PLANNER (roomorch.go). Same box, same enter, same
 	// echo of the person's own words on the page they typed them into — the only
 	// thing that changes is which door the sentence goes through, because there
@@ -1245,16 +1274,36 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 			"Start it again with this instruction: " + guard.text
 	}
 	a.dropGuard()
-	a.closeRoom()
+	// THE ACCEPTED DRAFT IS THE ROOM'S, AND IT IS SPENT WHILE THE ROOM STILL HOLDS
+	// THE BOX (recipient.go). These words were typed at the node and are going to
+	// the model instead because the person just said so — so the page's own line
+	// is cleared here, and the conversation's unsent sentence, which nobody has
+	// decided anything about, is still waiting under [app.closeRoom] below.
+	//
+	// AND THE MODEL READS THE DOCUMENTS AND NOT THE TAGS. A compact paste in the
+	// room's box carries `[paste 1 · 42 lines]` on screen and forty-two lines
+	// underneath (pastechip.go's law: every door that carries the box's words to a
+	// model hands over the second). This road handed over the first, so a sentence
+	// re-pointed at the conversation arrived as a tag the model could only guess
+	// about — and the chips are the page's, so they are unfolded and spent before
+	// the box changes hands.
+	shown := line
+	line = a.pastesUnfolded(line)
+	a.pastes = nil
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
+	a.closeRoom()
 	a.stick = true
 	// The person's own sentence is what goes in the recall list, not the
 	// wrapper this surface put around it: ↑ is for getting back what you typed.
 	a.remember(guard.text)
-	a.dropDraft()
-	return a.submit(line)
+	// AND THE FILE FOLLOWS THE CONVERSATION'S BOX RATHER THAN BEING DROPPED
+	// (draft.go's [app.keepMainDraft]). What was spent here was the page's line,
+	// not main's, so a remove would delete the crash insurance for a sentence
+	// still sitting in the box this keystroke just came back to.
+	a.keepMainDraft()
+	return a.submitShown(line, shown)
 }
 
 // ── the guard, drawn ────────────────────────────────────────────────────────

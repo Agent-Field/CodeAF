@@ -2611,6 +2611,15 @@ in its family — see *Who started this task, and what it handed out*.
 The box in a room is the same box as the one in the main thread, and it behaves the same
 way. There is no separate "steer widget" with rules of its own.
 
+**The same box, and not the same words.** Each room keeps its own unsent line — its
+text, its caret, its `[paste 1 · 42 lines]` chips and its tray — and so does the main
+thread. Opening a room does not carry your half-written message for the model into it,
+`esc` gives that message back exactly as you left it, and going straight from one room
+to another keeps each line where it was typed. `enter` sends the box you are looking at
+and clears only that one. What a room's box holds is written down with the thread's own
+draft and comes back after a crash or a restart — into that room, never into the thread
+and never into another conversation's task of the same number (see the keys page).
+
 **`↑` brings back what you typed, so you can edit it and send it again.** Over an empty
 box, or with the caret on the first line of what you are writing, `↑` walks your own
 history newest first — this directory's prompts before everything else — and `↓` walks

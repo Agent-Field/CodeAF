@@ -1265,7 +1265,9 @@ it redraws it from its own transcript, and these come back with it:
 
 - the unsent sentence in the message box, and the pictures attached to it — including any
   message you typed while it was busy, which is folded back into the box rather than
-  dropped;
+  dropped, and the documents behind any compact paste chips in it;
+- anything you had started typing at one of that conversation's **task pages**, kept per
+  task: open the task again after coming back and your line is where you left it;
 - where you were reading;
 - how much of an approval countdown was left, given back to you whole rather than run down
   while you were away — and only if the conversation is still asking;
@@ -1278,8 +1280,10 @@ the model picker, `/history`, the deliverables shelf, a task column focus. Each 
 something you are in the *middle* of, or a door onto something the whole terminal shares.
 
 `/new` is the exception, and deliberately: **the draft goes with you**, not with the
-conversation. `/new` carries the box's text into the new conversation and clears it in the
-old one.
+conversation. `/new` carries the box's text — and the documents behind its paste chips —
+into the new conversation and clears it in the old one. What you had started typing at a
+**task page** does not come with you: those lines belong to the conversation whose tasks
+they were typed at.
 
 ## Searching from home — find an old chat from anywhere
 

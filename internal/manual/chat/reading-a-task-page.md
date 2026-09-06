@@ -302,6 +302,34 @@ A job that has written nothing yet draws no tail and no error. The old feet
 `this log grows as the job works — say it to main` and
 `a background job keeps a log, not a transcript` are gone: there is no composer to refuse.
 
+## Each task page has its own message box — I opened a task and my typing vanished, whose words are in the box
+
+**What you type at a task stays at that task, and what you typed for the conversation
+stays in the conversation.** Open a task's page and the box is that task's own: empty
+the first time, and holding whatever you last typed there every time after. `esc` brings
+the conversation's box back exactly as you left it, with the caret where it was.
+Clicking from one task straight to another does the same between the two of them.
+
+Each box keeps its text, its caret, its compact `[paste 1 · 42 lines]` chips and its
+tray. `enter` sends the box in front of you and clears only that one — steering a task
+never spends the sentence you were writing for the model, and a message the engine
+refuses leaves its words in the box that holds them.
+
+Two things worth knowing:
+
+- **A task page's line is kept on disk, like the conversation's.** Close the window or
+  crash, open aforge here again, click that task: your half-typed correction is in the
+  box with its documents and its tray. It is never restored into the conversation, and
+  never into another conversation's task with the same number (the keys page has the
+  detail).
+- **A task page's line belongs to that conversation.** `/new` carries the sentence in
+  the conversation's box into the new conversation, as it always has, and leaves the
+  task pages' lines with the conversation they were typed into.
+
+Older builds had one box for everything. Typing a message for the model, clicking a
+task's row and pressing `enter` sent that message to the task — the box never changed,
+so nothing on the screen said anything had.
+
 ## Steer a task from its page — the `└` elbow, the `· delivered` clause, and how corrections read back
 
 `enter` inside a task's page sends what you typed to the task itself. It arrives on the

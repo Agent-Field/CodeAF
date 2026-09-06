@@ -958,6 +958,13 @@ func chipPaths(chips []chip) []string {
 // A refusal puts the pictures back, in front of anything attached while the
 // message was in flight and without duplicating it. A success drops them: they
 // are in the conversation now.
+//
+// AND THEY GO BACK ON THE CONVERSATION'S TRAY, WHEREVER THE PERSON IS STANDING
+// (recipient.go). A refusal can take a second to arrive — over a connection it
+// is the whole upload — and a task's page opened in that second owns the box:
+// handing the pictures to whatever tray is on screen would attach the
+// conversation's screenshots to a message being written to a worker, which is
+// this wave's own defect said about the tray instead of the words.
 func (a *app) chipsSettled(err error) {
 	if len(a.sent) == 0 {
 		return
@@ -967,13 +974,15 @@ func (a *app) chipsSettled(err error) {
 	if err == nil {
 		return
 	}
-	restored := append([]chip(nil), sent...)
-	for _, held := range a.chips {
-		if !heldBy(restored, held.path) {
-			restored = append(restored, held)
+	a.atMainComposer(func(state *composerState) {
+		restored := append([]chip(nil), sent...)
+		for _, held := range state.chips {
+			if !heldBy(restored, held.path) {
+				restored = append(restored, held)
+			}
 		}
-	}
-	a.chips = restored
+		state.chips = restored
+	})
 	a.touch()
 }
 

@@ -1152,6 +1152,15 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		a.note(slashTagRefusal)
 		return nil
 	}
+	// AND A COMPACT TAG WITH NOTHING BEHIND IT STOPS THE SEND, by the same law and
+	// for a sharper reason: the tag is not the words (draftkeep.go's
+	// [app.missingPaste]). The whole line stays in the box.
+	if !strings.HasPrefix(line, "/") {
+		if tag := a.missingPaste(line); tag != "" {
+			a.note(draftOrphanSendWord + " · " + tag)
+			return nil
+		}
+	}
 	var tagDoor sendDoor
 	var tagWords string
 	tagShown := line

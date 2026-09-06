@@ -88,6 +88,12 @@ empty or full.
 - In the main conversation there is **no segment at all** — not a dim one, not an empty
   one. There is nowhere else the words could be going.
 
+**And the words in it are that recipient's own.** The segment names who is listening, and
+what is under it is what you last typed to them: the conversation's unsent sentence while
+no room is open, and that task's while one is. Opening a room, leaving it with `esc` and
+going straight from one room to another never carry a word between them (see the task
+page and keys pages).
+
 The same task is marked twice more while you are in it: its row in the roster wears the
 same tint, and its chip on the task strip does too.
 

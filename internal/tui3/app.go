@@ -1232,9 +1232,39 @@ type app struct {
 	// second" the moment somebody lifts a big read's cap.
 	codeCache codeBlockCache
 	input     editor
+	// composerOwner is WHO THE BOX IS TALKING TO, and composers are the boxes of
+	// everybody it is not talking to right now (recipient.go). The zero value is
+	// the conversation, so a surface that never opens a page pays one comparison
+	// and holds an empty map.
+	//
+	// THEY EXIST BECAUSE THE BOX IS ONE BOX AND ITS READER IS NOT ONE READER. An
+	// unsent sentence for the model, a click on a task's row and one enter used to
+	// send that sentence to the task: nothing on screen changed, so nothing the
+	// person could see was wrong, and the words were read by somebody they were
+	// never written for.
+	composerOwner recipient
+	composers     map[recipient]composerState
+	// sends is the recipient-in-front's half of the outbox: its messages that
+	// have left the box and not settled (recipient.go's [outboxSnapshot]). It
+	// rides beside the box for the reason the tray does — it is part of what that
+	// recipient is holding — and goes into the stash with it.
+	sends []outboxSnapshot
+	// keptElsewhere is what this window's draft record holds for ANOTHER
+	// conversation and can neither show nor throw away (draftkeep.go). It is
+	// carried through every write untouched, so a name the operating system
+	// handed back to a second process does not delete the first one's unsent
+	// lines.
+	keptElsewhere []draftKeepSlot
+	// keptFrom is the draft file [app.keptElsewhere] was read for, so the read
+	// happens once per conversation and not once per keystroke.
+	keptFrom string
 	// pastes hold the documents represented by the compact tokens in input. The
 	// text stays beside the composer because only submit needs to cross the agent
 	// seam, and a surface-side edit must never become a wire call.
+	//
+	// They are the RECIPIENT'S, exactly as the text above them is: a compact chip
+	// typed into a task's page is part of that page's unsent line and is stashed
+	// and laid back out with it (recipient.go).
 	pastes []pasteChip
 	// pasteEdit is the one modal editor over the composer. Its zero value is
 	// closed, so an ordinary frame pays only this boolean check.
@@ -1612,6 +1642,12 @@ type app struct {
 	// chips are the pictures attached to the message being written, drawn as a
 	// tray above the box (attach.go). sent holds the ones a message in flight
 	// took, so a refusal can put them back where the person left them.
+	//
+	// The tray belongs to the RECIPIENT the box is talking to, with the rest of
+	// that message's state (recipient.go) — and `sent` does not, because a message
+	// in flight was the CONVERSATION's however far the person has navigated since:
+	// a refusal hands its pictures back to main and never onto a task's page
+	// ([app.chipsSettled]).
 	chips []chip
 	sent  []chip
 
@@ -2822,6 +2858,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case draftSaveMsg:
 		return a, a.saveDraft(msg.file)
+
+	case draftKeepFailedMsg:
+		// The draft could not be written (draftkeep.go). It is said rather than
+		// swallowed: the words are still on the screen, and what has just stopped
+		// being true is that they would survive this window.
+		a.noteDraftKeepFailed(msg.err)
+		return a, nil
 
 	case takeoverTickMsg:
 		// One look at the flock of a conversation this window has asked another
@@ -4071,7 +4114,12 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 		} else {
 			a.note("submit failed: " + msg.err.Error())
 		}
-		return a.settle()
+		// AND THE TRAY THAT CAME BACK IS WRITTEN DOWN WITH EVERYTHING ELSE
+		// ([app.chipsSettled] put it back on the CONVERSATION's composer, wherever
+		// the person is standing). Without this the pictures of a refused message
+		// were on the screen and in nothing else, so a window closed on that
+		// refusal opened again with an empty tray (draftkeep.go).
+		return tea.Batch(a.edited(), a.settle())
 	}
 	// THE ENGINE HAS IT. The mark comes off the SAME line — nothing is appended
 	// — which is why a message can never appear twice however the answer and the
@@ -6306,6 +6354,13 @@ func (a *app) renew() (tea.Cmd, bool) {
 		a.input.setText(side.draft)
 	}
 	a.chips = side.chips
+	// AND THE COMPACT PASTES GO WITH THE SENTENCE THEY ARE IN, copied rather than
+	// shared because the conversation being kept is holding the same chips
+	// (recipient.go): the tokens in the box mean nothing without the documents
+	// behind them, and a draft that arrived with the tags alone would send
+	// `[paste 1 · 42 lines]` to the model as though those were the words. The task
+	// pages' own lines stay with the conversation they were typed into.
+	a.pastes = append([]pasteChip(nil), side.pastes...)
 	// AND THE NOTE SAYS WHICH OF THE TWO HAPPENED. A count appearing on the
 	// status line is not enough on its own to tell somebody whether the
 	// conversation they were in is still running.
@@ -6436,9 +6491,11 @@ func (a *app) quit() tea.Cmd {
 	// (quitarm.go's [app.leavingDraft]): a message waiting for an answer that is
 	// never now going to land is a message the person typed and pressed enter
 	// on, and it comes back next launch rather than going quietly.
-	if a.draftFile != "" {
-		writeDraft(a.draftFile, a.leavingDraft())
-	}
+	// AND THE WHOLE COMPOSER GOES, not only the conversation's sentence: the
+	// caret, the documents behind its compact tokens, its tray, and every task
+	// page's own unsent line (draftkeep.go). A window closed on a half-typed
+	// correction opens again with it (#653).
+	a.writeDraftsNow(a.leavingDraft())
 	// AND THIS TERMINAL COMES OFF EVERY CONVERSATION, IN PARALLEL (keeper.go's
 	// [app.leaveEverything]). A hosted conversation is DETACHED and keeps
 	// working; an in-process one ends here, because this process was the only

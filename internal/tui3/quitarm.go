@@ -244,8 +244,16 @@ func quitCountWord(n int, unit string) string {
 // The draft leads because it is the newest thing typed and the thing the cursor
 // is in; the parked messages follow in the order they were parked, which is the
 // order they would have been sent in.
+//
+// AND THE DRAFT IT MEANS IS MAIN'S (recipient.go). Both readers of this — the
+// file written on the way out of the program, and the sentence that walks with
+// the person through /new, /resume and a takeover — are about the CONVERSATION,
+// and the parked messages under it are the conversation's too. Read off the
+// screen, a window quit while standing in a task's page would keep that page's
+// steering line as the conversation's unsent sentence and give it back at the
+// next launch in a box pointed at the model.
 func (a *app) leavingDraft() string {
-	text := a.input.String()
+	text := a.mainDraftText()
 	if len(a.parks) == 0 {
 		return text
 	}

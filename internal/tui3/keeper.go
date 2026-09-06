@@ -393,9 +393,11 @@ func (a *app) stow(conv Conversation, side *aside) {
 	if key == "" || conv.Agent == nil {
 		return
 	}
-	if conv.DraftFile != "" {
-		writeDraft(conv.DraftFile, side.draft)
-	}
+	// AND IT IS THE WHOLE COMPOSER, not only the box: every page's own unsent line
+	// goes down under THIS conversation's identity (draftkeep.go's
+	// [app.stowDrafts]), because the conversation now in front is about to write
+	// its own record under a different name.
+	a.stowDrafts(conv, side)
 	if a.behind == nil {
 		a.behind = map[string]*kept{}
 	}

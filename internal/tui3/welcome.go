@@ -346,6 +346,10 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 		a.input.setText(side.draft)
 	}
 	a.chips = side.chips
+	// And the documents its compact tokens stand for, for [app.renew]'s reason
+	// exactly (recipient.go). The conversation being opened brings its own task
+	// pages, so nothing typed at the old one's pages comes with it.
+	a.pastes = append([]pasteChip(nil), side.pastes...)
 	a.resumed = true
 	// THE OTHER DOOR ONTO THE SAME LINE, and it says the same thing now: WHICH
 	// CONVERSATION this is, and the path only where there is no name to give
