@@ -1644,6 +1644,11 @@ type app struct {
 	// was clicked and did nothing when it was pressed would be the worse of the
 	// two defects, so every door parks here and the program loop drains it.
 	roomPump tea.Cmd
+	// outbox is every correction typed into a node's page that this surface has
+	// not yet heard the engine's answer to, and the numbering that names each
+	// send apart from the next (steersend.go). The zero value is a surface
+	// nobody has steered a task from, which is most of them.
+	outbox steerOutbox
 	// orchLive is the adaptive run this session has last heard from, or ""
 	// (roomorch.go). It is the surface's only handle on a run: a run is not a
 	// node, so it is on no roster and has no row, and the three orchestrate event
@@ -2446,6 +2451,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		a.noteLandingKeys()
 	}
 	a.restoreDraft()
+	// AND THE CORRECTIONS THE LAST LIFE NEVER LEARNED THE FATE OF COME BACK WITH
+	// THEM, under the names they were sent with, as rows their pages raise when
+	// they are opened (steersend.go's [app.restoreSentDrafts]).
+	a.restoreSentDrafts()
 	// LAST, because it reads the surface it opens over: the picker marks the
 	// session this window is already in, and that is not known until the agent,
 	// the file and the replay above have settled. A door that asked for it on a
@@ -2872,12 +2881,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case draftSaveMsg:
 		return a, a.saveDraft(msg.file)
 
-	case draftKeepFailedMsg:
-		// The draft could not be written (draftkeep.go). It is said rather than
-		// swallowed: the words are still on the screen, and what has just stopped
-		// being true is that they would survive this window.
-		a.noteDraftKeepFailed(msg.err)
-		return a, nil
+	case draftKeptMsg:
+		// One record write has finished (draftkeep.go). A failure is said rather
+		// than swallowed — the words are still on the screen, and what has just
+		// stopped being true is that they would survive this window — and a send
+		// waiting for that write to land is released here, or refused, because
+		// nothing crosses the wire before its own snapshot is on the disk
+		// (steersend.go's [app.sendsKeptAt]).
+		return a, a.draftKept(msg)
 
 	case takeoverTickMsg:
 		// One look at the flock of a conversation this window has asked another
@@ -3565,6 +3576,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// only thing on this surface allowed to move a guest page's state
 		// (taskowner.go's [app.tookGuestNotice]).
 		return a, tea.Batch(a.tookGuestNotice(msg), a.wake())
+
+	// THE ENGINE'S ANSWER TO A CORRECTION SOMEBODY SENT INTO A TASK'S PAGE
+	// (steersend.go). It arrives here rather than being waited for inside the
+	// keypress, which is the whole of why the keyboard stays live while a send
+	// crosses to another machine.
+	case steerSentMsg:
+		// AND THE RECORD IS ARMED WHATEVER THE ANSWER WAS. Every branch below
+		// changes what a recipient is holding — the send is gone, or it is held
+		// under a new state, or its words are back on its page — and nobody typed
+		// for any of it, so the debounce is armed here rather than in each branch
+		// (draft.go's [app.armDraftKeep]).
+		return a, tea.Batch(a.steerSent(msg), a.armDraftKeep(), a.wake())
 
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
@@ -6251,6 +6274,11 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 		a.agent = conv.Agent
 	}
 	a.file = conv.SessionFile
+	// AND THE SENDS ARE NOT RE-KEYED HERE. They are held under the drafts lane's
+	// own identity for the conversation they were typed in (steersend.go's
+	// [app.steerOwner]), which the new file does not change: a correction crossing
+	// for the conversation this window just left settles onto that conversation's
+	// own composer, wherever it now is (recipient.go's [app.atOwnedComposer]).
 	if !whole {
 		return
 	}

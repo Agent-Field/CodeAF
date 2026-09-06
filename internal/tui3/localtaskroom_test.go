@@ -44,9 +44,10 @@ func localTaskRoomLab(t *testing.T) (*app, *localTaskRoomEngine) {
 		`{"type":"message","role":"assistant","content":"Checking the parser now."}`,
 	)
 	engine := &localTaskRoomEngine{farAgent: newFarAgent(), journal: journal}
+	a, _, _ := roomApp(t)
 	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{
 		Boot: func(remote.Hello) (*remote.Engine, error) {
-			return &remote.Engine{Agent: engine, TaskRecord: func(_ string, _ int) (session.TaskRecord, error) {
+			return &remote.Engine{Agent: engine, SessionFile: a.file, Workspace: a.workspace, TaskRecord: func(_ string, _ int) (session.TaskRecord, error) {
 				body, err := os.ReadFile(journal)
 				return session.TaskRecord{Journal: body, Kept: true}, err
 			}}, nil
@@ -56,7 +57,6 @@ func localTaskRoomLab(t *testing.T) (*app, *localTaskRoomEngine) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = loop.Close() })
-	a, _, _ := roomApp(t)
 	a.agent, a.host = loop.Client.Agent(), ""
 	a.farRoomRecord = loop.Client.Agent().TaskRoom
 	if _, local := a.roomDoors(); local {

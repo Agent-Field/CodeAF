@@ -977,6 +977,15 @@ file you can read sits beside it.
   is closed.
 - **Nothing is dropped to make it fit.** There is no size limit and nothing is
   truncated: a pasted log of any size is written down with the sentence it belongs to.
+- **A correction sent to a task is in the record too, before it is sent.** `enter` in a
+  task's page writes the words, the caret, the pasted blocks and the name that correction
+  was sent under into that page's slot, and the correction crosses only once that write
+  has landed — so a message waiting for an answer does survive closing the window. The
+  next launch puts it back on that page under the same name, so asking again is a repeat
+  rather than a second correction. If the record cannot be written the correction is not
+  sent at all: `task 7 was not corrected — the draft could not be saved first, and your
+  words are back on its page`. See *I sent a correction and the window closed* on the
+  tasks page.
 - **What comes back is what you left, and what is wrong with it is said.** An attachment
   whose file was deleted meanwhile is still on the tray, and the conversation says
   `a restored draft still names a file that is gone · shot.png`; `enter` names it again

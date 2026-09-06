@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -403,8 +404,10 @@ func TestAnOvertakenSaveCannotResurrectASentSentence(t *testing.T) {
 	a.input.reset()
 	a.dropDraft()
 
-	// And the overtaken write arrives afterwards.
-	if msg := late(); msg != nil {
+	// And the overtaken write arrives afterwards, having written nothing and
+	// saying which of the two it was.
+	msg, ok := late().(draftKeptMsg)
+	if !ok || !errors.Is(msg.err, errDraftSuperseded) {
 		t.Fatalf("the late write reported %+v", msg)
 	}
 	if got := readDraft(a.draftFile); got != "" {
@@ -562,8 +565,11 @@ func TestAFailedNewerSaveRetiresAnOlderQueuedOne(t *testing.T) {
 	// be gone.
 	_ = os.Remove(blocked)
 
-	// The overtaken save arrives afterwards and must do nothing at all.
-	if msg := old(); msg != nil {
+	// The overtaken save arrives afterwards, writes nothing at all, and SAYS SO:
+	// a skipped write reported as a success would be the proof a pending send is
+	// released on (steersend.go's [app.sendsKeptAt]).
+	msg, ok := old().(draftKeptMsg)
+	if !ok || !errors.Is(msg.err, errDraftSuperseded) {
 		t.Fatalf("the retired save reported %+v", msg)
 	}
 	if got := readDraft(a.draftFile); got != "the last good sentence" {

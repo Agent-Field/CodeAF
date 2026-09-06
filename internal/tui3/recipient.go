@@ -152,13 +152,36 @@ func (s composerState) empty() bool {
 //   - it is spelled as they typed it, compact tags and all, with the documents
 //     behind them.
 
-// The two states a written-down send can be in. They are STORAGE WORDS and are
+// The four states a written-down send can be in. They are STORAGE WORDS and are
 // never drawn: what a person reads about a crossing is the engine's own
 // sentence, which is the sending lane's law and not this file's.
+//
+// THREE OF THEM ARE SENDS AND ONE IS A DRAFT, and that line is the whole reason
+// there are four. A send nobody answered may already be on the node's record, so
+// putting its words back in the box would let the next enter mint a new name for
+// them and deliver the correction twice; a send the engine READ AND REFUSED
+// wrote nothing anywhere, so the words are the person's again. Both used to wear
+// [draftSendUnanswered], which made the second indistinguishable from the first
+// and the first offerable as a plain draft.
 const (
-	draftSendCrossing   = "crossing"
+	// draftSendCrossing has left this surface and nothing has answered.
+	draftSendCrossing = "crossing"
+	// draftSendUnanswered was asked and nobody answered: DELIVERY IS UNKNOWN. It
+	// is never offered as a draft and never re-minted.
 	draftSendUnanswered = "unanswered"
+	// draftSendUndelivered is a definite non-delivery that keeps its name — the
+	// engine refused before it looked at the words ([session.ErrNotThatConversation]),
+	// or refused a send an earlier crossing had already left uncertain. It stays a
+	// send so that asking again is asking about the same one.
+	draftSendUndelivered = "undelivered"
+	// draftSendRefused is the engine having read it and said no. Nothing was
+	// written anywhere, so this — and only this — is offered back to the box.
+	draftSendRefused = "refused"
 )
+
+// sendKept reports whether a state is one the sending lane still owns. Only
+// [draftSendRefused] is not.
+func sendKept(state string) bool { return state != draftSendRefused }
 
 // outboxSnapshot is one message as it left the box: everything needed to draw
 // it, send it again under the same name, or give it back.
@@ -175,6 +198,10 @@ type outboxSnapshot struct {
 	// reads, with the documents in place.
 	line  string
 	words string
+	// caret is where they were in the line, as a RUNE index. A sentence handed
+	// back with the cursor somewhere they did not leave it is not the sentence
+	// they had.
+	caret int
 	// pastes and chips are what the message was carrying, so that giving it back
 	// gives back the whole message and not a tag with nothing behind it.
 	pastes []pasteChip
@@ -201,13 +228,23 @@ func (a *app) dropSend(who recipient, scope string, seq uint64) {
 	})
 }
 
+// withoutSend is that list without one message. IT BUILDS A NEW SLICE rather
+// than filtering in place: the same backing array is held by the composer in the
+// stash, by the box in front and by an [aside] in the keeper, and writing
+// through it would edit a list somebody else is holding.
 func withoutSend(sends []outboxSnapshot, scope string, seq uint64) []outboxSnapshot {
-	out := sends[:0]
+	if len(sends) == 0 {
+		return nil
+	}
+	out := make([]outboxSnapshot, 0, len(sends))
 	for _, send := range sends {
 		if send.scope == scope && send.seq == seq {
 			continue
 		}
 		out = append(out, send)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -223,16 +260,19 @@ func (a *app) recoverDraft(who recipient, snap outboxSnapshot) bool {
 	if strings.TrimSpace(snap.line) == "" {
 		return false
 	}
+	snap.state = draftSendRefused
 	landed := false
 	a.atComposer(who, func(state *composerState) {
 		state.sends = withoutSend(state.sends, snap.scope, snap.seq)
 		if len(state.box.value) > 0 {
-			snap.state = draftSendUnanswered
+			// THE NEWER DRAFT WINS AND THE OLDER SENTENCE WAITS BESIDE IT, as a
+			// REFUSED one: it is offered back the moment that box is empty, and until
+			// then it is not a send anybody could ask about again.
 			state.sends = append(state.sends, snap)
 			return
 		}
 		state.box.value = []rune(snap.line)
-		state.box.cursor = len(state.box.value)
+		state.box.cursor = max(0, min(snap.caret, len(state.box.value)))
 		state.box.demotedTags = nil
 		state.pastes = append([]pasteChip(nil), snap.pastes...)
 		for _, held := range snap.chips {
@@ -246,12 +286,17 @@ func (a *app) recoverDraft(who recipient, snap outboxSnapshot) bool {
 
 // takeRecovered is the newest sentence handed back for one recipient, taken off
 // its composer. A page drawing itself asks once.
+//
+// IT ANSWERS FOR [draftSendRefused] AND NOTHING ELSE. A send whose delivery is
+// unknown is still a send — the lane that owns the crossing draws it and offers
+// to ask again under the name it already has — and handing those words to a box
+// is how one correction becomes two.
 func (a *app) takeRecovered(who recipient) (outboxSnapshot, bool) {
 	var found outboxSnapshot
 	held := false
 	a.atComposer(who, func(state *composerState) {
 		for i := len(state.sends) - 1; i >= 0; i-- {
-			if state.sends[i].state != draftSendUnanswered {
+			if sendKept(state.sends[i].state) {
 				continue
 			}
 			found, held = state.sends[i], true
@@ -275,6 +320,7 @@ func (a *app) offerRecovered() {
 		return
 	}
 	a.input.setText(snap.line)
+	a.input.cursor = max(0, min(snap.caret, len(a.input.value)))
 	a.pastes = append([]pasteChip(nil), snap.pastes...)
 	for _, chip := range snap.chips {
 		attachChipTo(&a.chips, chip)
@@ -303,9 +349,13 @@ func (a *app) putComposer(state composerState) {
 	a.input.value = append(a.input.value[:0], state.box.value...)
 	a.input.cursor = max(0, min(state.box.cursor, len(a.input.value)))
 	a.input.demotedTags = state.box.demotedTags
-	a.pastes = state.pastes
-	a.chips = state.chips
-	a.sends = state.sends
+	// THE THREE LISTS ARE COPIED OUT OF THE STASH. They are mutated in place from
+	// both ends now — a keystroke attaches a chip here, an answer arriving from a
+	// crossing rewrites the sends of a recipient that may be this one — and a
+	// shared backing array would let one of those edit the other's list.
+	a.pastes = append([]pasteChip(nil), state.pastes...)
+	a.chips = append([]chip(nil), state.chips...)
+	a.sends = append([]outboxSnapshot(nil), state.sends...)
 }
 
 // keepComposer puts one recipient's state away, and FORGETS AN EMPTY ONE. The
@@ -413,6 +463,112 @@ func (a *app) atComposer(who recipient, change func(*composerState)) {
 // atMainComposer is that, said about the conversation.
 func (a *app) atMainComposer(change func(*composerState)) {
 	a.atComposer(mainRecipient, change)
+}
+
+// ── A RECIPIENT OF A CONVERSATION THAT MAY NOT BE THE ONE IN FRONT ──────────
+//
+// An answer to a send arrives seconds or minutes after the keypress, and in
+// between the person can move the whole window to another conversation
+// (detach.go's keeper). The composer it belongs to is then not on this surface
+// at all — it is in that conversation's [aside] — and settling the box in front
+// would be this file's own defect said about a message that has already left.
+//
+// So everything the sending lane does to a recipient goes through one door with
+// three answers: the conversation in front, one the keeper is holding, or
+// nobody at all.
+
+// atOwnedComposer changes one recipient's composer in the conversation an
+// identity names ([draftOwnerOf]), wherever that conversation is, and reports
+// whether it was found.
+//
+// A FALSE IS NOT PROOF THAT CONVERSATION WAS CLOSED. It is this window not
+// holding it — closed here, taken over by another window, never opened in this
+// process — so a caller carrying an uncertain send KEEPS it rather than reading
+// the false as permission to forget.
+func (a *app) atOwnedComposer(owner string, who recipient, change func(*composerState)) bool {
+	if owner == "" {
+		return false
+	}
+	if owner == a.draftKeepOwner() {
+		a.atComposer(who, change)
+		return true
+	}
+	if who == mainRecipient {
+		// A CONVERSATION IN THE KEEPER CARRIES ITS OWN BOX AS [aside.draft] AND NOT
+		// AS A COMPOSER (that is [app.composersAside]'s law), so there is nothing
+		// here to change. Nothing addresses main this way — a crossing is always to
+		// a node — and inventing a second place to keep main's words is exactly what
+		// this seam exists to avoid.
+		return false
+	}
+	for _, held := range a.behind {
+		if held == nil || held.side == nil {
+			continue
+		}
+		if draftOwnerOf(a.host, held.conv.Workspace, held.conv.SessionFile) != owner {
+			continue
+		}
+		state := held.side.composers[who]
+		change(&state)
+		if state.empty() {
+			delete(held.side.composers, who)
+		} else {
+			if held.side.composers == nil {
+				held.side.composers = map[recipient]composerState{}
+			}
+			held.side.composers[who] = state
+		}
+		// AND IT GOES DOWN AT ONCE. A conversation in the keeper is written by
+		// nothing else — no keystroke reaches it, no debounce is armed for it — so
+		// this is the only moment its record can be made to agree with what just
+		// happened (draftkeep.go's [app.stowDrafts]).
+		a.stowDrafts(held.conv, held.side)
+		return true
+	}
+	return false
+}
+
+// keepSendOwned writes one message that has not settled down against the
+// recipient of the conversation that made it.
+func (a *app) keepSendOwned(owner string, who recipient, snap outboxSnapshot) bool {
+	if strings.TrimSpace(snap.line) == "" {
+		return false
+	}
+	if snap.state == "" {
+		snap.state = draftSendCrossing
+	}
+	return a.atOwnedComposer(owner, who, func(state *composerState) {
+		state.sends = append(withoutSend(state.sends, snap.scope, snap.seq), snap)
+	})
+}
+
+// dropSendOwned forgets one: it landed, or its answer arrived.
+func (a *app) dropSendOwned(owner string, who recipient, scope string, seq uint64) bool {
+	return a.atOwnedComposer(owner, who, func(state *composerState) {
+		state.sends = withoutSend(state.sends, scope, seq)
+	})
+}
+
+// recoverOwned gives a REFUSED message's words back to the recipient that typed
+// them, in whichever conversation that is.
+//
+// IN FRONT IT MAY REACH THE BOX; ANYWHERE ELSE IT WAITS. A conversation in the
+// keeper has a box nobody is looking at, and laying words into it from here
+// would be a sentence appearing under a page the person walks back into with no
+// idea where it came from. [app.offerRecovered] hands it over on the way in,
+// which is the moment they can see it happen.
+func (a *app) recoverOwned(owner string, who recipient, snap outboxSnapshot) bool {
+	if owner != "" && owner == a.draftKeepOwner() {
+		a.recoverDraft(who, snap)
+		return true
+	}
+	snap.state = draftSendRefused
+	if strings.TrimSpace(snap.line) == "" {
+		return false
+	}
+	return a.atOwnedComposer(owner, who, func(state *composerState) {
+		state.sends = append(withoutSend(state.sends, snap.scope, snap.seq), snap)
+	})
 }
 
 // mainDraftText is the conversation's unsent sentence, and nothing else's.

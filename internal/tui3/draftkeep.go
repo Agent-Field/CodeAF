@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -169,11 +170,15 @@ type draftKeepSend struct {
 	At string `json:"at,omitempty"`
 
 	// State is what was true of it when this was written ([draftSendCrossing],
-	// [draftSendUnanswered]). It is a storage word and is never drawn.
+	// [draftSendUnanswered], [draftSendUndelivered], [draftSendRefused]). It is a
+	// storage word and is never drawn.
 	State string `json:"state,omitempty"`
 
 	// Line is the sentence as the person typed it, compact tags and all.
 	Line string `json:"line"`
+
+	// Caret is where they were in it, as a RUNE index.
+	Caret int `json:"caret,omitempty"`
 
 	// Words is the sentence as the far side reads it, tags unfolded.
 	Words string `json:"words,omitempty"`
@@ -342,9 +347,9 @@ func keepStrangeAside(path string) error {
 // putDraftKeep replaces one record, or removes it when nothing anybody typed is
 // left in it. THE WRITE IS A RENAME, so a reader never sees half a record.
 //
-// Callers hold [draftWrites] — which is what makes the temporary name safe
-// within this process — and the name carries this window's pid because two
-// windows can prune the same dead record at once.
+// Callers hold that record's writer ([draftWriter]) — which is what makes the
+// temporary name safe within this process — and the name carries this window's
+// pid because two windows can prune the same dead record at once.
 func putDraftKeep(path string, keep draftKeep) error {
 	if path == "" {
 		return nil
@@ -419,8 +424,8 @@ func (s draftKeepSlot) empty() bool {
 // THE EVENT LOOP where the state is read.
 var draftRevs atomic.Uint64
 
-// draftWrites orders the writes and remembers the newest save that landed under
-// each name.
+// draftWrites orders the writes and remembers what actually landed under each
+// name.
 //
 // THE DEBOUNCE HANDS THE WRITE TO A COMMAND, AND COMMANDS DO NOT ARRIVE IN
 // ORDER. Two saves of one conversation are two goroutines racing a disk, so a
@@ -429,10 +434,90 @@ var draftRevs atomic.Uint64
 // next launch. An atomic rename cannot help with that: both writes are whole,
 // and the loser is simply older. So the ORDER is kept here, by the number the
 // loop gave each save, and a save that has been overtaken does nothing at all.
+//
+// ── TWO LOCKS, AND THE EVENT LOOP ONLY EVER TAKES THE SHORT ONE ──
+//
+// `mu` guards these maps and NOTHING ELSE: it is taken for a few map operations
+// and is never held across a disk write. That is what makes the promise in
+// steersend.go true — the keyboard does not wait on a disk. A save built while
+// another is being written claims its number, retires the older one and returns
+// to the loop immediately; the writing happens on the command's own goroutine.
+//
+// `writers` is one lock PER RECORD, and it serialises the IO itself. It has to
+// exist: [putDraftKeep] writes through one temporary name per process, so two
+// goroutines writing the same record at once would write the same temporary file
+// and one of them would rename a half-written one into place.
 var draftWrites = struct {
-	mu sync.Mutex
-	at map[string]uint64
-}{at: map[string]uint64{}}
+	mu      sync.Mutex
+	at      map[string]uint64
+	done    map[string]draftDone
+	writers map[string]*sync.Mutex
+}{at: map[string]uint64{}, done: map[string]draftDone{}, writers: map[string]*sync.Mutex{}}
+
+// draftDone is the newest record that reached the disk under one name, and it is
+// the ONLY proof a send may cross on (steersend.go's [app.sendsKeptAt]).
+//
+// A NUMBER ALONE IS NOT PROOF. "Some save at or after mine landed" is true of a
+// save that CLEARED the record — a box emptied, a conversation closed, a reunion
+// pruning what it did not take — and releasing a send on that would be sending
+// words that are on no disk anywhere. So what landed is remembered by the durable
+// NAMES it contained, and a send asks about its own.
+type draftDone struct {
+	rev   uint64
+	sends map[string]bool
+}
+
+// errDraftSuperseded is a save that did nothing because a newer one was claimed
+// for the same record. IT IS NOT SUCCESS AND IT IS NOT FAILURE, and it is an
+// error value rather than a nil so that no caller can read a skipped write as
+// proof that anything reached the disk.
+var errDraftSuperseded = errors.New("a newer draft save was claimed for this record")
+
+// draftKeptSend reports whether one message, by its durable name, is in the
+// record that is on disk under this name right now — and in a record at or after
+// the save that was built to carry it.
+//
+// BOTH HALVES ARE THE PROOF. The name says these exact words survived; the number
+// says the record holding them is not one this window has since superseded with a
+// save whose own fate is still unknown.
+func draftKeptSend(path string, rev uint64, name string) bool {
+	if path == "" || name == "" {
+		return false
+	}
+	draftWrites.mu.Lock()
+	defer draftWrites.mu.Unlock()
+	landed := draftWrites.done[path]
+	return landed.rev >= rev && landed.sends[name]
+}
+
+// draftSendName is one message's durable name — [session.SteerSource]'s two
+// halves, spelled once. A message with no scope has no name and can never be
+// proven to be anywhere.
+func draftSendName(scope string, seq uint64) string {
+	if strings.TrimSpace(scope) == "" || seq == 0 {
+		return ""
+	}
+	return scope + "\x00" + strconv.FormatUint(seq, 10)
+}
+
+// draftSendsIn is every message a record carries, by name. It is what a landing
+// is remembered as.
+func draftSendsIn(keep draftKeep) map[string]bool {
+	var out map[string]bool
+	for _, slot := range keep.Slots {
+		for _, send := range slot.Sends {
+			name := draftSendName(send.Scope, send.Seq)
+			if name == "" {
+				continue
+			}
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[name] = true
+		}
+	}
+	return out
+}
 
 // draftSave is one save of one conversation: the record, and the plain-text
 // export beside it.
@@ -478,18 +563,67 @@ func (s draftSave) commit() error {
 	if s.keepPath == "" {
 		return nil
 	}
-	draftWrites.mu.Lock()
-	defer draftWrites.mu.Unlock()
-	if draftWrites.at[s.keepPath] > s.rev {
-		return nil
+	if draftOvertaken(s.keepPath, s.rev) {
+		return errDraftSuperseded
+	}
+	// ONE WRITER PER RECORD, AND THE LOOP IS NOT ONE OF THEM. Waiting happens
+	// here, on this command's own goroutine; the surface is already back at the
+	// keyboard.
+	writer := draftWriter(s.keepPath)
+	writer.Lock()
+	defer writer.Unlock()
+	// AND THE QUESTION IS ASKED AGAIN AFTER THE WAIT. A save claimed while this
+	// one queued for the disk is newer than it, and writing now would put the
+	// older record back over the newer one.
+	if draftOvertaken(s.keepPath, s.rev) {
+		return errDraftSuperseded
 	}
 	if err := putDraftKeep(s.keepPath, s.keep); err != nil {
 		return err
 	}
+	// THE RECORD IS THE PROMISE AND THE EXPORT IS A CONVENIENCE, so what is
+	// remembered as landed is the record and what it carried: a send whose
+	// snapshot is in it is on disk whatever the plain file beside it says, and an
+	// export that fails afterwards does not make it less written down.
+	draftDidLand(s.keepPath, s.rev, s.keep)
 	if s.textPath == "" {
 		return nil
 	}
 	return writeDraft(s.textPath, s.text)
+}
+
+// draftOvertaken reports whether a newer save has been claimed for this record.
+func draftOvertaken(path string, rev uint64) bool {
+	draftWrites.mu.Lock()
+	defer draftWrites.mu.Unlock()
+	return draftWrites.at[path] > rev
+}
+
+// draftWriter is the one lock that serialises writes to one record.
+func draftWriter(path string) *sync.Mutex {
+	draftWrites.mu.Lock()
+	defer draftWrites.mu.Unlock()
+	writer := draftWrites.writers[path]
+	if writer == nil {
+		writer = &sync.Mutex{}
+		draftWrites.writers[path] = writer
+	}
+	return writer
+}
+
+// draftDidLand remembers what is on disk under this name: the number of the save
+// that put it there, and the messages it carries.
+//
+// AN OLDER LANDING NEVER OVERWRITES A NEWER ONE, which cannot happen while one
+// writer holds the record — and is stated here anyway, because this is the fact
+// every waiting send is released on.
+func draftDidLand(path string, rev uint64, keep draftKeep) {
+	draftWrites.mu.Lock()
+	defer draftWrites.mu.Unlock()
+	if draftWrites.done[path].rev > rev {
+		return
+	}
+	draftWrites.done[path] = draftDone{rev: rev, sends: draftSendsIn(keep)}
 }
 
 // commitKeep writes one record on its own — a reunion putting back what it did
@@ -520,8 +654,20 @@ func commitDropped(path string) error {
 	return draftSave{keepPath: keepPath, textPath: path, keep: left, rev: claimDraftRev(keepPath)}.commit()
 }
 
-// draftKeepFailedMsg is a save that did not happen, on its way back to the loop.
-type draftKeepFailedMsg struct{ err error }
+// draftKeptMsg is one whole-record save that has finished, on its way back to
+// the loop: which record it was for, which number it was claimed under, and what
+// happened to it.
+//
+// IT IS ONE MESSAGE FOR ALL THREE OUTCOMES because a send waiting to cross needs
+// all three (steersend.go): a save that landed is what makes the record on disk
+// answerable ([draftKeptSend] asks it by name), a save that failed is what
+// refuses a send it was carrying, and a save that was superseded is neither — the
+// newer one may still land, and its own message answers for both.
+type draftKeptMsg struct {
+	path string
+	rev  uint64
+	err  error
+}
 
 // draftKeepFailWord is what the conversation says when the draft could not be
 // written. IT IS SAID RATHER THAN SWALLOWED: everything else on this surface
@@ -531,10 +677,17 @@ type draftKeepFailedMsg struct{ err error }
 const draftKeepFailWord = "this draft could not be saved"
 
 func (a *app) noteDraftKeepFailed(err error) {
-	if err == nil {
+	if err == nil || errors.Is(err, errDraftSuperseded) {
 		return
 	}
 	a.note(draftKeepFailWord + " · " + strings.TrimSpace(err.Error()))
+}
+
+// draftKept is what the loop does with a finished save: say so if it failed, and
+// tell the sending lane which sends may now cross ([app.sendsKeptAt]).
+func (a *app) draftKept(msg draftKeptMsg) tea.Cmd {
+	a.noteDraftKeepFailed(msg.err)
+	return a.sendsKeptAt(msg.path, msg.rev, msg.err)
 }
 
 // ── between the record and the composer ─────────────────────────────────────
@@ -594,7 +747,7 @@ func keptSends(sends []outboxSnapshot) []draftKeepSend {
 	for _, send := range sends {
 		kept := draftKeepSend{
 			Scope: send.scope, Seq: send.seq, State: send.state,
-			Line: send.line, Words: send.words,
+			Line: send.line, Caret: send.caret, Words: send.words,
 			Pastes: keptPastes(send.pastes), Chips: keptChips(send.chips),
 		}
 		if !send.at.IsZero() {
@@ -613,7 +766,7 @@ func liveSends(kept []draftKeepSend) []outboxSnapshot {
 	for _, held := range kept {
 		snap := outboxSnapshot{
 			scope: held.Scope, seq: held.Seq, state: held.State,
-			line: held.Line, words: held.Words,
+			line: held.Line, caret: held.Caret, words: held.Words,
 			pastes: livePastes(held.Pastes), chips: liveChips(held.Chips),
 		}
 		if held.At != "" {
@@ -840,16 +993,21 @@ func (a *app) draftSaveOf(text string) draftSave {
 }
 
 // keepDrafts is the whole write, off the event loop.
+//
+// IT ALWAYS ANSWERS. The debounce used to report only its failures; a send that
+// may not cross until its words are on disk needs to hear about the successes
+// too, and the same message carries both ([draftKeptMsg]).
 func (a *app) keepDrafts() tea.Cmd {
 	if a.draftFile == "" {
 		return nil
 	}
-	save := a.draftSaveOf(a.mainDraftText())
+	return a.draftSaveOf(a.mainDraftText()).command()
+}
+
+// command hands one save to a goroutine and reports what became of it.
+func (s draftSave) command() tea.Cmd {
 	return func() tea.Msg {
-		if err := save.commit(); err != nil {
-			return draftKeepFailedMsg{err: err}
-		}
-		return nil
+		return draftKeptMsg{path: s.keepPath, rev: s.rev, err: s.commit()}
 	}
 }
 

@@ -2733,6 +2733,13 @@ and clears only that one. What a room's box holds is written down with the threa
 draft and comes back after a crash or a restart — into that room, never into the thread
 and never into another conversation's task of the same number (see the keys page).
 
+**Files on a room's tray are never sent.** `enter` in a room sends words: a correction
+is a sentence, so anything you attached there stays on that room's tray and the room
+says `attached files do not go with a correction · they stay on this page · esc, then
+attach them in the conversation to send them`. Nothing is dropped — the files are still
+there, on that page, when you come back. Compact `[paste 1 · 42 lines]` blocks *do* go:
+the worker reads the document behind the tag, and the row keeps the tag.
+
 **`↑` brings back what you typed, so you can edit it and send it again.** Over an empty
 box, or with the caret on the first line of what you are writing, `↑` walks your own
 history newest first — this directory's prompts before everything else — and `↓` walks
@@ -2763,6 +2770,37 @@ frame always says which of these the next `esc` is: `room · esc/←← main` no
 machinery belongs to the main thread, since a task reads what you send at its next step.
 A task that is waiting on pieces it handed out has no next step coming, and your line is
 what wakes it (*Steering a task that is waiting on its pieces*).
+
+## I sent a correction and the window closed — what survives, and what is never sent twice
+
+**A correction is written down before it is sent.** `enter` in a room saves it beside
+that room's own unsent line first — the words, the caret, the compact paste blocks, and
+the name this correction was sent under — and only then hands it to the task. Nothing
+reaches the task before that write has landed, so a window that dies mid-send leaves the
+correction on disk rather than leaving you with a worker that may or may not have been
+corrected.
+
+- **The next launch puts it back on that task's page, under the same name.** Asking
+  again is a repeat of the same correction rather than a second one: a task that keeps
+  names answers it with the receipt already on its record, so pressing it twice cannot
+  make the worker read the words twice.
+- **If it cannot be written, it is not sent.** You are told
+  `task 7 was not corrected — the draft could not be saved first, and your words are back
+  on its page`, and the whole line is back in that room's box. A correction this machine
+  cannot give a name to — the random source that names one having failed — is refused the
+  same way, because a correction with no name could never be asked about again.
+- **A correction nobody answered stays a correction.** The row says
+  `no answer — it is not known whether this arrived` and offers to ask again. It is never
+  quietly handed back to the box, because the next `enter` would give it a new name and
+  the task could then read it twice.
+- **Words the task definitely refused are yours again**, back in that room's box with the
+  caret where you left it and the pasted blocks behind them. If you have started a new
+  sentence there since, that one is kept and the refused one waits beside it until the
+  box is empty.
+- **A conversation with no transcript of its own cannot steer.** There is nowhere to
+  write the correction down first, so the room refuses — `this conversation has no
+  transcript of its own yet, so a correction cannot be kept — and one that cannot be
+  kept is not sent` — instead of sending something it could never ask about again.
 
 ## Steering a task that is waiting on its pieces — I typed into a task that split its work and nothing happened
 

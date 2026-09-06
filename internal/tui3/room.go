@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"errors"
 	"strings"
 	"time"
 
@@ -611,7 +610,18 @@ func (a *app) openRoom(id uint64, title string) {
 	// — is stashed under its own reader, and this node's own unsent line, caret,
 	// paste chips and tray are laid back out. Nothing is carried across: an
 	// unsent draft has not changed its mind about who it is for.
+	//
+	// IT IS FIRST, AND THE SEND BELOW DEPENDS ON IT. The unresolved sends this
+	// page draws are read off THIS recipient's composer (steersend.go's
+	// [app.adoptUnsentSteer]), and the question it raises is drawn over this
+	// page's own box — both of which are the wrong ones until the box has been
+	// pointed at this node.
 	a.retargetComposer(taskRecipient(id))
+	// AND A CORRECTION THIS WINDOW NEVER LEARNED THE FATE OF COMES BACK ONTO THE
+	// PAGE IT WAS TYPED INTO (steersend.go). It is drawn under the history rather
+	// than lost with the process that was holding it, and it is still a send: the
+	// question it raises asks again under the name it already had.
+	a.adoptUnsentSteer(room)
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
 	// The journal records what was said and never where the saying went, so the
@@ -685,6 +695,9 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 	// conversation's journal is a different reader, and this one line is all that
 	// changes for it (recipient.go's [guestRecipient]).
 	a.retargetComposer(taskRecipient(node.id))
+	// The same unresolved send a local page adopts, held in hand so the bounded
+	// journal read that is about to replace these rows keeps it (steersend.go).
+	a.adoptUnsentSteer(room)
 	a.sel = -1
 	a.dropHover()
 	a.touch()
@@ -1131,6 +1144,13 @@ func (a *app) roomTouched() {
 
 // ── steering ────────────────────────────────────────────────────────────────
 
+// roomTraySteerWord is what a page says when there are files on its tray as a
+// correction leaves it. A correction carries WORDS — the engine's steer door
+// takes a sentence and nothing else — so the tray is left exactly as it was
+// rather than quietly spent, and the line says where those files CAN be sent
+// from, because this page can never send them.
+const roomTraySteerWord = "attached files do not go with a correction · they stay on this page · esc, then attach them in the conversation to send them"
+
 // steer is enter, while a room is open: the sentence in the box goes to the
 // NODE, and lands in the room as the person's own line.
 //
@@ -1140,9 +1160,16 @@ func (a *app) roomTouched() {
 // (internal/session's SteerTask), and neither does this.
 //
 // A NODE THAT IS NOT LISTENING RAISES THE GUARD instead of swallowing the line
-// (see [steerGuard]). The box is not cleared in that case: the sentence is still
-// the person's, and taking it away after telling them it went nowhere would be
-// the surface losing their words twice.
+// (see [steerGuard]). The person's sentence comes back to them in that case:
+// their words are still theirs, and taking them away after telling them they
+// went nowhere would be the surface losing them twice (steersend.go's
+// [app.restoreSteerDraft]).
+//
+// AND THE CROSSING ITSELF IS NOT DONE HERE. The engine is asked from a command,
+// off the event loop, and its answer settles the row when it arrives —
+// steersend.go states that law in full and this function's job is the two ends
+// of it: what the page says the instant enter is pressed, and what it says when
+// the answer comes back.
 func (a *app) steer() tea.Cmd {
 	room := a.room
 	line := strings.TrimSpace(a.input.String())
@@ -1165,58 +1192,39 @@ func (a *app) steer() tea.Cmd {
 	if room.orch != nil {
 		return a.orchSteer()
 	}
+	if a.roomIsGuest() {
+		a.roomNote(roomGuestReadingWord)
+		return nil
+	}
 	if room.done {
 		a.raiseGuard(line, "")
 		return nil
 	}
-	// A GUEST PAGE DOES NOT STEER. The task belongs to another conversation and
-	// this window's own door would send the line to whatever node wears that
-	// number HERE — a message the person believes a worker read, delivered to a
-	// different worker. So the door is absent, the words stay in the box, and the
-	// page says where the keyboard for this work is
-	// (taskowner.go's [roomGuestReadingWord]).
-	doors, ok := a.roomSteerDoors()
-	if !ok {
-		if a.roomGuest() != nil {
-			a.roomNote(roomGuestReadingWord)
-			return nil
-		}
-		a.roomNote(roomUnavailableRefusal.line())
+	if !a.canSteerTask() {
+		// AND IT SAYS WHICH REFUSAL THIS IS. An engine with no ear, a page belonging
+		// to another conversation, and a conversation with no transcript to keep a
+		// correction in are three different facts (steersend.go's [app.steerRefusal]).
+		a.roomNote(a.steerRefusal())
 		return nil
 	}
 	// The worker reads the paste and the room's row keeps the tag (pastechip.go).
-	// The chips are spent only once the engine has taken the line: a refusal
-	// leaves the words in the box, chips and all.
+	// The chips are spent as the words leave: a send that fails brings the
+	// sentence back with its tags in it, and unfolding it twice would put the
+	// document in the box.
 	words := a.pastesUnfolded(line)
-	receipt, err := doors.SteerTask(room.id, words)
-	if err != nil {
-		// The engine's own sentence, kept: "task 3 is done, not running" and
-		// "task 3 has no worker to talk to yet" are different facts, and a
-		// surface that flattened them to "could not steer" would be throwing
-		// away the half that says what to do about it. It goes on the guard's
-		// second row rather than into the room, because it is the reason the
-		// question below is being asked.
-		//
-		// AND THE ENGINE SAYS WHICH KEYS ARE HONEST. A refusal that means the
-		// node is still running with no reader inside it withholds revive
-		// (session.ErrNobodyToRead); every other refusal — done, gone, never
-		// started — is exactly what revive is for.
-		if errors.Is(err, session.ErrNobodyToRead) {
-			a.raiseBusyGuard(line, err.Error())
-			return nil
-		}
-		a.raiseGuard(line, err.Error())
-		return nil
-	}
-	// A STEERED LINE IS A LINE YOU TYPED, so ↑ brings it back. It is remembered
-	// through the same door [app.enter] remembers a message through (recall.go),
-	// and for the same reason: the box in here is the box out there, and a
-	// sentence that could be recalled in the conversation but not in a room would
-	// make the room a different editor wearing the same prompt. It is remembered
-	// only once the engine has taken it — the guard above keeps the words in the
-	// box, and a recall list holding sentences that went nowhere would be a
-	// history of things that did not happen.
-	a.remember(line)
+	// AND THE WHOLE COMPOSER IS PHOTOGRAPHED BEFORE IT IS EMPTIED. What a refused
+	// send gives back is what the person actually had — their spelling, their
+	// caret, and the compact chips their text stands on — and none of that can be
+	// reconstructed from the sentence afterwards (steersend.go's [steerKeep]).
+	keep := a.steerComposerNow()
+	// A STEERED LINE IS A LINE YOU TYPED, so ↑ brings it back — through the same
+	// door [app.enter] remembers a message through (recall.go), because the box in
+	// here is the box out there.
+	//
+	// IT IS REMEMBERED WHEN THE SEND SETTLES AND NOT AT THIS KEYPRESS
+	// ([app.rememberSteer]). A sentence the engine handed straight back is in the
+	// box again, and a recall list holding it as well would be a history of
+	// something that did not happen.
 	a.pastes = nil
 	a.input.reset()
 	a.endRecall()
@@ -1238,21 +1246,32 @@ func (a *app) steer() tea.Cmd {
 	// out — and silence is what the person would also see if the words had gone
 	// nowhere at all.
 	//
-	// It is CONSUMED at once because that is the whole of what this door
-	// promises: [session.Agent.SteerTask] delivers the line to an agent that was
-	// listening, and what the node does with it next is the node's turn to take.
+	// IT IS NOT CONSUMED YET, and that is the change this row went through. The
+	// engine has not been asked at the instant this block is drawn — the crossing
+	// is a command, and it may take as long as a slow link takes — so the row
+	// wears the working clause the whole way over ([steerSendingWord]) and takes
+	// the engine's own sentence when the answer arrives (steersend.go's
+	// [app.steerSent]). A block that claimed delivery here would be claiming it
+	// before anybody had said so.
 	now := a.now()
-	a.roomSaid(entry{kind: entrySteer, turn: room.turn, context: a.turnContext(),
-		steer: &steerElbow{
-			words: line, at: now, consumed: true, landed: now,
-			receipt: steerReceiptWords(receipt),
-		}})
+	elbow := &steerElbow{words: line, at: now, landing: steerSendingWord}
+	a.roomSaid(entry{kind: entrySteer, turn: room.turn, context: a.turnContext(), steer: elbow})
 	if a.farRoomRecord != nil {
 		room.keepSteerEcho(words, room.entries[len(room.entries)-1])
 	}
-	// The two wakeups the clause's fade needs and no ticker, which is [fadeTicks]'
-	// whole bargain (steerelbow.go takes the same two for the same reason).
-	return tea.Batch(a.edited(), fadeTicks())
+	// AND FILES IN THE TRAY ARE SAID RATHER THAN PRETENDED. A correction is a
+	// sentence — the engine's steer door takes words and nothing else — so the
+	// tray is left exactly as it is, and a person who dropped a file in expecting
+	// it to go with these words is told where it CAN go instead. The compact
+	// pastes above did travel: they are in the sentence.
+	if len(a.chips) > 0 {
+		a.roomNote(roomTraySteerWord)
+	}
+	// The crossing, the draft's own save, and the two wakeups the clause needs —
+	// which is [fadeTicks]' whole bargain, and here it is what turns the spinner
+	// on a page where nothing else is arriving (steerelbow.go takes the same two
+	// for the same reason).
+	return tea.Batch(a.sendSteer(room, line, words, elbow, keep), a.edited(), fadeTicks())
 }
 
 // steerReceiptWords is the engine's own sentence for what the sending did, drawn
@@ -1314,6 +1333,17 @@ type steerGuard struct {
 	// revive: the honest keys are m and esc, because "start it again" about work
 	// that is minutes from done would race the original with a duplicate.
 	busy bool
+	// lost is the THIRD question, and it is not about the node at all: nobody
+	// answered the crossing, so what is unknown is whether the words arrived
+	// (steersend.go). Neither of the other two keys is honest here — reviving the
+	// work or sending the line to the model would both duplicate a correction the
+	// task may already hold — so the only offer is to ASK AGAIN about the send
+	// that is already out there, under the name it already has.
+	lost *steerSend
+	// risky says asking again may deliver twice, because the engine at the other
+	// end does not recognise a repeat. The offer says so in as many words: a
+	// person choosing it is deciding, and a surface doing it quietly is a defect.
+	risky bool
 }
 
 // raiseGuard puts the question up. The room stays open underneath it: the page
@@ -1331,6 +1361,26 @@ func (a *app) raiseGuard(line, why string) {
 // TestASteerTheEngineRefusedRaisesTheGuardWithItsReason).
 func (a *app) raiseBusyGuard(line, why string) {
 	a.raiseGuardOf(line, why, true)
+}
+
+// raiseLostGuard is the question a crossing NOBODY ANSWERED raises. The words
+// are on the page and still held as a send; this is the offer to ask again
+// about that same send rather than to type it a second time.
+func (a *app) raiseLostGuard(send *steerSend) {
+	if a.room == nil || send == nil {
+		return
+	}
+	// THE REASON IS NOT REPEATED HERE. The row the words are on already carries
+	// it ([steerLostWord]), and one sentence said twice on two adjacent rows is
+	// the surface talking over itself.
+	a.guard = &steerGuard{
+		title: a.room.title, text: send.line, lost: send,
+		// Asking again can only deliver twice where a crossing was LOST and the
+		// engine keeps no message names. A refusal delivered nothing.
+		risky: send.lost && !send.door.repeat,
+	}
+	a.closeLists()
+	a.touch()
 }
 
 func (a *app) raiseGuardOf(line, why string, busy bool) {
@@ -1364,10 +1414,18 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.guarding() {
 		return nil, false
 	}
+	lost := a.guard.lost
 	switch msg.String() {
 	case "ctrl+c":
 		return nil, false
 	case "r":
+		// A LOST GUARD'S `r` ASKS AGAIN ABOUT THE SEND ALREADY OUT THERE, under
+		// the name it already had, which is what keeps one correction one
+		// correction (steersend.go's [app.retrySteer]).
+		if lost != nil {
+			a.dropGuard()
+			return a.retrySteer(lost.at), true
+		}
 		// A busy guard has no revive (see [steerGuard.busy]): the key does
 		// nothing rather than restarting work that is still running.
 		if a.guard.busy {
@@ -1375,11 +1433,21 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return a.guardSend(true), true
 	case "m":
+		// AND IT HAS NO `m` EITHER. Sending the line to the model while the task
+		// may already hold it is the duplicate this question exists to avoid, and
+		// there is nothing to send to main anyway — the words are on the page.
+		if lost != nil {
+			return nil, true
+		}
 		return a.guardSend(false), true
 	case "esc":
 		// The words stay in the box. esc here is not "leave the room" — the room
 		// is still open under the question — it is "I did not mean to send that
 		// yet", and the sentence is exactly where it was.
+		//
+		// AND ON A LOST GUARD IT LEAVES THE SEND WHERE IT IS: still held, still on
+		// the page wearing its own clause, and still one `r` from being asked
+		// about again. Nothing is dropped by declining to decide.
 		a.dropGuard()
 		return nil, true
 	}
@@ -1489,6 +1557,25 @@ func (a *app) guardRows(width int) []string {
 	if a.guard.busy {
 		parts = []string{
 			a.guard.title + roomBusyWord, "[m]", " send to main · ", "[esc]", " cancel",
+		}
+	}
+	// THE LOST QUESTION OFFERS ONE ACTION AND SAYS WHAT IT COSTS. Where the
+	// engine keeps message names, asking again cannot deliver twice and the line
+	// says so; where it does not, the line says that instead, because the person
+	// is the one deciding (steersend.go).
+	if a.guard.lost != nil {
+		retry := steerLostRetry
+		if a.guard.risky {
+			retry = steerLostRisk
+		}
+		// A send the engine REFUSED as belonging to another conversation was not
+		// delivered at all, so the question is not about a missing answer.
+		ask := steerLostAsk
+		if !a.guard.lost.lost {
+			ask = steerElsewhereAsk
+		}
+		parts = []string{
+			a.guard.title + ask, "[r]", retry, "[esc]", steerLostLeave,
 		}
 	}
 	line := strings.Join(parts, "")

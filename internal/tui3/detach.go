@@ -573,6 +573,12 @@ func (a *app) restoreAside(side *aside) tea.Cmd {
 	// function goes through the same door a rail click does, and that door is what
 	// lays this conversation's task page back out over the top.
 	a.restoreComposers(side.composers)
+	// AND THE SENDS THOSE PAGES ARE STILL WAITING ON COME BACK WITH THEM. A
+	// conversation this window never put down keeps its own rows in the outbox and
+	// this changes nothing for it ([app.steerKnown] answers for that); one read
+	// back off the record gets them here, under the names they were sent with
+	// (steersend.go's [app.restoreSentDrafts]).
+	a.restoreSentDrafts()
 	if side.draft != "" {
 		a.input.setText(side.draft)
 	}

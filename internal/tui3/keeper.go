@@ -582,6 +582,11 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	held.watch.stop()
 	leaving, file := a.agent, a.file
 	a.forget(a.convKey(file))
+	// AND THE CORRECTIONS IT WAS STILL WAITING ON GO WITH IT, BEFORE ITS RECORD IS
+	// CLEARED BELOW. A send still waiting on a write must not cross into a
+	// conversation that has been closed, and the cleared record must not be read as
+	// an answer about it either (steersend.go's [app.forgetSteerOwner]).
+	a.forgetSteerOwner(draftOwnerOf(a.host, a.workspace, file))
 	a.detachConversation()
 	if leaving != nil {
 		leaving.Interrupt()
@@ -750,6 +755,9 @@ func (a *app) closeKept(file string) bool {
 	}
 	delete(a.behind, key)
 	a.forget(key)
+	// Its unsettled corrections go before its record is cleared, for
+	// [app.closeFront]'s reason.
+	a.forgetSteerOwner(draftOwnerOf(a.host, held.conv.Workspace, held.conv.SessionFile))
 	held.watch.stop()
 	if held.conv.Agent != nil {
 		held.conv.Agent.Interrupt()

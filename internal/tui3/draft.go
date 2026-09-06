@@ -144,17 +144,25 @@ func (a *app) edited() tea.Cmd {
 		// held it and may not be inherited by the next identical slash word.
 		a.input.demotedTags = nil
 	}
-	lists := a.syncLists()
-	// EVERY RECIPIENT'S EDIT ARMS IT, and one debounce covers them all: the write
-	// is the whole composer — the conversation's words, its caret and documents,
-	// and every task page's own unsent line (draftkeep.go) — so a keystroke in a
-	// room is as much a change to what is kept as a keystroke in the conversation.
+	return tea.Batch(a.syncLists(), a.armDraftKeep())
+}
+
+// armDraftKeep asks for the composer to be written down a moment from now, and
+// is the ONE debounce this surface has: every recipient's edit arms it, and the
+// write is the whole composer — the conversation's words, its caret and
+// documents, and every task page's own unsent line (draftkeep.go).
+//
+// IT IS NOT ONLY FOR KEYSTROKES. An answer to a correction arriving changes what
+// a recipient is holding without anybody typing (steersend.go's
+// [app.settleSend]), and a change nothing arms is a change the next launch does
+// not see.
+func (a *app) armDraftKeep() tea.Cmd {
 	if a.draftFile == "" || a.draftPending {
-		return lists
+		return nil
 	}
 	a.draftPending = true
 	file := a.draftFile
-	return tea.Batch(lists, tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} }))
+	return tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} })
 }
 
 // saveDraft writes the composer as it stands. The write happens in the command
