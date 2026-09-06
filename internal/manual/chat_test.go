@@ -1027,6 +1027,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// reach the page that says where it went.
 		{"how do I see what an old task did", "tasks"},
 		{"open a past task", "tasks"},
+		{"my task correction is sending or has no answer", "reading-a-task-page"},
+		{"retry a task correction without sending it twice", "reading-a-task-page"},
+		{"close the window while a correction is pending", "reading-a-task-page"},
+		{"switch conversations while a task correction is sending", "reading-a-task-page"},
 		// "read a finished task's report" is deliberately NOT pinned here. It is
 		// the same question from the other side — a report is a thing a task
 		// WRITES — and it lands on how-tasks-run, whose own section now names the

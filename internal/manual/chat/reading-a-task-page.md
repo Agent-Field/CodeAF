@@ -345,7 +345,9 @@ the page — and everything you say on the page after that bends that one questi
 page's turn count does not move when you steer.
 
 The clause after your words is what the sending did, and it is news: it is there for a few
-seconds and then fades off the row, leaving the elbow. `· delivered` is the ordinary one
+seconds and then fades off the row, leaving the elbow. While a correction is being saved,
+queued or sent, it says `· sending`; that is not a receipt. The task send runs outside the
+keypress, so you can leave the page while the engine is answering. `· delivered` is the ordinary one
 and says the only thing you cannot see for yourself — the words crossed to the worker and
 did not vanish on the way. `· it was waiting on its pieces — your line wakes it` appears
 instead when the task had handed its work out and was parked on the reports; then nothing
@@ -446,3 +448,55 @@ did. Three of them reach a task now:
 
 None of them is a failure and none of them needs an answer. A task's page is
 still quiet when the work is going well: only failure speaks.
+
+## My task correction is sending or has no answer
+
+A correction is saved with its original recipient before it can be sent. Corrections to
+one task go in the order you typed them. `sending` includes time waiting for that save
+or an earlier correction; it does not establish that the engine received anything.
+
+If the engine refuses the correction, its words are recovered for that task without
+replacing a newer draft. If the connection fails and delivery is uncertain, the row says
+`no answer — it is not known whether this arrived`. The correction remains a pending
+message with its original identity, rather than becoming a fresh message in the box.
+
+## Retry a task correction without sending it twice
+
+On an unresolved correction, `r` asks again and `esc` leaves it on the page. An engine
+that remembers message identities returns its existing receipt if it already admitted
+that correction. The current engine writes the identity and direction to its task record
+before acknowledging it. A write failure refuses delivery; a failure to undo an already
+saved admission remains uncertain. This protects direction admission, not arbitrary
+external effects of the worker's tools.
+
+If the engine cannot recognize repeated identities, the offer says
+`send it again (it may arrive twice)` and there is no automatic repeat. Two separate
+presses of Enter intentionally create two messages, even when their text is identical.
+
+## Close the window while a correction is pending
+
+Pending corrections survive with their recipient, message identity and original time in
+the same structured record as drafts. Reopening that conversation and task restores the
+unresolved row; retrying uses its retained identity. A definitely refused message is
+recovered for its own task. Closing a conversation for good clears its kept corrections;
+an unsent message waiting for its local save is not released after that close.
+
+The local save must succeed before a new correction crosses to the engine. A missing
+record path or failure to create a message identity refuses sending and keeps the words.
+A failed plain-text export is shown, but does not undo a successful structured save.
+
+## Switch conversations while a task correction is sending
+
+A send keeps the original engine and owning conversation, whatever page is on screen.
+Switching to a conversation held alongside it can leave the original send running.
+Its receipt and recovered draft belong to that original conversation.
+
+If the conversation behind that engine connection was replaced, the engine refuses a
+mismatched recipient with `not sent — that conversation is not open`. It does not send
+the words to another conversation's task with the same number. An engine unable to check
+the intended conversation is refused before the correction crosses the wire.
+
+A task viewed through another conversation's reading connection has no steering door.
+Its editor is separate from the main draft and from any local task with the same number.
+Task corrections carry text; attachments stay in the recipient's tray and the page says
+that those files were not sent with the correction.
