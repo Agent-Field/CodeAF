@@ -335,6 +335,7 @@ var blockingCommands = []string{
 	"pumpShaping",
 	"waitDesign",
 	"waitEvent",
+	"waitGuestNotices",
 	"waitPilot",
 	"waitRoom",
 	"waitRun",
