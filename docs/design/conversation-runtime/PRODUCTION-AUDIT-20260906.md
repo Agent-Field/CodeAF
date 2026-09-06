@@ -2,8 +2,8 @@
 
 **Verdict: not ready for a production release.** The task experience has working
 paths and meaningful regression coverage. Recipient isolation and owner-aware
-navigation fixes are integrated, while reliable-send and chat-sidebar qualification
-are still in progress. Passing one substantial coding case does not close
+navigation, durable sending and chat-sidebar fixes are integrated. The combined
+offline gate is recorded in the final integration section below. Passing one substantial coding case does not close
 these gaps. Quality and correct delivery precede cost optimization.
 
 ## Method and scope
@@ -29,17 +29,20 @@ It does not certify every feature in the repository or every operating system.
 policy.** No terminal window was clicked, restarted, replaced or inspected through
 another automation mechanism. Test frames came from isolated application fixtures,
 not a screenshot of the user's window. Real-terminal accessibility and visual
-appearance therefore remain unverified. No paid model calls were made in this audit.
+appearance therefore remain unverified. No new live Aforge developer-task evaluation was run
+in this audit; the authorized Claude CLI implementation and review work is separate.
 
-## Why clicking may still fail in the running product
+## Initial click findings — historical launch observations
 
-There are three distinct findings; they must not be collapsed into one guessed cause.
+These observations were made at the start of the audit. The third source defect
+has since been fixed; the first two launch paths have not been replaced or rechecked
+in the user's window. They must not be collapsed into one guessed cause.
 
 | Evidence | Finding | Required action |
 | --- | --- | --- |
 | The executable at the running `/private/tmp/af-conversation/bin/aforge` process path reports `3cb79f3f8 (dirty)`, built September 5 at 03:12. Its source still gates hosted task opening on `hosted()`. | It predates the fix allowing local engine task readers without a remote hostname. | Verify the actual failing window and put the tested client build in its launch path. Preserve the existing conversation and work. |
 | The executable at the other running shared-checkout path reports `d4ac249c (dirty)`, built September 3. The audited binary reports `d9da6c48d`. | Multiple launch paths expose materially different products. A fixed worktree does not update an already running client. | Establish one documented launch/install path and show both client and engine revisions in diagnostics. Test upgrade/reconnect without losing work. |
-| `tasksItem.pick()` deliberately returns false for another window's live task. The existing test requires Enter to do nothing. | Some visible task rows are intentionally not openable, even in current source. | Implement navigation to the owning conversation/task, or provide an explicit actionable explanation until that is supported. |
+| `tasksItem.pick()` deliberately returns false for another window's live task. The existing test requires Enter to do nothing. | At the initial audit revision, visible other-conversation rows were intentionally inert. Local owner navigation is now implemented. | Qualify the implemented local owner view in the actual launch path. Remote other-conversation navigation remains unsupported and needs an actionable path. |
 
 The audit shell also has no `aforge` on PATH. That is evidence about this shell,
 not proof about the user's interactive shell or aliases. The shared checkout is
@@ -74,16 +77,16 @@ not an assertion that the behavior is broken.
 | Priority | Workstream and current evidence | Definition of done |
 | --- | --- | --- |
 | **P1** | **One tested build reaches the user.** Confirmed old executable paths above; existing failing window not directly inspected. | A documented launch path opens the tested client, reports client/engine revisions, enters the existing task, sends a direction to the correct task, returns and reconnects with work intact. No destructive host restart or silent old-binary reuse. |
-| **P1** | **Recipient-owned drafts and task messages. Draft isolation fixed at `810f6e4f8`; send integration pending.** Main, task and run composers now retain their own text, caret, paste blocks and attachment tray, including structured crash recovery. The original misdelivery regression is covered by permanent tests. Guest recipient separation passes focused tests at `01df49272`; asynchronous-send integration remains unqualified. | Main, task A and task B independently preserve text, caret, compact pastes and attachments. Switching views never changes an unsent message's recipient. Submission clears only the accepted recipient's draft. Test Escape, direct task switches, project switches, reconnect and crash recovery. Treat a question as a question; do not silently reinterpret every task message as a scope revision. |
-| **P1** | **Every visible task has an understandable opening action. Partial integration.** Local other-conversation views now join their owner without starting work or taking the keyboard. Guest identity, status and draft isolation pass focused tests. The user clarified that the failing surface is the right-hand task column inside chat; that click path and organization are receiving an additional pass. Remote other-conversation navigation and actual-user-window validation remain gaps. | Mouse and keyboard open the same stable task from the rail, Tasks, home/project views and another window. Identify the owning conversation and project. Show a recoverable error for a missing/unsupported owner; do not leave an apparently selectable row inert. |
-| **P1** | **Non-blocking send and reliable acknowledgements. Backend integrated; UI pending.** Stable message scope/sequence/time and expected conversation reach durable engine admission before acknowledgement. Owner mismatch and duplicate identity tests pass. The asynchronous composer/outbox integration is still under review for slow disk, superseded records and uncertain receipts. | Send runs asynchronously. Show pending, received and applied distinctly; Escape/navigation remain responsive. Retain the draft after a failed or uncertain send. Retry a lost acknowledgement with the same message ID and apply it once, including after reconnect and from another window. A second intentional identical message remains distinct. |
+| **P1** | **Recipient-owned drafts and task messages. Draft and send ownership integrated.** Main, task and run composers now retain their own text, caret, paste blocks and attachment tray, including structured crash recovery. The original misdelivery regression is covered by permanent tests. Guest recipient separation, queued delivery, stale-save refusal and uncertainty recovery have focused race coverage; see the final integration gate below. | Main, task A and task B independently preserve text, caret, compact pastes and attachments. Switching views never changes an unsent message's recipient. Submission clears only the accepted recipient's draft. Test Escape, direct task switches, project switches, reconnect and crash recovery. Treat a question as a question; do not silently reinterpret every task message as a scope revision. |
+| **P1** | **Every visible task has an understandable opening action. Partial integration.** Local other-conversation views now join their owner without starting work or taking the keyboard. Guest identity, status and draft isolation pass focused tests. The right-hand chat column now opens visible rows, bounds hit targets to drawn content, orders attention/live work first and preserves the open page on repeated selection. A rendered-frame/raw-SGR test opens exact parent/child engine transcripts at 100, 119, 120 and 160 columns. Remote other-conversation navigation and actual-user-window validation remain gaps. | Mouse and keyboard open the same stable task from the rail, Tasks, home/project views and another window. Identify the owning conversation and project. Show a recoverable error for a missing/unsupported owner; do not leave an apparently selectable row inert. |
+| **P1** | **Non-blocking send and reliable acknowledgements. Backend and UI integrated.** Stable message scope/sequence/time and expected conversation reach durable engine admission before acknowledgement. Owner mismatch and duplicate identity tests pass. The asynchronous composer saves the same outbox snapshot before wire delivery; retries retain identity after uncertain receipts. Some draft-clearing, quit and takeover writes remain synchronous, so arbitrary disk stalls are not fully qualified. | Send runs asynchronously. Show pending, received and applied distinctly; Escape/navigation remain responsive. Retain the draft after a failed or uncertain send. Retry a lost acknowledgement with the same message ID and apply it once, including after reconnect and from another window. A second intentional identical message remains distinct. |
 | **P1** | **A retained result remains usable when narration fails. Observed historical failure; integrated recovery unproven.** Artifacts and result references are retained, but a failed final model answer has previously left no substantive visible delivery. | Immediately expose the saved artifact, originating request and truthful failure state. One retry delivers the answer without rerunning completed work or duplicating the completion notice. Test provider failure during final narration, reconnect, and a newer unrelated main-chat question. |
 | **P1** | **Respect the requested delivery and branch workflow. Observed failure; latest guidance unproven live.** The recovery trial merged into main without being asked. The reminder and conflict/stopped branch notices now preserve the requested workflow; the corrected guidance still needs a fresh live evaluation. | For branch-and-commit requests, main and the user's checkout remain unchanged through worker completion and parent follow-up. Cover successful checks, inconclusive review, stopped work and conflicts. Remove conflicting advice. Report branch, commit, exact checks and unresolved work. Reading a result must never imply acceptance, merge or publication. |
 | **P1** | **Current-request verification through the whole task tree. Component tests pass; integrated proof missing.** Explicit checks and revision invalidation exist; the automatic route-check fix has not completed another realistic live evaluation. | Revise one deliverable during child/parent checking. Affected work gets fresh checks and evidence; unaffected siblings retain their scope. Old evidence cannot satisfy the revised request. Cover partial handoff, failed checks, restore and final delivery. Never scrape arbitrary worker commands into rerunnable checks. |
 | **P1** | **Stop the owned execution tree. Unproven end-to-end criterion.** Cancellation paths and component tests exist; this audit has not shown a full hosted-UI process-tree stop. | Stop a parent with child/grandchild tasks, a queued dependent, a foreground subprocess and a background process group. Owned processes stop within the documented grace, no new work starts, partial artifacts survive, and an unrelated task continues. Repeat while parked and during provider recovery. |
 | **P1** | **Reconnection, persistence and crash recovery. Mixed evidence.** Live terminal detach succeeded previously, and host/socket tests pass. Hard host crashes and uncertain external effects are separate cases. | Distinguish terminal closure, network loss, graceful shutdown and hard crash. Restore the same task, pending question/direction and unseen result. Deliver each notification once and show interrupted/uncertain work honestly. Do not blindly replay an action whose external outcome is unknown. Cover two windows and idle-host retirement. |
 | **P1** | **Independent quality gates on substantial work. Confirmed evidence limitation.** The one substantial repository case passes 220 checks yet exposes a public type-contract defect; the reference shares it. | Freeze multiple substantial repository issues and non-code tasks, with independent negative/interface/integration checks and requested-workflow grading. Repeat correction, interruption, long context and provider failure. Grade the delivered artifact, not whichever hidden child happens to look best. Retain failures and unknown costs. |
-| **P2** | **Per-task reading state. Confirmed source gap.** `newRoom()` starts with fresh expansion maps and follows the live edge; closing drops the room. | Return to each task's prior reading anchor and expanded evidence. Preserve a deliberate follow-live choice. New output while away must not jump a reader to the bottom. Include long transcripts and changing widths. Subscription cleanup is fixed separately. |
+| **P2** | **Per-task reading state. Partial improvement; source gap remains.** Repeated sidebar selection preserves the existing page and draft. Switching away and reopening still creates fresh expansion maps and follows the live edge; closing drops the room. | Return to each task's prior reading anchor and expanded evidence. Preserve a deliberate follow-live choice. New output while away must not jump a reader to the bottom. Include long transcripts and changing widths. Subscription cleanup is fixed separately. |
 | **P2** | **Keyboard, narrow-screen and accessibility qualification. Partial automated evidence.** The product has keyboard alternatives, semantic state words and color fallbacks; actual screen-reader behavior was not assessed. | Run the full task journey keyboard-only, on real dark/light terminals, ASCII/no-color, narrow/tall and short/wide windows. Check focus, clipping, selection, contrast and usable recovery text. Test actual assistive technology before claiming accessibility compliance. |
 | **P2** | **Responsiveness under realistic load. Measurement missing.** Passing elapsed test times are not UI performance measurements. | Define and measure input-to-paint, task-open, send-ack and reconnect latency; profile CPU/memory during long streams, large pastes, many task rows and repeated open/close. Document limits. Keep expensive work and network waits out of the event loop. |
 | **P2, after correctness** | **Simplify execution policy and then optimize cost. Proposed architecture only.** Workers and short forks already use the same Agent core; file-count handoffs and overlapping routing/readers remain. | Retain one owner, current assignment, tool receipts and lifecycle. Remove duplicate decisions incrementally while preserving the production acceptance battery. Keep ordinary tools direct; internal helpers stay collapsed. Compare cost only across successful, equivalent real work with complete pricing. |
@@ -119,8 +122,8 @@ visual redesign or another agent orchestration layer.
 | Compact task door when attention is needed | New failing-before/passing-after click regressions at 44/80/99 columns | In-memory terminal render and wire reader |
 | Phone attention priority | New failing-before/passing-after state test | No physical phone/terminal screenshot |
 | Old subscription release | Reproduced missing callback; corrected constructor releases exactly once | Does not certify every stream resource under long-duration load |
-| Draft recipient isolation | Original desired-behavior probe failed; permanent recipient/durable-draft regressions now pass in the full UI suite at `810f6e4f8` | Combined guest/send ownership still under implementation |
-| Other-window task opening | Existing test deliberately asserts an inert row | Missing capability remains |
+| Draft recipient isolation | Original desired-behavior probe failed; permanent recipient/durable-draft regressions now pass in the full UI suite at `810f6e4f8` | Final guest/send integration evidence appears below; real hard-crash qualification remains |
+| Other-window task opening | Local owner Join/Watch and identity regressions now cover opening, replacement and refusal | Remote other-conversation navigation and actual-user-terminal qualification remain |
 | Revision, protected branch, detach, reconnect | Independent targeted session/host/remote tests passed (1.424s/1.172s/2.223s) | Component evidence, not complete live-work proof |
 | Code generation quality | Prior native trial: 159+61 checks; 823 public cases and 124 subtests; supplemental type-contract failure | Historical trial on an earlier runtime; one task is not a success rate |
 
@@ -172,8 +175,8 @@ env -u OPENROUTER_API_KEY go test -race ./internal/tui3 \
   -count=1 -timeout15m
 ```
 
-These tests do not claim that the still-unintegrated send queue persists a message
-before transmission, or that a guest page has its final recipient binding.
+Those draft-only tests predate send integration. The final integration below adds
+persist-before-send and guest-recipient coverage; they remain separate assertions.
 
 ## Validation appendix
 
@@ -251,7 +254,7 @@ single diagnostic append run of 4,000 deltas allocated about 50.6MB; no optimiza
 or general latency claim follows from that one sample. Logs: `ui-bench-fixed.log`
 and `append-bench.log` in the same operations directory.
 
-### Parallel implementation still under review
+### Historical parallel implementation checkpoint — before integration
 
 At this checkpoint, three user-requested **Claude CLI Opus 5** lanes are editing
 isolated worktrees for recipient drafts, asynchronous reliable sending, and
@@ -316,3 +319,81 @@ screenshot command. The repository's `scripts/frame.sh` is a fixture capture
 script, not a confirmed native CLI capture command. The user was asked for the
 command they recalled. Interim images are labelled application-render fixtures;
 none show or operate the user's terminal.
+
+
+## Final integrated sidebar and delivery wave — `48201dce2`
+
+The user-requested Claude CLI Opus lanes are integrated, including root review
+corrections. The right-hand chat task column is now the explicitly tested surface:
+visible rows open their task; a fold only acts where its disclosure is drawn;
+the inactive resize seam at 100–119 columns no longer swallows a click; and the
+column stops capturing clicks at the composer/footer boundary. Attention and
+running work precede settled work within the existing hierarchy. Redundant `◆`
+markers are removed from this task-only column, with titles and detail lines aligned.
+Repeated sidebar clicks and Enter retain the same room, draft and reading position.
+A guest task with the same number cannot select or toggle the local task.
+
+`railwire_test.go` derives its mouse coordinates from the actual rendered sidebar,
+feeds raw SGR bytes through Bubble Tea, and requires the exact parent then child
+identifier and local engine transcript at 100/119/120/160 columns. It failed before
+the sidebar patch. The first integrated run then exposed a test-coordinate bug:
+the child label also appeared in the transcript header, so the helper now restricts
+its independent search to the drawn sidebar columns. The corrected exact-task,
+repeat-selection and colliding-owner race tests pass in **3.496s**. Both failed
+runs are retained (`rendered-rail-before.log`, `chat-rail-root-focused.log`), alongside
+`chat-rail-root-recovery.log`; no assertion was weakened to “any task opened”.
+
+The composer outbox now writes the actual pending message snapshot before sending.
+Per-record ordered writes keep queued identities tied to the record that landed;
+a newer empty or superseding record cannot authorize an older transmission.
+Unanswered delivery preserves identity, while definitely refused text remains a
+recoverable draft. Owner/session replacement is checked at durable admission.
+A joined reader is bound before attachment, cannot take the keyboard, and cannot
+use another conversation's task number after replacement. Pipe joins refuse
+before engine boot. A finished guest page continues to detect owner replacement,
+then keeps the last known state and ignores late reads.
+
+These are guarantees about direction admission, not exactly-once tool effects.
+Some lifecycle draft writes still run synchronously. General per-task scroll
+restoration, hard-crash/external-effect recovery and a fresh substantial developer
+campaign remain in the release list above.
+
+The first combined check remains **failed** evidence: UI **543.040s** failed on
+three cases. An unnamed-window test accidentally inherited the newly named fixture's
+transcript; it now explicitly reopens an unnamed window. The tree-keyboard test
+expected a finished child ahead of a running child; it now asserts the first
+visible running child. The third was a product defect: refused owner attachment
+showed only a status line instead of opening the promised fallback card. Refused
+and wrong-owner attachments now open that read-only card with the owner details
+and reason. The full session **172.355s**, remote **21.025s**, host **16.351s**,
+CLI **49.594s**, manual **3.621s** and untagged e2e **2.294s** suites passed in
+that same run. Log: `final-combined-gate.log`.
+
+The final read-only Claude Opus review found two additional colliding-owner cases:
+local design progress/completion could alter a guest page and forward navigation
+could stay on a guest when the local task had the same number. Both were reproduced
+in `guest-collision-before.log` (**0.944s**, failed), then fixed with owner guards.
+The weaker raw-wire click test now requires task 1 rather than any opened task.
+Combined focused recovery passes with race detection in **4.951s**; full manual
+**1.740s** and untagged e2e **0.526s** pass, including the new double-click help
+probe. The stale manual sentence promising click-to-close was corrected as well.
+Logs: `final-review-recovery.log`, `final-manual-recovery.log`. The earlier focused
+manual command matched no tests and is not counted as manual coverage.
+
+The final `make check PKGS='./internal/tui3 ./internal/manual ./internal/e2e'
+TEST_FLAGS='-count=1'` passes on `48201dce2`: full UI **543.344s**, manual
+**1.507s**, untagged e2e **0.610s**, whole-tree vet/formatting, packed manual
+**1.487s**, canonical build and binary size **50,821,794 / 54,600,000 bytes**.
+The backend packages above were unchanged by the UI recovery fixes and were not
+needlessly rerun. The checkout, including documentation, remained frozen during
+each guarded check. Log: `final-ui-recheck.log`. No test skips or performance caps
+were added; the repository's existing lock-law skip remains unchanged.
+
+Final chat and open-task render fixtures are under
+`/private/tmp/af-opus-production-20260906/chat-rail-final/` at 100, 120 and 160
+columns, with ANSI originals and PNG views. Their labels explicitly identify
+application fixtures, not the user's terminal. The image renderer's font does not
+cover every spinner glyph; those boxes are not proof of a product font defect.
+No built-in native CLI screenshot command has been confirmed. The repository
+capture helper is `scripts/frame.sh`, whose private-terminal approach is distinct
+from inspecting the user's blocked iTerm window.
