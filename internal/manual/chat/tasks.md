@@ -2437,6 +2437,12 @@ door — they are the ones above, reshaped:
 - **A task row on home's sheet.** Tapping a task on the work band of a conversation's card
   opens **that task's record** — the same card `enter` opens on the task page.
 
+## Open a past task
+
+Open `/history` or press `ctrl+.` to see earlier work. Select a past task and press
+`enter`, or click its row once, to open its saved record. The card shows the result,
+originating conversation and available evidence. Press `esc` to return to the list.
+
 ## Going inside an old task — see what a past task did, read a finished task's report
 
 `enter` on any row of the task page (`ctrl+.`, `/history`) that this conversation did not
