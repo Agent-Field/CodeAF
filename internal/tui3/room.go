@@ -1931,7 +1931,7 @@ func (a *app) navForward() tea.Cmd {
 		return nil
 	}
 	at := -1
-	if a.room != nil {
+	if a.room != nil && !a.roomIsGuest() {
 		for i, node := range running {
 			if node.id == a.room.id {
 				at = i
@@ -1940,7 +1940,7 @@ func (a *app) navForward() tea.Cmd {
 		}
 	}
 	next := running[(at+1)%len(running)]
-	if a.room != nil && a.room.id == next.id {
+	if a.roomStandingOn(next) {
 		return nil
 	}
 	a.openRoom(next.id, next.title)

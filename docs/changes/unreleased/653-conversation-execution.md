@@ -102,3 +102,11 @@ Repeated selection in the chat sidebar now keeps the task page open, including
 its draft and reading state. The row no longer toggles closed on a second click.
 A guest task no longer marks a local task with the same number as selected; opening
 that local row switches to the local task instead of treating it as the guest.
+
+If attaching a task owner fails or returns the wrong conversation, the task list
+now opens the existing read-only fallback card with the refusal and owner details.
+The failed attach no longer leaves only a status message under the list.
+
+Local design progress and completion no longer write onto a foreign task page
+with the same task number. Forward navigation treats a guest as a different owner,
+so it can enter the matching-numbered local task instead of doing nothing.

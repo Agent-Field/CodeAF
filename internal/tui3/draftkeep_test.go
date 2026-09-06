@@ -741,7 +741,7 @@ func TestAWindowWithNoTranscriptKeepsItsBoxWhole(t *testing.T) {
 	a.writeDraftsNow(a.leavingDraft())
 
 	next, _, _ := roomApp(t)
-	next.workspace, next.draftFile = a.workspace, a.draftFile
+	next.workspace, next.file, next.draftFile = a.workspace, "", a.draftFile
 	next.restoreDraft()
 	if got := next.input.String(); got != mainLine {
 		t.Fatalf("the box came back as %q, want %q", got, mainLine)

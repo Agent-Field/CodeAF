@@ -657,12 +657,12 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 		release()
 		a.pageMsg = taskOwnerBusyWord + railSep + strings.TrimSpace(msg.err.Error())
 		a.touch()
-		return nil
+		return a.taskSheetAwayCard(ask.item)
 	case !taskSameTranscript(msg.view.Session, ask.file) || msg.view.Room == nil:
 		release()
 		a.pageMsg = taskOwnerWrongWord
 		a.touch()
-		return nil
+		return a.taskSheetAwayCard(ask.item)
 	}
 	guest := &taskGuest{
 		session:   msg.view.Session,

@@ -66,7 +66,7 @@ func (a *app) progressHarnessCard(ev session.Event) {
 // no-op. This row is never appended to entries, so it can never reach a journal.
 func (a *app) progressHarnessRoom(ev session.Event) {
 	c, _ := a.harnessCardOf(ev.ID)
-	if c == nil || c.task == 0 || a.tasks[c.task] == nil || a.room == nil || a.room.id != c.task {
+	if c == nil || c.task == 0 || a.tasks[c.task] == nil || a.room == nil || a.roomIsGuest() || a.room.id != c.task {
 		return
 	}
 	parts := []string{"subharness · " + firstNonEmpty(ev.Phase, "designing")}
@@ -103,7 +103,7 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	// alone it kept saying "subharness · reviewing · …" under a design that was
 	// already awaiting the person's look, because no further progress event was
 	// ever coming to replace it.
-	if a.room != nil && c.task != 0 && a.room.id == c.task {
+	if a.room != nil && !a.roomIsGuest() && c.task != 0 && a.room.id == c.task {
 		a.room.harnessProgress = ""
 	}
 	a.entries[i].stale = true

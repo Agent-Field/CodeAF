@@ -1243,6 +1243,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// them asks about the sidebar, not about a fold.
 		{"the tasks on the right side I am unable to open it", "tasks"},
 		{"clicking a task in the sidebar does nothing", "tasks"},
+		{"what happens if I double-click a task in the sidebar", "tasks"},
 		{"I click a task on the right and the list jumps instead of opening", "tasks"},
 		{"how do I open a task from the column on the right", "tasks"},
 		// And the two organising questions behind it, asked of the same column.

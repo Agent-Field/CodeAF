@@ -1962,8 +1962,8 @@ message box, the legend or the status line under it, not to the column.
 A click inside the column that lands on no task at all still belongs to the column and
 does nothing, rather than closing the task page you are reading.
 
-**A second click on the row of the task you are already inside is the way back out** — the
-same row, the same press, and the page closes. `esc` does the same thing.
+**A second click on the selected row keeps its task open**, with the same draft and
+reading position. Press `esc` or the back control to return to the conversation.
 
 ## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
 
@@ -4391,3 +4391,11 @@ A sidebar row opens its task. Clicking the selected row again keeps that page, i
 draft and reading position open. Press `esc` or click the page's back control to
 return to the main conversation. A foreign task does not select a local sidebar
 row merely because both tasks have the same number.
+
+## Why another conversation could not open
+
+If the owner refuses the connection or answers for a different conversation, aforge
+opens the task's read-only card with the reason and the owning window's details.
+Return to the list to retry, or go to that window. Local design progress never
+updates a foreign task page with the same number. The next-running-task arrow
+opens a local task even when its number matches the foreign page you were reading.

@@ -534,7 +534,7 @@ func TestRawTerminalBytesOnARootsStateCellOpenThatTask(t *testing.T) {
 
 	input, keyboard := io.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
-	model := &localRoomTerminal{app: a, snapshots: make(chan string, 128)}
+	model := &railWireWindow{app: a, frames: make(chan railWireFrame, 128)}
 	program := tea.NewProgram(model, tea.WithContext(ctx), tea.WithInput(input),
 		tea.WithOutput(io.Discard), tea.WithWindowSize(a.width, a.height), tea.WithoutSignalHandler())
 	finished := make(chan error, 1)
@@ -558,14 +558,14 @@ func TestRawTerminalBytesOnARootsStateCellOpenThatTask(t *testing.T) {
 	defer deadline.Stop()
 	for {
 		select {
-		case state := <-model.snapshots:
-			if strings.HasPrefix(state, "TASK") {
+		case shown := <-model.frames:
+			if shown.task == 1 {
 				return
 			}
 		case err := <-finished:
 			t.Fatalf("the terminal exited before the press landed: %v", err)
 		case <-deadline.C:
-			t.Fatal("a press on the root's leading cell never opened a page")
+			t.Fatal("a press on the root's leading cell never opened task 1")
 		}
 	}
 }
