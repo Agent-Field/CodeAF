@@ -211,3 +211,72 @@ build, and size **50,569,250 / 54,600,000 bytes**. Its log is
 `model-beat-fixed-race.log`. `make changelog-check PR=653` passed (256 well-formed
 entries); `git diff --check` passed. No new live-model evaluation or actual-user
 terminal qualification is implied by these checks.
+
+
+## Follow-up quality and UX wave — September 6
+
+The completed integration revision `1e0b4fd4b` adds three reviewed changes:
+
+- A task page's footer reports that task's state, including waiting and stopped
+  states, instead of the main conversation's state and clock. Copy feedback keeps
+  priority. Leaving the task restores main-chat status. Focused race tests cover
+  44, 80 and 120 columns and disagreeing task/main states.
+- Retained-branch notices for stopped, conflicted, moved and detached work offer
+  inspection without directing an unrequested merge or checkout change. The full
+  completion note names the retained branch and preserves the requested workflow.
+  This removes conflicting guidance; a fresh substantial live workflow evaluation
+  is still required before closing that production requirement.
+- Streaming benchmarks now begin a new turn after the fixture's settled history.
+  The old promoted-stream benchmark indexed `live == -1` and panicked; ordinary
+  streaming and append benchmarks also incorrectly fed a settled turn. The failed
+  initial run is retained as `ui-bench-before.log`.
+
+The full offline `make check` gate passed: **tui3 476.519s**, **session 173.516s**,
+engine host 14.132s, remote 18.737s, provider 55.105s, manual 3.264s, whole-tree
+vet, packed manual 1.458s, canonical build and binary size **50,569,250 /
+54,600,000 bytes**. The invocation retained the repository's existing lock-law
+skip; this wave added no skips and changed no performance caps. Log:
+`/private/tmp/af-opus-production-20260906/root-quality-gate.log`.
+
+### Rendering measurements
+
+Three samples per case, Apple M3 Max / darwin-arm64, 250ms benchmark duration;
+figures below are medians. Fixtures contain prior user/assistant turns, tool
+outputs and, for the live-tool case, an edit diff. They are application rendering
+measurements, **not terminal input-to-paint, network acknowledgement latency,
+model speed, or a substantial developer-task success rate**.
+
+| Application operation | Median |
+| --- | ---: |
+| Full redraw with 20 settled turns | 0.195 ms |
+| Full redraw with 60 settled turns | 0.643 ms |
+| Streaming reply above 20 settled turns | 0.237 ms |
+| Promoted Markdown stream above 20 settled turns | 0.214 ms |
+| Live edit above 20 settled turns | 0.254 ms |
+
+A repeated pointer move over the same row remains about 35ns with either a one-line
+or 4,000-line draft; this is the cached no-change path, not click latency. A
+single diagnostic append run of 4,000 deltas allocated about 50.6MB; no optimization
+or general latency claim follows from that one sample. Logs: `ui-bench-fixed.log`
+and `append-bench.log` in the same operations directory.
+
+### Parallel implementation still under review
+
+At this checkpoint, three user-requested **Claude CLI Opus 5** lanes are editing
+isolated worktrees for recipient drafts, asynchronous reliable sending, and
+cross-window navigation plus UI organization. Their patches are **not part of
+`1e0b4fd4b` and have not passed the combined gate**. Written tests are not treated
+as passing tests. The first sending compilation failed and was returned for
+correction. The first cross-window navigation patch passes focused race tests in
+UI/remote/host/command packages, but older-engine negotiation and binding later
+reads to their original conversation still need review.
+
+The populated Tasks fixture confirms excessive identity/status marker variety,
+internal type labels competing with progress, lengthy header prose, and failed
+work grouped under `done today`. Needs-attention and running sections already
+precede history on that page; the organization pass must preserve that useful
+order and check the rail, home, mixed families, focus and narrow layouts. One
+subdued identity marker is being implemented. No updated actual-user terminal
+or release is implied: the existing iTerm inspection restriction and old-running-
+binary findings above still apply. No new live Aforge developer-task evaluation
+was run in this follow-up; the authorized Claude CLI work is separate.
