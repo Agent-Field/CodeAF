@@ -120,6 +120,19 @@ type personSourceID struct {
 type spokenSource struct {
 	id     personSourceID
 	spoken time.Time
+	// forwarded says the person was NOT in this node's room when they said it —
+	// the model chose the address and this door carried their words there. It
+	// decides which of the two receipt lines the worker reads
+	// ([receiptLineFor]), and nothing else.
+	//
+	// IT IS A FIELD RATHER THAN `id.live()` BECAUSE AN IDENTITY IS NO LONGER
+	// PROOF OF A FORWARD. A surface that sends into a room carries an identity
+	// too now (task_room.go's [Agent.SteerTaskFrom]), so that a send it never
+	// heard the answer to can be retried without the worker being told the same
+	// thing twice — and reading that identity as "they were not addressing this
+	// room" would put a sentence under their words saying they meant some other
+	// work, which is the one thing the two lines exist to keep apart.
+	forwarded bool
 }
 
 func (id personSourceID) live() bool { return id.scope != "" && id.seq != 0 }
@@ -154,7 +167,7 @@ func (s personSource) live() bool {
 
 // said is the provenance the node's record keeps.
 func (s personSource) said() spokenSource {
-	return spokenSource{id: s.id, spoken: s.spoken}
+	return spokenSource{id: s.id, spoken: s.spoken, forwarded: true}
 }
 
 // askingLocked reads the source off the agent. The caller holds a.mu, which is
@@ -230,6 +243,16 @@ const (
 	forwardTurnOver = "That turn is over, so the words you were answering are no longer what the person is asking for. " +
 		"Nothing was sent. Read what they have said since and forward that if it still needs forwarding."
 )
+
+// errSaidUnderThatName is ONE NAME CARRYING TWO SENTENCES: a caller sent new
+// words under the identity of a send this task already holds.
+//
+// IT IS REFUSED RATHER THAN ANSWERED WITH THE OLDER RECEIPT, which is the whole
+// of why it exists. "Already on the record, nothing was sent twice" is a true
+// and useful sentence about the SAME words asked about again; said over a
+// different sentence it reports a delivery that never happened, and the person
+// would be told their correction had arrived while the worker read another one.
+var errSaidUnderThatName = errors.New("that send already carries different words on this task, so these were not sent under it")
 
 // errSaidLaterAlready is the ordering refusal, and it is the one the person's
 // authority actually rests on. See [taskAssignment.hear].

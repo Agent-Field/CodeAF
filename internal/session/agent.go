@@ -1341,9 +1341,13 @@ type SteerReceipt struct {
 	Direction uint64
 	// Again says this task already held these words, from the same message of the
 	// person's, so nothing was sent a second time and Direction is the receipt it
-	// was written down as the first time. Only a forward can answer it
-	// (task_forward.go): saying the same sentence into a room twice is saying it
-	// twice, and is delivered twice.
+	// was written down as the first time.
+	//
+	// ONLY A SEND THAT CARRIES AN IDENTITY CAN ANSWER IT — a forward from the
+	// conversation (task_forward.go) or a room's send under a [SteerSource]
+	// (task_room.go's [Agent.SteerTaskFrom]). Saying the same sentence into a room
+	// twice is saying it twice and is delivered twice: what is recognised is the
+	// SEND and never the words.
 	Again bool
 	// Landing is the engine's own sentence for what happened, drawn verbatim.
 	Landing string

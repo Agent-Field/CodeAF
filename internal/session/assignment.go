@@ -233,15 +233,18 @@ var (
 //
 // ── AND A FORWARDED LINE IS ORDERED AGAINST THE RECORD, NOT MERELY ADDED ──
 //
-// A line said into the node's own room is heard when it is said, and that is the
-// end of it. A line FORWARDED from the conversation (task_forward.go) carries
-// the identity of the message it came from, and two things follow from that,
-// both decided here because here is where the receipt is minted and the graph's
-// lock is held:
+// A line said into the node's own room with nothing to name it by is heard when
+// it is said, and that is the end of it. A line that carries an IDENTITY —
+// forwarded from the conversation (task_forward.go), or sent from a room under
+// the surface's own send number (task_room.go's [Agent.SteerTaskFrom]) — is
+// ordered against the record instead, and two things follow from that, both
+// decided here because here is where the receipt is minted and the graph's lock
+// is held:
 //
 //   - THE SAME MESSAGE IS NOT HEARD TWICE. A repeated call — a retried tool
-//     call, a batch the model sent again — answers the receipt already on the
-//     record and delivers nothing.
+//     call, a batch the model sent again, a surface asking again for a send it
+//     never heard the answer to — answers the receipt already on the record and
+//     delivers nothing.
 //   - AND AN OLDER MESSAGE MAY NOT LAND BEHIND A NEWER ONE. Receipt ids are this
 //     node's arrival order, and [taskAssignment.revise] reads them as the
 //     person's own order — so an older correction admitted after a newer one
@@ -250,17 +253,17 @@ var (
 //     nothing is written down.
 //
 // Neither road is open to a line with no source, and that is not an oversight:
-// saying the same sentence into a room twice IS saying it twice.
+// saying the same sentence into a room twice IS saying it twice, and a surface
+// with no way to number its sends has said nothing that would tell the two
+// apart.
 func (a *taskAssignment) hear(words string, from directionFrom, at time.Time, source spokenSource) (uint64, bool, directionOrder) {
 	words = strings.TrimSpace(words)
 	if words == "" {
 		return 0, false, directionRefused
 	}
 	if source.id.live() {
-		for _, said := range a.directions {
-			if said.source == source.id {
-				return said.id, true, directionAgain
-			}
+		if id, order := a.already(source.id, words); order != directionRefused {
+			return id, true, order
 		}
 		for _, said := range a.directions {
 			if said.source.after(source.id) {
@@ -287,6 +290,34 @@ func (a *taskAssignment) hear(words string, from directionFrom, at time.Time, so
 	return a.next, true, directionHeardNow
 }
 
+// already is what this record ALREADY HOLDS for one named send, and it is asked
+// in two places: here, under the graph's lock, where the receipt is minted, and
+// before a node's state is even consulted ([TaskNode.heardBefore]) — because a
+// send whose answer was lost has to be answerable after the work it was for has
+// finished, which is exactly when the person's window comes back and asks.
+//
+// THE WORDS ARE COMPARED AND NOT ONLY THE NAME. A name that already carries
+// different words is not a repeat of anything: it is a caller reusing an
+// identity, and answering it with "already on the record" would tell somebody
+// their new sentence had arrived when what is on the record is an older one.
+// That is refused instead, out loud.
+func (a *taskAssignment) already(source personSourceID, words string) (uint64, directionOrder) {
+	if !source.live() {
+		return 0, directionRefused
+	}
+	words = strings.TrimSpace(words)
+	for _, said := range a.directions {
+		if said.source != source {
+			continue
+		}
+		if said.words != words {
+			return said.id, directionMismatch
+		}
+		return said.id, directionAgain
+	}
+	return 0, directionRefused
+}
+
 // directionOrder is what one arrival came to once the record was consulted.
 type directionOrder uint8
 
@@ -295,10 +326,13 @@ const (
 	directionRefused directionOrder = iota
 	// directionHeardNow is the ordinary answer — written down, receipt minted.
 	directionHeardNow
-	// directionAgain is the same forwarded message this node already holds.
+	// directionAgain is the same message this node already holds, from a forward
+	// or from a surface asking again about a send it got no answer to.
 	directionAgain
-	// directionOutOfOrder is a forwarded message older than one already here.
+	// directionOutOfOrder is a message older than one already here.
 	directionOutOfOrder
+	// directionMismatch is one identity carrying two different sentences.
+	directionMismatch
 )
 
 // forget removes a receipt that was minted for words nobody took. It exists
@@ -571,6 +605,17 @@ func (n *TaskNode) heardDirection(words string, from directionFrom, source spoke
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	return n.heardDirectionLocked(words, from, source)
+}
+
+// heardDirectionLocked is the same admission with the graph's lock ALREADY HELD.
+// It exists for the one caller that has to admit and write the checkpoint under
+// one hold of it, so that no reader of this record sees a direction whose write
+// is still deciding (task_store.go's [TaskGraph.admitWritten]).
+func (n *TaskNode) heardDirectionLocked(words string, from directionFrom, source spokenSource) directionHeard {
+	if n == nil {
+		return directionHeard{}
+	}
 	id, kept, order := n.assignment.hear(words, from, time.Now(), source)
 	return directionHeard{id: id, inTime: kept && !n.publishing, order: order}
 }
@@ -594,6 +639,15 @@ func (n *TaskNode) forgetDirection(id uint64) {
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	n.assignment.forget(id)
+}
+
+// forgetDirectionLocked is the same with the graph's lock already held, for
+// [heardDirectionLocked]'s reason.
+func (n *TaskNode) forgetDirectionLocked(id uint64) {
+	if n == nil || id == 0 {
+		return
+	}
 	n.assignment.forget(id)
 }
 
@@ -628,6 +682,19 @@ func forwardedReceiptLine(id uint64) string {
 // string because both receipts above ask for exactly the same reading.
 func directionReceiptTail(id uint64) string {
 	return fmt.Sprintf(" If it changes what this work is FOR — a different output, a different target, a requirement added or dropped — fold it in with revise_assignment citing %d. If it is a fact or a question, just use it or answer it.", id)
+}
+
+// heardBefore is [taskAssignment.already] asked of a node from outside the
+// lock. It is what lets a send be answered when the node is no longer running:
+// the record outlives the work, and a window coming back to a correction whose
+// answer was lost is entitled to learn that it arrived.
+func (n *TaskNode) heardBefore(source spokenSource, words string) (uint64, directionOrder) {
+	if n == nil || n.graph == nil {
+		return 0, directionRefused
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.assignment.already(source.id, words)
 }
 
 // directionsNow copies the receipts out for a reader outside the lock.

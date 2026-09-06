@@ -289,6 +289,13 @@ type TaskNode struct {
 	// done is closed when the node reaches a final state. It is how a waiter —
 	// a test, a future join — waits without polling.
 	done chan struct{}
+	// admit serializes the admission of NAMED corrections to this node, and it
+	// is the whole of how "written down before it is delivered" holds under two
+	// requests at once (task_room.go's admission law). It is not the graph's
+	// lock and must never be taken while holding it: the checkpoint inside this
+	// section takes store.mu and then graph.mu, and the ordering
+	// admit → store.mu → graph.mu is the only one this file uses.
+	admit sync.Mutex
 
 	spec taskSpec
 	// kind is what sort of node this is ([TaskKind]), settled at admission from

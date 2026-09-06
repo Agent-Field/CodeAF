@@ -104,8 +104,10 @@ package session
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ErrNobodyToRead marks the two refusals that mean the node is STILL RUNNING
@@ -177,6 +179,155 @@ func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
 	return a.sayToTask(id, text, fromPerson, spokenSource{})
 }
 
+// ErrSendUnanswered marks a send whose fate the sender DOES NOT KNOW: the words
+// may be on the node's record and may never have left the machine they were
+// typed on, and nothing that can be read from here says which.
+//
+// IT IS NOT MINTED IN THIS PACKAGE. An engine in this process either takes a
+// line or refuses it, and both of those are answers; the uncertainty belongs to
+// the wire, so internal/remote wraps a call it got no answer to with this and a
+// surface matches it with errors.Is. It lives here because it is the vocabulary
+// a surface reads a send's outcome in, beside [ErrNobodyToRead], and because
+// internal/tui3 speaks this package and not that one.
+//
+// A SURFACE MAY NOT DRAW THIS AS A FAILURE. The one honest reading is "we do not
+// know", and what follows from it is asking again under the same [SteerSource]
+// where the engine recognises one ([Agent.SteerRepeatKnown]), and keeping the
+// person's words where they can still see them where it does not.
+var ErrSendUnanswered = errors.New("no answer came back, so it is not known whether these words arrived")
+
+// SteerSource NAMES ONE SEND, so that a surface which never heard the answer to
+// it can ask again without the worker being told the same thing twice.
+//
+// THE PROBLEM IT ANSWERS IS NOT DUPLICATE TYPING. A person presses enter, the
+// words cross to the engine, the engine takes them — and the answer is lost on
+// the way back, because the link died, the deadline ran out, or the window was
+// closed and reopened. The surface then holds a sentence it cannot say arrived
+// and cannot say did not, and both of the things it can do are wrong: send it
+// again and the worker reads one correction twice, drop it and the person's
+// words are gone. With an identity on the send there is a third answer — ask
+// again with the same one — and [taskAssignment.hear] recognises it, answers
+// the receipt already on the record and delivers nothing ([SteerReceipt.Again]).
+//
+// IT IS THE SEND'S NUMBER AND NEVER A FINGERPRINT OF THE WORDS, which is
+// [personSourceID]'s own law and matters more here than anywhere: the same
+// sentence typed twice into a room IS two corrections — "try it again" after a
+// failure means something the first one did not — so two intentional sends of
+// one sentence carry two Seqs and are two directions, while one send asked
+// twice carries one Seq and is one.
+//
+// AND THE SCOPE IS WHAT KEEPS TWO LIVES APART. Seq is only meaningful inside
+// it: a surface counts its own sends from 1, so a scope shared with yesterday's
+// window would let tomorrow's first send be recognised as a direction this task
+// already holds and dropped. A surface mints one random scope per life and
+// never persists it (internal/tui3's steersend.go).
+type SteerSource struct {
+	// Scope names one life of one surface. Empty is a send with no identity,
+	// which is exactly what [Agent.SteerTask] has always been.
+	Scope string
+	// Seq counts that surface's sends, from 1.
+	Seq uint64
+	// At is when the person pressed enter, which is what the node's record
+	// orders its corrections by — the send may be retried minutes later, and the
+	// instant that matters is the one they said it at, not the one it landed on.
+	At time.Time
+	// Conversation is the session file the surface believed it was addressing.
+	//
+	// A TASK NUMBER MEANS SOMETHING ONLY INSIDE ONE CONVERSATION, and a surface
+	// can hold a send across a swap — /resume and /new replace the conversation
+	// under a handle that does not change (cmd/aforge's chatv3_host.go keeps the
+	// same remote agent). Carried here, the claim is checked where the delivery
+	// happens; empty is a caller making no claim, and is checked against nothing.
+	Conversation string
+}
+
+// ErrNotThatConversation refuses a send whose conversation is no longer the one
+// open. It is a REFUSAL AND NOT A DELIVERY ELSEWHERE: task 7 in the conversation
+// that replaced it is somebody else's work, and the words stay unsent.
+var ErrNotThatConversation = errors.New("that correction was written for another conversation, so it was not sent")
+
+// ErrConversationUnchecked is the same refusal for a DIFFERENT reason: the
+// engine cannot say which conversation it has open, so the claim on the send
+// could not be established. It wraps [ErrNotThatConversation] because a caller
+// has to treat them identically — nothing was delivered, and the words are
+// still theirs. AN UNKNOWN OWNER IS NOT PERMISSION.
+var ErrConversationUnchecked error = uncheckedConversation{}
+
+type uncheckedConversation struct{}
+
+func (uncheckedConversation) Error() string {
+	return "this engine cannot say which conversation is open, so the correction was not sent"
+}
+
+func (uncheckedConversation) Unwrap() error { return ErrNotThatConversation }
+
+// live says this identity can be recognised again. Both halves are required,
+// for [personSourceID.live]'s reason.
+func (s SteerSource) live() bool { return s.Scope != "" && s.Seq != 0 }
+
+// spoken is the identity as the record keeps it. A send from a room is never
+// forwarded, whatever it carries ([spokenSource.forwarded]).
+func (s SteerSource) spoken() spokenSource {
+	return spokenSource{id: personSourceID{scope: s.Scope, seq: s.Seq}, spoken: s.At}
+}
+
+// SteerTaskFrom is [Agent.SteerTask] with that identity on the send. Everything
+// else about it is the same door: the same refusals, the same wake for a parked
+// node, the same hold while the work is being checked, and the same receipt the
+// worker cites to revise.
+//
+// A SEND WITH NO IDENTITY IS THE OLD DOOR EXACTLY. An empty [SteerSource] makes
+// this [Agent.SteerTask], so a caller that has no way to number its sends is not
+// made worse off — it simply cannot ask again safely, and the surface that
+// cannot is the one that must keep the words and ask the person.
+func (a *Agent) SteerTaskFrom(id uint64, text string, from SteerSource) (SteerReceipt, error) {
+	// THE CONVERSATION IS CHECKED FIRST, because the id below is only meaningful
+	// inside the one the caller meant ([SteerSource.Conversation]).
+	if err := a.thisConversation(from.Conversation); err != nil {
+		return SteerReceipt{}, err
+	}
+	if !from.live() {
+		return a.SteerTask(id, text)
+	}
+	return a.sayToTask(id, text, fromPerson, from.spoken())
+}
+
+// thisConversation says whether this agent is the conversation the caller
+// named, and why not. (The name is not `opened`: [Agent.opened] is a field.)
+//
+// NO CLAIM IS CHECKED AGAINST NOTHING; AN UNKNOWN IDENTITY IS NOT A MATCH. A
+// caller that named no conversation is making no claim and steers as it always
+// did. A caller that named one has asked to be refused unless this is that
+// conversation — and an agent that does not know its own transcript CANNOT
+// establish it, so it refuses. Reading "I have no name" as "your name is mine"
+// would answer the question the claim was written to ask.
+func (a *Agent) thisConversation(conversation string) error {
+	conversation = strings.TrimSpace(conversation)
+	if conversation == "" {
+		return nil
+	}
+	mine := strings.TrimSpace(a.config.SessionFile)
+	if mine == "" {
+		return ErrConversationUnchecked
+	}
+	if filepath.Clean(conversation) != filepath.Clean(mine) {
+		return ErrNotThatConversation
+	}
+	return nil
+}
+
+// SteerRepeatKnown says a send repeated under one [SteerSource] is taken once.
+//
+// IT IS ASKED BEFORE ANYTHING IS SENT, because the answer decides what a
+// surface may do with a send it got no answer to: an engine that recognises the
+// repeat can be asked again, and one that does not must not be — a second send
+// there is a second correction, and the person would be the one to find out.
+// This engine answers yes because this engine IS the record that recognises it
+// ([taskAssignment.hear], and the checkpoint that survives a restart carries the
+// identity with the direction — task_store.go's sourceRecord). A client
+// speaking to another machine answers for THAT machine (internal/remote).
+func (a *Agent) SteerRepeatKnown() bool { return true }
+
 // relayToTask is THE OTHER SPEAKER, and it is not the person: the model calling
 // `tasks … say` from this conversation or from a parent node
 // (tools_tasks.go's [Agent.oneTask]).
@@ -212,6 +363,49 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	node := a.taskNode(id)
 	if node == nil {
 		return SteerReceipt{}, fmt.Errorf("no task %d in this session", id)
+	}
+	// WHAT THIS TASK ALREADY HOLDS IS ASKED BEFORE WHETHER IT IS STILL RUNNING,
+	// and the order is the point.
+	//
+	// A send whose answer was lost is asked about again LATER — after a
+	// reconnect, after the window was reopened — and by then the work it was for
+	// may have finished. Asked in the other order, that ask meets `task 7 is
+	// done, not running`: a refusal, over words that are on the task's record and
+	// were read by its worker. The person would be told their correction never
+	// arrived when it did, and would send it again into the next piece of work.
+	//
+	// ── ONE NAMED CORRECTION AT A TIME PER NODE, AND WRITTEN DOWN BEFORE IT IS
+	// ANSWERED FOR ──
+	//
+	// A named send promises exactly-once admission: the engine may be asked for
+	// the same one again after a lost answer, and answers "already on the record"
+	// (assignment.go's [taskAssignment.already]). That promise is only worth what
+	// the RECORD is worth, and the record lived in memory — so an engine that died
+	// between taking a correction and its next transition came back having
+	// forgotten the identity, and the person's retry arrived as a second
+	// correction. The words are written down as part of being admitted
+	// ([admitDirection]).
+	//
+	// THE LOCK IS WHAT MAKES THAT TRUE UNDER TWO ASKS AT ONCE. Without it the
+	// second ask reads an in-memory receipt whose write has not finished, or has
+	// already failed and been rolled back, and reports a delivery that is on no
+	// disk. It is the node's own and is never held while the graph's is
+	// ([TaskNode.admit] states the ordering); an unnamed send takes it not at all
+	// and behaves exactly as it always did.
+	if source.id.live() {
+		node.admit.Lock()
+		defer node.admit.Unlock()
+	}
+	// So the RECORD answers first, because the record outlives the run
+	// ([TaskNode.heardBefore]). A name this task has never heard falls straight
+	// through to the state check exactly as before, which is every ordinary send.
+	if source.id.live() {
+		switch direction, order := node.heardBefore(source, text); order {
+		case directionAgain:
+			return SteerReceipt{Again: true, Direction: direction, Landing: steerAgainWord}, nil
+		case directionMismatch:
+			return SteerReceipt{}, errSaidUnderThatName
+		}
 	}
 	if state := node.stateNow(); state != TaskRunning {
 		return SteerReceipt{}, fmt.Errorf("task %d is %s, not running", id, state)
@@ -255,7 +449,14 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	// (agent.go's [carryingDirection]) so that the drain which carries the words
 	// into a request is what marks the direction read. A refusal below forgets it
 	// again, so nothing is left on the record for words no reader took.
-	heard := node.heardDirection(text, directionOf(origin), source)
+	//
+	// AND IT IS ON THE DISK BEFORE IT IS HANDED TO ANYBODY ([admitDirection]): a
+	// worker that had read a correction the checkpoint never heard of would leave
+	// the person's retry looking like a new sentence.
+	heard, err := admitDirection(node, text, directionOf(origin), source)
+	if err != nil {
+		return SteerReceipt{}, err
+	}
 	// AND WHAT THE RECORD SAID ABOUT WHERE THESE WORDS BELONG (assignment.go's
 	// [taskAssignment.hear]). The same message forwarded to the same task again
 	// answers the receipt already on the record and delivers nothing; a message
@@ -267,6 +468,8 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 		return SteerReceipt{Again: true, Direction: heard.id, Landing: steerAgainWord}, nil
 	case directionOutOfOrder:
 		return SteerReceipt{}, errSaidLaterAlready
+	case directionMismatch:
+		return SteerReceipt{}, errSaidUnderThatName
 	}
 	direction := heard.id
 	if !node.openRoom().steerIn(conversationOf(node), a.spoken(text, waiting, origin, direction)) {
@@ -281,7 +484,19 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 		if node.stateNow() == TaskRunning {
 			return SteerReceipt{Held: true, Direction: direction, Landing: heldWord(heard.inTime)}, nil
 		}
-		node.forgetDirection(direction)
+		// AND THE DISK IS PUT BACK TOO. It was written before the hand-off, so a
+		// refusal that only forgot it in memory would leave a direction on the
+		// checkpoint that nobody read and the person was told was refused — and a
+		// retry after a restart would be answered "already on the record".
+		//
+		// IF THE DISK WILL NOT TAKE IT BACK, THE REFUSAL IS NOT A REFUSAL. The
+		// correction may still be on the checkpoint this engine would resume from,
+		// so what goes back is UNCERTAINTY: the surface keeps the send under the
+		// name it already has, and asking again lands it exactly once whichever way
+		// it turns out ([errDirectionUncertain]).
+		if err := dropDirection(node, heard, source); err != nil {
+			return SteerReceipt{}, fmt.Errorf("%w: %v", errDirectionUncertain, err)
+		}
 		return SteerReceipt{}, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
 	}
 	// AND THE ENGINE'S OWN LINE UNDER THE PERSON'S, as a second message rather
@@ -308,21 +523,103 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 // the words are kept, the landing revalidates against them, and the sentence
 // says both of those things to the person who typed them.
 func heldForTask(node *TaskNode, text string, origin messageOrigin, source spokenSource) (SteerReceipt, error) {
-	heard := node.heardDirection(text, directionOf(origin), source)
+	// A HELD CORRECTION IS STILL A CORRECTION THAT WAS ACCEPTED, so it goes on the
+	// disk as part of being admitted, for [admitDirection]'s reason.
+	heard, err := admitDirection(node, text, directionOf(origin), source)
+	if err != nil {
+		return SteerReceipt{}, err
+	}
 	switch heard.order {
 	case directionAgain:
 		return SteerReceipt{Again: true, Direction: heard.id, Landing: steerAgainWord}, nil
 	case directionOutOfOrder:
 		return SteerReceipt{}, errSaidLaterAlready
+	case directionMismatch:
+		return SteerReceipt{}, errSaidUnderThatName
 	}
 	return SteerReceipt{Held: true, Direction: heard.id, Landing: heldWord(heard.inTime)}, nil
 }
 
+// admitDirection puts one line on the node's record, and for a NAMED one puts it
+// on the disk in the same breath ([TaskGraph.admitWritten]).
+//
+// A NAMED SEND IS THE ONLY ONE THAT NEEDS IT. The identity is what lets a person
+// ask again for a crossing nobody answered, and the engine answers that ask off
+// the record — so a record that has not reached the disk makes the promise only
+// for as long as the process lives. Nothing about an unnamed send can be
+// recognised on a second ask, so there is nothing a durable write would protect
+// and it takes the road it always took.
+//
+// A WRITE THAT FAILED ADMITTED NOTHING. The direction comes back off the record
+// inside the same hold, so no reader and no later checkpoint ever sees it, and
+// the person is told plainly that nothing was sent.
+//
+// It is called with the node's admission lock held and the graph's released.
+func admitDirection(node *TaskNode, text string, from directionFrom, source spokenSource) (directionHeard, error) {
+	if node == nil {
+		return directionHeard{}, nil
+	}
+	if !source.id.live() || node.graph == nil {
+		return node.heardDirection(text, from, source), nil
+	}
+	// The two closures run with the graph's lock held, which is what makes the
+	// admission and its write one act nobody can read between.
+	heard, err := node.graph.admitWritten(
+		func() directionHeard { return node.heardDirectionLocked(text, from, source) },
+		func(h directionHeard) { node.forgetDirectionLocked(h.id) },
+	)
+	if err != nil {
+		return heard, fmt.Errorf("%w: %v", errNotWrittenDown, err)
+	}
+	return heard, nil
+}
+
+// dropDirection takes a direction nobody could be given back off the record —
+// and, for a named one, off the disk in the same hold. The error says the disk
+// did NOT agree, which is why its caller stops calling the outcome a refusal.
+func dropDirection(node *TaskNode, heard directionHeard, source spokenSource) error {
+	if node == nil {
+		return nil
+	}
+	if !source.id.live() || !heard.fresh() || node.graph == nil {
+		node.forgetDirection(heard.id)
+		return nil
+	}
+	return node.graph.dropWritten(func() { node.forgetDirectionLocked(heard.id) })
+}
+
+// errNotWrittenDown is the refusal a correction gets when the engine could not
+// write it down. It says the two things that decide what the surface does with
+// the words: nothing was delivered, and they are still the person's.
+var errNotWrittenDown = errors.New("that correction could not be written down, so it was not sent and nothing was delivered")
+
+// errDirectionUncertain is the OTHER ending, and it is not a refusal: the
+// correction reached the engine's own record and the engine could not then take
+// it back off the disk, so nobody can say whether a resume would find it.
+//
+// IT WEARS [ErrSendUnanswered] because that is exactly what a surface must do
+// with it — keep the send under the identity it already has and offer to ask
+// again, which lands it once however it turns out. Reporting a definite refusal
+// here would send the person's next enter as a NEW correction.
+var errDirectionUncertain error = uncertainDirection{}
+
+type uncertainDirection struct{}
+
+func (uncertainDirection) Error() string {
+	return "it is not known whether that correction was kept — nothing has read it"
+}
+
+func (uncertainDirection) Unwrap() error { return ErrSendUnanswered }
+
 // receiptLineFor is which of the engine's two lines goes under the words: the
 // one for a person standing in this room, or the one that says they were not
 // (assignment.go).
+//
+// IT READS THE DOOR THE WORDS CAME THROUGH AND NOT WHETHER THEY CARRY AN
+// IDENTITY ([spokenSource.forwarded] says why): a line typed into this room and
+// sent under a message id is still a line said in this room.
 func receiptLineFor(direction uint64, source spokenSource) string {
-	if source.id.live() {
+	if source.forwarded {
 		return forwardedReceiptLine(direction)
 	}
 	return directionReceiptLine(direction)

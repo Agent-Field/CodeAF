@@ -1,5 +1,7 @@
 package remote
 
+import "time"
+
 // These are the three task-command questions whose answers belong to the
 // engine machine. The surface sends intent; shaping, admission and spending
 // remain with the session agent that owns the conversation.
@@ -39,9 +41,48 @@ type TaskRoomArgs struct {
 }
 
 // TaskSteerArgs carries one person's correction to a running node.
+//
+// ── AND THE NAME OF THE SEND, SO A LOST ANSWER IS NOT A LOST SENTENCE ──
+//
+// The id and the text alone cannot survive the one failure that matters over a
+// wire: the engine TAKES the words and the answer never gets back — the link
+// died, the deadline ran out. The surface then holds a sentence it can neither
+// report as delivered nor send again, because a second send with nothing to
+// recognise it by is a second correction on the worker's queue.
+//
+// So the surface's own name for the send crosses with it ([session.SteerSource]
+// — a scope naming one life of one window, and a number counting its sends),
+// and an engine that keeps them answers a repeat with the receipt already on
+// the record, delivering nothing (Again below). It is the SEND's identity and
+// never a hash of the words: two intentional sends of one sentence carry two
+// Seqs and are two directions.
+//
+// BOTH ENDS DEGRADE HONESTLY. An engine that predates this ignores the two
+// fields and steers exactly as it always did — which is why the surface asks
+// whether the far machine keeps them ([Welcome.SteerRepeat]) BEFORE it sends,
+// rather than discovering it by having asked twice.
 type TaskSteerArgs struct {
 	ID   uint64 `json:"id"`
 	Text string `json:"text"`
+	// Scope and Seq are the send's identity, absent on a surface that has no way
+	// to mint one and on every client written before this.
+	Scope string `json:"scope,omitempty"`
+	Seq   uint64 `json:"seq,omitempty"`
+	// Said is when the person pressed enter, which is what the node's record
+	// orders its corrections by. It travels because a send may be repeated
+	// minutes later and the instant that decides which correction is the later
+	// one is the one they said it at, not the one the wire delivered it on.
+	Said time.Time `json:"said,omitzero"`
+	// Session is the conversation the surface believed it was addressing, and it
+	// is checked at the engine against the one actually open.
+	//
+	// THE HANDLE DOES NOT CHANGE WHEN THE CONVERSATION DOES. `Session.Open` and
+	// `Session.New` swap the engine's conversation behind the same client and the
+	// same agent (cmd/aforge's chatv3_host.go returns that agent unchanged), so a
+	// send held over a swap — queued behind another, or retried after one — would
+	// otherwise reach whatever task 7 means in the conversation that replaced it.
+	// Empty is a surface making no claim.
+	Session string `json:"session,omitempty"`
 }
 
 // TaskSteered carries the local door's whole receipt (internal/session's
@@ -62,6 +103,26 @@ type TaskSteered struct {
 	Held      bool   `json:"held,omitempty"`
 	Direction uint64 `json:"direction,omitempty"`
 	Landing   string `json:"landing,omitempty"`
+	// Again says this node already held these words FROM THIS SAME SEND, so
+	// nothing was delivered a second time and Direction is the receipt the first
+	// one was written down as. It is the answer a surface asking again for a
+	// crossing nobody answered is hoping for, and it is why asking again is safe
+	// at all ([TaskSteerArgs]).
+	Again bool `json:"again,omitempty"`
+	// Elsewhere says the conversation the surface named ([TaskSteerArgs.Session])
+	// is not the one open here, so NOTHING WAS DELIVERED. It is a field rather
+	// than an error string because the surface has to recognise it exactly: the
+	// send stays unresolved and is never re-aimed at the task with that number in
+	// the conversation that replaced it (internal/session's
+	// [session.ErrNotThatConversation]).
+	Elsewhere bool `json:"elsewhere,omitempty"`
+	// Uncertain says the engine could not tell whether this correction was kept:
+	// it reached the record and could not be taken back off the disk again
+	// (internal/session's [session.ErrSendUnanswered] wearing an engine's reason
+	// rather than a dead link's). It is a field for [Elsewhere]'s reason — the
+	// surface has to recognise it exactly, keep the send under the name it has,
+	// and offer to ask again rather than hand the words back to be renamed.
+	Uncertain bool `json:"uncertain,omitempty"`
 }
 
 // TaskStopArgs uses the session's already-prefixed work id unchanged.

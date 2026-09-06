@@ -67,6 +67,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -597,6 +598,11 @@ type taskStore struct {
 	// only overwrite a settled file with a stale "running". Dropped, silently,
 	// because the log line for it would blame a file that is perfectly fine.
 	closed bool
+	// duringWrite is run inside the write, and is nil everywhere except in the
+	// one test that has to ask what a READER can see while a write is still
+	// deciding ([TaskGraph.admitWritten]'s publication boundary). There is no
+	// other way to stand inside that window on purpose.
+	duringWrite func()
 }
 
 func newTaskStore(path string) *taskStore {
@@ -615,36 +621,82 @@ func newTaskStore(path string) *taskStore {
 // checkpoint could not be saved would trade the whole feature for the resume of
 // it.
 func (s *taskStore) save(graph *TaskGraph) {
-	if s == nil || graph == nil {
+	err := s.write(graph)
+	// A save after the door shut stays SILENT, exactly as it always was: it is a
+	// goroutine that outlived the close, and the log line would blame a file that
+	// is perfectly fine (see [taskStore.closed]).
+	if err == nil || errors.Is(err, errStoreClosed) {
 		return
+	}
+	log.Printf("session: could not write the task checkpoint %s: %v", s.pathOf(), err)
+}
+
+// write is the same snapshot-and-write, ANSWERING FOR ITSELF. It exists because
+// one caller cannot treat a failure as bookkeeping: a correction admitted to a
+// node's record and acknowledged to the person has to be on the disk the engine
+// would resume from, or a crash between the two loses it — or, worse, loses only
+// its identity, so the person's retry arrives as a second correction
+// (task_room.go's admission law).
+//
+// Everything else still goes through [taskStore.save] and still only logs.
+func (s *taskStore) write(graph *TaskGraph) error {
+	if s == nil || graph == nil {
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return
+		return errStoreClosed
 	}
+	return s.writeLocked(graph.document())
+}
 
-	document := graph.document()
+// writeLocked writes ONE ALREADY-TAKEN SNAPSHOT with the store's lock held.
+//
+// It takes the document rather than the graph because its other caller writes
+// while holding the GRAPH's lock too ([TaskGraph.admitWritten]), and asking the
+// graph for a document in there would take that lock a second time.
+func (s *taskStore) writeLocked(document taskDocument) error {
+	if s == nil {
+		return nil
+	}
+	if s.closed {
+		// The session has gone. Nothing written now would be resumed from, and a
+		// caller asking for a promise gets a refusal rather than a false yes.
+		return errStoreClosed
+	}
+	if s.duringWrite != nil {
+		s.duringWrite()
+	}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
-		log.Printf("session: could not encode the task checkpoint %s: %v", s.path, err)
-		return
+		return err
 	}
 	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
-			log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
-			return
+			return err
 		}
 	}
 	temporary := s.path + ".tmp"
 	if err := os.WriteFile(temporary, append(encoded, '\n'), 0o644); err != nil {
-		log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
-		return
+		return err
 	}
 	if err := os.Rename(temporary, s.path); err != nil {
 		_ = os.Remove(temporary)
-		log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
+		return err
 	}
+	return nil
+}
+
+// errStoreClosed is a checkpoint asked for after the session's door shut.
+var errStoreClosed = errors.New("this session's task checkpoint is closed")
+
+// pathOf is the file this store writes, for a log line about a nil store.
+func (s *taskStore) pathOf() string {
+	if s == nil {
+		return ""
+	}
+	return s.path
 }
 
 // close makes every later save a no-op. It is the session close's to call, and
@@ -678,11 +730,103 @@ func (g *TaskGraph) checkpoint() {
 	store.save(g)
 }
 
+// admitWritten puts something on the record and on the disk AS ONE ACT, and
+// takes it back off the record if the disk refuses.
+//
+// ── THE PUBLICATION BOUNDARY IS THE GRAPH'S LOCK, HELD ACROSS THE WRITE ──
+//
+// Every reader of a node's record — the drain that carries directions into a
+// worker's next request, the landing that revalidates against them, the count of
+// unread ones — reads the assignment under the GRAPH's lock and knows nothing
+// about the store's. So holding only the store's lock would publish the
+// direction to those readers the instant it went into the record, while its own
+// write was still deciding: a worker could read and act on a correction that a
+// failed write then rolled back, and the person would be told nothing was sent.
+//
+// Holding the graph's lock from the admission to the commit closes that with no
+// second copy of the record and no staged state to keep in step: a reader is
+// either before the whole act or after it, and after a failure there is nothing
+// there to see. The store's lock is held outside it, so no unrelated checkpoint
+// can publish a half-decided admission either. The ordering is store.mu →
+// graph.mu, which is this file's only ordering.
+//
+// WHAT IT COSTS is that task readers wait for one file write, and it is paid
+// only by a NAMED correction — a sentence a person typed. Every transition still
+// checkpoints through [taskStore.save], which holds nothing while it writes.
+//
+// take and drop are called with the graph's lock ALREADY HELD and must not take
+// it again ([TaskNode.heardDirectionLocked], [TaskNode.forgetDirectionLocked]).
+//
+// A GRAPH WITH NO FILE BEHIND IT PROMISES NOTHING AND SAYS SO — the admission
+// still happens, and there is no write to fail. That is a session whose tasks do
+// not survive the process at all, so the promise made here is exactly as strong
+// as the store is: about resuming THIS engine, and nothing more.
+func (g *TaskGraph) admitWritten(take func() directionHeard, drop func(directionHeard)) (directionHeard, error) {
+	if g == nil {
+		return take(), nil
+	}
+	g.mu.Lock()
+	store := g.store
+	g.mu.Unlock()
+	if store == nil {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return take(), nil
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	heard := take()
+	// Only a fresh admission changes the record. A repeat, a refusal or a message
+	// out of order writes nothing, which is also why neither can fail here.
+	if !heard.fresh() {
+		return heard, nil
+	}
+	if err := store.writeLocked(g.documentLocked()); err != nil {
+		drop(heard)
+		return heard, err
+	}
+	return heard, nil
+}
+
+// dropWritten is the same boundary for the other direction: something comes off
+// the record and off the disk together, with no moment in between that a reader
+// can see one and not the other. The error is whether the disk agrees again.
+func (g *TaskGraph) dropWritten(drop func()) error {
+	if g == nil {
+		drop()
+		return nil
+	}
+	g.mu.Lock()
+	store := g.store
+	g.mu.Unlock()
+	if store == nil {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		drop()
+		return nil
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	drop()
+	return store.writeLocked(g.documentLocked())
+}
+
 // document is the graph as the file sees it, in admission order — the order that
 // makes the frontier deterministic, and the order a person reads the file in.
 func (g *TaskGraph) document() taskDocument {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	return g.documentLocked()
+}
+
+// documentLocked is the same reading with the graph's lock already held, for the
+// admission that publishes and writes under one hold of it
+// ([TaskGraph.admitWritten]).
+func (g *TaskGraph) documentLocked() taskDocument {
 	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: g.seq}
 	for _, id := range g.order {
 		node := g.nodes[id]

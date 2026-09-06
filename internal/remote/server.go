@@ -48,6 +48,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -611,6 +612,27 @@ func (sess *Session) current() WrappedAgent {
 	return sess.agent
 }
 
+// agentOf is the engine to deliver to WHEN the conversation open here is the one
+// the caller named, and it takes both under one hold of the lock [Session.swap]
+// replaces them under — the caller cannot check the name and then act on an
+// agent the swap moved in between. An empty claim is a caller making none.
+func (sess *Session) agentOf(conversation string) (WrappedAgent, bool) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	conversation = strings.TrimSpace(conversation)
+	if conversation == "" {
+		return sess.agent, true
+	}
+	// AN UNKNOWN IDENTITY IS NOT A MATCH. A session with no transcript name
+	// cannot establish the claim, so the claim is refused — the same reading
+	// [session.Agent.thisConversation] takes.
+	open := strings.TrimSpace(sess.engine.SessionFile)
+	if open == "" || filepath.Clean(conversation) != filepath.Clean(open) {
+		return nil, false
+	}
+	return sess.agent, true
+}
+
 // ── the ring of a running turn ──────────────────────────────────────────────
 
 // ring is one running stream's recent events, oldest kept first. It is a window
@@ -732,6 +754,41 @@ func (sess *Session) detach(s *server) {
 	}
 }
 
+// steerFromDoor is an engine that takes a correction WITH THE SURFACE'S NAME
+// FOR THE SEND on it, and recognises the same send arriving twice
+// (internal/session's [session.Agent.SteerTaskFrom]).
+//
+// IT IS ONE INTERFACE FOR TWO QUESTIONS ASKED AT DIFFERENT MOMENTS: the
+// handler asserts it to route a named send, and the welcome asserts it to tell
+// the surface, before anything is sent, whether asking twice is safe here
+// ([Welcome.SteerRepeat]). Two assertions of one door would be two answers to
+// one question the day an engine grew half of it.
+type steerFromDoor interface {
+	SteerTaskFrom(uint64, string, session.SteerSource) (session.SteerReceipt, error)
+	SteerRepeatKnown() bool
+}
+
+// steeredOf is the engine's receipt as the frame carries it. It is one function
+// because a field added to the receipt and forgotten in one of the handler's
+// branches is a fact that arrives on some engines and not others.
+func steeredOf(receipt session.SteerReceipt) TaskSteered {
+	return TaskSteered{
+		Waiting:   receipt.Waiting,
+		Held:      receipt.Held,
+		Direction: receipt.Direction,
+		Landing:   receipt.Landing,
+		Again:     receipt.Again,
+	}
+}
+
+// steerRepeatKnown asks this engine whether it keeps the identity on a send.
+// The door answers for itself; an engine without the door answers no, which is
+// the reading a surface must take from silence ([Welcome.SteerRepeat]).
+func steerRepeatKnown(agent any) bool {
+	door, ok := agent.(steerFromDoor)
+	return ok && door.SteerRepeatKnown()
+}
+
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -760,6 +817,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Persistent:                 sess.persistent,
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
+		SteerRepeat:                steerRepeatKnown(sess.agent),
+		// This revision checks it in the handler, for every engine behind it
+		// ([Session.agentOf]), so the answer is about the wire and not the agent.
+		SteerOwner: true,
 	}
 }
 
@@ -1398,6 +1459,40 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
+		// THE CONVERSATION IS CHECKED BEFORE THE TASK NUMBER IS USED FOR ANYTHING.
+		// The agent it will be delivered to is taken under the same lock the swap
+		// replaces it under ([Session.swap]), so a `Session.Open` landing beside
+		// this call either happens before it — and this is refused — or after it,
+		// and this was delivered to the conversation it named. There is no third
+		// ordering, and nothing is ever re-aimed at the task with that number in
+		// the conversation that replaced it.
+		steerAgent, mine := sess.agentOf(args.Session)
+		if !mine {
+			return json.Marshal(TaskSteered{Elsewhere: true})
+		}
+		agent = steerAgent
+		// THE NAMED SEND FIRST. A surface that gave this crossing an identity is a
+		// surface that may ask again for it, and the door that keeps the identity
+		// is the only one that can answer the second ask with "already on the
+		// record" instead of delivering the correction twice
+		// ([session.Agent.SteerTaskFrom]). An engine without it falls through to
+		// the two doors below and steers exactly as it always did — the surface
+		// was told in its welcome that this was so ([Welcome.SteerRepeat]) and does
+		// not ask twice there.
+		if door, ok := agent.(steerFromDoor); ok && args.Scope != "" {
+			receipt, err := door.SteerTaskFrom(args.ID, args.Text,
+				session.SteerSource{Scope: args.Scope, Seq: args.Seq, At: args.Said})
+			if err != nil {
+				// AN UNKNOWN OUTCOME IS NOT AN ERROR STRING. Carried as one it would
+				// arrive as an ordinary refusal and the surface would hand the words
+				// back, where the next enter renames them ([TaskSteered.Uncertain]).
+				if errors.Is(err, session.ErrSendUnanswered) {
+					return json.Marshal(TaskSteered{Uncertain: true})
+				}
+				return nil, err
+			}
+			return json.Marshal(steeredOf(receipt))
+		}
 		// THE RECEIPT DOOR FIRST, AND THE OLDER ONE STILL ANSWERED. An engine that
 		// carries the whole receipt says whether the line was HELD against a task
 		// whose work is being checked (internal/session's [session.SteerReceipt]);
@@ -1411,12 +1506,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			if err != nil {
 				return nil, err
 			}
-			return json.Marshal(TaskSteered{
-				Waiting:   receipt.Waiting,
-				Held:      receipt.Held,
-				Direction: receipt.Direction,
-				Landing:   receipt.Landing,
-			})
+			return json.Marshal(steeredOf(receipt))
 		}
 		older, ok := agent.(interface {
 			SteerTask(uint64, string) (bool, error)

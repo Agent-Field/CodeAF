@@ -679,6 +679,37 @@ type Welcome struct {
 	// drove until told otherwise would draw a composer somebody's keystrokes
 	// would then be refused into.
 	Driver Driver `json:"driver,omitzero"`
+
+	// SteerRepeat says this engine RECOGNISES A SEND IT HAS ALREADY TAKEN: a
+	// correction sent into a task's page again under the same identity
+	// ([TaskSteerArgs]) answers the receipt already on the record and delivers
+	// nothing.
+	//
+	// IT IS CARRIED BECAUSE THE QUESTION IS ASKED BEFORE ANYTHING IS SENT, and
+	// it has to be. A surface holding a send it got no answer to has exactly two
+	// moves — ask again, or keep the words and say so — and which one is honest
+	// depends on a fact about the far machine that no failed call can report:
+	// the call that would have told it is the one that stopped answering.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING. An engine that predates
+	// this ignores the identity on a send, so a repeat there would be a second
+	// correction; the surface therefore keeps the person's words instead of
+	// asking twice, which is the degradation that costs a keystroke rather than
+	// the one that corrects a worker twice.
+	SteerRepeat bool `json:"steerRepeat,omitempty"`
+
+	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
+	// ([TaskSteerArgs.Session]) against the one it actually has open, and refuses
+	// rather than delivering to the task with that number over here.
+	//
+	// IT IS A SEPARATE FACT FROM SteerRepeat and may not be inferred from it: an
+	// engine can keep send identities and still have been built before this check
+	// existed, and it would then read Session as an unknown field and deliver.
+	//
+	// ABSENCE IS false, AND false MEANS THE SURFACE MUST NOT SEND A BOUND
+	// CORRECTION AT ALL. An unenforced claim is worse than no claim: the surface
+	// would believe the engine was guarding something nobody is guarding.
+	SteerOwner bool `json:"steerOwner,omitempty"`
 }
 
 // Driver is who holds the keyboard on one conversation, as told to ONE surface.
