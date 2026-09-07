@@ -266,6 +266,11 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open on a session with work in it")
 	}
+	// Content assertions inspect expanded families; opening the page keeps them folded.
+	a.taskSheet.opened = make(map[tasksKey]bool)
+	for _, item := range a.taskSheet.reading.items {
+		a.taskSheet.opened[tasksKeyOf(item.entry)] = true
+	}
 	text := taskSheetText(a)
 
 	// THIS WINDOW'S OWN LIVE WORK IS ON THE PAGE. An ordinary task writes no row
@@ -303,12 +308,10 @@ func TestTheTaskPageDrawsThisWindowsWorkBesideEveryOtherConversations(t *testing
 	if at := strings.Index(text, "Sweep the call sites"); at < today || at > earlier {
 		t.Fatalf("work that landed today is not under `finished today`:\n%s", text)
 	}
-	// NO SHAPE IS CLAIMED. The connectors said which node hangs off which; a list
-	// grouped by state has no parentage to draw, and drawing one would be a claim
-	// about kinship the grouping has just thrown away.
-	for _, gone := range []string{treeBranch, treeLast} {
-		if strings.Contains(text, gone) {
-			t.Fatalf("the place drew a tree connector %q:\n%s", gone, text)
+	// The live graph's parent links survive the list conversion.
+	for _, connector := range []string{tasksKinCont, tasksKinLast} {
+		if !strings.Contains(text, connector) {
+			t.Fatalf("the expanded live family lost its connector %q:\n%s", connector, text)
 		}
 	}
 	// And the note counts every section it drew, in the same words they are
@@ -361,6 +364,11 @@ func TestTheTaskPageDoesNotRepeatWorkTheTreeIsAlreadyShowing(t *testing.T) {
 
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
+	}
+	// Content assertions inspect expanded families; opening the page keeps them folded.
+	a.taskSheet.opened = make(map[tasksKey]bool)
+	for _, item := range a.taskSheet.reading.items {
+		a.taskSheet.opened[tasksKeyOf(item.entry)] = true
 	}
 	text := taskSheetText(a)
 	if n := strings.Count(text, "Write the tree"); n != 1 {

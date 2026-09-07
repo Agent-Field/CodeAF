@@ -3113,6 +3113,8 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 // conversation nobody walked into.
 func (a *app) homeLandOnTask(line homeLine) tea.Cmd {
 	if line.task == nil {
+		// A conversation row opens main, even if a child view was left behind it.
+		a.closeRoom()
 		return nil
 	}
 	// The page stands the other fullscreen surfaces down and parks its list on

@@ -68,7 +68,10 @@ func tasksAskingWorld(now time.Time, asking bool) (session.World, session.UsageW
 // page draws it.
 func tasksSectionLabels(reading tasksReading, section tasksSection) []string {
 	out := make([]string, 0)
-	for _, item := range reading.section(section) {
+	for _, item := range reading.items {
+		if item.section != section {
+			continue
+		}
 		out = append(out, tasksLabel(item.entry))
 	}
 	return out

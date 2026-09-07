@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // THE TASKS PLACE, app side: one thin state struct and the handful of things a
@@ -38,10 +39,16 @@ import (
 type tasksPlace struct {
 	cursor int
 	top    int
-	// opened is which families are unfolded, keyed by the root's identity
-	// (tasksplace.go's [tasksFamilyOf]). Nil is every fold shut, which is what
-	// the page opens on: a record of four hundred tasks with every family
-	// expanded is the clutter the fold exists to remove.
+	// opened is what a person has SET about this page's folds, keyed by the row's
+	// own identity — a piece of work's (SessionID, ID) pair, or a conversation's
+	// ([tasksChatKey], which cannot collide with the other).
+	//
+	// A KEY THAT IS NOT HERE IS THE ROW'S OWN DEFAULT AND NOT `SHUT`
+	// ([tasksReading.opens] holds the two defaults and says why they differ). So
+	// nil is the page as it opens — every conversation showing its work, every
+	// family folded — and shutting a conversation is REMEMBERED here as false
+	// rather than deleted, which is the whole reason this map is read as
+	// presence-and-value instead of as a set.
 	opened map[tasksKey]bool
 	// query is the type-to-filter box, and it is the [editor] every other box on
 	// this surface is rather than a string of its own: backspace, ctrl+u and
@@ -207,11 +214,12 @@ func (a *app) takeTaskReading() tasksPlace {
 // opened before the work started would go on drawing a roster without it until
 // somebody closed and reopened the page.
 //
-// It is TWO COMPARISONS on the common frame: each reading's own stamp against
-// the held one. Nothing is re-walked and no clock is read unless one changed.
+// The common frame compares the held stamps and the main chat's own state.
+// A main turn can finish without any worker or other-window notice.
 func (p *tasksPlace) regroup(a *app) {
 	at, stamp := a.elsewhere().Read, a.railStamp
-	if at.Equal(p.awayAt) && stamp == p.mineAt {
+	selfChanged := p.mine.row.ID != "" && (p.mine.row.Presence.State != a.taskSheetSelfState() || p.mine.row.Title != strings.TrimSpace(a.title))
+	if at.Equal(p.awayAt) && stamp == p.mineAt && !selfChanged {
 		return
 	}
 	// THE CURSOR IS REMEMBERED BY WHAT IT IS ON, ACROSS THE REBUILD.
@@ -251,11 +259,7 @@ func (p *tasksPlace) regroup(a *app) {
 func (p *tasksPlace) rowAt(a *app, line int) (tasksKey, bool) {
 	r := p.filtered(a)
 	width, _ := a.size()
-	item, ok := r.at(r.lay(width), line)
-	if !ok {
-		return tasksKey{}, false
-	}
-	return tasksKeyOf(item.entry), true
+	return r.nameAt(r.lay(width), line)
 }
 
 // lineOf is the line the work named by one key is on, in the reading this place
@@ -265,7 +269,7 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 	width, _ := a.size()
 	lines := r.lay(width)
 	for at := range lines {
-		if item, ok := r.at(lines, at); ok && tasksKeyOf(item.entry) == want {
+		if name, ok := r.nameAt(lines, at); ok && name == want {
 			return at, true
 		}
 	}
@@ -282,13 +286,57 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	if needle == "" {
 		return r
 	}
-	kept := make([]tasksItem, 0, len(r.items))
+	// A QUERY OPENS EVERY FOLD ON THE PAGE. A row that matched and is sitting
+	// behind a shut fold is a row the query appears not to have found, and the
+	// fold somebody left shut is not a decision they made about a list they had
+	// not yet asked for.
+	r.unfolded = true
+	// AND A MATCH IS SHOWN WHERE IT SITS. The work ABOVE a hit — the piece of work
+	// it was cut out of, and the conversation that asked for that — is kept even
+	// though it matches nothing, because the row above a hit is the one thing on
+	// the page that explains it. It used to be dropped, which promoted the hit to
+	// a root and left a person reading a worker with no idea whose it was.
+	hit := make(map[tasksKey]bool, len(r.items))
+	found := make([]tasksKey, 0, len(r.items))
 	for _, item := range r.items {
 		if tasksMatches(item, needle) {
+			key := tasksKeyOf(item.entry)
+			hit[key] = true
+			found = append(found, key)
+		}
+	}
+	tree := r.tree()
+	for _, key := range found {
+		// The hit set ends the walk when a path has already been visited.
+		for at := key; ; {
+			up, ok := tree.up[at]
+			if !ok || hit[up] {
+				break
+			}
+			hit[up] = true
+			at = up
+		}
+	}
+	kept := make([]tasksItem, 0, len(hit))
+	for _, item := range r.items {
+		if hit[tasksKeyOf(item.entry)] {
 			kept = append(kept, item)
 		}
 	}
 	r.items = kept
+	chats := make([]session.SessionRow, 0, len(r.chats))
+	owners := make(map[string]bool)
+	for _, item := range kept {
+		owners[tasksChatOf(item)] = true
+	}
+	for _, row := range r.chats {
+		if owners[row.ID] || session.TaskWordsMatch(row.Title+" "+row.Project, needle) {
+			chats = append(chats, row)
+		}
+	}
+	r.chats = chats
+	tree = tasksTreeOf(kept, r.now, chats...)
+	r.shape = &tree
 	return r
 }
 
@@ -338,7 +386,20 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 	if file := row.Transcript; file != "" {
 		row.ID = filepath.Base(filepath.Dir(file))
 	}
+	row.At, row.Open, row.Live = a.now(), true, true
+	row.Presence.State = a.taskSheetSelfState()
 	return row
+}
+
+// A main chat changes state even when none of its workers sends a notice.
+func (a *app) taskSheetSelfState() session.PresenceState {
+	if needsPerson(a.agent) {
+		return session.PresenceWaiting
+	}
+	if a.state == stateWorking {
+		return session.PresenceWorking
+	}
+	return session.PresenceIdle
 }
 
 // taskSheetOwnRows is this project's record as THIS window holds it: the index
@@ -378,7 +439,11 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 		if self == "" && a.taskNodeAnswersTo(&a.comp.tasks[i]) {
 			continue
 		}
-		rows = append(rows, a.comp.tasks[i])
+		entry := a.comp.tasks[i]
+		if node := a.taskSheetNodeFor(&entry); node != nil && node.parent != "" {
+			entry.Parent = node.parent
+		}
+		rows = append(rows, entry)
 	}
 	for _, id := range a.taskOrder {
 		node := a.tasks[id]
@@ -391,6 +456,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 		}
 		rows = append(rows, session.TaskIndexEntry{
 			ID:        strconv.FormatUint(node.id, 10),
+			Parent:    node.parent,
 			Label:     label,
 			Title:     node.title,
 			Status:    string(node.state),
@@ -549,7 +615,7 @@ func (a *app) tasksFiltered() tasksReading {
 // window's seventh node would hand them the wrong task under the right number.
 func tasksMatches(item tasksItem, needle string) bool {
 	if item.away {
-		return session.TaskWordsMatch(item.entry.Title, needle)
+		return session.TaskWordsMatch(item.entry.Title+" "+item.row.Title+" "+item.row.Project, needle)
 	}
 	if session.TaskMatches(item.entry, needle) {
 		return true
@@ -569,7 +635,11 @@ func (p *tasksPlace) stops(a *app) []int {
 	lines := r.lay(width)
 	out := make([]int, 0, len(lines))
 	for i := range lines {
-		if _, ok := r.at(lines, i); ok {
+		// A CONVERSATION IS A STOP LIKE ANY ROW OF WORK ([tasksReading.picks]).
+		// It has a door of its own — the chat the work came out of — and a row a
+		// person can see, can fold and cannot stand on is a list that reads as
+		// broken (the argument [tasksItem.pick] makes at length).
+		if r.picks(lines, i) {
 			out = append(out, i)
 		}
 	}
@@ -595,10 +665,24 @@ func (a *app) tasksSettle(from int) int {
 
 // taskSheetCurrent is the work under the cursor, or false on a page with nothing
 // the cursor may stand on.
+//
+// A CONVERSATION UNDER THE CURSOR ANSWERS FALSE HERE, and that is the whole
+// reason the two questions are asked separately: every caller of this acts on a
+// PIECE OF WORK — the room, the card, the mention, `stop it`, the strip's name
+// for the row — and a conversation has none of those. It is asked for by name
+// ([app.taskSheetChat]) or not at all.
 func (a *app) taskSheetCurrent() (tasksItem, bool) {
 	r := a.tasksFiltered()
 	width, _ := a.size()
 	return r.at(r.lay(width), a.taskSheet.cursor)
+}
+
+// taskSheetChat is the conversation under the cursor, and false over a row of
+// work or a page with nothing under it.
+func (a *app) taskSheetChat() (tasksChat, bool) {
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	return r.chatAt(r.lay(width), a.taskSheet.cursor)
 }
 
 // taskSheetFold opens or shuts the family under the cursor, and reports whether
@@ -624,10 +708,11 @@ func (a *app) taskSheetFold(open bool) bool {
 	if a.taskSheet.opened == nil {
 		a.taskSheet.opened = map[tasksKey]bool{}
 	}
+	// WHAT WAS SET IS KEPT, INCLUDING `SHUT`. Deleting the key would put the row
+	// back on its own default, which for a conversation is OPEN — so `←` on a
+	// conversation would have redrawn it open on the next frame, a key that
+	// visibly does nothing ([tasksPlace.opened] states the law).
 	a.taskSheet.opened[line.family] = open
-	if !open {
-		delete(a.taskSheet.opened, line.family)
-	}
 	// THE CURSOR STAYS ON THE ROW IT WAS ON. Shutting a fold above it would
 	// otherwise slide the whole list up under a person's finger; the root is the
 	// line the cursor is on and the line index of that root does not move, so
@@ -812,6 +897,23 @@ func (a *app) taskSheetMove(delta int) {
 // aimed at a row that appeared as pressable as its nine neighbours and got
 // silence had no way of telling a refusal from a surface that had broken.
 func (p *tasksPlace) enter(a *app) tea.Cmd {
+	// A CONVERSATION OPENS THE CONVERSATION, through the one door this surface
+	// has onto a chat from a place that is not home ([app.openConversationRow],
+	// place_search.go) — which is where the checks live that decide whether it is
+	// the window you are sitting in, one this terminal is already holding, or a
+	// folder that is not there any more. A second ladder here would be a second
+	// answer to whether a conversation may be opened.
+	if chat, ok := a.taskSheetChat(); ok {
+		if strings.TrimSpace(chat.row.Transcript) == "" {
+			// NOTHING IS INVENTED FOR A CONVERSATION WITH NO JOURNAL BEHIND IT. The
+			// row is real — the record says this work came out of it — and the way in
+			// is not, so the page says exactly that in the sentence the search results
+			// already use for it.
+			a.pageMsg = searchNoDoorWord
+			return nil
+		}
+		return a.openConversationRow(chat.row)
+	}
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil
@@ -938,7 +1040,7 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 		return nil
 	}
 	width, height := a.size()
-	_, hits, _, _ := a.taskSheetFrame(width, height)
+	painted, hits, _, _ := a.taskSheetFrame(width, height)
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
@@ -952,6 +1054,19 @@ func (a *app) taskSheetPress(x, y int) tea.Cmd {
 		return nil
 	}
 	a.taskSheet.cursor = hits[y].index
+	r := a.tasksFiltered()
+	lines := r.lay(width)
+	if at := a.taskSheet.cursor; at >= 0 && at < len(lines) && lines[at].folds {
+		line := lines[at]
+		foldX := ansi.StringWidth(tasksBareLead) + ansi.StringWidth(line.kin) - 2
+		if x == foldX && y < len(painted) {
+			mark := ansi.Cut(ansi.Strip(painted[y]), x, x+1)
+			if mark == strings.TrimSpace(tasksFoldOpen) || mark == strings.TrimSpace(tasksFoldShut) {
+				a.taskSheetFold(!line.open)
+				return nil
+			}
+		}
+	}
 	return a.taskSheetEnter()
 }
 
@@ -1090,7 +1205,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 		}
 		hit, lead, lit := taskSheetHit{}, tasksBareLead, false
 		if owner := lines[at].owner; owner >= 0 {
-			if _, ok := r.at(lines, owner); ok {
+			if r.picks(lines, owner) {
 				hit = taskSheetHit{kind: taskSheetHitRow, index: owner}
 				oncursor := owner == p.cursor
 				hovered := a.hot.kind == hoverTaskSheet && a.hot.index == owner
@@ -1101,7 +1216,7 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 				// other list on this surface leads with ([overlayLead]). Only the
 				// FIRST line of a card takes it: the line under it is the same row
 				// continued, and a second mark would read as a second row.
-				if lines[at].kind == tasksLineTask {
+				if lines[at].kind == tasksLineTask || lines[at].kind == tasksLineChat {
 					switch {
 					case oncursor:
 						lead = a.pal.accent("› ")
@@ -1192,7 +1307,7 @@ func (p *tasksPlace) note(a *app, width int) []string {
 		// WHAT WAS TYPED HAS TO BE ON SCREEN. A list that has lost rows for a
 		// reason a reader cannot see is a list that has lost them for no reason
 		// at all.
-		note = append(note, " "+a.pal.dim(fit(taskSheetFilterLine(a.taskSheetFilter(), len(r.items)), width-2)))
+		note = append(note, " "+a.pal.dim(fit(taskSheetFilterLine(a.taskSheetFilter(), len(r.items)+len(r.chats)), width-2)))
 	}
 	return note
 }
@@ -1226,6 +1341,19 @@ func (p *tasksPlace) hint(a *app) string {
 		return "esc"
 	}
 	var parts []string
+	// THE CONVERSATION'S OWN CLAUSE, and it is the word this surface already uses
+	// for going to a chat that is not this one ([tasksEnterOpenWord]) rather than
+	// a second spelling of the same journey.
+	if _, ok := a.taskSheetChat(); ok {
+		parts = append(parts, tasksEnterOpenWord)
+		if word := a.taskSheetFoldWord(); word != "" {
+			parts = append(parts, word)
+		}
+		if a.taskSheetFiltering() {
+			parts = append(parts, tasksClearFilterWord)
+		}
+		return strings.Join(parts, railSep)
+	}
 	item, ok := a.taskSheetCurrent()
 	switch {
 	case !ok:
@@ -1460,6 +1588,13 @@ func (placeTasks) verbs(a *app) []verb  { return a.taskSheet.verbs(a) }
 // The filter, the window and the beat all rebuild this list under the cursor,
 // so the row at index four is not the row that was there when `→` was pressed.
 func (placeTasks) rowID(a *app) string {
+	if chat, ok := a.taskSheetChat(); ok {
+		// A CONVERSATION IS NAMED SO IT CANNOT BE MISTAKEN FOR THE WORK UNDER IT
+		// ([tasksChatKey] holds the mark that makes that true). It carries no verbs
+		// of its own, and a strip captured over a task must not survive the cursor
+		// stepping onto the chat above it.
+		return chat.key.session + "\x00" + chat.key.id
+	}
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return ""

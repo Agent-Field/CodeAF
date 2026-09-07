@@ -450,8 +450,9 @@ the next begins (*How much air is on the card*).
   asked and answer it there, which is what you want when one line is not the whole story.
   The answer keys are amber, the way out is dim, because they are two different offers.
   The band is absent entirely for a conversation nobody is asking anything of;
-- **`work`** — each task with its mark and what it cost, a run that is not done keeping its
-  outcome under it, then `▸ N more tasks` with `tasks` out at the margin. That line **names
+- **`work`** — a compact tree of the conversation's tasks. A child is indented beneath
+  the task that requested it. The preview keeps three task names, with unfinished work
+  keeping its outcome underneath, then `▸ N more tasks` with `tasks` out at the margin. That line **names
   the tasks place** rather than unfolding: a card is not the place that holds them.
   **Clicking a task's own row opens that task's record** — the same card `enter` opens on
   the tasks place;
@@ -865,7 +866,7 @@ leads the second line instead, with the glyph it wears everywhere else here:
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
-**The band shows three tasks and folds the rest**, saying how many it is holding back:
+**The phone band shows three task families and folds the rest; desktop cards preview three task names**, saying how many it is holding back:
 
 ```
 ▸ …5 more tasks
@@ -2412,3 +2413,16 @@ The bar under the box is the phone's legend: at most three wide targets, drawn l
 answer bands but dim — `open · new · ask here` on the inbox, `‹ back · open · more` on a
 sheet, `‹ back · send · more` on an errand. Tap one, or press the key it names. Below
 width **24** the plain hint line is drawn instead.
+
+## Main chat versus subtasks — why is the work nested on Home?
+
+A Home row is the **main conversation**. Opening that row returns to its chat. The
+work preview beside it belongs to that conversation, and its tasks form a tree under
+their actual parents. Clicking a task opens that task's record. Identical visible task
+names receive their task numbers in the compact preview so each click stays distinct.
+
+A child needing a person brings its family forward; work still moving comes before
+settled work. The compact desktop preview keeps three task names in parent-first order,
+so it never shows a child without its visible ancestry. The `N more tasks` line opens
+the Tasks place, which holds the full conversation tree. The phone's scrollable work
+band folds by family and counts all tasks hidden behind its fold.

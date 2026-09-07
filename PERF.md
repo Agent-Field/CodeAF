@@ -1903,3 +1903,15 @@ Measured, textual s9: three gap rounds, fourteen briefed nodes, the same two
 unexercised behaviours reported on every gate, and thirteen of the fourteen
 briefs naming neither. Pinned by `internal/resident/lineage_test.go` and
 `cmd/aforge/openfindings_test.go`.
+
+## Conversation trees on Home and Tasks
+
+Tasks builds its conversation and parent index once per reading and reuses it
+for layout. Search retains the full ancestor chain; valid hierarchy depth is
+not capped. The visible indentation uses at most four two-cell levels and
+shrinks further on narrow terminals (`tasksKinLevels`, `tasksKinRoom`). This is
+a display allowance, not a limit on delegated work. Home preserves at least
+sixteen cells for a task name by shortening ancestor prefixes
+(`homeWorkNameFloor`), and its desktop preview still shows three task names.
+`BenchmarkTasksConversationHistory` exercises forty conversations holding 5,120
+tasks; the fixture is built outside the measurement.

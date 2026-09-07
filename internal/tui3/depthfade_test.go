@@ -235,7 +235,7 @@ func TestTheHistoryPageSeparatesItsSectionsWithABlankLine(t *testing.T) {
 	rows := historyRows(a)
 	head := -1
 	for i, row := range rows {
-		if strings.TrimSpace(plain(row)) == taskSheetNowHead {
+		if strings.HasPrefix(strings.TrimSpace(plain(row)), taskSheetNowHead) {
 			head = i
 		}
 	}

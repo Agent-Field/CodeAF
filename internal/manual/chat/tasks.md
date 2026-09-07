@@ -2369,12 +2369,12 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 
 | key | what it does |
 | --- | --- |
-| `↑` `↓` (or `ctrl+p` / `ctrl+n`) | move, stepping over the head sentence, the blank lines, the section words and another window's rows |
+| `↑` `↓` (or `ctrl+p` / `ctrl+n`) | move, stepping over the head sentence, blank lines and section words |
 | `pgup` `pgdown` | move twelve rows |
 | `home` `end` | first row, last row |
-| `enter` | open it — a room, or inside the record card; see below |
+| `enter` | open the main chat, task room, or record card named by this row |
 | `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
-| `←` | fold that family back up |
+| `←` | fold that conversation or family back up |
 | any printable key | type into the filter |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
@@ -2394,61 +2394,50 @@ going to get:
   the card of everything the record wrote down about that piece of work, over the same
   page, with this list still underneath. The foot reads `enter go inside it`. See *Going
   inside an old task* below.
-- A task **running in another window right now** takes no cursor at all: `↑`/`↓` step over
-  it and `enter` does nothing, because it has neither a room here nor a landed row for a
-  mention to point at. On a page whose only rows are those, the foot names no `enter` at
-  all.
+- A task **running in another window right now** is selectable too. The page opens its
+  owning conversation when this terminal holds it, attaches a read-only view when the
+  engine offers one, or opens a card explaining which window holds it. The foot names
+  the available door.
 
-Clicking a row does what `enter` on it does, on the **first** press — the page opens things,
+Clicking a row's title does what `enter` on it does, on the **first** press — the page opens things,
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## What does holds 3 more mean — the count on a folded row, work that split into workers, the family tree
+## Main chats and their subtasks — the conversation tree, folds, holds 3 more
 
-**A piece of work that handed itself out is one row, not nine.** The root is on the page and
-the workers are folded under it, shut:
-
-```
-today
-  ▸ port the parser              3 files · a report      holds 3 more
-    rename the flag              1 file · a report
-```
-
-The shut row used to say `+3 under`; it says `holds 3 more` now, because this surface says
-what things are in words rather than in arithmetic with a preposition for a noun.
-
-**`→` opens it**, and the workers appear underneath, connected:
+The **main chat is the parent** of the work it requested. Tasks hang beneath their
+conversation; a task's children hang beneath that task, including deeper levels.
+Chats in the selected time window appear even before they delegate any work.
 
 ```
-today
-  ▾ port the parser              3 files · a report
-  ├ port the lexer               1 file · a report
-  ├ port the tests               2 files · a report
-  └ port the docs                a report
-    rename the flag              1 file · a report
+needs your look
+  ▾ Repair the parser                  aforge
+      ▾ Update the parser
+        ├ Port the lexer
+        └ Port the tests
+      Update the documentation
 ```
 
-**A worker does not repeat its root's conversation.** The root names the conversation the
-family came out of and the rows under it spend those cells on their own names instead.
+Conversations stay together and move to their most urgent work's section. Each child
+keeps its own state: a finished sibling does not become a decision because another
+child needs you. The footer counts those actual task states.
 
-**`←` folds it back up.** The foot of the page says which you are being offered:
-`→ what ran under it` on a shut family, `← fold it back up` on an open one.
+**Click a conversation title or press `enter` to open its main chat.** A task title
+opens that task's room or record through the existing owner-aware navigation.
+Conversation rows offer no worker stop or mention action.
 
-Every family opens **shut**. A page of four hundred tasks with every family expanded is the
-clutter the fold exists to remove — and the shut row says `holds 3 more`, so you can see
-what opening it would be worth without opening it.
+Conversations start expanded. Families beneath a task start folded. `→` opens a fold;
+`←` closes it. Clicking the visible disclosure arrow also toggles it; clicking the
+name opens the chat or task. A shut row says `holds N more`. Open folds and the cursor
+stay attached to their conversation and task identities when the page refreshes.
 
-The two cells in front of every row are the family column, and they **appear only when
-there is a family on the page**. On a machine that has never split work up, nothing on the
-page moves sideways.
+Search keeps the ancestors of a matching task and opens its path. Clearing the search
+restores your folds. Opening a record from Home also reveals its ancestor path in the
+list, so returning from the record lands on that task. A missing parent leaves its
+child visible, and a damaged parent cycle cannot hang the page.
 
-**A worker whose root is filed in another section stands on its own.** The sections are what
-you act on next — `needs you`, `running`, `today`, `earlier` — so a worker still running
-under a root that landed this morning is drawn under `running`, at the top level, rather
-than being hidden under a root that is not there. It is never missing from the page.
-
-This is the same shape and the same two keys the **roster column** uses (`ctrl+t`), so a
-family reads the same way in both places.
+On narrow terminals indentation gives space back to the names. The underlying tree
+keeps every level even when there is not room to draw every indentation step.
 
 ## Tasks on a phone — the ▸ tasks door, the list, and the way back
 
@@ -4259,25 +4248,25 @@ Pressing `x` on a run that has already finished does nothing but say so.
 
 ## The tasks place — grouped work, folds, filtering and time-window keys, my cursor jumped to another task while I was reading
 
-The **tasks** place is the machine-wide history of work aforge ran, grouped by what you do
+The **tasks** place lists main chats and their nested work across projects, grouped by what you do
 next: `needs your look`, `running`, `waiting`, `finished today`, then `earlier` — where
 `waiting` is admitted work nothing is doing, drawn with no age on it, and `finished today`
-is everything that ended today however it ended. Each task row can include its conversation
-or project, activity, age from the landing time its own record carries, and last its
+is everything that ended today however it ended. The main chat names its project once. Child rows can include
+activity, age from the landing time their own records carry, and last their
 measured cost. The row's kind is not drawn. Zero or unknown cost is left
 blank, and so is an age whose older record never carried that landing time. A section with
 nothing in it is absent.
 
-**Nothing is folded.** Every row the time window holds has a line of its own and the list
-scrolls — there is no `▸ N more` and no fold to open. The window's own edge is said once, in
-the sentence the page opens on (`… since aug 11`), and nowhere else.
+**Related work stays in a tree.** Folds keep a long run readable, and the list scrolls
+through everything the time window holds. The window's edge is named once in the page
+header or its arrow control.
 
 Type to filter; every section narrows at once, and a section the query empties is not drawn.
 **The message box at the foot of this place says `type to filter this list`**, not `say what
 you want done` — on the tasks place there is no message to send and every printable key goes
 to the filter, so the box says what typing into it actually does. Every other place keeps the
-shared prompt. `↑` and `↓` move among task rows and skip the head sentence, the blank lines
-and the section words. `enter` opens the task's **room** when it is a task this conversation
+shared prompt. `↑` and `↓` move among conversation and task rows and skip the head sentence, the blank lines
+and the section words. `enter` on a main chat opens that conversation. On a task it opens its **room** when this conversation
 is holding, and otherwise goes **inside** it — the record card. Rows another window is running
 take the cursor too, and what `enter` does with one is *Opening a task another window is
 running*, below.

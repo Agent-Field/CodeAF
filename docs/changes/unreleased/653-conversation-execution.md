@@ -124,3 +124,15 @@ handoffs keep the human decision available.
 Adaptive budget pauses now travel on the run's root task notice, including live replay.
 The sidebar can show and count the real decision while its children keep their own
 states. Accepted answers and settlement clear the pause; restart does not revive it.
+
+The Tasks place now starts with main conversations, with delegated work nested under
+its actual parents at every depth. Chats without subtasks remain visible in the chosen
+time window. Conversation titles open the main chat; task titles open their own room
+or record; disclosure arrows and left/right keys fold the tree. Search retains and
+opens the path to each match, and returning from a record reveals its ancestors.
+
+Home's work preview preserves the same parent-child relationships while keeping its
+three-task allowance. A large family no longer needs to displace the compact preview.
+Ambiguous visible task names are disambiguated, and phone hit targets follow the
+rendered tree order. Footer counts use actual task states, so one urgent child does
+not make every sibling count as needing a person.

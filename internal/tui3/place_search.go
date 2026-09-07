@@ -325,6 +325,7 @@ func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
 		// into the conversation somebody just confirmed IS the thing happening.
 		cmd, _ := a.bringForward(row.Transcript)
 		a.standDownFullscreen()
+		a.closeRoom()
 		a.touch()
 		return cmd
 	case !a.canOpen():
@@ -349,6 +350,7 @@ func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
 		return nil
 	}
 	a.standDownFullscreen()
+	a.closeRoom()
 	a.touch()
 	return cmd
 }

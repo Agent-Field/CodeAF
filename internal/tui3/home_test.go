@@ -4059,6 +4059,7 @@ func TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome(t *testing.T) {
 	if got := box.String(); got != " " {
 		t.Fatalf("the first space did not land in the filter: %q", got)
 	}
+	drive(t, a, key("down"))  // the child task below its main chat
 	drive(t, a, key("enter")) // into the room, over the roster
 	if !a.taskSheet.detailOn {
 		t.Fatalf("the record did not open; frame:\n%s", plain(frame(a)))

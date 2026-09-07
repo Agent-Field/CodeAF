@@ -209,7 +209,7 @@ func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
 	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
 		t.Fatalf("a session with no cancel door offered %+v", verbs)
 	}
-	const want = "enter open its room"
+	const want = "enter open its room · → what ran under it"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -255,5 +255,8 @@ func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
 // still need, and it is asked here once rather than in forty places.
 func openTaskPlaceWithRows(a *app) bool {
 	a.showPage(pageTasks)
+	if len(a.taskSheet.reading.items) > 0 {
+		a.taskSheetPointAt(a.taskSheet.reading.items[0].entry)
+	}
 	return a.at(pageTasks) && len(a.taskSheet.reading.items) > 0
 }

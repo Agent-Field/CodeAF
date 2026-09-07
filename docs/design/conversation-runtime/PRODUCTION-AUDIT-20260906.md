@@ -485,3 +485,60 @@ open. Rebuilt replay captures cover 160/120/80/60 columns. These are saved-run v
 not a second successful model trial. During this confirmation the long, repeated task
 composer label and raw Markdown visible in replay remained polish follow-ups; the
 current wave does not claim every chat layout is finished.
+
+## Conversation hierarchy follow-up — 2026-09-07
+
+The owner clarified the information architecture: the main chat is the task a
+person comes back to; work it delegates belongs beneath that chat, with deeper
+subtasks beneath their actual parents. Home already has conversation rows, but
+its work preview flattened children. The Tasks place started at worker roots and
+split one conversation between status sections, losing that relationship.
+
+The intended reading is conversation → task → subtask. Urgency orders whole
+conversations while each child retains its own truthful state. Opening the
+conversation must return to its main chat; opening a child must keep the existing
+owner-safe task navigation. Filtering and folds must preserve enough ancestry to
+explain a result. Native terminal frames and interaction regressions are required
+before considering this UI follow-up complete.
+
+This follow-up does not discharge the live trial's missing final commit, provider
+accounting gaps, or the remaining production workstreams above.
+
+The hierarchy is implemented using the existing conversation and task identities,
+without another execution layer. Two actual Claude CLI Opus workers implemented
+Home and Tasks independently; integration review corrected live parent loss,
+main-chat navigation, truthful state refresh, duplicate-name click targets,
+ancestor-preserving search and record return. Main chats with no delegated work
+remain selectable. Home retains its three-name desktop preview; phone work bands
+fold whole families. Each child keeps its own state while urgency orders the
+conversation containing it.
+
+Native terminal mouse checks opened the main chat, folded and expanded its work,
+opened an exact child, returned through the main-chat row, and searched for a live
+deep descendant with both ancestors visible at 60 columns. Home's right-hand
+child row opened its exact record. These are seeded UI checks, not a new model
+quality trial. Captures and failed reproductions are retained in
+`/private/tmp/af-chat-tree-20260907`; PNGs are rendered from native pane cells.
+
+Validation: the full UI/manual/untagged-e2e `make check` passed (UI 543.562s,
+manual 2.166s, e2e 0.435s), including vet, format, packed manual, canonical build
+and size budget. It followed corrections to legacy assertions that assumed a
+flat first worker row or always-expanded live children; no skip was added.
+A final native check reproduced the same main-chat return defect in Home.
+The shared Home/Search/Tasks correction then passed its focused `make check`
+(UI 2.083s), with a three-door regression asserting main and child draft retention.
+That final adapter correction has focused coverage after the full run; it is not
+represented as a second complete local UI-suite run. The final binary is
+50,905,810 bytes against the unchanged 54,600,000-byte budget.
+
+The 40-chat / 5,120-task history benchmark measured 22.48 ms and 93.55 MB per
+reading on the baseline and 15.91 ms and 53.09 MB on the final implementation
+(Apple M3 Max, five iterations, fixture outside measurement). Allocation count
+increased from 5,817 to 18,266. This measures local history processing, not
+input-to-paint latency, model speed, workflow completion or total cost. The
+missing final commit and other release requirements above remain open.
+
+Final structural laws passed across 14 packages (UI 21.676s), and changelog
+validation passed all 256 entries. Native Home confirmation now returns from a
+child view to the main conversation. The private seeded terminal was closed
+when QA finished; the user's other terminals were not changed.

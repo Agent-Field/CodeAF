@@ -726,48 +726,100 @@ func homeCardTalkTail(keys []string, width int, pal palette) []string {
 // to be one.
 func (a *app) homeCardWork(ctx bandContext) []string {
 	row, pal := ctx.subject.row, ctx.pal
+	// The tree is walked parent first, so every visible child has its ancestors
+	// above it. The preview keeps its existing task allowance; a large family
+	// must not make the whole work band disappear from a short card. named holds
+	// the entry
+	// each PAINTED NAME ROW in it is about — kept beside the rows so the doors can
+	// be recorded against what was actually drawn rather than against the record
+	// they were taken from. The walk drops entries that come out empty, and a
+	// click resolved against the index of the source would open the row after the
+	// one under the pointer.
 	var drawn [][]string
-	// named is the entry each drawn group is about, kept beside the rows so the
-	// doors below can be recorded against what was actually painted rather than
-	// against the record they were taken from — the band drops entries that come
-	// out empty, and a click resolved against the index of the source would open
-	// the row after the one under the pointer.
-	var named []session.TaskIndexEntry
-	// THE SAME RANK THE BAND USES, for the same reason: this card folds at three
-	// too, and the row that is asking for something must not be the one behind the
-	// fold (homeband_work.go's [homeWorkOrder]).
-	for _, entry := range homeWorkOrder(row) {
-		label := strings.TrimSpace(entry.Label)
-		if label == "" {
-			label = strings.TrimSpace(entry.Title)
+	var named [][]cardWorkRow
+	remaining := homeCardTasks
+	// THE SAME RANK AND THE SAME TREE THE BAND USES, for the same reason: this
+	// card folds at three too, and the row that is asking for something — even
+	// when it is a CHILD of one of these runs — must not be the one behind the
+	// fold (homeband_work.go, hometree.go's [homeWorkTwigRank]).
+	for _, family := range homeWorkFamilies(row) {
+		var group []string
+		var doors []cardWorkRow
+		for _, node := range family {
+			if remaining == 0 {
+				break
+			}
+			entry := node.entry
+			label := strings.TrimSpace(entry.Label)
+			if label == "" {
+				label = strings.TrimSpace(entry.Title)
+			}
+			cost := ""
+			if entry.Cost > 0 {
+				cost = dollars(entry.Cost)
+			}
+			// THE CONNECTORS ARE PAID FOR OUT OF THE ROW. What is left after the
+			// mark and the tree is what the name and the figure share, so a nested
+			// row's price still lands in the one column every price on this card
+			// is in and nothing is drawn past the card's own edge.
+			lead := homeWorkLeadOf(node, ctx.width-homeCardWorkMark, pal)
+			mark := a.homeTaskGlyph(entry, row) + " "
+			body := bandSides(ctx.width-homeCardWorkMark-lead.nameCols, 0, 8, label, cost, pal.muted, placeMoneyInk(pal))
+			if len(body) == 0 {
+				continue
+			}
+			for i := 1; i < len(body); i++ {
+				body[i] = cardWorkAir(lead.stem, pal) + body[i]
+			}
+			body[0] = cardWorkAir(lead.name, pal) + mark + body[0]
+			// AND A TASK THAT IS NOT DONE SAYS WHY, UNDER ITS OWN NAME. The design's
+			// example (SCREEN 1d) is a card of landed work, where the mark and the
+			// figure are the whole row; a run that failed, gave up or was cut off has
+			// something a person has to read, and a card that drew it as one more
+			// tick with a price on it would be the screen calling every outcome the
+			// same outcome.
+			if homeTaskWord(entry, row) != doneWord {
+				// AND THE MONEY IS SAID ONCE. The name row above right-aligned it a
+				// line ago; the under-block is told so rather than asked to guess
+				// (homeband_work.go's [homeWorkUnderSaid]).
+				for _, said := range homeWorkUnderSaid(entry, row, ctx.width-lead.underCols, pal, cost != "") {
+					body = append(body, cardWorkAir(lead.under, pal)+said)
+				}
+			}
+			// THE DOOR IS THE NAME ROW, WITH ITS CONNECTORS ON IT. A child's row is
+			// recorded exactly as it is painted, which is what makes it a different
+			// door from its parent's — same words, different row, different task.
+			doors = append(doors, cardWorkRow{painted: body[0], entry: entry, line: len(group)})
+			group = append(group, body...)
+			remaining--
 		}
-		cost := ""
-		if entry.Cost > 0 {
-			cost = dollars(entry.Cost)
-		}
-		lead := a.homeTaskGlyph(entry, row) + " "
-		body := bandSides(ctx.width-2, 0, 8, label, cost, pal.muted, placeMoneyInk(pal))
-		if len(body) == 0 {
+		if len(group) == 0 {
 			continue
 		}
-		body[0] = lead + body[0]
-		// AND A TASK THAT IS NOT DONE SAYS WHY, UNDER ITS OWN NAME. The design's
-		// example (SCREEN 1d) is a card of landed work, where the mark and the
-		// figure are the whole row; a run that failed, gave up or was cut off has
-		// something a person has to read, and a card that drew it as one more
-		// tick with a price on it would be the screen calling every outcome the
-		// same outcome.
-		if homeTaskWord(entry, row) != doneWord {
-			// AND THE MONEY IS SAID ONCE. The name row above right-aligned it a
-			// line ago; the under-block is told so rather than asked to guess
-			// (homeband_work.go's [homeWorkUnderSaid]).
-			body = append(body, homeWorkUnderSaid(entry, row, ctx.width, pal, cost != "")...)
-		}
-		drawn = append(drawn, body)
-		named = append(named, entry)
+		drawn, named = append(drawn, group), append(named, doors)
 	}
 	if len(drawn) == 0 {
 		return nil
+	}
+	// Identical names, including names clipped to the same cells, need a visible
+	// distinction before they can be different click targets. Numbers appear
+	// only on those ambiguous rows, leaving ordinary previews quiet.
+	counts := make(map[string]int)
+	for _, doors := range named {
+		for _, door := range doors {
+			counts[ansi.Strip(door.painted)]++
+		}
+	}
+	for group, doors := range named {
+		for i, door := range doors {
+			if counts[ansi.Strip(door.painted)] < 2 {
+				continue
+			}
+			suffix := " #" + door.entry.ID
+			painted := fit(door.painted, max(0, ctx.width-ansi.StringWidth(suffix))) + pal.dim(suffix)
+			drawn[group][door.line] = painted
+			named[group][i].painted = painted
+		}
 	}
 	// AND THE HEADING CARRIES THE ONE CAPTION THIS BAND HAS EVER HAD. Work that
 	// landed since home was last closed is NEWS — the delta the look stamp buys
@@ -790,18 +842,54 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 	}
 	for at, group := range shown {
 		// AND EVERY NAME ROW THE CARD PAINTS IS A DOOR ONTO THAT TASK'S RECORD
-		// ([app.noteCardTask]). The rows are recorded HERE, where the fold has
-		// already decided which of them are on the frame: a door registered for a
-		// task the card is not drawing is a door onto a row nobody can see.
-		a.noteCardTask(group[0], named[at])
+		// ([app.noteCardTask]) — the root's row AND every child's row under it,
+		// because a person who can see a piece of work named can aim at it. The
+		// rows are recorded HERE, where the fold has already decided which of them
+		// are on the frame: a door registered for a task the card is not drawing is
+		// a door onto a row nobody can see.
+		//
+		// AND THE DEEPEST ROW IS RECORDED FIRST. The registry answers a frame line
+		// by finding the door whose painted text it holds, and a parent's row is a
+		// SUBSTRING of its own child's — same name, one elbow in front of it — so
+		// the door that is recorded first is the one a click on the child row has
+		// to find (carddoors.go resolves ties by taking the longest match, and this
+		// order is the second half of that belt).
+		doors := named[at]
+		for down := len(doors) - 1; down >= 0; down-- {
+			a.noteCardTask(doors[down].painted, doors[down].entry)
+		}
 		rows = append(rows, group...)
 	}
-	if more := len(drawn) - len(shown); more > 0 {
+	if more := len(row.Tasks.Rows) - (homeCardTasks - remaining); more > 0 {
 		rows = append(rows, switcherSides(ctx.width,
 			foldLine(more, "")+" "+switcherPlural(more, "task", "tasks"),
 			pageTasks.word(), pal.dim, pal.dim))
 	}
 	return rows
+}
+
+// homeCardWorkMark is the cells the card spends on a work row's state mark and
+// the air after it — the one lead every row of that band carries, named because
+// the row's width is measured against it twice (the name and the tree).
+const homeCardWorkMark = 2
+
+// cardWorkRow is one painted name row of the work band and the piece of work it
+// is about, held between the draw and the fold so only rows that survived the
+// fold become doors.
+type cardWorkRow struct {
+	painted string
+	entry   session.TaskIndexEntry
+	line    int
+}
+
+// cardWorkAir paints a tree prefix, and paints NOTHING where there is no prefix:
+// a root has no elbow, and wrapping "" in the dim ink would put two escape
+// sequences where a reader — and a test — sees the row's first cell.
+func cardWorkAir(prefix string, pal palette) string {
+	if prefix == "" {
+		return ""
+	}
+	return pal.dim(prefix)
 }
 
 // ── the card's task rows, as doors ──────────────────────────────────────────

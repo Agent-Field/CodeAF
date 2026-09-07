@@ -246,6 +246,33 @@ func (a *app) openTaskRecord(entry *session.TaskIndexEntry) tea.Cmd {
 // [session.TaskIndexEntry.ID]).
 func (a *app) taskSheetPointAt(want session.TaskIndexEntry) {
 	r := a.tasksFiltered()
+	// A RECORD CAN BE OPENED WHILE ITS PARENTS ARE FOLDED. Reveal the path to
+	// the selected work before locating its row, so back returns to that work
+	// rather than to an unrelated row at the top of the list. Parent addresses
+	// remain scoped to the conversation, and damaged cycles cannot trap a key.
+	parents := make(map[tasksKey]session.TaskIndexEntry, len(r.items))
+	for _, item := range r.items {
+		parents[tasksKeyOf(item.entry)] = item.entry
+	}
+	if a.taskSheet.opened == nil {
+		a.taskSheet.opened = make(map[tasksKey]bool)
+	}
+	a.taskSheet.opened[tasksChatKey(want.SessionID)] = true
+	seen := make(map[tasksKey]bool)
+	for entry := want; strings.TrimSpace(entry.Parent) != ""; {
+		key := tasksKey{session: strings.TrimSpace(entry.SessionID), id: strings.TrimSpace(entry.Parent)}
+		if seen[key] {
+			break
+		}
+		seen[key] = true
+		parent, found := parents[key]
+		if !found {
+			break
+		}
+		a.taskSheet.opened[key] = true
+		entry = parent
+	}
+	r.open = a.taskSheet.opened
 	width, _ := a.size()
 	lines := r.lay(width)
 	for at := range lines {

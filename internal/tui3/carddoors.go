@@ -112,32 +112,43 @@ func (a *app) resetCardDoors() { a.home.cardDoors = a.home.cardDoors[:0] }
 // kind it is. It is what the POINTER asks, because a pointer does not care what
 // the door does — it cares that there is one.
 func (a *app) cardDoorAt(rowText string) (cardDoor, bool) {
+	return a.cardDoorMatching(rowText, func(cardDoor) bool { return true })
+}
+
+// cardDoorMatching is how both questions are answered, and the rule in it is
+// THE LONGEST MATCH WINS.
+//
+// A door is found by looking for its painted text INSIDE the frame line, because
+// the line it is handed carries the left column and the gutter in front of the
+// card. That is a substring test, and one painted row can hold another whole: a
+// task drawn under its parent is that parent's row with an elbow in front of it
+// (hometree.go), so `└─ ✓ Port the Picker` holds `✓ Port the Picker` — and a
+// first-match scan handed a click on the CHILD row the parent's record, which is
+// the one failure a pointer must not have. The longest text that fits a line is
+// the row that line actually is: a shorter door only ever matches by accident,
+// and it matches its own line exactly when nothing longer does.
+func (a *app) cardDoorMatching(rowText string, want func(cardDoor) bool) (cardDoor, bool) {
 	plain := strings.TrimSpace(ansi.Strip(rowText))
 	if plain == "" {
 		return cardDoor{}, false
 	}
+	found, best := cardDoor{}, -1
 	for _, door := range a.home.cardDoors {
-		if strings.Contains(plain, door.text) {
-			return door, true
+		if !want(door) || !strings.Contains(plain, door.text) {
+			continue
+		}
+		if length := len(door.text); length > best {
+			found, best = door, length
 		}
 	}
-	return cardDoor{}, false
+	return found, best >= 0
 }
 
 // cardDoorOfKind is the same question narrowed, and it is what a PRESS asks:
 // the two gestures are resolved one after the other ([app.homePress]), so a row
 // that is one kind of door must not answer for the other.
 func (a *app) cardDoorOfKind(rowText string, kind cardDoorKind) (cardDoor, bool) {
-	plain := strings.TrimSpace(ansi.Strip(rowText))
-	if plain == "" {
-		return cardDoor{}, false
-	}
-	for _, door := range a.home.cardDoors {
-		if door.kind == kind && strings.Contains(plain, door.text) {
-			return door, true
-		}
-	}
-	return cardDoor{}, false
+	return a.cardDoorMatching(rowText, func(door cardDoor) bool { return door.kind == kind })
 }
 
 // ── the pointer on them ─────────────────────────────────────────────────────

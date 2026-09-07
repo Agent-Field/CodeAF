@@ -30,7 +30,7 @@ func TestTaskShortcutRemainsClickableWhenTheLastWorkerNeedsAttention(t *testing.
 				if !a.at(pageTasks) {
 					t.Fatal("phone shortcut did not open Tasks")
 				}
-				drive(t, a, key("enter"))
+				drive(t, a, key("down"), key("enter"))
 			}
 			if !a.roomOpen() || a.room.id != 7 || !strings.Contains(roomText(a), "Checking the parser now") {
 				t.Fatal("click did not reach the task transcript")

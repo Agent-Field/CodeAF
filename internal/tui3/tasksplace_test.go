@@ -61,7 +61,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
-	wants := []string{"needs your look", "running", "finished today", "earlier"}
+	wants := []string{"needs your look", "waiting"}
 	last := -1
 	for _, want := range wants {
 		at := strings.Index(page, want)
@@ -215,13 +215,9 @@ func TestTheTasksSectionsAreSeparatedByABlankLineAndNothingElse(t *testing.T) {
 			t.Fatalf("the section word %q is preceded by two blank lines", line.text)
 		}
 	}
-	// FIVE, BECAUSE THE FIXTURE HAS SOMETHING IN EVERY SECTION. `render fight
-	// clip` is queued in a conversation that is open, which is work admitted and
-	// waiting rather than work a worker is in — the place files that under
-	// `parked` now, and the rhythm above has to hold across the extra heading.
-	if words != len(tasksSectionOrder) {
-		t.Fatalf("the fixture drew %d section words, want %d — one per section it has rows in",
-			words, len(tasksSectionOrder))
+	// Both conversations stay whole: one needs a look, the other is waiting.
+	if words != 2 {
+		t.Fatalf("the two conversations drew %d section headings, want 2", words)
 	}
 }
 
@@ -427,12 +423,12 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	if !root.folds || root.kids != 3 || root.open {
 		t.Fatalf("the root came out as folds=%v kids=%d open=%v", root.folds, root.kids, root.open)
 	}
-	if root.kin != tasksFoldShut {
+	if root.kin != tasksKinStep+tasksFoldShut {
 		t.Fatalf("the shut root wears %q", root.kin)
 	}
 	// AND THE LONER HOLDS THE COLUMN OPEN rather than sitting two cells left of
 	// everything else.
-	if rows[1].kin != tasksKinPad {
+	if rows[1].kin != tasksKinStep+tasksKinPad {
 		t.Fatalf("the task with no family wears %q", rows[1].kin)
 	}
 	// THE SHUT FOLD SAYS WHAT IS UNDER IT.
@@ -451,10 +447,10 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 	if len(rows) != 5 {
 		t.Fatalf("an open family drew %d rows of work", len(rows))
 	}
-	if rows[0].kin != tasksFoldOpen {
+	if rows[0].kin != tasksKinStep+tasksFoldOpen {
 		t.Fatalf("the open root wears %q", rows[0].kin)
 	}
-	if rows[1].kin != tasksKinCont || rows[3].kin != tasksKinLast {
+	if rows[1].kin != tasksKinStep+tasksKinStep+tasksKinCont || rows[3].kin != tasksKinStep+tasksKinStep+tasksKinLast {
 		t.Fatalf("the connectors came out as %q … %q", rows[1].kin, rows[3].kin)
 	}
 	if !strings.Contains(strings.Join(reading.rows(120, newPalette(tokens.NoColor, false)), "\n"), "port the lexer") {
@@ -465,8 +461,13 @@ func TestTheTasksPageFoldsAFamilyShutAndOpensItOnDemand(t *testing.T) {
 // TestAPageWithNoFamiliesDrawsNoFamilyColumn is the other half of the law: the
 // column APPEARS when there is a tree, so nothing moves sideways on a machine
 // that has never split work up.
-func TestAPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
+func TestAnUnattributedPageWithNoFamiliesDrawsNoFamilyColumn(t *testing.T) {
 	world, win, now := tasksFixture()
+	for i := range world.Projects {
+		for j := range world.Projects[i].Sessions {
+			world.Projects[i].Sessions[j].Title = ""
+		}
+	}
 	for _, line := range readTasks(world, tasksMine{}, win, time.Time{}, now).lay(120) {
 		if line.kind == tasksLineTask && line.kin != "" {
 			t.Fatalf("a page with no families drew the column: %q on %q", line.kin, line.item.entry.Label)
@@ -488,7 +489,7 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 
 	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
 	for _, item := range reading.items {
-		if tasksFamilyOf(item.entry) == tasksFamilyOf(rows[0]) && item.section != tasksRunning {
+		if tasksFamilyOf(item.entry) == tasksFamilyOf(rows[0]) && reading.tree().filed[tasksKeyOf(item.entry)] != tasksRunning {
 			t.Fatalf("family member %q was filed under %q, want running", item.entry.Label, tasksSectionWord(item.section))
 		}
 	}
@@ -497,7 +498,7 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 	for _, line := range reading.lay(120) {
 		if line.kind == tasksLineTask && line.item.entry.ID == "2" {
 			found = true
-			if line.kin != tasksKinCont && line.kin != tasksKinLast {
+			if line.kin != tasksKinStep+tasksKinStep+tasksKinCont && line.kin != tasksKinStep+tasksKinStep+tasksKinLast {
 				t.Fatalf("the refused worker is no longer under its parent: %q", line.kin)
 			}
 			if got := taskStateWord(line.item.entry, line.item.runs); got != taskRecordStoppedWord {
@@ -642,7 +643,7 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 	// what the work did — so a narrow frame kept the figure and dropped the two
 	// facts a person acts on, on the one row of the page with an ink of its own.
 	wide := tasksDrawnRow(tasksPage(reading, 160), name)
-	if !strings.HasSuffix(wide, "5h · The Annual Toggle · 2 files · Annual is the default and the monthly price stays visible beside it. · $0.27") {
+	if !strings.HasSuffix(wide, "5h · 2 files · Annual is the default and the monthly price stays visible beside it. · $0.27") {
 		t.Fatalf("at 160 columns the row reads\n  %s\nand the spend belongs after what the work did", wide)
 	}
 	for _, width := range []int{120, 80} {
@@ -650,7 +651,7 @@ func TestTheFactsOnATaskRowAreJoinedByOneSeparator(t *testing.T) {
 		if strings.Contains(row, "$0.27") {
 			t.Fatalf("at %d columns the row kept its spend:\n  %s", width, row)
 		}
-		if !strings.Contains(row, "The Annual Toggle") {
+		if !strings.Contains(plain(tasksPage(reading, width)), "The Annual Toggle") {
 			t.Fatalf("at %d columns the row gave up the conversation it came out of:\n  %s", width, row)
 		}
 	}
@@ -689,7 +690,7 @@ func TestEachTasksSectionReadsNewestFirst(t *testing.T) {
 			kin = append(kin, line.kin)
 		}
 	}
-	if strings.Join(kin, "") != tasksFoldOpen+tasksKinCont+tasksKinCont+tasksKinLast+tasksKinPad {
+	if strings.Join(kin, "") != tasksKinStep+tasksFoldOpen+tasksKinStep+tasksKinStep+tasksKinCont+tasksKinStep+tasksKinStep+tasksKinCont+tasksKinStep+tasksKinStep+tasksKinLast+tasksKinStep+tasksKinPad {
 		t.Fatalf("an opened family came out as %q, and the three workers must stand together under their root", kin)
 	}
 }
@@ -786,8 +787,8 @@ func TestAnOpenedFamilyNamesItsConversationOnce(t *testing.T) {
 	reading := readTasks(world, tasksMine{}, win, time.Time{}, now)
 	reading.open = map[tasksKey]bool{{session: "room-a", id: "1"}: true}
 	page := tasksPage(reading, 120)
-	if got := strings.Count(page, "the split"); got != 2 {
-		t.Fatalf("the conversation is named %d times on\n%s\nwant once per root and never on a worker", got, page)
+	if got := strings.Count(page, "the split"); got != 1 {
+		t.Fatalf("the conversation is named %d times on\n%s\nwant once on the main chat and never on a worker", got, page)
 	}
 	if !strings.Contains(page, "port the lexer") {
 		t.Fatalf("the opened family drew no workers:\n%s", page)
