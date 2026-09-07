@@ -505,7 +505,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// ↑/↓ walk the recent sessions, enter opens the one they picked, and
 	// anything else is the person starting work, which puts the box away for
 	// good before the key does whatever it always does.
-	if a.welcome.open {
+	// AND THE NEW-CHAT START PAGE IS THE SAME UNIT WITH THE OPPOSITE CONTRACT
+	// (chatstart.go): it is where the person IS starting work, so typing keeps it
+	// standing and its four keys are esc, ↑/↓ and enter. It is read at this rung
+	// rather than a separate one because it is drawn as this unit and there is
+	// exactly one of them on the frame.
+	if a.startingChat() {
+		if cmd, taken := a.startChatKey(msg.String()); taken {
+			return cmd
+		}
+	} else if a.welcome.open {
 		if cmd, taken := a.welcomeKey(msg.String()); taken {
 			// enter on a recent session opens it, and what comes back is that
 			// conversation's standing lanes (welcome.go's [app.resumeSession]).
@@ -546,7 +555,8 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.empty() {
 			return nil
 		}
-		return a.lastConversation()
+		back := a.parkChatStart()
+		return tea.Batch(back, a.lastConversation())
 	}
 	// And enter belongs to the LINE under that list, not to the list. A person
 	// who typed a path out in full would otherwise have it swapped for whatever
@@ -1090,6 +1100,9 @@ func (a *app) enter() tea.Cmd { return a.enterLine(false) }
 // recall history, the draft file, the slash, the mentions — and it is one
 // function so it stays that way.
 func (a *app) enterLine(marked bool) tea.Cmd {
+	if a.startingChat() {
+		return a.startChatEnter(marked)
+	}
 	// A WATCHER'S SEND KEY IS THE TAKE-BACK, and nothing below it runs
 	// (watching.go). The router already turns enter into this, so reaching here
 	// means some other road did — the path completion's own enter, a paste that

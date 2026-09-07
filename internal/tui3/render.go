@@ -1801,6 +1801,10 @@ func (a *app) statusRows(width int) []string {
 	// on it, and each of them leaves this cleared.
 	a.keepSpan, a.keepRow = hudSpan{}, 0
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
+	if a.startingChat() {
+		a.modelSpan = hudSpan{}
+		return []string{a.pal.dim(fit("New chat · first message starts the conversation", width))}
+	}
 	if width < 1 {
 		a.modelSpan = hudSpan{}
 		return []string{""}
@@ -1969,6 +1973,9 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 // statusHeight is how many rows the HUD's status takes: the frame, the chrome
 // height and the pointer's hit-testing all have to agree about it (view.go).
 func (a *app) statusHeight(width int) int {
+	if a.startingChat() {
+		return 1
+	}
 	if width < 1 {
 		return 1
 	}

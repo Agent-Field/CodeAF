@@ -136,6 +136,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+k do", "keys"},
 		{"why does ctrl+tab do nothing", "keys"},
 		{"what did my other chats do while I was away", "keys"},
+		// AND THE `+` BESIDE THE TABS, asked the way somebody meets it: they see a
+		// control they know from a browser and want to know what it costs, they
+		// pressed it and want out, and they are worried about the message they had
+		// half written when they pressed it.
+		{"what does the plus next to the tabs do", "screen"},
+		{"start a new chat", "screen"},
+		{"how do I get out of the new chat page", "screen"},
+		{"does opening a new chat close the one I am in", "screen"},
+		{"I pressed plus and lost my draft", "screen"},
+		{"new chat page recent conversations", "screen"},
+		// AND THE MARK A TAB CAN WEAR, asked as a symbol nobody has a name for and
+		// as the worry underneath it.
+		{"what is the question mark on my tab", "screen"},
+		{"why does one of my tabs have a half circle on it", "screen"},
+		{"which tab is waiting on me", "screen"},
 		// And the tasks page's tree, asked by somebody looking at a page that is
 		// hiding rows from them on purpose.
 		{"where did the workers go on the task page", "tasks"},

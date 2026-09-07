@@ -3085,6 +3085,16 @@ func (a *app) railShowing() bool {
 // is on the frame, so nothing here can be pressed ([app.railStowed] asks it
 // too).
 func (a *app) railQuiet() bool {
+	// AND THE NEW-CHAT START PAGE IS THE SECOND ANSWER, for the first one's reason
+	// with the sign flipped (chatstart.go). There the column had nothing to say;
+	// here it has plenty and none of it is about the page on screen — the roster
+	// is THIS CONVERSATION's work, and the page is deliberately not in a
+	// conversation yet. A column left standing beside it would offer doors into
+	// the work of a conversation the person has just stepped away from, drawn
+	// beside a blank box asking for a different one.
+	if a.startingChat() {
+		return true
+	}
 	return a.welcome.open && !a.railAvail() && len(a.marginStanding()) == 0
 }
 
@@ -3121,7 +3131,7 @@ func (a *app) railAvail() bool { return len(a.taskOrder) > 0 || len(a.jobs) > 0 
 // frame does with the request is a question about its width. One state cannot
 // disagree with itself about whether the roster is up.
 func (a *app) railFull() bool {
-	if !a.railHold || !a.railAvail() || a.railAway {
+	if !a.railHold || !a.railAvail() || a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()

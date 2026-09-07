@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// ── THE TAB STRIP: WHICH CONVERSATIONS THIS WINDOW HAS, AND WHICH ONE IS UP ──
+// ── THE NAVIGATION HEADER: WHICH CONVERSATION THIS WINDOW HAS, AND WHICH ONE IS UP ──
 //
 // The frame's first row used to be ONE WORD — the conversation's own name, with
 // a `▾` after it where the switcher had somewhere to go (roomcrumbs.go's bar,
@@ -16,17 +16,25 @@ import (
 // keystroke they had to know about, and there was nowhere on screen that said
 // they existed at all.
 //
-// So the top of the frame is now TWO INSTRUMENTS ON TWO ROWS, and the split is
-// the whole point:
+// So the top of the frame is a HEADER PANEL, and the number of rows in it is
+// what page you are standing on:
 //
-//	 chat one · ▸the tree walk · chat three   ▾      ← the tabs: which conversation
-//	 main ▸ Ship the port ▸ Cut the goldens          ← the trail: where inside it
+//	 │ main ×│ the tree walk  │ chat three  │            Chats ▾    ← the tabs
+//	 ────────────────────────────────────────────────────────────   ← the rule
 //
-// The tabs are CONVERSATIONS. The trail under them is the chain of work inside
-// the one that is up, and it is drawn only when there is a chain — a task page
-// has one, the conversation itself does not, and a row that said `main` and
-// nothing else every day would be a row spending a line of somebody's terminal
-// on a fact they can read off the tab above it.
+//	 │ main ×│ the tree walk  │ chat three  │            Chats ▾    ← the tabs
+//	 ─ main ▸ Ship the port ▸ Cut the goldens ──────── esc/← main ─  ← the trail
+//	 ─ ⠿ working · 2m 12s · $0.04 · 6 tool calls ───────── Stop ───  ← the facts
+//
+// THE THREE ROWS ARE THREE QUESTIONS AND THAT IS WHY THEY ARE THREE ROWS. The
+// tabs say WHICH CONVERSATION; the trail says WHERE INSIDE IT, and nothing else
+// — no state glyph, no model, no money, because a path with telemetry threaded
+// through it is a path nobody can read as a path; the facts row says WHAT THE
+// WORK IS DOING and ends in the rule that separates the header from everything
+// under it. Out in the conversation there is no trail and no facts — `main` with
+// nothing after it is the tab above said twice — so the panel is the tabs and
+// one low-contrast rule, which is what gives the transcript and the roster
+// beside it an edge that does not depend on the terminal's own background.
 //
 // ── WHAT A TAB IS ALLOWED TO CLAIM ──────────────────────────────────────────
 //
@@ -40,11 +48,21 @@ import (
 // has been in from this window and can go back to in one press — which is what
 // the browser tab it looks like promises too.
 //
-// So there is no `✕` on a tab and no `+` at the end of the strip. Closing is
-// `ctrl+w` and it closes an agent this process is HOLDING, which over a shared
-// handle is never true of anything but the one in front; a mark drawn on every
-// tab that only worked on some of them is worse than no mark at all (the
-// capability law: a control that cannot work is absent, not broken).
+// ── AND THE ✕ ON A TAB CLOSES A VIEW, NEVER WORK ────────────────────────────
+//
+// This is the law the whole close gesture hangs off, and it is the opposite of
+// what the strip used to say. Dismissing a tab TAKES THE TAB OFF THE ROW and
+// does nothing else: the agent behind it goes on running, its draft, its caret
+// and its attachments are kept exactly where the person left them, and the
+// conversation is still on the switcher `ctrl+k` opens — which is where
+// reopening it brings the tab, and the draft, back. Nothing on this row calls
+// [app.closeFront] or [app.closeKept], and nothing on it interrupts an agent.
+//
+// So the mark can be drawn on every tab honestly, over a shared handle included:
+// it is a claim about a ROW OF THIS WINDOW, and this window owns every one of
+// them. Ending work is `Stop` on the facts row, spelled out in a word, and
+// ending the program is `/quit` — two gestures a person types on purpose, and
+// neither of them is a mark on a tab.
 //
 // ── AND WHY THE ORDER NEVER MOVES ───────────────────────────────────────────
 //
@@ -52,29 +70,48 @@ import (
 // ring — and a strip drawn from it would re-order itself on every switch, which
 // is the one thing tabs may not do: a person reaches for the position, not for
 // the word. So the strip keeps its OWN list in the order each conversation was
-// first entered ([app.chatTabs]), and recency decides only which tab is up and, when
-// the list outgrows the cap, which one falls off the end.
+// first entered ([app.chatTabs]), and recency decides only which tab is up and,
+// when the list outgrows the cap, which one falls off the end.
 
 const (
-	// tabSep separates padded click targets without making the header read
-	// like the telemetry line below the transcript.
-	tabSep = " "
-	// tabWordCap is the widest a tab is drawn on a frame with room to spare. A
-	// tab is a label a person recognises rather than a sentence they read, and
-	// past about this many cells one long name is the whole strip.
+	// tabSep is the rule between two tabs. It is ONE CELL AND IT IS INERT: the
+	// row is a set of padded targets and the separator is what tells them apart,
+	// so it answers to no pointer and no press (the strip claims the row so a
+	// press between two tabs stops there rather than falling through).
+	tabSep      = "│"
+	tabSepASCII = "|"
+	// tabCloseMark is the dismissal on a tab, and tabCloseCells is the room kept
+	// for it whether or not it is drawn. The CELLS ARE RESERVED ON EVERY TAB
+	// because the mark appears under the pointer: a row that grew two cells when
+	// a hand crossed it would re-pack every label beside it, and the tab somebody
+	// was reaching for would move out from under them.
+	tabCloseMark  = "×"
+	tabCloseASCII = "x"
+	tabCloseCells = 2
+	// tabWordCap is the widest a tab's label is drawn on a frame with room to
+	// spare. A tab is a label a person recognises rather than a sentence they
+	// read, and past about this many cells one long name is the whole strip.
 	tabWordCap = 32
 	// tabWordFloor is the fewest cells a name is worth cutting to. Under it the
 	// word has stopped identifying a conversation and the strip is better off
-	// folding the tab into the count at its end.
+	// folding the tab into the count at the row's right end.
 	tabWordFloor = 6
 	// tabsCap is how many tabs the strip remembers. It is the switcher's own
 	// order it falls back on when it overflows, so the tab that goes is the one
 	// nobody has been in for longest.
 	tabsCap = 8
-	// tabMoreWord is the control at the strip's right end where nothing is
-	// hidden: the same `▾` the conversation's bar wore, opening the same picker
-	// `ctrl+k` opens.
-	tabMoreWord = "▾"
+	// tabsWord is the LABELLED control at the row's right end, and the label is
+	// the whole point of it: a bare `▾` floating at the end of a row of words is
+	// a mark nobody can read as a door. It opens the switcher `ctrl+k` opens,
+	// showing every conversation on this machine rather than only the ones this
+	// window holds.
+	tabsWord = "Chats"
+	// tabMoreWord is the mark after that label, and tabHiddenLead leads the count
+	// of tabs the row could not spell. Both are decoration in front of the word:
+	// a narrow frame drops them in that order and keeps `Chats`, because the word
+	// is what says the control is a door.
+	tabMoreWord   = "▾"
+	tabHiddenLead = "+"
 )
 
 // chatTab is one conversation as the strip remembers it. Every field is read
@@ -102,7 +139,9 @@ type chatTab struct {
 	// held says this process is still holding the agent behind this tab
 	// (keeper.go). It is not drawn — the strip makes no claim about what is
 	// running — and it decides only whether a press is an attach or an open.
-	held bool
+	held   bool
+	start  bool
+	signal tabSignal
 }
 
 // tabKind is what one drawn piece of the strip IS, which is what decides whether
@@ -112,17 +151,26 @@ type tabKind int
 const (
 	// tabHere is the conversation in front. Its door is "come back out of the
 	// page you walked into", which is the root crumb's door and `esc`'s; on the
-	// conversation itself there is nowhere to go and it is inert.
+	// conversation itself there is nowhere to go and the press does nothing —
+	// but the tab still answers the pointer, because a row of tabs where the one
+	// you are on is the only dead cell is a row that teaches the wrong thing.
 	tabHere tabKind = iota
 	// tabOther is another conversation: a switch.
 	tabOther
-	// tabMore is the control at the right end — the picker, and the count of
-	// what the frame could not spell.
+	// tabClose is the ✕ riding one tab, and it is a target of its own so that a
+	// press aimed at it can never be read as a press aimed at the label beside
+	// it (hover.go's law: what lights is exactly what the press acts on).
+	tabClose
+	// tabMore is the labelled control at the right end — the switcher, and the
+	// count of what the row could not spell.
 	tabMore
-	// tabFold is that same count on a frame where the picker cannot open. It is
-	// drawn because it is true and it does nothing, exactly as the trail's own
-	// `…` is inert when everything it hides is (roomcrumbs.go's law 4).
+	// tabFold is that same count on a frame where the switcher cannot open. It
+	// is drawn WITHOUT the `Chats` word and does nothing, exactly as the trail's
+	// own `…` is inert when everything it hides is (roomcrumbs.go's law 4): a
+	// count is a fact and stays true, while a labelled control that opened
+	// nothing would be a door painted on a wall.
 	tabFold
+	tabNew
 )
 
 // tabHit is where one piece was drawn and what pressing it does. It is the
@@ -135,18 +183,32 @@ type tabHit struct {
 	tab  chatTab
 }
 
-// door reports whether pressing this piece would take a person anywhere.
+// door reports whether pressing this piece would take a person anywhere. The
+// tab already up is the one piece that answers the pointer without being one:
+// see [tabHit.lights].
 func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
-		return a.roomOpen()
-	case tabOther:
-		return true
-	case tabMore:
+		return a.roomOpen() || a.startingChat()
+	case tabOther, tabClose, tabMore, tabNew:
 		return true
 	}
 	return false
 }
+
+// lights reports whether this piece reacts to a pointer resting on it.
+//
+// IT IS WIDER THAN [tabHit.door] AND THAT IS DELIBERATE, against the rest of
+// this surface's habit. Everywhere else what lights is exactly what a press acts
+// on, because a hover on a dead cell is a promise of a door that is not there.
+// A ROW OF TABS IS THE EXCEPTION AND THE REASON IS THE ROW ITSELF: it is one
+// control made of adjacent targets, and a strip where every tab answered the
+// hand except the one you are standing on would read as the current tab being
+// broken. So the tab that is up takes the pointer too — it is the only tab whose
+// selection SURVIVES the pointer leaving, which is what tells the two states
+// apart — and the inert count at the right end still does not, because that one
+// is a fact rather than a target.
+func (h tabHit) lights() bool { return h.kind != tabFold }
 
 // tabBar is the strip as it was last laid out, kept from frame to frame on the
 // terms every cached row on this surface is kept (render.go): rebuilt when the
@@ -163,12 +225,13 @@ func (h tabHit) door(a *app) bool {
 type tabBar struct {
 	width int
 	ink   uint64
-	// hot is the column of the tab the pointer was on, or -1.
-	hot  int
-	more bool
-	tabs []chatTab
-	line string
-	hits []tabHit
+	// hot is the column of the piece the pointer was on, or -1.
+	hot     int
+	more    bool
+	newChat bool
+	tabs    []chatTab
+	line    string
+	hits    []tabHit
 }
 
 // same reports whether a freshly built list would draw the same strip. It is a
@@ -210,14 +273,22 @@ func (a *app) frontTabKey() string {
 }
 
 // tabList is the strip's model: every conversation this window has been in that
-// it can still name and still reach, in the order it first entered them.
+// it can still name, still reach and has not dismissed, in the order it first
+// entered them.
 //
-// IT REFILLS THE SURFACE'S OWN SLICE IN PLACE, filtering forwards over the list
-// it is reading, and it asks the previous-stack with a walk rather than with a
-// map. Both are for the same reason: this runs on every frame, a map is two
-// allocations and a slice is one, and a row that says the same thing all day may
-// not spend the frame's allocation budget saying it (PERF.md's scroll law). Both
-// lists are bounded by [tabsCap], so a walk is the cheaper structure anyway.
+// IT REFILLS THE SURFACE'S OWN SLICE IN PLACE and asks both membership questions
+// with a walk rather than with a map, because this runs on every frame and a map
+// is two allocations where a slice is one (PERF.md's scroll law).
+//
+// AND THE CANDIDATES ARE BOUNDED, which they were not. The second pass walked
+// [app.prev] whole and asked a linear membership question per key — and prev is
+// as long as the number of conversations this window has been in, which the
+// keeper deliberately does not cap (keeper.go). Sixty open conversations was
+// sixty times sixty comparisons per frame for a row that can only ever draw
+// eight. The pass now walks prev FROM THE MOST RECENT END and stops as soon as
+// it has [tabsCap] candidates, which is the same answer — the cap below drops by
+// exactly that recency — without constructing an unbounded candidate list. The recency scan can still
+// walk older dismissed entries; only the candidate membership checks are bounded.
 //
 // It is called ONCE PER FRAME, by the draw. The geometry ([app.tabsHeight]) does
 // not ask it — there is always at least one tab, the conversation on screen — so
@@ -226,7 +297,7 @@ func (a *app) tabList() []chatTab {
 	front := a.frontTabKey()
 	tabs := a.chatTabs[:0]
 	for _, tab := range a.chatTabs {
-		if tab.key == "" || tabsHold(tabs, tab.key) {
+		if tab.start || tab.key == "" || tabsHold(tabs, tab.key) {
 			continue
 		}
 		held := a.behind[tab.key]
@@ -234,6 +305,13 @@ func (a *app) tabList() []chatTab {
 		// has: [app.closeFront] takes a closed one off it, so a tab whose key has
 		// left it is a tab whose conversation is gone.
 		if tab.key != front && held == nil && !keysHold(a.prev, tab.key) {
+			continue
+		}
+		// AND A DISMISSED TAB STAYS OFF THE ROW. This is the half of the ✕ that
+		// makes it a close rather than a flicker: the conversation is still held,
+		// still running and still on the switcher, so every pass below would put
+		// its tab straight back the frame after it was taken off.
+		if tab.key != front && a.tabShut[tab.key] {
 			continue
 		}
 		if tab = a.tabAs(tab, held, front); strings.TrimSpace(tab.word) == "" {
@@ -246,8 +324,9 @@ func (a *app) tabList() []chatTab {
 	// AND EVERY CONVERSATION THE KEEPER IS HOLDING IS A TAB whether or not the
 	// strip has seen it before — a window that resumed one beside another has
 	// two, and the strip's own list starts empty.
-	for _, key := range a.prev {
-		if tabsHold(tabs, key) {
+	for at := len(a.prev) - 1; at >= 0 && len(tabs) < tabsCap; at-- {
+		key := a.prev[at]
+		if tabsHold(tabs, key) || a.tabShut[key] {
 			continue
 		}
 		held := a.behind[key]
@@ -270,8 +349,8 @@ func (a *app) tabList() []chatTab {
 }
 
 // tabsHold and keysHold are the two membership questions this file asks, walked
-// rather than mapped: both lists are bounded by [tabsCap] and a walk of eight
-// costs no allocation at all.
+// rather than mapped: the list being walked is bounded by [tabsCap] and a walk
+// of eight costs no allocation at all.
 func tabsHold(tabs []chatTab, key string) bool {
 	for _, tab := range tabs {
 		if tab.key == key {
@@ -318,6 +397,7 @@ func (a *app) tabAs(tab chatTab, held *kept, front string) chatTab {
 	if strings.TrimSpace(tab.file) == "" {
 		tab.file = tab.key
 	}
+	tab.signal = a.tabSignalFor(tab.key, tab.here)
 	return tab
 }
 
@@ -351,10 +431,15 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 	return tabs
 }
 
-// tabsHeight is what the strip costs the body region, and it is asked rather
-// than assumed for [app.headHeight]'s reason: a row the frame drew and the
-// scrolling did not subtract puts the last row of the conversation under the
-// input box.
+// ── THE HEADER'S GEOMETRY, STATED ONCE ──────────────────────────────────────
+//
+// EVERY POINTER TARGET AND EVERY SUBTRACTION UP HERE RESOLVES THROUGH THESE
+// FOUR FUNCTIONS. The panel is one, two or three rows deep depending on the page
+// and on how much terminal there is, and a press answered against a hard-coded
+// zero or one would open the wrong row the moment a floor moved (hover.go's
+// law). Nothing outside this block may spell those numbers.
+
+// tabsHeight is what the tab row costs the body region.
 //
 // IT STANDS DOWN ON THE TWO FLOORS THE CONVERSATION'S BAR STOOD DOWN ON. A frame
 // too narrow for a name and a way out is too narrow for this, and a terminal too
@@ -371,17 +456,50 @@ func (a *app) tabsHeight(width int) int {
 	return 1
 }
 
-// roomHeadRow is the frame row the room's own header — the trail, the state, the
-// ✕ — is drawn on, which is the row under the tab strip wherever there is one.
+// chatRuleHeight is the low-contrast rule under the tabs OUT IN THE CONVERSATION,
+// where there is no trail and no facts row to close the panel off.
 //
-// EVERY POINTER TARGET UP HERE RESOLVES THROUGH IT. The strip, the trail and the
-// ✕ are three rows' worth of controls stacked in whatever order the frame can
-// afford, and a press answered against a hard-coded zero would open the wrong
-// one the moment the strip stood down (hover.go's law).
+// IT IS WHAT SEPARATES THE HEADER FROM THE TRANSCRIPT AND FROM THE ROSTER BESIDE
+// IT, and it is a drawn rule rather than a blank because a blank separates
+// nothing on a terminal whose background this program does not control. It is
+// the FIRST piece of chrome to collapse as the frame gets short — one row of a
+// twenty-row terminal is worth more to the conversation than to a seam — so it
+// stands on a floor of its own above the strip's.
+func (a *app) chatRuleHeight(width int) int {
+	_, height := a.size()
+	if a.room != nil || a.tabsHeight(width) == 0 || height < chatRuleFloor {
+		return 0
+	}
+	return 1
+}
+
+// chatRuleFloor is the terminal height the seam is worth a row of. It is above
+// the strip's own floor on purpose: [airyFloor] is where a second blank above
+// the draft became affordable, and a window at exactly that height has eleven
+// rows of conversation left — a reply's worth, and not a row to spend on an
+// edge. Four rows further up it is.
+const chatRuleFloor = airyFloor + 4
+
+// roomHeadRow is the frame row a room's TRAIL is drawn on — the breadcrumbs and
+// the way out — which is the row under the tab strip wherever there is one.
 func (a *app) roomHeadRow() int {
 	width, _ := a.size()
 	return a.tabsHeight(width)
 }
+
+// roomFactsRow is the row under that one: what the work is doing, what it has
+// cost, and the `Stop` that ends it. It is -1 on a frame too short to draw it,
+// so a pointer target resolved through it cannot land on the trail above
+// (room.go's [app.roomHeadHeight] states why it is the row that gives way).
+func (a *app) roomFactsRow() int {
+	width, _ := a.size()
+	if a.roomHeadHeight(width) < roomHeadRowCount {
+		return -1
+	}
+	return a.roomHeadRow() + 1
+}
+
+// ── THE ROW, LAID OUT ───────────────────────────────────────────────────────
 
 // tabsRow lays the strip out and says where every piece landed. It is the
 // frame's FIRST row wherever it is drawn at all.
@@ -395,6 +513,12 @@ func (a *app) tabsRow(width int) string {
 	// this one can still see and a later one may not (a shared handle ends the
 	// conversation it swaps away from, and its title goes with it).
 	a.chatTabs = tabs
+	if a.startingChat() {
+		for i := range tabs {
+			tabs[i].here = false
+		}
+		tabs = append(tabs, chatTab{word: "New chat", here: true, start: true})
+	}
 	if len(tabs) == 0 {
 		return ""
 	}
@@ -403,7 +527,7 @@ func (a *app) tabsRow(width int) string {
 		hot = a.hot.index
 	}
 	more := a.hopAvailable()
-	if memo := a.chatTabBar; memo.same(width, a.inkState, hot, more, tabs) {
+	if memo := a.chatTabBar; memo.newChat == a.canStart() && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
 		return memo.line
 	}
@@ -413,7 +537,7 @@ func (a *app) tabsRow(width int) string {
 	}
 	a.chatTabHits = tabsAt(hits, headLabelAt)
 	line := strings.Repeat(" ", headLabelAt) + a.tabsPaint(pieces)
-	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, line: line, hits: a.chatTabHits,
+	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), line: line, hits: a.chatTabHits,
 		tabs: append([]chatTab(nil), tabs...)}
 	return line
 }
@@ -423,19 +547,30 @@ type tabPiece struct {
 	word string
 	kind tabKind
 	tab  chatTab
-	// sep says this piece is the punctuation between two tabs. It answers to
-	// nothing and is painted at the strip's quietest step.
-	sep bool
+	// quiet says this piece is furniture — the rule between two tabs, or the gap
+	// that pushes the switcher to the right end. It answers to nothing and is
+	// painted at the row's quietest step.
+	quiet bool
 }
+
+// tabSepWord and tabCloseWord are the two marks this row draws, at the glyph
+// floor a terminal that cannot be trusted with box drawing gets.
+func (a *app) tabSepWord() string   { return a.linearMark(tabSep, tabSepASCII) }
+func (a *app) tabCloseWord() string { return a.linearMark(tabCloseMark, tabCloseASCII) }
 
 // tabsFit lays the strip out in the cells it has, and the ladder it walks is one
 // law: THE TAB THAT IS UP IS ALWAYS ON THE STRIP. What gives way is the tabs at
-// the ends, and they give way to a count — never to silence, because a strip
-// that quietly drew three of somebody's six conversations would be a strip that
-// says they have three.
+// the ends, and they give way to a count at the right end — never to silence,
+// because a strip that quietly drew three of somebody's six conversations would
+// be a strip that says they have three.
 func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 	if room <= 0 || len(tabs) == 0 {
 		return nil, nil
+	}
+	fullRoom := room
+	showNew := a.canStart() && room >= tabWordFloor+tabCloseCells+7
+	if showNew {
+		room -= 4
 	}
 	active := 0
 	for at, tab := range tabs {
@@ -443,103 +578,160 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 			active = at
 		}
 	}
+	sepW := ansi.StringWidth(a.tabSepWord())
+	// The right end is reserved BEFORE the fitting, because a control squeezed in
+	// afterwards would be a control drawn over the last tab's own cells. What it
+	// asks for is the widest spelling it could want; what it gets is decided
+	// again once the tabs have taken their share ([app.tabsMoreWord]).
+	reserve := 0
+	if wide := ansi.StringWidth(a.tabsMoreWord(len(tabs)-1, true)); wide > 0 {
+		reserve = wide + tabsMoreGap
+	}
+	budget := room - reserve
+	if budget < tabWordFloor+tabCloseCells {
+		budget, reserve = room, 0
+	}
 	// The names, cut to a tab's own width: a share of the row where there are
 	// several, and the whole row where there is one, because a lone tab is the
 	// conversation's own name and the row has nothing else to spend itself on.
-	wordCap := room
+	// EVERY TAB CARRIES ITS CLOSE CELLS whether or not the mark is drawn in them,
+	// so the widths a hover reads are the widths the layout wrote.
+	cell := budget
 	if len(tabs) > 1 {
-		wordCap = max(tabWordFloor, min(tabWordCap, room/len(tabs)))
+		cell = max(tabWordFloor+tabCloseCells, min(tabWordCap, (budget-sepW*(len(tabs)+1))/len(tabs)))
 	}
 	words := make([]string, len(tabs))
 	widths := make([]int, len(tabs))
 	for at, tab := range tabs {
-		words[at] = tabLabel(tab, wordCap)
-		widths[at] = ansi.StringWidth(words[at])
-	}
-	// The right end is reserved BEFORE the fitting, because a control squeezed in
-	// afterwards would be a control drawn over the last tab's own cells. Two cells
-	// hold `…7`, which is the widest count a strip of [tabsCap] can report, and
-	// one holds the `▾`.
-	sepW := ansi.StringWidth(tabSep)
-	reserve := 0
-	if len(tabs) > 1 || a.hopAvailable() {
-		reserve = sepW + 2
-	}
-	budget := room - reserve
-	if budget < tabWordFloor {
-		budget = room
-		reserve = 0
+		words[at] = a.tabName(tab, cell-tabCloseCells)
+		if tab.start {
+			words[at] = tabLabel(tab, min(10, budget-tabCloseCells-2*sepW))
+		}
+		widths[at] = ansi.StringWidth(words[at]) + tabCloseCells
 	}
 	from, to := active, active+1
 	for start := 0; start <= active; start++ {
 		at, end := 0, start
 		for i := start; i < len(tabs); i++ {
-			lead := 0
-			if i > start {
-				lead = sepW
-			}
-			if widths[i] == 0 || at+lead+widths[i] > budget {
+			if widths[i] == 0 || at+sepW+widths[i]+sepW > budget {
 				break
 			}
-			at, end = at+lead+widths[i], i+1
+			at, end = at+sepW+widths[i], i+1
 		}
 		if end > active {
 			from, to = start, end
 			break
 		}
 	}
-	pieces := make([]tabPiece, 0, 2*(to-from)+2)
-	hits := make([]tabHit, 0, to-from+1)
+	pieces := make([]tabPiece, 0, 3*(to-from)+3)
+	hits := make([]tabHit, 0, 2*(to-from)+1)
 	at := 0
 	for i := from; i < to; i++ {
-		if i > from {
-			pieces = append(pieces, tabPiece{word: tabSep, sep: true})
-			at += sepW
-		}
 		word := words[i]
 		if to-from == 1 {
 			// The one tab that is left takes whatever the row has, cut. A name with
 			// an ellipsis in it still says which conversation this is; a blank row
 			// says nothing at all.
-			word = tabLabel(tabs[i], budget)
-		}
-		kind := tabOther
-		if tabs[i].here {
-			kind = tabHere
+			word = a.tabName(tabs[i], budget-tabCloseCells-2*sepW)
 		}
 		width := ansi.StringWidth(word)
 		if width == 0 {
 			continue
 		}
+		kind := tabOther
+		if tabs[i].here {
+			kind = tabHere
+		}
+		pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
+		at += sepW
 		pieces = append(pieces, tabPiece{word: word, kind: kind, tab: tabs[i]})
 		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: kind, tab: tabs[i]})
 		at += width
+		// THE CLOSE CELLS ARE A TARGET OF THEIR OWN AND THEY ARE ALWAYS THERE.
+		// What changes under the pointer is whether the mark is painted into them
+		// ([app.tabsPaint]), never how many cells they are.
+		pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabCloseCells), kind: tabClose, tab: tabs[i]})
+		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + tabCloseCells}, kind: tabClose, tab: tabs[i]})
+		at += tabCloseCells
 	}
-	if hidden := len(tabs) - (to - from); reserve > 0 {
-		word, kind := "", tabMore
-		switch {
-		case hidden > 0:
-			// THE COUNT IS A FACT AND THE PICKER IS A DOOR, and they are the same
-			// mark: pressing it opens the list every hidden conversation is on. Where
-			// the picker cannot open — a decision already on screen, a frozen
-			// viewport (hop.go's [app.hopMayOpen]) — the count is still true and is
-			// drawn inert, which is what the trail's own fold does with ancestors it
-			// cannot open.
-			word = glyphMore + itoa(hidden)
-			if !a.hopAvailable() {
-				kind = tabFold
-			}
-		case a.hopAvailable():
-			word = tabMoreWord
-		}
-		if width := ansi.StringWidth(word); width > 0 && at+sepW+width <= room {
-			pieces = append(pieces, tabPiece{word: tabSep, sep: true})
-			at += sepW
+	if len(pieces) > 0 {
+		pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
+		at += sepW
+	}
+	// AND THE SWITCHER SITS AT THE ROW'S RIGHT END, pushed there by a gap that is
+	// furniture. Right-aligned because it is not one of the tabs and must not
+	// read as the next one along.
+	hidden := len(tabs) - (to - from)
+	word, kind := a.tabsMoreWord(hidden, false), tabMore
+	if !a.hopAvailable() {
+		word, kind = a.tabsFoldWord(hidden), tabFold
+	}
+	for width := ansi.StringWidth(word); width > 0; width = ansi.StringWidth(word) {
+		if at+tabsMoreGap+width <= room {
+			gap := room - at - width
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", gap), quiet: true})
+			at += gap
 			pieces = append(pieces, tabPiece{word: word, kind: kind})
 			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: kind})
+			break
 		}
+		word = a.tabsShorter(word, hidden)
+	}
+	if showNew {
+		used := 0
+		for _, piece := range pieces {
+			used += ansi.StringWidth(piece.word)
+		}
+		from := fullRoom - 3
+		if used < from {
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", from-used), quiet: true})
+		}
+		pieces = append(pieces, tabPiece{word: " + ", kind: tabNew})
+		hits = append(hits, tabHit{span: hudSpan{from: from, to: fullRoom}, kind: tabNew})
 	}
 	return pieces, hits
+}
+
+// tabsMoreGap is the least space between the last tab and the switcher, so the
+// control never reads as the next tab along.
+const tabsMoreGap = 2
+
+// tabsMoreWord is the switcher's label at its widest that still says everything
+// true: the word, the count of tabs this row could not spell, and the mark.
+func (a *app) tabsMoreWord(hidden int, widest bool) string {
+	if !a.hopAvailable() {
+		return a.tabsFoldWord(hidden)
+	}
+	word := tabsWord
+	if hidden > 0 {
+		word += " " + tabHiddenLead + itoa(hidden)
+	}
+	return word + " " + tabMoreWord
+}
+
+// tabsFoldWord is the count alone, for a frame where the switcher cannot open
+// (hop.go's [app.hopMayOpen]). The count is still true; the word is not drawn,
+// because a labelled control that opens nothing is a door painted on a wall.
+func (a *app) tabsFoldWord(hidden int) string {
+	if hidden <= 0 {
+		return ""
+	}
+	return tabHiddenLead + itoa(hidden)
+}
+
+// tabsShorter is the switcher's degradation ladder, one rung per call: the mark
+// goes first, then the count, and THE WORD IS WHAT SURVIVES. Both of the things
+// dropped are decoration in front of it — a person reading a narrow row needs to
+// know the control is there far more than they need to know how many rows it is
+// standing for.
+func (a *app) tabsShorter(word string, hidden int) string {
+	switch {
+	case strings.HasSuffix(word, " "+tabMoreWord):
+		return strings.TrimSuffix(word, " "+tabMoreWord)
+	case hidden > 0 && strings.HasSuffix(word, " "+tabHiddenLead+itoa(hidden)):
+		return strings.TrimSuffix(word, " "+tabHiddenLead+itoa(hidden))
+	}
+	return ""
 }
 
 // tabLabel gives each tab a padded target. Brackets identify the selected
@@ -555,40 +747,108 @@ func tabLabel(tab chatTab, width int) string {
 	return " " + word + " "
 }
 
-// tabsPaint uses the existing selected-surface tint for the current chat.
-// Spacing distinguishes the controls from prose; the current tab also retains
-// a plain-text marker so color is never its only sign of selection.
+// A reserved status slot keeps labels stable across work transitions. The start
+// page has no agent and makes no status claim.
+func (a *app) tabName(tab chatTab, width int) string {
+	if width < tabSignalWidth+2 || tab.start {
+		return tabLabel(tab, width)
+	}
+	ascii := a.linearMark(tabSep, tabSepASCII) == tabSepASCII
+	return tabSignalSlot(tab.signal, ascii) + tabLabel(tab, width-tabSignalWidth)
+}
+
+// tabsPaint draws the pieces in the incumbent palette and nothing else: the
+// selected step for the tab that is up, the pointer's own step for whichever one
+// the hand is on, and the row's dim for the rest.
+//
+// THE HOVER IS A GROUND AND NOT A BRIGHTENING, which is a deliberate departure
+// from the rest of this surface. Everywhere else a hover is one step of ink,
+// because the thing under the pointer shares its row with prose. This row is
+// nothing but adjacent controls, and the tab that is UP already wears the
+// loudest ink on it — so a hover spelled as ink could not be told apart from
+// selection on the one tab a person most needs it on. Ground says where the
+// pointer is, ink and the brackets say which tab is chosen, and the two channels
+// stay legible together where two shades of one would not (stop.go's answers row
+// makes the same trade for the same reason).
 func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabMore && hot.kind != tabFold && hot.kind != tabNew
 		switch {
-		case piece.sep:
+		case piece.quiet:
 			line += a.pal.dim(piece.word)
+		case piece.kind == tabClose:
+			line += a.tabClosePaint(piece, hot, lit, on)
 		case piece.kind == tabHere:
-			line += a.pal.underline(a.pal.tint(piece.word, a.pal.accent))
-		case lit && hot.kind == piece.kind && hot.tab.key == piece.tab.key && hot.kind != tabMore:
-			// ONE STEP UP FROM WHERE THE ROW ALREADY IS, which is this surface's
-			// whole answer to a pointer (render.go): a brightening, never a band.
-			line += a.pal.accent(piece.word)
-		case lit && piece.kind == tabMore && hot.kind == tabMore:
-			line += a.pal.accent(piece.word)
-		default:
+			word := a.pal.underline(a.pal.selected(a.tabWordPaint(piece, a.pal.accent), 0))
+			if on {
+				word = a.pal.cursor(word, 0)
+			}
+			line += word
+		case piece.kind == tabMore || piece.kind == tabFold || piece.kind == tabNew:
+			if lit && hot.kind == piece.kind {
+				line += a.pal.cursor(a.pal.ink(piece.word), 0)
+				continue
+			}
 			line += a.pal.dim(piece.word)
+		case on:
+			line += a.pal.cursor(a.tabWordPaint(piece, a.pal.ink), 0)
+		default:
+			line += a.tabWordPaint(piece, a.pal.dim)
 		}
 	}
 	return line
 }
 
-// hotTab is the piece the pointer is on, when it is on one that would do
-// something. A piece that is not a door never lights: what lights is what a
-// press acts on.
+// Navigation tint belongs to the name; the small status mark keeps its meaning.
+func (a *app) tabWordPaint(piece tabPiece, ink func(string) string) string {
+	if piece.tab.start || piece.tab.signal == tabIdle || ansi.StringWidth(piece.word) < tabSignalWidth+2 {
+		return ink(piece.word)
+	}
+	return a.pal.tabSignalInk(piece.tab.signal, ansi.Cut(piece.word, 0, tabSignalWidth)) + ink(ansi.Cut(piece.word, tabSignalWidth, ansi.StringWidth(piece.word)))
+}
+
+// tabClosePaint draws one tab's close cells.
+//
+// THE MARK IS THERE ON THE TAB THAT IS UP AND ON THE TAB UNDER THE HAND, and the
+// cells are blank on every other one. That is the clutter trade the row is worth
+// making: eight ✕ marks across the top of the frame is eight invitations to end
+// something, on a row whose job is to say where you are. A blank target is still
+// a target — the hand finds it by moving onto the tab, which is when the mark
+// appears — and the cells never change width either way, so nothing re-packs
+// under the pointer.
+//
+// THE MARK IS ALSO THE ROW'S ONE PLAIN-TEXT HOVER AFFORDANCE, which is what a
+// terminal with NO_COLOR has instead of the ground: a `×` that was not there a
+// moment ago says the hand is on this tab as plainly as any tint.
+func (a *app) tabClosePaint(piece tabPiece, hot tabHit, lit, on bool) string {
+	if !piece.tab.here && !on {
+		return a.pal.dim(piece.word)
+	}
+	mark := " " + a.tabCloseWord()
+	switch {
+	case on && hot.kind == tabClose:
+		// THE POINTER IS ON THE MARK ITSELF, so the mark takes the ink and the
+		// cells keep the ground the rest of the tab is wearing. A press here
+		// dismisses the tab and a press one cell left selects it, and the two must
+		// never look like one target (hover.go's law).
+		return a.pal.cursor(a.pal.ink(mark), 0)
+	case on:
+		return a.pal.cursor(a.pal.dim(mark), 0)
+	case piece.tab.here:
+		return a.pal.tint(mark, a.pal.dim)
+	}
+	return a.pal.dim(mark)
+}
+
+// hotTab is the piece the pointer is on, when it is on one that reacts.
 func (a *app) hotTab() (tabHit, bool) {
 	if a.hot.kind != hoverTab {
 		return tabHit{}, false
 	}
 	for _, hit := range a.chatTabHits {
-		if hit.span.from == a.hot.index && hit.door(a) {
+		if hit.span.from == a.hot.index && hit.lights() {
 			return hit, true
 		}
 	}
@@ -636,7 +896,7 @@ func (a *app) tabAt(x, y int) (tabHit, bool) {
 // "the second tab" would follow the packing instead of following the words.
 func (a *app) tabHoverAt(x, y int) (hoverAt, bool) {
 	hit, ok := a.tabAt(x, y)
-	if !ok || !hit.door(a) {
+	if !ok || !hit.lights() {
 		return hoverAt{}, false
 	}
 	return hoverAt{kind: hoverTab, index: hit.span.from}, true
@@ -644,28 +904,41 @@ func (a *app) tabHoverAt(x, y int) (hoverAt, bool) {
 
 // tabPress answers a press on the strip and reports whether it took it.
 //
-// A PIECE THAT IS NOT A DOOR TAKES THE PRESS AND DOES NOTHING WITH IT. The tab
-// that is up is drawn because it is true, and a press on it that opened
-// something else would be the strip acting on a promise it never made. The row
-// is the strip's own and has nothing under it, so a press between two tabs is a
-// press on the row and stops there.
+// THE WHOLE ROW IS THE STRIP'S, whether or not a piece was under the press. The
+// separators between the tabs are furniture and the gap in front of the switcher
+// is furniture, and a press on either of them stops here rather than falling
+// through to whatever the next rung would have made of it.
 func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
-	hit, ok := a.tabAt(x, y)
-	if !ok {
+	width, _ := a.size()
+	if y != 0 || a.tabsHeight(width) == 0 {
 		return nil, false
 	}
-	if !hit.door(a) {
+	hit, ok := a.tabAt(x, y)
+	if !ok || !hit.door(a) {
 		return nil, true
 	}
 	switch hit.kind {
+	case tabNew:
+		return a.openChatStart(), true
 	case tabMore:
-		// THE OVERFLOW IS THE PICKER AND NOT A MENU OF ITS OWN. `ctrl+k` already
-		// draws every conversation this machine has, ranked, with what each of them
-		// wants from you on it (hop.go); a second list built here would be a second
-		// answer to the same question, kept in step with the first by nothing.
-		a.hopOpen()
+		// THE SWITCHER AND NOT A MENU OF ITS OWN. `ctrl+k` already draws every
+		// conversation this machine has, ranked, with what each of them wants from
+		// you on it (hop.go); a second list built here would be a second answer to
+		// the same question, kept in step with the first by nothing. It opens on
+		// ALL of them rather than on the ones this window holds, because the label
+		// says `Chats` and a list that showed three of somebody's twelve would be
+		// the control lying about what it opens.
+		a.hopOpenAll()
 		return nil, true
+	case tabClose:
+		return a.tabDismiss(hit.tab), true
 	case tabHere:
+		if hit.tab.start {
+			return nil, true
+		}
+		if a.startingChat() {
+			return a.cancelChatStart(), true
+		}
 		// The conversation this page hangs off. Its door is the way back out, which
 		// is `esc` and the trail's own root crumb.
 		a.closeRoom()
@@ -679,9 +952,118 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // holding is ATTACHED, and one it is not is OPENED beside — with the same two
 // refusals said in the same words, because one gesture with two spellings of
 // "that folder is gone" is two features to keep in step.
-func (a *app) tabGo(tab chatTab) tea.Cmd {
+func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
+	if tab.start {
+		return a.openChatStart()
+	}
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	if cmd, ours := a.bringForward(tab.file); ours {
 		return cmd
 	}
 	return a.hopStart(hopRow{file: tab.file, where: tab.where, title: tab.word})
+}
+
+// ── DISMISSING A TAB ────────────────────────────────────────────────────────
+
+// tabDismiss takes one conversation off the tab row. IT CLOSES NOTHING.
+//
+// The agent goes on running, its unsent draft, caret and attachments stay
+// exactly where they were, its transcript is untouched, and the conversation is
+// still on the switcher — so this is a change to what this window is SHOWING and
+// to nothing else. Reopening it from the switcher or from home brings the tab
+// and the draft back ([app.rememberOpen] is where the dismissal is lifted, which
+// is the one door every road forward goes through).
+//
+// THREE CASES, AND THE DIFFERENCE BETWEEN THEM IS WHERE THE PERSON ENDS UP:
+//
+//   - A tab that is not in front simply leaves the row.
+//   - The tab in front, over this process's OWN engine, with another conversation
+//     this window is holding: the window switches to that one and the tab that
+//     was in front leaves the row. Nothing about the conversation being left
+//     changes — it goes into the keeper alive, which is what a switch has always
+//     done.
+//   - The tab in front with nowhere safe to go, and EVERY tab in front over a
+//     shared engine handle: the window goes to Home with the conversation still
+//     in front behind it. A shared handle holds one conversation at a time
+//     ([oneConversationWord]), so switching away from it to satisfy a dismissal
+//     would end the very work the dismissal promised to leave running — and
+//     going Home leaves the connection and its work exactly as they are. The tab
+//     is NOT marked dismissed in this case, because the window is still on that
+//     conversation and a row claiming otherwise would be a row that lies the
+//     moment `esc` comes back to it.
+func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
+	if tab.start {
+		return a.cancelChatStart()
+	}
+	if a.startingChat() && tab.key == a.frontTabKey() {
+		tab.here = true
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
+	if tab.key == "" {
+		if tab.here {
+			return a.showPage(pageHome)
+		}
+		return nil
+	}
+	if tab.key != a.frontTabKey() {
+		a.tabShutKey(tab.key)
+		a.touch()
+		return nil
+	}
+	if !a.shared {
+		if next, ok := a.lastVisibleTab(); ok {
+			if cmd, ours := a.bringForward(a.behind[next].conv.SessionFile); ours {
+				a.tabShutKey(tab.key)
+				a.touch()
+				return cmd
+			}
+		}
+	}
+	// NOWHERE SAFE TO GO. Home is a place in this window rather than a door out
+	// of the program: the conversation is still in front underneath it, still
+	// running, and its row on home is what brings it back.
+	cmd = a.showPage(pageHome)
+	a.touch()
+	return cmd
+}
+
+// Closing a view selects another visible view; a dismissed conversation remains
+// available in Chats until the person deliberately reopens it.
+func (a *app) lastVisibleTab() (string, bool) {
+	for at := len(a.prev) - 1; at >= 0; at-- {
+		key := a.prev[at]
+		if !a.tabShut[key] && a.behind[key] != nil && tabsHold(a.chatTabs, key) {
+			return key, true
+		}
+	}
+	return "", false
+}
+
+// tabShutKey records one conversation as dismissed from the row. The map is the
+// only new state the whole gesture costs, and [app.rememberOpen] is where a key
+// leaves it again — every door that brings a conversation forward goes through
+// that one function, so there is no road back onto the screen that forgets to
+// put the tab back.
+func (a *app) tabShutKey(key string) {
+	if key == "" {
+		return
+	}
+	if a.tabShut == nil {
+		a.tabShut = map[string]bool{}
+	}
+	a.tabShut[key] = true
+	// Keep the positions of every surviving tab. Recency is a different order
+	// and must not rebuild the row just because one destination was dismissed.
+	kept := a.chatTabs[:0]
+	for _, tab := range a.chatTabs {
+		if tab.key != key {
+			kept = append(kept, tab)
+		}
+	}
+	a.chatTabs = kept
+	a.chatTabBar = tabBar{}
 }

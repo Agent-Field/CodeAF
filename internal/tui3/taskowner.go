@@ -239,6 +239,8 @@ func (s *aside) titleOf() string {
 // ([remote.Hello.Watch]), the engine refuses it the keyboard by construction, and
 // the page says it is reading.
 type taskGuest struct {
+	// The opening request allows a reversible page to reacquire this exact owner.
+	ask taskOwnerAsk
 	// session is the transcript the engine confirmed, and it is the guest's
 	// IDENTITY: nothing is drawn until it matches what was asked for. sessionID
 	// is the conversation that transcript belongs to, and it is what a per-task
@@ -629,11 +631,14 @@ func (a *app) openOwnerRoom(owner taskOwner, item tasksItem) (tea.Cmd, bool) {
 // It is held so the answer can be turned into a page without going back to a
 // reading that may have been replaced while the socket was busy.
 type taskOwnerAsk struct {
-	gen  uint64
-	item tasksItem
-	name string
-	file string
-	dir  string
+	trail     []string
+	fromStart bool
+	front     string
+	gen       uint64
+	item      tasksItem
+	name      string
+	file      string
+	dir       string
 }
 
 // taskOwnerMsg is the engine's answer to one of those.
@@ -652,8 +657,8 @@ type taskOwnerMsg struct {
 // and dropping the value on the floor would leave that connection attached for
 // the life of this window.
 func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
-	stale := msg.gen != a.taskOwnerGen
 	ask := a.taskOwnerAt
+	stale := msg.gen != a.taskOwnerGen || (ask.fromStart && (a.startingChat() || a.file != ask.front || a.roomOpen()))
 	if !stale {
 		a.taskOwnerAt = taskOwnerAsk{}
 	}
@@ -680,6 +685,7 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 		return a.taskSheetAwayCard(ask.item)
 	}
 	guest := &taskGuest{
+		ask:       ask,
 		session:   msg.view.Session,
 		sessionID: taskSessionOf(msg.view.Session),
 		owner:     ask.name,
@@ -690,6 +696,9 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 		trail: a.taskGuestTrail(ask.item),
 		room:  msg.view.Room,
 		close: msg.view.Close,
+	}
+	if ask.trail != nil {
+		guest.trail = ask.trail
 	}
 	// AND THE OWNER IS ASKED WHAT ITS WORK IS DOING, once, on the connection that
 	// is already open. The lane replays the whole roster the moment it is taken,

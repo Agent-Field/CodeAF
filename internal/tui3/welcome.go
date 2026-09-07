@@ -107,6 +107,27 @@ type welcome struct {
 	// spent says the box has already been dismissed. It is separate from open
 	// so that nothing — a resize, a /new, a stray frame — can put it back.
 	spent bool
+	// start says this unit is the NEW-CHAT START PAGE rather than the greeting
+	// (chatstart.go). It is the same drawing and the same rows, and it changes
+	// three things about the unit's behaviour, each stated where it acts:
+	//
+	//   - IT DOES NOT DISMISS. The greeting's contract is that any key puts it
+	//     away, because any key is the person starting work here; the start page
+	//     IS the place they are starting work, so typing into it keeps it up and
+	//     its only exits are esc and the first message ([app.dismissWelcome]).
+	//   - IT DOES NOT ANIMATE. The sweep is an arrival, and this unit arrives
+	//     every time somebody presses `+`. Motion that repeats is motion a reader
+	//     learns to ignore, which is the greeting's own law read the other way,
+	//     so the page opens settled ([app.openChatStart] sets step).
+	//   - IT CAN SPEAK. A door that refused has to say so where the person is
+	//     standing, and while this page is up the transcript is not on the frame
+	//     at all (msg below).
+	start bool
+	// msg is the one line this page has for the person — a door that could not
+	// open a conversation, said where they are looking rather than into a
+	// transcript underneath the page (chatstart.go's [app.startSay]). It is empty
+	// on every ordinary frame and the emptiness law applies: no line is drawn.
+	msg string
 	// step counts frames since it opened, and stops at [welcomeFrames].
 	step int
 	// sel is the recent row under the cursor, or -1. Only ↑/↓ on an empty draft
@@ -158,6 +179,17 @@ func (a *app) openWelcome() {
 // frame as it always did ([newApp]).
 func (a *app) dismissWelcome() {
 	if !a.welcome.open {
+		return
+	}
+	// AND THE START PAGE IS NOT DISMISSED, BY ANYTHING (chatstart.go). Dismissal
+	// is irreversible — it sets spent — and the start page is a navigation action
+	// that must come back to exactly where it was pressed, with the sentence that
+	// was in the box. Every road into this function is a keystroke or a click
+	// that means "the person is starting work here", which on the start page is
+	// what they are already doing: the page's own two endings are `esc` and the
+	// first message, and both go through [app.cancelChatStart] or
+	// [app.startChatEnter] instead.
+	if a.welcome.start {
 		return
 	}
 	a.welcome = welcome{spent: true}
@@ -400,6 +432,16 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 	if !a.welcome.open {
 		return nil
 	}
+	// THE START PAGE'S ROWS ARE DOORS AND ITS BLANK CELLS ARE NOT (chatstart.go).
+	// A press that is not on a recent session is a press on the page, and the
+	// page stays: dismissal is the greeting's answer to being reached past, and
+	// this unit has nothing behind it to reach.
+	if a.welcome.start {
+		if slot < 0 || slot >= len(a.welcome.recent) {
+			return nil
+		}
+		return a.startChatOpen(slot)
+	}
 	if slot < 0 || slot >= len(a.welcome.recent) {
 		a.dismissWelcome()
 		return nil
@@ -568,6 +610,33 @@ func starterLine(room int) string {
 	return ""
 }
 
+// startPageKeysWord is the start page's line in the greeting's starter slot, and
+// it says the two things that are true of THIS unit and not of that one: the way
+// back, and what enter does. The greeting's own three clauses are things to try
+// in a conversation that has not begun; a person who pressed `+` has a
+// conversation behind them and needs to know it is still there.
+const startPageKeysWord = "esc keeps the chat you were in · enter starts a new one"
+
+// unitStarterLine is the dim line under the message box, and it is the one row
+// of the unit that differs between the greeting and the start page. It cuts to
+// what fits exactly as [starterLine] does, and answers "" for a frame that has
+// room for neither clause.
+func (a *app) unitStarterLine(unit int) string {
+	if !a.welcome.start {
+		return starterLine(unit)
+	}
+	for _, line := range []string{startPageKeysWord, startPageEscWord} {
+		if ansi.StringWidth(line) <= unit {
+			return line
+		}
+	}
+	return ""
+}
+
+// startPageEscWord is the narrow frame's half of the line above: the way back is
+// the clause that survives, because it is the one a person cannot guess.
+const startPageEscWord = "esc keeps the chat you were in"
+
 // welcomeRowKind says what one drawn row of the unit is, for the pointer: most
 // rows are statements, the message box's rows are the keyboard's, and a recent
 // session's row is a door.
@@ -591,6 +660,14 @@ func (a *app) welcomeFits() bool {
 	if !a.welcome.open {
 		return false
 	}
+	return a.welcomeRoom()
+}
+
+// welcomeRoom is the size half of [app.welcomeFits], asked on its own by the
+// door that OPENS the start page: a `+` that drew a page the frame has no room
+// for would put a person in front of a hidden unit with the conversation behind
+// it already put away (chatstart.go).
+func (a *app) welcomeRoom() bool {
 	width, height := a.size()
 	return height >= welcomeMinRows && width >= welcomeMinCols
 }
@@ -610,17 +687,30 @@ func (a *app) welcomeHolds() bool {
 	if !a.welcomeFits() {
 		return false
 	}
-	if a.rew.on || a.pick.open || a.at(pageMemory) || a.roster.open || a.subPage.open ||
-		a.shelf.open || a.connPanel.open {
-		return false
-	}
-	// AND A WATCHER HAS NO BOX TO PUT INSIDE THE GREETING (watching.go): the
-	// line that stands in its place belongs at the foot of the frame with the
-	// rest of what has taken that position.
-	if a.watching() {
+	if a.boxTaken() {
 		return false
 	}
 	return true
+}
+
+// boxTaken reports whether something other than the draft is standing in the
+// message box's position.
+//
+// IT IS ONE READING BECAUSE TWO DOORS ASK IT. The greeting draws without the box
+// while anything else holds it ([app.welcomeHolds] above), and the new-chat start
+// page REFUSES TO OPEN at all in the same state (chatstart.go): a page whose whole
+// content is a composer, drawn while a filter box has the keyboard, would be a
+// page a person cannot type into. A list that grew in one place and not the other
+// would be exactly that page.
+func (a *app) boxTaken() bool {
+	if a.rew.on || a.pick.open || a.at(pageMemory) || a.roster.open || a.subPage.open ||
+		a.shelf.open || a.connPanel.open {
+		return true
+	}
+	// AND A WATCHER HAS NO BOX AT ALL (watching.go): the line that stands in its
+	// place belongs at the foot of the frame with the rest of what has taken that
+	// position.
+	return a.watching()
 }
 
 // welcomeHeight is how many rows the unit takes, which changes with the draft
@@ -695,7 +785,13 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 			add(line, welcomeMark{kind: welcomeRowInput})
 		}
 	}
-	if line := starterLine(unit); line != "" {
+	// A DOOR THAT REFUSED SAYS SO HERE. While the start page is up the transcript
+	// is not on the frame (view.go's [app.bodyRows]), so a refusal noted into it
+	// would be a sentence written where nobody is looking (chatstart.go).
+	if w.msg != "" {
+		add(pal.warn(fit(w.msg, unit)), welcomeMark{})
+	}
+	if line := a.unitStarterLine(unit); line != "" {
 		add(pal.dim(line), welcomeMark{})
 	}
 

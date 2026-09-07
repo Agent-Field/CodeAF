@@ -312,7 +312,8 @@ func TestAGuestPageNeverDescribesOrTouchesTheLocalTaskWearingTheSameNumber(t *te
 		t.Fatal("the guest page has a steering door, which would steer the local task")
 	}
 	// AND THE BOX SAYS SO RATHER THAN OFFERING TO STEER.
-	if lane := plain(strings.Join(a.roomSteerLaneRows([]string{prompt}, 80), "")); !strings.Contains(lane, roomGuestLane) {
+	box, _, _ := a.inputBlock(80)
+	if lane := plain(strings.Join(a.roomSteerLaneRows(box, 80), "")); !strings.Contains(lane, roomGuestLane) {
 		t.Fatalf("the guest composer offers %q", lane)
 	}
 	// A LINE TYPED ANYWAY STAYS IN THE BOX AND REACHES NOTHING.

@@ -975,6 +975,20 @@ func (a *app) everyComposer() map[recipient]composerState {
 	} else {
 		delete(out, a.composerOwner)
 	}
+	// AND THE NEW-CHAT START PAGE'S BOX IS IN NEITHER READING (chatstart.go). It
+	// is addressed to no conversation — that is the whole of what the page is for
+	// — so there is no identity to write it down under: [app.composersAside]
+	// would hand a person's first sentence to the conversation they were leaving,
+	// and [keptSlot] spells a recipient as its task, its run and its guest, so a
+	// slot minted here would come back off the disk as MAIN and overwrite the
+	// sentence that conversation really is holding.
+	//
+	// SO IT IS NOT KEPT ACROSS A CRASH, and that is the honest state rather than
+	// a gap: a start page parked with `esc` keeps its words on the surface for as
+	// long as this window lives ([app.startKept]), and a window that dies takes
+	// them with it. The conversation's own box, and every task page's line, are
+	// written down exactly as they were.
+	delete(out, startRecipient)
 	return out
 }
 

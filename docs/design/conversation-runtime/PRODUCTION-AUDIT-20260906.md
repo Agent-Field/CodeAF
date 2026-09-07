@@ -715,3 +715,75 @@ Evidence: `/private/tmp/af-production-followup-20260907/` contains
 receipts, and `captures/tabs-*`. The remaining production criteria above are
 still open; this gate is qualification of the integrated change, not a release
 certification.
+
+
+## September 7 navigation-panel and New chat follow-up
+
+The header now uses padded stable tabs with independent close targets, a labeled
+Chats control and a plus button. Main chats have a divider; task pages separate
+ancestry from quieter task facts. Only actual ancestor/Back targets navigate.
+Tab dismissal preserves the agent and its drafts; current shared-engine and
+last-visible dismissal return Home. This does not change the shared connection's
+one-conversation lifetime on actual selection or creation.
+
+Plus opens a selected New chat view with its own draft and recent sessions. It
+creates nothing until first submit. Cancelling or switching parks its draft on
+the window, and restores the existing conversation's own composer. Creation
+failures leave both drafts intact. An unnamed old conversation with an unsent
+draft refuses creation rather than transferring its words to a different reader.
+Task return preserves node/run/guest identity; a foreign task is reacquired from
+its original owner, never resolved against the local task number. Selected paste
+editing happens before creation. The page hides the old task sidebar/strip and
+old telemetry; a task placeholder no longer overwrites its attachment/effort row.
+
+Fixed tab status slots use the front UI's state and held watchers' cached
+transitions, including tasks that outlive a turn. Human questions outrank work;
+internal waits and countdowns do not claim a human answer is required. There is
+no new animation clock, per-frame engine call, or per-frame disk lookup. The front
+status scans its existing task-state map; tab candidates are bounded, but recency
+scans can still traverse older dismissed entries. No end-to-end latency numbers
+are inferred from these component checks.
+
+Actual Claude Code Opus CLI workers implemented the header/start page and the
+bounded status/owner follow-ups. Parent review reproduced and fixed survivor-tab
+reordering, hidden-tab resurrection, unnamed-tab close, draft crossover, missing
+start selection, context return and narrow-frame defects. The initial workers'
+full UI runs during integration were stopped and are not reported as passes.
+One parent full gate was stopped after native no-color QA found the old compact
+task strip still displayed on New chat (its press handler already refused while
+the welcome surface was open). The corrected implementation received the final
+frozen gate below; no old partial run is substituted for it.
+
+Native terminal QA uses the canonical binary and a private seeded profile. It
+passes main/current/inactive/close/Chats/plus hover and click targets, inert
+separators, local and shared draft/caret restoration, safe dismissal, stable
+Ctrl+k preview, nested breadcrumb/root/fold navigation, start-page cancel, and
+recent-chat selection without submitting the parked draft. Captures cover
+160×50, 80×32 and 60×28 and explicit no-color selection. They are terminal-cell
+captures rendered from ANSI, not generated mockups or live-task measurements.
+
+The first completed full run (551.953s) found five assertions built around the
+old layout: two located the bottom input rule by taking the first rule on the
+frame; the breadcrumb test used a width that now fits the complete chain; a
+short-window test expected secondary metadata to remain; and a guest-composer
+fixture supplied a bare prompt instead of the actual rendered composer with its
+recipient and tray. Those assertions now exercise the intended surface without
+changing production code. All five focused regressions pass (1.176s). The full
+rerun, rather than that focused pass alone, is recorded below.
+
+The final frozen `make check` passed: UI 551.179s, manual 1.530s,
+untagged e2e 0.624s, packed manual 1.633s, whole-tree vet and formatting,
+canonical build and binary-size check (51,057,346 bytes against the unchanged
+54,600,000-byte budget). All 14 structural-law packages passed, and changelog
+validation accepted all 264 entries. Final close, start-page ownership, guest
+return and background-status regressions passed under the race detector (3.887s).
+No new skip or performance-cap increase was introduced. The existing known-red
+lock-law skip remains the repository gate policy.
+
+Evidence: `/private/tmp/af-header-panel-20260907/` holds Opus result reports,
+focused red/green regressions, `final-laws.log`, `final-make-check.log` (the five stale assertions),
+`final-ui-rerun.log`, `final-race.log`, native
+scripts/JSON receipts, and `captures/panel-*`. The earlier production criteria
+remain open, notably hosted independent-conversation lifetime, hard-crash and
+uncertain-effect recovery, full owned-process-tree stop, broader substantial-work
+quality evaluation and input-to-paint/acknowledgement latency measurement.

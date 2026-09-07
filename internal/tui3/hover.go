@@ -402,7 +402,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if at, ok := a.tabHoverAt(x, y); ok {
 		return at
 	}
-	if a.roomBackAt(y) {
+	if a.roomBackAt(x, y) {
 		return hoverAt{kind: hoverRoomBack}
 	}
 	if at, ok := a.stripHoverAt(x, y); ok {

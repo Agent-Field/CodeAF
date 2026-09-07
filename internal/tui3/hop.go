@@ -114,8 +114,17 @@ const (
 	hopShutKey = "left"
 )
 
-// hopAwayKey closes a conversation from the card. It is `ctrl+w`, which is the
-// key the grooming drew and the key every browser and editor closes a tab with.
+// hopAwayKey DISMISSES a conversation from the card. It is `ctrl+w`, which is
+// the key the grooming drew and the key every browser and editor closes a tab
+// with — and it now does what that key does everywhere else: it takes the view
+// away and leaves the work alone.
+//
+// IT USED TO END THE CONVERSATION, agent and all, with a two-press arm in front
+// of it when something was running. That was the wrong act under this spelling.
+// A person pressing the tab-close key is putting a row away, not ending an hour
+// of work, and a key that quietly did the second while looking like the first is
+// exactly the shape the arm existed to apologise for. Ending work is `Stop` on a
+// task's own page, and ending the program is `/quit`.
 //
 // IT MEANS SOMETHING ELSE IN THE MESSAGE BOX — delete the word behind the caret
 // (input.go) — and that is not a collision: the card has taken the whole
@@ -308,6 +317,20 @@ func (a *app) hopAvailable() bool {
 func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
 // hopOpen builds the reading and raises the card.
+// hopOpenAll is [app.hopOpen] with the fold already open: every conversation
+// this machine has, not only the ones this window is holding. It is what the
+// `Chats ▾` control at the right end of the tab row presses (chattabs.go) —
+// the label says every chat, so a list that showed three of somebody's twelve
+// would be the control lying about what it opens.
+func (a *app) hopOpenAll() {
+	rows, rest := a.hopReading(true)
+	if len(rows) < 2 && rest == 0 {
+		return
+	}
+	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.touch()
+}
+
 func (a *app) hopOpen() {
 	// A shared engine handle can only have one open conversation. Show its
 	// other saved chats immediately; an open-only list would offer no choice.
@@ -898,7 +921,11 @@ func (a *app) hopWalk(by int) {
 // the card and does nothing else — [app.bringForward] answers the same way for
 // the same reason, and doing it here as well means the card never depends on
 // that agreement holding.
-func (a *app) hopTake() tea.Cmd {
+func (a *app) hopTake() (cmd tea.Cmd) {
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
 		a.hopClose()
 		return nil
@@ -1377,59 +1404,50 @@ func (a *app) countConversations() tea.Cmd {
 	}
 }
 
-// hopAway is `ctrl+w`: close the conversation under the cursor, in this terminal.
+// hopAway is `ctrl+w`: put the conversation under the cursor away — off the tab
+// row of this window, and nowhere else.
 //
-// CLOSING IS NOT SWITCHING AND THE CARD SAYS SO PLAINLY. The grooming called
-// this "put away without stopping it", and that sentence is not true of this
-// engine: closing a conversation closes its agent, and work it has running stops
-// with it — which is exactly what the quit door already warns about
-// (quitarm.go). So a conversation with nothing running closes on one press, and
-// one with work in it takes two, with the work named in between.
+// NOTHING IS CLOSED AND NOTHING IS INTERRUPTED. The agent goes on running, the
+// unsent sentence in its box is kept, the transcript is untouched, and the row
+// stays on this very card — which is what makes the gesture safe to repeat and
+// safe to undo: `enter` on the same row brings the conversation, its tab and its
+// draft straight back (chattabs.go's [app.tabDismiss] holds the whole of the
+// law, including where the person lands when the row they dismissed is the one
+// on screen).
 //
-// A ROW THAT IS NOT OPEN HAS NOTHING TO CLOSE, and says so rather than doing
-// nothing: it is below the fold precisely because this terminal is not holding
-// it.
+// SO THERE IS NO ARM AND NO WARNING, and their absence is the point. The two
+// presses existed because the first one used to end work; a gesture that ends
+// nothing is a gesture nobody needs protecting from.
+//
+// A ROW THAT IS NOT OPEN HERE HAS NO TAB TO PUT AWAY, and says so rather than
+// doing nothing: it is below the fold precisely because this terminal is not
+// holding it.
 func (a *app) hopAway() tea.Cmd {
 	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
 		return nil
 	}
 	row := a.hop.rows[a.hop.at]
-	if !row.open {
+	if !row.open && !tabsHold(a.chatTabs, a.convKey(row.file)) {
 		a.hop.say = hopNotOpenWord
 		a.touch()
 		return nil
 	}
-	if running := a.hopRunning(row); running > 0 && a.hop.armed != a.hop.at {
-		// THE ARM, WITH THE WORK NAMED. One keystroke that ends an hour of work
-		// is the shape stop.go's confirmation card exists to refuse.
-		a.hop.armed = a.hop.at
-		a.hop.say = itoa(running) + " " + plural("task", running) + " running · " + hopAwayKey + " again to close it anyway"
-		a.touch()
-		return nil
-	}
 	if row.here {
-		// THE ONE ON SCREEN IS THE KEEPER'S OWN DOOR, and it brings the next
-		// conversation forward as it goes (keeper.go's [app.closeFront]). The
-		// card comes down with it, because the screen underneath is about to be
-		// a different conversation.
+		// THE ONE ON SCREEN GOES THROUGH THE TAB ROW'S OWN DOOR, which either
+		// switches this window to another conversation it is holding or takes it
+		// home with this one still in front. The card comes down with it, because
+		// the screen underneath is about to be a different page.
 		a.hopClose()
-		cmd, ok := a.closeFront()
-		if !ok {
-			a.note(hopLastOneWord)
-		}
-		return cmd
+		return a.tabDismiss(chatTab{key: a.frontTabKey(), file: a.file, where: a.workspace, word: row.title})
 	}
-	a.closeKept(row.file)
-	// THE CARD STAYS UP AND RE-READS ITSELF. Closing is something a person does
-	// two or three of in a row, and a card that dropped after each one would make
-	// tidying up cost three openings.
+	a.tabShutKey(a.convKey(row.file))
+	// THE CARD STAYS UP AND RE-READS ITSELF. Putting conversations away is
+	// something a person does two or three of in a row, and a card that dropped
+	// after each one would make tidying up cost three openings.
 	rows, rest := a.hopReading(a.hop.all)
 	a.hop.rows, a.hop.rest, a.hop.armed = rows, rest, -1
 	a.hop.at = min(a.hop.at, max(0, len(rows)-1))
-	a.hop.say = hopClosedWord + " · " + row.title
-	if len(rows) < 2 && rest == 0 {
-		a.hopClose()
-	}
+	a.hop.say = hopAwayWord + " · " + row.title
 	a.touch()
 	return nil
 }
@@ -1453,6 +1471,11 @@ func (a *app) hopRunning(row hopRow) int {
 const (
 	hopNotOpenWord = "that one is not open here — enter opens it"
 	hopClosedWord  = "closed"
+	// hopAwayWord is what the card says after a tab has been put away, and it
+	// says what actually happened rather than "closed": the conversation is still
+	// running and still on this list, and a word claiming otherwise would be the
+	// surface reporting an act it did not perform.
+	hopAwayWord    = "tab closed"
 	hopLastOneWord = "that is the only conversation open — /quit closes aforge"
 )
 

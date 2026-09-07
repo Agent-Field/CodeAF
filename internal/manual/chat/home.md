@@ -1121,9 +1121,10 @@ streams, its tasks run, it holds its transcript's lock, it heartbeats a presence
 five seconds — and **nothing closes one for you**. So a window with fifty open is holding
 fifty live conversations' worth of memory until you say otherwise. The two ways to say so:
 
-- `/quit` closes the conversation in front and brings the last one forward;
-- `ctrl+w` on the switcher card closes the conversation under the cursor without leaving the
-  one you are in.
+- `/quit` closes the conversation in front and brings the last one forward.
+
+`ctrl+w` on the switcher card is **not** one of them: it puts the conversation under the
+cursor away — off this window's tab row, with work preserved — and closes nothing.
 
 `2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
 rows. Home is the page that shows every one of them.
@@ -1226,8 +1227,9 @@ halves.
 
 For a genuinely separate conversation — a different project's settings, its own model, its
 own history — one terminal holds **as many as you open**, with no cap on the number. One is
-on screen; the rest are open behind it, fully alive. Nothing closes one for you, so `/quit`
-and `ctrl+w` are how a conversation you are done with actually ends.
+on screen; the rest are open behind it, fully alive. Nothing closes one for you, and `/quit`
+is how a conversation you are done with actually ends. `ctrl+w` on the switcher, and the
+`×` on a tab, only put a conversation away — the work behind it keeps running.
 
 - **`enter` on home** opens any row, in any project, and leaves the one you were in open.
 - **`tab`**, pressed with an empty message box, goes to the conversation you were in before

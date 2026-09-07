@@ -144,12 +144,13 @@ func TestTheRoomHeaderSaysFinishingWhileAGapIsBeingClosed(t *testing.T) {
 	if got := a.roomStateWord(node); got != taskFinishingWord {
 		t.Fatalf("the header calls a finishing node %q, want %q", got, taskFinishingWord)
 	}
-	// The header is asserted through the line a person actually reads, not only
-	// through the word: the trail, the state, the clock and the spend are one
-	// sentence and the state is the second thing in it.
+	// The header is asserted through the rows a person actually reads, not only
+	// through the word: the trail is one row and the state, the clock and the
+	// spend are the row under it (room.go).
 	a.room = a.newRoom(7, "Write the report")
-	head := plain(a.roomHeadWord(120))
-	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskFinishingWord) {
+	head := plain(roomHeadAll(a, 120))
+	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report") ||
+		!strings.Contains(head, taskFinishingWord) {
 		t.Fatalf("the room header is %q", head)
 	}
 	if strings.Contains(head, stateWorking.String()) {
@@ -330,12 +331,13 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			if got := a.roomStateWord(node); got != taskHeldWord {
 				t.Fatalf("the header calls a held node %q, want %q", got, taskHeldWord)
 			}
-			// The header is asserted through the line a person actually reads: the
-			// trail, the state, the clock and the spend are one sentence and the
-			// state is the second thing in it.
+			// The header is asserted through the rows a person actually reads: the
+			// trail is one row and the state, the clock and the spend are the row
+			// under it (room.go).
 			a.room = a.newRoom(7, "Write the report")
-			head := plain(a.roomHeadWord(120))
-			if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskHeldWord) {
+			head := plain(roomHeadAll(a, 120))
+			if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report") ||
+				!strings.Contains(head, taskHeldWord) {
 				t.Fatalf("the room header is %q", head)
 			}
 
@@ -516,7 +518,7 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 	node.cost, node.elapsed = 0.03, 55*time.Second
 
 	said := map[string]string{
-		"the room's header": plain(a.roomHeadWord(160)),
+		"the room's header": plain(roomHeadAll(a, 160)),
 		"the roster's row":  plain(strings.Join(a.railUnder(node, 60), "\n")),
 	}
 	card := &taskDone{merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second}

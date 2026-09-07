@@ -1807,7 +1807,11 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // process cannot see — is drawn as a single dim line in the place's body
 // ([place.remote]), which is still the place being open and saying why it is
 // empty.
-func (a *app) showPage(id page) tea.Cmd {
+func (a *app) showPage(id page) (cmd tea.Cmd) {
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	// LEAVING A PLACE IS THE LOOK, and it is the place's own `close` that writes
 	// the stamp — one call for EVERY place rather than a list of them here, which
 	// would be a second answer to which places can wear a number

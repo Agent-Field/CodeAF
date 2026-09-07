@@ -1943,3 +1943,19 @@ Each label uses at most 32 cells when several tabs share the row. These are pres
 bounds, not execution or history limits. Frame reads use cached local identity and
 in-memory titles, never fresh history scans or remote calls. Cached click destinations
 include the complete tab identity and picker availability, not just rendered words.
+
+
+The navigation panel renders a separate transcript separator and, inside a task,
+a separate metadata row. Its tab candidate slice is bounded to eight entries;
+the recency stack and held agents remain uncapped. Membership walks can still
+inspect recency keys when candidates are dismissed or missing, but the renderer
+no longer builds an unbounded temporary tab list and compares each entry against
+all prior entries. Closing a tab preserves the remaining presentation order.
+Pointer targets are recorded by the row renderer, including separate close and
+Back spans; no filesystem or network call is added to hover or tab layout.
+
+The new-chat header status reads only in-memory state. Held watchers cache task
+and turn transitions; the front tab scans its existing task-state map. No
+per-frame engine call or filesystem reading is added, and no timer is added for
+status marks. This is not an input-to-paint latency measurement. The full UI
+gate and the existing 4,000-line scroll allocation law pass without cap changes.

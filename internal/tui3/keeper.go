@@ -138,6 +138,85 @@ type behindWatch struct {
 	// reads the content of a lane for: every other event here is a nudge, and
 	// this one is a conversation that is about to end.
 	takeover atomic.Bool
+	// waits and turning are WHAT THIS CONVERSATION IS DOING, cached here so that
+	// a surface drawing a mark on its tab does not have to ask the agent
+	// (tabsignal.go).
+	//
+	// THEY COST NOTHING BECAUSE THE LOOP ALREADY COMPUTES THEM. `waits` is set at
+	// the edge [behindWatch.run] already finds — it compares [needsPerson]
+	// against the last answer on every pass to decide whether to stir — and
+	// `turning` is set at the three places a turn's stream is taken up or given
+	// back. Neither adds a call, a lock or an allocation.
+	//
+	// AND THAT IS THE WHOLE POINT OF THEM BEING HERE. The alternative is asking
+	// each agent on each frame: [session.Agent.NeedsPerson] takes the agent's
+	// mutex and allocates a map (session's taskpresence.go), and the running
+	// count comes from [session.Agent.TaskIndex], which READS A FILE. The tab
+	// strip is laid out on every frame and states its own law in as many words —
+	// it opens no file and crosses no wire (chattabs.go) — so a status read from
+	// either of those would be a world scan thirty times a second, or a call to
+	// another machine over `--host`.
+	//
+	// AN UNSET PAIR IS "NOTHING KNOWN", which the strip draws as nothing at all.
+	// A conversation with no watcher — one over a shared handle, one this window
+	// only remembers — never claims to be running, which is the tab strip's own
+	// law about what a tab is allowed to claim.
+	waits   atomic.Bool
+	turning atomic.Bool
+	// tasking is WORK THIS CONVERSATION STARTED THAT OUTLIVES THE TURN THAT
+	// STARTED IT. A task node runs in its own worktree under its own agent: the
+	// turn that proposed it ends, [behindWatch.turning] goes false, and the node
+	// keeps working for minutes afterwards. A strip that read `turning` alone
+	// drew that conversation at rest while it was the busiest one in the window,
+	// which is the defect this field closes (tabsignal.go).
+	//
+	// IT IS FOLDED FROM THE LANE THIS LOOP ALREADY DRAINS. Every node's state
+	// arrives here as an [session.EventTaskUpdate], and the lane replays the
+	// whole roster to a watcher the moment it subscribes (session's
+	// WatchTaskUpdates), so a conversation left with work already running is
+	// known without asking anything: no [session.Agent.TaskIndex], no file, no
+	// call to another machine over `--host`.
+	tasking atomic.Bool
+	// live is the set of nodes last heard claiming to be running or queued, and
+	// it is the bookkeeping behind the atomic above — a count would be wrong,
+	// because a node publishes `running` many times and settles once.
+	//
+	// IT IS TOUCHED ONLY BY [behindWatch.run]'S OWN GOROUTINE, through
+	// [behindWatch.noteTask], and never read by the surface. That is why it needs
+	// no lock beside it: the one fact anybody else reads is the atomic.
+	live map[uint64]struct{}
+}
+
+// noteTask folds one task notice into [behindWatch.tasking], and reports whether
+// the answer CHANGED — which is the only moment worth a stir, the same shape the
+// needs-a-person edge at the bottom of [behindWatch.run] already uses.
+//
+// THE TWO LIVE STATES AND THE THREE SETTLED ONES ARE NAMED EXPLICITLY, and a
+// state that is neither leaves the reading alone. A proposal arrives on this
+// lane before its node exists and carries no state at all; a word this surface
+// has not heard of is news it cannot interpret. Neither is evidence that work
+// stopped, and treating "not a state I know" as "settled" is how a strip goes
+// dark on a conversation that is still working.
+//
+// A BACKGROUND JOB IS NOT A TASK, and is left out here for the reason the
+// surface leaves it out of its own roster (task.go's [app.taskUpdate]): jobs
+// arrive on their own notice and are counted in their own place.
+func (w *behindWatch) noteTask(notice *session.TaskNotice) bool {
+	if notice == nil || notice.Kind == session.TaskKindJob {
+		return false
+	}
+	switch notice.State {
+	case session.TaskRunning, session.TaskQueued:
+		if w.live == nil {
+			w.live = map[uint64]struct{}{}
+		}
+		w.live[notice.ID] = struct{}{}
+	case session.TaskDone, session.TaskFailed, session.TaskUnverified:
+		delete(w.live, notice.ID)
+	default:
+		return false
+	}
+	return w.tasking.Swap(len(w.live) > 0) != (len(w.live) > 0)
 }
 
 // stir asks the surface to look, unless it has already been asked.
@@ -237,6 +316,10 @@ func (w *behindWatch) run() {
 		events, running, stop := door.Attach()
 		if running {
 			turn, turnStop = events, stop
+			// A TURN WAS ALREADY IN FLIGHT AT THE DETACH, and that is the one
+			// moment this fact cannot be recovered from anywhere else later
+			// (tabsignal.go).
+			w.turning.Store(true)
 		} else {
 			stop()
 		}
@@ -248,6 +331,7 @@ func (w *behindWatch) run() {
 	}()
 
 	waiting := needsPerson(w.agent)
+	w.waits.Store(waiting)
 	for {
 		select {
 		case <-w.quit:
@@ -263,6 +347,13 @@ func (w *behindWatch) run() {
 			// (takeover.go's [app.takeOverKept]).
 			if ev.Kind == session.EventTakeover {
 				w.takeover.Store(true)
+			}
+			// AND EVERY OTHER EVENT ON THIS LANE IS A NODE SAYING WHERE IT IS.
+			// Folding it costs a map write; the stir is raised only when the
+			// conversation as a whole starts or stops having work in flight, so a
+			// graph publishing a node a second does not wake the surface a second.
+			if w.noteTask(ev.Task) {
+				w.stir()
 			}
 		case _, ok := <-designs:
 			if !ok {
@@ -287,6 +378,7 @@ func (w *behindWatch) run() {
 				turnStop = nil
 			}
 			turn = stream
+			w.turning.Store(true)
 		case _, ok := <-turn:
 			if !ok {
 				turn = nil
@@ -298,12 +390,14 @@ func (w *behindWatch) run() {
 				// landed in its own journal and moved nothing on screen; the
 				// banner is the whole of what tells the person.
 				w.landed.Store(true)
+				w.turning.Store(false)
 				w.finished.Add(1)
 				w.stir()
 			}
 		}
 		if now := needsPerson(w.agent); now != waiting {
 			waiting = now
+			w.waits.Store(now)
 			w.stir()
 		}
 	}
@@ -452,6 +546,14 @@ func (a *app) stow(conv Conversation, side *aside) {
 func (a *app) rememberOpen(key string) {
 	a.forget(key)
 	a.prev = append(a.prev, key)
+	// AND A CONVERSATION COMING FORWARD GETS ITS TAB BACK. This is the one door
+	// every road to the front goes through — a switch, a resume, an open beside,
+	// a close bringing the next one up — so a dismissal lifted here cannot be
+	// missed by a road somebody adds later (chattabs.go's [app.tabDismiss]).
+	if a.tabShut[key] {
+		delete(a.tabShut, key)
+		a.chatTabBar = tabBar{}
+	}
 }
 
 // forget takes a key off the previous-stack, every occurrence of it.
@@ -500,7 +602,11 @@ func (a *app) holding(file string) bool {
 // resume picker, the welcome box's rows, /resume by argument — because a
 // conversation in the keeper is not something to open. It is something to look
 // at again.
-func (a *app) bringForward(file string) (tea.Cmd, bool) {
+func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	key := a.convKey(file)
 	if key == "" {
 		return nil, false
@@ -519,7 +625,7 @@ func (a *app) bringForward(file string) (tea.Cmd, bool) {
 	held.watch.stop()
 	leaving, side := a.front(), a.detachConversation()
 	a.stow(leaving, side)
-	cmd := a.attachConversation(held.conv, held.side)
+	cmd = a.attachConversation(held.conv, held.side)
 	a.rememberOpen(key)
 	return cmd, true
 }

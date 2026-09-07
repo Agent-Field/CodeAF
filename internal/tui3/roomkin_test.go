@@ -187,9 +187,10 @@ func TestAFlatTasksRoomGrowsNoKinBlock(t *testing.T) {
 	if rows := kinRows(a); len(rows) != 0 {
 		t.Fatalf("a task with no family drew a kin block:\n%q", rows)
 	}
-	// TWO rows: the tab strip, and the header under it (chattabs.go). Neither is
-	// a shelf for a family this task does not have.
-	if a.headHeight() != 2 {
+	// THREE rows: the tab strip, and the two rows of the room's own header under
+	// it — the trail and the facts (chattabs.go, room.go). None of them is a
+	// shelf for a family this task does not have.
+	if a.headHeight() != 1+roomHeadRowCount {
 		t.Fatalf("the pinned region is %d rows over a flat task", a.headHeight())
 	}
 }
@@ -205,8 +206,9 @@ func TestTheKinRowsAreChargedToTheBodyRegion(t *testing.T) {
 	a.touch()
 
 	kin := kinRows(a)
-	// The tab strip, the header, and the kin block under it (chattabs.go).
-	if a.headHeight() != a.roomHeadRow()+1+len(kin) {
+	// The tab strip, the room's own two rows, and the kin block under them
+	// (chattabs.go, room.go).
+	if a.headHeight() != a.roomHeadRow()+roomHeadRowCount+len(kin) {
 		t.Fatalf("the pinned region is %d rows over a %d-row kin block", a.headHeight(), len(kin))
 	}
 	if a.bodyTop() != a.headHeight()+a.stripHeight() {
@@ -216,7 +218,7 @@ func TestTheKinRowsAreChargedToTheBodyRegion(t *testing.T) {
 	// the order the block builds them.
 	rows := strings.Split(frame(a), "\n")
 	for i, want := range kin {
-		at := a.roomHeadRow() + 1 + i
+		at := a.roomHeadRow() + roomHeadRowCount + i
 		if got := plain(rows[at]); got != want {
 			t.Fatalf("frame row %d is %q, want %q", at, got, want)
 		}
@@ -235,6 +237,8 @@ func TestTheKinRowsStandDownOnAShortTerminal(t *testing.T) {
 	if rows := kinRows(a); len(rows) != 0 {
 		t.Fatalf("a short terminal still drew the kin block:\n%q", rows)
 	}
+	// The strip has stood down with the kin block at this height, and what is
+	// left is the breadcrumb row; secondary task facts also give way.
 	if a.headHeight() != 1 {
 		t.Fatalf("the pinned region is %d rows on a short terminal", a.headHeight())
 	}

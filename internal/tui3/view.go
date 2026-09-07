@@ -395,7 +395,7 @@ func (a *app) frameBody() (string, int, int) {
 	// (chattabs.go). They are two rows because they are two questions — the one
 	// that used to carry both carried neither well.
 	tabs := a.tabsRow(width)
-	head := a.roomHead(width)
+	head := a.roomHeadRows(width)
 	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
 	// width: what is running is a fact about the SESSION, not about the
 	// transcript, and it is pinned because a door that scrolls away is a door
@@ -414,9 +414,17 @@ func (a *app) frameBody() (string, int, int) {
 	rows := make([]string, 0, height)
 	if tabs != "" {
 		rows = append(rows, tabs)
+		// AND THE SEAM UNDER THEM OUT IN THE CONVERSATION, where there is no trail
+		// and no facts row to close the panel off (chattabs.go's
+		// [app.chatRuleHeight]). It is charged for by [app.headHeight] on the same
+		// floor, so the row the frame draws and the row the scrolling subtracts are
+		// the same row.
+		if a.chatRuleHeight(width) > 0 {
+			rows = append(rows, a.rule(width))
+		}
 	}
-	if head != "" {
-		rows = append(rows, head)
+	if len(head) > 0 {
+		rows = append(rows, head...)
 		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
 		// work out and what it handed out itself, which is the fact the roster's
 		// tree carries in its shape and this page had no shape to carry it in
@@ -963,6 +971,26 @@ func (a *app) window(width, height int) ([]row, int) {
 // turn underneath is still streaming into a transcript nobody is looking at —
 // which is what makes esc restore the conversation exactly.
 func (a *app) bodyRows(width, height int) ([]row, int) {
+	// THE NEW-CHAT START PAGE STANDS OVER THE CONVERSATION AND NOT UNDER IT
+	// (chatstart.go). It is the greeting's unit drawn in the middle of the frame,
+	// and the greeting is only ever drawn on an EMPTY surface — over a transcript
+	// it would be centred in whatever slack that transcript left, which on a full
+	// screen is none, and the two would be drawn through each other.
+	//
+	// IT IS ANSWERED HERE AND NOWHERE ELSE because this is the one reading three
+	// things share: the draw, the pointer ([app.chromeAt] asks it again to find
+	// the lifted rows) and the hit-testing ([app.rowAt]). A frame that hid the
+	// transcript in the draw alone would keep answering clicks with rows nobody
+	// can see.
+	if a.startingChat() {
+		if a.welcomeFits() {
+			return nil, height
+		}
+		// A window too small for the unit still gets the page: the box falls back
+		// to the foot of the frame where it lives on every other screen, and this
+		// row is what says which page it belongs to.
+		return []row{{text: a.pal.dim(fit(startTinyWord, width)), entry: -1}}, max(0, height-1)
+	}
 	if a.copy.on {
 		return a.copyRows(width, height)
 	}
@@ -1002,6 +1030,15 @@ func (a *app) rowAt(y int) (row, bool) {
 	// list under it to resolve to, so the pointer gets nothing here rather than a
 	// transcript row nobody can see.
 	if a.railFull() {
+		return row{}, false
+	}
+	// AND SO DOES THE NEW-CHAT START PAGE, for the same reason said about a page
+	// rather than a column (chatstart.go): the conversation is not drawn under it
+	// ([app.bodyRows]), and a pointer answered from a transcript nobody can see
+	// would expand tool calls and open task pages belonging to the conversation
+	// the person has just stepped away from. The page's own rows are the
+	// greeting's, and they are hit-tested as chrome ([app.chromeAt]).
+	if a.startingChat() {
 		return row{}, false
 	}
 	// The body starts AT the top of its region and the padding falls below it
@@ -1068,29 +1105,26 @@ func (a *app) headHeight() int {
 		// AND THE CONVERSATION ITSELF HAS NO TRAIL ROW. `main` with nothing after
 		// it is the tab above it said twice, and the emptiness law is exactly this:
 		// a row that carries no news is a row that is not drawn.
-		return head
+		//
+		// WHAT IT DOES HAVE IS THE SEAM UNDER THE TABS, which is what closes the
+		// header panel off from the transcript and from the roster beside it on a
+		// terminal whose background this program does not control
+		// (chattabs.go's [app.chatRuleHeight]).
+		return head + a.chatRuleHeight(width)
 	}
-	// The same floor the rule and the blank above the draft stand on: a terminal
-	// too short for breathing room is too short for a header, and what is
-	// happening is still on the status line.
-	if a.breathingRows() == 0 {
-		return head
-	}
-	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
-	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
-	// way out's worth of line down there — so a row charged for here would be a
-	// row the frame never drew, and every hit-test on the page would land one line
-	// from where it was aimed.
-	if width < roomHeadFloor {
-		return head
-	}
+	// A ROOM'S OWN ROWS ARE CHARGED FOR THROUGH THEIR OWN LADDER, which knows the
+	// two floors the header stands on — too narrow for a trail and a way out, too
+	// short for breathing room — and which of its two rows a short frame can
+	// afford (room.go's [app.roomHeadHeight]). It is asked rather than counted off
+	// a rendered slice, because this runs before anything is drawn.
+	//
 	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
-	// exactly the reason the header's own row is: they are drawn above the body
+	// exactly the reason the header's own rows are: they are drawn above the body
 	// by the frame, and rows the scrolling has not subtracted push the room's
 	// last row under the input box. They are asked at the frame's OWN width,
 	// which is the width [app.view] hands the header, so the count here and the
 	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	return head + 1 + len(a.roomKinRows(width))
+	return head + a.roomHeadHeight(width) + len(a.roomKinRows(width))
 }
 
 // scrollPage is how many rows one pgup or pgdown moves: a screenful less a line

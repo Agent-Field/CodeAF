@@ -1717,7 +1717,7 @@ it ended when aforge closed; its journal is kept
 ```
 
 **These restored rows are history the column keeps, not work.** Nothing on them runs.
-Nothing on them can be stopped — `x` and the header's ✕ are not offered over a run that
+Nothing on them can be stopped — `x` and the header's `Stop` are not offered over a run that
 ended with the last process, because there is nothing left to stop. They are not counted
 in the running total on the status line, and no queued row among them will start. Opening
 one still opens the run's page, and the page says `no shape published yet`, because the

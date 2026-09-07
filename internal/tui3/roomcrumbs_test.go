@@ -43,7 +43,7 @@ func TestBreadcrumbRootReturnsToTheNamedChat(t *testing.T) {
 	a := roomNamed(t, 3, "Fix parsing")
 	a.title = "Shipping the parser"
 	a.width = 100
-	_ = a.roomHead(a.width)
+	_ = strings.Join(a.roomHeadRows(a.width), "\n")
 	var root crumbHit
 	for _, hit := range a.crumbs {
 		if hit.crumb.kind == crumbRoot {

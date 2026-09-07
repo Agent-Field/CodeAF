@@ -1466,6 +1466,8 @@ type app struct {
 	// [app.roomHead] at layout and read by [app.stopMarkPress], which is the
 	// bargain every pointer target on this surface makes.
 	roomStop hudSpan
+	// roomBackSpan is the padded Back action in the breadcrumb row.
+	roomBackSpan hudSpan
 	// crumbs is where the breadcrumbs were drawn on the frame's first row, in
 	// columns, and what each of them opens (roomcrumbs.go). It is written by the
 	// draw — [app.roomHead] — and read by the press and the
@@ -1486,6 +1488,13 @@ type app struct {
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
 	chatTabBar tabBar
+	// tabShut is the conversations whose TAB has been dismissed — the whole of
+	// the new state the ✕ on a tab costs (chattabs.go's [app.tabDismiss]). The
+	// conversation itself is untouched: still held, still running, still on the
+	// switcher. It is a map rather than a slice because [app.tabList] asks it per
+	// tab on every frame, and a key leaves it in [app.rememberOpen], which is the
+	// one door every road that brings a conversation forward goes through.
+	tabShut map[string]bool
 
 	// THE PASTE BRACKET. pasting says the terminal has opened one and not yet
 	// closed it; pasted is what has arrived inside it; pasteAt is when the last
@@ -2175,6 +2184,13 @@ type app struct {
 	// welcome is the box an empty session opens with (welcome.go). It is the
 	// only animation on this surface that is not a spinner, and it runs once.
 	welcome welcome
+	// startBack is what `esc` on the new-chat start page puts back, and startKept
+	// is that page's own unsent sentence while the page is down (chatstart.go).
+	// startGen discards a recent list that arrives after the page it was asked
+	// for closed.
+	startBack startBack
+	startKept composerState
+	startGen  int
 	// roster is the resume picker: the same conversations the box lists, opened
 	// on purpose and filterable (resume.go).
 	roster roster
@@ -2931,6 +2947,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the agent it already has a pointer to (keeper.go).
 		return a, a.behindStir(msg.key)
 
+	case startRecentsMsg:
+		// This directory's earlier conversations, read off the loop for the
+		// new-chat start page (chatstart.go). It never touches the box.
+		a.takeStartRecents(msg)
+		return a, nil
+
 	case exportedMsg:
 		a.exportDone(msg)
 		return a, nil
@@ -3306,22 +3328,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.stopPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
-			// AND THE ROOM'S HEADER IS READ DIRECTLY UNDER THE ✕ THAT RIDES IT, which
-			// is the pointer's share of the way out: the row says "esc/← main", and a
-			// row that named the exits and did nothing when it was pressed would be the
-			// one dead cell on the page (room.go's [app.roomBackPress]).
-			//
-			// It is read HERE, above the strip and the rail, because the header spans
-			// the whole window while both of those claim columns of it — the rail takes
-			// every press in its own columns whether or not a row was under it, so a
-			// header read after it would be dead at exactly the end where the words are
-			// printed.
-			// AND THE BREADCRUMBS ARE READ BETWEEN THE TWO, because a crumb is a
-			// door onto ONE page while the row it rides is the way back to the
-			// conversation: a press on a crumb's own cells is that crumb's, and
-			// every other cell of the row is still the exit (roomcrumbs.go). The ✕
-			// still outranks both — ending work is the expensive gesture and wins
-			// the cells it is drawn on.
+			// Header targets precede the sidebar because they span the window.
+			// Breadcrumbs and the Back label use only their rendered cells;
+			// punctuation and whitespace do not become navigation shortcuts.
 			if a.crumbPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -3333,7 +3342,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.tabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
-			if a.roomBackPress(msg.Mouse().Y) {
+			if a.roomBackPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
@@ -6411,6 +6420,16 @@ func (a *app) freshAndEmpty() bool {
 	return a.hudStats().jobs == 0
 }
 
+// renewReplaces is whether the next create TAKES THE PLACE of the conversation
+// on screen rather than opening beside it.
+//
+// IT IS ONE READING AND NOT TWO. The door acts on this answer and the new-chat
+// start page has to know the same answer BEFORE the door acts — what it does
+// with the leaving box depends on whether that conversation will still exist
+// (chatstart.go's [app.startChatEnter]) — and two copies of the question are two
+// answers waiting to disagree about whether somebody's conversation was closed.
+func (a *app) renewReplaces() bool { return a.freshAndEmpty() && !a.startKeepsLeaving() }
+
 // renew is /new: ANOTHER CONVERSATION IN THIS PROJECT, unless the one on screen
 // is fresh and empty, in which case it takes its place.
 //
@@ -6437,15 +6456,31 @@ func (a *app) freshAndEmpty() bool {
 // [app.homeStart], placekeys.go's [app.placeTalkAbout]), and sending it into the
 // conversation somebody was already in is the one outcome neither of them may
 // have.
-func (a *app) renew() (tea.Cmd, bool) {
+func (a *app) renew() (tea.Cmd, bool) { return a.renewRefusing(a.note) }
+
+// renewRefusing is [app.renew] with ONE THING MOVED: where its two refusals are
+// said.
+//
+// THE TRANSCRIPT IS NOT ALWAYS ON THE FRAME. Every caller but one is standing in
+// a conversation, and a refusal noted into it lands where the person is already
+// looking. The new-chat start page is drawn OVER the conversation and hides it
+// (chatstart.go, view.go's [app.bodyRows]), so the same sentence noted the same
+// way would be written onto a screen nobody can see — and the one thing a person
+// who just pressed enter needs is to be told why nothing happened.
+//
+// ONLY THE REFUSALS MOVE. Everything the successful road says — which of the two
+// things happened, the door's own notice, a close that failed — still goes into
+// the new conversation's entry line, because by then that conversation is what is
+// on screen.
+func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	if !a.canStart() {
-		a.note(newUnavailableWord)
+		say(newUnavailableWord)
 		return nil, false
 	}
-	replacing := a.freshAndEmpty()
+	replacing := a.renewReplaces()
 	conv, whole, err := a.nextConversation()
 	if err != nil {
-		a.note("new session failed: " + err.Error())
+		say("new session failed: " + err.Error())
 		return nil, false
 	}
 	// THE DOOR IS ASKED BEFORE ANYTHING IS PUT DOWN, which is [app.openSession]'s
@@ -7292,6 +7327,16 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 				// enter is still submit — /nonsense gets its answer.
 				a.menu.close()
 				return nil, false
+			}
+			if a.startingChat() {
+				// AND ON THE NEW-CHAT START PAGE THE ROW GOES THROUGH THE PAGE
+				// (chatstart.go). [app.runMenu] dispatches straight into
+				// [app.slash], which acts on the conversation in front — and on
+				// that page the conversation in front is the one the page is
+				// drawn over and HIDING. /quit closed it, /clear replaced it and
+				// /model retargeted it, all from a page whose whole promise is
+				// that it touches nothing until a first message is sent.
+				return a.startMenuEnter(), true
 			}
 			return a.runMenu(), true
 		}

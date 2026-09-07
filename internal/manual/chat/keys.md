@@ -728,7 +728,7 @@ at and filtered, not edited by pointer.
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
-| `ctrl+w` | Delete the word behind the caret. While the switcher is up it closes the conversation under the cursor instead |
+| `ctrl+w` | Delete the word behind the caret. While the switcher is up it puts the conversation under the cursor away instead — off the tab row, with work preserved |
 | `alt+backspace` | Same as `ctrl+w` |
 | `ctrl+backspace` | Same as `ctrl+w` |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
@@ -1529,8 +1529,10 @@ has that one row, and the fold has the rest of the machine in it.
 
 **The tabs above a conversation are the same journey with a mouse.** The conversations
 this window has been in are drawn there, the one you are in bright and underlined;
-clicking one switches to it, and the `▾` (or the `…3` count on a narrow frame) at its
-right end opens this card. See *Conversation tabs* on the screen page.
+clicking one switches to it, and the `Chats ▾` control (or `Chats +3 ▾` where the row is
+too narrow for every tab) at its right end opens this card with its fold already open. The
+`×` on a tab puts that conversation away without closing it. See *Conversation tabs* and
+*Closing a tab* on the screen page.
 
 | Key | What it does |
 | --- | --- |
@@ -1543,7 +1545,7 @@ right end opens this card. See *Conversation tabs* on the screen page.
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Close the conversation under the cursor. See below |
+| `ctrl+w` | Put the conversation under the cursor away — off this window's tab row, with work preserved. See below |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1562,8 +1564,8 @@ it. Everywhere else the legend reads `space space home · tab last · ctrl+k swi
 **There is no cap** on what one terminal holds at once: taking a row is never refused for
 having too many open. The card draws the first twelve rows and hands a digit to the first
 nine; past that the cursor is the way, and home is the page that shows every conversation
-you have. Nothing closes one for you — `/quit` closes the one in front, `ctrl+w` here closes
-the one under the cursor.
+you have. Nothing closes one for you — `/quit` closes the one in front, and `ctrl+w` here
+puts the one under the cursor away without closing it.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1624,34 +1626,35 @@ cannot send it, because **`shift+tab` walks the card back on every one of them**
 card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
 unlooked-at — and waits for your choice.
 
-## Close a conversation from the switcher — ctrl+w, closing a chat, too many open
+## Put a conversation away from the switcher — ctrl+w, closing a chat, too many open
 
-**`ctrl+w` on the row closes that conversation in this terminal.** The card stays up and
-says `closed · <name>`, so tidying three of them costs three keystrokes rather than three
-openings.
+**`ctrl+w` on the row takes that conversation off this window's tab row, and does nothing
+else.** The card stays up and says `put away — still running`, so tidying three of them
+costs three keystrokes rather than three openings.
 
-**Closing is not switching.** It ends that conversation's session, and **work running inside
-it stops with it** — the same thing the quit door warns about. So:
+**It does not close anything.** The conversation goes on running, its unsent sentence and
+caret are kept, its transcript is untouched, and its row stays on this very card — `enter`
+on it brings the conversation, its tab and its draft straight back. There is no warning
+and no second press, because there is nothing to warn about.
 
-- a conversation with nothing running closes on **one** press;
-- a conversation with work in it takes **two**, and the card says what is running in
-  between: `2 tasks running · ctrl+w again to close it anyway`;
-- moving the cursor cancels that warning, so a second press never lands on a row you have
-  walked away from.
+`ctrl+w` used to end the conversation, agent and all, with a two-press arm in front of it
+when work was running. That was the wrong act under this spelling: the key every browser
+and editor puts a row away with should put a row away.
 
-`ctrl+w` on the row marked `you are here` closes the conversation you are in and brings the
-next one forward — the same thing `/quit` on it would do. With only one conversation open it
-says `that is the only conversation open — /quit closes aforge`.
+`ctrl+w` on the row marked `you are here` puts the conversation you are in away — the
+window switches to another chat it is holding, or goes Home with this one still in front
+behind it. Nothing is stopped either way.
 
 **`ctrl+w` on a row below the fold does nothing** and says
-`that one is not open here — enter opens it`. There is nothing to close: this terminal is
-not holding it.
+`that one is not open here — enter opens it`. There is nothing here to put away: this
+terminal is not holding it.
+
+**What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
+the conversation in front — leaving aforge when it was the last one this terminal held.
 
 With `aforge chat --no-host`, nothing caps how many one terminal holds, so `ctrl+w` is
 never about making room. Engine-backed connections currently hold one selected chat;
-switching closes the previous session and retains its saved history. It is
-about ending something you are done with: a conversation left open goes on running, holding
-its transcript's lock and its share of this window's memory, until you close it.
+switching closes the previous session and retains its saved history.
 
 ## `tab` still goes straight to the last one
 
@@ -2047,7 +2050,8 @@ a blank row, the gap beside a paragraph, the slack under a short transcript — 
 nothing at all, exactly as it does in the conversation. Leaving is `esc` and `←`, and
 the pinned header at the top of the page names both: `esc/← main`. That header row is
 also a button — press it anywhere along its width and you are back in the conversation
-— except the `✕` at its right end, which asks to stop the work instead.
+The `Stop` that ends the work is not on that row at all: it is at the right end of the
+quiet facts row underneath, so a press aimed at leaving can never end a task.
 
 **Inside a harness design's room, while its card is waiting on you**, two more chords
 appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
@@ -2152,9 +2156,10 @@ Only the left button acts. A press is resolved in this order:
    removes it, and the **thinking chip** at the right end of that row opens the five-rung
    ladder (pressing it again closes it). Neither moves the caret in your draft.
 5. The jump-to-latest chip.
-6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
-   the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
-   box is three rows tall, because a finger is about that wide.
+6. A stop target: the confirmation card's two answers while it is up, and the `Stop`
+   at the right end of a room's **facts row** — the second row of its header, under the
+   breadcrumbs. On a phone-width terminal `Stop`'s hit box is three rows tall,
+   because a finger is about that wide.
 7. A room's **pinned header**, which is the pointer's way back to the conversation.
    The whole row answers, both ends of it, because the row says `esc/← main` and a
    row that named the exits and did nothing when pressed would be dead. The dim
@@ -2790,3 +2795,7 @@ live-applies on the next render; work stays indented in either mode.
 - **Tasks, rooms, proposals and the roster**: the tasks pages.
 - **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and
   rewind page.
+
+## Starting a new chat with plus
+
+The `+` at the right of the conversation tabs opens a **New chat** start page. Type a first message or choose a recent conversation. Opening the page creates nothing. `esc` or its tab's close control returns to your previous chat or task with its draft. The first message creates the conversation. A draft parked on the start page stays for this window's lifetime. See *Starting a new chat with the `+` plus button beside the tabs* on the screen page.

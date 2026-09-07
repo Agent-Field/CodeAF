@@ -389,6 +389,11 @@ const orchPollEvery = 250 * time.Millisecond
 // paths that return no command of their own, and one drain point is worth more
 // than four return values.
 func (a *app) openOrchRoom(id, goal string) {
+	// A task destination takes the body and composer together. Park an open
+	// start page before retargeting either of them.
+	if a.startingChat() {
+		a.parkChatStart()
+	}
 	if _, ok := a.orchDoors(); !ok {
 		// THE BUILD GUARD, room.go's exactly: the doors are an assertion and not a
 		// compile-time requirement, so a surface driven by an agent that has never

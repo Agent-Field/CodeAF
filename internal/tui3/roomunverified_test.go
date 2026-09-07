@@ -31,10 +31,16 @@ func TestTheRoomHeaderSaysTheNodeNeedsALook(t *testing.T) {
 
 	// And the line a person actually reads, in one piece.
 	a.room = a.newRoom(7, "Port the parser")
-	head := plain(a.roomHeadWord(120))
-	want := glyphUnverified + " " + roomCrumbRoot + roomCrumbSep + "Port the parser · " + taskUnverifiedWord
-	if !strings.Contains(head, want) {
-		t.Fatalf("the room header is %q, want it to contain %q", head, want)
+	// THE TRAIL IS THE PATH AND THE FACTS ARE UNDER IT (room.go): the state glyph
+	// leads the state word on the facts row rather than the breadcrumb it had
+	// nothing to do with.
+	head := plain(roomHeadAll(a, 120))
+	trail := roomCrumbRoot + roomCrumbSep + "Port the parser"
+	facts := glyphUnverified + " " + taskUnverifiedWord
+	for _, want := range []string{trail, facts} {
+		if !strings.Contains(head, want) {
+			t.Fatalf("the room header is %q, want it to contain %q", head, want)
+		}
 	}
 	for _, never := range []string{taskStoppedWord, mergeWordAborted} {
 		if strings.Contains(head, never) {

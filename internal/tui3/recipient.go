@@ -65,10 +65,33 @@ type recipient struct {
 	// [guestRecipient] with the session that page is reading, and everything else
 	// — the stash, the record, the reunion — already keys on it.
 	guest string
+	// start says this is THE NEW-CHAT START PAGE's own box, and it is the one
+	// recipient on this list that is not a reader of any conversation at all.
+	//
+	// IT IS A RECIPIENT SO THAT `+` COSTS NOTHING TO GET RIGHT. The start page
+	// puts a blank composer in front of somebody while the conversation they were
+	// in is still on the other side of an escape, and every hazard in that
+	// sentence — their half-written message, its caret, the screenshot on its
+	// tray, the documents behind its compact tokens — is exactly what this file
+	// already carries from one reader to another and back untouched. A second
+	// stash written for the start page would be a second answer to "what is the
+	// box holding", kept in step with this one by nothing.
+	//
+	// IT BELONGS TO THE WINDOW AND NEVER TO A CONVERSATION, which is the one law
+	// that is its own rather than inherited: nobody has been addressed yet, so
+	// there is no conversation whose record these words could go down under. It is
+	// kept out of the aside and out of the crash file for that reason
+	// (draftkeep.go's [app.everyComposer] states it where the two readings are
+	// taken), and a start page left parked keeps its words on the surface itself
+	// (chatstart.go's [app.startKept]).
+	start bool
 }
 
 // mainRecipient is the conversation: the reader the box has when no page is open.
 var mainRecipient = recipient{}
+
+// startRecipient is the new-chat start page's own box (chatstart.go).
+var startRecipient = recipient{start: true}
 
 func taskRecipient(id uint64) recipient { return recipient{task: id} }
 

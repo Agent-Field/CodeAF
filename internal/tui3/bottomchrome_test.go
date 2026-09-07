@@ -15,10 +15,10 @@ import (
 // blankRow reports whether a drawn row carries nothing but spaces.
 func blankRow(s string) bool { return strings.TrimRight(plain(s), " ") == "" }
 
-// ruleAt is the index of the frame's one horizontal line, or -1.
+// ruleAt locates the bottom input rule, after any header divider.
 func ruleAt(rows []string) int {
-	for i, r := range rows {
-		if strings.Contains(plain(r), "──") {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if strings.Contains(plain(rows[i]), "──") {
 			return i
 		}
 	}

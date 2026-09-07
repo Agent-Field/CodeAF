@@ -47,7 +47,7 @@ func headRoom(t *testing.T) *app {
 // EVERY ACT THE HEADER OWES IS ON IT. The verb, the clock, the spend, the size
 // of what happened, and the one thing on the row that is moving.
 func TestTheRoomHeaderCarriesTheVerbTheClockTheSpendTheCountAndTheLiveLine(t *testing.T) {
-	head := plain(headRoom(t).roomHeadWord(160))
+	head := roomHeadAll(headRoom(t), 160)
 	for _, want := range []string{"Fix the nil-map crash", "working", "3m", "$0.42", "2 tool calls", "bash"} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the header does not say %q: %q", want, head)
@@ -62,7 +62,7 @@ func TestTheRoomHeaderCarriesTheVerbTheClockTheSpendTheCountAndTheLiveLine(t *te
 func TestTheHeaderDropsEverySegmentNobodyPublished(t *testing.T) {
 	a, _, _ := roomApp(t)
 	a.openRoom(7, "Fix the nil-map crash")
-	head := plain(a.roomHeadWord(160))
+	head := plain(roomHeadAll(a, 160))
 	for _, never := range []string{"$", "0 tool calls", "0 calls"} {
 		if strings.Contains(head, never) {
 			t.Fatalf("the header drew %q about a node nobody has measured: %q", never, head)
@@ -79,7 +79,7 @@ func TestAFinishedNodeHasNoLiveLine(t *testing.T) {
 	a := headRoom(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
 		session.TaskDone, session.TaskNotice{})})
-	if head := plain(a.roomHeadWord(160)); strings.Contains(head, "still working") {
+	if head := plain(roomHeadAll(a, 160)); strings.Contains(head, "still working") {
 		t.Fatalf("a landed node's header claims it is still going: %q", head)
 	}
 }
@@ -90,11 +90,11 @@ func TestAFinishedNodeHasNoLiveLine(t *testing.T) {
 // higher-ranked one could not use (rowfit.go's laws 1 and 3).
 func TestTheHeaderDegradesByRankAndNeverClipsTheName(t *testing.T) {
 	a := headRoom(t)
-	wide := plain(a.roomHeadWord(160))
+	wide := plain(roomHeadAll(a, 160))
 	if !strings.Contains(wide, "$0.42") {
 		t.Fatalf("the wide header is missing the spend: %q", wide)
 	}
-	narrow := plain(a.roomHeadWord(46))
+	narrow := plain(roomHeadAll(a, 46))
 	if !strings.Contains(narrow, "Fix the nil-map crash") {
 		t.Fatalf("a narrow frame cut the name: %q", narrow)
 	}
@@ -104,4 +104,21 @@ func TestTheHeaderDegradesByRankAndNeverClipsTheName(t *testing.T) {
 	if len(narrow) >= len(wide) {
 		t.Fatalf("the header did not degrade at all: %q then %q", wide, narrow)
 	}
+}
+
+// roomHeadAll is the pinned header read as one plain sentence: the trail row's
+// own label, and the facts row under it.
+//
+// The header is TWO ROWS now — ancestry on one, what the work is doing on the
+// other (room.go) — so a test asking whether the header states a FACT has to
+// read both. It joins them with the same separator the facts row joins its own
+// segments with, so an assertion written against the one-row header still reads
+// the way it did.
+func roomHeadAll(a *app, width int) string {
+	word, _ := a.roomFactsWord(a.roomNode(), width)
+	trail := plain(a.roomHeadWord(width))
+	if word = plain(word); word == "" {
+		return trail
+	}
+	return trail + rowSep + word
 }

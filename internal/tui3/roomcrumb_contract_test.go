@@ -41,7 +41,7 @@ func openRoomThroughRail(t *testing.T, a *app, id uint64) {
 		t.Fatalf("the rail did not open node %d: room=%d", id, roomID(a))
 	}
 	a.touch()
-	a.roomHead(a.width)
+	strings.Join(a.roomHeadRows(a.width), "\n")
 }
 
 // crumbSpanFor is where one crumb was drawn on the last laid-out header.
@@ -52,7 +52,7 @@ func crumbSpanFor(t *testing.T, a *app, word string) hudSpan {
 			return hit.span
 		}
 	}
-	t.Fatalf("the header drew no crumb saying %q:\n%q\n%+v", word, plain(a.roomHead(a.width)), a.crumbs)
+	t.Fatalf("the header drew no crumb saying %q:\n%q\n%+v", word, plain(strings.Join(a.roomHeadRows(a.width), "\n")), a.crumbs)
 	return hudSpan{}
 }
 
@@ -75,7 +75,7 @@ func TestTheTrailNamesEveryStepOfTheActualChain(t *testing.T) {
 	if got := a.roomTrail(); got != chain {
 		t.Fatalf("the trail is %q, want %q", got, chain)
 	}
-	if head := plain(a.roomHead(a.width)); !strings.Contains(head, chain) {
+	if head := plain(strings.Join(a.roomHeadRows(a.width), "\n")); !strings.Contains(head, chain) {
 		t.Fatalf("the header does not draw the chain:\n%q", head)
 	}
 	// AND THE PAGE ONE STEP UP IS THE CHAIN WITHOUT ITS LAST STEP: the trail is
@@ -99,7 +99,7 @@ func TestTheTrailInventsNoStepItCannotName(t *testing.T) {
 	if got, want := a.roomTrail(), "main ▸ Cut the goldens"; got != want {
 		t.Fatalf("the trail is %q, want %q — no id, no blank, no guess", got, want)
 	}
-	if head := plain(a.roomHead(a.width)); strings.Contains(head, "3") && strings.Contains(head, "▸ 3") {
+	if head := plain(strings.Join(a.roomHeadRows(a.width), "\n")); strings.Contains(head, "3") && strings.Contains(head, "▸ 3") {
 		t.Fatalf("the header named a missing ancestor by its id:\n%q", head)
 	}
 }
@@ -140,7 +140,7 @@ func TestAnAncestorCrumbOpensThatPageAndTheCurrentOneIsInert(t *testing.T) {
 	// AND IT IS THE ROSTER'S DOOR, WHICH IS IDEMPOTENT. A second press on the
 	// crumb of the page you are already on does not close it — the page keeps its
 	// scroll, its subscription and the draft written for it.
-	a.roomHead(a.width)
+	strings.Join(a.roomHeadRows(a.width), "\n")
 	again := crumbSpanFor(t, a, "Write the tree")
 	clickHead(t, a, again.from+1)
 	if roomID(a) != 3 {
@@ -181,15 +181,15 @@ func TestWalkingUpTheTrailKeepsEachPagesOwnDraft(t *testing.T) {
 // fold opens the nearest ancestor it hid — which is the immediate parent, and
 // the crumb that would come back first if the terminal grew.
 func TestTheTrailFoldsItsMiddleAndTheFoldOpensTheParent(t *testing.T) {
-	// FOLDING IS FROM THE OUTSIDE IN, so at sixty columns the `…` stands for the
+	// FOLDING IS FROM THE OUTSIDE IN, so at fifty columns the `…` stands for the
 	// root of the family alone and the immediate parent is still spelled — and
 	// the fold opens the nearest thing IT hid, which is that outer step.
 	a := crumbApp(t)
-	a.width = 60
+	a.width = 50
 	a.touch()
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if !strings.Contains(head, crumbFoldWord) {
-		t.Fatalf("a sixty-column header spelled the whole chain:\n%q", head)
+		t.Fatalf("a fifty-column header spelled the whole chain:\n%q", head)
 	}
 	for _, want := range []string{roomCrumbRoot, "Write the tree", "Cut the goldens"} {
 		if !strings.Contains(head, want) {
@@ -211,7 +211,7 @@ func TestTheTrailFoldsItsMiddleAndTheFoldOpensTheParent(t *testing.T) {
 	b := crumbApp(t)
 	b.width = 40
 	b.touch()
-	narrow := plain(b.roomHead(b.width))
+	narrow := plain(strings.Join(b.roomHeadRows(b.width), "\n"))
 	for _, gone := range []string{"Ship the port", "Write the tree"} {
 		if strings.Contains(narrow, gone) {
 			t.Fatalf("at forty columns the trail still spells %q:\n%q", gone, narrow)
@@ -235,7 +235,7 @@ func TestANarrowTrailNeverHidesThatThereIsMoreChain(t *testing.T) {
 	for width := roomHeadFloor; width <= 90; width++ {
 		a.width = width
 		a.touch()
-		head := plain(a.roomHead(width))
+		head := plain(strings.Join(a.roomHeadRows(width), "\n"))
 		if !strings.Contains(head, roomCrumbRoot) {
 			// Below the two ends the root itself is given up; that is the one rung
 			// where the fold goes too, and the page's own name is all that is left.
@@ -264,9 +264,17 @@ func TestEveryCrumbIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 	for _, width := range []int{200, 160, 120, 100, 80, 60, 40, 24, roomHeadFloor} {
 		a.width = width
 		a.touch()
-		line := plain(a.roomHead(width))
+		// THE TRAIL ROW ALONE, because that is the row the crumbs are cut into: the
+		// facts under it are a row of their own and answer for none of these spans
+		// (room.go).
+		line := plain(a.roomHeadRows(width)[0])
 		if got := ansi.StringWidth(line); got > width {
-			t.Fatalf("at %d columns the header is %d cells:\n%q", width, got, line)
+			t.Fatalf("at %d columns the trail row is %d cells:\n%q", width, got, line)
+		}
+		for _, row := range a.roomHeadRows(width) {
+			if got := ansi.StringWidth(plain(row)); got > width {
+				t.Fatalf("at %d columns a header row is %d cells:\n%q", width, got, plain(row))
+			}
 		}
 		for _, hit := range a.crumbs {
 			if hit.span.to > ansi.StringWidth(line) {
@@ -281,51 +289,51 @@ func TestEveryCrumbIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 	}
 }
 
-// AND NOTHING ON THE TRAIL REACHES THE ✕. The two are on one row, and the mark
-// is the only control on this surface that ends work with a pointer: a crumb
-// overlapping it would be a walk up the family that stopped a task instead.
-func TestTheStopMarkOutranksTheTrailItSharesARowWith(t *testing.T) {
+// AND `Stop` IS ON A ROW OF ITS OWN, WHICH THE TRAIL NEVER REACHES. The two used
+// to share a line and the mark had to outrank the crumbs on it; they are two
+// rows now, and the separation is the whole point — ending work and walking up
+// the family are opposite gestures, and the expensive one no longer sits one
+// cell from a breadcrumb (room.go, chattabs.go).
+func TestTheStopWordIsOnItsOwnRowAndTheTrailNeverReachesIt(t *testing.T) {
 	a := crumbApp(t)
 	for _, width := range []int{200, 120, 80, 40} {
 		a.width = width
 		a.touch()
-		a.roomHead(width)
+		strings.Join(a.roomHeadRows(width), "\n")
 		if !a.roomStop.pressable() {
 			continue
 		}
-		for _, hit := range a.crumbs {
-			for x := hit.span.from; x < hit.span.to; x++ {
-				if a.roomStop.holds(x) {
-					t.Fatalf("at %d columns the crumb %q covers the ✕ at column %d",
-						width, hit.crumb.word, x)
-				}
-			}
+		// The trail answers for no column of the row `Stop` is on, because the
+		// trail is not on that row at all.
+		if _, ok := a.crumbAt(a.roomStop.from, a.roomFactsRow()); ok {
+			t.Fatalf("at %d columns the trail answers on the facts row", width)
 		}
-		// And the press order says the same thing: the mark's own column is the
-		// stop's, so a press there is never a walk up the family and never the way
-		// out either.
-		if _, ok := a.crumbAt(a.roomStop.from, a.roomHeadRow()); ok {
-			t.Fatalf("at %d columns the trail answers for the ✕'s own column", width)
+		if !a.stopMarkAt(a.roomStop.from, a.roomFactsRow()) {
+			t.Fatalf("at %d columns Stop was drawn and does not answer for its cells", width)
 		}
-		if !a.stopMarkAt(a.roomStop.from, a.roomHeadRow()) {
-			t.Fatalf("at %d columns the ✕ was drawn and does not answer for its cells", width)
+		// And nothing on the trail's own row is the stop: a press up there is the
+		// walk or the way out, never the end of a task.
+		if a.stopMarkAt(a.roomStop.from, a.roomHeadRow()) {
+			t.Fatalf("at %d columns Stop answers on the trail's row", width)
 		}
-		clickHead(t, a, a.roomStop.from)
+		if !a.stopMarkPress(a.roomStop.from, a.roomFactsRow()) {
+			t.Fatalf("at %d columns a press on Stop was not taken by it", width)
+		}
+		a.stop = nil
 		if roomID(a) != 4 {
-			t.Fatalf("at %d columns a press on the ✕ walked the trail to %d", width, roomID(a))
+			t.Fatalf("at %d columns a press on Stop walked the trail to %d", width, roomID(a))
 		}
 	}
 }
 
-// AND A PRESS THAT MISSES EVERY CRUMB IS STILL THE WAY OUT. The row is the
-// pointer's exit and the crumbs are cut into it; the cells between them belong
-// to the row.
-func TestAPressBetweenTheCrumbsIsStillTheWayOut(t *testing.T) {
+// Punctuation describes the path; it is not a destination of its own.
+func TestAPressBetweenTheCrumbsDoesNotNavigate(t *testing.T) {
 	a := crumbApp(t)
+	before := a.room.id
 	sep := crumbSpanFor(t, a, "Ship the port")
-	clickHead(t, a, sep.to) // the ` ▸ ` after the crumb, which opens nothing
-	if a.roomOpen() {
-		t.Fatal("a press on the trail's own punctuation did not leave the page")
+	clickHead(t, a, sep.to)
+	if !a.roomOpen() || a.room.id != before {
+		t.Fatal("breadcrumb punctuation navigated away from the page")
 	}
 }
 
@@ -344,7 +352,7 @@ func TestAGuestPagesChainIsDrawnAndOpensNothing(t *testing.T) {
 	a.room.guest.trail = []string{"Ship their port", "Write their tree"}
 	a.width, a.height = 200, 40
 	a.touch()
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	for _, want := range []string{roomGuestOwnerWord, "Ship their port", "Write their tree", "Port the parser"} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the guest header is missing %q:\n%q", want, head)
@@ -403,13 +411,13 @@ func TestARunsPageKeepsItsOwnHeaderAndRecordsNoCrumbs(t *testing.T) {
 	// A node's page first, so there are crumbs on the map to go stale.
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	roomOn(a, 1, "Ship the port")
-	a.roomHead(a.width)
+	strings.Join(a.roomHeadRows(a.width), "\n")
 	if len(a.crumbs) == 0 {
 		t.Fatal("the node's page recorded no crumbs to go stale")
 	}
 	a.openOrchRoom("r1", "answer the retry question")
 	a.touch()
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if !strings.Contains(head, roomCrumbRoot) || !strings.Contains(head, "answer the retry question") {
 		t.Fatalf("the run's page lost its own trail:\n%q", head)
 	}
@@ -431,7 +439,7 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	a, _, _ := roomApp(t)
 	a.width, a.height = 120, 40
 	a.touch()
-	if got := a.roomHead(a.width); got != "" {
+	if got := strings.Join(a.roomHeadRows(a.width), "\n"); got != "" {
 		t.Fatalf("the conversation drew a header of its own: %q", plain(got))
 	}
 	if len(a.crumbs) != 0 {
@@ -445,9 +453,12 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	if strings.Contains(strip, "─") {
 		t.Fatalf("the tab strip drew a border across the top of the page: %q", strip)
 	}
-	if a.headHeight() != 1 || a.bodyTop() != 1 || a.roomHeadRow() != 1 {
-		t.Fatalf("the strip is drawn but not budgeted: head=%d top=%d row=%d",
-			a.headHeight(), a.bodyTop(), a.roomHeadRow())
+	// The strip and the seam under it are the two pinned rows out here, and both
+	// are charged for (chattabs.go's [app.chatRuleHeight]).
+	want := 1 + a.chatRuleHeight(a.width)
+	if a.headHeight() != want || a.bodyTop() != want || a.roomHeadRow() != 1 {
+		t.Fatalf("the strip is drawn but not budgeted: head=%d top=%d row=%d want=%d",
+			a.headHeight(), a.bodyTop(), a.roomHeadRow(), want)
 	}
 	// AND IT STANDS DOWN WHERE THE ROOM'S HEADER WOULD: a terminal with no
 	// breathing room has no row to spare for a fact that is true all day.
@@ -465,32 +476,45 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 
 // ── WHAT THE HEADER STILL OWES ──────────────────────────────────────────────
 
-// THE STATE WORD OUTRANKS THE MIDDLE OF THE CHAIN. A person checking on work is
-// asking what it is doing first and whose piece of what second, so the trail is
-// offered the line less the leading fact and folds to fit it. What it never
-// gives up is the page's own name: a cut name takes the whole row and no fact is
-// drawn beside it (rowfit.go's law 1).
-func TestTheHeaderKeepsTheStateWordWhileTheChainCanFold(t *testing.T) {
+// THE STATE WORD NO LONGER COMPETES WITH THE CHAIN FOR CELLS, and this is the
+// law that replaced the negotiation between them. The trail has a row and the
+// facts have a row, so a narrow frame folds the chain's middle because the
+// CHAIN does not fit — never because a figure wanted the space — and the state
+// word survives on its own row either way. Navigation and telemetry degrade
+// independently, which is what "navigation first when narrow" actually means.
+func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 	a := crumbApp(t)
 	a.tasks[4].state = session.TaskRunning
 	a.tasks[4].title = strings.TrimSpace(strings.Repeat("long name ", 9))
 	openRoomThroughRail(t, a, 3) // out of node 4's page, so the new name is read
 	openRoomThroughRail(t, a, 4)
-	a.width = 120
-	a.touch()
-	head := plain(a.roomHead(a.width))
-	if !strings.Contains(head, crumbFoldWord) {
-		t.Fatalf("the chain did not fold to make room for the state:\n%q", head)
+	for _, width := range []int{120, 60, 40} {
+		a.width = width
+		a.touch()
+		rows := a.roomHeadRows(width)
+		if len(rows) != roomHeadRowCount {
+			t.Fatalf("at %d columns the header is %d rows", width, len(rows))
+		}
+		trail, facts := plain(rows[0]), plain(rows[1])
+		// THE TRAIL ROW CARRIES NO TELEMETRY AT ANY WIDTH. That is the whole of the
+		// separation: a path with a state word threaded into it is a path nobody
+		// reads as a path.
+		if strings.Contains(trail, stateWorking.String()) {
+			t.Fatalf("at %d columns the trail row carries the state word:\n%q", width, trail)
+		}
+		// AND THE STATE WORD IS ON ITS OWN ROW WHATEVER THE TRAIL DID.
+		if !strings.Contains(facts, stateWorking.String()) {
+			t.Fatalf("at %d columns the facts row lost the state word:\n%q", width, facts)
+		}
+		// The page's own name survives on the trail row, cut where it must be.
+		if !strings.Contains(trail, "long name") {
+			t.Fatalf("at %d columns the trail lost the page's own name:\n%q", width, trail)
+		}
 	}
-	if !strings.Contains(head, stateWorking.String()) {
-		t.Fatalf("the header dropped the state word it folded the chain for:\n%q", head)
-	}
-	// AND WHERE EVEN THE FOLDED TRAIL CANNOT HOLD THE NAME, the name takes the
-	// row and nothing is spelled beside it.
-	a.width = 40
+	// AND THE MIDDLE OF THE CHAIN FOLDS WHERE THE CHAIN ITSELF CANNOT FIT.
+	a.width = 60
 	a.touch()
-	narrow := plain(a.roomHead(a.width))
-	if strings.Contains(narrow, stateWorking.String()) && strings.Contains(narrow, glyphMore) {
-		t.Fatalf("a cut name still drew a fact beside it:\n%q", narrow)
+	if trail := plain(a.roomHeadRows(60)[0]); !strings.Contains(trail, crumbFoldWord) {
+		t.Fatalf("a sixty-column trail did not fold its middle:\n%q", trail)
 	}
 }

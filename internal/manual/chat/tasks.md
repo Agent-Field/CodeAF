@@ -334,7 +334,7 @@ different about it: a row, a room, a report, and everything else on this page.
   for, starts nothing and says nothing. A yes nobody could confirm is not a start.
 
 **Stopping one you did not want** is the ordinary stop: `x` on its row over an empty message
-box, or the ✕ on the pointer. Nothing about it is special from the moment it exists.
+box, or `Stop` on the pointer. Nothing about it is special from the moment it exists.
 
 **There is no setting that turns this off.** No `/settings` row switches it, and nothing you
 type disarms it for the session. What bounds it is the list above, and the stop.
@@ -2705,8 +2705,8 @@ Pressing the same door again is always the way back out.
 Ways out: `esc` leaves and restores the conversation's scroll exactly. `←` over an empty box
 steps back one level. `←` twice within 600 ms goes home — out of everything, at the live
 edge, nothing selected. `/new` closes any open room, because a task dies with its session.
-With the pointer, the room's own pinned header is the way back: it reads `esc/← main` and
-the whole row answers to a press. **Clicking inside the page does not leave it** — a press
+With the pointer, click the root breadcrumb or the padded `esc/← main` control.
+Breadcrumb separators and blank header space do nothing. **Clicking inside the page does not leave it** — a press
 on a blank row, or on prose with nothing behind it, does nothing at all, the same as it
 does in the conversation.
 
@@ -2780,7 +2780,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top line | the conversation name; its `▾` opens the chat picker | the conversation → ancestor tasks → current task breadcrumb trail |
+| pinned top rows | the tab strip and one thin rule under it; `Chats ▾` at its right end opens the chat picker | the tab strip, then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
@@ -2790,9 +2790,29 @@ local conversation the same page tails that log live.
 | attachments | the tray sends pictures | a room's box sends words only |
 | proposals | drawn as cards | never — a task's own pieces start without asking you |
 
-The focus header is an accent line pinned at the top. It names the conversation,
-then the actual ancestor tasks and current task. State, elapsed time and cost follow
-where space permits. The current task's name takes priority over those details.
+The focus header is **two pinned rows**, under the tab strip:
+
+```
+  │ main ×│ the tree walk    │                                  Chats ▾
+  ─ main ▸ Ship the port ▸ Fix the nil-map crash ───────────── esc/← main ─
+  ─ ⠙ working · 2m 12s · $0.04 · 6 tool calls ───────────────────── Stop ───
+```
+
+**The trail row is ancestry and nothing else** — the conversation, the actual ancestor
+tasks, and the task you are on — with the way out at its right end. No state glyph, no
+model, no money, no call count: a path with figures threaded through it is a path nobody
+reads as a path.
+
+**The facts row under it is what the work is doing.** The state leads it, wearing the same
+hue the roster paints that task's glyph with, and the elapsed time, the spend, the call
+count, the live line and the model follow in the quiet grey every other figure on this
+surface wears. `Stop` is at its right end, and the row closes in the rule that separates
+the header from the page.
+
+**They degrade on their own rows**, which is what "navigation first when narrow" actually
+means: the trail folds its middle to `…` because the *chain* did not fit, never because a
+figure wanted the space, and the facts drop off the end in rank order whatever the trail
+did.
 
 **The name on it is the task's whole name, and the facts behind it are what a narrow
 frame gives up.** Until 2026-09-03 a task's name was cut to three words the moment it
@@ -2801,8 +2821,8 @@ named the work no better than the twenty-four-cell column did: a family of six p
 that all began with a verb and a plural noun came out as `Cut every list`, `Fold the
 settled`, `Move the tab`. The name now reaches every row whole and each row decides what
 it can afford — the header keeps the name first and drops facts off the end as the
-terminal narrows, and only a name that cannot fit the line **alone** is cut, in which
-case it takes the whole line and no fact is drawn beside it.
+terminal narrows, and only a name that cannot fit the trail row **alone** is cut, in which
+case it takes that whole row — the facts are on the row underneath either way.
 
 **And the hint slot under a room asking for your look shortens rather than vanishing.**
 At sixty columns `a accept · l look again · n not right` is a few cells too long for what
@@ -2820,8 +2840,10 @@ aforge writes says `task 7 · thinking · high · its next call takes it`.
 
 **The header has separate click targets.** Ancestor crumbs open their exact task;
 the root and the `esc/← main` end return to the conversation. The current crumb does
-nothing, so clicking its name cannot accidentally leave it. The `✕` retains its stop
-confirmation. Empty header space retains the shortcut back to main. Below 12 columns,
+nothing when pressed — so clicking its name cannot accidentally leave it — though it
+still lights under the pointer, so the row never looks broken where you are standing.
+`Stop` is on the row underneath and retains its confirmation. Empty header space retains
+the shortcut back to main. Below 12 columns,
 or on very short terminals, the bar gives its row back to the transcript; `esc` still
 leaves.
 
@@ -3928,7 +3950,8 @@ press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep 
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
 
-With a pointer, the `✕` at the right end of a room's pinned header raises the same card.
+With a pointer, the `Stop` at the right end of a room's facts row — the second row of its
+header, under the breadcrumbs — raises the same card.
 Strip chips do not carry a stop button.
 
 **There is one other way to stop a task, and it asks no card.** On the **tasks** place
@@ -3980,7 +4003,7 @@ What else you can do yourself, on a task that is running:
 | copy text out of it | `ctrl+b` in its room |
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
-| stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
+| stop it | `x`, or `Stop` on its room's facts row — one confirmation card, always |
 | change its brief or its done-condition | send your correction to the running task; its worker uses `revise_assignment` and keeps your words beside the new condition |
 | continue a failed or finished one | say `continue task 7`, or `tasks` with `id` and `continue` — same node, same copy |
 
@@ -4250,7 +4273,7 @@ in layers, with one fuel gauge pinned at the top — `planner: <model> · $0.87 
 model doing the planning beside what it has spent of what you approved.
 
 **`x` on that page stops the whole run**, over an empty message box, and it asks the same
-one card the pointer's `✕` asks:
+one card the pointer's `Stop` asks:
 
 ```
 ? Stop this run? In-flight nodes halt; partial results stay.

@@ -141,21 +141,25 @@ func TestAPressOnNothingInTheConversationDoesNothing(t *testing.T) {
 // that end is inside the roster's own columns. The rail claims every press in
 // those columns, so a header read after it would be dead at exactly the cells
 // carrying the words.
-func TestTheRoomHeaderIsTheWayOutAtBothEnds(t *testing.T) {
+func TestTheRoomHeaderBackLabelOpensAndWhitespaceIsInert(t *testing.T) {
 	a, _, _ := roomApp(t)
-	for _, x := range []int{0, 2, a.width / 2, a.width - 2} {
-		clickRail(t, a, 0)
-		if !a.roomOpen() {
-			t.Fatal("the rail did not open a room")
-		}
-		if head := plain(a.roomHead(a.width)); !strings.Contains(head, roomBackWord) {
-			t.Fatalf("the pinned header does not name the way out:\n%q", head)
-		}
+	clickRail(t, a, 0)
+	_ = a.roomHeadRows(a.width)
+	if !a.roomBackSpan.pressable() {
+		t.Fatal("header omitted its Back control")
+	}
+	for _, x := range []int{0, a.width / 2, a.width - 1} {
 		drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
 		drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
-		if a.roomOpen() {
-			t.Fatalf("a press on the header at column %d did not return to the conversation", x)
+		if !a.roomOpen() {
+			t.Fatalf("blank header space at %d navigated", x)
 		}
+	}
+	x := a.roomBackSpan.from + 1
+	drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	if a.roomOpen() {
+		t.Fatal("Back label failed to return to the conversation")
 	}
 }
 

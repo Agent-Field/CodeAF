@@ -110,6 +110,18 @@ type roomCrumb struct {
 	node *taskNode
 }
 
+// lights reports whether this crumb reacts to a pointer resting on it.
+//
+// IT IS WIDER THAN [roomCrumb.door] AND ONLY BY ONE CRUMB: the page you are
+// standing on. Everywhere else on this surface what lights is exactly what a
+// press acts on, and every crumb of somebody else's chain stays as quiet as it
+// is inert. The page's own crumb is the exception for the tab row's reason
+// (chattabs.go's [tabHit.lights]): a trail where every step answers the hand
+// except the one you are on reads as the current step being broken, and the
+// emphasis it already wears is what tells "you are here" from "the pointer is
+// here" once the hand moves away.
+func (c roomCrumb) lights() bool { return c.door() || c.kind == crumbHere }
+
 // door reports whether pressing this crumb would take a person anywhere.
 func (c roomCrumb) door() bool {
 	switch c.kind {
@@ -422,34 +434,35 @@ func crumbsAt(hits []crumbHit, from int) []crumbHit {
 	return out
 }
 
-// paintCrumbs paints one header label, brightening the crumb the pointer is on
-// where that crumb is a door. at is the column the label was drawn at, because
-// the spans are kept in the terminal's own columns and the cut has to happen in
-// the label's.
-//
-// IT IS A BRIGHTENING AND NOT A BAND, and the pieces are painted separately
-// rather than nested — both are render.go's [app.paintIdentity], whose comment
-// holds the whole of the reasoning. One step up from wherever the row already
-// is: ink from a room's accent, accent from the conversation's dim.
-//
-// A CRUMB THAT IS NOT A DOOR NEVER LIGHTS. What lights is what a press acts on,
-// so the page you are standing on and every crumb of somebody else's chain stay
-// exactly as loud as the words around them.
+// paintCrumbs separates the current location from its ancestry and paints hover
+// inside the same spans used for navigation. Punctuation remains secondary.
 func (a *app) paintCrumbs(label string, at int, paint func(string) string) string {
-	hot, ok := a.hotCrumb()
-	if !ok {
+	if len(a.crumbs) == 0 {
 		return paint(label)
 	}
-	from, to := hot.span.from-at, hot.span.to-at
-	if from < 0 || to > ansi.StringWidth(label) {
-		return paint(label)
+	hot, hovering := a.hotCrumb()
+	width, cursor := ansi.StringWidth(label), 0
+	var out strings.Builder
+	for _, hit := range a.crumbs {
+		from, to := hit.span.from-at, hit.span.to-at
+		if from < cursor || to > width {
+			continue
+		}
+		out.WriteString(a.pal.dim(ansi.Cut(label, cursor, from)))
+		word := ansi.Cut(label, from, to)
+		ink := a.pal.dim
+		if hit.crumb.kind == crumbHere {
+			ink = a.pal.accent
+		}
+		shown := ink(word)
+		if hovering && hot.span == hit.span {
+			shown = a.pal.cursor(a.pal.ink(word), 0)
+		}
+		out.WriteString(shown)
+		cursor = to
 	}
-	lift := a.pal.accent
-	if a.roomOpen() {
-		lift = a.pal.ink
-	}
-	return paint(ansi.Cut(label, 0, from)) + lift(ansi.Cut(label, from, to)) +
-		paint(ansi.Cut(label, to, ansi.StringWidth(label)))
+	out.WriteString(a.pal.dim(ansi.Cut(label, cursor, width)))
+	return out.String()
 }
 
 // hotCrumb is the crumb the pointer is on, when it is on one that would do
@@ -459,7 +472,7 @@ func (a *app) hotCrumb() (crumbHit, bool) {
 		return crumbHit{}, false
 	}
 	for _, hit := range a.crumbs {
-		if hit.span.from == a.hot.index && hit.crumb.door() {
+		if hit.span.from == a.hot.index && hit.crumb.lights() {
 			return hit, true
 		}
 	}
@@ -479,7 +492,7 @@ func (a *app) hotCrumb() (crumbHit, bool) {
 // of following the words.
 func (a *app) crumbHoverAt(x, y int) (hoverAt, bool) {
 	crumb, span, ok := a.crumbSpanAt(x, y)
-	if !ok || !crumb.door() {
+	if !ok || !crumb.lights() {
 		return hoverAt{}, false
 	}
 	return hoverAt{kind: hoverCrumb, index: span.from}, true

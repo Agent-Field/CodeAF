@@ -426,10 +426,10 @@ func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 	}
 }
 
-// TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork is the way out, and
+// TestCtrlWDismissesATabAndKeepsItsConversation is the way out, and
 // the one guard on it: closing ends the agent, so work turning inside it stops —
 // which is what the quit door already warns about, said here on the row.
-func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
+func TestCtrlWDismissesATabAndKeepsItsConversation(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	older, _ := keepThree(t, a)
@@ -444,11 +444,11 @@ func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
 		t.Fatalf("the cursor is on %q", a.hop.rows[a.hop.at].title)
 	}
 	drive(t, a, key(hopAwayKey))
-	if a.openCount() != 2 {
-		t.Fatalf("ctrl+w left %d open", a.openCount())
+	if a.openCount() != 3 {
+		t.Fatalf("ctrl+w stopped holding a conversation: %d open", a.openCount())
 	}
-	if older.closes == 0 {
-		t.Fatal("ctrl+w did not close the agent")
+	if older.closes != 0 || older.stops != 0 {
+		t.Fatal("ctrl+w ended work instead of dismissing a tab")
 	}
 	// THE CARD STAYS UP AND SAYS SO, because tidying up is something people do
 	// two or three of in a row.
@@ -460,34 +460,23 @@ func TestCtrlWClosesAConversationAndAsksTwiceOverRunningWork(t *testing.T) {
 	}
 }
 
-// TestClosingAConversationWithWorkInItTakesTwoPresses is that guard on its own.
-func TestClosingAConversationWithWorkInItTakesTwoPresses(t *testing.T) {
+// Repeated dismissal remains harmless even while work is running.
+func TestDismissingARunningTabNeverStopsItsWork(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"
 	emptyMachine(a)
 	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.stow(Conversation{Agent: busy, SessionFile: "/tmp/lab/busy.jsonl", Place: "lab"},
 		&aside{since: a.now(), title: "the busy one"})
-
-	drive(t, a, key(hopOpenKey), key(hopAwayKey))
-	if a.openCount() != 2 {
-		t.Fatalf("one press closed a conversation with work in it: %d open", a.openCount())
+	drive(t, a, key(hopOpenKey), key(hopAwayKey), key(hopAwayKey))
+	if a.openCount() != 2 || busy.closes != 0 || busy.stops != 0 {
+		t.Fatalf("dismissing stopped work: open=%d closes=%d stops=%d", a.openCount(), busy.closes, busy.stops)
 	}
-	if !strings.Contains(a.hop.say, "2 tasks running") {
-		t.Fatalf("the warning reads %q", a.hop.say)
+	if !a.tabShut[a.convKey("/tmp/lab/busy.jsonl")] {
+		t.Fatal("dismissal did not hide the running tab")
 	}
-	drive(t, a, key(hopAwayKey))
-	if a.openCount() != 1 {
-		t.Fatalf("the second press left %d open", a.openCount())
-	}
-	// AND A WALK DISARMS IT: a warning that outlived the cursor leaving the row
-	// would close a conversation nobody was looking at.
-	other := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
-	a.stow(Conversation{Agent: other, SessionFile: "/tmp/lab/other-busy.jsonl", Place: "lab"},
-		&aside{since: a.now(), title: "another busy one"})
-	drive(t, a, key(hopOpenKey), key(hopAwayKey), key("down"), key("up"), key(hopAwayKey))
-	if a.openCount() != 2 {
-		t.Fatalf("a walk did not disarm the close: %d open", a.openCount())
+	if !strings.Contains(a.hop.say, hopAwayWord) {
+		t.Fatalf("dismissal was not acknowledged: %q", a.hop.say)
 	}
 }
 

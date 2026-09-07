@@ -302,7 +302,7 @@ func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 	if !a.roomOpen() || a.room.id != 7 {
 		t.Fatalf("enter did not open the focused node's room")
 	}
-	if head := plain(a.roomHeadWord(120)); !strings.Contains(head, "thinking low") {
+	if head := plain(roomHeadAll(a, 120)); !strings.Contains(head, "thinking low") {
 		t.Fatalf("the room's header does not state the rung: %q", head)
 	}
 	// And the chord means the same thing from inside the page it opened.

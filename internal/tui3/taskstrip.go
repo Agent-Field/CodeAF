@@ -197,6 +197,9 @@ type stripSpan struct {
 // and the roster still holds every one of them — and a permanent row that says
 // "nothing is running" is a row of chrome bought with a row of conversation.
 func (a *app) stripShowing() bool {
+	if a.startingChat() {
+		return false
+	}
 	width, height := a.size()
 	// The same floor the pinned header stands on (view.go's [app.headHeight]): a
 	// terminal too short for breathing room spends what it has on the

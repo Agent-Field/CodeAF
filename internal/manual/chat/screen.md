@@ -71,40 +71,180 @@ you read it in the same glance as the box above it.
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
 **The first line aforge draws is the conversations this window has been in**, drawn as
-tabs, left to right:
+tabs in a row of their own, with a thin rule under it:
 
 ```
-   openrouter price scrape   Refactor the rail scope   [Shipping the parser]  ▾
+  │ openrouter price scrape  │ Refactor the rail sco…  │[Shipping the parser]×│    Chats ▾
+  ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
-The active tab has a soft highlight and brackets; the rest are dim. The brackets
-still identify it when color is disabled. **Clicking a tab goes to
-that conversation** — the same switch `ctrl+k` makes. Clicking the tab you are already in
-does nothing while you are in the conversation itself, and takes you back out to it from
-a task page.
+Each tab is a **padded target** with a light vertical rule between it and the next; the
+rules themselves do nothing. The tab you are in has a soft highlight and brackets, and the
+brackets still identify it when color is disabled. **Every tab reacts to the pointer**,
+including the one you are already in, and the highlight it wears as the *chosen* tab stays
+put when the pointer leaves.
 
-**The order never changes as you switch.** Tabs sit in the order this window first
-entered them, so the one you reached for a minute ago is still in the same place.
+**Clicking a tab goes to that conversation** — the same switch `ctrl+k` makes. Clicking the
+tab you are already in does nothing while you are in the conversation itself, and takes you
+back out to it from a task page.
 
-**The `▾` at the right end opens the switcher** — the same card `ctrl+k` opens, with every
-conversation on this machine in it. Where the row is too narrow for every tab, the mark
-becomes a count instead (`…3`), the conversation you are in is always one of the tabs
-still drawn, and pressing the count opens that same card.
+**The order never changes as you switch.** Tabs sit in the order this window first entered
+them, so the one you reached for a minute ago is still in the same place. At most eight are
+kept; past that the one you have not been in for longest falls off, and the tab you are in
+never does.
+
+**`Chats ▾` at the right end opens the switcher** — the same card `ctrl+k` opens, with
+every conversation on this machine in it, its fold already open. Where the row is too
+narrow for every tab the control reads `Chats +3 ▾`, counting the tabs that did not fit.
+On a narrower frame it drops the `▾`, then the count, and keeps the word `Chats`: the
+word is what says it is a door. Where the switcher cannot open at all, the count is drawn
+alone (`+3`) and does nothing, because it is still true.
 
 **A tab does not claim the conversation is running.** It says this window has been there
 and one press goes back. Over an engine-backed connection (`--host`, `--at`, and the
 ordinary socket onto this machine's engine) only one conversation is open at a time and
 switching closes the previous one — the surface says `closed · <name> — a connection holds
 one conversation at a time` when it does. With `aforge chat --no-host` the ones you left
-keep running. There is no `✕` on a tab and no `+` at the end of the row: closing is
-`ctrl+w` from the switcher, and a new conversation is `/new`.
+keep running.
 
-**Your unsent words and caret are kept either way.** A half-written message goes down under the
-conversation it was written for and comes back when you return to it, including over a
+**Your unsent words and caret are kept either way.** A half-written message goes down under
+the conversation it was written for and comes back when you return to it, including over a
 shared connection where the conversation itself was closed.
 
 **It stands down on a small frame** — under 12 columns wide, or on a terminal too short
-for a blank row above the message box — for the same reason the room header does.
+for a blank row above the message box — for the same reason the room header does. The
+rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
+a seam is the cheapest thing on the frame to give up.
+
+## Closing a tab — the × on a tab, dismissing a chat, does closing a tab stop my work
+
+**No. The `×` on a tab closes the VIEW and nothing else.**
+
+The agent behind it goes on running, its unsent draft, its caret and its attachments stay
+exactly where you left them, its transcript is untouched, and the conversation is still on
+the switcher `ctrl+k` opens. Reopening it from there or from home brings the tab **and the
+draft** straight back. Nothing about the `×` interrupts an agent or closes a session.
+
+**The mark is drawn on the tab you are in and on the tab under the pointer**, and the cells
+it sits in are held open on every tab whether or not the mark is in them — so nothing
+re-packs under your hand when you move across the row. On the other tabs the cells are
+blank until you point at one, which is also how the row shows a hover with color disabled:
+a `×` that was not there a moment ago.
+
+**The close target is hit-tested on its own cells.** A press on the `×` dismisses the tab; a
+press one cell to its left selects it. Neither can be mistaken for the other.
+
+Where you end up depends on which tab it was:
+
+| The tab you dismissed | What happens |
+| --- | --- |
+| one you are not in | it just leaves the row |
+| the one you are in, with another visible chat this window holds | the window switches to that one and the tab leaves the row |
+| the one you are in, with nowhere else to go | the window goes to **Home**, with the conversation still in front behind it |
+| the one you are in, over an engine-backed connection | the window goes to **Home**. Nothing is switched and nothing is closed, because that connection holds one conversation at a time and switching away would end the very work the dismissal promised to leave alone |
+
+**The last tab can be dismissed.** It takes you Home. It does not quit aforge and it throws
+nothing away.
+
+**`ctrl+w` on the switcher card does the same thing** to the row under the cursor. Ending
+work is `Stop` on a task's page; ending aforge is `/quit`.
+
+## Starting a new chat with the `+` plus button beside the tabs
+
+**`+` at the tab strip opens a start page. It does not create anything.** No session, no
+agent, no file, nothing on the switcher — pressing it three times and escaping three times
+leaves you exactly where you began. The conversation is made when you **submit the first message or command**.
+
+The page is the launch screen drawn inside the frame you are already in: the wordmark, the
+model and crew line, a blank message box with the caret in it, and this project's recent
+conversations under it. A selected **New chat** tab labels this page. The other chat tabs remain available, with overflow in Chats. The footer belongs to the start page and shows no previous conversation costs. The previous chat’s sidebar and compact task strip are hidden.
+
+| Key or click | What it does |
+| --- | --- |
+| type, then `enter` | Starts the conversation and sends that as its first message |
+| `esc` | Cancels — back to the chat or task page you pressed `+` from, with your draft |
+| `↑` / `↓` | Walk the recent conversations, while the box is empty |
+| `enter` on a chosen row | Opens that conversation. It sends nothing |
+| click a recent row | The same |
+| `+` again | Reuses the page you already have |
+
+**A picture on its own is a message.** Drop or paste one and press `enter` with nothing
+typed and the conversation starts on the picture.
+
+## What happens to your draft when you press `+`
+
+**Nothing. Your unsent message stays in the chat you were in.** Pressing plus does not take
+your draft anywhere: the new chat start page opens with an empty box, an empty attachment
+tray and none of the pasted documents from the chat behind it. Nothing you had attached
+there rides out on the first message you send from the start page.
+
+**`esc` gives the draft back** — the words, the caret where you left it, the files
+and pictures on the tray, the compact pastes, where you were reading in the transcript, and
+the task page you had open if you pressed `+` from one. A task read from another conversation is reopened through a fresh connection to that exact owner; if that connection is unavailable, the existing task card explains why.
+
+**A half-written first message on the start page is parked, not thrown away.** Press `esc`,
+do something else, press `+` again, and it is still in the box. It is kept for as long as
+this window lives; it is **not** written to disk, so a crash loses that one. Your
+conversation's own draft is written down as it always was and comes back after a crash.
+
+**A delivery refusal keeps your words in the new conversation** after it has been created. They are never sent to the chat you came from. Enter on a selected compact paste opens its editor; move beyond the token to send the message.
+
+**If the conversation cannot be made, the words stay.** The reason is said on the page
+itself — `new session failed: …`, or `/new is unavailable here` where this window has no
+door onto new conversations at all — nothing is sent into the chat you came from, and that
+chat is still running behind the page.
+
+**What happens to the chat you were in.** It goes on running and keeps its tab, its draft
+and its work. An unused chat with no draft may be replaced; a conversation with unsent words retains its own draft. If the old conversation has no saved identity yet, first send refuses with `finish or clear the draft in the current chat before starting another`; Escape restores that draft. Over an engine-backed connection (`--host`, `--at`, the
+ordinary socket) the connection holds one conversation at a time, so sending the first
+message ends the previous one and says so. Opening and cancelling the page never does.
+
+**On a window too small for the page** — under 40 columns or 12 rows — the box stays at the
+foot of the frame where it always is and one row reads `new chat · esc keeps the chat you
+were in`. Typing and `enter` still start the conversation.
+
+`/new` is the same act without the page: it starts a conversation immediately and keeps
+your draft with you.
+
+## What the `?` and `◐` marks on a tab mean
+
+A tab can carry one small symbol in front of its name — a question mark, or a half-filled
+circle — and it carries at most one:
+
+| Mark | Means |
+| --- | --- |
+| `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, or work out of fuel |
+| `◐` | A turn or task is **running** in it |
+| nothing | At rest, or nothing is known about it |
+
+**`?` outranks `◐`** when both are true, because it is the one you can act on. The cell is
+the same width in all three states, so a name never moves sideways when a turn starts. On a
+terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
+stay apart with color off.
+
+**A countdown is not a question.** A task proposal that will go ahead on its own wears the
+working mark or none — only something that will wait forever for your answer gets `?`.
+Internal waiting, a tool checking something, a dependency, a provider being retried: all of
+those are work.
+
+**Nothing is a mark of its own.** An idle conversation gets no dot and no badge, and a
+conversation this window only remembers — one closed, or one an engine-backed connection
+ended when you switched — claims nothing at all rather than guessing that it is still live.
+The marks change when something actually happens; there is no clock behind them and nothing
+on the strip animates.
+
+## Which tab is waiting on you
+
+**The `?` in front of a tab's name is that conversation asking you something** and waiting for your answer: an approval it needs, a sign-in, a proposal with no clock
+running on it, or an adaptive run that has stopped because it is out of fuel. Click the tab
+to go there and the question is on screen.
+
+**`◐` is the other mark and it is not asking you anything** — that conversation has a turn or task in progress. A proposal that is counting down wears this or
+nothing, because it will go ahead whether or not you look at it.
+
+A tab with neither mark is at rest or is one this window can no longer say anything about.
+For the same question asked about everything on the machine rather than about this window's
+tabs, the switcher's card (`ctrl+k`) and the home page both carry it.
 
 ## The box says which room you are typing into
 
@@ -136,7 +276,7 @@ page and keys pages).
 The same task is marked twice more while you are in it: its row in the roster wears the
 same tint, and its chip on the task strip does too.
 
-The rule above the input is the only horizontal line this surface draws. There are no
+The input rule and header divider separate navigation, reading, and writing. There are no
 borders anywhere else. The draft box is inset one cell.
 
 If the frame is taller than your terminal, rows are lost from the **top**, never from
@@ -2974,7 +3114,7 @@ wheel walks the list three rows a turn.
 
 **A few words inside a sentence brighten instead.** A task reference in a reply goes from
 accent to ink and keeps its underline; the `+N` at the end of the task strip, a cut
-table's foot, the jump-to-latest chip, the `✕` on a room's header and the model's name at
+table's foot, the jump-to-latest chip, the `Stop` on a room's facts row and the model's name at
 the foot of the frame all go one step up in ink. A highlighted rectangle mid-paragraph
 would be the one boxed thing on a surface with no boxes.
 

@@ -580,6 +580,11 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 }
 
 func (a *app) openRoom(id uint64, title string) {
+	// A task destination takes the body and composer together. Park an open
+	// start page before retargeting either of them.
+	if a.startingChat() {
+		a.parkChatStart()
+	}
 	doors, ok := a.roomDoors()
 	if !ok {
 		// Local engine windows use this same door without a remote host label.
@@ -2195,7 +2200,8 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 
 // ── THE FOCUS HEADER ────────────────────────────────────────────────────────
 //
-//	─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─
+//	─ main ▸ Ship the port ▸ Fix the nil-map crash ───────────── esc/← main ─
+//	─ ⠙ working · 2m12s · $0.04 · 6 tool calls ───────────────────── Stop ───
 //
 // A ROOM USED TO LOOK LIKE THE CONVERSATION. Same rows, same hues, same box
 // underneath, and the only two things saying otherwise were a word in the legend
@@ -2204,13 +2210,32 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // later had nothing on screen telling them that the sentence they were about to
 // type was going to a worktree somewhere else.
 //
-// So the room pins ONE line at the top of the body region, and it is the only
-// thing on this surface drawn in the accent that is not the person's own words:
-// WHERE YOU ARE (the trail), WHAT IT IS DOING (the state, its clock, its spend),
-// and HOW YOU LEAVE. It is pinned rather than scrolled for the reason a status
-// line is pinned — a fact that scrolls away is a fact that is only true at the
-// top of the page — and it is one line because a room is a place you are looking
-// THROUGH, not a page about a node.
+// So the room pins its own rows at the top of the body region, under the tab
+// strip (chattabs.go). They are pinned rather than scrolled for the reason a
+// status line is pinned — a fact that scrolls away is a fact that is only true
+// at the top of the page.
+//
+// ── AND THEY ARE TWO ROWS, WHICH THEY WERE NOT ──────────────────────────────
+//
+// One row carried all of it: the state glyph, then the trail, then the state
+// word, the clock, the spend, the call count and the model, joined with the same
+// `·` the trail's own steps were joined with and painted in the one accent the
+// whole line wore. So the ancestry a person came to read ran into telemetry with
+// no seam between them, the loudest ink on the page was spent on figures, and
+// the path — the thing the row exists for — was the part that got cut first when
+// the frame narrowed.
+//
+// THE TRAIL ROW IS NOW ANCESTRY AND NOTHING ELSE: "main ▸ parent ▸ child", the
+// way out at its right end, and no glyph, no money, no model. THE FACTS ROW
+// UNDER IT is what the work is doing — the state in its own semantic ink, the
+// rest in the dim every other piece of telemetry on this surface wears — and it
+// ends in `Stop`, spelled out, which is the one control anywhere on the surface
+// that ends work with a pointer.
+//
+// NAVIGATION OUTRANKS TELEMETRY WHEN THE FRAME IS NARROW, and the split is what
+// makes that true by construction rather than by negotiation: the trail gets its
+// whole row, and the facts degrade on their own row by the ranked prefix every
+// list on this surface already uses (rowfit.go's law 3).
 //
 // THE TRAIL IS A BREADCRUMB and it always names the root: "main ▸ <node>" one
 // level down, "main ▸ parent ▸ child" when a node's page grows a door into the
@@ -2218,20 +2243,6 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // job is to say what this page hangs off, and "main" is the one name this
 // surface has for the conversation itself.
 
-// roomHead is the pinned line, or "" when there is no room open and nothing to
-// pin. It is drawn by the frame (view.go), which is the only thing that knows
-// where the top of the body region is.
-// THE ✕ RIDES THE RIGHT END, AFTER THE WAY OUT (stop.go). The header already
-// ends in the two things a person needs from a page they are standing in — how
-// to leave it, and, now, how to stop what is in it — and they are in that order
-// because leaving is free and stopping is not.
-//
-// IT DEGRADES BEFORE THE BACK WORD DOES. The right label is tried at three
-// strengths, and the middle one keeps the ✕ alone: the key that leaves is
-// printed on the legend at the bottom of the frame and known by everybody who
-// has ever used a terminal, while the button is the only thing anywhere on the
-// surface that ends work with a pointer. So the mark outlives the microcopy —
-// the same ladder [app.legend] walks, spending the recoverable thing first.
 // roomHeadFloor is the narrowest frame that gets a pinned header at all: under
 // it there is not a trail and a way out's worth of room, and the row would be an
 // ellipsis. It is stated once because the kin rows under the header stand on it
@@ -2239,136 +2250,78 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // the geometry counted and the frame did not draw ([app.roomKinRows]).
 const roomHeadFloor = 12
 
-func (a *app) roomHead(width int) string {
-	// [app.headHeight] is what the geometry budgeted for this row, and it is
-	// asked rather than second-guessed: a header the frame drew on a short
-	// terminal that the scrolling had not subtracted would push the room's last
-	// row under the input box.
-	a.roomStop, a.crumbs = hudSpan{}, nil
-	if a.room == nil {
-		// THE CONVERSATION HAS NO HEADER OF ITS OWN. It used to draw one crumb here
-		// — its own name, which is `main ▸` with nothing after it — and the tab
-		// strip above now says that and more (chattabs.go). A row whose whole
-		// content is a fact the row above it already carries is a row this surface
-		// does not draw.
-		return ""
+// roomHeadRows is the room's pinned rows, or none when there is no room open and
+// nothing to pin. They are drawn by the frame (view.go), which is the only thing
+// that knows where the top of the body region is, and there are always exactly
+// [roomHeadRowCount] of them when there are any — the geometry charges for that
+// number and a frame that drew a different one would put the room's last row
+// under the input box.
+func (a *app) roomHeadRows(width int) []string {
+	a.roomStop, a.roomBackSpan, a.crumbs = hudSpan{}, hudSpan{}, nil
+	// THE CONVERSATION HAS NO HEADER OF ITS OWN. It used to draw one crumb here —
+	// its own name, which is `main ▸` with nothing after it — and the tab strip
+	// above now says that and more (chattabs.go). A row whose whole content is a
+	// fact the row above it already carries is a row this surface does not draw.
+	rows := a.roomHeadHeight(width)
+	if rows == 0 {
+		return nil
 	}
-	if a.headHeight() == 0 || width < roomHeadFloor {
-		return ""
+	if rows == 1 {
+		return []string{a.roomTrailRow(width)}
 	}
+	return []string{a.roomTrailRow(width), a.roomFactsLine(width)}
+}
+
+// roomHeadRowCount is how many rows a room's own header is on a frame with the
+// height to spare: the trail, and the facts under it. The tab strip above and
+// the kin rows below are counted separately.
+const roomHeadRowCount = 2
+
+// roomHeadHeight is how many of those rows this frame can actually afford.
+//
+// THE FACTS ROW IS THE SECONDARY CHROME AND IT STANDS DOWN FIRST, on the ladder
+// the kin rows and the breathing room already stand on (view.go's
+// [app.breathingRows]). A person on a six-row terminal has one row of page and a
+// box; what they cannot do without up here is WHICH PAGE THIS IS, so the trail
+// keeps the row and the telemetry — which is still on the status line — gives it
+// up. Navigation first when the frame is short is the same law as navigation
+// first when it is narrow.
+//
+// It is asked rather than assumed by [app.headHeight] and by every pointer
+// target on these rows: a row the frame drew and the scrolling did not subtract
+// puts the page's last line under the input box.
+func (a *app) roomHeadHeight(width int) int {
+	if a.room == nil || width < roomHeadFloor || a.breathingRows() == 0 {
+		return 0
+	}
+	if a.breathingRows() < 2 {
+		return 1
+	}
+	return roomHeadRowCount
+}
+
+// roomTrailRow is the ancestry, the way out, and nothing else.
+func (a *app) roomTrailRow(width int) string {
 	left, hits := a.roomHeadParts(width)
-	mark := a.roomStopWord()
-	// THE ✕ BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather than
-	// spliced into the finished line: [app.legendLine] paints the right label as
-	// one piece and the mark is the last thing in it, so ink written into the label
-	// lands on the mark's own cells and the piece after it is painted separately
-	// anyway. It is a step up from the dim the label rests in, which is the model
-	// segment's own answer to a label that is also a control (render.go's
-	// [app.paintIdentity]) — the row is one line at the top of the frame, not a row
-	// of a list, and a highlighted rectangle round one glyph would be the one boxed
-	// thing on a surface with no boxes. The width is unchanged, so every attempt
-	// below still fits exactly as it did.
-	shown := mark
-	if mark != "" && a.hoveringRoomStop() {
-		shown = a.pal.ink(mark)
-	}
-	attempts := []string{roomBackWord, ""}
-	if mark != "" {
-		attempts = []string{roomBackWord + roomStopSep + shown, shown, roomBackWord, ""}
-	}
-	// AND THE CRUMB UNDER THE POINTER BRIGHTENS, in pieces rather than nested, for
-	// the reason the status row's model segment does (render.go's
-	// [app.paintIdentity]): these hues are raw SGR with an explicit reset, so a
-	// colour inside a colour ends the outer one mid-sentence. The label is plain
-	// text at this point and every span was measured against it, so cutting it in
-	// cells is exact.
-	paint := func(label string) string { return a.paintCrumbs(label, headLabelAt, a.pal.accent) }
-	// The spans are recorded BEFORE the line is painted, because the paint reads
-	// them: what brightens under the pointer is the crumb the press would act on,
-	// resolved through one map rather than two.
-	a.crumbs = hits
-	for _, right := range attempts {
-		line, ok := a.legendLine(left, right, width, paint)
-		if !ok {
-			continue
-		}
-		// The mark is the LAST thing in the right label, and [app.legendLine]
-		// closes with one space and one rule cell after it — so its columns are
-		// arithmetic rather than a second layout, whichever attempt fitted.
-		if mark != "" && strings.HasSuffix(right, shown) {
-			cols := ansi.StringWidth(mark)
-			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
-		}
-		// AND THE ROW ITSELF TAKES THE BACKGROUND STEP, because the row itself is
-		// the control: everything on it is about leaving, and [app.roomBackPress]
-		// takes a press anywhere along it. The ✕ never lights with it — the two are
-		// different hovers and the pointer can only be on one of them — so the band
-		// is never the surface offering "leave" over cells that end work.
+	a.crumbs, a.roomBackSpan = hits, hudSpan{}
+	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbs(left, headLabelAt, a.pal.accent)
+	leftWidth := headLabelAt + ansi.StringWidth(left)
+	back := " " + roomBackWord + " "
+	backWidth := ansi.StringWidth(back)
+	if leftWidth+2+backWidth+1 <= width {
+		from := width - backWidth - 1
+		a.roomBackSpan = hudSpan{from: from, to: from + backWidth}
+		shown := a.pal.dim(back)
 		if a.hoveringRoomBack() {
-			line = a.pal.cursor(line, width)
+			shown = a.pal.cursor(shown, 0)
 		}
-		return line
+		return line + strings.Repeat(" ", from-leftWidth) + shown + " "
 	}
-	// NO ATTEMPT FITTED, so the border is gone and the label starts at the frame's
-	// own first column instead of one cell inside a rule. The crumbs move with it:
-	// a span recorded where the words were NOT drawn is a click that opens the
-	// wrong page (hover.go's law).
-	a.crumbs = crumbsAt(hits, -headLabelAt)
-	return a.paintCrumbs(fit(left, width), 0, a.pal.accent)
+	return line + strings.Repeat(" ", max(0, width-leftWidth))
 }
 
-// roomBackPress answers a press on the pinned header, and reports whether it
-// took it. The header IS the way out for the pointer.
-//
-// THE WHOLE ROW IS THE TARGET, not just the "esc/← main" at its right end. The
-// row is one line tall and about nine cells of it are the microcopy; asking a
-// person to land a pointer on those nine is asking them to aim at a label, and
-// the two things that share this row — the trail and the way out — are both
-// about leaving. The ✕ is the exception and it is claimed one rung earlier
-// (stop.go's [app.stopMarkPress]), because ending work and leaving the page you
-// were watching it on are opposite gestures and the expensive one wins the cells
-// it is drawn on.
-//
-// THE KIN ROWS UNDER IT ARE NOT PART OF THIS. They are dim telemetry about the
-// node's family ([app.roomKinRows]), and a press on a fact is not a press on a
-// door — it does nothing, exactly as a press on any other row that answers to
-// nothing does ([app.press]).
-//
-// It is read from the frame's OWN row numbering — the header is the first row of
-// a room's frame, always, because [app.view] draws it first and the geometry
-// charges [app.headHeight] for it — rather than through [app.chromeAt], which
-// resolves the block at the BOTTOM of the window and has never had a row up here
-// to answer for.
-func (a *app) roomBackPress(y int) bool {
-	if !a.roomBackAt(y) {
-		return false
-	}
-	a.closeRoom()
-	return true
-}
-
-// roomBackAt is that same test with nothing done about it, so the pointer can ask
-// what the press asks and the row can light on exactly the cells a click acts on
-// (hover.go's law). The ✕ is claimed one rung earlier and never reaches here
-// (stop.go's [app.stopMarkAt]).
-func (a *app) roomBackAt(y int) bool {
-	return a.roomOpen() && a.headHeight() != 0 && y == a.roomHeadRow()
-}
-
-// ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
-//
-// roomHeadWord is the header's left, and it carries THE JUDGMENT AND
-// ACCOUNTABILITY ACTS WHOLE so that the transcript below it does not have to:
-// which node this is, what it is doing, how long it has been at it, what it has
-// cost, how many calls it has made, and — where it is running — the vaguest
-// true sentence about what is happening right now.
-//
-// WHY THEY ARE HERE AND NOT DOWN THE PAGE. A person comes to a task to steer
-// and to check. The check is one glance, and a glance is a fixed number of
-// cells at the top of the frame — so a room's numbers gather in one line
-// instead of dribbling down a scroll that has to be read to be summed
-// (lens.go's [receiptsHeader]; the conversation keeps its per-turn receipts,
-// which is the opposite posture and the right one out there).
+// roomFactsLine is the quiet row under the trail: what this work is doing, what
+// it has taken, and the one control that ends it.
 //
 // EVERY SEGMENT IS DROPPED WHEN NOBODY HAS PUBLISHED IT — THE EMPTINESS LAW,
 // PER SEGMENT. A queued node has no clock, an unpriced one no cost, a node that
@@ -2377,14 +2330,128 @@ func (a *app) roomBackAt(y int) bool {
 // that is zero is a figure nobody measured, and `$0.00 · 0 tool calls` is the
 // row spending its scarce cells saying nothing twice.
 //
+// THE STATE WEARS THE NODE'S OWN INK and everything after it is dim. The hue is
+// [app.taskStateInk] — the same one the roster paints that node's glyph with —
+// so "needs your look" reads as warning here exactly as it does in the column,
+// and the figures beside it read as figures. The row is painted in pieces rather
+// than nested for [app.roomTrailRow]'s reason: a hue inside a hue ends at the
+// inner one's reset.
+//
 // AND IT DEGRADES BY WHAT IT IS FOR, on the fitter every list on this surface
-// already uses (rowfit.go). THE IDENTITY IS WHOLE OR THE ROW IS POINTLESS: the
-// mark and the trail take every cell they ask for before a fact gets one,
-// because a person on a narrow terminal is first of all working out which page
-// they are on. The facts behind it are a RANKED PREFIX — the first one that
+// already uses (rowfit.go). The facts are a RANKED PREFIX — the first one that
 // will not fit ends the line and nothing later is skipped forward into the gap
-// — so a narrow header says the same ranked things a wide one does, with the
-// tail missing rather than a different tail.
+// — so a narrow row says the same ranked things a wide one does, with the tail
+// missing rather than a different tail.
+func (a *app) roomFactsLine(width int) string {
+	node := a.roomNode()
+	mark := a.roomStopWord()
+	shown := mark
+	// THE `Stop` BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather
+	// than spliced into the finished line: [app.legendLine] paints the right label
+	// as one piece and the word is the last thing in it, so ink written into the
+	// label lands on the word's own cells. It is a step up from the dim the label
+	// rests in, which is this surface's answer to a label that is also a control
+	// (render.go's [app.paintIdentity]) — the row is one line at the top of the
+	// frame, and a highlighted rectangle round one word would be the one boxed
+	// thing on a surface with no boxes.
+	if mark != "" && a.hoveringRoomStop() {
+		shown = a.pal.ink(mark)
+	}
+	left, lead := a.roomFactsWord(node, width)
+	ink := a.pal.dim
+	if node != nil && lead > 0 {
+		ink = a.taskStateInk(node)
+	}
+	paint := func(label string) string {
+		cols := ansi.StringWidth(label)
+		if lead <= 0 || lead > cols {
+			return a.pal.dim(label)
+		}
+		return ink(ansi.Cut(label, 0, lead)) + a.pal.dim(ansi.Cut(label, lead, cols))
+	}
+	for _, right := range []string{shown, ""} {
+		line, ok := a.legendLine(left, right, width, paint)
+		if !ok {
+			continue
+		}
+		// The word is the LAST thing in the right label, and [app.legendLine]
+		// closes with one space and one rule cell after it — so its columns are
+		// arithmetic rather than a second layout.
+		if mark != "" && right == shown {
+			cols := ansi.StringWidth(mark)
+			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
+		}
+		return line
+	}
+	return a.pal.dim(fit(left, width))
+}
+
+// roomFactsWord is that row's left label, plain, and how many of its leading
+// cells are the state word — which is the one segment painted in the node's own
+// ink rather than in the row's dim.
+//
+// A RUN'S PAGE ANSWERS FOR ITS OWN (roomorch.go): the facts under a node are a
+// state, a clock and a spend, and a run has none of them. What it has instead is
+// a tank, and the tank is the fact that cannot be left off this row.
+func (a *app) roomFactsWord(node *taskNode, width int) (string, int) {
+	// Keep a visible seam even when a dependency or phase has a long name.
+	room := max(width-roomHeadFurniture-12, 0)
+	if a.orchOpen() {
+		return a.orchHeadWord(room), 0
+	}
+	if node == nil {
+		return "", 0
+	}
+	facts := a.roomHeadFacts(node)
+	// THE STATE IS THE ROW'S OWN LEAD AND IT KEEPS ITS GLYPH. The mark is the
+	// roster's cell for this node ([app.roomMark]) and it belongs beside the word
+	// it illustrates rather than in front of a path — which is where it used to
+	// sit, one cell into a breadcrumb it had nothing to do with.
+	lead := ""
+	if facts[0].known() {
+		lead = a.roomMark(node) + " " + facts[0].full
+		facts = facts[1:]
+	}
+	if lead == "" {
+		return rowTail(facts, room), 0
+	}
+	lead = fit(lead, room)
+	cols := ansi.StringWidth(lead)
+	tail := rowTail(facts, room-cols-len(rowSep))
+	if tail == "" {
+		return lead, cols
+	}
+	return lead + rowSep + tail, cols
+}
+
+// roomBackPress uses the rendered Back label's padded target. Whitespace and
+// breadcrumb separators are not navigation controls.
+func (a *app) roomBackPress(x, y int) bool {
+	if !a.roomBackAt(x, y) {
+		return false
+	}
+	a.closeRoom()
+	return true
+}
+
+func (a *app) roomBackAt(x, y int) bool {
+	return a.roomOpen() && a.headHeight() != 0 && y == a.roomHeadRow() && a.roomBackSpan.holds(x)
+}
+
+// ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
+//
+// roomHeadWord is the trail row's left: WHICH PAGE THIS IS, the whole way down.
+// It is ancestry alone now. The judgment and accountability facts it used to
+// carry beside the path — the state, the clock, the spend, the call count, the
+// model — are the row underneath ([app.roomFactsLine]), which is where they can
+// be painted as figures instead of as a continuation of a place.
+//
+// WHY THEY ARE AT THE TOP OF THE FRAME AT ALL, on either row. A person comes to
+// a task to steer and to check. The check is one glance, and a glance is a fixed
+// number of cells at the top of the frame — so a room's numbers gather there
+// instead of dribbling down a scroll that has to be read to be summed (lens.go's
+// [receiptsHeader]; the conversation keeps its per-turn receipts, which is the
+// opposite posture and the right one out there).
 //
 // It is built PLAIN, without paint, because the whole line is painted once by
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
@@ -2399,58 +2466,24 @@ func (a *app) roomHeadWord(width int) string {
 // surface is written by the render that drew it: a trail laid out twice is a
 // trail a click can miss by exactly the difference between the two layouts.
 //
-// THE TRAIL IS NOW A CHAIN AND THE BUDGET IS A NEGOTIATION (roomcrumbs.go). It
-// used to be `main ▸ <this page>` — two crumbs, never more — so law 1 could be
-// spelled in one line: the name whole, or the name cut and no facts at all. A
-// chain has a middle, and the middle is worth less than the state word: a person
-// who came to check on work is asking WHAT IS IT DOING first and WHOSE PIECE OF
-// WHAT SECOND. So the trail is offered the line less the leading fact, folds its
-// middle to fit that, and the facts spend what is left.
-//
-// LAW 1 STILL ENDS IT. Where the PAGE'S OWN name cannot survive whole even after
-// the middle has folded away, the trail takes the whole line and no fact is drawn
-// beside it — an ellipsis in the name has already spent the one thing the row was
-// drawn to say.
+// THE TRAIL TAKES THE WHOLE ROW AND NEGOTIATES WITH NOTHING. It used to be
+// offered the line less the leading fact, because the state word shared the row
+// with it and was worth more than the middle of a chain. The facts moved down a
+// row, so what is left is the ladder roomcrumbs.go already holds: the two ends
+// survive, the middle folds to `…`, and law 1 ends it when the page's own name
+// cannot survive whole.
 func (a *app) roomHeadParts(width int) (string, []crumbHit) {
-	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the facts under it
-	// are a node's — a state, a clock, a spend — and a run has none of them.
-	// What it has instead is a tank, and the tank is the fact that cannot be left
-	// off this line. Its trail is the run's own chain of goals and carries no
-	// crumb this window can open, so it records none.
+	room := max(width-roomHeadFurniture, 0)
+	line, hits, _ := a.roomCrumbLine(room)
 	if a.orchOpen() {
-		return a.orchHeadWord(width), nil
+		// A RUN'S PAGE HAS A TRAIL AND NO CRUMB THIS WINDOW CAN OPEN (roomorch.go):
+		// its steps are the run's own goals and none of them is a node in this
+		// conversation's graph, so the row is drawn and records nothing. Its facts
+		// are the tank, and the tank is on the row below with everything else that
+		// is a figure.
+		return line, nil
 	}
-	node := a.roomNode()
-	lead := a.roomMark(node) + " "
-	room := max(width-roomHeadFurniture-ansi.StringWidth(lead), 0)
-	facts := []rowField(nil)
-	if node != nil {
-		facts = a.roomHeadFacts(node)
-	}
-	// WHAT THE TRAIL IS ASKED TO LEAVE BEHIND IS THE FIRST FACT AND NOTHING MORE.
-	// It is the state word — the reason the visit is happening — and the rest of
-	// the tail takes its chances with whatever the trail did not want. A room with
-	// no facts at all (a node this surface has had no update for) reserves
-	// nothing, because there is nothing to reserve it for.
-	reserve := 0
-	if len(facts) > 0 && facts[0].known() {
-		reserve = ansi.StringWidth(facts[0].full) + len(rowSep)
-	}
-	line, hits, whole := a.roomCrumbLine(room - reserve)
-	if !whole {
-		// The reserve bought nothing: hand the trail the whole line and let it say
-		// as much of itself as it can.
-		line, hits, whole = a.roomCrumbLine(room)
-	}
-	hits = crumbsAt(hits, headLabelAt+ansi.StringWidth(lead))
-	if !whole || len(facts) == 0 {
-		return lead + line, hits
-	}
-	tail := rowTail(facts, room-ansi.StringWidth(line)-len(rowSep))
-	if tail == "" {
-		return lead + line, hits
-	}
-	return lead + line + rowSep + tail, hits
+	return line, crumbsAt(hits, headLabelAt)
 }
 
 // roomHeadFurniture is what [app.legendLine] spends on the header's own rule
@@ -3420,9 +3453,17 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if a.room.done {
 		lane = a.roomFinishedRefusal().fit(room)
 	}
-	out := append([]string(nil), rows...)
-	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
-	return out
+	// The attachment/effort tray can precede the draft. Put the placeholder
+	// on the actual prompt row so it never paints a second composer above it.
+	prefix := ansi.Strip(lead) + prompt
+	for i, line := range rows {
+		if strings.HasPrefix(ansi.Strip(line), prefix) {
+			out := append([]string(nil), rows...)
+			out[i] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
+			return out
+		}
+	}
+	return rows
 }
 
 // ── THE COMPOSER SAYS WHERE THE WORDS GO ────────────────────────────────────

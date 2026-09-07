@@ -579,13 +579,16 @@ func (a *app) stopMarkAt(x, y int) bool {
 	if layoutTier(width) == tierPhone {
 		rows = stopTouchRows
 	}
-	// THE BOX STARTS ON THE ROW THE MARK WAS DRAWN ON, which is the room's own
-	// header — the row under the tab strip wherever there is one (chattabs.go's
-	// [app.roomHeadRow]). A box measured from the top of the frame would sit one
-	// row above the ✕ the moment the strip stood up, which on a phone is a finger
-	// ending work it was nowhere near.
-	top := a.roomHeadRow()
-	if y < top || y >= top+rows {
+	// THE BOX STARTS ON THE ROW THE WORD WAS DRAWN ON, which is the room's FACTS
+	// row — under the tab strip and under the trail, wherever those are drawn
+	// (chattabs.go's [app.roomFactsRow]). A box measured from the top of the frame
+	// would sit two rows above the word the moment the strip stood up, which on a
+	// phone is a finger ending work it was nowhere near.
+	top := a.roomFactsRow()
+	if top < 0 || y < top || y >= top+rows {
+		// A frame too short for the facts row draws no `Stop` at all, and a box
+		// measured from a row that is not there would put a three-row phone target
+		// over the trail and the tabs (room.go's [app.roomHeadHeight]).
 		return false
 	}
 	return !a.stopHere().empty()
@@ -594,19 +597,30 @@ func (a *app) stopMarkAt(x, y int) bool {
 // stopTouchRows is how tall the ✕'s hit box is where a finger is the pointer.
 const stopTouchRows = 3
 
-// The mark itself, and the separator that puts it after the way out. It is a
-// heavy multiplication ✕ rather than the surface's own ✗ (styles.go's
-// [glyphBad]) because that one MEANS something already — work that failed — and
-// a control wearing a state's mark is a header saying this run went wrong.
+// THE CONTROL IS THE WORD `Stop` AND NOT A MARK, and that is the whole of what
+// changed about it.
+//
+// It was a heavy multiplication ✕ riding the right end of the trail row. Two
+// things went wrong with that. A tab now carries its own `×`, which DISMISSES A
+// VIEW and leaves the work running (chattabs.go) — so one frame had two crosses
+// three rows apart meaning opposite things, and the expensive one was the one
+// that looked incidental. And a mark alone never said what it ended: a person
+// who had not already learned it had to press it to find out, which is the one
+// control on this surface where finding out by pressing is the wrong way round.
+//
+// So it is spelled, in the same word the card's own button offers and the same
+// word the engine puts on the wire ([taskStoppedByPerson]), on the facts row
+// where the rest of the page's telemetry is. One act, one name, and no glyph a
+// person has to be taught.
 const (
-	roomStopMark      = "✕"
-	roomStopMarkASCII = "X"
-	roomStopSep       = " · "
+	roomStopMark      = "Stop"
+	roomStopMarkASCII = "Stop"
 )
 
-// roomStopWord is the ✕ as the header draws it, or "" when there is nothing
-// here to stop. It is UNPAINTED, for [app.roomHeadWord]'s reason: the whole line
-// is painted once, and a hue nested inside a hue ends at the inner one's reset.
+// roomStopWord is the `Stop` as the facts row draws it, or "" when there is
+// nothing here to stop. It is UNPAINTED, for [app.roomHeadWord]'s reason: the
+// whole line is painted once, and a hue nested inside a hue ends at the inner
+// one's reset.
 func (a *app) roomStopWord() string {
 	if !a.stopOffered() {
 		return ""

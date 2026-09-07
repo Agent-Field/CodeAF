@@ -33,7 +33,9 @@ func tabApp(t *testing.T) (*app, *fakeAgent, *fakeAgent) {
 func tabWords(a *app) []string {
 	words := make([]string, 0, len(a.chatTabHits))
 	for _, hit := range a.chatTabHits {
-		if hit.kind == tabMore || hit.kind == tabFold {
+		// The close cells are a target of their own on every tab (chattabs.go),
+		// so a walk of the hit map that counted them would count every tab twice.
+		if hit.kind == tabMore || hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew {
 			continue
 		}
 		words = append(words, hit.tab.word)
@@ -162,10 +164,14 @@ func TestTheTabInFrontLeavesAPageAndIsInertOnTheConversation(t *testing.T) {
 	if a.roomOpen() || a.page != pageNone {
 		t.Fatalf("a press on the tab already up went somewhere: room=%v page=%v", a.roomOpen(), a.page)
 	}
-	// AND IT NEVER LIGHTS THERE. What lights is what a press acts on.
+	// AND IT STILL ANSWERS THE POINTER THERE, which is the one place this row
+	// departs from the surface's "what lights is what a press acts on" law: a
+	// strip where every tab reacts except the one you are on reads as the current
+	// tab being broken (chattabs.go's [tabHit.lights]).
 	a.hot = hoverAt{kind: hoverTab, index: again.from}
-	if _, lit := a.hotTab(); lit {
-		t.Fatal("the tab already up offers to go somewhere")
+	hit, lit := a.hotTab()
+	if !lit || hit.kind != tabHere {
+		t.Fatalf("the tab already up does not answer the pointer: %+v lit=%v", hit, lit)
 	}
 }
 
@@ -277,14 +283,18 @@ func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) 
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d top=%d",
 			a.headHeight(), a.bodyTop())
 	}
-	// AND THE ✕ ANSWERS FOR THE ROW IT WAS DRAWN ON, not for the strip's.
-	a.roomHead(a.width)
+	// AND `Stop` ANSWERS FOR THE ROW IT WAS DRAWN ON — the facts row, two under
+	// the strip — and for neither of the rows above it.
+	strings.Join(a.roomHeadRows(a.width), "\n")
 	if a.roomStop.pressable() {
-		if !a.stopMarkAt(a.roomStop.from, a.roomHeadRow()) {
-			t.Fatal("the ✕ does not answer for the header's own row")
+		if !a.stopMarkAt(a.roomStop.from, a.roomFactsRow()) {
+			t.Fatal("Stop does not answer for the facts row it was drawn on")
 		}
 		if a.stopMarkAt(a.roomStop.from, 0) {
-			t.Fatal("the ✕ answers for the strip's row above it")
+			t.Fatal("Stop answers for the strip's row above it")
+		}
+		if a.stopMarkAt(a.roomStop.from, a.roomHeadRow()) {
+			t.Fatal("Stop answers for the trail row above it")
 		}
 	}
 }
