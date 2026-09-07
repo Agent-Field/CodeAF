@@ -69,6 +69,8 @@ var tasksSectionOrder = [...]tasksSection{tasksNeeds, tasksRunning, tasksParked,
 // to make twice — which section it belongs under, and whether it is happening.
 type tasksItem struct {
 	entry session.TaskIndexEntry
+	// live keeps task-specific facts that the historical index cannot carry.
+	live *session.TaskStatus
 	// row is the conversation the work came out of, and it is a LABEL: it says
 	// where to file the row on screen and it is never asked whether the work is
 	// running. That answer travels on [tasksItem.runs] instead, from whichever
@@ -142,6 +144,7 @@ type tasksMine struct {
 type tasksMineRow struct {
 	entry session.TaskIndexEntry
 	runs  bool
+	live  *session.TaskStatus
 }
 
 // tasksReading is everything drawing and routing need from one world reading.
@@ -227,7 +230,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, see
 	}
 	for _, row := range mine.rows {
 		put(tasksKeyOf(row.entry), tasksItem{
-			entry: row.entry, row: tasksRowFor(world, mine, row.entry), runs: row.runs,
+			entry: row.entry, row: tasksRowFor(world, mine, row.entry), runs: row.runs, live: row.live,
 		})
 	}
 	for _, task := range mine.away {
@@ -372,15 +375,24 @@ func tasksRowFor(world session.World, mine tasksMine, entry session.TaskIndexEnt
 	return mine.row
 }
 
+// status uses the live node's complete reading when this window owns it.
+// A conversation's unrelated question says nothing about an individual task.
+func (item tasksItem) status() session.TaskStatus {
+	if item.live != nil {
+		return *item.live
+	}
+	return taskEntryStatus(item.entry, item.runs)
+}
+
 // tasksSectionOf files one piece of work under the question a person acts on
 // next, which is the whole ordering of this place.
 func tasksSectionOf(item tasksItem, now time.Time) tasksSection {
 	switch {
-	case item.entry.Status == string(session.TaskUnverified) || (item.row.NeedsPerson() && item.runs):
+	case item.status().Attention:
 		return tasksNeeds
 	case tasksWorking(item):
 		return tasksRunning
-	case item.runs:
+	case item.runs || item.status().Presence == session.TaskPresenceWaiting:
 		return tasksParked
 	case tasksLandedToday(item.entry, now):
 		return tasksToday
@@ -397,7 +409,14 @@ func tasksSectionOf(item tasksItem, now time.Time) tasksSection {
 // agent is in the worktree. Both are needed and neither is the other, so the
 // place asks each by name.
 func tasksWorking(item tasksItem) bool {
-	return item.runs && item.entry.Status == string(session.TaskRunning)
+	if !item.runs {
+		return false
+	}
+	switch item.status().Presence {
+	case session.TaskPresenceWorking, session.TaskPresenceFinishing:
+		return true
+	}
+	return false
 }
 
 func tasksLandedToday(entry session.TaskIndexEntry, now time.Time) bool {
@@ -1229,6 +1248,9 @@ func tasksLabelInk(item tasksItem, pal palette) func(string) string {
 // ended hours ago. What is drawn is [taskRecordStoppedWord] — not a judgement
 // about the work, only the fact that the window went.
 func tasksNote(item tasksItem) string {
+	if item.status().Reason == taskReviewPendingWord {
+		return taskReviewPendingWord
+	}
 	if item.away {
 		// A CONVERSATION OF THIS TERMINAL IS NOT `another window`. It arrives
 		// through the same presence reading, because that is the only authority for
@@ -1291,7 +1313,7 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 	if item.section == tasksNeeds {
 		return tokens.GlyphNeedsHuman, pal.warn
 	}
-	status := taskEntryStatus(item.entry, item.runs)
+	status := item.status()
 	switch status.Presence {
 	case session.TaskPresenceIncomplete:
 		// A row nothing is running wears neither the running glyph nor the steer

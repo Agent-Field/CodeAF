@@ -134,6 +134,14 @@ type TaskFacts struct {
 	// Waits names unmet prerequisites, resolved to titles by the caller: ids are
 	// not names.
 	Waits []string
+	// Paused says the work is held at a gate only a person can open
+	// (TaskNotice.Paused): an adaptive run that has spent its tank. It is not a
+	// [TaskFacts.Hold] — a hold clears itself and nobody need act, and this one
+	// clears when somebody decides — which is why it is a fact of its own.
+	//
+	// It is read of a node the graph is still holding open and of no other, so a
+	// flag left on a row that has since landed can never contradict its ending.
+	Paused bool
 	// Stopped says a person ended this node (TaskNotice.Stopped).
 	Stopped bool
 	// Liveness is what the caller knows about a live-looking row.
@@ -260,6 +268,14 @@ func taskQueuedStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 // state with more than one honest answer in it.
 func taskRunningStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 	switch {
+	case facts.Paused:
+		// A run standing at its fuel gate is not working: nothing new is launched
+		// and nothing will be until somebody tops it up, finishes it or stops it.
+		// It leads the switch because it outranks everything under it — a gap or a
+		// pacing word left over from the moment the tank emptied describes work that
+		// has since stopped moving, and reading either one first would put a
+		// spinner's worth of "still going" over a question nobody has answered.
+		status.Presence, status.On = TaskPresenceNeedsLook, TaskWaitPerson
 	case facts.Kind == TaskKindHarness && facts.Phase == HarnessPhaseAsking:
 		// The one piece of running work that is not running: the page is written
 		// and the only remaining step is somebody approving it. Counted as working
@@ -302,7 +318,9 @@ func taskEndingIsFault(ending TaskEnding) bool {
 // question both axes can answer. It does not overwrite the presence: where the
 // work is and where its edits went stay separate answers.
 func taskStatusDemand(status TaskStatus) TaskStatus {
-	if status.ChangesUnlanded() || status.Presence == TaskPresenceNeedsLook {
+	// Keeping a branch is a valid delivery workflow, not a request to merge.
+	// A conflict or an unresolved review is the actionable condition.
+	if (status.Changes == TaskChangesConflicted && status.ChangesUnlanded()) || status.Presence == TaskPresenceNeedsLook {
 		status.Attention = true
 	}
 	return status

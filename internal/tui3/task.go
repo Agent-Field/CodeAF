@@ -397,6 +397,24 @@ func taskStops(notice *session.TaskNotice, node *taskNode) bool {
 	return notice.Stopped && !node.stopped
 }
 
+// taskPauses reports whether an update moves this node ON or OFF a gate a person
+// has to open (session's TaskNotice.Paused).
+//
+// IT IS THE DE-DUP'S FIFTH EXCEPTION, and it is one for [taskStops]' reason: the
+// gate does not move the state. An adaptive run whose tank empties goes on
+// publishing `running` — its in-flight workers are still working — so the notice
+// that carries the news is a running row publishing running, which is exactly the
+// shape the guard throws away. Without this the column drew a spinner over a run
+// that had stopped and was waiting to be told what to do, until some later row
+// happened to differ for another reason.
+//
+// Unlike the stop it can fire in BOTH directions: a gate that is answered comes
+// down, and a row still asking after the person answered is the same defect the
+// other way round.
+func taskPauses(notice *session.TaskNotice, node *taskNode) bool {
+	return notice.Paused != node.paused
+}
+
 // taskRenames reports whether an update carries a NAME this node does not have.
 //
 // IT IS THE DE-DUP'S FOURTH EXCEPTION and the only one that is not about the
@@ -2462,37 +2480,9 @@ const (
 // dependency reason still rides on the row ([app.railWaits]).
 var railGroupWords = [railGroupCount]string{"needs you", "running", "queued", "waiting", "done"}
 
-// railGroupOf places one node.
-//
-// A KEPT BRANCH IS ATTENTION, and it is the one placement that is not simply the
-// engine's state read out. session keeps the branch of a node that conflicted or
-// was stopped (task_run.go's mergeConflicted and mergeAborted), and a kept
-// branch is work that is finished and NOT DELIVERED — the one outcome on this
-// surface a person still has to do something about.
-//
-// A FAILURE IS SETTLED NEWS AND NOT A STANDING DEMAND, and this is the law that
-// changed. "needs you" used to hold every failed node forever, and the reason it
-// did was that a failure USED TO BE the moment a person was called in: work came
-// back short and the only thing that could happen next was somebody looking at
-// it. That is no longer where the decision is. The engine exhausts its repair
-// rounds BEFORE a node is allowed to land failed (session's task_audit.go and
-// the mending line it publishes while it runs), so by the time this surface sees
-// the word the question "can this be salvaged automatically" has already been
-// asked and answered. What is left is a report: this piece of work did not come
-// off. That is worth keeping — it is why the roster keeps everything — and it is
-// not worth the top of the column and a group that never folds.
-//
-// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Four
-// outcomes pass it and nothing else does: work nobody could judge, which moves
-// only when a person decides (session's ResolveUnverified); a branch that
-// was deliberately kept; a branch that conflicted; and a run that stopped with
-// its branch kept. The last three are the same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
-// nobody but a person is going to bring home — and they are read off the merge
-// word rather than off the state, because a failed node and a done node can each
-// wear either one. A failure with NO kept branch left nothing behind to deliver,
-// so it is news, and news lives in the fold with the rest of the record —
-// at the FRONT of that fold, where 8.1.7 puts the work that did not come off
-// ([railFinalOrder]).
+// railGroupOf groups the task's own state. Explicit decisions and conflicts
+// lead, then active and waiting work, then finished reports. A retained branch
+// remains inspectable without demanding an unrequested merge.
 func (a *app) railGroupOf(node *taskNode) railGroup {
 	// The demand is the reading's ([session.TaskStatus.Attention]); whether a node
 	// is queued or running is the scheduler's, and is read from the state so that
@@ -2506,6 +2496,8 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		// `done` once let a nested question expire with nobody able to see it
 		// (#268). What folds is how loud it is ([app.railGlyphRank]).
 		return railAttention
+	case status.Presence == session.TaskPresenceWaiting:
+		return railParked
 	case status.State == session.TaskQueued:
 		if status.On == session.TaskWaitWork {
 			return railParked
@@ -4925,6 +4917,9 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // handles back to work that is not on screen, and half of one of those is worth
 // nothing at all.
 func (a *app) railUnder(node *taskNode, width int) []string {
+	if a.taskReviewPending(node) {
+		return []string{a.pal.dim(fit(taskReviewPendingWord, width))}
+	}
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
@@ -5573,7 +5568,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
-			!taskRenamesContext(notice, node) && !taskStops(notice, node)) {
+			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
+			!taskPauses(notice, node)) {
 			return nil
 		}
 	}
@@ -5711,6 +5707,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// present that has passed (the same law [taskNode.tool] is held to).
 	live := taskLiveLines(notice)
 	node.doing, node.mending, node.waiting = live.doing, live.mending, live.waiting
+	// AND SO IS THE GATE, on the same law: a run held at its fuel gate is held
+	// until somebody answers, and the row that says the answer landed is a row
+	// that stops carrying it (session's TaskNotice.Paused). It is taken from
+	// every update INCLUDING ITS ABSENCE, so nothing on this surface has to
+	// decide when a gate comes down — the engine stamps every row the run
+	// publishes, and the last one to arrive is the truth.
+	node.paused = notice.Paused
 	// AND SO IS THE LIFE IT WAS IN, on the same law one field over. The phase
 	// arrives on its own event and is cleared here rather than there, because the
 	// event that says a node has stopped checking is the LANDING — a node that

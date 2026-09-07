@@ -308,7 +308,12 @@ func (a *app) taskSheetMine() tasksMine {
 	rows := a.taskSheetOwnRows()
 	mine := tasksMine{row: a.taskSheetSelfRow(), rows: make([]tasksMineRow, 0, len(rows))}
 	for _, entry := range rows {
-		mine.rows = append(mine.rows, tasksMineRow{entry: entry, runs: a.recordRuns(&entry)})
+		row := tasksMineRow{entry: entry, runs: a.recordRuns(&entry)}
+		if node := a.taskSheetNodeFor(&entry); node != nil {
+			status := a.taskStatus(node)
+			row.live = &status
+		}
+		mine.rows = append(mine.rows, row)
 	}
 	mine.away = a.taskSheetAwayRows()
 	// AND WHICH OF THOSE WINDOWS ARE THIS ONE'S OWN CONVERSATIONS. The presence

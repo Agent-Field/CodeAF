@@ -2607,8 +2607,8 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	if !strings.Contains(painted, sgr256(hueAsk)) {
 		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
 	}
-	// And the surface says, everywhere it says anything, that it is waiting.
-	if word, _ := a.stateWord(); word != waitingWord {
+	// This proposal has a clock: it starts automatically unless redirected.
+	if word, _ := a.stateWord(); word != taskStartingWord {
 		t.Fatalf("the status word is %q while a proposal is open", word)
 	}
 	if hint := a.hintWord(); hint != taskProposalHint {
@@ -3129,10 +3129,12 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 			Elapsed: 130 * time.Second, Merge: mergeWordConflicted, Branch: "task/fix-nil-map",
 		})},
 	)
+	// A retained report expands on request, without demanding a merge.
+	a.railSetOpen(a.tasks[9], true)
 	// A BRANCH NAME IS NEVER ELLIPSIZED: the conflicted sentence wraps inside
 	// the rail rather than losing the one handle back to the work, so the
 	// assertion is on the two halves and not on one line.
-	rail = plain(strings.Join(a.railRows(12), "\n"))
+	rail = plain(strings.Join(a.railRows(16), "\n"))
 	// ONE GLYPH OPENS EVERY ROW AND IT IS THE STATE. The identity ◆ is not on this
 	// column: it is the same cell on every task, this column holds nothing but
 	// tasks, and the two cells belong to the name here (task.go's [app.railLead]).
@@ -3527,7 +3529,7 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 			DependsOn: []uint64{2},
 		})},
 		streamEventMsg{gen: a.gen, ev: update(4, "Render titles", session.TaskFailed, session.TaskNotice{
-			Report: "the tests did not build", Merge: mergeWordAborted, Branch: "task/render",
+			Report: "the merge conflicted", Merge: mergeWordConflicted, Branch: "task/render",
 		})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
 		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it stands with the record
@@ -3660,19 +3662,19 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	if a.railWhere.id != 2 {
 		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
-	// It finishes with its branch kept, which is the one outcome that needs a
+	// It finishes with its branch conflicted, which is the one outcome that needs a
 	// person — so the row moves to the top group, and the cursor moves with it.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(2, "Fix the nil-map crash", session.TaskFailed,
-		session.TaskNotice{Merge: mergeWordAborted, Branch: "task/fix-nil-map"})})
+		session.TaskNotice{Merge: mergeWordConflicted, Branch: "task/fix-nil-map"})})
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
 	if at < 0 || entries[at].node == nil || entries[at].node.id != 2 {
 		t.Fatalf("the cursor did not follow the node: %+v", entries)
 	}
-	// AND THE ROW ITSELF MOVED: a kept branch is the one outcome that needs a
+	// AND THE ROW ITSELF MOVED: a conflicted branch is the one outcome that needs a
 	// person, so it is the top of the column now (task.go's [app.railGroupOf]).
 	if at != 0 {
-		t.Fatalf("the node with a kept branch is at row %d, want the top of the column", at)
+		t.Fatalf("the node with a conflicted branch is at row %d, want the top of the column", at)
 	}
 }
 
@@ -3723,13 +3725,8 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	}
 }
 
-// A FAILURE IS SETTLED NEWS AND A KEPT BRANCH IS A DEMAND. The leading group
-// never folds and never leaves the top of the column, so the only thing that may
-// stand in it is work that will not move without a person: a landing nobody
-// could judge, a branch that conflicted, a run that stopped with its branch
-// kept. A node that simply did not come off has already had the engine's repair
-// rounds spent on it before it landed — it is a report, and reports go into the
-// fold, at the FRONT of it (task.go's [app.railGroupOf] and [railFinalOrder]).
+// Failures and retained branches are reports. A conflict or unresolved review
+// remains actionable; retaining a branch alone is not a request to merge it.
 func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
@@ -3760,7 +3757,7 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 		{2, "a failure that kept nothing", railDone},
 		{6, "a failure in the person's own tree", railDone},
 		{1, "a clean merge", railDone},
-		{3, "a run that stopped with its branch kept", railAttention},
+		{3, "a run that stopped with its branch kept", railDone},
 		{4, "a branch that conflicted", railAttention},
 		{5, "a landing nobody could judge", railAttention},
 	} {
@@ -3776,7 +3773,7 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 	for _, node := range members[railDone] {
 		order = append(order, node.id)
 	}
-	want := []uint64{6, 2, 1}
+	want := []uint64{6, 3, 2, 1}
 	if len(order) != len(want) {
 		t.Fatalf("the done group holds %v, want %v", order, want)
 	}
@@ -3786,15 +3783,14 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 		}
 	}
 
-	// AND THE FOOTER SAYS WHAT THE SESSION HOLDS: three things to do, three things
-	// to know, in the words the headings used to wear.
+	// The footer counts two decisions and four finished reports.
 	rail := rosterText(a, 24)
-	for _, want := range []string{"3 needs you", "3 done"} {
+	for _, want := range []string{"2 needs you", "4 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the roster is missing %q:\n%s", want, rail)
 		}
 	}
-	// The three demands lead the column and the record follows them, whole.
+	// The two demands lead the column and the record follows them, whole.
 	demands := strings.Index(rail, "Cut the trailer")
 	for _, news := range []string{"Render titles", "Write the auth", "Collect sources"} {
 		if at := strings.Index(rail, news); at < 0 || at < demands {

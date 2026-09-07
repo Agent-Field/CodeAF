@@ -3129,12 +3129,17 @@ func (a *app) stateWord() (string, string) {
 		// deadline, the clock it runs against and the door behind it all do.
 		return a.stoppingSegment()
 	}
-	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
-	// of view: the turn is technically working — the propose_task call is parked
-	// inside it — and what is true about it that a person can act on is that it
-	// is waiting for them (task.go).
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() || a.awaitingSubharness() {
+	if run := a.orchOf(); run != nil && run.gate != nil {
 		return waitingWord, a.pal.askBold(waitingWord)
+	}
+	// Required input outranks work. A proposal with a deadline starts on its
+	// own; it offers an intervention, not a question that blocks progress.
+	if a.asking() || a.awaitingStanding() || a.awaitingSubharness() ||
+		(a.awaitingTask() && a.task.deadline.IsZero()) {
+		return waitingWord, a.pal.askBold(waitingWord)
+	}
+	if a.awaitingTask() {
+		return taskStartingWord, a.pal.accent(taskStartingWord)
 	}
 	word := a.state.String()
 	switch a.state {
@@ -3149,6 +3154,8 @@ func (a *app) stateWord() (string, string) {
 
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
+
+const taskStartingWord = "starting task"
 
 // stoppingWord is what the status line says between a person's esc and the
 // engine letting go of the turn ([app.windingDown]).

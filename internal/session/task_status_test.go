@@ -227,8 +227,8 @@ func TestProjectTaskChangesAreTheirOwnAxis(t *testing.T) {
 			if got.ChangesUnlanded() != tc.unlanded {
 				t.Errorf("unlanded = %v, want %v", got.ChangesUnlanded(), tc.unlanded)
 			}
-			if got.ChangesUnlanded() && !got.Attention {
-				t.Error("edits nobody brought home must ask for a person")
+			if want := tc.changes == TaskChangesConflicted && tc.unlanded; got.Attention != want {
+				t.Errorf("attention = %v; kept branches do not require a merge, conflicts do", got.Attention)
 			}
 		})
 	}

@@ -543,9 +543,10 @@ func (a *app) doneCardFor(id uint64) *taskDone {
 // the foot is the plain finished line: the room is on a landed node whose
 // latest card either still asks or wears a receipt. A run's page has no node to
 // decide about, an ordinary landing has nothing to ask, and a card under `auto`
-// is being decided by somebody else — all three are nil here.
+// is being decided by somebody else. A guest belongs to another conversation;
+// its numeric id must never select this conversation's decision card.
 func (a *app) roomSettleCard() *taskDone {
-	if a.room == nil || !a.room.done || a.room.orch != nil {
+	if a.room == nil || !a.room.done || a.room.orch != nil || a.roomIsGuest() {
 		return nil
 	}
 	card := a.doneCardFor(a.room.id)
@@ -766,6 +767,7 @@ func (a *app) settleAlways(doors settleAgent, card *taskDone) {
 		a.settleRefused(card, err)
 		return
 	}
+	card.reviewByModel = true
 	card.decided, card.trouble = settleHandedLine, ""
 	if saved {
 		card.decided += settleSavedLine

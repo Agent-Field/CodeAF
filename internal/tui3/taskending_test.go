@@ -8,9 +8,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// endedRailText is the rail's rows as one line, because the rail wraps a row's
+// endedRailText expands the finished report and reads its rows as one line, because the rail wraps a row's
 // sentence across its narrow column and a test reads the sentence, not the wrap.
 func endedRailText(a *app) string {
+	a.railSetOpen(a.tasks[7], true)
 	rows := plain(strings.Join(a.railRows(12), "\n"))
 	return strings.Join(strings.Fields(strings.ReplaceAll(rows, "│", " ")), " ")
 }

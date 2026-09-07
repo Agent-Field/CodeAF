@@ -131,9 +131,11 @@ const (
 // and false to both, which is the flat row, unchanged — and that is what keeps
 // this a seam rather than a rewrite.
 //
-// Paused has no publisher yet: nothing on TaskNotice says a run is standing at
-// its fuel gate, so the ⏸ is drawn from a fact this surface cannot currently be
-// told. The run's own page is where a paused run says so today.
+// Paused is filled the same way, from session's TaskNotice.Paused: an adaptive
+// run that has spent its tank publishes its OWN row held at the gate until
+// somebody tops it up, finishes it or stops it, and the workers under it keep
+// publishing whatever they are actually doing. The run's page still asks the
+// question; the ⏸ is how the column says the run is standing still while it does.
 //
 // THE KEY IS A STRING AND THE ID IS NOT, on purpose. The thing that will fill
 // it is an orchestrate node id (internal/orchestrate's [orchestrate.Node.ID] —
@@ -146,10 +148,13 @@ func (n *taskNode) ParentID() string { return n.parent }
 
 // Paused reports whether this task is HELD rather than working: an adaptive run
 // stopped at its fuel gate, waiting for a person to top it up or finish it
-// (session's EventOrchestratePause). It is not a state the engine moves a node
-// through, which is why it is a fact of its own — a paused node is still
-// running as far as the run is concerned, and it is not moving as far as a
-// person is concerned, and the second reading is the one a roster owes them.
+// (session's EventOrchestratePause, and TaskNotice.Paused on the row). It is not
+// a state the engine moves a node through, which is why it is a fact of its own
+// — a paused node is still running as far as the run is concerned, and it is not
+// moving as far as a person is concerned, and the second reading is the one a
+// roster owes them. The reading that decides how the ROW is grouped and counted
+// is [session.ProjectTask]'s, which takes the same fact through
+// [app.taskStatus]: work that will not move until a person says something.
 func (n *taskNode) Paused() bool { return n.paused }
 
 // stripKey is a node's own key in the alphabet [taskNode.ParentID] speaks.

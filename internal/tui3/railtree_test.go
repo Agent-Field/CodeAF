@@ -159,7 +159,7 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 // outer half; [TestAFamilyIsDrawnWholeUnderItsRoot] pins the inner one.
 func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
 	a, _, _ := taskApp(t)
-	// A settled family, then a running one, then a family with a kept branch in
+	// A settled family, then a running one, then a family with a conflicted branch in
 	// it — planted in that order, which is the opposite of the order they belong
 	// in.
 	a.taskUpdate(update(1, "Cut the trailer", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
@@ -168,7 +168,7 @@ func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
 	a.taskUpdate(update(4, "Write the tree", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(5, "Port the parser", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
 	a.taskUpdate(update(6, "Render titles", session.TaskFailed, session.TaskNotice{
-		Merge: mergeWordAborted, Branch: "task/render",
+		Merge: mergeWordConflicted, Branch: "task/render",
 	}))
 	railKinship(a, 1, 2)
 	railKinship(a, 3, 4)

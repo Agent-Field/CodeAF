@@ -118,6 +118,8 @@ type taskDone struct {
 	// at draw time instead would mean a policy flipped mid-afternoon retroactively
 	// took the choices off a card that was genuinely asking.
 	asks bool
+	// reviewByModel records an automatic policy or successful explicit handoff.
+	reviewByModel bool
 	// trouble is the one dim line a card carries when an answer could NOT be
 	// spent and the question is therefore still standing — no checker to look
 	// again with, a working copy that has gone. It is separate from [decided]
@@ -227,6 +229,7 @@ func (a *app) landedCard(node *taskNode) {
 	// WHO IS BEING ASKED IS SETTLED HERE, ONCE, from the row the engine wrote this
 	// node's landing note under (tasksettle.go's [app.settlePolicyAsks]).
 	card.asks = card.unverified && a.settlePolicyAsks()
+	card.reviewByModel = card.unverified && !card.asks
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
@@ -398,6 +401,8 @@ func (a *app) doneTail(card *taskDone) string {
 		verb = taskRecordStoppedWord
 	case card.failed:
 		verb = doneFailWord
+	case card.unverified && card.reviewByModel:
+		verb = taskReviewPendingWord
 	case card.unverified:
 		verb = taskUnverifiedWord
 	}
@@ -490,6 +495,11 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 		tail += " · " + doneOutputKey
 	}
 	said := firstNonEmpty(card.outcome, card.subtitle)
+	// The synthesized fallback follows the handoff too. Keep actual worker
+	// reports verbatim: they describe what was said when the task landed.
+	if card.reviewByModel && strings.TrimSpace(card.report) == "" && card.outcome == taskUnverifiedGloss {
+		said = taskReviewPendingWord
+	}
 	if said == "" && tail == "" {
 		return ""
 	}

@@ -2758,6 +2758,9 @@ func (a *app) roomPath() []string {
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
 // it has one (task.go's merge words).
 func (a *app) roomStateWord(node *taskNode) string {
+	if a.taskReviewPending(node) {
+		return taskReviewPendingWord
+	}
 	switch node.state {
 	case session.TaskRunning:
 		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE

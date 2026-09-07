@@ -398,6 +398,11 @@ Everything this machine has run, across every project and every conversation, gr
 what you do next: `needs your look`, `running`, `waiting`, `finished today`, `earlier`.
 `/history` and `ctrl+.` both open it, and so does `alt+2`.
 
+The groups describe each task's own state. An unrelated approval in its conversation
+does not move running tasks into `needs your look`. A live design approval stays there
+until you answer; a provider or dependency wait belongs under `waiting`. A retained
+branch stays available to inspect and does not, by itself, ask you to merge it.
+
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter, and **the box at the foot says so itself** — it rests on `› type to filter this list`
 rather than the `› say what you want done` every other place shows. It used to show the

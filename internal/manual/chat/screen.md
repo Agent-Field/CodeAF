@@ -643,7 +643,8 @@ words:
 | --- | --- | --- |
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
-| `waiting · your call` | a consent question or a task proposal is open | the question hue, bold |
+| `starting task` | a task proposal has a countdown and will start automatically | accent |
+| `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
 | `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before aforge detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |

@@ -110,3 +110,17 @@ The failed attach no longer leaves only a status message under the list.
 Local design progress and completion no longer write onto a foreign task page
 with the same task number. Forward navigation treats a guest as a different owner,
 so it can enter the matching-numbered local task instead of doing nothing.
+
+An automatic task proposal now reads `starting task`, including truthful required-input
+presence in other windows. Holding its clock still asks for an answer. A foreign finished
+task cannot expose or spend a same-numbered local settlement decision.
+
+Task grouping now uses the task's live status when available. An unrelated conversation
+question cannot reclassify its workers, and a live design approval is not lost through
+the historical index. Retaining a branch alone no longer demands an unrequested merge.
+Successful review handoffs and automatic settlement say `awaiting review`; failed
+handoffs keep the human decision available.
+
+Adaptive budget pauses now travel on the run's root task notice, including live replay.
+The sidebar can show and count the real decision while its children keep their own
+states. Accepted answers and settlement clear the pause; restart does not revive it.

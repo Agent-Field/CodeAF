@@ -122,3 +122,17 @@ The task's own tool rows never enter the main chat; they go to its journal and i
 only. The landing note in the conversation carries the transcript's URI on its first line
 (`task 7 finished: <title> · transcript file:///…`), which is the same file the room
 replays. Nothing here is a summary: a landed task's room is the whole transcript.
+
+## A saved task asks me to accept a different task with the same number
+
+Task numbers belong to their conversation. A reading view of another conversation's
+finished task never shows or answers the current conversation's accept, check-again,
+or reject controls. Open its owning conversation to make a decision there.
+
+## I handed a review to the chat — why does it still need me?
+
+After a successful handoff, the task card, page footer and sidebar say `awaiting review`.
+That is an internal review, not a request for another answer from you. The same applies
+when automatic task settlement was selected before the task finished. If handing over
+fails, the original choices stay available. A running parent alone does not hide an
+unanswered child decision.

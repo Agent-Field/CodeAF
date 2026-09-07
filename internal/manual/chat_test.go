@@ -84,6 +84,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A finished task's room after aforge was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
 		{"task page is empty", "task-rooms-after-restart"},
+		{"a saved task asks me to accept a different task with the same number", "task-rooms-after-restart"},
+		{"I handed a review to the chat why does it still need me", "task-rooms-after-restart"},
+		{"the run is paused but its tasks are still working", "adaptive-runs"},
 		{"task finished but no chat shown", "task-rooms-after-restart"},
 		{"see what a task did after restarting", "task-rooms-after-restart"},
 		// And the same blank met from INSIDE a row that was never a task at all —

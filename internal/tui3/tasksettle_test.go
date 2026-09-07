@@ -485,9 +485,11 @@ func TestUnderAutoTheCardOffersNothing(t *testing.T) {
 	if strings.Contains(text, settleAskWord) {
 		t.Fatalf("the card asks while aforge is deciding:\n%s", text)
 	}
-	// The landing itself is untouched — the state, the word and the mark are the
-	// same whoever is deciding.
-	if !strings.Contains(text, taskUnverifiedWord) {
-		t.Fatalf("the landing stopped saying what it is:\n%s", text)
+	// Both the headline and synthesized fallback name internal review.
+	if !strings.Contains(text, taskReviewPendingWord) || strings.Contains(text, taskUnverifiedWord) {
+		t.Fatalf("automatic review still asks the user:\n%s", text)
+	}
+	if status := a.taskStatus(a.tasks[7]); status.Attention || status.On != session.TaskWaitMachine {
+		t.Fatalf("automatic review claims a human decision: %+v", status)
 	}
 }

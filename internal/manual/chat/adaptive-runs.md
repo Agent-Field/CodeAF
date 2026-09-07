@@ -1744,3 +1744,11 @@ A run is for the one-off goal whose graph has to be planned before the work star
 from a conversation you cannot reach one at all, by any words (*How do I start an adaptive
 run*). So every one of the rows above is the answer here, and several parts on their own are
 never the reason to look for a planner: those are one worker that splits itself.
+
+## The run is paused but its tasks are still working
+
+At the budget decision, the run's own sidebar row shows a pause mark and needs your
+answer. Workers already in flight keep their own states and may finish. Topping up or
+choosing to finish clears the pause; stopping settles the run. A late attachment sees
+the current pause too. Restarting the engine leaves an interrupted record, not a budget
+question for a run that no longer exists.

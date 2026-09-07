@@ -212,6 +212,14 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 			})
 		},
 		OnPause: func(fuel orchestrate.Fuel) {
+			family.gate.Lock()
+			defer family.gate.Unlock()
+			// THE ROSTER IS TOLD FIRST. The event below opens the question on the
+			// run's own page, which is one surface; the row is what every other
+			// place a person looks reads, and a root still drawing a spinner while
+			// somebody is being asked for money is the column disagreeing with the
+			// question in front of them.
+			family.pauseRun(true)
 			a.emitOrchestrate(Event{
 				Kind: EventOrchestratePause, ID: seq,
 				Text: fuel.Gauge(), Hint: orchestrate.Dollars(fuel.Cap),
@@ -227,7 +235,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	})
 	planner.orch = run
 
-	live := &orchestration{run: run, cancel: cancel, born: time.Now()}
+	live := &orchestration{run: run, cancel: cancel, family: family, born: time.Now()}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -290,6 +298,14 @@ func orchestrateRoleCall(source func(key string) (string, bool), role roles.Role
 type orchestration struct {
 	run    *orchestrate.Orchestrator
 	cancel context.CancelFunc
+	// family is this run's rows on the roster (the family seam at the foot of this
+	// file), and it is kept here for ONE reason: the gate's answer arrives through
+	// [Agent.ResolveOrchestrate], which holds the registry rather than the closures
+	// the run was built with. A row that says somebody is being asked has to stop
+	// saying it in the same breath they answer, and this is the only handle that
+	// door has on the row. Nil on a run scripted by a test that built no family,
+	// which [orchestrateFamily.pauseRun] takes as the nothing it is.
+	family *orchestrateFamily
 	// born is when this run was registered, and it is the ONE thing here that is
 	// not a second copy of something on the snapshot: a run's shape, fuel and
 	// write-up are all the orchestrator's own, and its age is not on any of them.
@@ -317,9 +333,22 @@ func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
 	if !known {
 		return "", fmt.Errorf("there is no run %q in this session", id)
 	}
+	// Serialize the accepted answer with the next pause publication. A fast
+	// planner can exhaust a top-up before Resolve returns to this goroutine.
+	if live.family != nil {
+		live.family.gate.Lock()
+		defer live.family.gate.Unlock()
+	}
 	if err := live.run.Resolve(answer); err != nil {
 		return "", err
 	}
+	// THE QUESTION IS ANSWERED, SO THE ROW STOPS ASKING. Both answers that reach
+	// here carry the run ON — "stop" left through [Agent.Cancel] above and its
+	// family settles with the run — so the gate is down either way, and a row that
+	// went on wearing it would ask a person a question they have just answered.
+	// A refused answer never gets here: the gate is still up and the row still
+	// says so.
+	live.family.pauseRun(false)
 	if answer == orchestrate.GateFinish {
 		return "finishing on what is already done", nil
 	}
@@ -1360,6 +1389,8 @@ func (c Config) WorktreePath(jobID string) string {
 // on every launch, landing, note and steer, and a roster redrawing twelve rows
 // for a note is a roster nobody can read.
 type orchestrateFamily struct {
+	// gate orders pause notifications and their accepted answers.
+	gate  sync.Mutex
 	agent *Agent
 	run   string
 	root  uint64
@@ -1397,6 +1428,14 @@ type orchestrateFamily struct {
 	// that finished from being republished as running because three words landed
 	// a moment after it ended.
 	settled bool
+	// paused says this run is standing at its fuel gate right now
+	// ([orchestrateFamily.pauseRun]), and it is the family's rather than any one
+	// notice's for the same reason `settled` is: the run's own row is published
+	// from four places — the mint, the forming line, the namer that answers late
+	// (taskname.go) and the settle — and three of them know nothing about a gate.
+	// Held here, the door stamps it onto every one of them
+	// ([orchestrateFamily.publish]), so no late row can take it off.
+	paused bool
 	// names is the last goal each node was published with, keyed the way ids is.
 	//
 	// IT EXISTS SO THAT NO ROW OF THIS RUN IS EVER PUBLISHED NAMELESS. A surface
@@ -1485,6 +1524,22 @@ func (f *orchestrateFamily) publish(notice TaskNotice) {
 	f.say.Lock()
 	defer f.say.Unlock()
 	f.mu.Lock()
+	if f.settled && notice.ID == f.root && notice.State == TaskRunning {
+		f.mu.Unlock()
+		return
+	}
+	// THE GATE IS WRITTEN ONTO THE RUN'S OWN ROW HERE AND NOWHERE ELSE, which is
+	// what makes it survive a row published by somebody who has never heard of a
+	// fuel tank: the forming line, the name that lands a second late, a worker
+	// moving. A caller cannot forget a field it does not fill.
+	//
+	// ONLY A RUNNING ROOT WEARS IT. The workers under a paused run are publishing
+	// their own states and are not held at anything; and the settle publishes a
+	// row that is over, where a gate would be a question about work that has
+	// stopped.
+	if notice.ID == f.root && notice.State == TaskRunning {
+		notice.Paused = f.paused
+	}
 	if f.rows == nil {
 		f.rows = make(map[uint64]TaskNotice, 8)
 	}
@@ -1697,6 +1752,45 @@ func (f *orchestrateFamily) sayForming() {
 	})
 }
 
+// pauseRun raises or lowers the run's fuel gate on the roster and republishes
+// the run's own row so a person watching the column learns of it at the same
+// moment the run's page does ([orchestrate.Options.OnPause] raises it,
+// [Agent.ResolveOrchestrate] lowers it).
+//
+// IT SAYS SOMETHING ONLY WHEN THE ANSWER CHANGES, which is the de-dup every
+// other publisher in this file keeps: a gauge crossing its cap sends one pause,
+// and a row redrawn for a fact that did not move is a row a surface has to
+// decide to ignore.
+//
+// AND A SETTLED RUN HAS NO GATE. The flag is refused after [orchestrateFamily.settle]
+// on the rule that closes it: the last row said the run was over, and a "somebody
+// must decide this" arriving afterwards would put a live question over finished
+// work. It is refused rather than merely unpublished so that nothing later — a
+// replay, a checkpoint — can read the flag back out.
+func (f *orchestrateFamily) pauseRun(held bool) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	if f.settled || f.paused == held {
+		f.mu.Unlock()
+		return
+	}
+	f.paused = held
+	// The phase the row is already in rides with it, for [orchestrateFamily.rename]'s
+	// reason exactly: a tank can empty while the opening planner call is still out,
+	// and a row republished bare here would take the forming line off a run that is
+	// still forming.
+	line, title := f.formingLocked(), f.title
+	f.mu.Unlock()
+	// The gate itself is not named in this notice: [orchestrateFamily.publish]
+	// stamps it from the flag just written, which is what keeps one answer to
+	// "is this run held" rather than one per publisher.
+	f.publish(TaskNotice{
+		ID: f.root, Run: f.run, Title: title, State: TaskRunning, Model: f.model, Doing: line,
+	})
+}
+
 // formingDone ends the forming line once there is at least one worker to look
 // at, and says so exactly once.
 func (f *orchestrateFamily) formingDone() {
@@ -1901,6 +1995,11 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	// (taskname.go).
 	f.mu.Lock()
 	f.settled = true
+	// AND THE GATE COMES DOWN WITH IT. A run stopped AT its gate — the third
+	// answer, which ends the run through [Agent.Cancel] — would otherwise leave
+	// the flag standing behind the settled row, where a replay or a checkpoint
+	// could read it back as a question about work that is over.
+	f.paused = false
 	title := f.title
 	f.mu.Unlock()
 	notice := TaskNotice{

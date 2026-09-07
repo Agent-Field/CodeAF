@@ -526,6 +526,28 @@ type TaskNotice struct {
 	// starting and a hold ending are both news that arrives without the state
 	// moving, so an update carrying only this is still one a surface folds in.
 	Waiting string
+	// Paused says this row is HELD AT A GATE only a person can open: an adaptive
+	// run that has spent its tank and stopped launching, waiting to be topped up,
+	// finished or stopped ([EventOrchestratePause], [Agent.ResolveOrchestrate]).
+	//
+	// IT RIDES BESIDE `running` RATHER THAN REPLACING IT, on Stopped's own terms.
+	// The run is running as far as the run is concerned — whatever was in flight
+	// when the tank emptied is still working, and those rows still say so — and it
+	// is not moving as far as a person is concerned, and the second reading is the
+	// one a roster owes them. ONLY THE RUN'S OWN ROW EVER CARRIES IT: a worker
+	// under a paused run is not paused, it is finishing what it started.
+	//
+	// IT IS A REPORT OF RIGHT NOW, like Mending and Waiting, and like them it is
+	// ANNOUNCED ON CHANGE: the gate going up and the gate being answered are both
+	// news that arrives without the state moving. Every row the run publishes
+	// while the gate is up carries it, so a lane that opens late is told exactly
+	// what a live watcher was (orchestrate.go's [orchestrateFamily.publish] is the
+	// one place it is written).
+	//
+	// IT IS A FACT OF THIS PROCESS AND NOT OF THE CHECKPOINT. Nothing resumes a
+	// run across a restart, so a restored row comes back settled and never paused
+	// (task_store.go's [runRecord]).
+	Paused bool
 	// Stopped says a PERSON ended this node ([Agent.Cancel]) rather than the
 	// work ending on its own. It rides beside State rather than replacing it —
 	// a stopped node still settles as `failed`, because nothing merged and its

@@ -24,6 +24,7 @@ func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 		Gap:     node.mending,
 		Hold:    node.waiting,
 		Waits:   a.taskWaitTitles(node),
+		Paused:  node.paused,
 		Stopped: node.stopped,
 		Merge:   node.merge,
 		Branch:  node.branch,
@@ -31,7 +32,12 @@ func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 	if !node.restored {
 		facts.Liveness = session.TaskLivenessHeld
 	}
-	return session.ProjectTask(facts)
+	status := session.ProjectTask(facts)
+	if a.taskReviewPending(node) {
+		status.Presence, status.On, status.Reason = session.TaskPresenceWaiting, session.TaskWaitMachine, taskReviewPendingWord
+		status.Attention = false
+	}
+	return status
 }
 
 // taskEntryStatus reads one row of the project's record. `runs` is
@@ -54,6 +60,9 @@ func taskPresenceWord(status session.TaskStatus) string {
 	case session.TaskPresenceWorking:
 		return taskRecordRunsWord
 	case session.TaskPresenceWaiting:
+		if status.Reason == taskReviewPendingWord {
+			return taskReviewPendingWord
+		}
 		return taskHeldWord
 	case session.TaskPresenceFinishing:
 		return taskFinishingWord

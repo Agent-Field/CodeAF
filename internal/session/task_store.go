@@ -527,6 +527,12 @@ type harnessOfferRecord struct {
 // (orchestrate.go's [orchestrateFamily.publish] keeps the live ones). Doing is
 // deliberately NOT among them: it is the phase a row is in while it is moving
 // ("forming the work"), and nothing restored from here is moving.
+//
+// NEITHER IS Paused, AND FOR A STRONGER REASON. It is a question put to a person
+// by a run that is still going, and the run died with the process — so a restored
+// row wearing it would ask for money on behalf of an orchestrator that no longer
+// exists, and no answer could reach one. Left out, the row comes back settled
+// like every other row that was moving, which is the truth about it.
 type runRecord struct {
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`

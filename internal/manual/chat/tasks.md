@@ -988,6 +988,11 @@ appended, and the card settles as `approved · the clock`. This is the opposite 
 permission card's countdown, which runs toward denying. A task proposal is not a permission
 gate — it is your window to redirect the work or wave it off before it starts.
 
+While that countdown runs, the main footer says `starting task`. You do not have to
+answer. Holding the proposal removes the countdown; the footer then says
+`waiting · your call`, and other windows report `waiting on you` too. An automatic
+proposal does not hide a separate question that really needs an answer.
+
 The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
 open that with `ctrl+,` or `/settings` — where it is the row labelled `task countdown`. It
