@@ -1039,7 +1039,7 @@ func helpText(file string, chords chordSpelling) string {
 		// The line is TRUE IN BOTH MODES of ui.quick_switch on purpose: this list
 		// has no reach into the profile, and a clause that named one mode would be
 		// wrong in the other. The card's own head and the manual say the rest.
-		"ctrl+k         switch conversations · tap it like alt+tab · esc back",
+		"ctrl+k         choose a conversation · enter open · esc cancel",
 		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a

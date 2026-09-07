@@ -389,6 +389,12 @@ func (a *app) frameBody() (string, int, int) {
 	// the window — which page this is, and how to leave it — rather than about
 	// the transcript, so it is not one of the columns the rail borrows from
 	// (room.go).
+	// THE TAB STRIP IS THE ROW ABOVE IT, and it is a different question: the
+	// header says where you are INSIDE a conversation, and the strip says which
+	// conversation that is and which others this window can go back to
+	// (chattabs.go). They are two rows because they are two questions — the one
+	// that used to carry both carried neither well.
+	tabs := a.tabsRow(width)
 	head := a.roomHead(width)
 	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
 	// width: what is running is a fact about the SESSION, not about the
@@ -406,6 +412,9 @@ func (a *app) frameBody() (string, int, int) {
 	view := a.viewHeight()
 
 	rows := make([]string, 0, height)
+	if tabs != "" {
+		rows = append(rows, tabs)
+	}
 	if head != "" {
 		rows = append(rows, head)
 		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
@@ -427,6 +436,7 @@ func (a *app) frameBody() (string, int, int) {
 		// THE SWITCHER IS DRAWN OVER THE ROSTER TOO. On a frame with no columns
 		// to lend, the roster IS the body, and a card that skipped this branch
 		// would be a key that did nothing at sixty columns (hop.go).
+		a.hop.originY = len(rows)
 		rows = append(rows, a.hopMaybe(a.railRows(view), width)...)
 		// The lifted rows are still part of this frame's height even here, where
 		// the roster has taken the body: dropping them would draw a window short
@@ -483,6 +493,7 @@ func (a *app) frameBody() (string, int, int) {
 				texts[i] = r.text
 			}
 		}
+		a.hop.originY = len(rows)
 		texts = a.hopOver(texts, a.bodyWidth(), a.pal)
 		body, pad = make([]row, len(texts)), 0
 		for i, text := range texts {
@@ -1047,20 +1058,31 @@ func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
+	// THE TAB STRIP IS THE FIRST OF THOSE ROWS AND IS CHARGED FOR HERE, on its
+	// own two floors (chattabs.go's [app.tabsHeight]): it is drawn over the
+	// conversation and over every page inside it, because which conversation this
+	// is stays true wherever you have walked to inside one.
+	width, _ := a.size()
+	head := a.tabsHeight(width)
+	if a.room == nil {
+		// AND THE CONVERSATION ITSELF HAS NO TRAIL ROW. `main` with nothing after
+		// it is the tab above it said twice, and the emptiness law is exactly this:
+		// a row that carries no news is a row that is not drawn.
+		return head
+	}
 	// The same floor the rule and the blank above the draft stand on: a terminal
 	// too short for breathing room is too short for a header, and what is
 	// happening is still on the status line.
-	if a.room == nil || a.breathingRows() == 0 {
-		return 0
+	if a.breathingRows() == 0 {
+		return head
 	}
 	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
 	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
 	// way out's worth of line down there — so a row charged for here would be a
 	// row the frame never drew, and every hit-test on the page would land one line
 	// from where it was aimed.
-	width, _ := a.size()
 	if width < roomHeadFloor {
-		return 0
+		return head
 	}
 	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
 	// exactly the reason the header's own row is: they are drawn above the body
@@ -1068,7 +1090,7 @@ func (a *app) headHeight() int {
 	// last row under the input box. They are asked at the frame's OWN width,
 	// which is the width [app.view] hands the header, so the count here and the
 	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	return 1 + len(a.roomKinRows(width))
+	return head + 1 + len(a.roomKinRows(width))
 }
 
 // scrollPage is how many rows one pgup or pgdown moves: a screenful less a line

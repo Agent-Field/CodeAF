@@ -87,7 +87,26 @@ func (a *Agent) rememberOwedLocked(user userMessage) {
 	}
 	for _, tag := range user.replyTags {
 		a.oweLocked(owedAsk{text: tag.owed(), from: owedByResult, task: tag.ID})
+		// AND WHICH NODE ARRIVED, whatever its words were. This is the id half of
+		// the same arrival, kept because [Agent.oweLocked] drops an ask with no
+		// text and the write seam needs the node rather than the sentence
+		// (writeseam.go's [Agent.deliveringOwnedResult]).
+		a.arrivedLocked(tag.ID)
 	}
+}
+
+// arrivedLocked records one result that landed in this turn, once. The caller
+// holds a.mu.
+func (a *Agent) arrivedLocked(id uint64) {
+	if id == 0 {
+		return
+	}
+	for _, already := range a.turnResults {
+		if already == id {
+			return
+		}
+	}
+	a.turnResults = append(a.turnResults, id)
 }
 
 // This is a runtime reply duty, not a claim that the person issued new work.
@@ -119,9 +138,9 @@ func (a *Agent) oweLocked(ask owedAsk) {
 	a.owedAsks = append(a.owedAsks, ask)
 }
 
-// forgetOwedLocked clears the previous turn's owed asks. Called once, where a
-// turn opens.
-func (a *Agent) forgetOwedLocked() { a.owedAsks = nil }
+// forgetOwedLocked clears the previous turn's owed asks and the results they
+// arrived with. Called once, where a turn opens.
+func (a *Agent) forgetOwedLocked() { a.owedAsks, a.turnResults = nil, nil }
 
 // turnAsk is the ask this turn's endings are read against.
 //

@@ -520,7 +520,9 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 		"the roster's row":  plain(strings.Join(a.railUnder(node, 60), "\n")),
 	}
 	card := &taskDone{merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second}
-	said["the settled card's tail"] = plain(a.doneTail(card))
+	card.open = false
+	said["the settled card's collapsed tail"] = plain(a.doneTail(card))
+	card.open = true
 	said["the settled card's expansion"] = plain(strings.Join(a.doneDetail(card, 80), "\n"))
 
 	for where, line := range said {

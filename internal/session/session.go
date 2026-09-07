@@ -2140,6 +2140,17 @@ type Agent struct {
 	// woken turn owes the request its result belongs to, not whatever was typed
 	// most recently — see [Agent.turnAsk].
 	owedAsks []owedAsk
+	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
+	// arrival order and cleared with owedAsks when a turn opens.
+	//
+	// It is kept beside owedAsks rather than read back out of them because the
+	// two are different facts: an owed ask is TEXT, and an ask with no text — a
+	// node admitted through a door that froze no request — is dropped by
+	// [Agent.oweLocked] and takes its id with it. What the write seam asks is
+	// WHICH NODE this turn is delivering (writeseam.go's
+	// [Agent.deliveringOwnedResult]), and that question has to survive a result
+	// whose words were empty.
+	turnResults []uint64
 	// personTurns is the same answer for the turns BEFORE the newest one, kept
 	// for the same reason and bounded (admission_compile.go). personAsk answers
 	// "what is the current ask"; this answers "what else have they told us",

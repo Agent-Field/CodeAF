@@ -247,6 +247,21 @@ type taskGuest struct {
 	sessionID string
 	// owner is what to call that conversation on screen.
 	owner string
+	// trail is the work ABOVE this page inside that conversation, outermost
+	// first, frozen at the moment the page was opened (roomcrumbs.go draws it).
+	//
+	// IT IS FROZEN BECAUSE THE RECORD IS THE ONLY PLACE IT EXISTS. This window has
+	// no graph for another conversation's work — [taskGuest.node] is built from the
+	// one row that was pressed, and resolving a parent id against [app.tasks] would
+	// name THIS conversation's task of that number, which is the crossover the
+	// whole guest lane is written to prevent. So the chain is read once, from the
+	// record the row itself came off, and never re-asked: a photograph of the
+	// family, exactly as the node beside it is a photograph of the work.
+	//
+	// AND NONE OF IT IS A DOOR. Opening one of these would mean a second attach to
+	// somebody else's engine from inside a page that is already one; the crumbs
+	// say where this sits and `esc` is still the way out.
+	trail []string
 	// node is this page's whole knowledge of the work, built from the row the
 	// person pressed and OWNED BY THE PAGE.
 	//
@@ -669,8 +684,12 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 		sessionID: taskSessionOf(msg.view.Session),
 		owner:     ask.name,
 		node:      taskGuestNode(ask.item),
-		room:      msg.view.Room,
-		close:     msg.view.Close,
+		// The chain is read HERE, while the record that names it is still standing:
+		// the list is closed three lines down, and after that this window has no
+		// way to say what this piece of work was cut out of.
+		trail: a.taskGuestTrail(ask.item),
+		room:  msg.view.Room,
+		close: msg.view.Close,
 	}
 	// AND THE OWNER IS ASKED WHAT ITS WORK IS DOING, once, on the connection that
 	// is already open. The lane replays the whole roster the moment it is taken,
@@ -707,6 +726,53 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 		a.roomPump = tea.Batch(a.roomPump, waitGuestNotices(guest.notices, room.gen))
 	}
 	return a.takeRoomPump()
+}
+
+// taskGuestTrail is the work above one row of the record, inside ITS OWN
+// conversation, outermost first.
+//
+// IT IS THE RECORD'S OWN SHAPE AND NOT A SECOND WALK. [tasksTreeOf] is what the
+// tasks place draws its families from, and its `up` map is scoped to one
+// conversation by construction — a parent id is only ever matched against rows
+// of the same session, because ids restart with every one of them. So a chain
+// read here cannot cross into another conversation's work or into this window's.
+//
+// THE WHOLE READING IS WALKED AND NOT THE FILTERED ONE. A person who typed three
+// letters to find this row narrowed the page, not the family; the filter keeps
+// the rows above a hit for exactly this reason, but the unfiltered reading is the
+// one that cannot have a hole in it.
+//
+// A CONVERSATION IS NOT A CRUMB HERE: the guest trail's root is already whose
+// conversation this is ([roomGuestOwnerWord]), and the tree hangs its roots under
+// a conversation key rather than under another task, so the walk simply ends.
+func (a *app) taskGuestTrail(item tasksItem) []string {
+	tree := a.taskSheet.reading.tree()
+	var up []string
+	seen := make(map[tasksKey]bool)
+	for at := tasksKeyOf(item.entry); !seen[at]; {
+		seen[at] = true
+		parent, ok := tree.up[at]
+		if !ok || parent.chat() {
+			break
+		}
+		found, ok := tree.at[parent]
+		if !ok {
+			break
+		}
+		// A PIECE OF WORK NOTHING NAMED IS NOT A CRUMB. The record carries rows with
+		// no words on them, and `main ▸ 7 ▸ this` has told a person nothing — the
+		// same refusal the kin line already made about a parent it could not name.
+		word := tasksLabel(found.entry)
+		if strings.TrimSpace(word) == "" {
+			break
+		}
+		up = append(up, word)
+		at = parent
+	}
+	for i, j := 0, len(up)-1; i < j; i, j = i+1, j-1 {
+		up[i], up[j] = up[j], up[i]
+	}
+	return up
 }
 
 // taskGuestNode is the page's own node for one piece of another conversation's

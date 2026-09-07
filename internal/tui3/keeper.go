@@ -393,6 +393,39 @@ func (a *app) stow(conv Conversation, side *aside) {
 	if key == "" || conv.Agent == nil {
 		return
 	}
+	// A DOOR WHOSE CONVERSATIONS SHARE ONE HANDLE KEEPS NOTHING HERE, and this is
+	// the one guard rather than a branch at each of the four callers — /new, the
+	// two beside-doors and a switch all end up on this line.
+	//
+	// WHAT WOULD HAPPEN OTHERWISE is not a missing feature, it is a lie on the
+	// screen. Over an engine door [Options.Resume] hands back the SAME agent it
+	// was given, now pointing at the session the engine has just swapped to
+	// (cmd/aforge's chatv3_host.go). Putting that pointer in the map records the
+	// conversation now IN FRONT under the key of the one being left: the switcher
+	// then draws it twice, one of them under the old name, and pressing the held
+	// row opens the body of the conversation already on screen. It would also arm
+	// a [behindWatch] on the agent the surface is itself reading, so one handle's
+	// lanes would have two readers and the drain would eat events the frame is
+	// waiting for.
+	//
+	// AND THE CONVERSATION BEING LEFT IS NOT LOST BY SKIPPING THIS — it is already
+	// gone: the engine interrupts and closes the previous conversation as part of
+	// the swap (internal/remote's Session.swap). There is nothing running to hold.
+	//
+	// WHAT IS KEPT ANYWAY IS THE UNSENT SENTENCE. The agent is not this window's
+	// to hold, but the words in the box were never the agent's — they are the
+	// person's, they are not on the wire, and a switch that dropped them would
+	// lose a paragraph somebody was in the middle of writing every time they
+	// pressed a tab. So the composer goes down under THIS conversation's own
+	// identity exactly as it does below, and comes back through the same reunion
+	// when the conversation is opened again (draftkeep.go's [app.stowDrafts] and
+	// [app.layKeptDrafts]).
+	if a.shared {
+		a.stowDrafts(conv, side)
+		// Retain the outgoing navigation identity even though its agent ended.
+		a.rememberOpen(key)
+		return
+	}
 	// AND IT IS THE WHOLE COMPOSER, not only the box: every page's own unsent line
 	// goes down under THIS conversation's identity (draftkeep.go's
 	// [app.stowDrafts]), because the conversation now in front is about to write
@@ -503,6 +536,15 @@ func (a *app) openBeside(workspace, transcript string) (tea.Cmd, string) {
 	if !a.canOpen() {
 		return nil, resumeUnavailableWord
 	}
+	// IDENTITY IS ASKED BEFORE THE DOOR IS, which is [app.openSession]'s own rule
+	// and was missing here. A row naming the conversation ALREADY IN FRONT is
+	// answered by staying in it: asking the door for it would meet this process's
+	// own flock and refuse `open in another window` about the session on screen,
+	// and over a shared handle it would ask the engine to swap onto the
+	// conversation it already has open. A row the keeper holds is a switch.
+	if cmd, ours := a.bringForward(transcript); ours {
+		return cmd, ""
+	}
 	if a.open == nil {
 		if a.resume == nil {
 			return nil, resumeUnavailableWord
@@ -539,17 +581,57 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 // takeBeside is the two lines both doors above end in: the conversation on
 // screen steps aside and goes on running, and the new one takes the surface.
 func (a *app) takeBeside(conv Conversation) tea.Cmd {
+	// The name of what is being left, read while it is still in front, and said
+	// afterwards on a door that could not keep it (below). Notes are cleared by
+	// the detach, so this is remembered rather than written now.
+	closed := a.sessionName()
+	if closed == "" {
+		closed = a.place
+	}
 	leaving, side := a.front(), a.detachConversation()
 	a.stow(leaving, side)
+	if a.shared {
+		// The legacy wire seam returns only an Agent. The local draft store
+		// belongs to this window, with separate owner-scoped slots inside it.
+		if conv.DraftFile == "" {
+			conv.DraftFile = leaving.DraftFile
+		}
+		if conv.History == nil {
+			conv.History = leaving.History
+		}
+	}
 	cmd := a.attachConversation(conv, nil)
+	if a.shared {
+		a.restoreDraft()
+	}
 	if key := a.convKey(conv.SessionFile); key != "" {
 		a.rememberOpen(key)
 	}
 	if conv.Notice != "" {
 		a.note(conv.Notice)
 	}
+	// AND A DOOR THAT DID NOT ACTUALLY OPEN ONE BESIDE SAYS SO. Every caller of
+	// this function promises the conversation on screen goes on running; over a
+	// shared handle it does not, because the engine ended it in the swap
+	// ([Options.SharedAgent]). A person who watched their work vanish off the
+	// switcher is owed the sentence rather than the discovery.
+	if a.shared {
+		if closed != "" {
+			a.note("closed · " + closed + " — " + oneConversationWord)
+		} else {
+			a.note(oneConversationWord)
+		}
+	}
 	return cmd
 }
+
+// oneConversationWord is what a door says when it swapped a conversation in
+// place because this window's engine holds one at a time
+// ([Options.SharedAgent]). It names the connection and not the machine: the
+// limit belongs to the wire's one open session, and the same sentence is true
+// over `--host`, over `--at` and over the socket an ordinary `aforge chat` opens
+// onto this machine's own engine.
+const oneConversationWord = "a connection holds one conversation at a time"
 
 // lastConversation is `tab`: the way back to the conversation that was in front
 // before this one.

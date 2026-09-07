@@ -122,7 +122,7 @@ func TestTheRoomHeaderAndItsMarkLightSeparately(t *testing.T) {
 		t.Fatal("the header drew no ✕ to aim at")
 	}
 
-	drive(t, a, motionTo(a.roomStop.from, 0))
+	drive(t, a, motionTo(a.roomStop.from, a.roomHeadRow()))
 	if !a.hoveringRoomStop() {
 		t.Fatalf("the pointer on the ✕ recorded %+v", a.hot)
 	}
@@ -135,7 +135,7 @@ func TestTheRoomHeaderAndItsMarkLightSeparately(t *testing.T) {
 	}
 
 	// Anywhere else along the row is the way out, and the way out is the row.
-	drive(t, a, motionTo(2, 0))
+	drive(t, a, motionTo(2, a.roomHeadRow()))
 	if !a.hoveringRoomBack() {
 		t.Fatalf("the pointer on the header recorded %+v", a.hot)
 	}

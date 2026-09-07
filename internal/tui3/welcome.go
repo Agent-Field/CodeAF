@@ -321,7 +321,15 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	a.dropParked()
 	leaving := a.agent
 	side := a.detachConversation()
-	if leaving != nil {
+	// AND ON A SHARED HANDLE THERE IS NOTHING HERE TO CLOSE, which is the one
+	// thing the open-before-close repair above could not have known about.
+	// [Options.SharedAgent] doors hand the SAME agent back out of the door called
+	// four lines up, now naming the conversation the engine has just swapped to —
+	// so `leaving` is not the conversation being left, and interrupting and
+	// closing it would stop and flush the session that was just opened, in front
+	// of the person who asked for it. The previous conversation is already ended,
+	// by the engine, as part of the swap (internal/remote's Session.swap).
+	if leaving != nil && !a.shared {
 		leaving.Interrupt()
 		if err := leaving.Close(); err != nil {
 			a.note("close failed: " + err.Error())

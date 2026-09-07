@@ -254,6 +254,27 @@ type taskNode struct {
 	// unpublished price (session's task_contract.go on CostUSD).
 	tokens                int
 	report, branch, merge string
+	// produced is WHAT THE WORK MADE, kept apart from the report above because
+	// internal/session keeps the two apart and for its reason (task_result.go):
+	// the report is the CARD — a landing's own sentences, which a late verdict,
+	// an accept or a re-check rewrites hours afterwards — and the result is the
+	// work's half alone, never composed with any of them. A surface that read
+	// only the report drew a merge refusal, a decision somebody made this morning
+	// and the answer itself as one undifferentiated block, because that is what
+	// the report is once a landing has had a hand in it.
+	//
+	// EMPTY IS NOT "IT PRODUCED NOTHING". The engine omits the result when the
+	// report already carries the answer exactly — every task that finished in two
+	// or three short lines — and a checkpoint written before results existed has
+	// none at all. The card falls back to the report in both cases, which is what
+	// it drew before this field existed (taskdone.go's [taskDone.answerAndAccount]).
+	produced string
+	// producedWhole is where the whole of an answer this reader was handed only
+	// the beginning of can be read, and producedCut says that is what happened.
+	// producedHeld is the third shape: the check did not accept the work, so the
+	// answer is NAMED rather than handed on and producedWhole is where it is.
+	producedWhole             string
+	producedCut, producedHeld bool
 	// rung is WHICH COPY OF THE GROUND this node worked in and mode is what was
 	// promised about it (session's TaskNotice.Rung and .Mode). They are held for
 	// one reason: the landing note has to name the place the work was left, and
@@ -5680,6 +5701,16 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Report != "" {
 		node.report = notice.Report
+	}
+	// AND WHAT THE WORK PRODUCED, kept on the report's own rule — a notice quiet
+	// about it has not unmade the answer — with the two facts that qualify it
+	// taken from the SAME notice that carried the body. Cut and held are
+	// statements about the text beside them, so a later notice's flags over an
+	// older notice's body would be this surface claiming a pointer belongs to an
+	// answer it was never published with (session's TaskNotice.Result).
+	if notice.Result != "" || notice.ResultHeld {
+		node.produced, node.producedWhole = notice.Result, notice.ResultWhole
+		node.producedCut, node.producedHeld = notice.ResultCut, notice.ResultHeld
 	}
 	// The model is kept whenever an update carries one and never overwritten
 	// with an empty: it is a property of the work, settled at admission, and an

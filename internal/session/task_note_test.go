@@ -79,14 +79,14 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: needsLookLead + "asked twice and got no answer either time",
+			Report: needsLookLead + checkerAskedTwice,
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work
 		// is wrong" are different news.
 		want: []string{
 			"task 9 needs your look: Collect sources",
-			needsLookLead + "asked twice",
+			needsLookLead + checkerAskedTwice,
 			"it is neither done nor failed",
 			"tasks id 9 resolve accept|reaudit|refute",
 		},

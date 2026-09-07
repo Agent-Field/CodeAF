@@ -54,7 +54,9 @@ type aside struct {
 	// the person's, so they go back where they can see them (quitarm.go's
 	// [app.leavingDraft] assembles exactly this string for the same reason).
 	draft string
-	chips []chip
+	// draftCursor is optional for older sidecars assembled without a caret.
+	draftCursor *int
+	chips       []chip
 	// pastes are the documents the draft's compact tokens stand for
 	// (pastechip.go). They travel with the sentence because the sentence is
 	// meaningless without them: a draft restored with `[paste 1 · 42 lines]` in
@@ -257,6 +259,13 @@ func (a *app) detachConversation() *aside {
 		since:  a.now(),
 		title:  a.title,
 	}
+	// Appended parked messages are new text at the end; otherwise a switch
+	// restores the exact insertion point the person left in the main composer.
+	cursor := main.box.cursor
+	if side.draft != main.box.String() {
+		cursor = len([]rune(side.draft))
+	}
+	side.draftCursor = &cursor
 	if left, ok := a.askLeft(); ok {
 		side.askLeft, side.askPaused = left, a.askPaused
 	}
@@ -566,6 +575,16 @@ func (a *app) adoptTurn(events <-chan session.Event, stop func()) tea.Cmd {
 	return tea.Batch(waitEvent(a.stream, a.gen), a.wake())
 }
 
+// mainBox restores a sidecar's text and bounded insertion point together.
+func (side *aside) mainBox() editor {
+	value := []rune(side.draft)
+	cursor := len(value)
+	if side.draftCursor != nil {
+		cursor = max(0, min(*side.draftCursor, len(value)))
+	}
+	return editor{value: value, cursor: cursor}
+}
+
 // restoreAside puts the person's own readings back.
 func (a *app) restoreAside(side *aside) tea.Cmd {
 	// THE BOX IS LAID OUT ON MAIN FIRST AND THE PAGES' OWN LINES ARE PUT BEHIND
@@ -580,7 +599,7 @@ func (a *app) restoreAside(side *aside) tea.Cmd {
 	// (steersend.go's [app.restoreSentDrafts]).
 	a.restoreSentDrafts()
 	if side.draft != "" {
-		a.input.setText(side.draft)
+		a.input = side.mainBox()
 	}
 	a.chips = side.chips
 	a.pastes = side.pastes

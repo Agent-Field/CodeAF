@@ -1230,12 +1230,8 @@ const (
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
 
-	// DefaultQuickSwitch makes the switcher's chord SWITCH rather than ask, on a
-	// profile that has never said otherwise. It is the behaviour every window
-	// manager and browser taught: the fast gesture is the default and nobody
-	// opts into it. The slower card is still one arrow key away — touching
-	// anything but the chord converts the fading card into the browsing one —
-	// so the default costs a careful reader nothing but `esc`.
+	// DefaultQuickSwitch controls immediate switching with ctrl+tab where the
+	// terminal can deliver it. Ctrl+k always browses before opening a chat.
 	DefaultQuickSwitch = true
 
 	// DefaultHints shows the v3 chat's tips to a profile that has never said
@@ -2287,11 +2283,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyQuickSwitch, Category: CategoryInterface, Kind: SettingBool,
 			Label: "quick switch",
-			Hint: "whether ctrl+k switches conversations the moment it is pressed — press " +
-				"again to go further back, pause and the card fades, esc returns to where " +
-				"you started. Turned off, ctrl+k opens the card and waits for enter. Either " +
-				"way, touching the arrow keys holds the card open to look around without " +
-				"switching.",
+			Hint: "whether ctrl+tab switches immediately where the terminal sends it. " +
+				"Off, it waits for enter. Ctrl+k always browses before opening a chat.",
 			read:  func() string { return formatBool(QuickSwitchAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyQuickSwitch, raw) },
 		},

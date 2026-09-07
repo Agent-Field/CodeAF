@@ -48,6 +48,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -96,6 +97,10 @@ type writeMeter struct {
 	// spent says the seam has already opened its door in this turn, so that a
 	// handover this road declined is not asked for again every round after.
 	spent bool
+	// held says the allowance was passed while the door was held shut for a
+	// delivery ([Agent.deliveringOwnedResult]), and it exists so that fact is
+	// written down ONCE rather than at every boundary after it.
+	held bool
 }
 
 func newWriteMeter() *writeMeter { return &writeMeter{files: map[string]bool{}} }
@@ -122,13 +127,46 @@ func (m *writeMeter) pastAllowance() bool {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.spent {
-		return false
-	}
-	if m.calls < writeAllowanceCalls && len(m.files) < writeAllowanceFiles {
+	if m.spent || !m.pastLocked() {
 		return false
 	}
 	m.spent = true
+	return true
+}
+
+// past is the same reading WITHOUT the claim, for the gate that has to know
+// whether the counter matters before it asks the more expensive question
+// ([Agent.writeSeamFires]). A door held shut is not a door spent.
+func (m *writeMeter) past() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return !m.spent && m.pastLocked()
+}
+
+// pastLocked is the allowance itself, in the one place — BOTH HALVES, EITHER ONE
+// SPENDS IT — so the three readers above cannot come to disagree about where the
+// line is. The caller holds m.mu.
+func (m *writeMeter) pastLocked() bool {
+	return m.calls >= writeAllowanceCalls || len(m.files) >= writeAllowanceFiles
+}
+
+// heldForDelivery reports, ONCE per turn, that the allowance was passed while
+// the door was held shut for a delivery. It spends nothing: the counter goes on
+// counting, and the moment the person's own new sentence arrives the seam is
+// asked again with the door still unclaimed.
+func (m *writeMeter) heldForDelivery() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.held || m.spent || !m.pastLocked() {
+		return false
+	}
+	m.held = true
 	return true
 }
 
@@ -347,6 +385,159 @@ func writesAimedAt(cwd, program string, rest []string) []string {
 		paths = append(paths, resolvePath(cwd, operand))
 	}
 	return paths
+}
+
+// ── delivery: the one turn this counter does not move ───────────────────────
+//
+// THE LAW: A RESULT THIS CONVERSATION ALREADY OWNS IS DELIVERED BY THIS
+// CONVERSATION. The seam does not hand the delivery of an owned result to a
+// second task.
+//
+// ── THE MEASURED FAILURE (the four-module trial, 2026-09-06) ──
+//
+// A person asked for a four-module repair delivered on a branch, with a final
+// commit. Task 1 did the repair and landed: 29 independent checks passed, the
+// protected files were untouched, the branch existed. Its report woke this
+// conversation, and the turn that read it did what the request still owed —
+// cherry-picked the work across and staged it. That is several files under the
+// workspace, so THIS COUNTER FIRED, and the delivery was handed to a second
+// task in a FRESH WORKTREE: a working copy with none of the staged index, none
+// of the cherry-pick, and a brief written from a turn that was integrating
+// rather than working. It ended in a cancelled stream. The requested commit
+// never happened, on work that was finished and correct.
+//
+// ── WHY THIS IS THE SEAM'S OWN LAW AND NOT ANOTHER EXCEPTION ──
+//
+// The seam's premise is stated at the top of this file: what is at stake is
+// unreviewed edits in a directory somebody is standing in, WITH NOTHING TO OPEN
+// AND NOBODY WATCHING. Neither half is true of a delivery. The work was watched
+// — it ran as a task, it was audited, it reported — and there is something to
+// open, which is the task whose result is being delivered. What the promotion
+// buys there is not supervision; it is a second worktree that cannot see the
+// first one's index, which is the failure above.
+//
+// checkpoint_custody.go states the neighbouring half of the same law for work
+// this conversation is STILL HOLDING ("work this conversation is still holding
+// never leaves it"), and it reads only UNSETTLED pieces, deliberately: a piece
+// that has reported is a fact rather than a wait. This is what the same custody
+// means once the piece has come back — the delivery of a settled result is the
+// conversation's own, for the same reason the coordination of an unsettled one
+// is.
+//
+// ── AND WHAT IT DOES NOT TOUCH ──
+//
+//   - THE ROUND CEILING AND THE WALL STILL GOVERN THIS TURN, both of them, on
+//     the same ladder as any other woken turn. That reversal was measured
+//     (checkpoint.go: a wake that ran 127 calls over 46 minutes ungoverned) and
+//     nothing here gives it back. What stands down is the WRITE-BREADTH trigger
+//     alone, because breadth of writes is the expected shape of an integration
+//     and is evidence of nothing there.
+//   - A PERSON'S OWN NEW SENTENCE CLOSES IT IMMEDIATELY. A turn that owes
+//     anything the person typed — a new request, a correction steered into this
+//     one — is not a delivery, and the seam protects it exactly as it did.
+//   - THE DOOR IS NOT SPENT, ONLY HELD. The counter keeps counting, so the
+//     sentence they type next is met with the allowance already crossed and the
+//     seam free to fire.
+//   - AND OWNERSHIP MUST BE PROVABLE FROM THE GRAPH. Where it cannot be — a node
+//     restored from a checkpoint has no admitter and no owner, both died with
+//     the process — the seam fires as it always did. A doubt is not a delivery.
+
+// deliveringOwnedResult reports whether this turn is delivering results this
+// conversation owns, and names one of them for the journal.
+//
+// EVERY PART OF IT IS A RUNTIME FACT and none of it is a reading of anybody's
+// words: which results arrived in this turn ([Agent.rememberOwedLocked] stamps
+// them from the reply tags the delivery itself carries), whether the person has
+// said anything in it ([owedByPerson]), and who admitted the nodes those results
+// came from ([TaskNode.admitBy], stamped at the one door every task comes
+// through). There is no keyword, no verb list and nothing about English here.
+func (a *Agent) deliveringOwnedResult() (uint64, bool) {
+	// A NODE IS NEVER HERE. A worker's writes are its own work in its own
+	// worktree, and this file's gate never runs inside one anyway
+	// ([Agent.checkpoints]); saying so keeps the reading true on its own.
+	if a.config.InTask {
+		return 0, false
+	}
+	a.mu.Lock()
+	for _, owed := range a.owedAsks {
+		// THE PERSON VETOES AND NOTHING ELSE DOES. Background news — a job
+		// exiting, a watch firing ([owedByBackground]) — is neither a request nor
+		// a result: it cannot prove a delivery and it cannot deny one, so a turn
+		// that owes a landing beside a job's ending is still that landing's.
+		if owed.from == owedByPerson {
+			a.mu.Unlock()
+			return 0, false
+		}
+	}
+	arrived := append([]uint64(nil), a.turnResults...)
+	a.mu.Unlock()
+	return a.tasker().resultsThisAgentOwns(a, arrived)
+}
+
+// resultsThisAgentOwns answers whether EVERY one of these nodes is this
+// conversation's own, and names the first.
+//
+// ALL OF THEM, because a turn that is delivering somebody else's result beside
+// its own is a turn this file cannot say anything about, and the direction to
+// fail in is the one that leaves the seam standing.
+//
+// OWN IS THE ADMITTER OR THE RUNNER, and it is two readings of one fact rather
+// than a widening: admitBy is whose request handed the work out and owner is who
+// runs it, and for a root this conversation proposed they are the same agent.
+// Where BOTH are nil — a node rehydrated from a checkpoint — nothing here can
+// prove ownership and nothing is claimed.
+//
+// It is nil-safe for [Agent.tasker]'s reason: a session that never groomed a
+// task owns no results, and that is the honest answer rather than a graph built
+// to answer one question.
+func (g *TaskGraph) resultsThisAgentOwns(owner *Agent, ids []uint64) (uint64, bool) {
+	if g == nil || owner == nil || len(ids) == 0 {
+		return 0, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, id := range ids {
+		node := g.nodes[id]
+		if node == nil || (node.admitBy != owner && node.owner != owner) {
+			return 0, false
+		}
+	}
+	return ids[0], true
+}
+
+// writeSeamFires is the seam's whole gate: has this turn written past the
+// allowance, and may that move the work.
+//
+// THE ORDER IS THE POINT. The counter is read first because it is two integers
+// and is false at almost every boundary of almost every turn; the ownership
+// question behind it costs two locks and a copy, and is asked only where the
+// answer could change anything.
+func (a *Agent) writeSeamFires(rounds int) bool {
+	meter := a.writeMeterNow()
+	if !meter.past() {
+		return false
+	}
+	id, delivering := a.deliveringOwnedResult()
+	if !delivering {
+		return meter.pastAllowance()
+	}
+	// AND IT IS WRITTEN DOWN. A refusal nobody can find afterwards is what
+	// #567 was: two runs that behaved completely differently left identical
+	// journals. The row says which seam stood down and over which result, and
+	// it is written once for the turn (checkpoint.go's [journalCeiling]).
+	if meter.heldForDelivery() {
+		// THE RESULT IS NAMED IN THE REASON AND NOT IN TaskID, because TaskID is
+		// the node a row ADMITTED (sessionfile.go's [journalCeiling]) and this row
+		// admitted nothing: a bench counting tasks started off that field must not
+		// find one here.
+		a.file.appendCeiling(journalCeiling{
+			Rounds:   rounds,
+			Seam:     checkpointSeamWrite,
+			Decision: checkpointCeilingDelivering,
+			Reason:   "delivering task " + strconv.FormatUint(id, 10),
+		})
+	}
+	return false
 }
 
 // ── the promotion ───────────────────────────────────────────────────────────

@@ -1168,6 +1168,7 @@ func placeFrameWithBar(a *app, width, height int,
 		for i := range drawn {
 			texts[i] = drawn[i].text
 		}
+		a.hop.originY = len(lines)
 		texts = a.hopOver(texts, width, pal)
 		for i := range drawn {
 			drawn[i].text, drawn[i].hit = texts[i], nil

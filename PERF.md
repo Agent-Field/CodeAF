@@ -1915,3 +1915,31 @@ sixteen cells for a task name by shortening ancestor prefixes
 (`homeWorkNameFloor`), and its desktop preview still shows three task names.
 `BenchmarkTasksConversationHistory` exercises forty conversations holding 5,120
 tasks; the fixture is built outside the measurement.
+
+## Task reading positions across navigation
+
+`internal/tui3/roomreading.go` retains at most `roomReadingLimit` (64) recently visited
+task transcripts' display choices, keyed by host, owning conversation, and task id.
+Each keeps at most `roomReadingEntryLimit` (`2 * roomTail`, 240) block settings plus one
+scroll anchor. Keys are fixed-size text fingerprints and occurrence numbers; no tool
+output, transcript, or live subscription is kept by this cache. Least recently visited
+pages are evicted. These caps bound retained memory without changing the journal tail.
+`TestTaskReadingCacheIsBoundedAndRevisitsStayRecent` exercises eviction through real
+room navigation. Hashing happens at close/reopen, never on an ordinary cached frame.
+
+The breadcrumb bar walks only the open task's parent links, with cycle detection.
+Its fitting ladder considers at most eight explicit ancestor levels; deeper ancestors
+are represented by a fold rather than silently discarded. Main-chat header layout is
+cached by width, ink and displayed chat name/picker availability. No filesystem read or
+roster sort runs in the breadcrumb paint path.
+
+
+## Chat-header navigation
+
+The tab strip remembers at most 8 recently used conversations without limiting the
+agents held by the keeper. Stable order is retained for remembered tabs; the current
+chat always survives width fitting and overflow uses the existing conversation picker.
+Each label uses at most 32 cells when several tabs share the row. These are presentation
+bounds, not execution or history limits. Frame reads use cached local identity and
+in-memory titles, never fresh history scans or remote calls. Cached click destinations
+include the complete tab identity and picker availability, not just rendered words.

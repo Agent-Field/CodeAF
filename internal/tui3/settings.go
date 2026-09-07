@@ -596,8 +596,8 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyQuickSwitch: {
 		tab: tabDisplay, label: "quick switch", widget: widgetToggle,
-		about: "ctrl+k switches conversations on the press — pause and the card " +
-			"fades, esc goes back. Off, it opens the card and waits for enter.",
+		about: "ctrl+tab switches on the press where the terminal can send it. " +
+			"Off, it waits for enter. Ctrl+k always opens the list and waits for your choice.",
 	},
 	config.KeyHints: {
 		tab: tabDisplay, label: "hints", widget: widgetToggle,

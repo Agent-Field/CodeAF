@@ -147,12 +147,22 @@ and scrolling the conversation never opens a fold — `ctrl+o` or a click does.
 
 ## What the line at the top of a task's page tells you
 
+**It is drawn under the conversation tabs, not above them.** Those say which conversation
+this task belongs to (see *Conversation tabs* on the screen page); this header says where
+you are inside that conversation.
+
 The pinned header is the whole glance, and it says as much of this as your frame is wide
 enough for, in this order:
 
 ```
 ⠙ main ▸ Port the loader · working · 3m 20s · $0.42 · 14 tool calls · bash
 ```
+
+`main ▸ Port the loader` is the trail — the conversation, then every piece of work
+between it and this page. **Every step of it but the last is a door**: clicking one opens
+that page, clicking `main` comes back out to the conversation, and a `…` stands for steps
+a narrow frame could not spell and opens the nearest one it hid. The last step is the page
+you are standing on and does nothing.
 
 The task's name first — that never gets cut while there is room for it — then what it is
 doing, how long it has been going, what it has cost, how many calls it has made, and what

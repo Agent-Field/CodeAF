@@ -34,25 +34,33 @@ func kinRows(a *app) []string {
 	return out
 }
 
-// THE ROOM NAMES WHO ASKED FOR THE WORK AND WHAT THE WORK HANDED OUT. Node 3 of
-// the planted run is the interesting one: it has a parent above it and a piece
-// of its own below it, which is exactly the case the rail's tree shape carried
-// and this page had no shape to carry.
-func TestARoomsHeaderNamesItsParentAndWhatItSpawned(t *testing.T) {
+// THE ROOM NAMES WHAT THE WORK HANDED OUT, AND WHO ASKED FOR IT IS ON THE TRAIL.
+// Node 3 of the planted run is the interesting one: it has a parent above it and
+// a piece of its own below it, which is exactly the case the rail's tree shape
+// carried and this page had no shape to carry.
+//
+// THE `part of:` ROW IS GONE ON PURPOSE (roomcrumbs.go). The parent is a PLACE
+// and is on the breadcrumb with the rest of the chain, where it can be pressed;
+// saying it again down here would be the header spending a row of the transcript
+// to repeat the row above it.
+func TestARoomsHeaderNamesWhatItHandedOutAndLeavesTheParentToTheTrail(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	roomOn(a, 3, "Write the tree")
 
 	rows := kinRows(a)
-	if len(rows) != 2 {
+	if len(rows) != 1 {
 		t.Fatalf("the kin block is %d rows:\n%q", len(rows), rows)
 	}
-	if got, want := rows[0], roomKinIndent+roomKinUnderWord+"Ship the port"; got != want {
-		t.Fatalf("the parent row is %q, want %q", got, want)
-	}
 	// The piece is queued behind nothing, so it wears the plain queued word.
-	if got, want := rows[1], roomKinIndent+roomKinSpawnedWord+"Cut the goldens"+roomKinStateSep+roomQueuedWord; got != want {
+	if got, want := rows[0], roomKinIndent+roomKinSpawnedWord+"Cut the goldens"+roomKinStateSep+roomQueuedWord; got != want {
 		t.Fatalf("the spawned row is %q, want %q", got, want)
+	}
+	if block := strings.Join(rows, "\n"); strings.Contains(block, "part of") {
+		t.Fatalf("the kin block still says the parent the trail is naming:\n%s", block)
+	}
+	if trail := a.roomTrail(); trail != "main ▸ Ship the port ▸ Write the tree" {
+		t.Fatalf("the trail does not carry the parent: %q", trail)
 	}
 }
 
@@ -69,8 +77,13 @@ func TestARootsRoomListsEveryPieceAndClaimsNoParent(t *testing.T) {
 		t.Fatalf("the kin block is %d rows:\n%q", len(rows), rows)
 	}
 	row := rows[0]
-	if strings.Contains(row, roomKinUnderWord) {
+	if strings.Contains(row, "part of") {
 		t.Fatalf("a task nobody spawned claims a parent: %q", row)
+	}
+	// AND ITS TRAIL CLAIMS NONE EITHER: a root's chain is the conversation and the
+	// page, which is the trail this surface has always drawn.
+	if trail := a.roomTrail(); trail != "main ▸ Ship the port" {
+		t.Fatalf("a root's trail invented a step: %q", trail)
 	}
 	for _, want := range []string{
 		"Read the law" + roomKinStateSep + roomDoneWord,
@@ -117,7 +130,9 @@ func TestAHandedOutPieceWaitingOnAnotherSaysParkedInTheColumnsWord(t *testing.T)
 	a.tasks[4].dependsOn = []uint64{5}
 	roomOn(a, 3, "Write the tree")
 
-	row := kinRows(a)[1]
+	// The handed-out line is the block's FIRST row now: the parent moved to the
+	// trail and took its own row with it (roomcrumbs.go).
+	row := kinRows(a)[0]
 	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+railGroupWords[railParked]) {
 		t.Fatalf("the held piece reads %q and should say %q, which is what the column calls it",
 			row, railGroupWords[railParked])
@@ -150,7 +165,9 @@ func TestASpawnedPieceThatNeedsALookSaysSoInPlainWords(t *testing.T) {
 	a.tasks[4].state = session.TaskUnverified
 	roomOn(a, 3, "Write the tree")
 
-	row := kinRows(a)[1]
+	// The handed-out line is the block's FIRST row now: the parent moved to the
+	// trail and took its own row with it (roomcrumbs.go).
+	row := kinRows(a)[0]
 	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+taskUnverifiedWord) {
 		t.Fatalf("the piece does not ask for a look:\n%s", row)
 	}
@@ -170,7 +187,9 @@ func TestAFlatTasksRoomGrowsNoKinBlock(t *testing.T) {
 	if rows := kinRows(a); len(rows) != 0 {
 		t.Fatalf("a task with no family drew a kin block:\n%q", rows)
 	}
-	if a.headHeight() != 1 {
+	// TWO rows: the tab strip, and the header under it (chattabs.go). Neither is
+	// a shelf for a family this task does not have.
+	if a.headHeight() != 2 {
 		t.Fatalf("the pinned region is %d rows over a flat task", a.headHeight())
 	}
 }
@@ -186,7 +205,8 @@ func TestTheKinRowsAreChargedToTheBodyRegion(t *testing.T) {
 	a.touch()
 
 	kin := kinRows(a)
-	if a.headHeight() != 1+len(kin) {
+	// The tab strip, the header, and the kin block under it (chattabs.go).
+	if a.headHeight() != a.roomHeadRow()+1+len(kin) {
 		t.Fatalf("the pinned region is %d rows over a %d-row kin block", a.headHeight(), len(kin))
 	}
 	if a.bodyTop() != a.headHeight()+a.stripHeight() {
@@ -196,8 +216,9 @@ func TestTheKinRowsAreChargedToTheBodyRegion(t *testing.T) {
 	// the order the block builds them.
 	rows := strings.Split(frame(a), "\n")
 	for i, want := range kin {
-		if got := plain(rows[1+i]); got != want {
-			t.Fatalf("frame row %d is %q, want %q", 1+i, got, want)
+		at := a.roomHeadRow() + 1 + i
+		if got := plain(rows[at]); got != want {
+			t.Fatalf("frame row %d is %q, want %q", at, got, want)
 		}
 	}
 }

@@ -141,6 +141,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the workers go on the task page", "tasks"},
 		{"what does +3 under mean", "tasks"},
 		{"expand a task to see what ran under it", "tasks"},
+		// AND WHAT AN OPENED LANDING CARD HOLDS, asked the four ways somebody
+		// arrives at it: wanting the writing back, meeting a card that says done
+		// over a branch that never merged, finding the answer cut off, and
+		// wondering why the price and the model moved onto one row.
+		{"where is the story my task wrote", "tasks"},
+		{"the card says done but nothing merged", "tasks"},
+		{"my task's answer stops halfway, where is the rest", "tasks"},
+		{"why is the task answer in asterisks", "tasks"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
@@ -1299,6 +1307,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did commit become a task", "tasks"},
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
+		// And the other end of the same day: the task finished, and the reply
+		// that was delivering its work became a second task with none of the
+		// first one's staged files. Asked by somebody looking at the commit
+		// they never got.
+		{"it started another task while integrating", "tasks"},
+		{"my cherry-pick became a task", "tasks"},
+		{"the commit after the task finished never happened", "tasks"},
 
 		// And the shape that reads strangest of all, because the reply had
 		// already started: a reply can stop halfway and hand itself over, when a

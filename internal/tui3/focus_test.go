@@ -10,8 +10,19 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// headRow is the frame's first row: the pinned focus header, when there is one.
+// headRow is the room's pinned focus header, which is the row under the tab
+// strip wherever there is one (chattabs.go's [app.roomHeadRow]).
 func headRow(a *app) string {
+	rows := strings.Split(frame(a), "\n")
+	at := a.roomHeadRow()
+	if at >= len(rows) {
+		return ""
+	}
+	return rows[at]
+}
+
+// tabsRowOf is the frame's FIRST row: the tab strip, when there is one.
+func tabsRowOf(a *app) string {
 	rows := strings.Split(frame(a), "\n")
 	if len(rows) == 0 {
 		return ""
@@ -45,16 +56,27 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	}
 	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
 	// resolves through — a header the scrolling did not know about would push
-	// the room's last row under the input box. It is the ONLY pinned row here:
-	// the roster is standing on a frame this wide, and the strip stands down
-	// wherever it is (taskstrip.go, view.go's [app.topHeight]).
-	if a.headHeight() != 1 || a.stripHeight() != 0 || a.bodyTop() != 1 {
+	// the room's last row under the input box. TWO rows are pinned here: the tab
+	// strip, which says which conversation this page is inside, and the header
+	// under it (chattabs.go). The task strip stands down wherever it is
+	// (taskstrip.go, view.go's [app.topHeight]).
+	if a.headHeight() != 2 || a.stripHeight() != 0 || a.bodyTop() != 2 {
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
 			a.headHeight(), a.stripHeight(), a.bodyTop())
 	}
+	// AND LEAVING TAKES THE HEADER ROW AWAY ENTIRELY, leaving the tab strip that
+	// was over it: a conversation has no trail and no way out of itself, and the
+	// row that said so is not drawn (chattabs.go). What must NOT survive is the
+	// room's — the task's name, its state and its exit.
 	drive(t, a, key("esc"))
-	if a.headHeight() != 0 {
-		t.Fatal("the header outlived the room")
+	head = plain(tabsRowOf(a))
+	if a.headHeight() != 1 || head != strings.Repeat(" ", headLabelAt)+"["+roomCrumbRoot+"]" {
+		t.Fatalf("the conversation's strip is %d rows and reads:\n%q", a.headHeight(), head)
+	}
+	for _, gone := range []string{"Fix the nil-map", roomBackWord, roomCrumbSep} {
+		if strings.Contains(head, gone) {
+			t.Fatalf("the room's header outlived the room — it still says %q:\n%s", gone, head)
+		}
 	}
 }
 
@@ -103,8 +125,8 @@ func TestPressingTheFocusHeaderLeavesTheRoom(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
 
-	drive(t, a, tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 2, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: a.roomHeadRow(), Button: tea.MouseLeft})
 	if a.roomOpen() {
 		t.Fatal("a press on the focus header did not return to the conversation")
 	}

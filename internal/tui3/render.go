@@ -3269,6 +3269,10 @@ func (a *app) legend(width int) string {
 	// and which conversation this is is not written anywhere else on a frame
 	// this narrow. A rung whose name did not survive is skipped rather than
 	// drawn, which is what puts the hints on the block before the name.
+	// THE DOOR'S SPAN IS THIS FUNCTION'S TO CLEAR, because this is the ladder that
+	// decides whether the door is drawn at all ([app.legendLine] says why it is
+	// not cleared down there).
+	a.homeDoor = hudSpan{}
 	right := a.legendRight(width)
 	attempts := make([]struct{ left, right string }, 0, 6)
 	// THE RUNNING SLOT IS A LADDER OF CLAUSES. Each pass drops its last clause
@@ -3346,9 +3350,15 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	// WHERE THE DOOR LANDED, for the press that may follow. It is written HERE,
 	// as the line is laid out, for the reason [app.statusPress] gives about the
 	// model segment: a column read from anywhere else is a column from the
-	// frame before this one. A right end that is not the door records nothing,
-	// which is what makes the span its own answer to "was it drawn".
-	a.homeDoor = hudSpan{}
+	// frame before this one.
+	//
+	// IT IS CLEARED BY THE LEGEND AND NOT BY THIS FUNCTION, which is the fix for
+	// a bug the breadcrumb bar exposed: this line is laid out by the pinned
+	// header as well as by the legend (room.go, roomcrumbs.go), and the header is
+	// drawn AFTER the chrome — so a header clearing the span erased a door the
+	// legend had just recorded, and `space space home` became a label nothing
+	// answered for. What makes the span its own answer to "was it drawn" is
+	// [app.legend] clearing it before its own ladder starts.
 	if strings.HasPrefix(right, homeDoorWord) {
 		at := ansi.StringWidth(head) + fill + 1
 		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}

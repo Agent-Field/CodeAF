@@ -698,6 +698,11 @@ const checkerWindowClosed = "the window closed before a second"
 // separator every other run of evidence on a card already uses.
 const checkerWindowClosedTail = " · " + checkerWindowClosed
 
+// checkerWindowClosedAlone is the same fact with nothing beside it: one call
+// was made, it left no account of itself, and there was no time to ask again.
+// It carries the subject the tail borrows from the sentence it hangs off.
+const checkerWindowClosedAlone = "nobody could check it — " + checkerWindowClosed + " call could be made"
+
 // ── the checking window, and one call inside it ─────────────────────────────
 
 // auditPace is ONE node's checking window and the bound on one call inside it.
@@ -813,7 +818,12 @@ func noVerdict(why, said string) auditVerdict {
 // stands, and the one line that reason quotes is the first ([takenAsItStands]).
 func (v auditVerdict) andTheWindowClosed() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict(checkerWindowClosed, "")
+		// WITH NOTHING BESIDE IT, THE CLAUSE NEEDS ITS SUBJECT BACK. "the window
+		// closed before a second" is a tail on a call's own account and reads as
+		// half a sentence on its own — and half a sentence about time running out
+		// is one a person takes for a deadline they missed ([checkerAskedTwice]
+		// is the same repair on the same family).
+		return noVerdict(checkerWindowClosedAlone, "")
 	}
 	evidence := append([]string{}, v.evidence...)
 	evidence[0] += checkerWindowClosedTail
@@ -826,17 +836,33 @@ func (v auditVerdict) onTheSecondTry() auditVerdict {
 	return v
 }
 
-// twice re-tells a non-verdict as the SECOND one it is. A person reading "the
-// auditor could not be asked" wants to know whether that happened once or
-// whether the harness tried again and got the same nothing, because only the
-// second is worth their attention.
+// checkerAskedTwice is what a person reads when both calls were made and
+// neither came back, and IT NAMES WHO COULD NOT ANSWER.
+//
+// It used to read "asked twice and got no answer either time", which has no
+// subject in it at all — and a person reading an unattributed clause on their
+// own card reads it as being about themselves: asked twice, by whom, and did I
+// miss it? Nobody was asked anything. Two checking calls were made and neither
+// said a word, which is [checkerRanOut]'s law applied to the one line in this
+// family that never got it: say who could not answer, and stop there.
+const checkerAskedTwice = "nobody could check it — asked twice, and neither call answered"
+
+// twice re-tells a non-verdict as the SECOND one it is. Whether the harness
+// asked once or asked again and got the same nothing is the difference between
+// a blip and a checker that is not answering at all, and only the second is
+// worth somebody's attention.
+//
+// IT IS SAID ONLY WHERE BOTH CALLS HAPPENED ([Agent.auditNode]). A window that
+// closed before a second call could be made has its own clause and does not come
+// through here ([checkerWindowClosed]), so this sentence never claims an attempt
+// nobody made.
 func (v auditVerdict) twice() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict("asked twice and got no answer either time", "")
+		return noVerdict(checkerAskedTwice, "")
 	}
 	evidence := make([]string, len(v.evidence))
 	copy(evidence, v.evidence)
-	evidence[0] = "asked twice and got no answer either time — " + evidence[0]
+	evidence[0] = checkerAskedTwice + " — " + evidence[0]
 	v.evidence = evidence
 	return v
 }
@@ -1843,8 +1869,24 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	// at it is an earlier restore of this same node.
 	remove()
 
+	// THE CHECKOUT IS CUT FROM THE BRANCH THE WORK IS ACTUALLY ON. A node may
+	// rename the branch it is standing on — one renamed its own task branch to
+	// the name the brief asked for — and the tree's record then names a ref this
+	// repository has never heard of, which came back as `fatal: invalid
+	// reference` and dropped every check into the node's own copy (#653). HEAD is
+	// asked first because it is the live reading, the release record second
+	// because it is the last one taken before the copy was given back, and the
+	// written-down name last because for nearly every node it is all three.
+	ref := tree.branch
+	if !branchIsThere(holder, ref) {
+		if live := currentBranch(tree.dir); branchIsThere(holder, live) {
+			ref = live
+		} else if mark, released := rememberedRelease(tree.dir); released && branchIsThere(holder, mark.Branch) {
+			ref = mark.Branch
+		}
+	}
 	unlock := lockGitRoot(tree.place, tree.root)
-	out, err := git(holder, "worktree", "add", "--detach", dir, tree.branch)
+	out, err := git(holder, "worktree", "add", "--detach", dir, ref)
 	unlock()
 	if err != nil {
 		_ = os.RemoveAll(dir)

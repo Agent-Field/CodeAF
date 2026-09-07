@@ -1491,21 +1491,20 @@ starting work here, so the box is still standing when you come back.
 
 ## Switch to another conversation without going home — ctrl+k, the conversation switcher, switch between my open chats, alt tab between conversations
 
-**Press `ctrl+k` and you are in your previous conversation, at once.** Press it again and
-you are one further back. This is quick switch, the default: the press is the switch, the
-way a browser's `ctrl+tab` changes tabs. A card is drawn over the conversation you just
-landed in — the screen behind it dims — showing **the conversations this terminal has
-open**, and when you stop pressing, the card fades by itself after about a second. `esc`
-takes the whole thing back to where you started. There is nothing to confirm: by the time
-the card fades you are already there.
+**Press `ctrl+k` to choose a conversation without leaving the one you are reading.**
+Press it again, use the arrows, or scroll to move the highlight. The list stays open
+while you read its names; a pause never switches chats or dismisses the list.
+**Enter or a click opens the highlighted row; Escape cancels.** Long selected titles
+get additional reading space below the rows. A click outside the list acts on nothing.
 
-Touch any other key while the card is up — an arrow, `→`, `ctrl+w` — and the card stops
-fading and holds still, so you can look around without switching; `enter` then goes. With
-quick switch turned off in `/settings`, `ctrl+k` always opens this holding card and waits.
+This holds even when the `quick switch` setting is on. That setting applies only to
+`ctrl+tab` on terminals that can send it. Ordinary terminals do not report modifier-key
+releases, so opening a chat waits for an explicit choice rather than guessing when you
+released Ctrl.
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────╮
-│  open              3 of 12 · tab down · shift+tab up · enter go · esc back   │
+│  open              3 of 12 · enter open · esc cancel · ↑↓ choose   │
 │                                                                              │
 │  1 ? harness dry run on one pub…  asking you something      aforge-v2    4m  │
 │  2 ◐ openrouter price scrape      2 tasks running            research    1d  │
@@ -1521,20 +1520,27 @@ open, of how many this machine has.
 **Everything else on the machine is behind the fold at the foot.** `→` reaches them and
 `←` puts them away again. A conversation below the fold is not open in this terminal;
 taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
-you are in keeps running.
+you are in keeps running when using `aforge chat --no-host`. Engine-backed connections
+currently select one conversation at a time and close the previous session; saved history
+remains available. Their picker shows the other saved chats immediately.
 
 It works from the **first** session: on a fresh launch you hold one conversation, the card
 has that one row, and the fold has the rest of the machine in it.
 
+**The tabs above a conversation are the same journey with a mouse.** The conversations
+this window has been in are drawn there, the one you are in bright and underlined;
+clicking one switches to it, and the `▾` (or the `…3` count on a narrow frame) at its
+right end opens this card. See *Conversation tabs* on the screen page.
+
 | Key | What it does |
 | --- | --- |
-| `ctrl+k` | Switch to the previous conversation at once; each further press goes one older. With quick switch off, it opens the card and steps the cursor instead |
-| `ctrl+tab` | The same key, on terminals that can send it. See below |
-| `ctrl+shift+k` / `ctrl+shift+tab` | Up one, on those same terminals |
+| `ctrl+k` | Open the list; each further press moves the highlight without switching |
+| `ctrl+tab` | Switch immediately when quick switch is on, otherwise browse; requires a terminal that sends it |
+| `ctrl+shift+k` / `ctrl+shift+tab` | Reverse their respective forward gestures, on those same terminals |
 | `tab` / `↓` | Down one — cursor only, without switching, and the card stops fading |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
 | `1`…`9` | On the holding card, go to that row outright — the number is drawn on the rows that have one. While the card is fading, digits are typing and land in your message |
-| `enter` | Go to the row you are on |
+| `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
 | `ctrl+w` | Close the conversation under the cursor. See below |
@@ -1583,31 +1589,15 @@ are looking at the card does not re-rank the list under your finger.
 
 ## Switch without pressing enter — quick switch, it goes when I stop pressing, it switched right away
 
-**Quick switch is on by default**: `ctrl+k` switches on the press, the card over the new
-conversation is a receipt, and pausing is what makes it fade — there is no `enter` in the
-gesture at all. `ctrl+shift+k` (where the terminal can send it) cycles the other way, and
-with the card down it enters at the far end of the ring: the open conversation you have
-not looked at for longest.
+The `quick switch` setting controls **`ctrl+tab`**, where the terminal can send that
+chord. It is on by default. Each press switches immediately and shows a brief receipt;
+Escape returns to where the burst started. Typing dismisses the receipt and goes into
+the new chat. An arrow turns the receipt into a list that waits for Enter.
 
-Three things to know about the fast gesture:
-
-- **`esc` is the undo.** However many presses deep you are, `esc` puts you back in the
-  conversation the first press left, with the card down.
-- **`tab` afterwards returns to where you started.** Cycling through two conversations on
-  the way to a third does not make a stepping stone "the last one" — after the card fades,
-  `tab` goes back to the conversation you were actually in before the burst.
-- **You can start typing immediately.** A letter typed while the card is still fading lands
-  in your message; the receipt never eats a keystroke.
-
-**To turn it off**: `/settings`, interface, the row named `quick switch`. Off, `ctrl+k`
-opens the card, the cursor steps, and nothing moves until `enter` — the same card, held
-open, that any non-chord key converts the fading one into.
-
-It commits on the press and never on releasing `ctrl`, deliberately: a terminal only
-reports key releases under an optional protocol that dies inside tmux and most terminals,
-and a gesture that worked at the desk and died over ssh would be worse than one honest
-gesture everywhere. Chrome's `ctrl+tab` commits on the press too — there is no difference
-to feel.
+Turn it off under `/settings`, interface, `quick switch` to make `ctrl+tab` browse too.
+**`ctrl+k` always browses**, regardless of this setting. It never moves the underlying
+chat until Enter, a numbered shortcut, or a row click chooses one. Key releases are not
+available consistently across terminals, so there is no release-to-commit behavior.
 
 ## Why ctrl+k and not ctrl+tab or alt+tab
 
@@ -1632,7 +1622,7 @@ and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS
 answered the keyboard query — and it costs nothing that half the terminals in the world
 cannot send it, because **`shift+tab` walks the card back on every one of them**. With the
 card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
-unlooked-at — and under quick switch lands you in it at once.
+unlooked-at — and waits for your choice.
 
 ## Close a conversation from the switcher — ctrl+w, closing a chat, too many open
 
@@ -1657,7 +1647,9 @@ says `that is the only conversation open — /quit closes aforge`.
 `that one is not open here — enter opens it`. There is nothing to close: this terminal is
 not holding it.
 
-Nothing caps how many one terminal holds, so `ctrl+w` is never about making room. It is
+With `aforge chat --no-host`, nothing caps how many one terminal holds, so `ctrl+w` is
+never about making room. Engine-backed connections currently hold one selected chat;
+switching closes the previous session and retains its saved history. It is
 about ending something you are done with: a conversation left open goes on running, holding
 its transcript's lock and its share of this window's memory, until you close it.
 

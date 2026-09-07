@@ -579,7 +579,13 @@ func (a *app) stopMarkAt(x, y int) bool {
 	if layoutTier(width) == tierPhone {
 		rows = stopTouchRows
 	}
-	if y < 0 || y >= rows {
+	// THE BOX STARTS ON THE ROW THE MARK WAS DRAWN ON, which is the room's own
+	// header — the row under the tab strip wherever there is one (chattabs.go's
+	// [app.roomHeadRow]). A box measured from the top of the frame would sit one
+	// row above the ✕ the moment the strip stood up, which on a phone is a finger
+	// ending work it was nowhere near.
+	top := a.roomHeadRow()
+	if y < top || y >= top+rows {
 		return false
 	}
 	return !a.stopHere().empty()

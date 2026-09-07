@@ -148,8 +148,11 @@ func TestTheKinBlockKeepsEveryRelativesStateInsideItsRowBudget(t *testing.T) {
 			t.Fatalf("at %d columns the kin block is %d rows and the cap is %d:\n%q",
 				width, len(rows), roomKinRowCap, rows)
 		}
-		if len(rows) != 2 {
-			t.Fatalf("at %d columns the kin block is\n%q\nand it should be the parent line and the handed-out line", width, rows)
+		// ONE LINE, AND IT IS THE HANDED-OUT ONE. The parent's line left this block
+		// for the breadcrumb the moment the trail started carrying the whole chain
+		// (roomcrumbs.go), so what is budgeted down here is the children.
+		if len(rows) != 1 {
+			t.Fatalf("at %d columns the kin block is\n%q\nand it should be the handed-out line alone", width, rows)
 		}
 		for _, row := range rows {
 			if ansi.StringWidth(row) > width {
@@ -158,11 +161,14 @@ func TestTheKinBlockKeepsEveryRelativesStateInsideItsRowBudget(t *testing.T) {
 		}
 		// THE STATE WORD IS THE LAST THING ON THE HANDED-OUT LINE, and it is the
 		// half that was falling off the bottom of the block.
-		if got := rows[1]; !strings.HasSuffix(got, roomQueuedWord) {
+		if got := rows[0]; !strings.HasSuffix(got, roomQueuedWord) {
 			t.Fatalf("at %d columns the handed-out line is\n\t%q\nand it should end in the child's state, %q", width, got, roomQueuedWord)
 		}
-		if strings.HasSuffix(strings.TrimSpace(rows[0]), strings.TrimSpace(roomKinStateSep)) {
-			t.Fatalf("at %d columns a kin row ends on a dangling separator:\n\t%q", width, rows[0])
+		// AND THE PARENT IT USED TO DRAW IS ON THE TRAIL, CUT TO THE FRAME RATHER
+		// THAN SPILLED DOWN IT.
+		head := plain(a.roomHead(width))
+		if ansi.StringWidth(head) > width {
+			t.Fatalf("at %d columns the header is %d cells:\n\t%q", width, ansi.StringWidth(head), head)
 		}
 	}
 }

@@ -1731,6 +1731,15 @@ const (
 	// checkpointCeilingTrivial is the spawn floor (spawnfloor.go): the ask
 	// itself is one command, so nothing moves, whatever the work has cost.
 	checkpointCeilingTrivial = "dropped:trivial-ask"
+	// checkpointCeilingDelivering is the write seam standing down over a result
+	// this conversation already owns (writeseam.go's
+	// [Agent.deliveringOwnedResult]): the integration of finished work stays
+	// where the finished work landed. It is spelled apart from
+	// `dropped:work-already-out` because the two are opposite halves of one
+	// custody — that one is a piece still OUT, this one is a piece that has come
+	// BACK — and a bench reading the file has to be able to tell them apart. The
+	// row carries the id of the result being delivered.
+	checkpointCeilingDelivering = "dropped:delivering-own-result"
 	// checkpointCeilingAwaiting is the ending a handover takes when the only
 	// thing left of the request is the ending of an operation this conversation
 	// started and is already owed (handoff_remainder.go). It is spelled apart
@@ -2427,7 +2436,13 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// disk, and a turn that crosses it on round three must not wait until round
 	// ten to be noticed (writeseam.go). It fires once, and past it the marks and
 	// the ceiling govern the turn exactly as they always did.
-	if a.writeMeterNow().pastAllowance() {
+	//
+	// AND IT DOES NOT FIRE ON A DELIVERY. A turn discharging a result this
+	// conversation already owns is finishing work that was watched, and moving it
+	// hands the integration to a worktree that cannot see the index it is standing
+	// in ([Agent.deliveringOwnedResult]). The marks and the ceiling below are
+	// untouched by that and still govern the same turn.
+	if a.writeSeamFires(meter.rounds) {
 		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter, taken)
 	}
 	// AND THE BATCH IS PRICED FOR WHAT IT WAS. A round the turn spent looking at

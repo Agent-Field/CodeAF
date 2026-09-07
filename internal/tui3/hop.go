@@ -66,24 +66,11 @@ import (
 // [switcherLine]) — because a person who has read home once should not have to
 // learn a second list.
 //
-// ── QUICK SWITCHING — the press is the switch ───────────────────────────────
-//
-// By default ([config.DefaultQuickSwitch]) the chord does not open a menu: it
-// SWITCHES, on the spot, the way a browser's ctrl+tab does — and the card is a
-// receipt over the conversation just landed in, fading on its own after
-// [hopSettle]. Pressing again keeps going round the ring; `esc` takes the whole
-// burst back; touching any other key converts the receipt into the browsing
-// card, which holds still and waits for `enter`, because that person has stopped
-// switching and started reading. The setting turns the chord back into a menu.
-//
-// IT COMMITS ON THE PRESS AND NEVER ON A RELEASE, and that is a law rather than
-// a shortcut. Windows commits alt+tab when the modifier comes up, but a key
-// RELEASE only exists on terminals speaking the kitty keyboard protocol with
-// flags this surface deliberately does not request (app.go's enhancements arm
-// states the ruling) — a gesture built on one would work at the desk and die
-// inside tmux. Chrome commits ctrl+tab eagerly on every press and nobody can
-// feel the difference, because there is no difference to feel: by the time a
-// release could have been heard, you are already there.
+// Ctrl+k is a browsing gesture: highlight first, Enter or a click to open.
+// A pause must never dismiss the list while somebody is reading its titles.
+// The optional quick-switch setting applies only to the terminal's distinct
+// ctrl+tab chord. Modifier releases are not delivered by ordinary terminals,
+// so neither gesture guesses that silence means a key was released.
 
 // hopOpenKey is the key that opens the switcher, and it is `ctrl+k` for four
 // reasons stated in the order they were weighed:
@@ -212,6 +199,9 @@ type hopRow struct {
 // hopCard is the whole of the switcher's state. The zero value is closed.
 type hopCard struct {
 	open bool
+	// Pointer targets are recorded by the same layout that draws the card.
+	spots                     []hopSpot
+	originY, left, right, top int
 	// at is the cursor, an index into rows. It opens on ZERO, which is the most
 	// recently open conversation behind this one — the same place `tab` goes —
 	// so the commonest journey is `ctrl+k enter` and the second commonest is one
@@ -319,13 +309,15 @@ func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
 // hopOpen builds the reading and raises the card.
 func (a *app) hopOpen() {
-	rows, rest := a.hopReading(false)
+	// A shared engine handle can only have one open conversation. Show its
+	// other saved chats immediately; an open-only list would offer no choice.
+	rows, rest := a.hopReading(a.shared)
 	if len(rows) < 2 && rest == 0 {
 		// Nowhere to go. The guard above has already refused this, and this is
 		// the same refusal said where the rows are actually counted.
 		return
 	}
-	a.hop = hopCard{open: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -703,7 +695,7 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			// alt+shift+tab has selected first on every desktop since Windows 3.
 			a.hop.at = hopLastStop(a.hop.rows)
 		}
-		if at := a.hop.at; a.hopQuick && at < len(a.hop.rows) && a.hop.rows[at].open && !a.hop.rows[at].here {
+		if at := a.hop.at; a.hopQuick && (key == hopAlias || key == hopBackAlias) && at < len(a.hop.rows) && a.hop.rows[at].open && !a.hop.rows[at].here {
 			// QUICK SWITCHING: the press IS the switch. The card stays up as a
 			// receipt and fades on its own; there is nothing to commit, because
 			// it already happened. A card with no open row to slide to — one
@@ -730,6 +722,9 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// other key is the person changing what they are doing — looking, folding,
 	// closing — and the card converts to the browsing one, which moves without
 	// switching and never fades out from under a reader.
+	if key == hopOpenKey || key == hopBackKey {
+		a.hop.live = false
+	}
 	switch {
 	case a.hopOpens(key):
 		a.hopWalk(1)
@@ -1052,22 +1047,49 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 		return pal.dim(box.v) + body + pal.dim(box.v)
 	}
 
+	a.hop.spots = nil
 	lines := []string{edge(box.tl, box.h, box.tr), inside(a.hopHead(room, pal), false), inside("", false)}
-	// The frame's own rows — two borders and whatever foot the card owes — are
-	// taken off the top before a single conversation is drawn, so the last thing
-	// dropped is never the way out.
+	footWord := a.hopFoot()
 	foot := 1
-	if a.hop.rest > 0 || a.hop.say != "" {
+	if footWord != "" {
 		foot++
 	}
-	for at, row := range a.hop.rows {
-		if len(lines)+foot >= height {
-			break
+	// The selected title gets its own reading space when columns abbreviate it.
+	// It explains the highlighted choice without switching the chat beneath it.
+	var preview []string
+	if a.hop.at >= 0 && a.hop.at < len(a.hop.rows) {
+		title := a.hop.rows[a.hop.at].title
+		if ansi.StringWidth(title) > min(hopSubjectCol, room-hopGlyphCol-2) {
+			preview = railWrap(title, room)
+			maxLines := min(3, max(0, height-len(lines)-foot-2))
+			if len(preview) > maxLines {
+				preview = preview[:maxLines]
+				if maxLines > 0 {
+					preview[maxLines-1] = glyphMore + " " + ansi.Cut(title, max(0, ansi.StringWidth(title)-room+2), ansi.StringWidth(title))
+				}
+			}
 		}
-		lines = append(lines, inside(hopLine(row, at, at == a.hop.at, room, pal), at == a.hop.at))
 	}
-	if word := a.hopFoot(); word != "" && len(lines)+1 < height {
-		lines = append(lines, inside(pal.dim(fit(word, room)), false))
+	previewHeight := len(preview)
+	if previewHeight > 0 {
+		previewHeight++
+	}
+	available := max(1, height-len(lines)-foot-previewHeight)
+	start := max(0, a.hop.at-available+1)
+	end := min(len(a.hop.rows), start+available)
+	for at := start; at < end; at++ {
+		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: at})
+		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, room, pal), at == a.hop.at))
+	}
+	if len(preview) > 0 {
+		lines = append(lines, inside("", false))
+		for _, line := range preview {
+			lines = append(lines, inside(pal.ink(line), false))
+		}
+	}
+	if footWord != "" && len(lines)+1 < height {
+		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: -1})
+		lines = append(lines, inside(pal.dim(fit(footWord, room)), false))
 	}
 	return append(lines, edge(box.bl, box.h, box.br))
 }
@@ -1134,7 +1156,7 @@ func (a *app) hopHead(width int, pal palette) string {
 const hopOpenWord = "open"
 
 // hopClauses are the keys the card owns, in the order a person meets them.
-var hopClauses = []string{"tab down", "shift+tab up", "enter go", hopAwayKey + " put away", "esc back"}
+var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " put away"}
 
 // hopFootWords is the foot of the FRAME while the card is up — the same clauses
 // from the same list, so a person reading the bottom of the screen and a person
@@ -1242,6 +1264,7 @@ func rightPad(s string, width int) string {
 // the same height it was before the key was pressed, and no place, room or
 // transcript has a single line about being underneath one.
 func (a *app) hopOver(body []string, width int, pal palette) []string {
+	a.hop.spots = nil
 	room := width - 2*hopSideInset
 	if room < 24 {
 		// Too narrow for the inset. The box takes the width it can have rather
@@ -1267,6 +1290,7 @@ func (a *app) hopOver(body []string, width int, pal palette) []string {
 	if top+len(card) > len(out) {
 		top = len(out) - len(card)
 	}
+	a.hop.left, a.hop.right, a.hop.top = (width-room)/2, (width+room)/2, top+a.hop.originY
 	pad := strings.Repeat(" ", (width-room)/2)
 	for i, line := range card {
 		out[top+i] = pad + line
@@ -1431,3 +1455,28 @@ const (
 	hopClosedWord  = "closed"
 	hopLastOneWord = "that is the only conversation open — /quit closes aforge"
 )
+
+// The floating switcher owns the pointer as well as the keyboard. A miss on
+// its dimmed backdrop must not activate an invisible task or stop control.
+type hopSpot struct{ row, at int }
+
+func (a *app) hopPress(x, y int) tea.Cmd {
+	if x < a.hop.left || x >= a.hop.right {
+		return nil
+	}
+	for _, spot := range a.hop.spots {
+		if y != a.hop.top+spot.row {
+			continue
+		}
+		a.hop.live = false
+		if spot.at < 0 {
+			if a.hop.say == "" {
+				a.hopSpread(!a.hop.all)
+			}
+			return nil
+		}
+		a.hop.at = spot.at
+		return a.hopTake()
+	}
+	return nil
+}

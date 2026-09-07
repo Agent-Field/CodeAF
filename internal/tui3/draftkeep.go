@@ -1031,7 +1031,7 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 	}
 	if owner != "" {
 		main := keptSlot(mainRecipient, composerState{
-			box:    editor{value: []rune(side.draft), cursor: len([]rune(side.draft))},
+			box:    side.mainBox(),
 			pastes: side.pastes,
 			chips:  side.chips,
 			sends:  side.sends,
@@ -1102,6 +1102,12 @@ func (a *app) layKeptDrafts() {
 	if keep, how := readDraftKeep(draftKeepPath(a.draftFile)); how == draftKeepFound {
 		a.keptElsewhere, _ = a.takeKeptSlots(keep, states)
 		settled = a.speaksFor(keep)
+		// A shared connection reuses this window's store across selections.
+		// Its plain export belongs to the record's owner; falling back to it
+		// would put the outgoing chat's unsent text into an empty incoming chat.
+		if a.shared && namedConversation(keep.Owner) {
+			settled = true
+		}
 	}
 
 	// AND WHAT THIS CONVERSATION LEFT IN OTHER WINDOWS COMES HOME.

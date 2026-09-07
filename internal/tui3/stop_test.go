@@ -229,7 +229,7 @@ func TestTheHeaderMarkRaisesTheSameCard(t *testing.T) {
 	if !a.roomStop.pressable() {
 		t.Fatalf("the ✕ was drawn but answers to no columns")
 	}
-	drive(t, a, press(a.roomStop.from, 0))
+	drive(t, a, press(a.roomStop.from, a.roomHeadRow()))
 	if !a.stopping() {
 		t.Fatalf("the ✕ raised nothing")
 	}

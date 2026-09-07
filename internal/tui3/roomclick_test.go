@@ -151,8 +151,8 @@ func TestTheRoomHeaderIsTheWayOutAtBothEnds(t *testing.T) {
 		if head := plain(a.roomHead(a.width)); !strings.Contains(head, roomBackWord) {
 			t.Fatalf("the pinned header does not name the way out:\n%q", head)
 		}
-		drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
 		if a.roomOpen() {
 			t.Fatalf("a press on the header at column %d did not return to the conversation", x)
 		}

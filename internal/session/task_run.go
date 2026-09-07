@@ -2460,6 +2460,17 @@ func (n *TaskNode) runContext() (context.Context, context.CancelFunc) {
 // finish writes the node's leavings before its state changes, so the update
 // that announces "done" carries them.
 func (n *TaskNode) finish(report string, changed []string, branch, merge string) {
+	// A release records the actual branch before unregistering it. Read that
+	// fact outside the graph lock so the very first settled notice also names
+	// a branch the person can find after the worker renamed it.
+	n.graph.mu.Lock()
+	dir := n.worktree
+	n.graph.mu.Unlock()
+	if dir != "" && merge != mergeInPlace && merge != mergeMerged {
+		if mark, released := rememberedRelease(dir); released && strings.TrimSpace(mark.Branch) != "" {
+			branch = strings.TrimSpace(mark.Branch)
+		}
+	}
 	n.graph.mu.Lock()
 	n.report = strings.TrimSpace(report)
 	n.changed = changed
@@ -2567,6 +2578,16 @@ func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) 
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to look at — its branch %s is still there", dir, branch)
+	}
+	// AND THE BRANCH IS THE ONE THE WORK ENDED UP ON. A node may rename the
+	// branch it is standing on, which leaves the name written down at the start
+	// naming nothing at all; what the settle read off HEAD as it gave the copy
+	// back is the last true reading of it, and it is what the merge, the report
+	// and the person's own `git merge` all have to say ([releasedTree]).
+	if mark, released := rememberedRelease(dir); released {
+		if live := strings.TrimSpace(mark.Branch); live != "" {
+			branch = live
+		}
 	}
 	// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is
 	// the ground's and not whatever this process happens to be standing in — the
@@ -5074,6 +5095,16 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
+	// A COPY ALREADY GIVEN BACK IS PICKED UP HERE TOO ([taskTree.comeHome] says
+	// why). A node can settle twice — a stop after an accept, a re-audit that
+	// lands late — and the second keeping must commit into a repository rather
+	// than answer "not a git repository" and quietly leave the branch as it was.
+	switch reopened, back, problem := tree.reopenReleased(); {
+	case back:
+		tree = reopened
+	case problem != "":
+		return mergeAborted, changed
+	}
 	saved, problem, _ := commitTaskWork(tree.dir, title, changed)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
@@ -5121,6 +5152,15 @@ func (t taskTree) releaseKeptLocked() {
 		t.dropUniverse()
 		return
 	}
+	// AND THE RELEASE IS WRITTEN DOWN BEFORE THE REGISTRATION GOES. This is the
+	// last moment anybody can ask git what this directory was, and two later
+	// readers need the answer: a landing that arrives afterwards has to know a
+	// missing `.git` here is THIS RUNTIME'S DOING and not a workspace that was
+	// never a repository ([taskTree.reopenReleased]), and everybody has to know
+	// which branch the work is actually on, because a node may rename the branch
+	// it is standing on and one did — after which the name the tree was carved
+	// with names nothing at all.
+	rememberReleased(t.dir, t.branchStandingOn(), t.root)
 	// Keep the task folder's uncommitted leavings without keeping a git
 	// registration. Moving it aside lets git remove its administrative record;
 	// removing the pointer file then turns the restored directory into ordinary
@@ -5135,6 +5175,188 @@ func (t taskTree) releaseKeptLocked() {
 	}
 	_, _ = git(t.root, "worktree", "prune")
 	_ = os.Remove(filepath.Dir(t.dir))
+}
+
+// releasedKeptSentence names the retained files when registration recovery
+// fails. It does not claim that a deleted branch still holds them, and the
+// caller keeps the landing answerable so a repaired registration can be retried.
+func releasedKeptSentence(dir, problem string) string {
+	return "its saved working copy at " + dir + " could not be reopened to merge: " + problem
+}
+
+// releasedRecord is what a settle leaves in the working copy it hands back,
+// beside [leftBehindRecord]. It is the one thing that tells a directory THIS
+// RUNTIME unregistered apart from a folder that was never a repository, and
+// those two must never be answered the same way: the second is a fact about the
+// person's disk that will be true again next time, and the first is a state
+// aforge made and can put back.
+const releasedRecord = "released.json"
+
+// releasedTree is that record: the branch the node's work is actually on, and
+// the repository holding it.
+//
+// THE BRANCH IS READ OFF HEAD RATHER THAN COPIED FROM THE TREE. A node may
+// rename the branch it is standing on, and one did — the tree's own `branch`
+// then names nothing, so the audit's fresh checkout asks for a ref that is not
+// there and a later landing has nothing to merge. What HEAD says at the moment
+// the copy is given back is the last true reading of it there will ever be.
+type releasedTree struct {
+	Branch string `json:"branch"`
+	Root   string `json:"root"`
+}
+
+// branchStandingOn is the branch this working copy's HEAD names, and empty for
+// a detached head or a directory that is no longer a repository. It falls back
+// to what the tree was carved with, which is right for both: a copy that cannot
+// be asked has told us nothing that beats the record.
+func (t taskTree) branchStandingOn() string {
+	if live := currentBranch(t.dir); live != "" {
+		return live
+	}
+	return strings.TrimSpace(t.branch)
+}
+
+func rememberReleased(dir, branch, root string) {
+	metadata := filepath.Join(dir, aforgeDroppings)
+	if err := os.MkdirAll(metadata, 0o755); err != nil {
+		return
+	}
+	contents, err := json.Marshal(releasedTree{Branch: strings.TrimSpace(branch), Root: strings.TrimSpace(root)})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(metadata, releasedRecord), contents, 0o600)
+}
+
+// rememberedRelease answers whether this directory is a working copy a settle
+// gave back, and what it was standing on when that happened.
+func rememberedRelease(dir string) (releasedTree, bool) {
+	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, releasedRecord))
+	if err != nil {
+		return releasedTree{}, false
+	}
+	var record releasedTree
+	if err := json.Unmarshal(contents, &record); err != nil {
+		return releasedTree{}, false
+	}
+	return record, true
+}
+
+// forgetReleased drops the mark once the copy is a registered worktree again,
+// so the record only ever describes the state the directory is actually in.
+func forgetReleased(dir string) {
+	_ = os.Remove(filepath.Join(dir, aforgeDroppings, releasedRecord))
+}
+
+// branchIsThere asks a repository whether it holds a branch by that name, which
+// is the question every road that reaches for a renamed branch has to ask
+// before it uses one.
+func branchIsThere(repo, name string) bool {
+	repo, name = strings.TrimSpace(repo), strings.TrimSpace(name)
+	if repo == "" || name == "" {
+		return false
+	}
+	_, err := git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+name)
+	return err == nil
+}
+
+// reopenReleased recreates only the Git registration of a released task copy.
+// The original files never move: a fresh empty worktree supplies its .git pointer,
+// and worktree repair binds that pointer to the retained directory. A failed
+// registration therefore cannot erase or partly relocate the user's leavings.
+func (t taskTree) reopenReleased() (taskTree, bool, string) {
+	mark, released := t.releaseIdentity()
+	if !released {
+		return t, false, ""
+	}
+	root := strings.TrimSpace(t.root)
+	if root == "" {
+		root = strings.TrimSpace(mark.Root)
+	}
+	if branch := strings.TrimSpace(mark.Branch); branch != "" {
+		t.branch = branch
+	}
+	t.root = root
+	if root == "" || strings.TrimSpace(t.branch) == "" {
+		return t, false, "nothing records the branch its work was left on"
+	}
+	defer lockGitRoot(t.place, root)()
+	if !branchIsThere(root, t.branch) {
+		return t, false, "the branch " + t.branch + " is no longer in " + root
+	}
+	// Git must answer for THIS directory. A missing pointer in a directory
+	// under another checkout must never borrow that checkout's index or HEAD.
+	if root, ok := repositoryRoot(t.dir); !ok || root != canonicalPath(t.dir) {
+		if problem := t.restoreReleasedRegistration(); problem != "" {
+			return t, false, problem
+		}
+	}
+	if currentBranch(t.dir) != t.branch {
+		return t, false, "its working copy now stands on a different branch"
+	}
+	// Reset writes only the index, so committed files, edits, deletions and
+	// untracked leavings all remain exactly as they were in the retained copy.
+	if out, err := git(t.dir, "reset", "--quiet", "--mixed", "HEAD"); err != nil {
+		return t, false, "its working copy could not be read against " + t.branch + ": " + firstLine(out)
+	}
+	forgetReleased(t.dir)
+	return t, true, ""
+}
+
+// releaseIdentity reads current or legacy evidence of runtime cleanup. The
+// fallback cannot recover a renamed branch that the old record never named.
+func (t taskTree) releaseIdentity() (releasedTree, bool) {
+	mark, released := rememberedRelease(t.dir)
+	// Older releases wrote only the leavings record. That valid record is also
+	// evidence of runtime cleanup, but cannot recover an unknown renamed branch.
+	if !released && !t.ownRepository() {
+		if data, err := os.ReadFile(filepath.Join(t.dir, aforgeDroppings, leftBehindRecord)); err == nil {
+			var paths []string
+			if json.Unmarshal(data, &paths) == nil {
+				mark = releasedTree{Branch: t.branch, Root: t.root}
+				released = true
+			}
+		}
+	}
+	return mark, released
+}
+
+// restoreReleasedRegistration binds a fresh linked-worktree registration to the
+// retained files. Its caller owns the Git root lock; this phase touches only
+// its own temporary pointer and Git's registration, never the saved contents.
+func (t taskTree) restoreReleasedRegistration() string {
+	temp, err := os.MkdirTemp(filepath.Dir(t.dir), ".aforge-reopen-")
+	if err != nil {
+		return "its working copy could not be prepared: " + err.Error()
+	}
+	// git worktree add needs the reserved path to be absent. Only this empty
+	// directory is removed; no previous recovery directory is ever reused.
+	if err := os.Remove(temp); err != nil {
+		return "its working copy could not be prepared: " + err.Error()
+	}
+	out, err := git(t.root, "worktree", "add", "--no-checkout", temp, t.branch)
+	if err != nil {
+		_ = os.Remove(temp)
+		return "its working copy could not be picked up again: " + firstLine(out)
+	}
+	pointer := filepath.Join(t.dir, ".git")
+	// Link refuses an existing destination, unlike Rename. The source is Git's
+	// new pointer file; no task file is replaced, even after an interrupted retry.
+	if err := os.Link(filepath.Join(temp, ".git"), pointer); err != nil {
+		_, _ = git(t.root, "worktree", "remove", "--force", temp)
+		return "its working copy registration could not be restored: " + err.Error()
+	}
+	if out, err := git(t.root, "worktree", "repair", t.dir); err != nil {
+		_ = os.Remove(pointer)
+		// The repair may have partly updated its administrative backlink. Put it
+		// back at the disposable checkout before releasing that registration.
+		_, _ = git(t.root, "worktree", "repair", temp)
+		_, _ = git(t.root, "worktree", "remove", "--force", temp)
+		return "its working copy registration could not be repaired: " + firstLine(out)
+	}
+	_ = os.Remove(filepath.Join(temp, ".git"))
+	_ = os.Remove(temp)
+	return ""
 }
 
 func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, evidence []string, log io.Writer) (bool, string) {
@@ -6960,6 +7182,21 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, landin
 	}
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, "", refusedNothing
+	}
+	// A COPY A SETTLE ALREADY GAVE BACK IS PICKED UP BEFORE IT IS ASKED TO LAND.
+	// An accept arrives hours after the node stopped needing somebody's look, and
+	// what it finds is a directory this runtime turned into ordinary files
+	// ([taskTree.reopenReleased]). Landing into it committed nothing, merged
+	// nothing, and told the person git's own `fatal: not a git repository` as
+	// though their disk had refused them (#653).
+	switch reopened, back, problem := t.reopenReleased(); {
+	case back:
+		t = reopened
+	case problem != "":
+		// Registration recovery can be retried after its cause is repaired. The
+		// saved files remain in place; this is neither an intentional kept branch
+		// nor a permanent refusal by a workspace that was never a repository.
+		return mergeAborted, releasedKeptSentence(reopened.dir, problem), refusedByTheWork
 	}
 	// A LANDING THAT COULD NOT SAVE THE WORK STOPS HERE. Nothing merges, nothing
 	// is released, and the branch and the working copy both stay exactly where

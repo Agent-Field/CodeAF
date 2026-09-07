@@ -88,6 +88,26 @@ type taskResult struct {
 	overflow string
 }
 
+// TaskReportAccount removes only the exact answer suffix the runner composed
+// into a report. Expanded readers already show that answer in full; retaining
+// its three-line preview would repeat it above the answer in diagnostic ink.
+// Unmatched reports remain intact, including accounts rewritten after landing.
+func TaskReportAccount(report, result string) string {
+	report, result = strings.TrimSpace(report), strings.TrimSpace(result)
+	if result == "" {
+		return report
+	}
+	for _, answer := range []string{result, firstLines(result, taskReportLines)} {
+		if report == answer {
+			return ""
+		}
+		if strings.HasSuffix(report, "\n"+answer) {
+			return strings.TrimSpace(strings.TrimSuffix(report, "\n"+answer))
+		}
+	}
+	return report
+}
+
 // keepResult records what the worker said, whole, beside the report the card is
 // cut from. It clears nothing, exactly as [TaskNode.keepClaim] does not: a
 // repair round that came back with nothing to say leaves the last real answer

@@ -79,14 +79,15 @@ not an assertion that the behavior is broken.
 | **P1** | **One tested build reaches the user.** Confirmed old executable paths above; existing failing window not directly inspected. | A documented launch path opens the tested client, reports client/engine revisions, enters the existing task, sends a direction to the correct task, returns and reconnects with work intact. No destructive host restart or silent old-binary reuse. |
 | **P1** | **Recipient-owned drafts and task messages. Draft and send ownership integrated.** Main, task and run composers now retain their own text, caret, paste blocks and attachment tray, including structured crash recovery. The original misdelivery regression is covered by permanent tests. Guest recipient separation, queued delivery, stale-save refusal and uncertainty recovery have focused race coverage; see the final integration gate below. | Main, task A and task B independently preserve text, caret, compact pastes and attachments. Switching views never changes an unsent message's recipient. Submission clears only the accepted recipient's draft. Test Escape, direct task switches, project switches, reconnect and crash recovery. Treat a question as a question; do not silently reinterpret every task message as a scope revision. |
 | **P1** | **Every visible task has an understandable opening action. Partial integration.** Local other-conversation views now join their owner without starting work or taking the keyboard. Guest identity, status and draft isolation pass focused tests. The right-hand chat column now opens visible rows, bounds hit targets to drawn content, orders attention/live work first and preserves the open page on repeated selection. A rendered-frame/raw-SGR test opens exact parent/child engine transcripts at 100, 119, 120 and 160 columns. Remote other-conversation navigation and actual-user-window validation remain gaps. | Mouse and keyboard open the same stable task from the rail, Tasks, home/project views and another window. Identify the owning conversation and project. Show a recoverable error for a missing/unsupported owner; do not leave an apparently selectable row inert. |
+| **P1** | **Hosted multi-conversation lifetime. Confirmed limitation.** The shared-handle UI now preserves chat identities and unsent drafts, but selecting another conversation on the same engine-backed connection closes the previous one. Local `--no-host` keeps other conversations running. | Switch A→B→A without stopping either conversation or aliasing their agents. Preserve each reader, draft and message owner through reconnect, close and task completion. Tabs must reflect actual lifecycle behavior. |
 | **P1** | **Non-blocking send and reliable acknowledgements. Backend and UI integrated.** Stable message scope/sequence/time and expected conversation reach durable engine admission before acknowledgement. Owner mismatch and duplicate identity tests pass. The asynchronous composer saves the same outbox snapshot before wire delivery; retries retain identity after uncertain receipts. Some draft-clearing, quit and takeover writes remain synchronous, so arbitrary disk stalls are not fully qualified. | Send runs asynchronously. Show pending, received and applied distinctly; Escape/navigation remain responsive. Retain the draft after a failed or uncertain send. Retry a lost acknowledgement with the same message ID and apply it once, including after reconnect and from another window. A second intentional identical message remains distinct. |
 | **P1** | **A retained result remains usable when narration fails. Observed historical failure; integrated recovery unproven.** Artifacts and result references are retained, but a failed final model answer has previously left no substantive visible delivery. | Immediately expose the saved artifact, originating request and truthful failure state. One retry delivers the answer without rerunning completed work or duplicating the completion notice. Test provider failure during final narration, reconnect, and a newer unrelated main-chat question. |
-| **P1** | **Respect the requested delivery and branch workflow. Observed failure; latest guidance unproven live.** The recovery trial merged into main without being asked. The reminder and conflict/stopped branch notices now preserve the requested workflow; the corrected guidance still needs a fresh live evaluation. | For branch-and-commit requests, main and the user's checkout remain unchanged through worker completion and parent follow-up. Cover successful checks, inconclusive review, stopped work and conflicts. Remove conflicting advice. Report branch, commit, exact checks and unresolved work. Reading a result must never imply acceptance, merge or publication. |
+| **P1** | **Respect the requested delivery and branch workflow. One fresh live acceptance passed.** The September 7 four-module repair produced the requested branch and final commit, passed 29 independent checks, and left main unchanged. Late acceptance exposed a released-worktree recovery defect; real-Git regressions cover the repair, but that repair has not had another paid end-to-end run. Stopped, conflicted and revised live cases remain unqualified. | For branch-and-commit requests, main and the user's checkout remain unchanged through worker completion and parent follow-up. Cover successful checks, inconclusive review, stopped work and conflicts. Remove conflicting advice. Report branch, commit, exact checks and unresolved work. Reading a result must never imply acceptance, merge or publication. |
 | **P1** | **Current-request verification through the whole task tree. Component tests pass; integrated proof missing.** Explicit checks and revision invalidation exist; the automatic route-check fix has not completed another realistic live evaluation. | Revise one deliverable during child/parent checking. Affected work gets fresh checks and evidence; unaffected siblings retain their scope. Old evidence cannot satisfy the revised request. Cover partial handoff, failed checks, restore and final delivery. Never scrape arbitrary worker commands into rerunnable checks. |
 | **P1** | **Stop the owned execution tree. Unproven end-to-end criterion.** Cancellation paths and component tests exist; this audit has not shown a full hosted-UI process-tree stop. | Stop a parent with child/grandchild tasks, a queued dependent, a foreground subprocess and a background process group. Owned processes stop within the documented grace, no new work starts, partial artifacts survive, and an unrelated task continues. Repeat while parked and during provider recovery. |
 | **P1** | **Reconnection, persistence and crash recovery. Mixed evidence.** Live terminal detach succeeded previously, and host/socket tests pass. Hard host crashes and uncertain external effects are separate cases. | Distinguish terminal closure, network loss, graceful shutdown and hard crash. Restore the same task, pending question/direction and unseen result. Deliver each notification once and show interrupted/uncertain work honestly. Do not blindly replay an action whose external outcome is unknown. Cover two windows and idle-host retirement. |
 | **P1** | **Independent quality gates on substantial work. Confirmed evidence limitation.** The one substantial repository case passes 220 checks yet exposes a public type-contract defect; the reference shares it. | Freeze multiple substantial repository issues and non-code tasks, with independent negative/interface/integration checks and requested-workflow grading. Repeat correction, interruption, long context and provider failure. Grade the delivered artifact, not whichever hidden child happens to look best. Retain failures and unknown costs. |
-| **P2** | **Per-task reading state. Partial improvement; source gap remains.** Repeated sidebar selection preserves the existing page and draft. Switching away and reopening still creates fresh expansion maps and follows the live edge; closing drops the room. | Return to each task's prior reading anchor and expanded evidence. Preserve a deliberate follow-live choice. New output while away must not jump a reader to the bottom. Include long transcripts and changing widths. Subscription cleanup is fixed separately. |
+| **P2** | **Per-task reading state. Implemented for ordinary task pages within this process.** Owner-scoped bookmarks preserve scroll anchors, expanded entries and explicit follow-live choices across reopening, within a 64-view/240-entry cache. Loading/failure does not overwrite them. Adaptive-run views and persistence across restart remain outside this cache; changing-width and native return checks are part of the current UI gate. | Return to each task's prior reading anchor and expanded evidence. Preserve a deliberate follow-live choice. New output while away must not jump a reader to the bottom. Include long transcripts and changing widths. Subscription cleanup is fixed separately. |
 | **P2** | **Keyboard, narrow-screen and accessibility qualification. Partial automated evidence.** The product has keyboard alternatives, semantic state words and color fallbacks; actual screen-reader behavior was not assessed. | Run the full task journey keyboard-only, on real dark/light terminals, ASCII/no-color, narrow/tall and short/wide windows. Check focus, clipping, selection, contrast and usable recovery text. Test actual assistive technology before claiming accessibility compliance. |
 | **P2** | **Responsiveness under realistic load. Measurement missing.** Passing elapsed test times are not UI performance measurements. | Define and measure input-to-paint, task-open, send-ack and reconnect latency; profile CPU/memory during long streams, large pastes, many task rows and repeated open/close. Document limits. Keep expensive work and network waits out of the event loop. |
 | **P2, after correctness** | **Simplify execution policy and then optimize cost. Proposed architecture only.** Workers and short forks already use the same Agent core; file-count handoffs and overlapping routing/readers remain. | Retain one owner, current assignment, tool receipts and lifecycle. Remove duplicate decisions incrementally while preserving the production acceptance battery. Keep ordinary tools direct; internal helpers stay collapsed. Compare cost only across successful, equivalent real work with complete pricing. |
@@ -542,3 +543,175 @@ Final structural laws passed across 14 packages (UI 21.676s), and changelog
 validation passed all 256 entries. Native Home confirmation now returns from a
 child view to the main conversation. The private seeded terminal was closed
 when QA finished; the user's other terminals were not changed.
+
+## September 7 follow-up — deliberate navigation and returned-task delivery
+
+The colorless captures came from the operator environment carrying `NO_COLOR=1`.
+The application correctly honored that variable. The isolated capture launcher now
+unsets it and retains the existing true-color palette; no user setting or product color
+detection was changed. Colored native ANSI captures are retained under
+`/private/tmp/af-production-followup-20260907/captures`.
+
+The next interaction wave makes Ctrl+k browse without switching, even when the older
+quick-switch preference is on. Only an explicit Enter, numbered choice, or visible row
+click opens a chat. A short pause is never interpreted as modifier release. Ctrl+tab
+retains optional immediate switching where the terminal sends it. The switcher now
+owns mouse input, keeps the selected row visible on short frames, and provides extra
+space for long selected titles. Task transcript revisits retain owner-scoped scroll
+anchors, folds, and follow-live choices within a bounded in-memory cache. Loading and
+failed hosted reads preserve previous bookmarks. Adaptive-run graphs and persistence
+across process restarts are outside this cache's scope.
+
+The owned-result delivery repair was implemented by actual Claude Code CLI Opus in a
+separate worktree. The parent inspected the original trial's transcript: its nested
+`ceiling` record at row 97 has `seam: write`, `decision: moved`, and `taskId: 2`, after
+the returned-task message at row 71. This supports the worker's critical assumption:
+the failing promotion happened during the returned-result turn, not a newly typed
+integration request. The new guard uses current-turn reply tags and graph ownership;
+it does not classify English commands or exempt git globally. New person-typed work
+still crosses the ordinary write allowance. Ownership that cannot be reconstructed
+after a restart does not receive this exception.
+
+Focused regressions reproduce reading-state loss before the fix and pass afterward.
+The early combined focused `make check` passed vet, formatting, selected UI/runtime
+regressions, packed-manual retrieval, and the canonical build/size gate. That build
+measured 50,923,442 bytes under the unchanged 54,600,000-byte budget. These are early
+component checks, not the final full-suite result or live-delivery acceptance. A fresh
+isolated four-module acceptance run and the breadcrumb/result-card integration remain
+in progress at this entry; this audit does not yet claim a successful final commit or
+production readiness for the new runtime.
+
+
+## September 7 live acceptance and delivery repair
+
+The fresh bounded four-module dutylog trial completed in 17m30s with no steering or
+retry. Its requested `fix/dutylog-pipeline` branch contains final commit
+`9ac859d06f3e283ffb1f2273ec9662f1a0c143ad`; protected main remained
+`2d9e399f463a8813016e9d7e37d15b04f29f0b13`. All 21 public tests and 29 independent
+black-box checks passed; seven protected files were byte-identical. The optional
+request for extra regressions was declined explicitly, not a mandatory scope failure.
+
+This closes the missing-final-commit criterion for this one fresh scenario. It does
+not certify the broader quality matrix. The run recorded one top-level task and two
+legitimate checking children. It did not record `dropped:delivering-own-result`, so
+it is not live evidence that the new ownership exemption fired; deterministic tests
+cover that exact admission-and-completion wake.
+
+The ledger reports $0.083 over 192 model calls, with 24 failed calls. This is unreconciled
+application/provider accounting, not a complete cost comparison. Failed provider calls
+were recovered and the requested artifact completed, but the substantial stall remains
+a latency concern. No pricing optimization is claimed.
+
+Independent inspection corrected two inaccurate interpretations in the first run
+report: the task directory still existed, and the unanswered calls were internal work
+checks, not questions to the user. The runtime itself had removed the worktree's Git
+registration before a later accept attempted another landing. A renamed branch also
+left the checker asking for a stale ref. Those are runtime defects, not just wording.
+
+The repair restores only the Git registration and index, leaving retained files in
+place. It records the actual branch at release, uses it in the first settled notice
+and later reads, and follows it for a fresh checking checkout. A failed pickup stays
+answerable and points to the retained folder; it does not claim a missing branch holds
+the work. Tests use real repositories, including protected main, renamed/deleted
+branches, older release records, loose files and a prior recovery directory. The final
+repair has deterministic and race coverage; it has not had a second paid model trial.
+
+Native fixture QA also found that the default engine-backed and remote doors reuse one
+mutable Agent handle. Keeping that handle under the old chat's identity duplicated the
+new chat and could close the wrong selection. These doors now declare that shared-handle
+contract, with real loopback-server and surface A→B→A regressions. Their server still
+closes the previous conversation when selecting another on the same connection.
+Independent background conversations work in `--no-host`; server-side multi-conversation
+lifetime is an open production requirement, not something a visual tab can provide.
+
+The dedicated tabs header is implemented. Its current chat uses a padded highlighted
+tab with brackets that remain clear without color. Task ancestry has a separate row
+below. Prior one-line breadcrumb captures are superseded by the `tabs-*` captures.
+Final gate and capture results are recorded below only after they complete.
+
+Intermediate gates caught two stale UI contracts (the switcher now says `esc cancel`,
+and expanded delivery details no longer belong in the collapsed tail) and a recovery
+function exceeding the existing complexity ceiling. The assertions now test the actual
+collapsed and expanded surfaces; the recovery phases were split without raising the
+ceiling. A separate regression reproduced parent-index changes when a retained folder
+lived inside another checkout; recovery now requires its own repository root and leaves
+the containing index untouched. Focused recovery and complexity checks pass (3.396s),
+and the integrated recovery race check passes (4.736s).
+
+The first full session run also detected source-tree changes made by the parent while
+it ran (a manual page and a new change entry). That was the suite's checkout guard
+working, not evidence of a test Git command mutating the repository. The final combined
+run freezes source and documentation until the gates finish. No new skip or cap increase
+was introduced; the existing known-red lock-law entry remains unchanged.
+
+
+The header's independent review reproduced a stale overflow cache and checked that
+same-named chats retain distinct destinations. The cache now compares complete tab
+identity and picker availability. Focused header/manual/e2e checks pass (17.516s,
+1.584s, 0.386s); the 4,000-line scroll allocation, resize coalescing and remote-pointer
+no-network laws pass (1.459s). These are component/performance laws, not measurements
+of end-to-end input latency.
+
+A further round-trip regression exposed that the shared-handle fallback discarded its
+local draft store, and simply restoring the old store could leak the outgoing chat's
+plain export into an empty incoming chat. Shared selection now restores only incoming
+owner slots; outgoing text, task drafts, attachments and compact pastes remain scoped.
+Main caret position survives both the local keeper and persisted shared selection.
+The focused correction passes (0.995s), with race coverage (2.237s).
+
+Native local QA passes on the canonical binary: Home selects the main chat, tab clicks
+restore each unsent draft, repeated Ctrl+k does not change the active chat while reading,
+a visible picker row selects its exact chat, deep breadcrumbs sit below the tabs, the
+folded ancestor opens the nearest parent, and the root returns to the main chat. Expanded
+results render Markdown and retain the delivery warning. Native seeded captures cover
+160×50, 80×32 and 60×28. The first QA script mistook a truncated-name ellipsis for the
+ancestor fold and expected an individual-card status phrase in a batch row; corrected
+coordinate/fixture assertions pass without hiding a product defect.
+
+The default engine-backed native A→B→A check also passes. The first attempt found that
+the outgoing chat's initial identity was not added to recency, so its visible tab vanished;
+shared stow now remembers that identity without keeping an agent alias. The permanent
+round-trip test pins both tab names, no cross-chat draft leakage, restored text and
+caret. Native input inserted a character at the restored caret to verify the real editor,
+and the picker contains exactly one current-chat row. The server's one-selected-chat
+lifetime remains unchanged and is documented. Evidence is in `native-host-tabs-qa.json`
+and `tabs-hosted-*` native captures.
+
+The final source is frozen for the combined gate below. Opus implemented the header in
+parallel while the parent integrated runtime recovery; parent review completed the cache,
+no-color selection and shared-draft corrections. Redundant worker-owned full UI processes
+were stopped before the final source freeze; their partial logs are not reported as passes.
+
+
+## Final September 7 header and recovery gate
+
+The frozen combined run passed session (189.663s), config (3.205s), manual
+(2.526s), untagged e2e (1.652s), and command tests (50.906s). It found one stale
+focus-header assertion: the selected main tab now reads `[main]`, including with
+color disabled. The expected visible label was corrected; no runtime behavior
+changed after the native captures. The focused regression passed (1.115s).
+
+The full UI rerun then passed (550.836s). Its `make check` also passed whole-tree
+vet, formatting, packed-manual tests (1.665s), the canonical build and size check:
+51,007,218 bytes against the unchanged 54,600,000-byte budget. All 14 packages in
+`make test-laws` passed; changelog validation accepted all 262 entries. Final
+header identity, no-color selection, shared/local draft and caret tests passed
+with the race detector (2.825s). No new skip, relaxed assertion of ownership, or
+increased performance cap was introduced; the existing known-red lock-law skip
+remains the repository's gate policy.
+
+Native local and engine-backed fixtures passed tab clicks, stable picker preview,
+owner-scoped draft restoration, caret editing, breadcrumb ancestry and expanded
+Markdown results at 160×50, 80×32 and 60×28. Captures use seeded data, not a claim
+about a live user's tasks. The private QA engine and tmux server were stopped
+without changing existing user sessions. The final binary is built only at
+`/private/tmp/af-runtime-next/bin/aforge`; use `env -u NO_COLOR` when the invoking
+shell would otherwise disable its colors.
+
+Evidence: `/private/tmp/af-production-followup-20260907/` contains
+`final-frozen-check.log` (including the failed old-label assertion),
+`final-ui-check.log`, `final-focus-check.log`, `final-header-race.log`,
+`final-laws.log`, `final-changelog.log`, the two native QA scripts and their
+receipts, and `captures/tabs-*`. The remaining production criteria above are
+still open; this gate is qualification of the integrated change, not a release
+certification.

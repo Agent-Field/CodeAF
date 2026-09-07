@@ -610,6 +610,15 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		ArtifactsIndex: artifactsIndexPath(),
 		ProfileDir:     profileDir,
 		PickSession:    pick,
+		// AND THE SURFACE IS TOLD THAT THE TWO SEAMS BELOW SELECT IN PLACE. It is
+		// the contract [tui3.Options.SharedAgent] states and the fact the pair has
+		// always had: one connection has one open conversation, and this agent is a
+		// handle on whichever one that is. Without the flag the surface treated the
+		// handle it got back as a SECOND conversation — it put the same pointer in
+		// its keeper under the outgoing session's name, so the switcher listed the
+		// conversation just opened twice and one of those rows opened the wrong
+		// body, and its close-what-you-left landed on the session just opened.
+		SharedAgent: true,
 		// The conversations the ENGINE's disk holds, and the door back into one of
 		// them. Both go over the wire; neither reads a session file here.
 		RecentSessions: func() []tui3.Session { return hostSessions(client) },
@@ -619,12 +628,21 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 			}
 			// THE SAME AGENT, and that is not a shortcut. This handle is a door
 			// onto whichever session the engine currently has open, and the engine
-			// has just swapped which one that is. The surface closed the agent it
-			// was holding on the way in, which over the wire flushed the far
-			// journal and left the connection standing (internal/remote's
-			// Agent.Close states that difference).
+			// has just swapped which one that is.
+			//
+			// SO THIS SEAM SELECTS AND NEVER ADDS, which is what SharedAgent above
+			// tells the surface. The engine ends the conversation being left as
+			// part of the swap — it interrupts and closes the previous agent
+			// (internal/remote's Session.swap) — so by the time this returns there
+			// is exactly one live conversation on this connection and the surface
+			// has a handle on it. Nothing here is left for the surface to close,
+			// and a close it made anyway would land on THIS session: the engine
+			// answers [remote.MethodClose] about whatever it currently has open.
 			return agent, nil
 		},
+		// /new, and the same handle for the same reason the resume above states:
+		// the engine mints the conversation, closes the one it replaced, and this
+		// agent now names the new one.
 		Fresh: func() (tui3.Agent, string, error) {
 			next, err := client.NewSession()
 			if err != nil {

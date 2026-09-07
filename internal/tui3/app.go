@@ -748,6 +748,12 @@ type app struct {
 	start           func(workspace string) (Conversation, error)
 	open            func(workspace, transcript string) (Conversation, error)
 	anchorWorkspace func(path string) (string, error)
+	// shared is [Options.SharedAgent]: this door's fresh and resume seams select
+	// a conversation IN PLACE on one handle rather than building a second agent.
+	// It gates the keeper (keeper.go's [app.stow]) and the close that follows a
+	// swap (welcome.go's [app.openSession], [app.renew]); the option states the
+	// whole contract and why each of those two would otherwise be wrong.
+	shared bool
 	// openTaskOwner attaches a second view onto a conversation that is already
 	// running, for the length of one task page (tui3.go's [Options.OpenTaskOwner]
 	// states the whole contract, taskowner.go is the only caller). Nil is a
@@ -1460,6 +1466,26 @@ type app struct {
 	// [app.roomHead] at layout and read by [app.stopMarkPress], which is the
 	// bargain every pointer target on this surface makes.
 	roomStop hudSpan
+	// crumbs is where the breadcrumbs were drawn on the frame's first row, in
+	// columns, and what each of them opens (roomcrumbs.go). It is written by the
+	// draw — [app.roomHead] — and read by the press and the
+	// hover, on [app.roomStop]'s bargain exactly: a click resolves against what
+	// was actually laid out, never against a second computation of it.
+	crumbs []crumbHit
+	// chatTabs is the conversations this window has been in, in the order it
+	// first entered them, and chatTabHits is where the strip drew each of them
+	// (chattabs.go). The order is the strip's own and not the recency stack's:
+	// a row of tabs that re-ordered itself on every switch would be a row a
+	// person cannot reach for by position.
+	chatTabs    []chatTab
+	chatTabHits []tabHit
+	// chatTabWho is [app.convKey] for the conversation in front, remembered against
+	// the file it was taken from, because that key is a disk question and the
+	// strip asks it on every frame (chattabs.go's [app.frontTabKey]).
+	chatTabWho tabIdentity
+	// chatTabBar is the strip as it was last laid out, kept from frame to frame
+	// (chattabs.go's [tabBar] states the whole of why).
+	chatTabBar tabBar
 
 	// THE PASTE BRACKET. pasting says the terminal has opened one and not yet
 	// closed it; pasted is what has arrived inside it; pasteAt is when the last
@@ -1635,6 +1661,9 @@ type app struct {
 	// resolves through the transcript.
 	room    *taskRoom
 	roomGen int
+	// Recently visited tasks keep bounded display state across navigation.
+	roomReadings     map[roomReadingKey]roomReading
+	roomReadingOrder []roomReadingKey
 	// roomPump is the command a freshly opened room's lane needs, PARKED rather
 	// than returned.
 	//
@@ -1761,7 +1790,7 @@ type app struct {
 	tabRow int
 	// boxRow and boxRows are WHERE A PLACE'S COMPOSER WAS LAST PAINTED — the row
 	// its first line landed on and how many lines it took — written by the same
-	// draw and read by the same press, on [app.tabs]'s bargain exactly. A click
+	// draw and read by the same press, on [app.chatTabs]'s bargain exactly. A click
 	// on the box puts the caret under the pointer wherever a person is standing,
 	// which is the ordinary text-field gesture the conversation already answers
 	// (draftclick.go) and which every place was silently missing.
@@ -1891,7 +1920,7 @@ type app struct {
 	// belongs to no place: it is drawn over the conversation and over all seven.
 	hop hopCard
 	// hopQuick is the `quick switch` setting (config.KeyQuickSwitch): whether
-	// the switcher's chord switches on each press or opens a card that waits
+	// ctrl+tab switches on each press or opens a card that waits
 	// for `enter`. Read at boot and again at each turn's end, the way the
 	// other panel rows arrive.
 	hopQuick bool
@@ -2253,6 +2282,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		applyApprovals:      opts.ApplyApprovals,
 		recentSessions:      opts.RecentSessions,
 		resume:              opts.Resume,
+		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
 		link:                opts.Link,
 		conns:               opts.Connections,
@@ -2915,6 +2945,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		if a.hopShowing() {
+			a.hop.live = false
+			if msg.Mouse().Button == tea.MouseWheelUp {
+				a.hopWalk(-1)
+			}
+			if msg.Mouse().Button == tea.MouseWheelDown {
+				a.hopWalk(1)
+			}
+			return a, nil
+		}
 		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
 		// is the thing the wheel would otherwise move (copymode.go).
 		if a.copy.on {
@@ -3070,6 +3110,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.hopShowing() {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.hopPress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
+		}
 		if a.pasteEdit.open {
 			return a, nil
 		}
@@ -3270,6 +3316,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// every press in its own columns whether or not a row was under it, so a
 			// header read after it would be dead at exactly the end where the words are
 			// printed.
+			// AND THE BREADCRUMBS ARE READ BETWEEN THE TWO, because a crumb is a
+			// door onto ONE page while the row it rides is the way back to the
+			// conversation: a press on a crumb's own cells is that crumb's, and
+			// every other cell of the row is still the exit (roomcrumbs.go). The ✕
+			// still outranks both — ending work is the expensive gesture and wins
+			// the cells it is drawn on.
+			if a.crumbPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
+			// AND THE TAB STRIP IS THE ROW ABOVE THE TRAIL, which is a switch
+			// between CONVERSATIONS rather than a walk inside one (chattabs.go).
+			// It is read with the rest of the pinned rows and above the strip and
+			// the rail for the same reason they are: it spans the whole window
+			// while both of those claim columns of it.
+			if cmd, took := a.tabPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			if a.roomBackPress(msg.Mouse().Y) {
 				return a, nil
 			}
@@ -3380,6 +3443,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		if a.hopShowing() {
+			return a, nil
+		}
 		if msg.Mouse().Button != tea.MouseLeft {
 			return a, nil
 		}
@@ -3399,6 +3465,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		if a.hopShowing() {
+			return a, nil
+		}
 		// Motion is the cheapest and commonest message this surface gets — a
 		// pointer crossing the window sends one per cell — so [app.setHover]
 		// repaints only when the row under it actually changed (hover.go).
@@ -6385,7 +6454,11 @@ func (a *app) renew() (tea.Cmd, bool) {
 	// all.
 	leaving, side := a.agent, a.detachConversation()
 	if replacing {
-		if leaving != nil {
+		// AND NOT ON A SHARED HANDLE, for [app.openSession]'s reason: that agent
+		// is the same object the door just handed back, now naming the session
+		// the engine swapped to, so this close would land on the conversation
+		// /new had just made ([Options.SharedAgent]).
+		if leaving != nil && !a.shared {
 			leaving.Interrupt()
 			if err := leaving.Close(); err != nil {
 				a.note("close failed: " + err.Error())

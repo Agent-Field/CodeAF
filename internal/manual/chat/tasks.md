@@ -765,7 +765,40 @@ somebody's live checkout — before the round ceiling finally moved it. Nothing 
 watching what those rounds did to the disk.
 
 **A commit, an undo, a one-line edit or a single read is never moved**, whatever the write
-count. Those stay in the conversation — see *A commit or an undo is never a task*.
+count. Those stay in the conversation — see *A commit or an undo is never a task*. Neither is
+a reply that is delivering a task's own finished result — see *Finishing a task's work stays
+in this conversation*.
+
+## Finishing a task's work stays in this conversation — it started a second task while integrating, my cherry-pick became a task, the commit after the task finished never happened, why did merging the branch start more work
+
+**When a task lands, its report starts a reply here, and that reply is usually where the rest
+of what you asked for happens**: cherry-picking the branch across, staging the files, the
+commit, the pull request. That is many files changed under this folder, so the write count
+above would move it. **It does not.** A reply delivering the result of a task this
+conversation started finishes here, however many files it touches.
+
+**Why.** A four-module repair was asked for on a branch with a final commit. The task did the
+work — 29 independent checks passed, the protected files were untouched, the branch was
+there — and the reply that read its report began the cherry-pick. The write count moved that
+integration to a second task, which got a **fresh working copy with none of the staged
+index** and a description written from a reply that was integrating rather than working. It
+ended in a cancelled stream, and the commit you asked for never happened.
+
+**What has to be true, exactly.** The reply is answering the report of a task **this
+conversation started** — checked against the engine's record of which conversation started
+it, never against any wording — and **you have not typed anything in that reply**. Both, or
+the write count applies as usual.
+
+**Your next message closes it.** A new broad request is moved exactly as it was before, and
+so is one you type into the delivery reply while it is running: your words are the request
+again, and this is not a licence over everything that follows.
+
+**And it has to be provable.** After a restart, a task restored from a previous run has no
+record of who started it, so its delivery is moved like any other writing reply.
+
+**Nothing is said and nothing is shown for this** — the reply simply carries on and finishes.
+The round ceiling and the time share above still govern that reply exactly as they govern
+every other one; it is only the count of files changed that stands down.
 
 ## A commit or an undo is never a task — commit became a task, undo started a task, why did a small ask become a task, fix this one line, commit everything
 
@@ -1288,9 +1321,9 @@ there holds the finished work; the how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
 does not by itself request a merge or a checkout change.
 
-Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
-branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
-selected card opens the task's room instead. Each long field caps at 20 rows.
+Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
+selected card opens the task's room instead. What the expansion holds, and in what order, is
+under *What an expanded landing card shows* below. Each long field caps at 20 rows.
 
 The branch row is labelled with **where the work was done**, in plain words rather than in
 git's: `a branch of your repository`, `its own copy of the folder`, or `your own folder` —
@@ -1299,8 +1332,34 @@ the same labels the settled card uses, listed under *Does a task touch my workin
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✗ N tasks landed`; any
-`needs your look` swaps it to `? N tasks landed`. The header's span is wall-clock, first
+`needs your look` swaps it to `? N tasks landed`. A failed delivery also keeps a warning
+on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
+
+## What an expanded landing card shows — why is the task answer in asterisks, Markdown, the delivery warning, the facts
+
+Click a landing card, or press `ctrl+o` with it selected, to expand it. The order is
+**delivery status**, **the answer**, then **supporting details**.
+
+A failed save or integration leads with a warning behind `!`. Its headline says
+`delivery needs attention` even if the work itself was accepted. Diagnostics follow
+in quieter text, once. A branch deliberately kept separate is described without a
+failure warning; keeping a branch can be the requested outcome.
+
+The answer uses the normal reply renderer: headings, lists, bold, and fenced code
+appear as formatted Markdown in body ink. A shortened result names where the rest
+can be read: `… the whole of it is at <path>`, or `… the rest of it was not kept`.
+If a check turned the result back, the card says `what it produced was not taken
+as done` and points to the retained record instead of presenting an accepted answer.
+
+Supporting details follow: `changed · <files>`, the branch, then
+`model · <model> · $<cost> · ran · 14:02 → 14:14`. Whole facts wrap onto another
+row when needed. An unknown price is omitted. With no end time, the card says
+`started 14:02`. The acceptance criteria and original brief follow when available.
+
+An expanded card omits the quoted preview and repeated branch from its heading.
+Closing it restores the compact summary. Each long field is capped at 20 rows;
+open the task's conversation for the full record.
 
 ## Watching work: the strip along the top
 
@@ -2122,7 +2181,8 @@ Two aforge windows open on one directory can see each other's running work, and 
 is where they see it.
 
 **A conversation *this* terminal is holding is never one of them.** One terminal can have
-several conversations open at once, in this project or others, and every one of them writes
+several conversations open at once with `aforge chat --no-host`, in this project or others,
+and every one of them writes
 the same file the rows below are read from — so they are filtered out by name before the
 page is drawn. Telling you to go to a window that is two keystrokes away in the terminal
 you are already sitting in would be the same wrong refusal home used to make about another
@@ -2147,7 +2207,7 @@ running
 
 **`enter go to that conversation`** — the work belongs to another conversation **this
 terminal** is holding. Pressing it switches to that conversation, standing in that task's
-own room. The conversation you were in goes on running, exactly as it does for any other
+own room. With `--no-host`, the conversation you were in goes on running, exactly as it does for any other
 switch, and `tab` comes back.
 
 **`enter read it as it runs`** — the work belongs to a conversation the engine is running
@@ -2720,7 +2780,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top line | none | the focus header, and the family lines under it |
+| pinned top line | the conversation name; its `▾` opens the chat picker | the conversation → ancestor tasks → current task breadcrumb trail |
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
@@ -2730,12 +2790,9 @@ local conversation the same page tails that log live.
 | attachments | the tray sends pictures | a room's box sends words only |
 | proposals | drawn as cards | never — a task's own pieces start without asking you |
 
-The focus header is an accent line pinned at the top:
-`─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─`. It carries
-the state glyph, a trail that always names `main` as the root, then the state word, the
-clock, the spend, the model and — where you have set one — how hard this task is asked to
-think, as `thinking high`. Each is dropped when nobody published it. It is pinned
-because a fact that scrolls away is only true at the top of the page.
+The focus header is an accent line pinned at the top. It names the conversation,
+then the actual ancestor tasks and current task. State, elapsed time and cost follow
+where space permits. The current task's name takes priority over those details.
 
 **The name on it is the task's whole name, and the facts behind it are what a narrow
 frame gives up.** Until 2026-09-03 a task's name was cut to three words the moment it
@@ -2761,16 +2818,15 @@ on a standing item, bound here to the task whose page you are standing in; the k
 has the whole of it. A worker already running keeps the rung it started with, so the line
 aforge writes says `task 7 · thinking · high · its next call takes it`.
 
-**The header is a button as well as a line.** Press it anywhere along its width and you
-are back in the conversation, which is the pointer's version of the `esc/← main` it
-prints. The one exception is the `✕` at its right end, which asks to stop the work
-instead. Every kind of room draws this header — a task's page, a sub-harness design, an
-adaptive run's graph, a run node's transcript — so the way out is always named and always
-pressable. It is dropped only on a terminal too short or narrower than 12 columns to draw
-it, where `esc` still leaves.
+**The header has separate click targets.** Ancestor crumbs open their exact task;
+the root and the `esc/← main` end return to the conversation. The current crumb does
+nothing, so clicking its name cannot accidentally leave it. The `✕` retains its stop
+confirmation. Empty header space retains the shortcut back to main. Below 12 columns,
+or on very short terminals, the bar gives its row back to the transcript; `esc` still
+leaves.
 
-Under it, dim and indented, come up to three more pinned lines saying where this task sits
-in its family — see *Who started this task, and what it handed out*.
+Actionable waiting work retains its answer row. The parent sentence no longer repeats
+the breadcrumb ancestry; a compact `handed out:` row still names children.
 
 ## Typing in a task's room — the up arrow, editing what you sent, and escape
 
@@ -2999,40 +3055,20 @@ block.
 
 ## Who started this task, and what it handed out
 
-Standing inside a task, the pinned lines under the focus header say where it sits in the
-family — who asked for the work, what the work handed out, and what it is still behind.
-They are dim, indented two cells under the trail, and each one is simply absent when there
-is nothing to say:
+Inside a task, the breadcrumb bar shows its owning conversation and every known
+ancestor, ending at the current task. For example:
 
-```
-─ ⠙ main ▸ Write the tree · working · 2m 12s ────── esc/← main · ✕ ─
-  part of: Ship the port
-  handed out: Cut the goldens — parked · Wire the seam — running
-```
+`Shipping the parser ▸ Fix validation ▸ Add boundary checks`
 
-- **`part of: <title>`** names the task that handed this work out — the parent. A task
-  nobody handed out draws no such line, so its absence means *this is a top-level task*. A
-  parent this session has had no update for is left unsaid rather than named as a bare id.
-- **`handed out: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
-  the session met them. The state is the same word the roster uses: `queued`, `working`,
-  `finishing`, `waiting`, `done`, `incomplete`, `failed`, `stopped`, `needs your look`. A piece that is
-  itself held behind another piece says only `waiting` here — the word the column uses for
-  it, and not `queued`, which is the column's word for work with nothing in its way but a
-  slot; open its own room to see what it is behind.
-- **what this task waits on** is on the accent line itself, as its state word:
-  `waits: <title>` names the prerequisites that have not finished. It is there rather than
-  on a line of its own so the header never says the same thing twice.
+Click an ancestor to open its page. Narrow frames fold the middle into `…`, which opens
+the nearest ancestor it hides. The current task is inert. Unknown parents are omitted;
+the UI never substitutes a bare task id for a name. Guest ancestry remains visible but
+inert because this window cannot use another conversation's local task ids.
 
-Nothing new is being tracked for these lines — they are the roster's own tree, read from
-the one node you are standing in, said in words because the tree shape is not on screen
-here.
-
-Limits, so you know when the page is not telling you everything: at most **three** lines,
-wrapped on their spaces and cut there, because they are charged to the transcript
-underneath them. They stand down entirely on a terminal shorter than **16 rows** or
-narrower than **12 columns**, where the header itself is already fighting for room. An
-adaptive run's page draws none of them: the graph with its edges is already on screen
-there.
+The roster shows children with their parent and state. That tree and the breadcrumbs
+use the same parent links; the separate `part of:` sentence no longer repeats
+the parent. A compact `handed out:` row still names children and their state. Prerequisites that hold work back are still named in the
+header's state. A task awaiting an actionable decision keeps its answer row.
 
 ## Opening a task in the middle of its work — what the room shows
 
@@ -3163,9 +3199,8 @@ Where they show up:
 - **the roster** draws the whole family together, with each piece joined to its parent by
   tree connectors and carrying its own id and state.
 - **the parent's room** shows the `propose_task` calls as they are made, and the parent's
-  own words when the reports come back — and its pinned header lists each piece by name
-  with the state it is in (*Who started this task, and what it handed out*).
-- **the piece's own room** says `part of: <the parent's title>` under its header, so a task
+  own words when the reports come back; its children remain grouped on the roster.
+- **the piece's own room** names the parent in its breadcrumb trail, so a task
   you walked into knows it is a piece of something.
 
 Each piece works in a copy of its **parent's** own working copy, and its branch merges back
@@ -3521,7 +3556,7 @@ own cost row. The standing orders page has the rest of what an unattended run is
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief
 do. Walk into the parent's room and its header lists each part by name with the state it is
-in; walk into a part and its header says `part of: <the parent's title>`.
+in; walk into a part and its breadcrumb trail names the parent.
 
 **Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
 
@@ -4393,3 +4428,59 @@ opens the task's read-only card with the reason and the owning window's details.
 Return to the list to retry, or go to that window. Local design progress never
 updates a foreign task page with the same number. The next-running-task arrow
 opens a local task even when its number matches the foreign page you were reading.
+
+## Returning to a task — keep my scroll position and expanded details
+
+Leaving a task and reopening it in this window restores the place you were reading,
+expanded work, tool details, and your choice to follow new output. Each task keeps its
+own reading state, scoped to its owning conversation and host. New output while you
+were away does not pull a scrolled-back reader to the bottom. If you deliberately
+scroll to the live edge, reopening follows the newest output.
+
+This keeps the 64 most recently visited task transcripts and up to 240 block display
+choices per task in memory. It does not persist after quitting and does not preserve
+an adaptive run's graph view. Reopening still reads the retained journal tail; if the
+old anchor has fallen outside that tail, the view starts at its oldest retained row.
+A loading or failed hosted read does not overwrite the saved position.
+
+## Breadcrumbs — which chat am I in, parent tasks, and switching chats by clicking
+
+The main chat's top bar names the conversation. Its `▾` opens the same picker as
+Ctrl+k without changing chats until you choose. Inside a task it becomes a trail:
+`Shipping the parser ▸ Fix validation ▸ Add boundary checks`. Click the conversation
+name to return to the main chat, or an ancestor to open that task. The current task is
+inert. Narrow frames fold ancestors into `…`; clicking it opens the nearest ancestor
+it hides. A guest task names its owning conversation and ancestry, but those crumbs
+are inert because this window does not own that graph.
+
+Model and conversation statistics remain in the status row. Deep trails fit at most
+eight explicit ancestor levels; earlier ancestors are represented by a fold. The bar
+stays pinned while you scroll. Task drafts, scroll anchors and expanded sections stay
+with their task when navigating within this process, subject to the reading cache limits.
+
+## Switching chats through the engine — duplicate names, one open conversation, and saved history
+
+The ordinary engine-backed chat, `--host`, and `--at` currently select one conversation
+per connection. Opening another closes the previous session on that connection; its
+saved history remains available. The switcher lists saved chats directly rather than
+pretending the shared connection represents several independently running chats. It
+must not show the new chat under the previous chat's name or stop the newly selected
+chat a second time.
+
+The entry line says `closed · <previous chat> — a connection holds one conversation at a time`.
+Use `aforge chat --no-host` for independent local conversations that remain open while
+you switch between them. That in-process mode does not keep working after its terminal
+exits. Persistent multiple-conversation switching on one engine connection is not yet
+supported. Merely browsing Ctrl+k does not select or close anything.
+
+
+## Accepting a saved task after its Git registration was released
+
+If aforge released the task's Git registration while retaining its files, a later accept
+restores that registration before bringing the work home. This is not a folder that was
+never a repository. The actual branch name is retained even if the task renamed it.
+
+If the registration cannot be restored, the task still needs your look and names the
+saved folder and the cause. Its files remain in place, and acceptance can be retried
+after repair. It does not claim a missing branch holds the work. Protected branches such
+as main remain untouched; their task branch is kept instead.

@@ -3480,11 +3480,14 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
 		// answer the same question, and the wide frame answers it in the column.
-		if tc.rail && top != 0 {
-			t.Fatalf("at %d columns the strip drew over the roster: top=%d", tc.width, top)
+		// It is asked of the STRIP's own height rather than of [app.bodyTop], which
+		// counts the conversation's own pinned bar as well (roomcrumbs.go).
+		if tc.rail && a.stripHeight() != 0 {
+			t.Fatalf("at %d columns the strip drew over the roster: %d rows", tc.width, a.stripHeight())
 		}
-		if !tc.rail && !strings.Contains(lines[0], "Fix the nil-map") {
-			t.Fatalf("at %d columns the task strip is not the frame's first row:\n%q", tc.width, lines[0])
+		if !tc.rail && !strings.Contains(lines[a.headHeight()], "Fix the nil-map") {
+			t.Fatalf("at %d columns the task strip is not the first row under the bar:\n%q",
+				tc.width, lines[a.headHeight()])
 		}
 		// The status row is the whole window's, so it is never under the rail.
 		status := lines[len(lines)-1]

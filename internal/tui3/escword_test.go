@@ -35,7 +35,9 @@ func TestTheKeySheetSpellsTheEscapeGestureOneWay(t *testing.T) {
 		}
 	}
 
-	// AND IT STILL NAMES THE KEY. A row that dropped the clause instead of
+	// AND IT STILL NAMES THE KEY. The switcher now previews a choice, so
+	// Escape cancels that pending choice rather than navigating back.
+	// A row that dropped the clause instead of
 	// respelling it would pass every check above and teach nobody anything, so
 	// the four rows that carried a wrong spelling are named here by the key they
 	// belong to and must each still say what esc does.
@@ -44,11 +46,12 @@ func TestTheKeySheetSpellsTheEscapeGestureOneWay(t *testing.T) {
 		what string
 		// lead is enough of the row to find it and nothing more.
 		lead string
+		want string
 	}{
-		{"the places row's continuation", "on a place, tab is the next place"},
-		{"the task roster", "ctrl+t "},
-		{"the conversation switcher", "ctrl+k "},
-		{"space space, over an empty box", "space space"},
+		{"the places row's continuation", "on a place, tab is the next place", "esc back"},
+		{"the task roster", "ctrl+t ", "esc back"},
+		{"the conversation switcher", "ctrl+k ", "esc cancel"},
+		{"space space, over an empty box", "space space", "esc back"},
 	} {
 		found := ""
 		for _, line := range strings.Split(sheet, "\n") {
@@ -60,9 +63,9 @@ func TestTheKeySheetSpellsTheEscapeGestureOneWay(t *testing.T) {
 		if found == "" {
 			t.Fatalf("%s is not on the key sheet at all (looked for %q)", row.what, row.lead)
 		}
-		if !strings.Contains(found, "esc back") {
+		if !strings.Contains(found, row.want) {
 			t.Errorf("%s stopped naming the escape key instead of respelling it:\n  %s\n  want a clause reading %q",
-				row.what, found, "esc back")
+				row.what, found, row.want)
 		}
 	}
 }

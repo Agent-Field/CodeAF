@@ -12,8 +12,9 @@ forming block is drawn when a task command is not in flight.
 
 ## What the frame draws, top to bottom
 
-aforge draws one screen in a fixed order every frame. From the top: the pinned room
-header (only while a task room is open), the task strip, the conversation, a breathing
+aforge draws one screen in a fixed order every frame. From the top: the row of
+conversation tabs, the pinned room header (only while a task room is open), the task
+strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
 sub-harness offer, the steer guard, the follow-up row, any message waiting for the
 answer to finish, another gap, the tray row above the box, the draft box where you type,
@@ -66,6 +67,44 @@ hint line last. See the **Places** page.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
+
+## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
+
+**The first line aforge draws is the conversations this window has been in**, drawn as
+tabs, left to right:
+
+```
+   openrouter price scrape   Refactor the rail scope   [Shipping the parser]  ▾
+```
+
+The active tab has a soft highlight and brackets; the rest are dim. The brackets
+still identify it when color is disabled. **Clicking a tab goes to
+that conversation** — the same switch `ctrl+k` makes. Clicking the tab you are already in
+does nothing while you are in the conversation itself, and takes you back out to it from
+a task page.
+
+**The order never changes as you switch.** Tabs sit in the order this window first
+entered them, so the one you reached for a minute ago is still in the same place.
+
+**The `▾` at the right end opens the switcher** — the same card `ctrl+k` opens, with every
+conversation on this machine in it. Where the row is too narrow for every tab, the mark
+becomes a count instead (`…3`), the conversation you are in is always one of the tabs
+still drawn, and pressing the count opens that same card.
+
+**A tab does not claim the conversation is running.** It says this window has been there
+and one press goes back. Over an engine-backed connection (`--host`, `--at`, and the
+ordinary socket onto this machine's engine) only one conversation is open at a time and
+switching closes the previous one — the surface says `closed · <name> — a connection holds
+one conversation at a time` when it does. With `aforge chat --no-host` the ones you left
+keep running. There is no `✕` on a tab and no `+` at the end of the row: closing is
+`ctrl+w` from the switcher, and a new conversation is `/new`.
+
+**Your unsent words and caret are kept either way.** A half-written message goes down under the
+conversation it was written for and comes back when you return to it, including over a
+shared connection where the conversation itself was closed.
+
+**It stands down on a small frame** — under 12 columns wide, or on a terminal too short
+for a blank row above the message box — for the same reason the room header does.
 
 ## The box says which room you are typing into
 

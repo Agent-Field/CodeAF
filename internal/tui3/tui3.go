@@ -790,6 +790,44 @@ type Options struct {
 	// answering a question nobody asked.
 	Resume func(file string) (Agent, error)
 
+	// SharedAgent says this door's [Options.Fresh] and [Options.Resume] SELECT A
+	// CONVERSATION IN PLACE on one handle, rather than building a second,
+	// independent agent beside the one the surface is already holding.
+	//
+	// IT IS A STATEMENT ABOUT THE DOOR AND NOT ABOUT THE TRANSPORT, which is why
+	// it is a field rather than something read off [Options.Host]. The engine
+	// doors — `--host`, `--at`, and the ordinary `aforge chat` that talks to this
+	// machine's own engine over a socket — all hand back the SAME [remote.Agent]
+	// from both seams, because that agent holds no state: it is a handle on
+	// whichever conversation the engine currently has open (cmd/aforge's
+	// chatv3_host.go, internal/remote's Agent). The local in-process door builds a
+	// real second agent and leaves this false. One of those three engine doors
+	// names no host at all, so `Host == ""` is not the question.
+	//
+	// TWO THINGS THE SURFACE DOES DIFFERENTLY WHEN IT IS SET, and both are
+	// correctness rather than taste:
+	//
+	//   - NOTHING GOES INTO THE KEEPER (keeper.go's [app.stow]). A conversation
+	//     put there would be the same pointer as the one in front, now naming a
+	//     different session — so the switcher drew the conversation just opened
+	//     twice, under two names, and looking at the held one opened the wrong
+	//     body. It would also leave a second reader draining the lanes of the
+	//     conversation on screen.
+	//   - THE CONVERSATION BEING LEFT IS NOT CLOSED (welcome.go's
+	//     [app.openSession]). The surface opens the next conversation BEFORE
+	//     closing the one it was holding, and on a shared handle those are the
+	//     same object — so the close landed on the session that had just been
+	//     opened. The engine already ends the previous conversation as part of the
+	//     swap (internal/remote's Session.swap interrupts and closes it), so there
+	//     is nothing left here to close.
+	//
+	// WHAT IT COSTS A PERSON is that these doors hold ONE conversation at a time:
+	// opening another from home, the switcher or the search place swaps to it and
+	// closes what was in front, rather than keeping it running beside. The surface
+	// says so on the entry line ([oneConversationWord]) rather than letting
+	// somebody discover it.
+	SharedAgent bool
+
 	// PickSession opens the resume picker over the first frame — `aforge
 	// resume`, which is this same surface asked to start by choosing. It is a
 	// property of one launch and not of the profile, which is why it is a

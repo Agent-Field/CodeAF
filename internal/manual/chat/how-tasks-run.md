@@ -506,6 +506,25 @@ Pressing **accept** on the card does not change this. Accepting says the work is
 it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
 leaves the task needing your look with the same sentence.
 
+## Accepting a task after its working copy was released, or after its branch was renamed
+
+A task that stops needing a running checkout can leave its files in place while aforge
+releases their Git registration. Accepting that task later restores the registration
+before saving and bringing the work home. It does not move the saved files, overwrite
+loose edits, or mistake aforge's cleanup for a folder that was never a repository.
+
+If the task renamed its branch, aforge records the actual branch when releasing the
+copy; later acceptance and fresh checks use that name. Older released copies can also
+be recovered when their retained-file record and original branch are still available.
+An old record cannot reconstruct an unknown renamed branch.
+
+When recovery cannot proceed, the task still **needs your look** and names the saved
+folder and the reason: `its saved working copy at <folder> could not be reopened to
+merge: <reason>`. Its files stay there. Repair the cause and accept again. This does not
+claim delivery succeeded or that a deleted branch still holds the work. Protected
+branches such as `main` remain protected: acceptance keeps the task's branch instead
+of writing into your checkout.
+
 ## My task could not save what it wrote — nothing merged, the file is still there, it says it could not be brought home
 
 A landing that cannot put the work away **does not merge, does not tidy anything up, and
@@ -1716,7 +1735,9 @@ That sentence used to read `no answer in 5m0s, so nothing was accepted`, which s
 things a clock is not entitled to say — that you had five minutes, and that a decision had
 been made. Nothing is accepted or refused by a window running out; the work waits for you,
 for as long as that takes. When two tries in a row got nothing, the first line is prefixed
-`asked twice and got no answer either time — `.
+`nobody could check it — asked twice, and neither call answered — `.
+If time ran out before a second call could be made, it says that instead; it does not
+claim two attempts. These are checks of the work, not unanswered questions to you.
 
 
 The last line of that landing is the only thing the `task.settle` setting changes. With it

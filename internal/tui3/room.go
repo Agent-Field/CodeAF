@@ -276,10 +276,11 @@ type taskRoom struct {
 	// not the conversation's map for the reason the entries are not the
 	// conversation's list: a turn number means nothing outside the list it counts
 	// (render.go's [deck]).
-	unfolded map[int]bool
-	workOpen map[int]bool
-	capOpen  map[int]bool
-	lane     <-chan session.Event
+	unfolded        map[int]bool
+	workOpen        map[int]bool
+	capOpen         map[int]bool
+	readingRestored bool
+	lane            <-chan session.Event
 	// stop LEAVES that lane, and is nil for an agent that offers no way out of
 	// one. A room a person walked out of while the conversation goes on running
 	// is a subscriber that must say goodbye: nothing else can tell a reader that
@@ -452,11 +453,16 @@ const (
 	roomCrumbRoot = "main"
 	// roomCrumbSep separates one step of the trail from the next.
 	roomCrumbSep = " ▸ "
-	// The two sentences the kin block says, in the alphabet the rail already
-	// spells a family relation in — "waits: <title>", so "part of: <title>" and
-	// "spawned: <title>" (task.go's [app.railUnder]). A person who has read the
-	// roster's rows has already learned this punctuation.
-	roomKinUnderWord = "part of: "
+	// The sentence the kin block says, in the alphabet the rail already spells a
+	// family relation in — "waits: <title>", so "handed out: <title>" (task.go's
+	// [app.railUnder]). A person who has read the roster's rows has already
+	// learned this punctuation.
+	//
+	// IT USED TO HAVE A SIBLING, `part of: <title>`, and the breadcrumb took its
+	// job (roomcrumbs.go): the parent is a PLACE and is on the trail with the rest
+	// of the chain, where it can be pressed, rather than a fact one row under a
+	// trail that was saying something else.
+	//
 	// AND `spawned:` WAS THE MACHINERY'S OWN WORD. It is what a process does to
 	// another process, and this house bans it in anything a person reads — the
 	// same rule that took `worktree` off the completion card. What actually
@@ -850,6 +856,7 @@ func (a *app) closeRoom() {
 	if a.room == nil {
 		return
 	}
+	a.rememberRoomReading()
 	a.roomGen++
 	// AND THE LANE IS GIVEN BACK. A room closes while its conversation goes on
 	// running, so there is nobody to close the channel for us the way an agent
@@ -2237,11 +2244,19 @@ func (a *app) roomHead(width int) string {
 	// asked rather than second-guessed: a header the frame drew on a short
 	// terminal that the scrolling had not subtracted would push the room's last
 	// row under the input box.
-	a.roomStop = hudSpan{}
+	a.roomStop, a.crumbs = hudSpan{}, nil
+	if a.room == nil {
+		// THE CONVERSATION HAS NO HEADER OF ITS OWN. It used to draw one crumb here
+		// — its own name, which is `main ▸` with nothing after it — and the tab
+		// strip above now says that and more (chattabs.go). A row whose whole
+		// content is a fact the row above it already carries is a row this surface
+		// does not draw.
+		return ""
+	}
 	if a.headHeight() == 0 || width < roomHeadFloor {
 		return ""
 	}
-	left := a.roomHeadWord(width)
+	left, hits := a.roomHeadParts(width)
 	mark := a.roomStopWord()
 	// THE ✕ BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather than
 	// spliced into the finished line: [app.legendLine] paints the right label as
@@ -2261,8 +2276,19 @@ func (a *app) roomHead(width int) string {
 	if mark != "" {
 		attempts = []string{roomBackWord + roomStopSep + shown, shown, roomBackWord, ""}
 	}
+	// AND THE CRUMB UNDER THE POINTER BRIGHTENS, in pieces rather than nested, for
+	// the reason the status row's model segment does (render.go's
+	// [app.paintIdentity]): these hues are raw SGR with an explicit reset, so a
+	// colour inside a colour ends the outer one mid-sentence. The label is plain
+	// text at this point and every span was measured against it, so cutting it in
+	// cells is exact.
+	paint := func(label string) string { return a.paintCrumbs(label, headLabelAt, a.pal.accent) }
+	// The spans are recorded BEFORE the line is painted, because the paint reads
+	// them: what brightens under the pointer is the crumb the press would act on,
+	// resolved through one map rather than two.
+	a.crumbs = hits
 	for _, right := range attempts {
-		line, ok := a.legendLine(left, right, width, a.pal.accent)
+		line, ok := a.legendLine(left, right, width, paint)
 		if !ok {
 			continue
 		}
@@ -2283,7 +2309,12 @@ func (a *app) roomHead(width int) string {
 		}
 		return line
 	}
-	return a.pal.accent(fit(left, width))
+	// NO ATTEMPT FITTED, so the border is gone and the label starts at the frame's
+	// own first column instead of one cell inside a rule. The crumbs move with it:
+	// a span recorded where the words were NOT drawn is a click that opens the
+	// wrong page (hover.go's law).
+	a.crumbs = crumbsAt(hits, -headLabelAt)
+	return a.paintCrumbs(fit(left, width), 0, a.pal.accent)
 }
 
 // roomBackPress answers a press on the pinned header, and reports whether it
@@ -2321,7 +2352,7 @@ func (a *app) roomBackPress(y int) bool {
 // (hover.go's law). The ✕ is claimed one rung earlier and never reaches here
 // (stop.go's [app.stopMarkAt]).
 func (a *app) roomBackAt(y int) bool {
-	return a.roomOpen() && a.headHeight() != 0 && y == 0
+	return a.roomOpen() && a.headHeight() != 0 && y == a.roomHeadRow()
 }
 
 // ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
@@ -2359,37 +2390,67 @@ func (a *app) roomBackAt(y int) bool {
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
 // the rest of the line would fall back to the terminal's default mid-sentence.
 func (a *app) roomHeadWord(width int) string {
+	word, _ := a.roomHeadParts(width)
+	return word
+}
+
+// roomHeadParts is that line and where its crumbs landed, in the label's own
+// columns. The two are built together for the reason every hit map on this
+// surface is written by the render that drew it: a trail laid out twice is a
+// trail a click can miss by exactly the difference between the two layouts.
+//
+// THE TRAIL IS NOW A CHAIN AND THE BUDGET IS A NEGOTIATION (roomcrumbs.go). It
+// used to be `main ▸ <this page>` — two crumbs, never more — so law 1 could be
+// spelled in one line: the name whole, or the name cut and no facts at all. A
+// chain has a middle, and the middle is worth less than the state word: a person
+// who came to check on work is asking WHAT IS IT DOING first and WHOSE PIECE OF
+// WHAT SECOND. So the trail is offered the line less the leading fact, folds its
+// middle to fit that, and the facts spend what is left.
+//
+// LAW 1 STILL ENDS IT. Where the PAGE'S OWN name cannot survive whole even after
+// the middle has folded away, the trail takes the whole line and no fact is drawn
+// beside it — an ellipsis in the name has already spent the one thing the row was
+// drawn to say.
+func (a *app) roomHeadParts(width int) (string, []crumbHit) {
 	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the facts under it
 	// are a node's — a state, a clock, a spend — and a run has none of them.
 	// What it has instead is a tank, and the tank is the fact that cannot be left
-	// off this line.
+	// off this line. Its trail is the run's own chain of goals and carries no
+	// crumb this window can open, so it records none.
 	if a.orchOpen() {
-		return a.orchHeadWord(width)
+		return a.orchHeadWord(width), nil
 	}
 	node := a.roomNode()
-	name := a.roomMark(node) + " " + a.roomTrail()
-	room := max(width-roomHeadFurniture, 0)
-	if node == nil {
-		// A room on a node this surface has had no update for. The trail is still
-		// true and nothing else is, which is exactly what gets said.
-		return fit(name, room)
+	lead := a.roomMark(node) + " "
+	room := max(width-roomHeadFurniture-ansi.StringWidth(lead), 0)
+	facts := []rowField(nil)
+	if node != nil {
+		facts = a.roomHeadFacts(node)
 	}
-	// LAW 1, AND IT NOW HAS SOMETHING TO SPEND. The name arrives WHOLE — the
-	// engine's own title for the work, uncut ([taskTitleOf]; until this wave it
-	// was cut to three words before any width was known, so this header at a
-	// hundred and sixty columns named the work no better than a twenty-four-cell
-	// rail row did) — and the identity takes every cell it asks for before a fact
-	// gets one. A name that had to be CUT takes the whole line: an ellipsis in it
-	// has already spent the one thing the row was drawn to say, and a spend
-	// figure beside it would be a second loss.
-	if ansi.StringWidth(name) > room {
-		return fit(name, room)
+	// WHAT THE TRAIL IS ASKED TO LEAVE BEHIND IS THE FIRST FACT AND NOTHING MORE.
+	// It is the state word — the reason the visit is happening — and the rest of
+	// the tail takes its chances with whatever the trail did not want. A room with
+	// no facts at all (a node this surface has had no update for) reserves
+	// nothing, because there is nothing to reserve it for.
+	reserve := 0
+	if len(facts) > 0 && facts[0].known() {
+		reserve = ansi.StringWidth(facts[0].full) + len(rowSep)
 	}
-	tail := rowTail(a.roomHeadFacts(node), room-ansi.StringWidth(name)-len(rowSep))
+	line, hits, whole := a.roomCrumbLine(room - reserve)
+	if !whole {
+		// The reserve bought nothing: hand the trail the whole line and let it say
+		// as much of itself as it can.
+		line, hits, whole = a.roomCrumbLine(room)
+	}
+	hits = crumbsAt(hits, headLabelAt+ansi.StringWidth(lead))
+	if !whole || len(facts) == 0 {
+		return lead + line, hits
+	}
+	tail := rowTail(facts, room-ansi.StringWidth(line)-len(rowSep))
 	if tail == "" {
-		return name
+		return lead + line, hits
 	}
-	return name + rowSep + tail
+	return lead + line + rowSep + tail, hits
 }
 
 // roomHeadFurniture is what [app.legendLine] spends on the header's own rule
@@ -2582,7 +2643,7 @@ func (a *app) roomKinRows(width int) []string {
 	if node == nil {
 		return nil
 	}
-	kids, byKey := a.railKin()
+	kids, _ := a.railKin()
 	// THE ROWS ARE A BUDGET AND THE NAMES ARE FITTED TO IT. These lines are dim
 	// telemetry with a hard cap of [roomKinRowCap] rows, so a relative's name
 	// that arrives whole (taskident.go's [taskTitleOf]) is cut HERE, where the
@@ -2591,17 +2652,19 @@ func (a *app) roomKinRows(width int) []string {
 	// ending on a bare `—` with the state word cut off the bottom of it.
 	inner := width - ansi.StringWidth(roomKinIndent)
 	var lines []string
-	// WHO ASKED FOR THE WORK, AND IT IS NOT A DEPENDENCY — session's
-	// task_contract.go states that difference in those words, and this line is
-	// the only place on the surface that says the parent out loud rather than
-	// drawing it as an elbow. A parent this surface has had no update for is left
-	// UNSAID rather than named as an id, which is the rule [app.railWaits]
-	// already applies at the other end of the family: "part of: 7" has told a
-	// person nothing.
-	if up := byKey[node.ParentID()]; up != nil && up != node {
-		lines = append(lines, roomKinUnderWord+roomKinName(up.title, inner-ansi.StringWidth(roomKinUnderWord)))
-	}
-	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
+	// WHO ASKED FOR THE WORK IS ON THE TRAIL NOW AND NOT ON A LINE DOWN HERE.
+	// This block used to open with `part of: <the parent's title>` — one level of
+	// ancestry, said as a fact you could not press, one row under a trail that was
+	// claiming in the same breath that this work hung off the conversation. The
+	// breadcrumb says the whole chain and every step of it is a door
+	// (roomcrumbs.go), so the sentence is gone rather than drawn twice: the same
+	// rule the state word already holds these rows to — a header that said the
+	// same thing twice would be a header read twice to learn one thing.
+	//
+	// WHAT THIS WORK HANDED OUT STAYS, because a trail goes UP. Children are not
+	// on the way to anywhere, they are what is happening underneath, and the roster
+	// is the only other place they are drawn. Each piece keeps the state word it
+	// wears everywhere else on the surface.
 	// everywhere else on the surface. The order is [app.railKin]'s, which is the
 	// column's own: what needs a person first, then what is running, then what is
 	// waiting, then what is over — with arrival order keeping the peace inside
@@ -2709,31 +2772,11 @@ func (a *app) roomMark(node *taskNode) string {
 	return a.taskStateMark(node)
 }
 
-// roomTrail is the breadcrumb: the root, then one step per room walked into
-// without coming back out.
-//
-// The path is one deep today, because the only door into a room is the rail and
-// the rail is a flat list of the session's nodes — walking from one row to
-// another is a step SIDEWAYS, and [app.openRoomFor] treats it as one. The trail
-// is written over a path rather than over the open room so that the day a node's
-// own page grows a door into the node it spawned, the breadcrumb is already the
-// thing on screen.
-// A GUEST PAGE HANGS OFF THE CONVERSATION THAT OWNS IT AND NOT OFF THIS ONE.
-// `main` is this surface's one name for the conversation on screen, and a page
-// read through another conversation is not under it: a trail reading `main ▸
-// Port the parser` would say this window started that work. So the root is whose
-// it is, and a person reading the top of the page knows before they read a word
-// of the transcript ([taskGuest.owner]).
-func (a *app) roomTrail() string {
-	trail := roomCrumbRoot
-	if guest := a.roomGuest(); guest != nil {
-		trail = roomGuestOwnerWord + guestOwnerName(guest.owner)
-	}
-	for _, step := range a.roomPath() {
-		trail += roomCrumbSep + step
-	}
-	return trail
-}
+// The trail itself is roomcrumbs.go's — [app.roomCrumbs] is the model and
+// [app.roomTrail] reads it out as this sentence. It used to be built here, over
+// [app.roomPath], and it named the root and the open room and nothing between
+// them: the ancestry the engine had modelled all along was one dim line further
+// down, spelled as a fact rather than as a place, and only ever one level of it.
 
 // guestOwnerName is what to call the conversation a page is being read through,
 // and [taskAwayWord] for one nothing has named — which is the same word the row
@@ -2744,15 +2787,6 @@ func guestOwnerName(owner string) string {
 		return taskAwayWord
 	}
 	return owner
-}
-
-// roomPath is the titles of the rooms between the conversation and the page on
-// screen, outermost first.
-func (a *app) roomPath() []string {
-	if a.room == nil {
-		return nil
-	}
-	return []string{a.room.title}
 }
 
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
@@ -3016,6 +3050,7 @@ func (a *app) roomRows(width int) []row {
 	// page out against the one view the frame is drawing, and a resize, a rail
 	// tier change or a draft growing a line all re-derive the fold's tail
 	// without any of them having to remember to.
+	reading := a.restoreRoomReading()
 	height := a.viewHeight()
 	if room.rows != nil && room.width == width && room.height == height && !room.dirty {
 		return room.rows
@@ -3094,6 +3129,7 @@ func (a *app) roomRows(width int) []row {
 	}
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
+	a.restoreRoomAnchor(reading, out)
 	room.rows, room.width, room.height, room.dirty = out, width, height, false
 	return out
 }

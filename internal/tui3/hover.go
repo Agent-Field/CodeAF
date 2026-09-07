@@ -232,6 +232,21 @@ const (
 	// opposite gestures — so the two never light together, and the expensive one
 	// wins the cells it is drawn on.
 	hoverRoomStop
+	// hoverCrumb is one step of the breadcrumb trail on that same header, and
+	// index is the COLUMN it starts on (roomcrumbs.go). It outranks the row it
+	// rides for [hoverRoomStop]'s reason — a crumb goes to one particular place
+	// and the row goes back to the conversation, so the two never light together
+	// — and it answers only for crumbs that are doors, which is what keeps the
+	// page's own name and another conversation's chain as quiet as they are
+	// inert.
+	hoverCrumb
+	// hoverTab is one conversation on the tab strip above that header, and index
+	// is the COLUMN it starts on (chattabs.go). It is a kind of its own and not a
+	// crumb because the two answer for different rows and mean different things —
+	// a tab is WHICH CONVERSATION, a crumb is where inside it — and, like the
+	// crumbs, it answers only for the pieces that are doors, which is what keeps
+	// the tab already up as quiet as it is inert.
+	hoverTab
 	// hoverStopAnswer is one of the stop card's two answers; index is which
 	// (stop.go). Two presses share that row, so it is a chip and not a row for
 	// [hoverSettle]'s reason.
@@ -374,6 +389,18 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// taskstrip.go).
 	if a.stopMarkAt(x, y) {
 		return hoverAt{kind: hoverRoomStop}
+	}
+	// AND THE CRUMBS ARE ASKED BEFORE THE ROW THEY RIDE, in the order
+	// [app.Update] presses them: a crumb goes to one particular page and the rest
+	// of the row goes back to the conversation (roomcrumbs.go).
+	if at, ok := a.crumbHoverAt(x, y); ok {
+		return at
+	}
+	// AND THE TAB STRIP IS ITS OWN ROW ABOVE BOTH OF THEM, asked here for the
+	// order's sake rather than for arbitration: nothing else on this surface
+	// answers for that row (chattabs.go).
+	if at, ok := a.tabHoverAt(x, y); ok {
+		return at
 	}
 	if a.roomBackAt(y) {
 		return hoverAt{kind: hoverRoomBack}

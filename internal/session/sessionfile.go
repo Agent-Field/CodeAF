@@ -579,9 +579,14 @@ type journalMark struct {
 // run with a goal owner two more are possible, and both mean the turn was sealed
 // at the handover with no task started: `dropped:stopped`, the owner read the
 // ending and stopped the run with a reason, and `dropped:done`, the owner read it
-// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID
-// names the node when one was admitted, and is absent otherwise by the emptiness
-// law the rest of the line keeps.
+// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). And the
+// write seam writes one more of its own, `dropped:delivering-own-result`: the turn
+// is finishing the delivery of a result this conversation already owns, so the
+// counter stood down and the work stayed here (writeseam.go's
+// [Agent.writeSeamFires]). TaskID names the node when one was ADMITTED, and is
+// absent otherwise by the emptiness law the rest of the line keeps — the delivery
+// row admits nothing and names its result in Reason instead, so a bench counting
+// tasks started off that field still counts only tasks.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.
