@@ -918,10 +918,18 @@ func (p *previewPump) show(req previewRequest) (filePreview, tea.Cmd) {
 	p.gen++
 	p.flags = req.flags()
 	req.Gen = p.gen
-	path := filepath.Clean(strings.TrimSpace(req.Path))
-	if req.Path == "" {
+	raw := strings.TrimSpace(req.Path)
+	if raw == "" {
 		p.key = previewKey{}
 		return filePreview{}, nil
+	}
+	path := filepath.Clean(raw)
+	if !filepath.IsAbs(path) {
+		// The same refusal [loadPreview] would give, decided here so it does not
+		// cost a goroutine: this pump has no working directory of its own and
+		// guessing one would preview the wrong file.
+		p.key = previewKey{Path: path}
+		return filePreview{Key: p.key, Kind: previewRefused, Note: previewUnreadWord}, nil
 	}
 	// The identity is taken here, on the loop, because a stat is microseconds
 	// and it is what lets a hit skip the goroutine entirely. A stat that fails
@@ -943,17 +951,27 @@ func (p *previewPump) show(req previewRequest) (filePreview, tea.Cmd) {
 // THREE WAYS AN ANSWER IS REFUSED, and all three are ordinary rather than
 // exotic. Its generation is not the current one — the person moved on. Its
 // flags are not the current ones — the terminal was re-measured, or the hidden
-// key was pressed. Its file is not the file the pane is asking about, or is that
-// file at a size or a time it no longer has — something rewrote it while the
-// read was running. A refused answer is dropped whole; it is not wrong, it is
-// about a moment that has passed.
+// key was pressed. Its file is not the file the pane is asking about. A refused
+// answer is dropped whole; it is not wrong, it is about a moment that has
+// passed.
+//
+// AND ONE WAY AN ANSWER IS TAKEN THAT LOOKS LIKE A FOURTH REFUSAL. A file that
+// was rewritten between this pump's stat and the reader's own comes back with an
+// identity the pump was not expecting. It is still a fresh read of the file the
+// person is looking at, so it is drawn — and its OWN identity is adopted, which
+// is what makes the next look miss the cache and read again. Refusing it instead
+// would leave the pane blank until the cursor moved, which is a worse answer
+// than bytes that were on the disk a moment ago. The cache cannot go stale
+// either way: it is keyed by the identity the answer carries, never by the one
+// that was asked for.
 func (p *previewPump) took(msg previewLoadedMsg) (filePreview, bool) {
 	if msg.gen != p.gen || msg.flags != p.flags || msg.preview.empty() {
 		return filePreview{}, false
 	}
-	if msg.preview.Key != p.key {
+	if msg.preview.Key.Path != p.key.Path {
 		return filePreview{}, false
 	}
+	p.key = msg.preview.Key
 	p.cache.put(msg.preview, msg.flags)
 	return msg.preview, true
 }

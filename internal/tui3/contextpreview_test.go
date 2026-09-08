@@ -496,21 +496,53 @@ func TestAnAnswerFromAMomentThatHasPassedIsDropped(t *testing.T) {
 	}
 }
 
-func TestAnAnswerAboutAFileThatHasChangedUnderneathIsDropped(t *testing.T) {
+// A FILE THAT MOVED UNDER THE READ IS STILL THE FILE THE PERSON IS LOOKING AT.
+// The answer is drawn — and the pane must not then keep serving those bytes for
+// a file that no longer has them.
+func TestAFileRewrittenUnderTheReadIsShownAndThenReadAgain(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFixture(t, dir, "moving.txt", "before\n")
 	var pump previewPump
 	_, cmd := pump.show(previewRequest{Path: path})
 	msg := cmd().(previewLoadedMsg)
+	if _, took := pump.took(msg); !took {
+		t.Fatal("a fresh read of the current file was refused")
+	}
 
-	// A build rewrites the file while the read is in flight. The pump is asked
-	// again and now holds a different identity for the same path.
+	// A build rewrites it. The next look must not come off the cache.
 	writeFixture(t, dir, "moving.txt", "after, and rather longer than before\n")
-	pump.gen = msg.gen // the generation matches; only the file has moved.
-	pump.show(previewRequest{Path: path})
+	held, again := pump.show(previewRequest{Path: path})
+	if again == nil {
+		t.Fatalf("the rewritten file was served from the cache: %q", held.Lines)
+	}
+}
+
+func TestAnAnswerAboutAnotherFileEntirelyIsDropped(t *testing.T) {
+	dir := t.TempDir()
+	var pump previewPump
+	_, cmd := pump.show(previewRequest{Path: writeFixture(t, dir, "one.txt", "one\n")})
+	msg := cmd().(previewLoadedMsg)
+
+	// The same generation, and a pane that is now looking somewhere else.
+	pump.show(previewRequest{Path: writeFixture(t, dir, "two.txt", "two\n")})
 	pump.gen = msg.gen
 	if _, took := pump.took(msg); took {
-		t.Fatal("a preview of the old bytes was drawn over the new file")
+		t.Fatal("one file's preview was drawn while the cursor was on another")
+	}
+}
+
+func TestAPathThatIsNotAbsoluteIsRefusedWithoutAGoroutine(t *testing.T) {
+	var pump previewPump
+	pv, cmd := pump.show(previewRequest{Path: "internal/tui3"})
+	if cmd != nil {
+		t.Fatal("a relative path started a read")
+	}
+	if pv.Kind != previewRefused {
+		t.Fatalf("kind = %v, want previewRefused", pv.Kind)
+	}
+	blank, cmd := pump.show(previewRequest{Path: "   "})
+	if cmd != nil || !blank.empty() {
+		t.Fatalf("a blank path answered %+v", blank)
 	}
 }
 
