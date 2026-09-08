@@ -988,11 +988,11 @@ type folderStoreMsg struct{ store folderStore }
 // tookFolderStore files it, and re-ranks an open list against it — the picks
 // arriving are what turn "the order the sources handed these over" into "the
 // order you actually use them".
-func (a *app) tookFolderStore(msg folderStoreMsg) {
+func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	a.folderStore = msg.store
 	a.folderStoreRead = true
 	if !a.folder.open {
-		return
+		return nil
 	}
 	// THE FILTER, THE CURSOR AND EVERYTHING ALREADY READ SURVIVE. Somebody who
 	// typed three characters while the store was in flight has not stopped
@@ -1002,12 +1002,25 @@ func (a *app) tookFolderStore(msg folderStoreMsg) {
 	// directory changed because a file of pick counts arrived — re-asking for
 	// them would flush three columns a person is looking at and redraw them a
 	// frame later.
+	//
+	// AND SO DO THE MARKS AND THE PANE, which is this wave's own repair to this
+	// function. [folderPick.start] builds a FRESH sheet, so everything not named
+	// here is thrown away — and the things a person had CHOSEN, along with which
+	// state the preview pane was in and how far they had scrolled it, were being
+	// silently discarded by a file of pick counts landing a second after the
+	// sheet opened. The one thing that may not survive a re-`start` is the
+	// preview itself, because start cancels the read in flight; the ask is
+	// therefore returned as a command and made again.
 	filter, cursor := a.folder.filter, a.folder.cursor
 	facts, kids, asking := a.folder.facts, a.folder.kids, a.folder.asking
 	hidden, gen, cols := a.folder.hidden, a.folder.gen, a.folder.cols
+	marks, pane := a.folder.marks, a.folder.pane
+	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
+	a.folder.marks, a.folder.pane = marks, pane
+	a.folder.paneTop, a.folder.paneLeft = paneTop, paneLeft
 	a.markFolderHeld()
 	// The COLUMNS are kept whole and not re-seated: which level they are on and
 	// which row of it the cursor is on are facts about where a person has walked
@@ -1023,6 +1036,12 @@ func (a *app) tookFolderStore(msg folderStoreMsg) {
 		a.folder.browseSync(a.resolvePath)
 	}
 	a.touch()
+	// THE PREVIEW IS ASKED FOR AGAIN, and this is the whole of the repair: the
+	// re-`start` above cancelled the read in flight, so a sheet whose store landed
+	// a second after it opened sat with an empty pane until the person happened to
+	// press a key. Caught in a real terminal capture, not in a unit test — which is
+	// why the sheet is photographed as well as asserted.
+	return a.askFolderPreview()
 }
 
 // askFolderStore reads the store and, when the index is stale, walks for

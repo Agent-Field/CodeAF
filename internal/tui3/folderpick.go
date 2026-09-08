@@ -1089,7 +1089,11 @@ func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
 	}
 	dir := f.cols.here.isDir(at)
 	name := f.cols.here.rowName(at)
-	full := filepath.Join(f.cols.dir, name)
+	// THE MARK IS LOOKED UP ONLY WHERE THERE ARE MARKS. This runs once per row of
+	// every frame the sheet is drawn on, and [filepath.Join] allocates — an empty
+	// tray, which is nearly every sheet there is, must not pay for eighteen of
+	// them (PERF.md's rule about work on the paint path).
+	chosen := len(f.marks) > 0 && f.marked(filepath.Join(f.cols.dir, name))
 	if dir {
 		name += "/"
 	}
@@ -1101,7 +1105,7 @@ func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
 	if at == f.cols.cursor {
 		lead = pal.accent("› ")
 	}
-	if f.marked(full) {
+	if chosen {
 		lead += pal.accent(folderMarkGlyph(pal) + " ")
 	} else {
 		lead += "  "

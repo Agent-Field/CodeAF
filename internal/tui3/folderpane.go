@@ -112,9 +112,6 @@ func folderDivide(width int, pane folderPane) folderLayout {
 		return folderLayout{pane: room}
 	}
 	out := folderLayout{}
-	if pane == folderPaneBeside && room >= folderPaneAt {
-		out.pane = min(max(room*2/5, folderPaneFloor), folderPaneCap)
-	}
 	// THE ANCESTRY COLUMN IS THE NARROWEST THING ON THE SHEET, which is the
 	// reference screenshot's own proportion: about an eighth of the room, capped,
 	// because it is CONTEXT — "where am I standing" — and not a list anybody
@@ -124,17 +121,37 @@ func folderDivide(width int, pane folderPane) folderLayout {
 	if room >= folderWideAt {
 		out.up = min(room/8, 20)
 	}
-	gaps := folderGapFor(out.up) + folderGapFor(out.pane)
-	out.here = room - out.up - out.pane - gaps
-	if out.here < folderNameFloor && out.pane > 0 {
-		out.here, out.pane, gaps = out.here+out.pane+1, 0, gaps-1
+	// THE NAMES ARE GIVEN WHAT THEY WANT AND THE PREVIEW TAKES THE REST, which is
+	// the right way round and was not the first way this was written. Handing the
+	// preview a fixed FRACTION left the names sixty cells of empty middle with the
+	// size stranded against a far edge — a column of two things a person's eye
+	// cannot associate. A name and its size want about [folderHereWant] cells
+	// between them, and every cell past that is worth more to the preview.
+	if pane == folderPaneBeside && room >= folderPaneAt {
+		rest := room - out.up - folderGapFor(out.up) - 1
+		out.pane = min(max(rest-folderHereWant, folderPaneFloor), max(folderPaneCap, rest/2))
+		out.here = rest - out.pane
+		// A column that would leave the names unreadable is a column not worth
+		// drawing, and the preview goes before the ancestry does.
+		if out.here < folderNameFloor {
+			out.pane = 0
+		}
+	}
+	if out.pane == 0 {
+		out.here = room - out.up - folderGapFor(out.up)
 	}
 	if out.here < folderNameFloor && out.up > 0 {
-		out.here, out.up = out.here+out.up+1, 0
+		out.here, out.up = room, 0
 	}
 	out.here = max(out.here, 1)
 	return out
 }
+
+// folderHereWant is how many cells a name and its size want between them. A
+// directory name a person recognizes plus a right-aligned `12.4 KB` reads well
+// in this much and reads worse in three times it, so the surplus goes to the
+// preview instead.
+const folderHereWant = 56
 
 // paneShown reports whether the preview has any cells on this frame, which is
 // what decides whether the sheet asks for a preview at all.
@@ -289,7 +306,7 @@ func (f *folderPick) trayRow(width int, pal palette, hot int) string {
 
 // folderMarkedWord follows the count on the tray row. It is a constant because
 // the manual quotes it exactly as it is spelled here.
-const folderMarkedWord = " chosen · "
+const folderMarkedWord = " chosen ·"
 
 // trayPress resolves a click on the mark tray, and reports whether it took one.
 // A mark comes OFF when its cell is pressed, which is the same gesture the

@@ -3793,8 +3793,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// without either; this is what turns "the order the sources handed these
 		// over" into "the order you actually use them", and it lands mid-list
 		// without touching the filter somebody is typing (folderplace.go).
-		a.tookFolderStore(msg)
-		return a, nil
+		return a, a.tookFolderStore(msg)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
