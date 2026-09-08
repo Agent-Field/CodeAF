@@ -188,12 +188,12 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	// And the columns draw as columns: no borders, the names, and nothing wider
 	// than the frame. The measure is CELLS and not bytes — the sheet's own
 	// punctuation is multibyte, so a byte count would fail a row that fits.
-	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, "") {
+	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "") {
 		if ansi.StringWidth(line) > a.width {
 			t.Fatalf("a column row runs past the frame: %q", plain(line))
 		}
 	}
-	if !strings.Contains(plain(strings.Join(a.folder.rows(a.width, 6, a.pal, -1, ""), "\n")), "deep") {
+	if !strings.Contains(plain(strings.Join(a.folder.rows(a.width, 6, a.pal, a.styler(), -1, ""), "\n")), "deep") {
 		t.Fatal("the columns are not drawing the directories they read")
 	}
 }

@@ -308,10 +308,16 @@ func (a *app) attachPath(raw string) {
 // build has two, and a PNG sent as a file would be a path the model can read
 // bytes out of and never look at. So a picture goes on the tray as a picture,
 // which the chip's own glyph then says.
+// A BARE /attach IS NOT THIS FUNCTION'S BUSINESS ANY MORE. It used to answer
+// `/attach takes a path · try /attach server.log`, which is a correction rather
+// than an answer — somebody who typed the word without the path is somebody who
+// does not know the path. The command now opens the context browser with file
+// intent before reaching here (folderplace.go's [app.openContextPick]), so an
+// empty argument is a caller mistake and not a person's, and the refusal that
+// used to stand for it is gone rather than unreachable.
 func (a *app) attachFilePath(raw string) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		a.note("/attach takes a path · try /attach server.log")
 		return
 	}
 	path := a.resolvePath(raw)

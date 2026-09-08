@@ -3764,6 +3764,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// picker that has since closed is dropped rather than drawn (folderpick.go).
 		return a, a.tookFolderKids(msg)
 
+	case previewLoadedMsg:
+		// ONE FILE READ FOR THE BROWSER'S PREVIEW PANE, COMING BACK. Source with
+		// syntax colour, a picture as half-cells, a PDF's text, a folder's rows —
+		// all of it bounded, cancellable and read off the loop, and an answer the
+		// cursor has moved past is dropped rather than drawn (contextpreview.go).
+		a.tookFolderPreview(msg)
+		return a, nil
+
+	case folderTakenMsg:
+		// A CONFIRMED SELECTION, COMING BACK. Registering a folder is a write on a
+		// local engine and a round trip over a connection, and attaching a file is
+		// a stat — none of which may happen under a keystroke, so the whole batch
+		// runs off the loop and lands here (folderact.go).
+		a.tookFolderTaken(msg)
+		return a, nil
+
 	case placeDroppedMsg:
 		// A FOLDER TAKEN OFF THE CONVERSATION, COMING BACK. The cell is pressed
 		// here and the folder goes over there, which over a connection is a round
@@ -3777,8 +3793,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// without either; this is what turns "the order the sources handed these
 		// over" into "the order you actually use them", and it lands mid-list
 		// without touching the filter somebody is typing (folderplace.go).
-		a.tookFolderStore(msg)
-		return a, nil
+		return a, a.tookFolderStore(msg)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
@@ -6102,6 +6117,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// stack trace saved to a file. The model is handed the PATH rather than
 		// the contents, because an attached file is a file and the session
 		// already has a `read` tool (attach.go).
+		//
+		// AND WITH NO PATH AFTER IT, THE BROWSER — the same sheet /folder opens,
+		// with file intent (folderplace.go's [app.openContextPick]). It used to
+		// answer `/attach takes a path`, which is a correction rather than an
+		// answer: somebody who typed the word without the path is somebody who
+		// does not know the path, and a browser is the thing they asked for.
+		if strings.TrimSpace(rest) == "" {
+			return a.openContextPick("", false)
+		}
 		a.attachFilePath(rest)
 		return nil
 

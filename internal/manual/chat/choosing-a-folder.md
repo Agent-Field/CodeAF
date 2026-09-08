@@ -10,7 +10,28 @@ thing.
 /folder            the picker, opened on what is already known
 /folder aforge     …with `aforge` already typed, so the list is narrowed
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
+/attach            the same browser, opened on the folder you are standing in
 ```
+
+**It browses files as well as folders.** Once the columns are open, the middle column
+lists the subdirectories and then the files inside them, with each file's size against the
+right edge; a large preview of whatever the cursor is on sits beside them. So one sheet
+answers both questions — which project do I mean, and which file do I want to send — and
+`/attach` with no path after it opens the same sheet on the folder this conversation is
+standing in.
+
+The two things do different things when you choose them, and the last row of the sheet
+always says which:
+
+- **A folder** goes to the conversation. It is registered as a scoped reference, appears on
+  the row above your message box, and every later model request carries it. Its contents
+  are never pasted anywhere.
+- **A file** goes onto the next message, on the same tray a pasted screenshot lands on. A
+  picture travels as content to be looked at; anything else travels as a path aforge's
+  `read` tool can open.
+
+**Moving the cursor, opening a folder and reading a preview attach nothing at all.** The
+only gestures that choose anything are `alt+m` and the action row.
 
 It opens **instantly**. Nothing is scanned when you press enter on the command: the rows
 come from what aforge has already seen, in layers, best first.
@@ -49,20 +70,25 @@ That is what a search result is for: find it by name, then walk into it.
 
 ## The columns — the folder above, where you are, and what is inside the row you are on
 
-Browsing draws three successive columns, the way a file browser does:
+Browsing draws three successive regions, the way a file browser does:
 
 ```
   ~ › code › aforge-v2 › internal
-  cmd            › session              agent.go … (folders only)
-  docs             tui3                 places
-  internal         tui2                 prompts
+  cmd          ›   session/                    1  package session
+  docs             tui3/                       2
+  internal         agent.go        24.1 KB     3  import (
+                   places.go        6.4 KB     4  	"context"
   add this folder · ~/code/aforge-v2/internal/session   repository · dev · clean
 ```
 
-- **left** — the folder above, with the one you are standing in a shade brighter
-- **middle** — the folders inside where you are; the cursor lives here
-- **right** — the folders inside **the row under the cursor**, so the next level is already
-  on screen before you walk into it
+- **left** — what is in the folder above, with the one you are standing in a shade brighter.
+  It is narrow on purpose: it is there to say where you are standing, not to be read down.
+- **middle** — what is inside where you are: the subdirectories first, each with a trailing
+  `/`, then the files with their sizes right-aligned. The cursor lives here.
+- **right** — a **preview of the thing under the cursor**. On a folder that is the folder's
+  own contents, so the next level is on screen before you walk into it. On a file it is the
+  file: source with syntax colour and dim line numbers, a picture drawn in the terminal's
+  own cells, a PDF's text.
 
 The path above them is a **breadcrumb**, and every segment of it is clickable: press `code`
 and you are back in `~/code` with the cursor on the folder you just left. On a narrow frame
@@ -71,22 +97,34 @@ the breadcrumb drops levels from the left — `… › tui3` — rather than shr
 | Key | What it does |
 |---|---|
 | `↑` `↓` | move down the middle column |
-| `→` | walk into the folder under the cursor |
+| `→` | walk into the folder under the cursor. On a file it does nothing — a file is not somewhere to go |
 | `←` | walk out to the folder above, cursor left on the one you came from |
-| `tab` | complete the highlighted folder's name into the box, whole — the columns follow, so it lands where `→` does |
-| `alt+h` | show the hidden folders, and hide them again |
-| `enter` | add the folder under the cursor — or take it off, when it is already attached |
+| `tab` | complete the highlighted name into the box, whole — the columns follow, so a folder lands where `→` does |
+| `alt+m` | choose the thing under the cursor, or unchoose it. Chosen things gather on a tray above the action row |
+| `alt+p` | hide the preview, and show it again |
+| `alt+o` | give the preview the whole sheet, and give the sheet back. With the preview alone, `↑↓` scroll it and `←→` slide it sideways |
+| `shift+↑` `shift+↓` | scroll the preview beside the list, without moving the cursor |
+| `shift+←` `shift+→` | slide the preview sideways, to read past the end of a long line |
+| `alt+h` | show the hidden files and folders, and hide them again |
+| `enter` | do what the action row says |
 | `esc` | leave, having changed nothing |
 
-**The mouse does all of it too.** A click in the middle column moves the cursor. A click in
-the right-hand column walks into the folder you are on and lands on the name you pressed. A
-click in the left-hand column walks back out. The wheel over the sheet walks the cursor.
-Clicking is navigation and never a choice — the only thing that adds a folder is the action
-row, below.
+There is no focus to keep track of: **the pane a key acts on is the pane that is drawn.**
+With a list on screen the plain arrows walk the list and `shift` plus an arrow moves the
+preview; with the preview alone there is no list to walk, so the plain arrows are its own.
 
-Only folders are shown, and one level is read at a time; nothing walks deep. Reading a
-folder happens in the background, so a directory with forty thousand entries in it or one on
-a network mount never holds a keystroke.
+**The mouse does all of it too.** A click in the middle column moves the cursor, and a
+second click on the row you are already on walks into it when it is a folder. A click in
+the left-hand column walks back out. A click on the breadcrumb goes back to that level. The
+wheel follows the pointer: turned over the preview it scrolls the preview, turned over the
+names it walks the names. A click in the preview does nothing — it is a pane you read.
+Clicking is navigation and never a choice; the only things that choose are `alt+m` and the
+action row, below.
+
+One level is read at a time and nothing walks deep. Reading a folder and reading a file for
+the preview both happen in the background, so a directory with forty thousand entries in it
+or one on a network mount never holds a keystroke — and moving off a row cancels the read
+you no longer want.
 
 ## Hidden folders — .config, .github, dotfiles
 
@@ -105,15 +143,46 @@ The last row of the sheet is the one thing on it that **chooses** anything:
 add this folder · ~/code/agentfield          repository · main · clean
 ```
 
-It names the folder the cursor is on, so what `enter` would do is written down rather than
+It names the thing the cursor is on, so what `enter` would do is written down rather than
 remembered — and clicking that row does exactly what `enter` does. Everything else on the
 sheet moves you around; this row is the only thing that commits.
+
+**It uses the verb that belongs to the kind of thing under the cursor**, because adding a
+folder and attaching a file are two different acts on two different objects:
+
+```
+add this folder · ~/code/agentfield          repository · main · clean
+remove this folder · ~/code/agentfield
+attach this file · ~/code/agentfield/server.log
+attach this picture · ~/Desktop/shot.png
+```
 
 **On a folder this conversation is already about, the same row says
 `remove this folder · <path>` and that is what `enter` does** — so taking one off never
 needs a mouse. Removing leaves the sheet open, because clearing two is a tidy-up and the
 list you are tidying is the one in front of you; adding closes it, because the sheet has
 then done its job.
+
+**Several things at once.** `alt+m` chooses the row under the cursor and puts it on a small
+tray one row above the action row, which says how many things are on it and names each of
+them; a click on one of those cells takes it back off. A chosen row wears a `▪` beside the
+cursor mark, so which row you are ON and which rows you have CHOSEN are two facts you can
+see at the same time. The action row then spells out both halves of what `enter` will do:
+
+```
+  3 chosen ·  ▪ docs/  ▪ main.go  ▪ shot.png
+  enter · add 1 folder · attach 2 files
+```
+
+Twenty-four things is as many as one message can carry, and the twenty-fifth press says
+`24 is as many as one message can carry · send these first` rather than silently dropping
+it. You can walk into other folders between choices — the tray is not about one level. A
+folder you choose that the conversation already holds is left alone rather than taken off.
+
+The work a confirm does runs in the background, because registering a folder is a round
+trip when the conversation is on another machine and attaching a file is a look at the
+disk. Nothing on screen claims otherwise, and each thing that fails says so by name:
+`no such file: main.go`, `no such folder · ~/code/gone`.
 
 The dim tail at the right end is what the machine already knows about that folder:
 
@@ -147,6 +216,48 @@ this folder cannot be read
 ```
 
 A permission is never reported as emptiness.
+
+**The preview pane says the same kind of thing about a file it could not show**, in its own
+words, exactly as they are written:
+
+```
+this file cannot be read · permission denied
+this file is no longer here
+this file cannot be read
+this file is empty
+this is not text · nothing to show here
+only the first part of this file was read
+more of this file is not shown
+more of this folder is not shown
+this terminal cannot draw pictures
+this picture could not be opened
+this document is pages of pictures · there is no text in it
+this document could not be read
+this document is too large to read here
+```
+
+- A file that is **not text** — an executable, an archive, a video, a compiled object — says
+  so rather than showing you its bytes. Its size and kind are named on the pane's foot
+  line, which is all there honestly is to say about it.
+- Only the first **256 KB** and the first **400 lines** of a file are read, and the pane says
+  `only the first part of this file was read` when that happened. A file read that far has
+  no line count on its foot, because nobody counted the rest.
+- A `.json` file that was minified is re-indented before it is shown, so a document that is
+  one long line is a shape you can read. A file its author already indented is left exactly
+  as they wrote it.
+- **A picture is drawn in the terminal's own cells** — one cell is two stacked pixels, in
+  colour, with the aspect ratio preserved. It is cell-resolution colour and not Kitty or
+  iTerm graphics; it is coarser than those and it is the only kind that survives a repaint.
+  On a terminal that cannot paint colour at all the pane says
+  `this terminal cannot draw pictures` and names the picture's shape, format and size
+  instead.
+- A **PDF** shows its text. A scanned one, which has no text in it at all, says
+  `this document is pages of pictures · there is no text in it` rather than showing you
+  nothing without explanation.
+- **Nothing is ever run in order to show it.** A preview opens a file for reading and looks
+  at a directory. There is no shell-out, no converter and no network call, and no escape
+  sequence inside somebody's file can reach your terminal — every line is stripped of
+  control bytes twice on the way to the screen.
 
 ## What choosing a folder actually does — this conversation is now about it
 
@@ -437,6 +548,10 @@ this folder cannot be read · permission denied
 this folder is no longer here
 this is a file, not a folder
 this folder cannot be read
+no such file: <name>
+this is a folder now, not a file · <name>
+these folders are already here
+24 is as many as one message can carry · send these first
 ```
 
 And the two `/land` gives you, exactly as they are written:
@@ -458,9 +573,19 @@ putting changes into a folder is not available over --host yet — the conversat
   there; the picker only ranks what it has seen, so type its path.
 - The fifth is the add action on a row whose folder has since been moved or deleted. The
   rows come from memory, and one stat at that moment is what catches it.
-- `nothing below here` is a folder that was read and has no folders inside it. You can still
-  add it — a leaf is a perfectly good choice.
-- The last four are reads that failed: a folder you are not allowed to open, one that has
+- `nothing below here` is a folder that was read and has nothing inside it at all. You can
+  still add it — a leaf is a perfectly good choice.
+- The next four are reads that failed: a folder you are not allowed to open, one that has
   been moved or deleted since the row naming it was drawn, a path that turned out to name a
   file, and every other way a read can go wrong. None of them is ever reported as an empty
   folder.
+- `no such file: <name>` and `this is a folder now, not a file · <name>` are a file that
+  changed under you between the row you chose and the moment you pressed enter. The rest of
+  what you chose still goes through; only the thing that moved is refused, by name.
+- `these folders are already here` is a set of chosen folders with nothing left to do,
+  because the conversation already holds every one of them.
+- `24 is as many as one message can carry · send these first` is the choice cap. Nothing is
+  silently dropped when you reach it.
+- `/attach` handed a path is unchanged and still answers its own refusals
+  (`no such file: <path>`, `<name> is already attached`); `/attach` with nothing after it
+  opens this browser instead of correcting you.
