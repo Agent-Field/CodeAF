@@ -29,6 +29,9 @@ func dragApp(t *testing.T) *app {
 		entry{kind: entryThinking, text: "the person wants fmt", open: true, settled: true},
 		entry{kind: entryAssistant, settled: true, text: "Use fmt.Println."},
 	)
+	// The fixture is an explicitly opened reading: finished work now folds
+	// even when its replayed turn number is zero.
+	a.openWorkfold(0)
 	a.touch()
 	return a
 }

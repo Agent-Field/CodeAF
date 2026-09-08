@@ -562,6 +562,10 @@ func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 			detail: toolDetail{Output: "line one\nline two"}},
 		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 	)
+	// Copying a result starts with that result on screen, so open both the
+	// completed turn and its caption before freezing the copy view.
+	a.openWorkfold(0)
+	a.setCapOpen(a.conversation(), 1, true)
 	a.touch()
 	drive(t, a, ctrlKey('b'))
 
