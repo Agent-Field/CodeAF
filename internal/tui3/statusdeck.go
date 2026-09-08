@@ -212,7 +212,7 @@ func deckJoin(paint func(string) string, left, right, plainRight string, width i
 // body region and not a second session.
 func (a *app) deckTitle() string {
 	if a.roomOpen() {
-		return a.roomChip()
+		return a.roomChip(0)
 	}
 	if name := a.sessionName(); name != "" {
 		return name

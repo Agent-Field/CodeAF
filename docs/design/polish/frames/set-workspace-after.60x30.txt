@@ -1,0 +1,30 @@
+ aforge                            1 want you · thu 12:05am
+  settings
+────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending  …
+────────────────────────────────────────────────────────────
+
+› google sign-in id                                  not set
+    identifies aforge to Google when you connect an
+    account. Blank uses the one aforge ships with.
+  google sign-in secret                              not set
+  slack sign-in id                                   not set
+  quiet before practice                                  20m
+  arrival brief after                                     4h
+  tenure after                               3 clean firings
+  background checks                                      off
+  attribution                                             on
+  ssh reuse                                             300s
+  ssh heartbeat                                           3s
+  ssh missed heartbeats                                    3
+  ssh traffic                                       lowdelay
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ saved to your profile · a project's own .aforge-v3/config…
+ › say what you want done                  here ~/aforge-v2
+ ↑↓ move · ←→ tabs · tab next place · esc close

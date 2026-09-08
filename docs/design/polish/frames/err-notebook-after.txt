@@ -1,0 +1,4 @@
+$ ./bin/aforge notebook --db /nope/graph.db
+error: there is nothing at /nope/graph.db.
+check the path, and make the folder above it first if it is meant to be new.
+exit=1

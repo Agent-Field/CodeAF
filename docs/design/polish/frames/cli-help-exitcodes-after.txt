@@ -1,0 +1,117 @@
+=== aforge doctor --help
+  aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
+
+flags:
+  --db string
+      path to the durable graph database (default
+      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db)
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge logs --help
+  aforge logs [--tail 40] [--follow] [--path] [--json]
+              [--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]
+                                every model call aforge made — what was asked, which lane
+                                answered, what came back, and which ones are still in
+                                flight. The filters are exact and combine; --json prints
+                                the rows as they are on disk; --body prints one call's
+                                recorded request and reply. Prompts are not in the line.
+                                AFORGE_CALL_LOG=off turns it off, or names a file.
+
+flags:
+  --body string
+      print the recorded body of one call id
+  --call string
+      only this call id, both of its rows
+  --follow
+      keep printing calls as they happen
+  --json
+      print the matching rows exactly as they are on disk
+  --model string
+      only calls asking for this model
+  --node string
+      only calls belonging to this node
+  --path
+      print where the log is and nothing else
+  --run string
+      only calls belonging to this run
+  --tag string
+      only calls with this tag
+  --tail int
+      how many calls to show (default 40)
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge why --help
+  aforge why self [--db path]   show today's self-spend receipts
+  aforge why <node-id> [--db path]  show what one leaf actually did: its turns, the
+                                tools it called with what arguments, what came back,
+                                and how it ended
+
+flags:
+  --db string
+      path to the durable graph database (default
+      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db)
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge competence --help
+  aforge competence [--db path] [--model slug]
+
+flags:
+  --db string
+      path to the durable graph database (default
+      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db)
+  --model string
+      working model whose profile buckets to include
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge wake --help
+  aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
+
+flags:
+  --db string
+      path to the durable graph database (default
+      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db)
+  --max-seconds int
+      maximum resident pass duration (default 120)
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge rebuild --help
+  aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
+
+flags:
+  --db string
+      path to the durable graph database (default
+      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db)
+  --yes
+      skip the confirmation prompt
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge notebook --help
+  aforge notebook [--db path]
+  aforge notebook retract|restore <seq> [--db path]
+
+flags:
+  --db string
+      path to the durable graph database (default
+      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db)
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+
+=== aforge cache --help
+  aforge cache                  what the shared build cache holds, and how big it is
+
+run `aforge --help` for every command and the environment table.
+-- exit 0
+

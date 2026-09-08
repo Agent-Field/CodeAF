@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+  · 3 standing orders here — /standing                                                    │
+  · new conversation · aforge-v2                                                          │ standing
+                                                                                          │ ◦ the morning sweep
+› list the files in this directory with the list tool, then in one sentence say what this │ ? CI on master
+  project is                                                                              │ ◦ the public API
+  ·· connecting · 1.8s                                                                    │ + /standing
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.0000 · 681 tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+aforge-v2 · claude-3-haiku · connecting · 1.8s         ◦ keeping an eye on 3 · $0.0000 · 5.3k/200k · 3% · ⠹ working · 2s

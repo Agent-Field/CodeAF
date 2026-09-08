@@ -103,6 +103,27 @@ up, or lost.
 The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
 a turn. It runs on the `shaper` role, which follows the careful-work model.
 
+## Why my task says brief kept as you wrote it — the line under a started task, my brief was not shaped
+
+`brief kept as you wrote it` is one dim line aforge prints under `single task 12 started ·
+…` when the shaping call was made and did not come back. It says exactly what it says: the
+worker was handed the sentence you typed, word for word, with the plain done-condition
+`Complete the brief and report the result and checks run.` and no shaped document around it.
+
+It is not an error, and no part of your request was dropped. The task is running, it has
+its name, and it sits on the roster like every other one. What it does not have is the
+longer document described under *Why my task's brief is longer than what I typed* — so the
+room shows your own sentence, and a worker alone with a short brief settles fewer of the
+things a shaped brief would have settled in advance. If you were relying on that pass to
+spell out the format or the done-condition, say it yourself and start the work again.
+
+You see the line only when a shaper genuinely ran and was cut — the 25-second wait ran out,
+or the call failed. The other ways shaping does not happen stay silent, because in those
+no call was made that could be cut: a `shaper` role with no model resolved for it, and an
+answer that came back whole but could not be parsed, both admit the task on your words and
+say no such line. **An ordinary start is silent here**, which is how you can trust the line
+when it does appear.
+
 ## Does aforge change my task, or rewrite what I asked for?
 
 No. The shaping pass adds around your words; it never replaces them.
@@ -300,6 +321,9 @@ different about it: a row, a room, a report, and everything else on this page.
   asking whether work should have been work has no useful answer.
 - **Nothing on a short message.** Under six words it is not read at all — "thanks", "run
   the tests", "what does this key do" are answered in words by construction.
+- **Nothing on a one-command ask.** A commit, an undo, a one-line or one-file edit, a
+  single read: those stay in the conversation, whatever a judge would have said. See
+  *A commit or an undo is never a task*.
 - **Nothing where there is no screen.** `--once`, a task's own worker, and a session with
   no router model to ask are all silent.
 - **Two models have to agree.** The cheap one can only screen; the thinking model confirms
@@ -452,6 +476,8 @@ this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
 
+## Can I give a task a short name?
+
 **What the task is given.** Your own message rides it **word for word** — that is true of
 every task on this page and it is never rewritten. On top of it comes the brief: an
 instruction for whoever picks the work up, saying what is left, what was already found out
@@ -594,6 +620,29 @@ handed out — waiting for it, reading what comes back, accepting it — that li
 time, and a drawing whose every part is a wait or a bare `accept`/`review` is read the same
 way even when it is not written as that word.
 
+**And when only half of what is left is a wait, the other half still moves.** If a reply
+crosses one of the lines above while pieces you handed out are still running, what is left is
+divided first. The self-contained work becomes the task; everything about the pieces already
+out — waiting for them, integrating their branches, reviewing them, opening the pull request
+over them — stays with this conversation, and the line announcing the move ends
+` · the rest stays here for when the pieces already out land`.
+
+What stayed is written into the conversation under `WHAT STAYS HERE, FOR WHEN THE PIECES
+ALREADY OUT LAND:`, so the turn that wakes when those pieces land opens on the integration,
+the review and the pull request it still owes you. Nothing is dropped; it is done a little
+later, here.
+
+**And when all of what is left is about them, nothing moves at all** — even where the
+sentence you typed was itself the coordination, and equally where the brief could not be
+written and only your sentence was left, because a sentence typed before any of this was
+divided cannot stand in for the half that could have gone. No task is started, your words
+are not rewritten, and the line reads `this is all about the pieces already out · keeping it
+here until they land`.
+
+**Why none of it can go with the work.** A task sees only the pieces it created itself, so a
+worker told to wait for your task 4 and task 8 would ask for them and be told `No tasks have
+run in this project yet.` — a duty it can never see the object of.
+
 ## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
 
 **Reading is free. Writing is not.** The three points above count tool ROUNDS, which is the
@@ -631,6 +680,26 @@ And it happens **once** in a reply: past it, the three points above are the gove
 reply for seven minutes and forty-six seconds — forty-eight tool calls, `sed -i` edits in
 somebody's live checkout — before the round ceiling finally moved it. Nothing in between was
 watching what those rounds did to the disk.
+
+**A commit, an undo, a one-line edit or a single read is never moved**, whatever the write
+count. Those stay in the conversation — see *A commit or an undo is never a task*.
+
+## A commit or an undo is never a task — commit became a task, undo started a task, why did a small ask become a task, fix this one line, commit everything
+
+**A one-command ask is never handed to a task.** "commit everything", "undo that", "fix this
+one line", a single file read: those are answered here, in this conversation. They are not
+converted mid-reply, they are not proposed with `propose_task`, and they do not start a task
+on their own — even if the reply has already staged several files, even if a judge said the
+message looked like work.
+
+**Why.** "commit everything with a sensible message" was measured becoming task 5, and the
+commit then never happened. Handing a one-command ask to a worktree is how the deliverable
+gets dropped. The floor is the words you typed, not how much the reply has already touched.
+
+**What still becomes a task.** Several independent pieces in one message, a sweep across
+many files, a rewrite you would sit and watch: those can still be handed over, proposed, or
+started with `/task`. Typing `/task commit everything` still starts a task, because you
+asked for one.
 
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
 
@@ -707,11 +776,16 @@ already owns it. A measured run read a broken reply three times in fifteen secon
 thinking-tier call each time, and re-opened a reply that could not move. See *Models,
 crews and what things cost* for what the error line says now.
 
-**And if nobody can be reached, the reply just ends.** No second model configured, a reader
-that faults, a reader that takes too long: each of those ends the reply as it would have
-ended before this existed.
+**With no second model set, nobody is asked at all.** The reader is a crew job, so an install
+with no thinking-tier model configured has none — and rather than call, fail in two
+milliseconds and write a failed reading into the session file on every round, aforge does not
+ask, and notes the absence once. A reader that faults or takes too long is different: the call
+was made and it came back with nothing, and the reply then ends as it would have ended before
+any of this existed. In an unattended run with a budget the decision carries on without a
+reader either way, on what came home and what the checks said — see *Leaving it running on its
+own* in *starting aforge*.
 
-## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say "carried on 3 times", it turned my wait into a task
+## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
 
 **A reply that ends while something IT started is still running is never carried on.** A
 background command, a watch, a video or music render, a forked hand — while any of those is
@@ -746,15 +820,18 @@ written for.
 
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything
-new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen:
+new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen —
+with what was actually read in the middle of it:
 
 ```
-carried on 3 times and it is still not finished · stopping here rather than carrying on again
+carried on 3 times · the last reading showed: the checks have not landed · stopping here rather than carrying on again
 ```
 
-**You are being told the truth when you read that.** aforge asks before it says it, so the
-reply really is unfinished — it is simply yours to pick up now rather than aforge's to push a
-fourth time. There is no number to raise and no setting that turns it off.
+**The line quotes a reading and never asserts a conclusion.** What sits after `the last
+reading showed:` is what the reader said, or — in an unattended run — the list of things that
+came home unfinished and the checks that did not pass. The line used to say "and it is still
+not finished", which was a claim about your work that nothing had taken a reading of. There is
+no number to raise and no setting that turns it off.
 
 **Three carry-ons can never reach the running-long point by themselves.** That point stands at
 forty rounds and carrying on can add three, so a reply that gets handed to a task got there on
@@ -923,26 +1000,34 @@ another window has work out in this project · it has not said which files yet
 
 ## Can I keep editing while a task is running — who may write while work is out
 
-**Almost always, yes.** A task gets its own checkout of the repository on its own branch, so
-you and it are in different directories: keep editing, keep saving, keep running things.
-Anything you change lands in yours and anything it changes lands in its own, and the two
-meet only when the work comes home.
+**Yes, except the files a running task has already written, and except a task running in
+place.** A task gets its own checkout of the repository on its own branch, so you and it
+are in different directories. A file it has not touched yet is still yours: keep editing,
+keep saving. A file it has already written is **held by that task** until it lands. A chat
+`edit` or `write` of that file is refused with the task named:
 
-**The one exception is a task running in place.** When the directory is not a git repository
-— or is one with nothing to branch from — there is no second checkout to give the task, so
-it works in your directory. While that is happening the chat becomes a **reader** of that
-directory: it can read anything, and a `write` or an `edit` there is refused with the task
-named:
+```
+cart.py is held by task 2 (discount code entry), so nothing was written.
+```
+
+The hold is that one file, not the directory. The write is not routed into the task. You
+are not stopped from editing the file yourself in your own editor or shell — this is a
+rule about what the chat's own tools will do on your behalf.
+
+**A task running in place is the other exception.** When the directory is not a git
+repository — or is one with nothing to branch from — there is no second checkout to give
+the task, so it works in your directory. While that is happening the chat becomes a
+**reader** of that directory: it can read anything, and a `write` or an `edit` there is
+refused with the task named:
 
 ```
 src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
 nothing was written.
 ```
 
-You are not stopped from doing anything yourself in your own editor or shell — this is a
-rule about what the chat's own tools will do on your behalf, not a lock on the files. It
-ends when the task lands, fails or is stopped. *How work runs* has the whole of it, under
-*A task working in place holds the directory*.
+Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
+it, under *A task that has written a file holds that file* and *A task working in place
+holds the directory*.
 
 ## What the other-window warning can and cannot see — and why it stayed quiet
 
@@ -989,7 +1074,8 @@ These are the exact words on screen.
 | stopped | `stopped` |
 | stopped, with work on a branch | `stopped — branch kept` |
 | landed clean | `done` |
-| landed short | `failed` |
+| checked and not accepted | `incomplete`, with what is still missing |
+| broke while running | `failed`, with what went wrong |
 | landed, but nobody could judge it | `needs your look` |
 | cut off while it was being checked | `needs your look`, with `incomplete — it was stopped while its work was being checked` |
 | …the same thing on the roster | `finished — look it over` |
@@ -1003,8 +1089,9 @@ The three reasons a queued task gives for waiting are `slot`, `machine busy` and
 `rate limited`. A named prerequisite outranks any of them, because a name is something you
 can act on and a queue clears itself.
 
-How a branch came home is spelled `merged`, `conflicted`, or `inplace` (the work ran
-directly in your own tree because there was no repository to branch from).
+How a branch came home is spelled `merged`, `branch kept · <branch>`, `in your own folder`
+(there was no branch to bring home — the work edited your own files), or
+`conflicted · <branch>`.
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
@@ -1024,28 +1111,44 @@ check had already said before it was cut off stands under that. Nothing is merge
 tree, and the branch is kept, so the work is still there to read, finish or throw away.
 
 **This is not the same as a task that was checked and came back short.** That one *is* a
-finding — somebody looked and said what is missing — and it lands `failed` with the gaps in
-front of it, exactly as before. The difference is whether anybody actually looked.
+finding — somebody looked and said what is missing — and it lands `incomplete` with the
+gaps in front of it. The difference is whether anybody actually looked: `needs your look`
+means nobody could judge it; `incomplete` means the check did judge it and named the next
+work.
 
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
-## The three ways work lands
+## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
 Every landing writes a card into the conversation, with a blank row on each side, and moves
 the task's row on the roster.
 
 ```
-✓ ◆ Fix nil-map crash · done 4m12s · 3 files
-  "the guard is in and the regression test passes" · spawned 14:02 · ctrl+o output
+✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
+  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
 ```
 
 The head is what happened. The muted line under it is what came of it, in the task's own
 first sentence, quoted because they are its words and not aforge's.
 
+**Every fact on the head is joined by ` · `, the state word included.** It used to read
+`done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
+them was properly separated — so on a card asking for a hand, `needs your look 12m00s`
+made the reason it was asking read as part of a duration.
+
+**`started 14:02` is when the work began**, and the word is `started` — it said `spawned`
+until 2026-09-03, which is the machinery's own verb for launching a process and not a word
+anybody reads on a screen here. A task replayed out of a checkpoint carries the instant it
+began, so it says the same `started 14:02` after a restart that it said before one. Where
+nothing knows when the work started — a checkpoint written before the record carried the
+instant — the stamp is **absent** rather than invented.
+
 - **`done`** — a tick, muted. It is settled work on the roster.
+- **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
+  report says exactly what is still missing. Its branch is kept.
 - **`failed`** — a cross, in the bad hue, drawn with the word `failed`. It is settled too,
-  not work that needs you: by the time you see the word it is news, not a decision.
+  and means the run actually broke rather than that a check found unfinished work.
 - **`needs your look`** — a `?` in the warn hue. Its family rises above running work on
   the roster. The `?` is deliberately neither a tick nor a cross: it claims neither a
   finding nor a judgement nobody made. This card carries two more rows —
@@ -1053,8 +1156,14 @@ first sentence, quoted because they are its words and not aforge's.
   have set `task.settle` to `auto`, in which case aforge is deciding and the card is quiet.
 
 After the name the card carries the span, the file count, and how the branch came home:
-`merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
-`branch kept · <branch>`.
+`merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
+or `branch kept · <branch>`.
+
+`branch kept · <branch>` on a **done** task means the work finished but your checkout was
+on a protected branch, was on a different branch than when the work was cut, or was
+detached. The branch named
+there holds the finished work; the how-tasks-run page explains the exact reason and how to
+merge it where you want it.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
 branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
@@ -1254,8 +1363,11 @@ The clock appears **only when exactly one job is running**, because then there i
 duration to name. Past that the count is the news.
 
 **Expanded**, every running job draws (oldest first), then finished ones fill whatever
-room is left, newest first, and the remainder is counted on a `▸ N earlier` line rather
-than dropped. That remainder line is a count, not a door: it opens nothing.
+room is left, newest first, and the remainder is counted on an `N earlier` line rather
+than dropped. That remainder line is a count, not a door: it opens nothing, and it wears
+**no fold mark** for exactly that reason — it used to read `▸ 4 earlier` under a section
+whose head is also a `▸`, which invited a keypress that did nothing. It sits at the rows'
+own indent, under the rows it is counting.
 
 **Zero jobs draws nothing at all** — no label, no empty row, no `0 jobs`. A conversation
 that has started none looks as it did before jobs had a section.
@@ -1308,7 +1420,13 @@ the clock or how it ended.** The number is the handle — the same `3` in `job 3
 A running job's figure is the clock (`4m12s`). A clean finish reads `done` — how
 long it ran is on the page, not restated here, because a frozen clock and a
 ticking one are the same shape at a glance. A non-zero exit reads `exited 1`. A
-job somebody ended reads `stopped`. Under a second there is no clock on a
+job somebody ended reads `stopped`.
+
+**The page says the same word the row does.** Open the row and its first line reads
+`job 3 · exited 1 · ran 49s`, `job 3 · done · ran 12s`, `job 3 · stopped · ran 51m 12s` —
+one function behind both, so the section you pressed enter in and the page that opened
+cannot say two things about one job. The page used to print the engine's own name for the
+state (`failed`) and then repeat the code behind it (`exit 1`); it does neither now. Under a second there is no clock on a
 running row — `0s` on a row that has just begun would be a figure that has to be
 read to learn nothing — and the number still stands alone.
 
@@ -1373,8 +1491,14 @@ body — so the number is always visible in the head. The old feet
 
 The keys, quoted:
 
-- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
-- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
+- running: `x stop it · c copy path · m puts it in your message · ↑↓ scroll`
+- settled: `c copy path · m puts it in your message · ↑↓ scroll`
+
+**The way out is not on those feet, because the head is already saying it.** `esc back`
+sits in the head's right corner, and a page that named the same instruction twice was
+spending two of its words repeating itself. Where a long name takes the whole head line
+there is no corner left, and the foot takes the way out back — last, so a narrow frame
+spends it last: `x stop it · ↑↓ scroll · c copy path · m puts it in your message · esc back`.
 
 `c` copies the log path; the confirmation begins `copied `. `m` drops the name, the
 handle, the ending, and the last few log lines into your message box underneath, then
@@ -1493,7 +1617,7 @@ ctrl+. earlier
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   tasks place opens with every task this machine has run on it, grouped by what you do next
-  — `needs your look`, `running`, `done today`, `earlier`. `/history` is the same page.
+  — `needs your look`, `running`, `parked`, `done today`, `earlier`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
   `ctrl+. view more`. There is only ever one such line.
@@ -1527,6 +1651,12 @@ every task admitted here comes back as a row in its family — finished work inc
 work that was interrupted comes back saying so on its card — and the `jobs` section
 redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
 terminal closes; the column is rebuilt, not carried.
+
+The rebuilt row reads its start and landing times from that same record. Work that landed
+in a previous session therefore keeps the time it actually landed instead of taking the
+time you reopened the conversation. A record made before those times were kept still
+reopens; its row leaves the age absent and its completion card omits the entire
+`started 14:02` segment.
 
 **Only this window's own work comes back.** Everything else stays behind the
 `ctrl+. earlier` door, exactly as the section above says, and a task is never drawn
@@ -1651,7 +1781,10 @@ cell or the root's `▸ +N` badge to toggle the family; click its title to open 
 A click that hits no task still belongs to the column and does nothing. A click moves the
 cursor but does not hand the roster the keyboard.
 
-## What did we do last week — seeing every task: task history, old and past tasks, work from other sessions
+## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
+
+This is where **task history** lives — every **old and past task**, and **work from other
+sessions**, on one page.
 
 `/history`, or `ctrl+.`, opens the machine-wide **tasks** place holding work from every project
 run** — this conversation's and every conversation's before it. It is the answer the roster
@@ -1671,10 +1804,18 @@ pages here take the frame — the settings panel, this one, and `/home` — and 
 them is ever up**: opening any one closes the other two.
 
 It opens on one sentence saying what it is holding — for example
-`work aforge ran on its own. 148 since aug 11, $34.10 of it.` The count is every row on
-the page, the date is the far edge of the time window, and the money is what those rows
-are known to have cost. A window with no known start drops the `since`, and rows nobody
-priced drop the money: zero means "nobody published a price", never "free".
+`work aforge ran on its own. 148 pieces of work since aug 11, $34.10 between them.` The
+count is every row the time window holds, the date is the far edge of that window, and the
+money is what those rows are known to have cost. One row reads `1 piece of work … $0.27 of
+it.` A window with no known start drops the `since`, and rows nobody priced drop the money:
+zero means "nobody published a price", never "free". **A frame too narrow for the whole
+sentence drops the money clause** rather than cutting the line, because half a figure is a
+wrong number.
+
+**The count is a claim about the PLACE and never about what you have typed.** With a filter
+on, the sentence goes on counting every row the window holds — a word that matches nothing
+does not make the machine's history empty. What matched is said on the note line at the
+bottom instead: `filter · zzz · nothing matches`.
 
 **When the time window holds none of it, that sentence says `work aforge ran on its own.
 nothing since jul 29.`** — in words, because a `0` there is the figure the emptiness law
@@ -1684,17 +1825,45 @@ window the four shift-arrows move, so a page that replaced it with the teaching 
 would have swallowed the way back. The teaching prose is for a machine that has run
 nothing IN ANY WINDOW, which is a different screen.
 
-Under it, **four sections, in the order you act on them**: `needs your look`, `running`,
-`done today`, then `earlier`. Nothing is grouped by whose work it is — a task this
+Under it, **five sections, in the order you act on them**: `needs your look`, `running`,
+`parked`, `done today`, then `earlier`. `running` is work a worker is actually inside;
+`parked` is work that has been admitted and that nothing is doing — waiting behind the
+piece that needs a person, or behind a slot — and it is the word the column uses for the
+same nodes. A parked row **carries no age at all**: it has not started, so there is nothing
+to count from. Nothing is grouped by whose work it is — a task this
 conversation started sits beside one another window is running and one a session you closed
 last week finished, filed by what you would do about it next.
 
-Each row is one line: a state glyph, the name, then — as the width allows — the
-conversation or project it came out of, what it is doing or what it came to, its kind
-(`adaptive`, `saved shape`, or `job`), what it cost, and how long ago. A row another window
-is running says `another window` on the right, with that window's own name after it when it
-has settled on one. A row that still claims `running` with **no** window behind it says
-`incomplete` — nobody judged the work, the window simply went.
+Each row is one line: a state glyph, then **the name, whole**, and then a dim tail of
+facts joined by ` · ` — how long ago, what it cost, the conversation or project it came out
+of, what it is doing or what it came to, and its kind (`adaptive`, `saved shape`, or `job`).
+
+**The name keeps every cell it asks for before a fact gets one**, and is shortened only
+where the frame cannot hold it alone; the facts behind it are dropped from the end as the
+frame narrows, and a long sentence of detail is said shorter (`2 files`) before it is
+dropped. So a narrow terminal shows the same facts a wide one does, with the end missing —
+never a different tail, and never a name you cannot match.
+
+A row another window is running says `another window`, with that window's own name after it
+when it has settled on one. A row that still claims `running` with **no** window behind it
+says `incomplete` and **carries no age at all** — nobody judged the work, the window simply
+went, and nothing in the record dates a row that never landed. Work that failed says the
+same word its own page says, with the reason after it: `failed · the package manager
+refused the archive`.
+
+**How long ago a settled row landed is what that row's own record says.** Work reopened
+from a previous session is dated when it LANDED, not when you sat down and reopened it. It
+therefore stays in the time window it belongs to instead of being filed in the future and
+going missing from the page, and it does not say `now` merely because this is your first
+look at it today.
+
+A row whose older record never recorded a landing time **carries no age at all**. The row
+is still on the tasks page: for deciding whether to include it, the page files that undated
+row at the moment of the reading. For the words you see, it draws nothing where the age
+would go. It never turns an unknown time into `now`.
+
+**The sections are in time order, newest first**, and a family stays whole: the root is
+placed by its own stamp and the workers stand under it in theirs.
 
 **A section with nothing in it is not drawn at all**, heading and all. **The sections are
 separated by a blank line** and by nothing else — no rule, no dashes, no alternating
@@ -1704,14 +1873,19 @@ background.
 this window's own live work, and the window next door are read together and joined on the
 conversation and the id, with the freshest of them winning.
 
-**Nothing is folded away.** Every row the window holds has a line, and the page scrolls —
+**A family can be folded away.** Where it is, the section's own heading says so —
+`done today · 2 of 5 shown` — and `→` opens it. Everything else the window holds has a
+line, and the page scrolls —
 `↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
 the list runs on below the bottom of the window: three rows, each a step fainter, saying
 there is more under them. The row the cursor is on never fades wherever it sits, and a list
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting what is on the page, such as
+At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
+not the rows drawn, which is why it can read a larger number than you can count on the
+screen when a family is folded. The section heading is where that difference is said. It
+reads such as
 `2 needs your look · 3 running · 12 done today · 148 earlier` — a section with nothing in it
 is not counted at all — and under it the keys.
 
@@ -1965,34 +2139,40 @@ Clicking a row does what `enter` on it does, on the **first** press — the page
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## What does +3 under mean — work that split into workers is folded on the task page, the family tree
+## What does holds 3 more mean — the count on a folded row, work that split into workers, the family tree
 
 **A piece of work that handed itself out is one row, not nine.** The root is on the page and
 the workers are folded under it, shut:
 
 ```
 today
-  ▸ port the parser              a report · 3 files      +3 under
-    rename the flag              a report · 1 file
+  ▸ port the parser              3 files · a report      holds 3 more
+    rename the flag              1 file · a report
 ```
+
+The shut row used to say `+3 under`; it says `holds 3 more` now, because this surface says
+what things are in words rather than in arithmetic with a preposition for a noun.
 
 **`→` opens it**, and the workers appear underneath, connected:
 
 ```
 today
-  ▾ port the parser              a report · 3 files
-  ├ port the lexer               a report · 1 file
-  ├ port the tests               a report · 2 files
+  ▾ port the parser              3 files · a report
+  ├ port the lexer               1 file · a report
+  ├ port the tests               2 files · a report
   └ port the docs                a report
-    rename the flag              a report · 1 file
+    rename the flag              1 file · a report
 ```
+
+**A worker does not repeat its root's conversation.** The root names the conversation the
+family came out of and the rows under it spend those cells on their own names instead.
 
 **`←` folds it back up.** The foot of the page says which you are being offered:
 `→ what ran under it` on a shut family, `← fold it back up` on an open one.
 
 Every family opens **shut**. A page of four hundred tasks with every family expanded is the
-clutter the fold exists to remove — and the shut row says `+3 under`, so you can see what
-opening it would be worth without opening it.
+clutter the fold exists to remove — and the shut row says `holds 3 more`, so you can see
+what opening it would be worth without opening it.
 
 The two cells in front of every row are the family column, and they **appear only when
 there is a family on the page**. On a machine that has never split work up, nothing on the
@@ -2044,7 +2224,7 @@ door — they are the ones above, reshaped:
   — a room, or the record card — which is what a click already did at every width.
 - **The roster's foot** is a `‹ back` band in place of the key legend
   `enter open its room · type to filter`. Tap it to go back to the conversation.
-- **The record card's foot.** `esc back · ↑↓ scroll · m puts it in your message` is a
+- **The record card's foot.** `m puts it in your message · ↑↓ scroll` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
   scroll is the screen itself.
@@ -2062,10 +2242,11 @@ What opens is a full-screen card over the same page, with the list still underne
 ```
  Fix the nil-map crash                                              esc back
  ─────────────────────────────────────────────────────────────────────────────
- done · landed 3h ago · ran 4m12s
+ done · landed 3h ago · ran 4m 12s
 
  Added the guard and the regression test; the parser suite passes.
 
+ out of Fixing the importer
  anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
  3 files changed
 
@@ -2076,14 +2257,28 @@ What opens is a full-screen card over the same page, with the list still underne
  Added a nil check in parseRow before the map write, and a regression test that
  fails without it. The parser suite passes: 84 tests, 0 failures.
  ─────────────────────────────────────────────────────────────────────────────
- esc back · ↑↓ scroll · m puts it in your message
+ m puts it in your message · ↑↓ scroll
 ```
 
+**The rule and the keys sit under the last row the card drew**, not at the bottom of the
+terminal, and `esc back` is said once, in the head's right corner. This page has no
+composer under it, so a foot pinned to the bottom of a fifty-row frame under a six-line
+card was a foot pinned for nobody. A card long enough to scroll fills the frame and its
+foot is where it always was.
+
 Top to bottom: the title; the state it came home in, when it landed and how long it ran;
-the outcome sentence; what it ran on and what it spent; how many files it changed; where it
-left the work and where the story is; and then **the last thing the task itself said** —
-the whole report, read off that task's own journal, of which the outcome above is the first
-sentence.
+the outcome sentence; the conversation it came out of; what it ran on and what it spent;
+how many files it changed; where it left the work and where the story is; and then **the
+last thing the task itself said** — the whole report, read off that task's own journal, of
+which the outcome above is the first sentence.
+
+- **`out of <conversation>` names where the work came from**, spelled the way the row on the
+  list spells it, so the page is never a smaller answer than the row that opened it. It is
+  the project's name where nothing has titled the conversation yet, and it is left off
+  where nothing knows either.
+- **Work that failed did not land.** The clock clause follows the state in front of it:
+  `done · landed 3h ago`, and `failed · stopped 8d ago` — `landed` is this program's word
+  for work that arrived, and it was drawn over a run nothing came of.
 
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
@@ -2253,6 +2448,24 @@ clock, the spend, the model and — where you have set one — how hard this tas
 think, as `thinking high`. Each is dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
 
+**The name on it is the task's whole name, and the facts behind it are what a narrow
+frame gives up.** Until 2026-09-03 a task's name was cut to three words the moment it
+arrived, before any width was known, so a room opened at a hundred and sixty columns
+named the work no better than the twenty-four-cell column did: a family of six pieces
+that all began with a verb and a plural noun came out as `Cut every list`, `Fold the
+settled`, `Move the tab`. The name now reaches every row whole and each row decides what
+it can afford — the header keeps the name first and drops facts off the end as the
+terminal narrows, and only a name that cannot fit the line **alone** is cut, in which
+case it takes the whole line and no fact is drawn beside it.
+
+**And the hint slot under a room asking for your look shortens rather than vanishing.**
+At sixty columns `a accept · l look again · n not right` is a few cells too long for what
+the foot has left beside `room · esc/←← main`, and the slot used to go empty — so the
+narrowest terminal was the one that named none of the keys answering the question it was
+standing on. It now reads `a accept · l look again · +1`, and `a accept · +2` narrower
+still: the same answers in the same order, with a count of the ones that did not fit. All
+three letters keep working whether or not they are printed.
+
 **`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
 on a standing item, bound here to the task whose page you are standing in; the keys page
@@ -2315,11 +2528,17 @@ it is: waiting on its own pieces is the work.
 
 **Type into its room anyway — your line is what wakes it.** The task reads your words as your
 words, answers them, and goes back to waiting for its pieces. Because the page has been
-still, the room says what just happened when it takes the line:
+still, your line says what the sending just did — as a short clause on the line itself,
+which is drawn as a `└ ` elbow where you said it:
 
 ```
-· it was waiting on its pieces — your line wakes it
+└ check the staging bucket first · it was waiting on its pieces — your line wakes it
 ```
+
+The clause is there for a few seconds and then fades off the row, leaving the elbow. Every
+steer into a task carries one: this sentence when the task was parked on its pieces, and
+`· delivered` when it was taking steps and your line will land at the next one
+(*Reading a task page*).
 
 Nothing else about the task moves. What it was asked to do and what it will be checked
 against were frozen when it started, and steering never touches either — if the goal itself
@@ -2356,21 +2575,30 @@ The task's elapsed clock freezes while you stand in its room. That number exists
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
 
-## Seeing the whole conversation inside a task — a room never folds its work away
+## Seeing the whole conversation inside a task — what folds and what opens it
 
-**A room shows everything the task said and did, and it stays shown.** Out in the main
-thread a finished turn's machinery collapses into one chip —
+**A room holds everything the task said and did, and the settled work's outline is one
+gesture away.** Out in the main thread a finished turn's machinery collapses into one chip —
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
-you asked and the answer you got. **That never happens inside a room.** A task's whole life
-is one long stretch of work ending in a report, so a chip there would hide the entire page
-and leave you the report you already had. There is no `▸ worked` line in a room, nothing to
-click open, and the `ui.work` setting does not reach one.
+you asked and the answer you got. A room does the same thing cut differently: a task's
+whole life is one long stretch of work, so folding it by turn would put the entire page
+behind one chip. It folds **by phase** instead — the work before each paragraph the task
+wrote goes behind its own `▸ worked` chip, and every paragraph stays standing.
+
+`ctrl+e` over an empty box opens the newest chip onto its caption outline, a click opens
+any of them, scrolling up at the top of the page opens the one nearest the top, and
+`ui.work = open` opens them all. A caption is a short status line per step (about
+5 to 10 words; wraps on a narrow window); click or select one to
+open its tool rows one level further. **What the task is doing right now keeps its caption
+standing**, and neither your instruction, your corrections, any call that failed, any
+question it asked you, nor the report at the end folds away.
 
 So a room you walk into — a running task, a task that has landed, a piece of a recursive
-task, a harness being designed — reads top to bottom as the discussion it was: the
-instruction it was given, its prose between calls, its thinking blocks, every tool call with
-its arguments and result, anything you steered into it, and the report at the end. A landed
-task's room is the whole transcript, not the summary.
+task, a harness being designed — reads top to bottom as the story of the work: the
+instruction it was given, its prose between calls, a chip over the caption outline behind
+each paragraph, anything you steered into it, and the report at the end. Everything the
+page folded is still there: one keypress opens the outline and one more opens a caption's
+machinery. A caption can be wrong; its tool rows are the truth.
 
 Three bounded things do still hold something back, and every one of them names itself and
 opens:
@@ -2381,11 +2609,12 @@ opens:
   of a task's page" below;
 - a **thinking block** shows three lines until you press `ctrl+e` or click it —
   `⠿ thought for 6s · 148 tok · ctrl+e`;
-- a run of **more tool calls in a row than fit your window** shows a screenful of the
-  newest ones above a line reading `9 earlier tool calls · scroll up or ctrl+o`; scrolling
-  up at the top of the page, `ctrl+o`, or a click on that line unfolds the run. (The
-  conversation keeps three and its line reads `· ctrl+o`; a task's page keeps as many as
-  the window is tall — see "Reading a task's page".)
+- a live run with **no caption yet and more tool calls than fit your window** shows a
+  screenful of the newest ones above the fallback
+  `9 earlier tool calls · scroll up or ctrl+o`; scrolling up at the top of the page,
+  `ctrl+o`, or a click on that line unfolds the run. (The conversation keeps three in
+  this fallback and its line reads `· ctrl+o`; a task's page keeps as many as the window
+  is tall — see "Reading a task's page".)
 
 ## The long brief at the top of a task's page — `▸ …N more lines`, view more, expanding and collapsing the instruction, a task description that fills the whole screen
 
@@ -2429,8 +2658,9 @@ no preference for it and nothing is written to disk.
 sentence in the box and carry on. The three visible lines are drawn exactly as they would
 be if nothing were folded.
 
-Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
-there is no work chip for it to mean instead.
+Inside a room `ctrl+e` over an empty box opens the newest work chip onto its caption
+outline. Only when there is no work chip does it fall through to the newest thinking
+block.
 
 ## Who started this task, and what it handed out
 
@@ -2442,17 +2672,18 @@ is nothing to say:
 ```
 ─ ⠙ main ▸ Write the tree · working · 2m 12s ────── esc/← main · ✕ ─
   part of: Ship the port
-  spawned: Cut the goldens — queued · Wire the seam — running
+  handed out: Cut the goldens — parked · Wire the seam — running
 ```
 
 - **`part of: <title>`** names the task that handed this work out — the parent. A task
-  nobody spawned draws no such line, so its absence means *this is a top-level task*. A
+  nobody handed out draws no such line, so its absence means *this is a top-level task*. A
   parent this session has had no update for is left unsaid rather than named as a bare id.
-- **`spawned: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
+- **`handed out: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
   the session met them. The state is the same word the roster uses: `queued`, `working`,
-  `finishing`, `waiting`, `done`, `failed`, `stopped`, `needs your look`. A piece that is
-  itself queued behind another piece says only `queued` here; open its own room to see what
-  it is behind.
+  `finishing`, `waiting`, `done`, `incomplete`, `failed`, `stopped`, `needs your look`. A piece that is
+  itself held behind another piece says only `parked` here — the word the column uses for
+  it, and not `queued`, which would promise a scheduler that is not coming; open its own
+  room to see what it is behind.
 - **what this task waits on** is on the accent line itself, as its state word:
   `waits: <title>` names the prerequisites that have not finished. It is there rather than
   on a line of its own so the header never says the same thing twice.
@@ -2581,6 +2812,11 @@ three parts that do not need each other — different files, different subsystem
 half-finished passing between them — it proposes each part as a task of its own and keeps
 the coordination for itself. The parts run at the same time instead of one after another.
 
+**A task coordinates its own children and nothing else.** `tasks` inside a task lists the
+pieces that task started — never the other tasks running beside it under your conversation.
+That is why coordination over pieces YOU handed out is not moved into a task (*Watching the
+pieces you handed out does not move your answer*).
+
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
 how a person redirects work, and there is nobody inside a task's own copy to show one to, so a
 task's own proposals begin the moment they are made. What you see instead is the tree.
@@ -2676,22 +2912,14 @@ task says so in one line.
 because a second model read it and drew its parts, that drawing is put to this same road
 before the new task's worker is asked anything — so the task starts already divided rather
 than being asked to find parts somebody has already named. Everything below applies to it
-without exception: the same two tests, the same reading by the mastermind, the same refusals.
+without exception: the same tests, the same reading by the mastermind, the same refusals.
 The receipt reads the same too, and the worker is told the parts are already running so it
 does not do them again. *An answer that runs long is read and moved* is where that happens.
 
-## Why it refused to split the work — it would not break the job into pieces, and the two tests a division has to pass
+## Why it refused to split the work — it would not break the job into pieces, and the tests a division has to pass
 
-**Two things have to be true, and neither is the worker's confidence.**
+**One test always decides, and it is not the worker's confidence.**
 
-- **There must be enough separate items.** Below six, one worker doing them in order beats
-  paying for a working copy, a check and a wait for each part. This was measured,
-  not guessed: twelve image files won, four modules and three bugs lost. This count reads
-  what the worker says it saw, and it counts a number standing beside a pile of things —
-  "11 adapter files", "nine sections", "34 people" — whatever the domain calls its things.
-  What never counts is a number that measures or budgets one thing: "250 words",
-  "90 seconds", "3 retries" and "status 500" are parameters, not piles, and evidence that
-  names no pile at all counts zero.
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
@@ -2700,18 +2928,60 @@ does not do them again. *An answer that runs long is read and moved* is where th
   set to exactly **1** there is no second pair of hands at all, and the worker is told
   plainly that asking again will not change it.
 
-If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
-the worker carries straight on as one worker. That is why this costs nothing on ordinary
-work: a task that is not wide is never split, and finding that out is free.
+**The other test — enough separate items — is off unless you turn it on.** Until September
+2026 a division also had to name at least six separate things, on a measurement that below
+six, one worker doing them in order beats paying for a working copy, a check and a wait for
+each part. Then the question was measured properly, four ways of planning against four
+readings of that floor over 273 plans drawn and judged, and the floor lost: it folded real
+divisions more often than it saved you a pointless one. Three lanes written out by hand over
+one file name no pile of things at all, so the count read them as nothing and refused them.
+It no longer decides anything unless you ask for it — *Can I make it always split the work*
+is how you ask, and what the count reads when you do.
 
-**With one exception, and it is about the count only.** If the work was started because a
-model read your request and judged it broad — the wide line before a `/task`, a proposal I
-marked wide, a message the harness moved to a task — and the count then says the evidence
-names too few items, those are two readings of the same work disagreeing. So the count is
-not the last word there: the division goes to the mastermind below, which decides it on the
-parts themselves. That is the whole of the exception. A count that says no on work nobody
-read for width is final and free, exactly as it always was, and the free-lane test is never
-waived by anything.
+If a test says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
+the worker carries straight on as one worker. Finding out that a split will not happen is
+free, and always was.
+
+**And what did not change is which work is offered the split at all.** A worker is only
+handed the verb when something already read the work as wide: I marked it wide, the sizing
+call at `/task` said so, or its own brief names six or more separate things. That last
+reading is the same counting described below and it is always on. So turning the floor off
+did not make everything divide — it stopped a second reading of the same evidence refusing
+what the first reading had already invited.
+
+## Can I make it always split the work — turning the width floor back on, why did it split my task into parts, AFORGE_SPLITGATE
+
+**Why did it split my task into parts?** Because the work was read as wide, a worker asked
+to hand its parts out, a lane was free, and — by default — nothing else stood in the way.
+The parts are listed in the task column under their parent and each one says what it owns.
+
+**The width floor is off by default. `AFORGE_SPLITGATE` in the environment turns it back
+on**, and it is the only way to; there is no setting for it, because it picks how the
+machine decides rather than anything you have a preference about.
+
+- **unset** — off. Every division that is asked for is kept. This is what you have.
+- **`AFORGE_SPLITGATE=1`** — the floor as it worked before September 2026: the work has to
+  name at least six separate things or the split is refused, free, on the spot.
+- **`AFORGE_SPLITGATE=judgment`** — asks the plan instead of your words. If every part is
+  already the size of one sitting and none of them waits on another, the parts stand
+  whatever your brief counted; where the plan has no opinion, the six-item count decides.
+- **`AFORGE_SPLITGATE=0`** — off, spelled out. The same as leaving it alone.
+- **anything else** — off, because off is what you get by default and a typo must not put a
+  floor back under your work without your knowing.
+
+**What the count reads, when you have turned it on.** It reads what the worker says it saw,
+and counts a number standing beside a pile of things — "11 adapter files", "nine sections",
+"34 people" — whatever the domain calls its things. What never counts is a number that
+measures or budgets one thing: "250 words", "90 seconds", "3 retries" and "status 500" are
+parameters, not piles, and evidence that names no pile at all counts zero.
+
+**With the count on there is one exception to it.** If the work was started because a model
+read your request and judged it broad — the wide line before a `/task`, a proposal I marked
+wide, a message the harness moved to a task — and the count then says the evidence names too
+few items, those are two readings of the same work disagreeing. The count is not the last
+word there: the division goes to the mastermind, which decides it on the parts themselves.
+That is the whole of the exception, it exists only while the count is on, and the free-lane
+test is never waived by anything.
 
 ## What each part is told — the brief a part opens on, and how it knows what its siblings own
 
@@ -2726,16 +2996,16 @@ worker split out and a part a second model drew — so a part never depends on t
 doing the splitting remembering to restate the job once per part. Your own sentence still
 appears exactly once, at the top, where it appears on every task.
 
-**And then the plan itself is read once, by your `mastermind` model.** Both tests above are
+**And then the plan itself is read once, by your `mastermind` model.** The tests above are
 about whether a split is worth it; neither of them reads the parts. But what a part owns is
 everything that worker will act on — it is not handed your conversation and cannot
 ask anybody anything, though the brief names the journal path and line of your original
 words so it can read them if the restatement was cut — and the scopes were written by whatever model the task itself runs on.
-So once the two tests have passed, the whole division goes to the mastermind at once: the
+So once those have passed, the whole division goes to the mastermind at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
 scope, fix a boundary two parts share, fold two parts into one, or say the parts are really
 stages of one procedure and not a division at all — in which case nothing is split and the
-worker carries on, exactly as a no from either test above. So the parts you see may be fewer
+worker carries on, exactly as a no from a test above. So the parts you see may be fewer
 than the worker asked for, and what they own may not be word for word what it wrote.
 
 **And it has one more answer, which is not about the split at all.** The mastermind may
@@ -2766,6 +3036,30 @@ and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
 version of it would simply be gone, with no conflict for anybody to notice.
 
+**And no two parts may be told to run the same check.** Each part is finished against the
+check that proves **its own slice** — the files that part produces and no others — and one
+check that *every* part was told to run is the **family's**, not any part's, so that
+division is refused too, before anything is handed out, and the command is named. The
+reason is the same shape as the one above: the parts work side by side in working copies of
+their own, so a check written into three done-conditions runs three times, and every one of
+those runs judges a tree that does not hold the other parts' files yet. **The whole run is
+the parent's to make once, after the parts' work is home.** So the road out is to give each
+part a check over the files it produces, keep the family-wide run in the parent's own
+done-condition, and ask again — it is not a finding that the work cannot be split. Two
+checks that name different things — a package each, a file each — are two checks and are
+admitted; nothing here reads which program is being run or how long it takes.
+
+**And you are only told once.** If the same task asks again with the same shared check still in
+every part — which is what a worker does when it cannot rewrite three done-conditions — the
+division is **taken** rather than refused a second time, with that check **removed from every
+part** and given to the parent instead. It is never left on the first part: the whole finding
+is that it belongs to the family. The parent is then told, under its own done-condition, that
+these checks are the family's and are to be run **once, after every part's work has come
+home**, and its own checking is allowed to run them. Nothing rewrites what the parent was
+admitted with; the checks are something the task now carries alongside it. A refusal you
+cannot act on is worse than a wasteful split, and a worker that spends its steps asking the
+same question is a task that finishes nothing.
+
 **Shared material is read, never written — and that half is not enforced.** A file every
 part reads is nobody's to change: everything the parts write goes into one deliverable, so
 a shared file two of them edited is kept once and the other's edit is simply gone, which is
@@ -2788,8 +3082,8 @@ is one part owning a folder while another owns a file inside it.
 
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
-worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
-cannot be had is not a reason to throw work away.
+worker wrote it**. It had already passed everything that was going to refuse it, and a second
+opinion that cannot be had is not a reason to throw work away.
 
 **Except on the one division it is deciding rather than sharpening** — the exception above,
 where the count said too few items and a model's reading of your request said broad. There
@@ -2827,7 +3121,7 @@ so, and no extra model call is made to grade it. A part the worker itself graded
 is never moved back down, and an install with no class rows set never moves anything,
 because there is nowhere dearer to move it to.
 
-**A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
+**A busy machine is not one of these tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
 and the parts simply **wait** — the same wait any queued task does, drawn as
 `waiting · machine busy` — and they start themselves as soon as the machine clears. The
@@ -2836,7 +3130,7 @@ worker is told so in its receipt and has nothing to come back for.
 **You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
 than one job in your words writes one dim line before the work starts —
 `the work looks wide · one worker starts, and it can split as it goes` — and that line is
-what this section is about. It promises nothing: the two tests below still have to pass.
+what this section is about. It promises nothing: the tests below still have to pass.
 
 **And this is what I do with wide work too.** When I hand work off myself rather than you
 typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
@@ -2853,7 +3147,7 @@ already names.
 **And so can work that runs while you are asleep.** A standing order that fires and starts
 work is on this road too, armed the same last way — off the items its own brief names,
 with no sizing call, because a firing runs on a rhythm you set once and a model call every
-night to re-read the same sentence is a bill nobody agreed to. The two tests still decide and
+night to re-read the same sentence is a bill nobody agreed to. The tests still decide and
 the plan is still read once before the parts exist, and the machine is still respected: a
 division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
 own cost row. The standing orders page has the rest of what an unattended run is.
@@ -2868,9 +3162,10 @@ in; walk into a part and its header says `part of: <the parent's title>`.
 **Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
 
 It is on by default and there is no setting for it. `AFORGE_SWARM=0` in the environment
-turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and lets a
-worker's request to split be taken at its word — both are for somebody rolling something
-back, not preferences, which is why neither is in the settings panel.
+turns the whole road off — no task splits at all — and `AFORGE_SPLITGATE` decides whether a
+width floor stands under the splits that do happen, which is off unless you set it
+(*Can I make it always split the work*). Both are environment pins rather than preferences,
+which is why neither is in the settings panel.
 
 ## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
 
@@ -2977,6 +3272,15 @@ repository in a state two of them fought over.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
+
+**A hand has nine tools, and it is told which nine.** It opens on the whole conversation —
+the same transcript and the same instructions the answer that forked it was reading, word
+for word, because that shared page is what makes a copy of a mind cheap to make. Those
+instructions were written for the belt the **caller** carries, which is a much longer list,
+so a short note is added under them naming what is actually this reader's: `read`, `grep`,
+`find`, `ls`, `read_document`, `manual`, `edit`, `write` and `bash`. Nothing else is on a
+hand's belt however the page above the note reads, and a call for anything else is answered
+`Unknown tool` rather than run.
 
 **They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
 that started it has finished, and its report wakes the session when it lands — the same thing
@@ -3100,6 +3404,14 @@ Name one, here or in the task's room, and every round of that task runs on it.
 While you are in a room the status line names that node: `<mark> <task name> · task
 <model>`. Press the `task <model>` part and the ordinary model picker opens, aimed at that
 task. Choose a row and that task moves onto it.
+
+**On a narrow window that line gives way in one order.** The task's *name* is drawn whole
+for as long as the row can hold it; then `task <model>` is dropped **whole** rather than
+shortened, because a bare model id in the one spot that has only ever held the
+conversation's would read as the conversation switching models; and only after that is the
+name itself cut with a `…`. So a window too narrow for both says where you are rather than
+what is answering — and a model that is not drawn cannot be pressed. Widen the window, or
+read the model on the task's own card.
 
 What that does, exactly:
 
@@ -3237,7 +3549,8 @@ What else you can do yourself, on a task that is running:
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
 | stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
-| change its brief or its done-condition | **cannot** — frozen; propose the work again |
+| change its brief or its done-condition | **cannot** — frozen; continue with your words as a finding, or propose new work |
+| continue a failed or finished one | say `continue task 7`, or `tasks` with `id` and `continue` — same node, same copy |
 
 Steering sends your words into the task's own loop verbatim, and they land in its room as
 your own line. If nobody is listening any more — it landed, it was stopped, its worker is
@@ -3258,6 +3571,21 @@ Nothing is thrown away: on every ending except a clean merge the branch is kept 
 and what the task made is committed onto that branch before it lands — so the files it
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
+
+## Continue task N — keep going on a failed or finished task, No task 1 in this project
+
+When you say `continue task 7` or `keep going on task 7`, the model calls `tasks` with that
+id and `continue`. That re-arms the **same** task — same id, same brief, same working copy
+and journal, the last report as this round's finding — rather than proposing a new one.
+
+It only works for a task **this conversation** still holds. A task from another
+conversation or another window, an unknown id (`No task 1 in this project` on a read), or a
+task that is still running cannot be continued here. The tool then says there is no graph
+left to continue it in, and names where the work is — its branch or working copy — so it
+can be read. The model should relay that, not narrate progress it did not make.
+
+Starting the same brief again with `/task` or `propose_task` is new work with a new id, and
+it is the wrong door when you mean keep going.
 
 ## Why is the task waiting for me — finished but needs your look, a sub-task needs my look, a nested task waiting on me
 
@@ -3302,14 +3630,24 @@ to it with `↑`/`↓` — and only over an **empty** message box, exactly like 
 into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
 
+**On a narrow terminal the row drops `[d]` and says so.** The three answers are the
+question and the fourth is a preference, so the preference is what goes first — and the
+row then ends in a dim `· +1`, the same count every other fold on this surface draws
+(`▸ +1`, `holds 3 more`). `[d]` still works unprinted. It reads:
+
+```
+[a] accept · [l] look again · [n] not right · +1
+```
+
 **The task's room asks the same question** at the foot of its page, and in there the four
 keys need no selection — see *How do I approve a task* below. Room and card are one
 question: answer in either and both show the receipt.
 
 ## What accept, look again and not right each do
 
-- **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
-  exactly as checked work does, and everything queued behind it unblocks. The report leads
+- **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
+  landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
+  protected, moved or detached checkout. Everything queued behind it unblocks. The report leads
   `you looked at this yourself and took it as done`. If that merge conflicts nothing is
   forced: your checkout is left exactly as it was, the branch is kept, and the task stays
   waiting on you with the clashing files named.
@@ -3319,9 +3657,10 @@ question: answer in either and both show the receipt.
   this answer cannot be taken; the card keeps its choices and says
   `that one could not be taken — try another`. The same line appears for any answer that
   could not be spent — a working copy that has gone, for instance.
-- **`[n] not right`** — you looked and it is not finished. The task fails, its branch is
-  kept, its previous report is kept under the refusal, and its dependents fail with it. The
-  report leads `incomplete — you looked at this yourself and said so`.
+- **`[n] not right`** — you looked and it is not finished. The task becomes `incomplete`,
+  its branch is kept, and its previous report is kept under the refusal. Its dependents do
+  not advance and still land `failed`, as before, saying the work they waited on did not
+  finish. The report leads `incomplete — you looked at this yourself and said so`.
 - **`[d] decide these for me`** — the escape hatch, described in the next section.
 
 **Answered means the choices are gone, not greyed.** The two rows are replaced by one dim
@@ -3330,8 +3669,8 @@ line saying what you did: `you took this as done`, `sent back to be checked agai
 model's own settling, a re-check that finally answered, another window.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
-branch and all. What follows is: the task re-settles into `done` or `failed`, a state it has
-not been in, so a **second** landing card is drawn saying what became of the work. The
+branch and all. What follows is: the task re-settles into `done` or `incomplete`, a state it
+has not been in, so a **second** landing card is drawn saying what became of the work. The
 transcript then reads as what happened: this landed needing a look → you took it as done →
 `task 7 done · merged`.
 
@@ -3381,6 +3720,59 @@ those sessions aforge takes the decision itself, by the same road `[d]` takes, w
 escape to say it cannot tell. This never applies to a session you are sitting in front of:
 there your row stands, and a blank row still means aforge asks you.
 
+## Needs your look on a run I left going with --yolo — a check that could not run, and what taken as it stands means
+
+On a run you left going with a budget — `--yolo` **and** `--max-hours` or `--max-cost` —
+there is nobody to put a card in front of, so a task nobody could check is not put to
+anybody. The check is asked twice first: one checker, then a **fresh** one with the same
+evidence and not a word about what the last one said. Only when the second try says nothing
+either does the work land as it stands, and the landing says so, under the task's own
+account of what it did:
+
+```
+taken as it stands: one call ran 2m30s without answering and was abandoned · the window closed before a second, and the run is unattended
+```
+
+The first half of that line is whatever became of the check — a call that hung and was cut,
+a checker that would not start, a reply that said neither way — so it names what happened
+rather than claiming nobody could check the work.
+
+The task then reads `finished`, its branch merges like any other, and that sentence is the
+whole of what was different about it. You can still say "actually that one isn't finished"
+when you come back.
+
+**`--yolo` on its own is not this.** Without a budget nothing carries on by itself and
+nothing is decided for you: a task that needs a look waits, exactly as in any other session.
+Nor is it a task inside another task in a session you are watching — that one still goes to
+the worker that commissioned it, which reads the diff and settles it.
+
+**And a check that hung is not a check that ran.** No single call may spend the whole
+checking window: a stream that answers nothing is abandoned about half way and the check is
+asked again inside what is left. When the second call answers, the landing carries
+`checked on the second try`. Before that, one hung stream could eat all five minutes and the
+check was never asked twice at all.
+
+## A task whose work could not be brought home — it stayed where it is, and why I am not asked twice
+
+When a finished task's work cannot be put back where you can see it, nothing merges and
+nothing is thrown away: the report names the folder that then holds the only copy, and the
+task waits for you. Which failure it was decides what happens when you answer.
+
+- **The tree would not take the work at all** — the folder it ran in is not a repository,
+  the disk is full, a file of your own is where a directory has to go. Accepting settles it
+  where it stands, once. The report leads
+  `taken as it stands, and it could not be brought home, so the work stays where it is — `
+  over the sentence naming the folder, and a second answer on the same task is told
+  `task 7 is done, and only a task that needs a look is waiting on somebody to decide`.
+  Asking again cannot change a disk, and a measured run accepted the same task three times
+  and got the same refusal three times.
+- **The same file changed on both sides** — a real merge conflict — is yours to decide, so
+  the task goes back to `needs your look` with the clashing files named. Sort the file out
+  and accept it again.
+
+The how-tasks-run page has the sentences each of those lands with, under *My task could not
+save what it wrote*.
+
 ## How do I approve a task — accept a finished task from the room, the card, or by saying so
 
 A task that landed `needs your look` (`finished — look it over` on the roster) is approved
@@ -3393,7 +3785,8 @@ front of you:
 | **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same four keys — or click a chip on its answers row |
 | **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
 
-Accepting merges the task's branch into yours and unblocks everything queued behind it.
+Accepting lands the task by the same merge-or-keep rule as checked work and unblocks
+everything queued behind it.
 Whichever door is used first wins; the other two find the question already gone and show
 `already answered` rather than raising an error.
 
@@ -3457,9 +3850,12 @@ Pressing `x` on a run that has already finished does nothing but say so.
 ## The tasks place — grouped work, folds, filtering and time-window keys
 
 The **tasks** place is the machine-wide history of work aforge ran, grouped by what you do
-next: `needs your look`, `running`, `done today`, then `earlier`. Each task row can include
+next: `needs your look`, `running`, `parked`, `done today`, then `earlier` — where
+`parked` is admitted work nothing is doing, drawn with no age on it. Each task row can include
 its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
-cost, and age. Zero or unknown cost is left blank. A section with nothing in it is absent.
+cost, and age from the landing time its own record carries. Zero or unknown cost is left
+blank, and so is an age whose older record never carried that landing time. A section with
+nothing in it is absent.
 
 **Nothing is folded.** Every row the time window holds has a line of its own and the list
 scrolls — there is no `▸ N more` and no fold to open. The window's own edge is said once, in
@@ -3514,7 +3910,10 @@ only then does `s` mean anything, which is two deliberate presses with the verb 
 you. The card is also not available here: it is drawn in the conversation's chrome, and a
 question raised over a full-screen place would be one nobody could see.
 
-**There is no `run it again`, and no key is bound to one.** Nothing on this machine re-runs
-a finished task — a row here is an account of work that happened — and starting the same
-brief again is `/task <brief>`, which is new work with a new id. A capability that cannot
-work is left off rather than drawn dead, so the verb is named nowhere.
+**`continue` re-arms the same task.** There is still no `run it again` key on this place —
+a row here is an account of work that happened — but a failed or finished task is
+continued by saying `continue task 7`, or by the `tasks` tool with `id` and `continue`.
+That is the same node: same id, same brief, same working copy and journal, the last
+report as this round's finding. Starting the same brief again with `/task` or
+`propose_task` is new work with a new id, and it is the wrong door when the person
+means keep going.

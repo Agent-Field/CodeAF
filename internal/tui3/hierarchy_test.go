@@ -59,8 +59,8 @@ func TestNarrationRecedesWhenWorkOpensUnderIt(t *testing.T) {
 	a.touch()
 
 	narration := rowWithText(t, a, "Let me check the config")
-	if !strings.HasPrefix(plain(narration.text), "  ") {
-		t.Fatalf("narration kept the answer's margin: %q", plain(narration.text))
+	if narration.hit != hitCaption {
+		t.Fatalf("narration is not the caption heading: %q", plain(narration.text))
 	}
 	if !strings.Contains(narration.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("narration kept the body ink: %q", narration.text)
@@ -108,7 +108,7 @@ func TestADemotedBlockForgetsItsMarkdownCut(t *testing.T) {
 	a.touch()
 
 	got := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(got, "Checking the parser.") || !strings.Contains(got, "It reads the prefix") {
+	if !strings.Contains(got, "Checking the parser") || !strings.Contains(got, "It reads the prefix") {
 		t.Fatalf("the cut block lost half of itself:\n%s", got)
 	}
 	painted := strings.Join(func() []string {
@@ -315,10 +315,11 @@ func TestASteerEndsTheAnswerItFollows(t *testing.T) {
 func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 80, 40
-	a.room = &taskRoom{
-		id: 7, title: "the node", live: -1, think: -1,
-		unfolded: map[int]bool{}, workOpen: map[int]bool{},
-		entries: hierarchyLab(),
+	a.room = a.newRoom(7, "the node")
+	a.room.workOpen = map[int]bool{}
+	a.room.entries = hierarchyLab()
+	for _, f := range deriveWorkfolds(a.room.entries, 0) {
+		a.room.workOpen[f.key] = true
 	}
 
 	drawn, _ := a.deckRows(a.room.deck(), 60)
@@ -332,21 +333,20 @@ func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 		t.Fatalf("the room drew no row carrying %q", phrase)
 		return row{}
 	}
-	if r := find("Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
+	if r := find("Let me check the config"); r.hit != hitCaption ||
 		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a room promoted its narration: %q", r.text)
 	}
 	if r := find("reads the length prefix twice"); strings.HasPrefix(plain(r.text), " ") {
 		t.Fatalf("a room demoted its answer: %q", plain(r.text))
 	}
-	if strings.Contains(strings.Join(func() []string {
-		out := make([]string, 0, len(drawn))
-		for _, r := range drawn {
-			out = append(out, plain(r.text))
-		}
-		return out
-	}(), "\n"), "▸ ") {
-		t.Fatal("a room folded its work into a chip")
+	// AND THE ROOM DOES FOLD ITS SETTLED WORK NOW (issue #252, ruling 1): the
+	// thinking and the two calls between the two paragraphs are behind a chip,
+	// and the hierarchy above and below it is untouched — which is the point of
+	// asking it here. A chip is a fold, and the hierarchy is a property of the
+	// prose.
+	if r := find("▸ worked"); r.hit != hitWorkFold {
+		t.Fatalf("the room drew no phase chip over its settled work: %q", plain(r.text))
 	}
 }
 
@@ -365,7 +365,7 @@ func TestAResumedConversationRebuildsTheSameHierarchy(t *testing.T) {
 	a.replay()
 	a.touch()
 
-	if r := rowWithText(t, a, "Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
+	if r := rowWithText(t, a, "Let me check the config"); r.hit != hitCaption ||
 		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("a resumed turn promoted its narration: %q", r.text)
 	}
@@ -395,7 +395,7 @@ func TestTheRowCacheFollowsTheHierarchy(t *testing.T) {
 	// The work opens under it. Nothing touches the block itself.
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "read", text: "parser.go", turn: 1, status: toolOK})
 	a.touch()
-	if r := rowWithText(t, a, "Let me check the config"); !strings.HasPrefix(plain(r.text), "  ") ||
+	if r := rowWithText(t, a, "Let me check the config"); r.hit != hitCaption ||
 		!strings.Contains(r.text, sgrOf(a.pal.narr)) {
 		t.Fatalf("the block handed back the rows it drew as the answer: %q", r.text)
 	}

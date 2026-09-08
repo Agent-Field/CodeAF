@@ -19,10 +19,15 @@ started, which have their own rules.
 
 ## What it is called
 
-The command you type is `aforge`. On screen the surface calls itself `openaf` —
-that name appears at the top of `/help`, on the card that asks to connect an
-account, and as the speaker heading in an exported conversation. They are the
-same program.
+The command you type is `aforge`, and `aforge` is what the surface calls itself
+everywhere it speaks: the wordmark on the first screen and in the welcome box, the
+name on home's top line, the first line of `/help`, the card that asks to connect
+an account, the desktop notification's title, and the speaker heading in an
+exported conversation.
+
+It used to say `openaf` in some of those places and `aforge` in the others, which
+meant a fresh install met one name in the wordmark and a different one in the
+prose three rows under it. There is one name now, and `openaf` is on no screen.
 
 ## Starting it
 
@@ -97,15 +102,27 @@ Either number alone is enough; both together means whichever runs out first. You
 can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
 `AFORGE_MAX_COST`, and the flag always beats the variable.
 
+Without a budget none of that happens, and it tells you so in one line when it
+starts. If you are sitting there watching it, none of this applies to you: your
+session is exactly what it has always been, and nothing is ever deleted on your
+behalf.
+
+`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
+built on the far machine, so set them there.
+
+## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
+
 With a budget, four things change, and only with a budget:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
-  for the whole session — nothing it does later can rewrite it.
+  for the whole session — nothing it does later can rewrite it. It is context for
+  the work and never evidence about it: what says the work is done is the work.
 - **A stopped turn is looked at rather than taken at its word.** When it stops
   talking, it checks whether any piece of work came home unfinished, and whether
-  the checks your work names still pass. If any of that is unmet it carries on by
-  itself instead of going quiet.
+  the checks your work names passed when they ran. If any of that is unmet it
+  carries on by itself instead of going quiet — and if none of it is, the ask is
+  finished, whatever else was said about it.
 - **A piece of work that came home unfinished starts its own next go.** You used
   to be offered a follow-up in your own words — with nobody there, that offer went
   nowhere. Now what was missing becomes the next brief. If the same thing stops it
@@ -116,14 +133,229 @@ With a budget, four things change, and only with a budget:
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
 
-Without a budget none of that happens, and it tells you so in one line when it
-starts.
+## Why did it stop at a task that was finished · it ended without starting more work · why did it not hand the work over
 
-If you are sitting there watching it, nothing above applies to you: your session
-is exactly what it has always been, and nothing is ever deleted on your behalf.
+With a budget, **every** way a turn ends is read, not just the ones where the model stops
+talking. A long turn can also end by having its work moved onto a task — when a second
+reader says the work has parts, when the turn has changed enough files, when it has run
+past its own price, or — only with a budget — when it has had its share of the hours you
+gave the run. Each of those seals the turn, and until this they sealed it without
+asking anything: the run then had no way back at all, because the only thing that could end
+it was a landing waking a turn that moved its work onto another task, and so on until the
+hours ran out. Three measured runs finished their work, went green, and still ran to the
+wall that way.
 
-`--max-hours` and `--max-cost` cannot travel over `--host` — the conversation is
-built on the far machine, so set them there.
+So before the work moves, the same reading a stopped turn gets is taken:
+
+- **Something of yours is still running** — the work moves onto a task exactly as it always
+  did, and you read the same line about it.
+- **Nothing is left and nothing is running** — the run ends there, on the line
+  `finishing here · what was asked is done`, and **no task is started**. It used to hand the
+  work over anyway, on the grounds that the reply had not yet read its last results; measured,
+  that started two tasks nineteen seconds after the run had already read the tree, the checks
+  and the second reader and said the ask was met, and both ran to the wall. Being finished is
+  read from those, not from the reply's own words, so nothing a further reply said could change
+  it. If a piece of work is still running when that happens, it is not ended there: the work
+  moves onto a task as usual and the same answer is read again at the next ending.
+- **The same thing is left as last time** — it stops for good with the reason, on the same
+  `stopping here · ` line every other stop uses. If a piece of work is still running when
+  that happens, it does **not** stop there: the work moves onto a task as usual and the same
+  stop is said again at the next ending, once nothing is in flight.
+- **The hours or the money ran out** — this is the one stop that does not wait for anything.
+  Waiting is more of exactly what ran out, so it ends the turn even with work still going,
+  and says so on the end of its own line: `· work was still going and was left where it was`.
+  Nothing is killed and nothing is thrown away; what was running is where you left it.
+
+**And a handover it asked for is never dropped.** A long turn can normally talk its own
+handover out of happening: if the model says nothing is left AND the second reader's sketch
+says the same, the work stays where it is and the turn finishes. On a run with a budget that
+only holds while the run's own owner agrees — and when it has just read the ending and said
+the ask is **not** finished, the work moves anyway, on its account of what is left rather
+than on your bare sentence. A run measured before this said "not yet confirmed" at its
+write seam and again at its ceiling, had both handovers thrown away by the two readers, and
+ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
+
+**And with a budget one reply may spend at most a third of the wall.** *Why did it move my
+work to a task after five minutes; it kept running tests for ten minutes and then handed it
+over; why did it not hand over sooner.* The other three ways above all COUNT something —
+parts in a sketch, files changed, rounds spent — and a reply that spends its time reading
+and running tests crosses none of them. A measured run did exactly that: a fifteen-minute
+wall, the fix working in the checkout at five minutes, twelve and a half minutes of reading
+and tests inline, the work finally moved with 147 seconds left, sixty of which went on
+opening the task's working copy — and the wall came down on a task that had committed
+nothing, checked nothing and landed nothing. So a reply that has been running for a third of
+the hours you gave the run hands over, and you read:
+
+```
+this has taken a third of the time · moving it to a task that can be checked before the wall
+```
+
+**A third, because the other two thirds are what the work needs after it moves** — a working
+copy opened, the job run, and somebody who is not the model that did it reading the result,
+which is the whole difference between work that happened and work that landed. **And it hands over only what can still be checked before the wall**: once less of the
+wall remains than a task needs to open its working copy and be checked — the two waits a
+task is already held to, added — a reply is not moved at all, and nothing is spent asking,
+because a task started then could not be set up, let alone checked; a measured run started
+one with six seconds to go. It happens
+**once** in a reply; rounds spent only watching work you already handed out do not count
+towards it; and it needs a wall, so `--max-cost` on its own never triggers it.
+
+None of this applies to a session you are sitting in front of: your turn's work moves onto a
+task exactly as it always has, nothing is decided for you, and the two readers agreeing
+still leaves your answer where it is. There is no wall on your session, so there is no share
+of one either, however long your reply runs.
+
+## What counts as still left · a task that died on the wire · it kept working after everything was finished · it says nothing has been finished yet when it did the work itself
+
+**What is left is read from the tree, not from a task's death.** A run with a budget looks
+at every piece of work at the end of each reply and asks what stands between it and
+finished. Two kinds of dead task do **not** count:
+
+- **One that died on the connection or was refused by the model provider.** A dropped
+  stream, an API error, a model that is not there: nothing was found out about the job, so
+  it is not evidence that anything is unfinished. Every other ending still counts — a check
+  that found gaps, a loop that went round, a step limit, a working copy that could not be
+  made, one you stopped yourself.
+- **One whose files somebody else wrote and brought home.** If every file a dead task was
+  going to change has since been changed by a task that finished **and** merged, the thing
+  it was for is on your branch already, and asking for it again would rewrite a file that is
+  already written. It has to be every file and the other task has to have merged; half of
+  somebody's work is still work.
+
+Measured before this: a task died on an API 404 an hour before its parent wrote the very
+file it was for, went green and merged. The run read the dead sibling as a gap in the ask
+and carried on over a finished tree until its wall ran out.
+
+**And work aforge did itself counts as finished work.** The question is not only "did a
+task come home": a session that made the change and wrote the tests **inline**, with no
+task at all, has finished something — as long as the second reader agrees nothing is left.
+That includes a fix that is one edit to a file the project already had, which is the
+commonest fix there is: it used to count only files the session created, so a one-line change
+to an existing file read as nothing finished until the run stopped itself over green work.
+Before this, a run that did the whole job in the conversation read `nothing has been
+finished yet` at the end of every reply over a tree it had just written, said the same
+thing twice, and stopped itself for going round in circles one second after tidying up. If
+that reader names a gap instead, the run carries on into it, and being finished is settled
+by running your checks over the tree either way.
+
+**And a file is your work only while its content still differs from what it was before the
+edit.** A change put back the way it was, a revert, or a fix pushed onto `git stash` and
+never popped leaves the path written and nothing in the tree, so none of them counts as
+finished work. A stash the run took itself and never popped is said out loud as well —
+`1 stash entry holds work that is not in the tree` — and the run carries on rather than
+finishing over it; a stash you already had before the run started is yours and is never
+counted, and neither is the one a landing takes to set your uncommitted work aside.
+
+## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
+
+**A check is yours only if your run turned it red.** On a run with a budget, aforge runs
+the checks its acceptance names once at the start — before it has touched anything — and
+writes down which were already failing. Only the acceptance it wrote for the work and each
+task's own brief supply checks; a command pasted into your ask (the steps you took to see a
+bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
+longer is. At the end it runs them again, and only a check that was
+**green before and red after** counts as work still to do.
+
+That first reading runs **in the background**, so nothing waits for it: your first turn
+starts straight away. It gets one window for the whole set rather than one per check, and
+two things are deliberately not read — a check that **changed the tree** (a build, a
+formatter, a migration: that would be aforge making the first edit, not looking) and a
+check the shell **could not run at all**. Writing a cache or a coverage file is not
+changing the tree: in a git repository the question is asked against what the project
+itself keeps, so anything your `.gitignore` covers is invisible here and a test runner's
+`.pytest_cache/` costs you nothing.
+
+**A check the reading could not take is never counted against you — or for you.** Nobody
+knows whose red it is, so it is left out of the arithmetic in both directions rather than
+guessed at. Until the whole reading lands the same is true of every check, and the run says
+so in as many words. At the very end it waits for the reading before deciding, so a run is
+never called finished over red nobody could account for.
+
+That matters because of the sentence people naturally write: *"the existing test suite
+passes"*. Over a project whose suite already has one failing test, that can never become
+true, and a run that reads its own failure in the project's will spend its whole ceiling on
+somebody else's bug. One measured run did exactly that.
+
+What was already broken is not hidden from the work either — the brief it carries on with
+says so plainly, so nothing goes off to fix it by accident:
+
+```
+1 check was already failing before this work and is not counted: tox -e py
+```
+
+A session you are sitting in front of runs none of this: your tree is in front of you, and
+nothing is checked or decided on your behalf.
+
+## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
+
+An unattended run with a budget looks at the work at the end of every reply: which
+pieces of work came home finished, and what the checks your work names said when
+they ran. If something is left, it carries on by itself with that as the brief.
+
+**The same thing left twice running stops the run.** The evidence that a run is
+getting anywhere is that what is left CHANGES. When it reaches the end of a reply
+holding exactly the list it held last time, it stops and tells you, on one line:
+
+```
+stopping here · nothing moved since the last look and what is left is the same — wire the handlers did not finish · saying it again would not change it
+```
+
+That is the whole message: what is still left, and that it stopped rather than say
+it again. Nothing crashed and nothing is wrong with your machine — the list in the
+middle is where to pick the work up.
+
+**It holds for the rest of the session.** The floor belongs to the thing that
+decides, not to the reply it stopped, so a piece of work landing and waking a fresh
+reply cannot start the loop over. There is no number to raise and no setting for
+it. Before this, a run in that state repeated one identical line until its hours
+ran out.
+
+## A task waiting on one that did not finish · work that will never start · it says something is still running
+
+**Work that is still going is never a standstill, and never finished either.** A
+piece of work that is actually moving — started, or queued behind something that
+is — is named on the list in its own right, `write the tests is still running`, so
+the ask cannot be called finished over the top of it. And a list that has not
+changed because it is waiting on that work is a run waiting rather than a run
+repeating itself, so the count above starts again once everything has landed.
+
+**Work that cannot start is not waiting, it is left.** A piece of work queued
+behind one that did not finish, or behind one that came home and needs your look,
+has nothing coming to start it — nobody is going to look at it while the run is
+unattended. So it is said whole, with what it waits on and what became of that:
+
+```
+wire the handlers is waiting on port the parser, which needs your look
+```
+
+That counts as part of what is left rather than as a reason to keep going, which
+is what lets a run in that state reach the standstill above and stop — instead of
+carrying on for the rest of its hours over work nothing was ever going to start.
+
+## It keeps saying a file does not pass · a check nobody asked for
+
+**A check is a command, never a file.** When the session's `done when` sentence
+names something in backticks, or a piece of work names it in its own account,
+aforge runs it in a fresh shell to see whether the work stands up. A file is
+opened the way the file itself says it opens: if it is executable, or its first
+line names the program that runs it, that is what gets run. **A file that says
+neither is not a check at all** and is left out — a source file quoted in a
+sentence is something to look at, not something to run.
+
+Before this, a bare path was handed to a shell, which refused to start it, and the
+run recorded "does not pass" about it for the rest of the evening — a wall no work
+could ever get past. Anything that says `does not pass` now is something that ran.
+
+**A file in your own folder beats a program of the same name.** If the tree you are
+working in holds a file called `check`, `build` or `test`, that file is what a
+check by that name means — not whatever program of the same name your shell would
+have found. And if the tree holds it but nothing can start it, nothing is run at
+all: running a different program of the same name would be worse than running
+nothing.
+
+**What came home outranks what was said about it.** A piece of work that finished
+and covers what you asked for, with every check that ran passing, is finished — a
+reader's opinion about the transcript cannot carry the run on over the top of it.
 
 ## Which folder does aforge work in, and where do my files go
 
@@ -261,6 +493,36 @@ own in it. Opened where there is no project at all — your home directory, a
 temporary directory, a launcher — it works in a folder of its own instead, so
 scratch files and downloads land somewhere they can be thrown away with the
 conversation.
+
+## Where aforge writes its log — chat.log, the crash log, and why nothing appears on screen
+
+Aforge keeps one log file for the running program: `chat.log`, beside the rest of what it
+keeps. With nothing moved that is `~/.aforge/chat.log`; `AFORGE_HOME` moves it with the
+rest of aforge's state, and `AFORGE_PROFILE_DIR` puts it inside that profile folder
+instead. Read it with `cat ~/.aforge/chat.log`, or `tail -f ~/.aforge/chat.log` in a
+second terminal while aforge is running.
+
+**Everything the program logs while the conversation is on screen goes there and never on
+the screen.** That is on purpose: aforge takes over the whole terminal, so a warning
+printed to it would land spliced into the middle of what you are typing and be gone with
+the next redraw. It holds internal warnings, recovered internal faults with their stacks,
+and notes about things aforge fell back from — the kind of thing to send along if you are
+reporting something odd. The redirect lasts exactly as long as the conversation is up, and
+ordinary output goes back to the terminal when you quit.
+
+**It is the same file however you started.** Opened here, opened on another machine with
+`--host`, reached over a relay with `--at`, or handed to a session already running in the
+background — all four write to `chat.log` in this machine's profile, the machine you are
+sitting at.
+
+If aforge stops with `aforge hit an internal fault and had to stop`, the details it points
+you at are appended to that same file, so there is one place to look either way. In the
+rare case aforge cannot write there at all — a profile folder it has no permission for —
+it leaves the log on the terminal rather than dropping it, on the grounds that a torn
+frame is better than a lost warning.
+
+This is not the record of what aforge sent the model: that is a separate file, read with
+`aforge logs`, and `aforge logs --path` prints where it is.
 
 ## Asking aforge about itself
 

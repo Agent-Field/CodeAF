@@ -352,7 +352,7 @@ func TestAFamilyPutsItsWorkOnTheFamilyBranchBeforeItsPartsAreCut(t *testing.T) {
 	// AND THE FAMILY COMES HOME IN ONE MERGE. The parent lands the way its
 	// runner lands it: its own ledger committed, its branch merged into the
 	// person's repository, once.
-	merge, detail := family.tree.comeHome(family.parent.title(), []string{"repro.txt"})
+	merge, detail, _ := family.tree.comeHome(family.parent.title(), []string{"repro.txt"})
 	if merge != mergeMerged {
 		t.Fatalf("the family came home as %q (%s)", merge, detail)
 	}
@@ -528,7 +528,7 @@ func TestAPartRestoredFromACheckpointStandsInTheFrozenWorld(t *testing.T) {
 		t.Fatalf("prepareTaskTreeOn for the parent: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "repro.txt"), "the failing case\n")
-	saved, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"})
+	saved, _, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"})
 	if err != nil {
 		t.Fatalf("the checkpoint would not commit: %v", err)
 	}

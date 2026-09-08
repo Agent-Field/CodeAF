@@ -1,9 +1,11 @@
-// Command aforge builds and revises task graphs. It executes nothing: the
-// graph is the product.
+// Command aforge is an agent you talk to, and hand work to when you walk away.
 //
-//	aforge plan "<goal>" [-o graph.json]
-//	aforge revise graph.json "<what happened>" [--done 1,2] [-o graph.json]
-//	aforge show graph.json
+//	aforge                       open the conversation this directory was having
+//	aforge do "<task>"           hand it one job and read the answer on stdout
+//	aforge plan new "<goal>"     write a plan to a file without running it
+//
+// The static plan pipeline it opened life as is four subcommands of `plan` now,
+// and it is one feature of many rather than the product.
 package main
 
 import (
@@ -13,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -23,9 +26,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 func main() {
@@ -108,8 +113,20 @@ func execute() (code int) {
 		// before handing this back — so the screen is already the user's again
 		// and the only thing missing is the sentence.
 		return reportFault(os.Stderr, err.Error(), nil)
+	case errors.Is(err, config.ErrNoAPIKey):
+		// THE MOST COMMON FIRST-RUN FAILURE, said once and with the remedy, at
+		// the ONE exit every command leaves through. `do` used to say this and
+		// then repeat itself in machine form on the next line, while `exec`,
+		// `plan`, `models` and `run` said only the machine half — so four
+		// callers out of five were told the cause and not what to do about it.
+		fmt.Fprintln(os.Stderr, "aforge needs a model to work with.")
+		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
+		return 1
 	default:
-		fmt.Fprintln(os.Stderr, "error:", err)
+		// And every other failure passes the one rule about what a person may
+		// be shown: the cause, what to do about it, and no wrapped Go chain
+		// (plainwords.go).
+		fmt.Fprintln(os.Stderr, "error:", plainWords(err.Error()))
 		return 1
 	}
 }
@@ -157,15 +174,26 @@ func run() error {
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
-		return runPlan(os.Args[2:])
+		// THE STATIC PIPELINE IS ONE NOUN WITH FOUR VERBS ON IT. A developer
+		// plans work, shows the plan, revises the plan and runs it, and every
+		// one of those reads as English with `plan` as its object — which is
+		// what `graph` never did. `graph` is how the ENGINE thinks (nodes,
+		// edges, a frontier) and stays inside the engine, where it is the right
+		// word and where nobody reads it.
+		return runPlanCommand(os.Args[2:])
 	case "revise":
-		return runRevise(os.Args[2:])
+		// The old top-level spelling of `aforge plan revise`, kept working for
+		// one release (rename.go).
+		return renamedTo("revise <plan.json>", "plan revise <plan.json>",
+			os.Args[2:], func(args []string) error { return runRevise("plan revise", args) })
 	case "run":
 		return runExecute(os.Args[2:])
 	case "exec":
 		return runExec(os.Args[2:])
 	case "show":
-		return runShow(os.Args[2:])
+		// The old top-level spelling of `aforge plan show`.
+		return renamedTo("show <plan.json>", "plan show <plan.json>",
+			os.Args[2:], func(args []string) error { return runShow("plan show", args) })
 	case "models":
 		return runModels(os.Args[2:])
 	case "notebook":
@@ -207,122 +235,242 @@ func run() error {
 	case "version", "--version", "-v":
 		return runVersion()
 	case "-h", "--help", "help":
-		return usage()
+		return usage(os.Args[2:])
 	default:
-		return fmt.Errorf("unknown command %q\n\n%s", os.Args[1], usageText)
+		return unknownCommand(os.Args[1])
 	}
 }
 
-// usageText is a var and not a const for ONE reason: the dollar figures in the
-// environment table are the real defaults, interpolated from the constants that
-// own them ([config.DefaultDailyBudgetUSD] and the rest). They were typed out by
-// hand here once, and every one of them was stale by the time somebody read it —
-// which is the one-source-of-truth law's own worked example.
-var usageText = `aforge — build and revise task graphs
+// The layout law, because a page nobody can read is a page nobody reads:
+//
+//   - NOTHING DRAWS WIDER THAN [helpWidth] CELLS. Eighty is the width a
+//     terminal opens at, and this page used to run to a hundred and sixty-four
+//     — so every second line was soft-wrapped mid-word by the terminal, at a
+//     break the writer never chose, and the hanging indent stopped aligning
+//     the moment it happened. A hundred and eight lines drew a hundred and
+//     sixty-seven rows.
+//   - A COMMAND'S SYNOPSIS BEGINS AT COLUMN 2 and folds, when it must, to
+//     column 14 — under the verb, so the flags stay one column.
+//   - ITS DESCRIPTION SITS UNDER IT AT [helpTextColumn], never beside it. A
+//     right-hand column was tried and cannot survive eighty cells: the
+//     synopses here carry whole flag lists, so the text column would start at
+//     thirty on the short verbs and at zero on the long ones, which is the two
+//     conventions this page already had.
+//
+// TestEveryHelpPageFitsAnEightyColumnTerminal holds the first of those.
+const (
+	helpWidth      = 80
+	helpTextColumn = 6
+)
 
-  aforge                 open the chat surface, resuming your last conversation
-  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
-              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
-                         --session names a transcript FILE to resume, not an id and not
-                         the word "new": a path that does not exist yet is a new
-                         conversation written there, and no --session at all resumes
-                         this directory's most recent
-  aforge resume          pick an earlier conversation by name and open it
-                         the same list is /resume inside the chat
-  aforge serve [--workspace path] [--relay url]
-                         be reachable from your other devices without ssh: this machine dials out,
-                         prints the name it answers to, and shows a pairing code for a new device
-  aforge devices [revoke [--all] <name>]
-                         list the devices paired with this machine, and stop one
-  aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
-                       [--context-fill 60] [--completion-reserve 65536]
-                         do one task and exit — the same living brain the chat runs, with nobody watching
-                         the task is run verbatim: what you type is the goal, and what it has to assume it declares
-                         exit 0 the whole of it stands · 1 nothing usable · 2 partial: the wall came first,
-                         the delivery gate rejected it, or parts of it did not land
-  aforge plan "<goal>" [-o graph.json] [-w dir] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
-  aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
-  aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
-                         plan and run are the static pipeline: a graph written to a file, then executed
-                         exactly as written. Kept for reading, editing, and inspecting a plan by hand.
-  aforge exec ["<prompt>"] [-w dir] [--system text] [--turns N] [--budget N] [--timeout seconds]
-                         [--model slug] [--plan-model slug] [--context-fill N] [--completion-reserve N]
-                         [--json] [-o file]
-                         run one linear worker with no resident planning graph
-  aforge run subharness <name> --input <file.json|-> [-w dir] [--model slug] [--journal path]
-                         run one subharness as a program, with nobody watching: typed input in,
-                         its account and its typed output on stdout, everything else on stderr
-                         a question it was not told how to answer stops it rather than being guessed
-                         exit 0 it finished · 1 it could not be run at all · 2 it ran and did not finish
-  aforge show <graph.json>
+// usageText is what `aforge --help` prints, and it is FIVE HEADED GROUPS AND
+// FIVE EXAMPLES AND NOTHING ELSE.
+//
+// It used to be one flat list of twenty-three commands followed by a sixty-line
+// environment table, so the last thing on a person's screen after asking what
+// the commands are was AFORGE_CALL_LOG_BODIES, and the commands themselves had
+// scrolled off the top. The table is a REFERENCE — it is consulted, never read
+// — so it lives at `aforge help env` ([environmentText]) and the one line at
+// the bottom here says so.
+//
+// The groups are ordered most-reached-for first rather than alphabetically,
+// because a list nobody reads to the end is a list whose ordering is the whole
+// design. Adjacent forms of one verb stay together.
+//
+// THE TABLE IS ALSO THE ONE SOURCE OF EVERY PER-COMMAND SYNOPSIS. `aforge do
+// --help` lifts `do`'s lines straight out of it ([usageForCommand]), so a
+// synopsis cannot go stale, and a group heading is written at column zero
+// precisely so it ends a command's block rather than joining it.
+//
+// AND THE EXAMPLES ARE INDENTED FOUR, NOT TWO, FOR THE SAME READER. Two spaces
+// is what a command row is written with, so an example beginning `  aforge do`
+// was lifted into `aforge do --help` as though it were part of that command's
+// synopsis — which is what happened the first time they were added.
+// handWorkFooter is what `do`, `exec` and `run` have in common, said ONCE under
+// the group rather than three times inside it — twelve of this page's lines used
+// to be the same ladder printed under each verb, in the page whose own defect
+// row was that half of it was an environment table.
+//
+// IT IS A NAMED CONSTANT BECAUSE TWO READERS NEED IT. `aforge --help` prints it
+// under the group, and [usageForCommand] appends it to each of the three
+// per-command pages — which is where somebody writing a script actually looks,
+// and where taking it out of the group's lines had silently removed it. One
+// source of truth, two places it is read.
+var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
+  the job, exec does not plan, run follows a plan somebody saved. None of them
+  takes --yolo: they run with nobody watching and nothing in them stops to ask.
+  What do and run can still refuse is a plan whose price crosses your limit,
+  and --yes-spend answers that in advance. All three end the same way, and
+  why is in --json's stop field:
+  ` + foldedExitLadder(2, helpWidth) + `
+  AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release`
+
+var usageText = `aforge — an agent you talk to, and hand work to when you walk away
+
+Talk to it — a surface you sit in front of
+  aforge
+      open the conversation this directory was last having
+  aforge chat [--model slug] [--reasoning level] [--session path] [--yolo]
+              [--host host[:path]] [--at name[:path]] [--once "text"]
+              [--no-compact] [--one-model] [--no-host] [--debug]
+      --no-host runs the conversation in this process rather than on this
+      workspace's session host; --debug keeps the whole record of the run
+  aforge resume
+      pick an earlier conversation by name and open it — the same list is
+      /resume inside the chat
+
+Hand it work — nobody is watching, the answer is on stdout
+  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
+              [--json] [--yes-spend] [--model slug] [--plan-model slug]
+              [--context-fill 60] [--completion-reserve 65536] [--debug]
+      do one task and exit — the same living agent the chat runs, with nobody
+      watching. What you type is the goal, and it is run verbatim
+  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
+              [--token-budget N] [--timeout 15m] [--model slug]
+              [--context-fill N] [--completion-reserve N] [--json]
+              [--out file] [--debug]
+      run one worker for one pass, with no planning at all
+  aforge run  <program> --input <file.json|-> [--dir dir] [--model slug]
+              [--journal path] [--json]
+      run one saved program: typed input in, its typed output on stdout. A
+      question it was not told how to answer stops it rather than being guessed
+` + handWorkFooter + `
+
+Look at what happened — read-only, no key, nothing spent
+  aforge why self [--db path]
+      show today's self-spend receipts
+  aforge why <task-id> [--db path]
+      what one piece of work did — its turns, tools, arguments, how it ended
+  aforge logs [--tail 40] [--follow] [--path] [--json] [--run id]
+              [--call id] [--tag t] [--model m] [--node n] [--body id]
+      every model call aforge made — what was asked, which lane answered, what
+      came back. The filters are exact and combine; --json prints the rows as
+      they are on disk, --body one call's bodies. AFORGE_CALL_LOG=off is off
   aforge models
+      the models this machine will use, and what each has been measured at
+  aforge doctor [--db path]
+      is this install healthy, and where does it keep things
+  aforge manual
+      every page of aforge's own manual, one per line
+  aforge manual <page> | "<question>"
+      that page printed whole, or the sections that answer a question
+  aforge version
+      print the build this binary was cut from (--version and -v say the same)
+
+Housekeeping — changes state on disk or on the network
+  aforge cache
+      what the shared build cache holds, and how big it is
+  aforge cache clean [--yes]
+      delete ~/.aforge/cache to free disk. It prints the size and path, then
+      asks you to type "` + cacheCleanWord + `" — --yes skips that. Conversations are untouched
+  aforge rebuild [--db path] [--yes]
+      discard everything aforge worked out from the journal and replay it
+  aforge serve [--workspace path] [--relay url]
+      be reachable from your other devices without ssh, with a pairing code
+  aforge devices
+      list the devices paired with this machine
+  aforge devices revoke <name> [--all]
+      stop one device opening a conversation here; --all, every device of that
+      name
   aforge notebook [--db path]
+      what it has learned, and what it has been corrected on
   aforge notebook retract|restore <seq> [--db path]
   aforge competence [--db path] [--model slug]
+      what it has been measured as good at
   aforge services [--db path]
+      long-running processes it was asked to keep
   aforge services stop <name> [--db path]
-  aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
-  aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
-  aforge logs [--tail 40] [--follow] [--path] [--json]
-              [--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]
-                                every model call aforge made — what was asked, which lane
-                                answered, what came back, and which ones are still in
-                                flight. The filters are exact and combine; --json prints
-                                the rows as they are on disk; --body prints one call's
-                                recorded request and reply. Prompts are not in the line.
-                                AFORGE_CALL_LOG=off turns it off, or names a file.
-  aforge cache                  what the shared build cache holds, and how big it is
-  aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
-                                path, then asks you to type "clean" — --yes skips the
-                                question for scripts. Conversations are never touched.
-  aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
-  aforge why self [--db path]   show today's self-spend receipts
-  aforge why <node-id> [--db path]  show what one leaf actually did: its turns, the
-                                tools it called with what arguments, what came back,
-                                and how it ended
-  aforge manual                 every page of aforge's own manual, one per line
-  aforge manual <page>          print that page as it is written
-  aforge manual "<question>"    the sections that answer it, each labelled with the
-                                page and heading it came from. No key, no model call,
-                                nothing spent — the same pages the chat reads, whole.
-  aforge version                print the build this binary was cut from
-                                (--version and -v say the same thing)
+  aforge wake [--db path] [--timeout 2m]
+      run one full background pass by hand and exit
+  aforge help env
+      the environment table: every variable and its default
 
-Environment:
-  OPENROUTER_API_KEY   required
+Plan work by hand — a plan you can read, edit and diff
+  aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json]
+              [--instructions] [--passes auto|off|N] [--model slug]
+              [--plan-model slug]
+  aforge plan show <plan.json>
+  aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]
+              [--out plan.json] [--model slug] [--plan-model slug]
+  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json]
+              [--yes-spend] [--model slug] [--plan-model slug]
+      a plan written to a file, then executed exactly as written. It is not
+      what most people want: nothing learnt mid-flight moves a frozen plan
+
+Examples:
+    aforge                                open the conversation you were having
+    aforge do "add a health endpoint and a test for it"
+    aforge do "summarise CHANGELOG.md" --json | jq -r .answer
+    aforge logs --tail 20 --model anthropic/claude-opus-4
+    aforge chat --host devbox:~/src/api   the chat here, the work over there
+
+Every command answers ` + "`aforge <command> --help`" + ` with its own line and its flags.
+The environment table is ` + "`aforge help env`" + ` — every variable and its default.`
+
+// environmentText is the reference half of the old `--help`: every variable a
+// person can set, and what it defaults to.
+//
+// IT IS A VAR AND NOT A CONST FOR ONE REASON: the dollar figures are the real
+// defaults, interpolated from the constants that own them
+// ([config.DefaultDailyBudgetUSD] and the rest). They were typed out by hand
+// once, and every one of them was stale by the time somebody read it — which is
+// the one-source-of-truth law's own worked example.
+//
+// IT KEEPS THE SAME EIGHTY-CELL LAW AS [usageText]. A reference table is the
+// one page a person reads with their eyes rather than their memory, and this
+// one ran to a hundred and sixteen cells: a variable's name in one column and
+// its sentence soft-wrapped back under the name, which is the shape of a table
+// that has stopped being one. The name is at column 2 and the sentence at
+// column 23, or on the next line at column 23 when the name reaches past it.
+var environmentText = `aforge — the environment
+
+Every variable below is read at launch. A variable set here always wins over the
+` + "`/settings`" + ` sheet in the chat, and that row reads read-only in the sheet rather
+than fighting your shell.
+
+  OPENROUTER_API_KEY   a provider key, and the first of three places one is
+                       looked for — this, then OPENAI_API_KEY, then the key
+                       kept in your profile. Any one of them is enough, so a
+                       machine set up in the chat needs no variable at all;
+                       ` + "`aforge doctor`" + ` names the one that answered.
   AFORGE_MODEL         default ` + config.DefaultModel + `
   AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
-                       replans, contracts, and the delivery gate on a stronger
-                       model while a smaller one executes the leaves; --model
-                       and --plan-model do the same per run.
-  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel and
-                       calls cascade — cheapest model first, escalating when a
-                       verifier catches a failure. Either a comma-separated list
-                       of slugs, or a path to a JSON file:
-                         AFORGE_MODELS=google/gemma-3-12b-it,~deepseek/deepseek-v4-flash-latest,moonshotai/kimi-k2.6
-                         AFORGE_MODELS=~/.aforge/models.json
-                       Ratings accumulate in ~/.aforge/router-ledger.json across
-                       runs; see them with ` + "`aforge models`" + `.
+                       replans, working methods and the delivery gate on a
+                       stronger model while a smaller one does the steps;
+                       --model and --plan-model do the same per run.
+  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel
+                       and calls cascade — cheapest model first, escalating
+                       when a verifier catches a failure. Either a
+                       comma-separated list of slugs, or a path to a JSON file:
+                       AFORGE_MODELS=google/gemma-3-12b-it,~moonshotai/kimi-k2.6
+                       AFORGE_MODELS=~/.aforge/models.json
+                       Ratings accumulate in ~/.aforge/router-ledger.json
+                       across runs; see them with ` + "`aforge models`" + `.
   AFORGE_REASONING     planning calls: off (default), low, medium, high
-  AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
-  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall in seconds when --timeout is
-                       not passed. AFORGE_EXEC_BUDGET and AFORGE_EXEC_TURNS do
-                       the same for --budget and --turns. A flag that was typed
+  AFORGE_EXEC_REASONING
+                       executor calls: model default (unset), off, low, medium,
+                       high
+  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall when --timeout is not
+                       passed, as a duration or a bare number of seconds.
+                       AFORGE_EXEC_BUDGET and AFORGE_EXEC_TURNS do the same for
+                       --token-budget and --max-turns. A flag that was typed
                        always wins; these exist so a harness can set the walls
                        once for a campaign instead of on every call.
+  AFORGE_EXIT_CODES    ` + legacyExitCodesHelp + `
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
-  AFORGE_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total nodes
-  AFORGE_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  daily dollar rail (0 = unlimited)
+  AFORGE_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total steps
+  AFORGE_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  the day's spending limit in dollars (0 = unlimited)
   AFORGE_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
                        and waits for your word (0 = never asks)
-  AFORGE_IMAGE_MODEL          image-generation model (catalog-resolved by default)
-  AFORGE_SPEECH_MODEL         speech-synthesis model (catalog-resolved by default)
-  AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
-  AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
-  AFORGE_VISION_MODEL         image-inspection proxy model (talk/work/catalog-resolved by default)
-  AFORGE_DOC_ENGINE           auto (default), local, free, or ocr document-reading rung
-  AFORGE_PRACTICE_BUDGET  ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
-  AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
+  AFORGE_IMAGE_MODEL   image-generation model (catalog-resolved by default)
+  AFORGE_SPEECH_MODEL  speech-synthesis model (catalog-resolved by default)
+  AFORGE_MUSIC_MODEL   music-generation model (catalog-resolved by default)
+  AFORGE_VIDEO_MODEL   video-generation model (catalog-resolved by default)
+  AFORGE_VISION_MODEL  image-inspection proxy (talk, work, catalog-resolved)
+  AFORGE_DOC_ENGINE    auto (default), local, free or ocr document reading
+  AFORGE_PRACTICE_BUDGET
+                       ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
+  AFORGE_PRACTICE_IDLE 20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
                        carry its own work on (default none: it stops when the
@@ -330,21 +478,26 @@ Environment:
   AFORGE_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
                        alone is a budget; without one, --yolo is only the
                        approval posture it has always been.
-  AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
+  AFORGE_PREAUTHORIZE_SPEND
+                       1 spends past the day's limit without stopping a
+                       headless run to ask
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
-                       profiles, catalog, skills (default ~/.aforge). Move it to
-                       run a disposable brain that touches nothing of yours.
+                       profiles, catalog, skills (default ~/.aforge). Move it
+                       to run a disposable store that touches nothing of yours.
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default AFORGE_HOME)
   AFORGE_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
-                       "off" writes nothing; any other value is the file to write.
+                       "off" writes nothing; any other value is the file to
+                       write.
   AFORGE_CALL_LOG_BODIES=1
-                       also record each call's whole request and response — your
-                       prompts included. Off by default, and for one run at a time.
+                       also record each call's whole request and response —
+                       your prompts included. Off by default, and for one run
+                       at a time.
 
-  The user-facing knobs above — budgets, rhythm, the document rung, the vision
-  and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
-  them to the profile's config.json. A variable set here always wins, and that
-  row reads read-only in the sheet rather than fighting your shell.`
+The user-facing knobs above — budgets, rhythm, the document reader, the vision
+and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
+them to the profile's config.json.
+
+Run ` + "`aforge --help`" + ` for every command.`
 
 // usageDollars writes a default the way the table has always written it: the
 // shortest form that is still the same number, so 500 stays 500 and 2.5 stays
@@ -353,28 +506,102 @@ func usageDollars(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-func usage() error {
-	fmt.Println(usageText)
+// usage answers `aforge --help`, `-h` and `aforge help`. With `env` after it,
+// it prints the environment table instead — which is where the table went when
+// it stopped being two thirds of the front page.
+func usage(args []string) error {
+	// Through the same seam every per-command usage goes through (usage.go), so
+	// help is one stream and one thing a test can read back.
+	if len(args) > 0 && strings.TrimSpace(args[0]) == "env" {
+		fmt.Fprintln(usageOut, environmentText)
+		return nil
+	}
+	fmt.Fprintln(usageOut, usageText)
 	return nil
 }
 
-func runPlan(args []string) error {
-	flags := flag.NewFlagSet("plan", flag.ContinueOnError)
-	output := flags.String("o", "", "write the graph as JSON to this file")
-	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
-	briefs := flags.Bool("brief", false, "write a self-contained instruction for every leaf")
-	ensemble := flags.Int("ensemble", plan.EnsembleAuto, "0 decide from the goal, -1 never, N>=2 force N independent passes and merge them")
+// renamedTo runs an old spelling of a command and says, once and on stderr,
+// what it is called now.
+//
+// ASKING AN OLD SPELLING FOR HELP SAYS NOTHING. `--help` runs nothing, prints
+// the NEW spelling's own line out of the one table, and leaves with 0 — so a
+// developer probing `aforge show --help` is shown `aforge plan show` and a
+// Makefile that checks the binary is healthy still reads a clean stderr. The
+// notice is about a run; there is no run.
+func renamedTo(old, now string, args []string, door func([]string) error) error {
+	if !askedForHelp(args) {
+		sayRenamed(old, now)
+	}
+	return door(args)
+}
+
+// runPlanCommand is the four verbs of the static pipeline under the one noun
+// they all act on, and the old top-level spelling of the first of them.
+//
+// `aforge plan "<goal>"` was the whole command; it is `aforge plan new
+// "<goal>"` now, and the bare form still works for one release. The two are
+// told apart by the word itself: a lone `new`, `show`, `revise` or `run` in the
+// first position is a subcommand and anything else is the goal, which is the
+// same reading `aforge cache clean` already has.
+func runPlanCommand(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "new":
+			return runPlanNew("plan new", args[1:])
+		case "show":
+			return runShow("plan show", args[1:])
+		case "revise":
+			return runRevise("plan revise", args[1:])
+		case "run":
+			return runGraph("plan run", args[1:])
+		}
+	}
+	// `aforge plan --help` is a question about the group, so it answers with all
+	// four lines rather than with `plan new`'s alone.
+	if askedForHelp(args) {
+		return commandHelp("plan")
+	}
+	if len(args) == 0 {
+		// Nothing was spelled the old way, so there is nothing to say about a
+		// spelling. `aforge plan` alone answers the way it always did — the
+		// goal is missing, and here is the shape it wanted — reading a piped
+		// goal first if one is there.
+		return runPlanNew("plan new", args)
+	}
+	return renamedTo(`plan "<goal>"`, `plan new "<goal>"`, args,
+		func(args []string) error { return runPlanNew("plan new", args) })
+}
+
+func runPlanNew(name string, args []string) error {
+	flags := commandFlags(name)
+	output := flags.String("out", "", "write the plan as JSON to this file")
+	shorthandFlag(flags, "o", "out")
+	asJSON := flags.Bool("json", false, "print the plan as JSON instead of a table")
+	// `--brief` was the name of the thing this writes and not of what it does.
+	// What it writes is a self-contained instruction for every step, which is
+	// what the flag is called now.
+	briefs := flags.Bool("instructions", false, "write a self-contained instruction for every step")
+	renamedFlag(flags, "brief", "instructions")
+	// A TRI-STATE IS WORDS, NEVER MAGIC INTEGERS. This was `--ensemble 0|-1|N`,
+	// where 0 meant "decide for me" and -1 meant "never" — a code-shaped API in
+	// which `--ensemble 1` had no meaning at all.
+	passes := passesFlag{count: plan.EnsembleAuto}
+	flags.Var(&passes, "passes", "how many independent passes to plan with and merge: auto, off, or a number from 2")
+	renamedFlag(flags, "ensemble", "passes")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
-	// The same -w that run takes, and it means the same directory. Plan runs
-	// before run in the headless pipeline, so there is no workspace yet unless
-	// the person naming the goal also names the material it is about — which is
+	// The same --dir that `plan run` takes, and it means the same directory.
+	// Planning happens before running, so there is no workspace yet unless the
+	// person naming the goal also names the material it is about — which is
 	// exactly when the material is worth looking at.
-	workspace := flags.String("w", "", "directory holding the material this goal is about, read once to ground the plan")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	workspace := flags.String("dir", "", "directory holding the material this goal is about, read once to ground the plan")
+	shorthandFlag(flags, "w", "dir")
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
-	goal, err := readText(flags.Args())
+	noteRenamedFlags(flags)
+	ensemble := &passes.count
+	goal, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		return err
 	}
@@ -402,24 +629,27 @@ func runPlan(args []string) error {
 	store := installMeasuredRulers(settings, settings.Model)
 
 	if !*asJSON {
-		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
-		fmt.Println(seats.Report())
+		// Every line of it is an aside: the answer this door gives is the PLAN,
+		// and a preamble in front of it is what broke `aforge plan new "x"
+		// --json | jq` (streams.go).
+		fmt.Fprintf(aside, "goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
+		fmt.Fprintln(aside, seats.Report())
 		if settings.PlanSplit() {
-			fmt.Printf("sized for: %s (the work model this ruler measures)\n", settings.Model)
+			fmt.Fprintf(aside, "sized for: %s (the work model this ruler measures)\n", settings.Model)
 		}
 		if spread := store.Measure(); spread.Samples > 0 {
 			calibrated := "built-in"
 			if strings.TrimSpace(store.Anchors) != "" {
 				calibrated = "calibrated"
 			}
-			fmt.Printf("ruler:  %s, from %d measured tasks (%d-%d turns, median %d)\n",
+			fmt.Fprintf(aside, "ruler:  %s, from %d measured tasks (%d-%d turns, median %d)\n",
 				calibrated, spread.Samples, spread.MinTurns, spread.MaxTurns, spread.Median)
 		}
-		fmt.Println()
+		fmt.Fprintln(aside)
 	}
 	report := func(pass string, elapsed time.Duration, detail string) {
 		if !*asJSON {
-			fmt.Printf("  %-8s %-22s %s\n", pass, detail, elapsed.Round(10*time.Millisecond))
+			fmt.Fprintf(aside, "  %-8s %-22s %s\n", pass, detail, elapsed.Round(10*time.Millisecond))
 		}
 	}
 	history := openDefaultHistory()
@@ -431,7 +661,11 @@ func runPlan(args []string) error {
 		// Rendered here rather than inside the build, and rendered once: the
 		// snapshot is frozen for the whole build, and an unset -w renders the
 		// empty string, which leaves every prompt exactly as it was.
-		Terrain:      plan.RenderTerrain(*workspace, goal),
+		Terrain: plan.RenderTerrain(*workspace, goal),
+		// The directory that terrain was drawn from, so the material the goal
+		// and its nodes name is measured rather than guessed at. See
+		// plan/reach.go.
+		Workspace:    *workspace,
 		SpineSamples: settings.SpineSamples,
 		// The window this document is planned through, so a later revision of
 		// it is sized from the same fact.
@@ -448,7 +682,7 @@ func runPlan(args []string) error {
 		Progress:   headlessPlanProgress(os.Stderr),
 		OnReady: func(node plan.Node, elapsed time.Duration) {
 			if !*asJSON {
-				fmt.Printf("    ready   %-22s %s\n", clip(node.Title, 22), elapsed.Round(10*time.Millisecond))
+				fmt.Fprintf(aside, "    ready   %-22s %s\n", clip(node.Title, 22), elapsed.Round(10*time.Millisecond))
 			}
 		},
 	})
@@ -459,7 +693,53 @@ func runPlan(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nwarning: %v\n", err)
 	}
 	gatePlanDivision(graph, goal)
-	return emit(graph, *output, *asJSON)
+	if err := emit(graph, *output, *asJSON); err != nil {
+		return err
+	}
+	// A GRAPH THAT STILL CARRIES A SIZING REFUSAL IS NOT A SETTLED PLAN, AND
+	// THE DOOR MAY NOT SAY IT IS. The graph is written and printed either way —
+	// a plan with one leaf too big for the worker that will run it is still the
+	// best account of the goal anyone has, and a caller that wants to look at it
+	// or hand it to `run` must be able to. What changes is the answer to `$?`,
+	// the one thing a harness reads: a node the ruler put past one worker's
+	// reach and the passes then left whole is an unfinished piece of planning,
+	// and exit 0 over it reads as "planned" to every script and every bench.
+	// Measured: the door exited 0 on 103 of 273 draws holding exactly this.
+	//
+	// It is exitIncomplete rather than a failure because that is what it is —
+	// it ran, something usable is above, and part of what was asked for does
+	// not stand — and the reason is printed on stderr so stdout stays the plan.
+	// #424 wrote this as `exitPartial`, which was rung 2 of `do`'s own table;
+	// it is rung 2 of the ONE ladder now and the constant moved with it
+	// (envelope.go).
+	if refused := unsettledSizing(graph); len(refused) > 0 {
+		fmt.Fprintln(os.Stderr)
+		for _, node := range refused {
+			fmt.Fprintf(os.Stderr, "not settled: %s — %s\n", node.Title, node.Undivided)
+		}
+		return exitIncomplete
+	}
+	return nil
+}
+
+// unsettledSizing lists the work nodes a finished graph still carries an
+// unresolved sizing refusal on: measured past what one worker holds, and then
+// left whole for a reason journaled on the node — nobody could name two pieces
+// for it, the division gave back the node again, the depth ceiling arrived
+// first. Every one of those is a piece of planning that did not finish.
+//
+// A node with no reason on it is not one of these. An oversized leaf can be
+// left whole deliberately — the split gate collapsing a graph writes its own
+// sentence and takes the responsibility — and what this reads is the refusal,
+// not the size.
+func unsettledSizing(graph *plan.Graph) []plan.Node {
+	var refused []plan.Node
+	for _, node := range graph.Nodes {
+		if node.Kind == plan.KindWork && node.Size == plan.SizeOversized && node.Undivided != "" {
+			refused = append(refused, node)
+		}
+	}
+	return refused
 }
 
 // runRevise takes no -w and renders no terrain of its own, which is deliberate
@@ -469,19 +749,21 @@ func runPlan(args []string) error {
 // reads the same shared preamble every other pass does. What the reviser is
 // actually missing is not the picture but the difference between that picture
 // and the workspace now, and a delta is a different thing from a snapshot.
-func runRevise(args []string) error {
-	flags := flag.NewFlagSet("revise", flag.ContinueOnError)
-	output := flags.String("o", "", "write the revised graph as JSON to this file")
-	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
-	done := flags.String("done", "", "mark these node ids finished before revising")
+func runRevise(name string, args []string) error {
+	flags := commandFlags(name)
+	output := flags.String("out", "", "write the revised plan as JSON to this file")
+	shorthandFlag(flags, "o", "out")
+	asJSON := flags.Bool("json", false, "print the plan as JSON instead of a table")
+	done := flags.String("done", "", "mark these step ids finished before revising")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model ("+planLadderHelp+")")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	rest := flags.Args()
 	if len(rest) < 2 {
-		return fmt.Errorf("usage: aforge revise <graph.json> \"<what happened>\"")
+		return fmt.Errorf("usage: aforge plan revise <plan.json> \"<what happened>\"")
 	}
 	data, err := os.ReadFile(rest[0])
 	if err != nil {
@@ -520,8 +802,8 @@ func runRevise(args []string) error {
 	ctx := settings.Context(context.Background(), graph.Goal)
 
 	if !*asJSON {
-		fmt.Printf("goal:   %s\nevent:  %s\n", graph.Goal, event)
-		fmt.Printf("%s\n\n", seats.Report())
+		fmt.Fprintf(aside, "goal:   %s\nevent:  %s\n", graph.Goal, event)
+		fmt.Fprintf(aside, "%s\n\n", seats.Report())
 	}
 	start := time.Now()
 	operations, usage, err := plan.Revise(ctx, client, graph, event)
@@ -532,15 +814,21 @@ func runRevise(args []string) error {
 	graph.Usage.Cost += usage.Cost
 
 	if !*asJSON {
-		fmt.Printf("  revise   %-22s %s\n\n", plural(len(operations), "operation"), time.Since(start).Round(10*time.Millisecond))
+		fmt.Fprintf(aside, "  revise   %-22s %s\n\n", plural(len(operations), "operation"), time.Since(start).Round(10*time.Millisecond))
 		renderOperations(operations)
 	}
 	return emit(graph, *output, *asJSON)
 }
 
-func runShow(args []string) error {
+func runShow(name string, args []string) error {
+	// `aforge show --help` used to answer `open --help: no such file or
+	// directory` — a filesystem error about a flag — because this door parses
+	// no flags at all and read the argument as a path (usage.go).
+	if askedForHelp(args) {
+		return commandHelp(name)
+	}
 	if len(args) < 1 {
-		return fmt.Errorf("usage: aforge show <graph.json>")
+		return fmt.Errorf("usage: aforge plan show <plan.json>")
 	}
 	data, err := os.ReadFile(args[0])
 	if err != nil {
@@ -550,7 +838,7 @@ func runShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("goal:   %s\n", graph.Goal)
+	fmt.Fprintf(aside, "goal:   %s\n", graph.Goal)
 	return emit(graph, "", false)
 }
 
@@ -570,7 +858,10 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 	}
 	render(graph)
 	if output != "" {
-		fmt.Printf("\nwritten to %s\n", output)
+		// The receipt for a file is not the plan, so it is an aside: a person
+		// who redirected the table wants the table in the file and the sentence
+		// about it on their terminal.
+		fmt.Fprintf(aside, "\nwritten to %s\n", output)
 	}
 	return nil
 }
@@ -585,29 +876,41 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 // person who typed `aforge do` with nothing after it used to get a process
 // silently reading their keyboard forever, which reads exactly like a program
 // that has crashed. They get the usage instead.
-func readText(args []string) (string, error) {
+// The command's name is carried in so the miss can answer with THAT command's
+// one line. It used to answer with the whole table — a hundred and twenty-seven
+// lines, the environment included — for the sake of one missing quoted string,
+// and the one line that mattered scrolled off the top of the terminal.
+func readText(name string, args []string) (string, error) {
 	if len(args) == 1 && args[0] == "-" {
-		return readPipedText()
+		return readPipedText(name)
 	}
 	if len(args) > 0 {
 		return strings.TrimSpace(strings.Join(args, " ")), nil
 	}
 	if stdinIsTerminal(os.Stdin) {
-		return "", fmt.Errorf("no goal given\n\n%s", usageText)
+		return "", noGoalGiven(name)
 	}
-	return readPipedText()
+	return readPipedText(name)
 }
 
-func readPipedText() (string, error) {
+func readPipedText(name string) (string, error) {
 	piped, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return "", err
 	}
 	text := strings.TrimSpace(string(piped))
 	if text == "" {
-		return "", fmt.Errorf("no goal given\n\n%s", usageText)
+		return "", noGoalGiven(name)
 	}
 	return text, nil
+}
+
+func noGoalGiven(name string) error {
+	shape := usageForCommand(name)
+	if shape == "" {
+		return fmt.Errorf("no goal given\n\nrun `aforge --help` for every command.")
+	}
+	return fmt.Errorf("no goal given\n\n%s\n\nrun `aforge --help` for every command.", shape)
 }
 
 // reorder moves flags ahead of positional arguments. Go's flag package stops
@@ -729,6 +1032,61 @@ const (
 	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
 	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
 )
+
+// yesSpendFlagHelp is what `--yes-spend` MEANS, said once, on both doors that
+// carry it.
+//
+// `do` used to describe it as "approve a plan whose price crosses the consent
+// threshold" and `plan run` as "preauthorize raising today's dollar rail when
+// reached". Those read as two different decisions, so a developer who set the
+// flag on both could not tell which one they had authorised — and it is one
+// flag doing one thing: spending past a limit without stopping to ask. `rail`
+// went with the second sentence; it is machinery vocabulary, and the thing it
+// names is the day's spending limit.
+const yesSpendFlagHelp = "spend past today's limit and past the plan-price question, without stopping to ask"
+
+// storeFlagHelp is what `--db` names, said once on the eight doors that take it.
+//
+// Six of them said "path to the durable graph database", which is two words for
+// one file and one of them — `graph` — is how the ENGINE thinks. A developer
+// looking for where their data lives searches for a store, and `aforge doctor`
+// now labels the same file that way.
+const storeFlagHelp = "the store to work in"
+
+// debugFlagHelp is what `--debug` keeps AND WHERE IT PUTS IT, said once on the
+// three doors that carry it.
+//
+// It read `in a folder of its own under the state root`, which names no folder
+// at all — and the state root has two of them. The developer who turned the
+// switch on went to `~/.aforge/runs/aforge-do-<n>/`, which is where the run's
+// own line on stderr had just pointed them for a DIFFERENT thing (the graph
+// scratch `--keep` holds), found nothing but a `graph.db`, and concluded the
+// record was never written. It had been: the record is a sibling of the
+// model-call log, under `logs/trace/<run>/`, and the run announces the exact
+// path on stderr when it has written one (internal/trace's Announce).
+//
+// SO THE SENTENCE NAMES THE PLACE, and names it from the constants that own it
+// rather than from a path typed here — a folder that moves and a help page that
+// does not is exactly how this sentence went wrong the first time.
+//
+// It is a function and not a constant because the root MOVES: internal/home
+// reads AFORGE_HOME, so the answer is only right once the environment the door
+// was started with has been read. A package-level string would be computed at
+// init and would name somebody else's path for the rest of the process.
+func debugFlagHelp() string {
+	return "keep the full record of this run — call bodies, tool calls and the choices " +
+		"made — in a folder of its own under " + debugRecordRoot() + " (env AFORGE_DEBUG)"
+}
+
+// debugRecordRoot is where the debug records go, as a person would type it:
+// tilde-shortened when it really is under their home, and absolute otherwise.
+func debugRecordRoot() string {
+	root := home.Join(trace.DirName, trace.TraceDirName)
+	if house, err := os.UserHomeDir(); err == nil && house != "" && strings.HasPrefix(root, house+string(filepath.Separator)) {
+		return "~" + root[len(house):]
+	}
+	return root
+}
 
 // applySeats puts the ladder's answer where the rest of the process reads its
 // two models.

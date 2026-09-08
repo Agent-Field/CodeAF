@@ -40,11 +40,16 @@ func oneFigureLab(t *testing.T) *app {
 }
 
 // moneySegment is what the status line's own money segment draws.
+// The FIGURE is what this asks for, and the segment's own room is taken off it:
+// the live line right-aligns the bill inside the width its spellings need so the
+// row does not move around it (render.go's [costCell]), and that reservation is
+// space rather than any surface's answer to "what did this cost".
 func moneySegment(t *testing.T, a *app) string {
 	t.Helper()
 	for _, part := range a.telemetry(a.width) {
 		if part.kind == segCost {
-			return part.text
+			_, figure := splitReserve(part.text)
+			return figure
 		}
 	}
 	t.Fatalf("the status line drew no money segment at %d columns", a.width)
@@ -96,7 +101,8 @@ func TestTheFourSpendSurfacesRenderOneFigure(t *testing.T) {
 		t.Fatalf("read the ledger: %v", err)
 	}
 	now := time.Now()
-	reading := readSpend(lines, session.LastDays(now, spendWindowDays), now)
+	reading := readSpend(lines, session.LastDays(now, spendWindowDays), now).
+		todayed(spendDayTotal(lines, now))
 	row := plain(reading.railsRow(a.width, newPalette(tokens.NoColor, false)))
 	if !strings.Contains(row, want) {
 		t.Fatalf("the /spend place's pointer line reads %q, want it to carry %q", row, want)

@@ -1,0 +1,22 @@
+Usage of run:
+  -budget int
+    	token budget per leaf — the limit that actually binds (default 150000)
+  -contracts
+    	write a per-leaf working method before executing (default true)
+  -j int
+    	how many leaves may run at once (default 32)
+  -model string
+    	work model for this run (flag › AFORGE_MODEL › crew › default)
+  -o string
+    	write the completed graph as JSON to this file
+  -plan-model string
+    	model for briefs, contracts, and recalibration, when different from the work model (flag › AFORGE_PLAN_MODEL › crew mastermind › the work model)
+  -run-budget int
+    	global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)
+  -turns int
+    	runaway backstop on iterations per leaf (clamped to the executor's own backstop) (default 200)
+  -w string
+    	workspace directory (default ./aforge-run-<goal hash>)
+  -yes-spend
+    	preauthorize raising today's dollar rail when reached
+error: flag: help requested

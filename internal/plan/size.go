@@ -208,9 +208,15 @@ Also return split_into for every node:
   permits", "competitor pricing" — a name, not a sentence, and never a copy of
   the node's own summary or of the things it must touch.
 - Name a piece only if it is real: something an agent could work on knowing
-  nothing about the others, producing a result of its own. If the inside of the
-  node is a sequence, or if you would only be restating it in smaller words,
-  there are no pieces.
+  nothing about the others, producing a result of its own. If you would only be
+  restating the node in smaller words, there are no pieces.
+- Where the inside of an oversized node is a sequence, name the ordered stages it
+  passes through instead — one short label each, in the order they happen. Say
+  them here because this is the only place the node has to say what it is made
+  of, and a node too large to be carried to an end in one sitting is divided
+  whether or not anything in it runs at the same time. Nothing reads this list as
+  a claim that they are simultaneous. Where you cannot name two stages either,
+  the list is empty.
 - Where the node's own words, or the things it says it must touch, already
   enumerate units that stand apart, the pieces are that enumeration: one unit
   each, or an even batch of them each when the units are many. Do not halve an
@@ -334,6 +340,14 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 		}
 		node.Size = SizeAtomic
 	}
+	// And last, the one verdict on this pass that is not the model's to give.
+	// The prompt above asks whether a node can be brought to an end inside what
+	// one worker holds; where the node names its own material and that material
+	// has been weighed, the answer is already known and a judgment against it is
+	// simply wrong. See correctBeyondReach in reach.go — which is also where the
+	// other half of that law lives, the half that leaves a correctly divided
+	// lane alone.
+	correctBeyondReach(graph)
 	return usage, joinErrors(failures)
 }
 

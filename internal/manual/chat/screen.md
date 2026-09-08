@@ -270,6 +270,10 @@ when that turn also has a foreground command that can be kept, or `↑↓ · ent
 while a list is open. A waiting message changes the final clause to
 `esc stops and drops`; with neither words nor a picture the send clauses are absent.
 
+**A question that cannot remember its answer loses the `a always` clause**, on this line and
+on the offer above it: a stuck turn is asked about with a scope aforge cannot save, so the
+key would do nothing and neither line names it. The slot reads `y allow · n deny` there.
+
 It only ever names a key that **works right now**, and that includes the terminal: the
 `shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
 plain `enter`, because a hint for a key that could never arrive would be the surface lying
@@ -282,6 +286,12 @@ The running-turn clauses always have this order: send, `shift+enter`, background
 When the right side is tight, aforge removes whole clauses from the right until the line
 fits. At 70 columns at least the first fitting clause remains; a running turn never loses
 the slot merely because every clause would not fit.
+
+**Under 70 columns the LEFT end gives up the branch and the slot keeps its keys.** A branch
+is on the shell prompt in the pane behind this one; `/ commands` is written nowhere else on
+a frame that narrow, and this line used to go blank at both ends there — a rule with nothing
+on it, at the width where being told about `/` matters most. Only a frame with no room for a
+label at either end falls back to the plain rule.
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -364,7 +374,7 @@ What steps up, in the lines you will see it in:
 | the legend's hint slot | the key, never the verb beside it |
 | `/help` | the key at the head of each row, never its explanation |
 | `/status` and `/cost` | the figure in the second column, never its label |
-| the opening `esc interrupts · ctrl+c twice quits` | the two keys |
+| the opening `esc interrupts · ctrl+c twice quits · ? for help` | the three keys |
 
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
@@ -611,6 +621,13 @@ Other honest silences: the context percentage is dropped below 1% rather than sh
 "saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
 fraction of a cent is not rounded away to nothing.
 
+**A real amount is never drawn as zeros.** Every price on this screen is written to cents
+above a cent (`$1.63`), to four decimals under one (`$0.0052`), and as `<$0.0001` under a
+hundredth of a cent — because `$0.0000` is four zeros on a screen that has taught you a
+zero means nothing happened, and a turn that spent six millionths of a dollar spent
+something. The limits on the Spending tab are written by the same rule, with whole dollars
+where the figure a person typed was whole (`$500`).
+
 ## The state word: idle, working, stopping, waiting
 
 The last segment of the status line is the one thing true of the whole row. The exact
@@ -755,6 +772,42 @@ On top of those eight: preview blocks under a pending call are capped at 4 rows 
 12; there is no task rail column (that already went at 100); and the legend has already
 dropped its hint slot and its branch (that went at 70).
 
+## What the top line of home drops when it is narrow — the clock goes first
+
+Home's top line is the program's name on the left and the machine's vital signs on the
+right:
+
+```
+ aforge          2 want you · 4 moving · $0.55 / $20.00 · thu 1:11pm
+```
+
+When there is not room for all of it, the segments give way **one at a time, in a fixed
+order**, exactly the way the status line's do:
+
+```
+clock → the allowance ($20.00) → the day's spend → moving → want you
+```
+
+So the clock is the first thing off the line and `2 want you` is the last. The reason is
+one sentence: the terminal's own bar, the window and the wall clock all say what time it
+is, and nothing anywhere else says that two things have stopped and will not move until
+you look — a cell that could carry either carries the one you can only get here. Within
+that, `want you` outranks `moving` because a stopped thing needs you and a moving one does
+not, and the day's spend outranks the allowance because a figure is a fact and a fraction
+is that fact plus a bound.
+
+**The allowance goes by respelling, not by slicing.** `$0.55 / $20.00` becomes `$0.55` —
+never `$0.55 /` and never a bound with nothing in front of it. And when the money segment
+goes entirely there is **no `$` left on the line at all**: a narrow top line never says
+`$0.00`, because that would be the line reporting a figure it had actually given up on.
+(The one `$0.00` on the whole surface is the live status line of a conversation, so its
+segments do not jump sideways as the first money arrives. It is a different line.)
+
+**The name never gives way.** A window too narrow even for `2 want you` beside it draws
+` aforge` alone. This used to be all-or-nothing — everything, or the name by itself — so a
+sixty-column window spent twelve cells on `thu 12:01am` and then, one segment later, said
+nothing about the machine whatsoever.
+
 ## Other width thresholds worth knowing
 
 Beyond the four tiers, these are the exact points where parts of the screen give way:
@@ -849,7 +902,11 @@ build  1265feda (dirty) built 2026-08-27 13:28
 ```
 
 `aforge --version`, `aforge version` and `aforge -v` print the same identity without
-opening a conversation. On a session opened with `--host`, `/status` names the build on
+opening a conversation, on one line, with the Go toolchain and the platform after it —
+`aforge 1265feda (dirty) built 2026-08-27 13:28 · go1.26.5 darwin/arm64` — which is what a
+defect report needs. A binary built with a bare `go build` rather than `make build` carries
+no revision at all, and says so: `aforge dev (no revision stamped — built without `make
+build`) · go1.26.5 darwin/arm64`. On a session opened with `--host`, `/status` names the build on
 the machine holding the conversation, not the surface machine's build.
 
 If the `aforge` file is rebuilt while this process is still open, aforge writes one quiet
@@ -885,7 +942,9 @@ another. What is supported:
   **backticks come back** rather than ordinary code reading as prose.
 - **Fenced and indented code blocks** — syntax-highlighted at 256 colours and above,
   ordinary text below. Drawn at the full width, because a figure is looked at, not read
-  along.
+  along. **A line too long for the frame wraps rather than being cut**, at every width:
+  there is no horizontal scroll anywhere on this screen, so a cut line was a line that
+  could not be read, copied or trusted. See "Long lines inside a fence" below.
 - **Lists** — bullets and ordered. Wrapped items hang under their own first word, never
   under the marker. An ordered list sizes its column to its widest number, so `9.` and
   `10.` share a right edge. Tight lists get no gaps between items.
@@ -920,6 +979,36 @@ and the painting is aforge's own token layer.
 
 Every byte of a reply is sanitised and any surviving escape sequence is stripped, so a
 reply cannot paint itself a heading.
+
+## The reply pops in as a block instead of streaming smoothly — why it writes in
+
+A model that is writing to you a few characters at a time is drawn a few characters at a
+time: whatever the connection hands over, you see, as it lands. Nothing is held back and
+no delay is added.
+
+What used to pop is the other case — a **paragraph that arrives in one piece**, because
+the endpoint buffered it or the connection stalled and then dumped what it had been
+holding. Those bytes are kept; what you see is the growing edge writing them in over a
+fraction of a second, fast at first and finer at the end. A few characters land on the
+instant so the edge is already moving.
+
+**A finished or stopped answer is always whole.** The moment the turn ends — it finished,
+you pressed `esc`, a call started under it — anything still being written in appears at
+once. There is no state in which a reply is left half-drawn.
+
+The thinking window and an `ask here` reply on home behave the same way. A screen-reader
+session never paces: every byte lands the moment it is known.
+
+## Why the reply still jumps — a blob of text arrives all at once
+
+That is the connection, not the screen, and the screen softens it. A stalled wire that
+then dumps a paragraph is drawn as the growing edge writing that paragraph in over a
+fraction of a second rather than as one block appearing. A stream that is genuinely
+arriving word by word is drawn word by word, with nothing held back — the surface never
+slows down text the connection delivered quickly.
+
+If a reply seems to hang and then land whole, that gap is the model or the network. The
+status line's `working` word and the elapsed clock are what to read for it.
 
 ## Markdown while a reply is still arriving
 
@@ -1088,20 +1177,36 @@ What happens to it:
 While something is waiting, the hint slot in the legend ends with
 `esc stops and drops` instead of `esc interrupt`.
 
+## Long lines inside a fence — code cut off at the edge, the tail of a line missing, `↳`
+
+**A code line longer than the frame wraps, at every width.** It is rendered two cells
+narrower than the column, and those two cells hold a dim `↳ ` on every row that continues
+a source line. The marker sits outside the code plane, so it can never be mistaken for
+something the code said. Breaks prefer a space in the back half of the row and go
+mid-token when there is none — a 40-cell URL in a 30-cell column has no break in it.
+
+Copying takes the block whole: `a` in copy mode selects the run of code rows around the
+cursor, wrapped rows included, and the paste carries neither the hairline nor the `↳`.
+
+This used to be true only under 60 columns. Above it a long line was **cut** — with an
+ellipsis at some widths and with nothing at all at others — so the same answer was whole
+in one window and truncated in the next. There is no key that pans a block sideways and
+never was, so the cut simply lost the bytes.
+
+A URL or a path is not broken at the reading measure. A link is something you copy
+whole, not something you read along, so one too long for the measure is left on a row of
+its own and given the width of the whole column. Only a token longer than the column
+itself is broken, and then at the column, flush against the divider — the same place a
+fence, a table and a quoted passage already break.
+
 ## Markdown at phone width
 
-Phone width (under 60 columns) is the one tier where markdown is not the prose
-renderer's byte-for-byte output. Every tier above it renders exactly as it always has.
+Phone width (under 60 columns) is the tier where a **table** is not the prose renderer's
+byte-for-byte output. Every tier above it renders one as it always has.
 
 The document is scanned for two shapes, **at column zero only** — a top-level fenced
-code block and a top-level GFM table. Those two are rendered differently; everything
-else goes straight to the ordinary renderer.
-
-- **Fenced code wraps instead of truncating.** It is rendered two cells narrower than
-  the column, and those two cells hold a dim `↳ ` on every row that continues a source
-  line. The marker sits outside the code plane, so it can never be mistaken for
-  something the code said. Breaks prefer a space in the back half of the row and go
-  mid-token when there is none — a 40-cell URL in a 30-cell column has no break in it.
+code block and a top-level GFM table. The fence is re-laid-out at every width (above);
+the table only here; everything else goes straight to the ordinary renderer.
 - **Tables stack** as one `key: value` line per cell, with one blank row between
   records. The header travels with each cell rather than standing once at the top. Empty
   cells are dropped. The key is bolded unless the header already carries markup. Each
@@ -1109,8 +1214,8 @@ else goes straight to the ordinary renderer.
   and their links.
 
 Limits: a fence indented inside a list item or a blockquote is **not** pulled out. It
-stays in its prose segment and is cut, exactly as at every other width. This is a
-deliberate gap. Below 8 content cells the wrap is abandoned and the fence is rendered
+stays in its prose segment and is cut. This is a deliberate gap, and it is the one place a
+code line is still truncated. Below 8 content cells the wrap is abandoned and the fence is rendered
 whole. Cells past the header's width are dropped, as GFM does. A header with no rows
 under it renders as the list of column names.
 
@@ -1365,15 +1470,19 @@ ever — a column of ticks is a column you must read to learn nothing. In the
 screen-reader tier the marks are `o` queued, `*` running, `x` failed, `.` idle; `?` is
 already ASCII.
 
-At most **3** calls of a turn stay on screen. The rest fold into one line reading
-`↳ 1 earlier tool call · ctrl+o` or `↳ N earlier tool calls · ctrl+o`. Press `ctrl+o`
-or click the line to unfold. Three is the number you can hold without reading: the call
-that is running and the two it followed.
+Calls in one step fold under a short **caption** — one sentence of about 5 to
+10 words saying what that step is doing and where, with the honest call count
+at the right. On a narrow window the caption wraps onto the next line; it is
+never cut with an ellipsis mid-sentence. Press `ctrl+o` on the live caption or
+click it to show the tool rows. A caption can be wrong; the rows beneath it are
+the truth. Before a long live run has a caption, at most **3** calls stay on
+screen and the rest use the fallback `↳ 1 earlier tool call · ctrl+o` or
+`↳ N earlier tool calls · ctrl+o`.
 
-A **task's page** keeps more — as many calls as the window is tall — and its fold line
-reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there scrolling up at the
-top of the page opens it too. The conversation's fold only ever opens with `ctrl+o` or a
-click.
+A **task's page** keeps more in that no-caption fallback — as many calls as the window is
+tall — and its line reads `↳ N earlier tool calls · scroll up or ctrl+o`, because there
+scrolling up at the top of the page opens it too. The conversation's fallback only ever
+opens with `ctrl+o` or a click.
 
 ## What a tool row says, part by part
 
@@ -1455,7 +1564,7 @@ above. It does not any more.
 **To see the whole command, open the call**: click the row anywhere along its length, or
 select it with `↑`/`↓` and press `enter`. The same gesture closes it again. That is per
 call — opening one leaves its neighbours alone — and it is different from `ctrl+e`, which
-folds or unfolds a whole turn's worth of work at once. See *Seeing more of a tool call*.
+opens the newest work chip onto its caption outline. See *Seeing more of a tool call*.
 
 Resizing the terminal re-cuts every row to the new width. Widen the frame past the length
 of the command and the `…` goes away on its own.
@@ -1512,10 +1621,11 @@ Three different figures of time, and never two of them at once.
 
 **Count-up (running)** — the age beside the spinner: `12s`, `1m 4s`, `12m 30s`. Spaced
 (`1m 5s`, not `1m05s`) because it is read while it moves. Nothing is drawn under 1
-second.
+second, and a rung whose remainder is zero is dropped rather than padded — `6m`, never
+`6m 0s`.
 
 **Countdown (a bounded call)** — only `bash`, and only a foreground `bash`, is bounded.
-More than 10 seconds out, the bound is stated beside the age as `1m 12s / 2m 0s`, dim.
+More than 10 seconds out, the bound is stated beside the age as `1m 12s / 2m`, dim.
 Within **10s** the remainder replaces the bound: `1m 52s · 8s left` in the warn hue.
 Within **5s** the remainder goes to the bad hue. Only the remainder is tinted; the age
 stays dim. It rounds up, and a passed bound says `0s left` rather than a negative
@@ -1592,8 +1702,8 @@ lifts the cap.
 **The whole line is the door** — anywhere along it, from the rail to the frame's right
 edge, and the whole line lights up under the pointer to say so. `↑`/`↓` and `enter` reach
 the same door with no pointer at all, and `enter` again closes the call. This opens **one
-call**; `ctrl+e` folds and unfolds a whole turn's machinery, and `ctrl+o` is the run of
-earlier calls a cluster folded away.
+call**; `ctrl+e` opens the newest work chip onto its caption outline, and `ctrl+o` opens
+the live caption's rows or the no-caption fallback of earlier calls.
 
 What you get, per tool, each with its own line cap:
 
@@ -1962,7 +2072,7 @@ question hue inside a conversation**.
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
 cursor, the room you are standing in, the spinner, `waiting on you`, the tab you are on.
-Headings and section labels do not: the `openaf` wordmark in the welcome box, the name on
+Headings and section labels do not: the `aforge` wordmark in the welcome box, the name on
 home's top line, and every band heading on a card are **structure**, and
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
@@ -2365,7 +2475,12 @@ layer holding the wire, never guessed by the screen:
 | `trying again` | the same question is being asked again with one field dropped from it |
 | `switching` | a second machine is being asked the same question while the first is still live |
 
-They read like this, with a clock counting up from the moment that phase began:
+They read like this, with a clock counting up from the moment **the wait** began — not
+from the moment the phase changed. A handshake, the queue before the first word, a pacing
+wait, a retry, a rescue and a fallback model are one wait wearing different words, and the
+number goes on climbing across all of them. It never counts backwards. A stage of WORK —
+`thinking`, `writing`, `running go test`, `checking`, `tidying` — keeps a clock of its own,
+because that number answers a different question: how long that stage has been going.
 
 ```
   ··· connecting · 1.2s
@@ -2382,9 +2497,12 @@ measured rate, no rate. The two waiting words, `connecting` and `first word`, ar
 tenths, because the difference between 1.2s and 3.1s is the whole of what those seconds
 tell you; everything else is read in whole seconds.
 
-The same words also ride the status line beside your model, where they take the place of
-`via <machine>` for as long as the turn is running (see *Models, context, and what it
-costs*).
+**The phase is on exactly one row at a time, and never on two.** While the working line is
+drawn it owns the words; the moment it goes — an answer is streaming, a call is spinning,
+the turn has ended — the status line beside your model takes them up, where they stand in
+place of `via <machine>` (see *Models, context, and what it costs*). Before this the same
+sentence was drawn twice on one screen, verbatim, two rows apart, and the second copy was
+spending the cells the bill, the context meter and the watch count needed.
 
 **A turn also has waits of its own, between requests**, and they use the same line and the
 same clock:
@@ -2735,7 +2853,7 @@ nothing new is drawn after the stop — which is what stop means everywhere in a
 Under each finished turn there is a dim right-aligned receipt:
 
 ```
-· 14:02 · 2m12s · 3 tools · $0.04 ·
+· 14:02 · 2m12s · 3 tool calls · $0.04 ·
 ```
 
 Every field but the clock is dropped when its figure is zero. The receipt is frozen when
@@ -2831,7 +2949,7 @@ aforge sets the terminal's window title, which is what your terminal shows on th
 in the cmd-tab switcher, and in a tmux or screen window name. It says which aforge this
 is: the project folder first, then the conversation's own name once it has one, joined
 with a dot — `myproject · porting the parser`. Before the conversation names itself the
-tab is just the project, and with no workspace at all it says `openaf`.
+tab is just the project, and with no workspace at all it says `aforge`.
 
 The project comes first on purpose: tabs truncate from the right, so when the bar is
 narrow the part that tells your aforge windows apart is the part that survives. The

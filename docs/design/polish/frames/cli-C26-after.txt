@@ -1,0 +1,50 @@
+error: invalid value "notanumber" for flag --turns: a whole number of turns to allow, such as 200
+  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
+              [--token-budget N] [--timeout 15m] [--model slug]
+              [--context-fill N] [--completion-reserve N] [--json]
+              [--out file] [--debug]
+      run one worker for one pass, with no planning at all
+  the three differ by how much thinking happens first: do plans and may split
+  the job, exec does not plan, run follows a plan somebody saved. None of them
+  takes --yolo: they run with nobody watching and nothing in them stops to ask.
+  What do and run can still refuse is a plan whose price crosses your limit,
+  and --yes-spend answers that in advance. All three end the same way, and
+  why is in --json's stop field:
+  exit 0 done · 1 could not be run at all · 2 ran and did not finish
+  · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+  AFORGE_EXIT_CODES=legacy restores exec's old 2/3/4/5/6 for one release
+
+flags:
+  --completion-reserve int
+      tokens every call keeps free for its answer and its reasoning (default
+      65536)
+  --context-fill int
+      how full a model's context window may get before it is compacted, in
+      percent (default 60, clamped 10-90)
+  --debug
+      keep the full record of this run — call bodies, tool calls and the choices
+      made — in a folder of its own under ~/.aforge/logs/trace (env
+      AFORGE_DEBUG)
+  --dir string
+      the directory to work in, edited in place (default .)
+  --json
+      print one machine-readable object instead of the answer: ok says whether
+      the work stands, stop says why it ended, answer carries what was produced,
+      files what it wrote, and error the sentence when it could not be run at
+      all
+  --max-turns value
+      runaway backstop on agent iterations (env AFORGE_EXEC_TURNS) (default 200)
+  --model string
+      work model for this run (flag › AFORGE_MODEL › crew › default)
+  --out string
+      write the machine-readable result to this file
+  --system string
+      working method for the agent
+  --timeout value
+      hard wall, as a duration such as 15m or 2h (a bare number is seconds); env
+      AFORGE_EXEC_TIMEOUT; unset, it scales from the token budget
+  --token-budget value
+      token budget for this run (env AFORGE_EXEC_BUDGET) (default 150000)
+
+run `aforge --help` for every command, `aforge help env` for the variables.
+exit=1

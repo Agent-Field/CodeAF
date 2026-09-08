@@ -70,11 +70,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -314,12 +314,12 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 	process.Env = os.Environ()
 	// A new SESSION, for the reason jobs.go states: the group-kill is unchanged
 	// and a probe's child cannot reach the person's terminal.
-	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	processgroup.ConfigureDetached(process)
 	// The whole GROUP, not just the shell: a probe that ran `curl … | grep x`
 	// leaves two processes, and killing the parent alone would leak the rest of
 	// them once per check, forever (tools_watch.go's runTick).
 	process.Cancel = func() error {
-		signalGroup(process, syscall.SIGKILL)
+		_ = processgroup.Kill(process.Process.Pid)
 		return nil
 	}
 	process.WaitDelay = 2 * time.Second
@@ -365,6 +365,14 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg.InTask = true
 	cfg.Standing = nil
 	cfg.standingItems = nil
+	// AND THE STORE GOES, BECAUSE THIS AGENT HAS NO BRAIN TO READ IT WITH. The
+	// throwaway below is assembled by hand rather than by newAgent, so nothing
+	// builds the memory brain the parent's Config.Memory stands for — and a
+	// config claiming a store the agent does not have is exactly the
+	// disagreement between a belt and a page that [Config.hasStore] exists to
+	// make impossible (beltfacts.go). The belt is unchanged either way: without
+	// a brain there was never a `search_conversations` on it.
+	cfg.Memory = nil
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)

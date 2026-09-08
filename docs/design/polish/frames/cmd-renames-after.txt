@@ -1,0 +1,54 @@
+# The old spellings and the new ones, from bin/aforge built on ui/polish-v0.
+# HOME points at a throwaway demo home. stdout and stderr are labelled separately,
+# because the whole promise is which of the two the notice lands on.
+
+$ aforge show $PLAN                                   # THE OLD SPELLING
+--- stderr ---
+note: `aforge show <plan.json>` is now `aforge plan show <plan.json>` — the old spelling works for one more release.
+--- stdout (first 4 lines) ---
+goal:   a goal
+
+── spine ───────────────────────────────────────────────────────────
+  S1  Whole          Process the goal in a single pass
+
+$ aforge plan show $PLAN                              # THE NEW SPELLING
+
+--- stderr ---
+(nothing)
+--- stdout (first 4 lines) ---
+goal:   a goal
+
+── spine ───────────────────────────────────────────────────────────
+  S1  Whole          Process the goal in a single pass
+
+$ aforge run subharness no-such-program --input -     # THE OLD SPELLING
+
+--- stderr ---
+note: `aforge run subharness <name>` is now `aforge run <name>` — the old spelling works for one more release.
+error: the input is empty — there is nothing here for the run to do
+
+$ aforge run $PLAN --dir ./ws                          # THE OLD PIPELINE SPELLING
+
+--- stderr (first 3 lines) ---
+note: `aforge run <plan.json>` is now `aforge plan run <plan.json>` — the old spelling works for one more release.
+writing the plan · 0 of 1
+
+$ aforge wake --max-seconds 5                          # AN OLD FLAG SPELLING
+
+--- stderr ---
+note: `--max-seconds` is now `--timeout` — the old spelling works for one more release.
+
+# ── AND THE NOTICE NEVER TOUCHES STDOUT, SO --json STAYS PARSEABLE ─────────
+
+$ aforge exec "reply with the single word ok" --budget 3000 --turns 2 --timeout 45s --json
+
+--- stderr ---
+note: `--budget` is now `--token-budget` — the old spelling works for one more release.
+note: `--turns` is now `--max-turns` — the old spelling works for one more release.
+models: work openai/gpt-4o-mini (--model)
+--- stdout ---
+{"answer":"ok","artifacts":[],"elapsed_ms":2210,"error":"","files":[],"model":"openai/gpt-4o-mini","ok":true,"seconds":2.210259782,"spend_usd":0.0004635,"steps":1,"stop":"done","text":"ok","tokens":{"in":3082,"out":2},"turns":1,"usage":{"calls":1,"prompt_tokens":3082,"completion_tokens":2,"cached_tokens":0,"cost":0.0004635}}
+--- $ jq -r .answer < stdout ---
+ok
+--- $? ---
+0

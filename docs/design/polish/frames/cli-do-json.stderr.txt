@@ -1,0 +1,13 @@
+models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the work model (default)
+  · understood · 1 task 24s
+  reading the request  24s
+  working out the plan  24s
+  starting the work — Print ok and stop  24s
+  ▶ Print ok and stop            (linear) 24s
+  still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 31s ago — 54s
+  still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 1m1s ago — 1m25s
+  still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 1m31s ago — 1m55s
+  still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 2m1s ago — 2m25s
+  still waiting: 0 tasks pending, 1 running · last call ~deepseek/deepseek-v4-flash-latest 0s ago — 2m55s
+  ✗ Print ok and stop            (linear) 2m55s
+record kept at /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/runs/aforge-do-1213699178

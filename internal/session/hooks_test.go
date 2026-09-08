@@ -259,7 +259,7 @@ func TestTheGuardianStillAnswersInsidePreAction(t *testing.T) {
 		config.Guardian = true
 	})
 	episode := agent.newEpisode()
-	call := ai.ToolCall{ID: "c1", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"a.md"}`}}
+	call := ai.ToolCall{ID: "c1", Function: ai.ToolCallFunction{Name: "write", Arguments: `{"path":"a.md","content":"x"}`}}
 
 	hub := newEventHub()
 	events := hub.subscribe()

@@ -1,0 +1,1 @@
+goal:   add a health endpoint and a test for it

@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -36,6 +35,7 @@ const (
 	hitNone     hitKind = iota
 	hitTool             // a tool call: click expands that call inline
 	hitFold             // the "N earlier tool calls" line: click expands the turn
+	hitCaption          // one step heading: click opens that step's calls
 	hitWorkFold         // one completed turn's folded machinery
 	hitMore             // the "… N more lines" foot of a capped expansion: click lifts the cap
 	// hitBrief is the door under a node's folded instruction (brieffold.go):
@@ -142,41 +142,39 @@ const toolWindow = 3
 // The entries are a SLICE and the fold map is a POINTER, which is what makes a
 // deck a view rather than a copy: [app.entryRows] writes each entry's row cache
 // through it, and [app.unfold] writes the map.
-// clock says whether this list carries THE SESSION'S CLOCK — the turn receipts
-// and the seam marks (timestamps.go). Only the conversation does. A room's
-// turns are its own numbering, and [app.stamps] is keyed by the session's, so a
-// page that ran the clock would draw the conversation's receipts against a
-// node's turns and report figures nobody measured.
 //
-// showsWork says this page IS the work rather than a conversation about it, so
-// nothing on it collapses into a "worked" chip (workfold.go's [app.deckFolds]).
-// Only a room sets it.
-//
-// toolTail is how many of a folded turn's calls stay on screen, and zero means
-// [toolWindow]. Only a room sets it, and it sets it from the height of its own
-// view (room.go's [app.roomToolTail]) — because in a room the cluster IS the
-// page, and a fold that kept three calls of a hundred-and-twenty drew four rows
-// over a forty-row void with the history a person came to read nowhere in the
-// row list at all. The conversation leaves it zero on purpose: there the fold
-// sits among prose, and three is the designed compactness.
+// EVERY DIFFERENCE BETWEEN TWO PAGES IS ONE FIELD, and it is [deck.lens]
+// (lens.go). It used to be three bools and an int added one at a time — a
+// clock, a shows-work, a tool tail — so "how does a room differ from the
+// conversation" was a question with no answer short of grepping the files that
+// read them. A posture is now declared in one literal and the renderers read
+// the posture.
 type deck struct {
-	entries     []entry
-	unfolded    map[int]bool
-	workOpen    map[int]bool
-	clock       bool
-	showsWork   bool
+	entries  []entry
+	unfolded map[int]bool
+	workOpen map[int]bool
+	captions []caption
+	capOpen  map[int]bool
+	// lens is the page's posture: what folds, where the receipts land, whether
+	// the session's clock runs over this list (lens.go).
+	lens        lens
 	runningTurn int
-	toolTail    int
 }
 
-// window is the number of a folded turn's calls this deck keeps on screen: its
-// own tail where it set one, [toolWindow] otherwise. It is the ONE place the
-// two are reconciled, so a renderer never has to know which list it is drawing.
-func (d deck) window() int {
-	if d.toolTail > 0 {
-		return d.toolTail
+// foldWindow is how many of a folded cluster's calls this deck keeps on screen: the
+// lens's own tail where it declares one, [toolWindow] otherwise. It is the ONE
+// place the two are reconciled, so a renderer never has to know which list it
+// is drawing.
+//
+// It is the app's method rather than the deck's because a room's tail is its
+// VIEW'S HEIGHT and the view is the app's (lens.go's [lens.toolTail]): a number
+// frozen into the deck at build time would be the height of the frame before
+// the resize that is being drawn.
+func (a *app) foldWindow(d deck) int {
+	if d.lens.toolTail == nil {
+		return toolWindow
 	}
-	return toolWindow
+	return d.lens.toolTail(a)
 }
 
 // conversation is the deck the transcript draws.
@@ -185,7 +183,8 @@ func (a *app) conversation() deck {
 	if a.state == stateWorking {
 		running = a.turn
 	}
-	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, clock: true, runningTurn: running}
+	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, capOpen: a.capOpen,
+		lens: participantLens, runningTurn: running}
 }
 
 // bodyDeck is the deck the BODY REGION is drawing right now — the room's page
@@ -320,6 +319,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// that [app.renderEntry] can paint one block at a time without ever asking
 	// what surrounds it.
 	stampHierarchy(es, folds)
+	// Captions read the hierarchy rather than restating it, so their derivation
+	// follows the stamp and their lifted heads are stamped before any block draws.
+	d.captions = deriveCaptions(es, d.runningTurn)
+	stampCaptions(es, d.captions)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -329,7 +332,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// used to open on the very next row, wedged against the question the way no
 	// answer wedges against the block above it. Together the three are the whole
 	// of the state this pass carries.
-	wasCluster, wasBlock, wasUser := false, false, false
+	wasCluster, wasBlock, wasUser, wasNote := false, false, false, false
 	gap := func() {
 		if len(out) > 0 {
 			for range spacingBlockRows {
@@ -345,7 +348,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// over nothing else (see [deck.clock]).
 	walk := stampWalk{}
 	clock := func(i int) {
-		if !d.clock {
+		if !d.lens.clock {
 			return
 		}
 		drew := false
@@ -357,19 +360,49 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
-			open := a.workMode == config.WorkOpen || d.workOpen[f.turn]
+			// THE CHIP IS NAMED BY ITS OWN KEY AND NOT BY THE TURN
+			// (workfold.go's [workfold.key]): a room's page is one turn holding a
+			// chip per phase, and a row that carried the turn would make every
+			// chip on it one control.
+			open := a.workFoldOpen(d, f.key)
 			// The chip stands where the turn's work stood, so it takes the same
 			// blank the work's first block would have taken — which after the
 			// person's message is the change-of-speaker gap wasUser buys.
 			if wasUser || wasBlock {
 				gap()
 			}
-			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(f)), entry: -1, hit: hitWorkFold, turn: f.turn})
+			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
 			if !open {
 				i = f.answer - 1
-				wasCluster, wasBlock, wasUser = false, false, false
+				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
 				continue
 			}
+			// OPEN IS THE OUTLINE: every finished step as a caption line. A click
+			// (or enter) on a caption opens only that step's calls — so the page
+			// stays a stack of what happened, not a dump of every tool again.
+			drewCaption := false
+			for _, c := range d.captions {
+				toolsFrom, toolsTo := captionTools(c, es)
+				if toolsFrom < f.start || toolsFrom >= f.answer {
+					continue
+				}
+				drewCaption = true
+				capOpen := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, false, capOpen, width)...)
+				if capOpen {
+					out = append(out, a.captionBody(d, c, width)...)
+					for at := toolsFrom; at < toolsTo; at++ {
+						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
+					}
+				}
+			}
+			if drewCaption {
+				i = f.answer - 1
+				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				continue
+			}
+			// A fold with no captions keeps the old expansion so history is never
+			// behind an empty outline.
 			wasUser = false
 		}
 		if e.turn != walk.turn {
@@ -391,8 +424,29 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			if wasBlock || wasUser || (!wasCluster && !opensTurn(es, i)) {
 				gap()
 			}
-			out = a.clusterRows(d, out, i, end, width)
-			wasCluster, wasBlock, wasUser = true, false, false
+			if c, ok := captionAt(d.captions, i); ok {
+				open := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width)...)
+				toolsFrom, toolsTo := captionTools(c, es)
+				if open {
+					out = append(out, a.captionBody(d, c, width)...)
+					start := toolsFrom
+					if window := a.foldWindow(d); toolsTo-start > window && !d.unfolded[e.turn] {
+						start = toolsTo - window
+					}
+					for at := start; at < toolsTo; at++ {
+						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
+					}
+				}
+				// Advance only past THIS step. Using the whole consecutive tool
+				// run would let a shut past caption swallow the live frontier.
+				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				i = toolsTo - 1
+				continue
+			} else {
+				out = a.clusterRows(d, out, i, end, width)
+			}
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			i = end - 1
 			continue
 		}
@@ -410,7 +464,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			gap()
 			out = a.doneCluster(d, out, i, end, width)
-			wasCluster, wasBlock, wasUser = false, true, false
+			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
 			i = end - 1
 			continue
 		}
@@ -423,7 +477,14 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				out = append(out, row{text: text, entry: i, hit: hit})
 			}
-			wasCluster, wasBlock, wasUser = false, true, false
+			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			continue
+		}
+
+		// A CAPTION HEAD IS DRAWN BY THE CAPTION, not here. Its first line is the
+		// heading; the remainder rides under an open caption via [captionBody].
+		// Drawing it again would put the body above the heading.
+		if e.kind == entryAssistant && e.capHead {
 			continue
 		}
 
@@ -436,7 +497,18 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// above it would read as part of that paragraph — which is exactly the
 		// defect park.go's block was built to end, arriving through the other door
 		// (steerelbow.go).
-		if wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
+		// AND THE SURFACE'S OWN VOICE OPENS ON A BLANK ROW. A note leads with `· `
+		// at the conversation's indent, which is exactly the glyph and the column
+		// a markdown bullet lands on — so under an answer that ends in a list,
+		// `· 3 standing orders here — /standing` read as the model's fourth
+		// bullet. The one boundary a transcript must draw is WHO IS TALKING, and
+		// a blank row is what this surface already spends on every other change
+		// of speaker (the rules around it). A RUN OF NOTES IS ONE BLOCK: the
+		// blank is bought where the voice changes, not between two lines of the
+		// same voice, or the opening frame's three notes would arrive as three
+		// paragraphs.
+		if (e.kind == entryNote && !wasNote) ||
+			wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
 			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
 			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
 			// [answerBreath]). It is asked HERE, inside the same condition as the
@@ -526,6 +598,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			})
 		}
 		wasCluster = false
+		wasNote = e.kind == entryNote
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
 		// The change-of-speaker gap belongs to the person's message and not to a
 		// kind of block: a divider between the question and the reply carries the
@@ -596,6 +669,10 @@ func (a *app) hoverPass(out []row, width int) {
 // reader, so the two questions stay two questions even though today's answer
 // takes them to the same rung.
 func (a *app) onCursorRow(r row) bool {
+	if r.hit == hitCaption {
+		key, ok := selectedCaption(a.sel)
+		return ok && key == r.turn
+	}
 	return r.entry >= 0 && a.selected(r.entry)
 }
 
@@ -609,13 +686,39 @@ func (a *app) isHot(r row) bool {
 	case hoverEntry:
 		return r.entry >= 0 && r.entry == a.hot.entry
 	case hoverFold:
-		return (r.hit == hitFold || r.hit == hitWorkFold) && r.turn == a.hot.turn
+		return r.hit == hitFold && r.turn == a.hot.turn
+	case hoverCaption:
+		return r.hit == hitCaption && r.turn == a.hot.turn
+	case hoverWorkFold:
+		return r.hit == hitWorkFold && r.turn == a.hot.turn
 	case hoverBrief:
 		// THE DOOR AND NOT THE BLOCK (brieffold.go): the lines above it are the
 		// person's own words, and nothing happens when they are pressed.
 		return r.hit == hitBrief && r.entry == a.hot.entry
 	}
 	return false
+}
+
+// captionBody is the narration under an open step heading: the remainder of a
+// demoted prose head after its first line was lifted into the caption. THE
+// OUTLINE HIDES IT; expanding the caption puts those words back above the calls.
+func (a *app) captionBody(d deck, c caption, width int) []row {
+	if c.source != captionSaid || c.head < 0 || c.head >= len(d.entries) {
+		return nil
+	}
+	e := &d.entries[c.head]
+	text := e.text
+	if e.capCut > 0 && e.capCut <= len(text) {
+		text = text[e.capCut:]
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	var out []row
+	for _, line := range a.workingProse(text, width) {
+		out = append(out, row{text: line, entry: c.head, hit: hitNone, turn: e.turn})
+	}
+	return out
 }
 
 // opensTurn reports whether the entry at i is the first thing its turn drew.
@@ -711,6 +814,39 @@ const userLead = "  "
 
 // userLeadCols is what that lead costs, in cells.
 const userLeadCols = len(userLead)
+
+// userRailGutter is the RAIL'S OWN CELL, kept clear of the person's words.
+//
+// [app.railJoin] pads a conversation row out to [app.bodyWidth] and then writes
+// the seam in the very next column, so a body row that measures the column
+// exactly ends one cell from the divider — and a person's own message is the one
+// block on this surface that regularly fills its column, because it is wrapped
+// to the column and not to a reading measure the way the model's prose is
+// (markdown.go hands prose [prose.DefaultMeasure]). At 120 columns a wrapped
+// question read `…and tell me│`, with the words touching the rule while the rows
+// above and below it stood clear.
+//
+// ONE CELL IS THE WHOLE FIX and it is deliberately not two: the gutter belongs
+// to the divider, not to the paragraph, and every cell taken here is a cell off
+// the measure at sixty columns, where the same block is the thing that has least
+// room to give. It is charged at every width because the frame is the column
+// either way — under [railSlimFloor] the cell kept clear is the terminal's own
+// edge, which is the same collision with a different rule drawn through it.
+const userRailGutter = 1
+
+// userBodyCols is the column a person's own words are wrapped into: the lead
+// they are drawn under and the divider's cell, both taken off.
+//
+// IT IS A FUNCTION BECAUSE TWO PLACES ASK IT AND THEY MAY NEVER DISAGREE — the
+// paint here, and the fold that counts the lines the paint would make
+// (brieffold.go's [briefFoldHidden]). A literal in two files is the drift
+// [userLead]'s own note was written about.
+func userBodyCols(width int) int {
+	if room := width - userLeadCols - userRailGutter; room > 0 {
+		return room
+	}
+	return 1
+}
 
 // pictureMarkerMask holds one basename out of the generic path pass. A marker
 // deliberately shows only the basename, while its door must retain the full
@@ -857,11 +993,11 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		pictures := make([][]string, len(e.pictures))
 		pictureDrawn := make([]bool, len(e.pictures))
 		for i, path := range e.pictures {
-			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, width-userLeadCols, cap)
+			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
 		}
-		pictureDoors := a.pathLinks && a.pal.paintsPictures() && width-userLeadCols >= pictureColsMin && cap > 0
+		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
 		marked, pictureMasks := a.maskPictureMarkers(e.text, e, pictureDoors)
-		body := wrap(marked, width-userLeadCols)
+		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
 			body = nil
 		}
@@ -933,6 +1069,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// the tool rows it interrupted — and it is drawn from here, like every
 		// other kind, so that the row cache, the indent law and the fold all meet
 		// it as an ordinary entry.
+		//
+		// AND IT SAYS WHAT IT WAS PART OF, on the person's own block's terms
+		// (turncontext.go, applied inside [app.steerBlockRows] so that the mark sits
+		// with the sentence and the passing clause stays last): a correction typed
+		// into a NAMED working context is a thing said into that context exactly as
+		// the question was, and it would otherwise be the only sentence of theirs on
+		// the page that did not name where it went. An ordinary correction — every
+		// one typed in this conversation — carries no context and adds nothing.
 		return a.steerBlockRows(e, width)
 
 	case entryAssistant:
@@ -989,9 +1133,20 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// ([app.noteBlock]). The one shape that asks for it is a subharness card,
 		// where the indent under a lane is what says the step belongs to that lane
 		// — and [wrap] laid every one of those flat against the margin.
-		body := wrap(e.text, width-2)
+		// AND IT IS WRAPPED TO THE ROOM THE ROW ACTUALLY HAS, which is the frame
+		// less BOTH of the leads it wears: the note's own "· " marker
+		// ([noteLead]) and THE INDENT LAW's gutter, which this pass gives every
+		// note afterwards ([app.deckRows] — a note is work by [workEntry]). It
+		// was wrapped at the marker alone, so every row came out two cells wider
+		// than the column it is drawn in, and [app.railJoin] cut the overhang
+		// back with an ellipsis — which ate three characters out of the MIDDLE of
+		// a path, silently, with the row below carrying on from after the gap. A
+		// note is where this surface names its own files (below); a path that
+		// comes out wrong with nothing saying so is worse than one not shown.
+		room := width - noteLead - workIndentCols(width)
+		body := wrap(e.text, room)
 		if e.block {
-			body = noteBlockLines(e.text, width-2)
+			body = noteBlockLines(e.text, room)
 		}
 		out := make([]string, 0, len(body))
 		walk := factWalk{words: e.facts}
@@ -1082,17 +1237,24 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	// line (mdtable.go).
 	if e.demoted {
 		e.feet = nil
-		return append(tags, a.workingProse(e.text, width)...)
+		text := e.text
+		if e.capHead && e.capCut > 0 && e.capCut <= len(text) {
+			text = text[e.capCut:]
+		}
+		return append(tags, a.workingProse(text, width)...)
 	}
 	if e.settled {
 		return append(tags, a.settledMarkdown(at, e, width)...)
 	}
 	e.feet = nil
 	var out []string
-	if e.mdCut > 0 {
+	drawn := e.revealed()
+	if e.mdCut > 0 && e.mdCut <= len(drawn) {
 		out = append(out, a.promotedRows(e, width)...)
+		out = append(out, a.liveTail(drawn[e.mdCut:], width)...)
+	} else {
+		out = append(out, a.liveTail(drawn, width)...)
 	}
-	out = append(out, a.liveTail(e.text[e.mdCut:], width)...)
 	return append(tags, trimBlanks(out)...)
 }
 
@@ -1270,6 +1432,24 @@ const (
 	retryWord = " trying again"
 )
 
+// awaitingReply is THE ONE READING two rows of this surface take of the same
+// moment: a request is out and nothing has come back from it yet ([app.awaited],
+// app.go, which the event loop anchors on both edges).
+//
+// IT IS ONE FUNCTION BECAUSE TWO ROWS ASK IT. The pulse says "waiting for
+// kimi-k3 · 12s" from it ([app.waitingWords]); the status line's rate says how
+// fast the model is writing ([app.burnSegment], and the served rider's own
+// figure). Those were two readings of one moment, taken from different signals —
+// the rate counts a whole turn's output tokens over the whole turn's wall time,
+// so a turn that wrote a paragraph and then went quiet kept drawing `30 tok/s`
+// two rows under this surface saying nothing had come back. A person watching a
+// stalled turn read two of this program's own sentences saying opposite things,
+// at the exact moment they were deciding whether to interrupt. SILENCE IS
+// SILENCE ON BOTH ROWS, and it is one predicate so the two cannot drift again.
+func (a *app) awaitingReply() bool {
+	return a.state == stateWorking && !a.awaited.IsZero() && !a.running()
+}
+
 // waitingWords is the dim tail on the pulse while a model request is
 // outstanding and the stream has said nothing at all against it, or "" when
 // there is nothing to say — no turn running, a call spinning, the stream
@@ -1280,7 +1460,7 @@ const (
 // paint, in the spelling every other live clock on this surface uses
 // ([countUpWord], toolview.go), and costs the surface no wakeup of its own.
 func (a *app) waitingWords() string {
-	if a.state != stateWorking || a.awaited.IsZero() || a.running() {
+	if !a.awaitingReply() {
 		return ""
 	}
 	waited := time.Since(a.awaited)
@@ -1317,10 +1497,7 @@ func (a *app) pulse() string {
 // while any call is spinning: the text and the spinner each already answer "is
 // this alive?", and two answers to one question is one too many.
 func (a *app) ellipsis() (string, bool) {
-	if a.state != stateWorking || a.running() {
-		return "", false
-	}
-	if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].text != "" && !a.quiet() {
+	if !a.ellipsisShowing() {
 		return "", false
 	}
 	line := a.pal.accent("  " + a.pulse())
@@ -1351,6 +1528,44 @@ func (a *app) ellipsis() (string, bool) {
 		line += a.pal.dim(stillWorkingWord)
 	}
 	return line, true
+}
+
+// ellipsisShowing reports whether the pulse row is on the frame at all — which
+// is [app.ellipsis]'s own three refusals asked as a question, so that a second
+// row can find out whether the pulse is already speaking without building it.
+//
+// IT EXISTS FOR THE PHASE, and phase.go's words are the only thing that reads
+// it. See [app.pulseHoldsThePhase].
+func (a *app) ellipsisShowing() bool {
+	if a.state != stateWorking || a.running() {
+		return false
+	}
+	if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].text != "" && !a.quiet() {
+		return false
+	}
+	return true
+}
+
+// pulseHoldsThePhase reports whether the pulse is already saying this phase, and
+// it is the answer to WHICH ROW OWNS THE PHASE WORDS.
+//
+// THE DEFECT THIS FIXES, measured: the same sentence was drawn twice on one
+// frame, verbatim, two rows apart — `·· paced · retry in 2s` on the pulse and
+// `… · paced · retry in 2s` on the status line — two live things moving in
+// lockstep saying one fact. A reader given the same words twice does not read
+// them twice; they check whether they are the same words, which is a cost paid
+// on every frame of every wait.
+//
+// THE PULSE WINS WHILE IT IS ON THE FRAME, for two reasons that point the same
+// way. It is where the answer is about to appear, so it is where the eye
+// already is; and the status line has a whole cluster of telemetry behind the
+// phase on its own drop ladder — the bill, the context meter, the watch count —
+// which the phase words were spending. The moment the pulse stops drawing (an
+// answer is streaming, a call is spinning, the turn is over) the rider takes the
+// phase up, so no state of a turn is without it. That is the whole rule: ONE
+// HOME AT A TIME, and never the same words on two rows.
+func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
+	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
 }
 
 // harnessStepRow is the live row under a running sub-harness's announcement:
@@ -1722,7 +1937,27 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 		a.modelSpan = span
 		return left, parts, true
 	}
-	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap && dropSegment(&parts) {
+	// THE LADDER RUNS THROUGH THE LEFT CLUSTER AND NOT ONLY ALONG THE RIGHT ONE
+	// ([riderRung]). Each turn of this loop gives up the cheapest thing left:
+	// the segments ranked under the rider, then the rider's own widest spelling,
+	// then the segments above it. The identity is asked with the columns the row
+	// ACTUALLY has left, and only when there are some — [app.identityParts]
+	// reads a width of zero or less as "no bound at all" and would hand back the
+	// longest rider there is.
+	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap {
+		if dropSegmentUnder(&parts, riderRung) {
+			continue
+		}
+		if room := width - hudWidth(parts) - hudGap; room > 0 {
+			if shorter, shorterSpan := a.identityParts(room); ansi.StringWidth(shorter) < ansi.StringWidth(left) {
+				left, span = shorter, shorterSpan
+				a.modelSpan = span
+				continue
+			}
+		}
+		if !dropSegment(&parts) {
+			break
+		}
 	}
 	if room := width - hudWidth(parts) - hudGap; ansi.StringWidth(left) > room {
 		left, span = a.identityParts(room)
@@ -1813,9 +2048,47 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 	// pressed ([app.roomModelMovable] holds the whole of that list). An
 	// affordance that lit up and then apologised would be worse than none.
 	if a.roomOpen() {
-		cluster := a.roomChip()
+		// THE NAME IS WHOLE UNTIL THE LINE CANNOT HOLD IT, and what gives way
+		// first is the fact beside it — which is [rowfit.go]'s first law, said in
+		// this cluster's own two pieces. A node's name arrives here uncut
+		// (taskident.go's [taskTitleOf] stopped cutting on 2026-09-03) and the
+		// cluster used to spend a FIXED cap on it ([roomChipCap], eighteen cells),
+		// which is that law inverted: a cap pays the identity's price at EVERY
+		// width, so `Ship the parser fix` came out `Ship the parser f…` on a
+		// hundred-and-eighty-column row with sixty cells going spare.
+		//
+		// The ladder is three rungs and the last one is the one a cap tried to be:
+		//
+		//   ⠋ Ship the parser fix · task glm-5.2   both, while the row holds both
+		//   ⠋ Ship the parser fix                  the model gives way first
+		//   ⠋ Ship the parser f…                   and only then is the name cut
+		//
+		// THE MODEL IS DROPPED WHOLE RATHER THAN SHORTENED, because its lead word
+		// is part of the fact and not decoration: a bare `glm-5.2` in the one spot
+		// on this surface that has only ever held the CONVERSATION's model is the
+		// exact misreading [roomModelLead] exists to prevent. And a dropped model
+		// takes its press target with it — the press acts on what the row NAMES,
+		// so a segment that is not drawn is not a door.
 		word := a.roomModelWord()
-		if word == "" {
+		fact := ""
+		if word != "" {
+			fact = " · " + word
+		}
+		cluster := a.roomChip(0)
+		if width > 0 && ansi.StringWidth(cluster)+ansi.StringWidth(fact) > width {
+			fact = ""
+			if ansi.StringWidth(cluster) > width {
+				// LAST RESORT. The name is cut to what the row has, and never below
+				// [roomChipFloor] — under that the cluster has stopped saying where
+				// you are and the ladder above has to find its cells somewhere else.
+				room := width
+				if room < roomChipFloor {
+					room = roomChipFloor
+				}
+				cluster = a.roomChip(room)
+			}
+		}
+		if fact == "" {
 			return cluster, hudSpan{}
 		}
 		// The LEAD WORD IS PART OF THE TARGET, exactly as the served rider is part
@@ -1823,7 +2096,7 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 		// a person pressing any of them means the same thing (room.go's
 		// [roomModelLead]).
 		from := ansi.StringWidth(cluster + " · ")
-		cluster += " · " + word
+		cluster += fact
 		if !a.roomModelMovable() {
 			return cluster, hudSpan{}
 		}
@@ -1938,7 +2211,7 @@ func (a *app) servedRiderAt(width int) string {
 			room = 0
 		}
 	}
-	if news, ok := a.livePhase(); ok {
+	if news, ok := a.livePhase(); ok && !a.pulseHoldsThePhase(news) {
 		// THE RATE RIDES ONLY WHILE A TURN IS RUNNING, which is the rule both
 		// readings below already keep: what a phase IS remains attribution, and
 		// how fast it was writing is a claim about now. Zeroing it here rather
@@ -1977,7 +2250,12 @@ func (a *app) servedRiderAt(width int) string {
 	// from the last turn standing on an idle status line read as a live figure
 	// nobody was producing — a person sat looking at "92 tok/s" over a chat
 	// that was doing nothing.
-	if sighting.Rate > 0 && a.state == stateWorking {
+	// AND IT DOES NOT RIDE WHILE THIS SURFACE IS SAYING NOTHING HAS COME BACK,
+	// for [app.burnSegment]'s reason and out of the same reading: the served
+	// rate is the layer's figure for a stretch that is over, and drawn beside
+	// the pulse's "nothing has come back yet" it is the same contradiction said
+	// by a second row.
+	if sighting.Rate > 0 && a.state == stateWorking && !a.awaitingReply() {
 		fields = append(fields, rowSay(tokenWord(int(sighting.Rate))+" tok/s"))
 	}
 	if words := rowLed(fields, roomFor(room)); words != "" {
@@ -2004,6 +2282,56 @@ func modelBase(id string) string {
 		return id[at+1:]
 	}
 	return id
+}
+
+// costFloorCells is the widest the bill can be written while it is still under
+// a cent: settingspend.go's floor spelling, `<$0.0001`, asked of the function
+// that prints it rather than counted here — one source of truth for a width two
+// files would otherwise both know.
+var costFloorCells = ansi.StringWidth(subCent(0))
+
+// costCell is the bill with the room it is going to need already under it.
+//
+// THE LAW THIS EXTENDS IS THE ONE THIS LINE ALREADY HAS. The live status row
+// keeps `$0.00` rather than drawing nothing — the emptiness law's one sanctioned
+// exception (app.go's [dollars]) — and the whole reason is that the segments to
+// the right of the bill must not jump sideways while a person is reading them.
+// The exception held the segment's PRESENCE still and let its WIDTH move, so one
+// turn walked `$0.00` (five cells) → `<$0.0001` (eight) → `$0.0052` (seven) →
+// `$0.01` (five) and shoved the context meter, the watch count and the state
+// word two and three columns each way inside a few seconds.
+//
+// SO THE FIGURE IS RIGHT-ALIGNED IN THE ROOM ITS OWN SPELLINGS NEED, and no
+// second exception is invented for it: nothing is drawn that was not drawn
+// before, no zero stands in for an unknown, and `$0.00` is still the only zero
+// on the line. The reservation is a pure function of the amount and it cannot
+// shrink as a session spends, because the two things it is the larger of never
+// shrink either — the sub-cent floor is a constant, and the two-place spelling
+// only widens as the bill climbs a decade. A bill that reaches $9,999.99 takes
+// its ninth cell once and keeps it.
+func costCell(usd float64) string {
+	word := dollars(usd)
+	room := costFloorCells
+	if cells := ansi.StringWidth(word); cells > room {
+		room = cells
+	}
+	if pad := room - ansi.StringWidth(word); pad > 0 {
+		return strings.Repeat(" ", pad) + word
+	}
+	return word
+}
+
+// splitReserve takes [costCell]'s reservation off the front of a segment: the
+// room, which is space, and the figure, which is the only part of it anything
+// paints. The width arithmetic above still reads the whole string — the
+// reservation is real cells and every measurement of the row has to see them —
+// so the split happens at the last possible moment, in the paint.
+func splitReserve(text string) (room, figure string) {
+	at := 0
+	for at < len(text) && text[at] == ' ' {
+		at++
+	}
+	return text[:at], text[at:]
 }
 
 // telemetry assembles the right cluster IN ORDER, and the order is the question
@@ -2048,7 +2376,7 @@ func (a *app) telemetry(width int) []hudPart {
 	// work this conversation started is spending its money, and a segment that
 	// waited for each task to close said `$2.53` for two hours over a family
 	// burning $51.05 (treespend.go's [app.spendShown]).
-	add(segCost, dollars(a.spendShown()))
+	add(segCost, costCell(a.spendDrawn()))
 	if context, _ := a.contextSegment(); context != "" {
 		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
 			context += " " + spark
@@ -2157,15 +2485,53 @@ func (a *app) openSegment() string {
 //	         conversation is doing
 var dropOrder = []hudSeg{segDelta, segCrew, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
 
+// riderRung is where THE IDENTITY CLUSTER'S OWN RIDER stands on [dropOrder].
+//
+// It is not a [hudSeg] and it cannot be one — it is part of the left cluster,
+// not a segment of the right — so it is named by the rung it sits immediately
+// under: everything below [segKeeping] on the ladder goes before the rider is
+// asked for a shorter spelling, and everything from [segKeeping] up survives
+// until it has given one. That places it exactly where the evidence put it: the
+// watch count, the bill and the context meter each vanished and came back
+// mid-turn as the phase words on the left grew and shrank, on the one row whose
+// stillness is the whole reason it keeps a `$0.00`. A rider has a shorter TRUE
+// spelling to fall back on ([app.identityParts] ladders it, and drops it
+// outright at the bottom); a number has only presence or absence, so the
+// spelling goes first.
+const riderRung = segKeeping
+
 // dropSegment removes the least important segment still present, and reports
 // whether it found one to remove.
 func dropSegment(parts *[]hudPart) bool {
 	for _, kind := range dropOrder {
-		for i, part := range *parts {
-			if part.kind == kind {
-				*parts = append((*parts)[:i], (*parts)[i+1:]...)
-				return true
-			}
+		if dropKind(parts, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropSegmentUnder is the same walk stopped at a rung: the least important
+// segment still present that is ranked BELOW it, and false once everything
+// under that rung is already gone.
+func dropSegmentUnder(parts *[]hudPart, rung hudSeg) bool {
+	for _, kind := range dropOrder {
+		if kind == rung {
+			return false
+		}
+		if dropKind(parts, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropKind removes one named segment if the row is carrying it.
+func dropKind(parts *[]hudPart, kind hudSeg) bool {
+	for i, part := range *parts {
+		if part.kind == kind {
+			*parts = append((*parts)[:i], (*parts)[i+1:]...)
+			return true
 		}
 	}
 	return false
@@ -2187,16 +2553,31 @@ func hudWidth(parts []hudPart) int {
 // every width decision above is made from: measuring a painted string is
 // measuring escape sequences.
 func (a *app) paintParts(parts []hudPart) (string, string) {
-	var painted, plain string
+	if len(parts) == 0 {
+		return "", ""
+	}
+	// TWO BUILDERS AND ONE SEPARATOR, because this runs on every frame and the
+	// row it builds is the only thing on a scrolling screen that is rebuilt from
+	// nothing each time. Appending with `+=` allocated a fresh string per segment
+	// AND per join — four a segment — and painted the same three-cell separator
+	// over and over; the separator is one value for the whole row, and each
+	// builder is sized once from the plain width the caller is about to measure
+	// anyway. [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]
+	// is the law this is written against.
+	sep := a.pal.dim(" · ")
+	var painted, plain strings.Builder
+	room := hudWidth(parts)
+	plain.Grow(room)
+	painted.Grow(room + len(sep)*len(parts))
 	for i, part := range parts {
 		if i > 0 {
-			painted += a.pal.dim(" · ")
-			plain += " · "
+			painted.WriteString(sep)
+			plain.WriteString(" · ")
 		}
-		painted += a.paintPart(part)
-		plain += part.text
+		painted.WriteString(a.paintPart(part))
+		plain.WriteString(part.text)
 	}
-	return painted, plain
+	return painted.String(), plain.String()
 }
 
 // paintPart is where the hue budget is spent, and the order of these branches
@@ -2233,13 +2614,23 @@ func (a *app) paintPart(part hudPart) string {
 		// not wear the failure hue. The pointer outranks the warning, because
 		// while somebody is about to press it the fact worth saying is that it
 		// opens.
+		//
+		// AND THE ROOM THE SEGMENT RESERVES IS NOT PAINTED WITH THE FIGURE.
+		// [costCell] holds this segment's width still by putting the room it will
+		// need in front of the figure, and the room is SPACE — it has no ink and
+		// it is not part of what the age ramp, the pointer or the bound are
+		// talking about. Painting it into the same span would make the segment's
+		// paint depend on how much money had been spent, which is what the ramp
+		// exists to say something else about (bundle_test.go's fade and hue tests
+		// read exactly this span, and they are the ones that named it).
+		room, figure := splitReserve(part.text)
 		switch {
 		case a.hoveringMoney():
-			return a.pal.accent(part.text)
+			return room + a.pal.accent(figure)
 		case a.moneyNearRail():
-			return a.pal.warn(part.text)
+			return room + a.pal.warn(figure)
 		}
-		return a.fadeSeg(part.kind, part.text)
+		return room + a.fadeSeg(part.kind, figure)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed.
@@ -2418,11 +2809,30 @@ func (a *app) burnSegment() string {
 	if elapsed < time.Second {
 		return a.holdBurn("")
 	}
+	// AND A RATE IS NOT DRAWN WHILE THIS SURFACE IS SAYING NOTHING HAS COME BACK
+	// ([app.awaitingReply] states the whole of why). The figure below is the
+	// turn's output over the turn's wall time, which is a fact about a stretch
+	// that has already ended once the stream has gone quiet — and the pulse two
+	// rows up is meanwhile naming what is being waited on.
+	if a.awaitingReply() {
+		return a.holdBurn("")
+	}
 	written := a.outputTokens - a.turnOutStart
 	if written <= 0 {
 		return a.holdBurn("")
 	}
-	return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Seconds()))) + " tok/s")
+	// THE EMPTINESS LAW IS ASKED OF THE FIGURE THAT IS DRAWN, not of the count
+	// behind it. One output token over a sixty-second turn is a positive count
+	// and a rate that rounds to nothing, and `0 tok/s` is the least informative
+	// cell on the frame at the moment a person is deciding whether to interrupt.
+	// This line's one sanctioned exception to the law is `$0.00`, whose width
+	// keeps the segments beside it from jumping sideways; a rate has no such
+	// claim, so a zero one draws NOTHING, like every other zero on this surface.
+	rate := burnStep(int(float64(written) / elapsed.Seconds()))
+	if rate <= 0 {
+		return a.holdBurn("")
+	}
+	return a.holdBurn(tokenWord(rate) + " tok/s")
 }
 
 // ── THE STEADY FIGURE ───────────────────────────────────────────────────────
@@ -2614,7 +3024,7 @@ func (a *app) contextSegment() (string, bool) {
 	if a.ctxTokens <= 0 || a.ctxWindow <= 0 {
 		return "", false
 	}
-	segment := tokenWord(a.ctxTokens) + "/" + tokenWord(a.ctxWindow)
+	segment := tokenWord(a.ctxDrawn()) + "/" + tokenWord(a.ctxWindow)
 	if pct, ok := a.ctxPercent(); ok && pct >= 1 {
 		segment += " · " + itoa(pct) + "%"
 	}
@@ -3038,14 +3448,21 @@ func (a *app) placePath(hard int) string {
 	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.tilde, hard)))
 }
 
-// legendRight is the hint slot: the state's own keys when it has any, the
-// input's two affordances when it does not, and nothing at all on a tight
-// frame — where the cells are worth more to the conversation's name than to a
-// reminder.
+// legendRight is the hint slot: the state's own keys when it has any, and the
+// input's own affordances when it does not.
+//
+// IT SPEAKS AT EVERY WIDTH, and it used to go silent under [hudTight] on the
+// reasoning that the cells were worth more to the conversation's name. That was
+// exactly backwards. The narrow tier is where a newcomer most needs to be told
+// that `/` opens a list of everything this surface can be told to do, and it was
+// the ONE tier where they were never told it exists: with this slot empty and
+// the branch dropped at the other end ([app.legendLeft]), the line was refused
+// at both ends and fell back to a bare rule with nothing written on it at all.
+// The tight frame gives up THE BRANCH — which the shell prompt behind this one
+// still says — and keeps the door. Nothing here forces the slot on: the ladder
+// in [app.legend] still tries each rung and falls back to the plain rule when a
+// frame genuinely has no room for one.
 func (a *app) legendRight(width int) string {
-	if width < hudTight {
-		return ""
-	}
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
@@ -3277,6 +3694,18 @@ func (a *app) hintWord() string {
 		// under the box named `a` as allow while the block above it named `a` as
 		// always — one keystroke, two readings, and the wrong one widens a
 		// permission.
+		//
+		// AND IT NAMES THE ALWAYS KEY ONLY WHERE THAT KEY WOULD ACT. A stuck
+		// question borrows this lane to ask about a TURN, and the engine drops a
+		// tool-session scope on it — so the offer above leaves `[a]` off
+		// (consent.go's [app.consentOffer], from this same `memo` field) and the
+		// press does nothing. A hint that named it anyway would be this line
+		// promising a keystroke the block above it has already refused. It went
+		// unseen until this wave for one reason: the slot was silent under
+		// [hudTight], and that is the width the case is met at.
+		if len(a.asks) > 0 && !a.asks[0].memo {
+			return "y allow · n deny"
+		}
 		return "y allow · n deny · a always"
 	case a.railHold:
 		// The roster has the keyboard (ctrl+t, task.go) — the one state on this
@@ -3403,6 +3832,31 @@ func shortPath(dir, home string, hard int) string {
 		parts[i] = initialOf(part)
 	}
 	return strings.Join(parts, "/")
+}
+
+// tildePath is the same path with the person's home written as `~`, and nothing
+// else touched.
+//
+// IT IS [shortPath]'S FIRST STEP ON ITS OWN, and it is separate because the two
+// answer different questions. That one is for a LEGEND — a cell of a status row
+// where the last segment is the whole message and the parents may be spent down
+// to initials. This one is for a path in the transcript, where the surface names
+// one of its own files and somebody may be about to select it and paste it into
+// a shell: `~` is the one abbreviation that survives that, because the shell
+// expands it back. Every other segment is left exactly as it is.
+func tildePath(path, home string) string {
+	path = strings.TrimSpace(path)
+	home = strings.TrimRight(strings.TrimSpace(home), "/")
+	if path == "" || home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if strings.HasPrefix(path, home+"/") {
+		return "~" + strings.TrimPrefix(path, home)
+	}
+	return path
 }
 
 // initialOf is one path segment, cut to what identifies it: its first rune, or

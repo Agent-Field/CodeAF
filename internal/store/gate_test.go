@@ -111,10 +111,65 @@ func TestDeliveryGateLineageReadsEveryRoundAndSurvivesRebuild(t *testing.T) {
 			t.Fatalf("Rebuild: %v", err)
 		}
 	}
-	// A failed gate still has to name the gap; nothing about the ledger relaxes
-	// that, because a gap nobody can state is not a verdict.
+	// A gate that did not pass still has to say why; nothing about the ledger
+	// relaxes that, because a shortfall nobody can state is not a verdict.
 	if err := graph.RecordDeliveryGate("job", DeliveryGate{Quote: "every part"}); err == nil {
 		t.Fatal("a failed gate with a quote and no gap was recorded")
+	}
+}
+
+// A GATE THAT DID NOT PASS MUST SAY WHY, AND A REFUSAL IS ONE OF THE TWO WAYS
+// TO SAY IT.
+//
+// The harness stops spending on a job once nothing is changing: no gate is
+// asked, and what is journaled in place of a judgement is the refusal that
+// stood in for it, unclosed. The validator demanded a gap of that row and
+// refused it on every real run — `record delivery gate: invalid graph mutation:
+// a failed gate must name the gap` in the log, and no row at all — so a battery
+// reading the journal could not tell a delivery nothing had judged from one that
+// had been checked and passed. A row that says NEITHER is still refused.
+func TestADeclinedJudgementIsJournaledWithTheRefusalInPlaceOfTheGap(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "task-2", Brief: "finish the migration", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1", Intent: "finish the migration"}); err != nil {
+		t.Fatal(err)
+	}
+
+	declined := DeliveryGate{
+		Refused:  "nothing here was written or altered while this ran, so it is handed over as it stands. Nothing further was started.",
+		Unclosed: true,
+	}
+	if err := graph.RecordDeliveryGate("task-2", declined); err != nil {
+		t.Fatalf("the unasked gate was refused: %v", err)
+	}
+	got, ok, err := graph.DeliveryGateFor("task-2")
+	if err != nil || !ok {
+		t.Fatalf("DeliveryGateFor = %v, %v", ok, err)
+	}
+	if got.Pass || !got.Unclosed || got.Refused != declined.Refused || got.Gap != "" {
+		t.Fatalf("row read back as %+v, want the refusal standing with no gap", got)
+	}
+	// And it settles nothing, which is what the exit code turns on: a run that
+	// changed nothing handed over less than it promised.
+	if got.Whole() {
+		t.Fatal("a delivery nothing judged read as whole")
+	}
+	// A row that names neither a gap nor a refusal is still refused: a gate that
+	// recorded nothing at all is a gate no autopsy can read.
+	if err := graph.RecordDeliveryGate("task-2", DeliveryGate{}); err == nil {
+		t.Fatal("a gate that said nothing at all was recorded")
+	}
+	// And a refusal that does not stand — the gate was held, its finding was
+	// weighed and lost — is not a substitute for the gap either.
+	if err := graph.RecordDeliveryGate("task-2", DeliveryGate{
+		Refused: "what it asked for is already on disk under the name the request used",
+	}); err == nil {
+		t.Fatal("a closed refusal with no gap was recorded")
 	}
 }
 
@@ -389,5 +444,149 @@ func TestTheGateJournalsWhatItJudged(t *testing.T) {
 		if payload["subject"] != "tree (6 files)" {
 			t.Fatalf("the payload does not spell the subject where a reader looks: %v", payload)
 		}
+	}
+}
+
+// A DELIVERY THAT BROKE A RULE THE PERSON SET IS NOT WHOLE, AND NOTHING ON THIS
+// EVENT CAN ACQUIT IT.
+//
+// The other standing findings here are measurements of a repository, and an
+// acquittal is at least about the same kind of thing. This one is the person's
+// own sentence held against the files the run changed, so a pass on the
+// deliverable's substance says only that the work was good at doing what it was
+// forbidden to do — which is exactly the shape #427 shipped: the command run,
+// the line reported, and two files written under "Change no files."
+func TestADeliveryThatBrokeARuleThePersonSetIsNotWhole(t *testing.T) {
+	broke := DeliveryGate{Pass: false, Gap: `The work broke a rule the person set: "Change no files." (2 files).`,
+		Constraint: []string{"Change no files. — check.sh, internal/x/x_test.go"}}
+	if broke.Whole() {
+		t.Fatal("a broken rule settled as a whole delivery")
+	}
+	// And no reading of the substance changes that. A pass, a repair the second
+	// judge accepted, and a refusal weighed against the world and lost are the
+	// three things that normally settle this event, and none of them is about
+	// the rule.
+	for name, settled := range map[string]DeliveryGate{
+		"passed":     {Pass: true, Constraint: broke.Constraint},
+		"repaired":   {Pass: false, Gap: broke.Gap, PolishClosed: true, Constraint: broke.Constraint},
+		"overturned": {Pass: false, Gap: broke.Gap, Overturned: true, Constraint: broke.Constraint},
+	} {
+		if settled.Whole() {
+			t.Fatalf("a %s delivery carried a broken rule and still settled whole", name)
+		}
+	}
+	// A job whose request stated no rule is the job this system already ran.
+	if !(DeliveryGate{Pass: true}).Whole() {
+		t.Fatal("an ordinary passing delivery stopped being whole")
+	}
+}
+
+// A RECEIPT SAYS WHY A RUN STOPPED AND NEVER WHETHER IT LANDED. It is the one
+// positive sentence a gate can write, and letting it decide Whole would make the
+// harness able to talk itself out of every finding it raises — the failure the
+// governor's own refusal was rewritten to avoid.
+func TestAReceiptDoesNotDecideWhetherADeliveryIsWhole(t *testing.T) {
+	// The two receipts, on a gate that is short in the two ways that matter.
+	for _, short := range []DeliveryGate{
+		{Pass: false, Gap: "the answer names no file", Receipt: "the request was met as stated"},
+		{Pass: true, Unreadable: true, Receipt: "checked by tests, coverage not measured"},
+		{Pass: true, Unexercised: []string{"RichLog honours expand=True"},
+			Receipt: "the request was met as stated"},
+	} {
+		if short.Whole() {
+			t.Errorf("a receipt talked a short delivery into whole: %#v", short)
+		}
+	}
+	// And it takes nothing away from a delivery that already was whole.
+	whole := DeliveryGate{Pass: true, Receipt: "the request was met as stated"}
+	if !whole.Whole() {
+		t.Error("a receipt cost a passing gate its own verdict")
+	}
+}
+
+// And both positive fields survive the journal, because a receipt nobody can
+// read is a receipt that was never issued.
+func TestTheReceiptAndWhatIsMissingReachTheJournal(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "job", Brief: "run the command and report the line", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1", Intent: "run it and report"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("job", DeliveryGate{Pass: true,
+		Receipt: "the request was met as stated",
+		Missing: "report the final line it prints"}); err != nil {
+		t.Fatal(err)
+	}
+	gate, ok, err := graph.DeliveryGateFor("job")
+	if err != nil || !ok {
+		t.Fatalf("read back: ok=%v err=%v", ok, err)
+	}
+	if gate.Receipt != "the request was met as stated" {
+		t.Errorf("the receipt did not survive the journal: %q", gate.Receipt)
+	}
+	if gate.Missing != "report the final line it prints" {
+		t.Errorf("what the request still wanted did not survive the journal: %q", gate.Missing)
+	}
+}
+
+// A DELIVERY NOBODY READ IS NOT WHOLE, AND THE ROW THAT SAYS SO IS KEPT.
+//
+// reef-145's repair leaf finished its work, both of the gate's calls were
+// refused, and the store held no gate row for the delivered leaf at all — so the
+// door ended `ok` at exit 0 and the rig read an unchecked delivery as a clean
+// pass (2026-09-02, aforge-v2-14 anchor 1; #514). The row below is what that run
+// should have written: the reason, that nothing closed it, and that nobody was
+// ever answered by. All three are journaled and read back, because a field the
+// store drops is a field the exit code cannot turn on.
+func TestADeliveryNothingJudgedIsNeverWholeAndTheRowSurvives(t *testing.T) {
+	graph, err := Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "job", Brief: "ship the complete answer", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, SessionID: "s1", Intent: "answer every part"}); err != nil {
+		t.Fatal(err)
+	}
+	unjudged := DeliveryGate{
+		Refused:  "the gate could not be reached · asked twice · API error (404): no endpoints found",
+		Unclosed: true, Unjudged: true,
+	}
+	if unjudged.Whole() {
+		t.Fatal("a delivery nothing judged answered whole")
+	}
+	// AND IT ANSWERS THE SAME WAY WHATEVER ELSE THE ROW CARRIES. Whole is what
+	// the exit code reads, and a row that claimed a pass beside this field would
+	// be the exact indistinguishability the field exists to end.
+	claiming := unjudged
+	claiming.Pass, claiming.PolishClosed, claiming.Overturned = true, true, true
+	if claiming.Whole() {
+		t.Fatal("an unjudged row talked its way back to whole")
+	}
+	if err := graph.RecordDeliveryGate("job", unjudged); err != nil {
+		t.Fatalf("the store would not keep the row an unchecked delivery leaves: %v", err)
+	}
+	kept, found, err := graph.DeliveryGateFor("job")
+	if err != nil || !found {
+		t.Fatalf("delivery gate for job: found %t, err %v", found, err)
+	}
+	if !kept.Unjudged || !kept.Unclosed || kept.Pass || kept.Refused != unjudged.Refused {
+		t.Fatalf("the row came back saying something else: %+v", kept)
+	}
+	if kept.Whole() {
+		t.Fatal("the row read back off the journal answered whole")
+	}
+	// A row that claims both is a caller with a bug, and it is refused rather
+	// than quietly corrected — a silent fix leaves the caller running.
+	if err := graph.RecordDeliveryGate("job", DeliveryGate{
+		Pass: true, Unjudged: true, Refused: "the gate could not be reached", Unclosed: true,
+	}); err == nil {
+		t.Fatal("the store kept a delivery that was both unjudged and a pass")
 	}
 }

@@ -26,7 +26,13 @@ Moving in it:
 - esc closes the list and seals that word: it does not come back on the next letter you
   type. Start another word and it opens again. The text you typed stays.
 
-Eight rows show at once and the list scrolls under the cursor. At phone width fewer rows
+**The list shows as many rows as the frame can hold, and never fewer than eight.** Eight
+used to be a ceiling as well as a floor, so a fifty-row terminal drew eight commands under
+thirty-six blank rows and both `/help` and `/manual` were below the fold. It is only the
+floor now: on a tall terminal the whole table is on the screen at once, on a short one the
+list is clamped so the status line and a row of conversation survive, and the list scrolls
+under the cursor either way. **Where rows are still hidden the list says how many**, in the
+same `▸ 25 more` line the search place and the spend place draw. At phone width fewer rows
 show, each with its description on its own line. Rows highlight under the mouse pointer,
 but a click does not run a row — this list has no mouse commit.
 
@@ -156,10 +162,12 @@ equal a canonical name or another alias; that is checked when aforge starts.
 A word that is in no list is passed through as typed and gets this answer:
 
 ```
-unknown command: /<word> · try /help
+there is no command called /<word> · / lists them
 ```
 
-It says the word back as you wrote it, not what it resolved to.
+It says the word back as you wrote it, not what it resolved to. It points at `/` — one
+keystroke, the list itself — rather than at a second command to type. `?` over an empty
+box opens the `/help` sheet in one key.
 
 If nothing in the list matches what you typed and you press enter, the list closes and
 the line is submitted as an ordinary message. So `/nonsense` still gets an answer.
@@ -209,7 +217,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
+| `/search` | — | — | opens the search place — everything said on this machine (also `alt+6`) |
+| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+5`) |
+| `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
@@ -232,15 +242,58 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 `/help` (or `/?`) prints the whole command table into the conversation, name column
 aligned, each row with its alias tail. The first line is the product's own name,
-`openaf` — the one place on this surface it names itself.
+`aforge` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
 `ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t`, `ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
 
+**It also names the way into the seven places**, which it did not for a long while — three
+rows, directly under the `tab` row:
+
+```
+alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+.          on a place: what else is here · every key that place has, drawn
+               on a place, tab is the next place · esc back
+```
+
+On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the moment of
+drawing, and the words are the same.
+
+**One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
+back` — the places row, the task roster on `ctrl+t`, the conversation switcher on `ctrl+k`,
+`space space` — and that is the same two words the cards, pickers, the rewind sheet and the
+switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
+and `esc leaves` on four different rows, which read as four gestures on the one screen you
+open to find out how many there are. The longer `esc leaves it as it was` is a different
+sentence and stays where it is: it is said over a value you were editing, and it means the
+edit is discarded, not that you moved.
+
+Two rows say what their key DOES rather than naming the thing it reaches: `ctrl+,` is
+`open settings`, and `n` on the `/standing` row is `keep it out of here`.
+
 The last line of `/help` is `session · <path>`, and it appears **only when the session
-has a file**. Over `--host` the path is written `machine:/path`.
+has a file**. The path is written against your home — `~/.aforge/v3/…` — so that it fits
+on one row and still pastes into a shell; `/status` prints it in full. Over `--host` the
+path is written `machine:/path`.
+
+## The ? key — the one-key way to the key sheet
+
+`?` **over an empty box** opens `/help` — the whole key sheet, in the transcript.
+
+**On a place it draws the map instead** (the same thing `alt+.` draws): that place's own
+keys, in the cells the foot was already using. The key means one thing — show me the keys
+for where I am standing — and the two screens have two answers to it.
+
+**With anything typed in the box, `?` is just a question mark** and goes into your
+sentence, which is where a question mark nearly always belongs. The same is true inside
+any filter box, picker or panel: those have the keyboard first, so the key never reaches
+this binding.
+
+The key is named on the first row of `/help` itself, and on the line every session opens
+with — `esc interrupts · ctrl+c twice quits · ? for help`. `/?` is also an alias of
+`/help`, and has been all along.
 
 `/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
 it is typed out on purpose, so it is not asked twice. Your draft is written to disk
@@ -456,7 +509,7 @@ exists — `/export` never overwrites.
 
 `/export` writes markdown meant to be read by a person who was not there.
 
-The document opens with `# <session name>`. Under it, `## you` and `## openaf` headings
+The document opens with `# <session name>`. Under it, `## you` and `## aforge` headings
 appear only when the speaker changes, so a run of turns from one side is not chopped up.
 
 Your text and the model's text are kept verbatim as markdown.
@@ -645,10 +698,27 @@ pipe it into and it is not written to a file. That also means it is wrapped to t
 of your terminal, so text copied off the screen carries the line breaks the frame put in
 and the note's leading `· `; strip those before feeding it to a parser.
 
+## /search and /spend — the typed doors onto those two places
+
+`/search` opens the **search place** — everything that has been said on this machine,
+found by the words you remember of it. It is the same place `alt+6` opens and the same
+place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
+searches.
+
+`/spend` opens the **spend place** — what this machine has cost, by the day, by the model
+and by what it was for. It is the same place `alt+5` opens.
+
+**`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
+questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
+spend place is *the whole machine* — every window, every task and every standing run,
+including a session opened from another machine over `--host` whose calls are still made
+here. The word `spend` belongs to the bigger reading, so the one guess most people make
+now lands on the place. `/cost` keeps `/usage` and `/tokens`.
+
 ## /cost — what this conversation has spent
 
-`/cost` (or `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and
-on what, into the conversation.
+`/cost` (or `/usage`, `/tokens`) prints what this conversation has spent, and
+on what, into the conversation. For the whole machine's ledger, ask `/spend`.
 
 It draws up to seven aligned lines:
 
@@ -910,7 +980,7 @@ headings, one line per conversation under each: a glyph (`?` waiting on you, `�
 `◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the
 right half shows the line it is stopped on. Quiet
-conversations past the first four per project collapse to `…3 more, quiet since 2d`. The
+conversations past the first four per project collapse to `▸ 3 more, quiet since 2d`. The
 right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
 
 `↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from.
@@ -925,7 +995,7 @@ The foot reads exactly
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it. A project
-folds its quiet conversations into `…13 more, quiet since 1d`; that line is a door (`enter`
+folds its quiet conversations into `▸ 13 more, quiet since 1d`; that line is a door (`enter`
 or `→` opens it, `←` folds it), and searching sees through the fold.
 
 **`enter` opens any row on the screen, in any project.** The conversation you were in is
@@ -1483,9 +1553,26 @@ The tabs, in order:
 Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
 ```
 
-**Session** — the rows this conversation carries that belong nowhere else: "memory",
-"fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
-"ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
+## The settings tab strip on a narrow terminal
+
+The nine tabs need about 96 columns. On anything narrower the strip **scrolls** rather
+than being cut: the tab you are standing on is always drawn and always inked, its
+neighbours are drawn while they fit, and each end that had to give a tab up wears a `…`
+saying there is more that way. `←` and `→` still walk the nine one at a time, and the
+strip follows.
+
+It anchors left while you are near `Session` and right while you are near `Connections`,
+so both ends of the walk look exactly like a strip that fits. A tab the strip could not
+draw cannot be clicked, because nothing on this surface acts on something you cannot see.
+
+**Session** — the rows this conversation carries that belong nowhere else: "memory" and
+"fallback models". Two rows, and that is the honest size of it.
+
+The four ssh rows a `--host` conversation rides on ("ssh reuse", "ssh heartbeat", "ssh
+missed heartbeats", "ssh traffic") are **not** here any more — they are on **Workspace**.
+Every one of them lands on the next launch rather than on the conversation in front of
+you, so they are a fact about this machine and not about this session. Nothing you saved
+moved: the keys they are stored under are unchanged.
 
 The five models aforge uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
@@ -1506,8 +1593,15 @@ the conversation already open.
 **Workspace** — this machine and this project: what aforge does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
 "tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
-secret", "slack sign-in id". **It holds no money row at all** — every one of those moved to
-Spending.
+secret", "slack sign-in id", and the four ssh rows — "ssh reuse", "ssh heartbeat", "ssh
+missed heartbeats", "ssh traffic". **It holds no money row at all** — every one of those
+moved to Spending.
+
+The ssh rows are here because "what may aforge reach on your behalf" is this tab's own
+question, and a link to another machine is that question asked about a machine rather
+than about a service. They are not on the tab named **Connections**: that one is the
+catalog of third-party accounts you sign in to, and it is built from the account list
+rather than from the settings registry.
 
 **"background checks"** is on by default: one small timer under your own login checks
 your reminders, watches and routines every 5 minutes with no window open. Off removes it
@@ -1525,6 +1619,39 @@ after", "task countdown", "who settles work that needs a look".
 **Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
 work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task
 model".
+
+## What the number on a settings row is counted in
+
+Every row that shows a number shows what the number counts, so a whole tab can be read
+without moving the cursor onto each row. The unit is part of the value:
+
+| Row | Reads | Counted in |
+| --- | --- | --- |
+| ssh reuse | `300s` | seconds a connection stays reusable after its channel closes |
+| ssh heartbeat | `3s` | seconds of silence before ssh asks whether the far machine is there |
+| ssh missed heartbeats | `3` | unanswered heartbeats — the label says what is counted |
+| approval countdown | `10s` | seconds an approval question counts down before it pauses and keeps waiting |
+| background after | `30s` | seconds a foreground command runs before it becomes a job |
+| task countdown | `15s` | seconds a proposed task waits for you before it starts |
+| compact at | `60%` | how much of the model's window is filled before compaction |
+| answer room | `65536 tok` | tokens every call keeps free for its answer |
+| working set | `160000 tok` | tokens of material kept quoted in front of a worker |
+| context reuse | `250%` | shares of one whole context a job may re-send — 100% is once |
+| memory floor | `1536 MB` | megabytes that must be free before another task starts |
+| busy machine | `1.5 per core` | the load average per core at which new tasks wait |
+| tenure after | `3 clean firings` | clean firings a standing charter needs to earn tenure |
+| chat width | `50%` | the chat pane's share of the frame while the task rail is open |
+
+A row whose label already names what is counted — "task repair rounds", "tasks at once",
+"ssh missed heartbeats" — shows the figure alone rather than saying the word twice.
+
+**A row takes its unit back.** The box a value is typed into opens on the bare figure, and
+typing the unit back in is accepted: `120s` on "ssh reuse" and `120` both save 120
+seconds. Anything else is refused in the row's own words.
+
+**A duration row is different and always was.** "quiet before practice" and "arrival brief
+after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `0` turns them
+off.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "task column", "hints" — the one-line tips above the
@@ -1583,6 +1710,11 @@ A settings row is one of four kinds.
 `enter save · empty clears · esc cancel`. A secret row shows bullets, and an unchanged
 mask counts as no change — so pressing enter on a row you only looked at does not
 overwrite your key.
+
+The line above the box says which row you are changing **and what it will take**, in the
+same words the row refuses in: `per conversation · an amount in dollars, like 5 or 2.50 —
+or none for no limit`, `ssh reuse · a whole number`, `guardian · one of: off, on`. A row
+that only takes text says nothing extra, because "text" is not a fact about a row.
 
 **select** — enter opens the model picker itself, the same component `/model` opens, in
 the list's place. It is filtered to the question that row asks: "looking" only offers
@@ -1720,6 +1852,37 @@ such limit. If a page is longer than your screen, pipe it: `aforge manual keys |
 
 `aforge --help` lists it beside the other commands.
 
+## aforge <command> --help — asking one command what it takes, which is not a failure
+
+Every command in the terminal answers `--help` (and `-h`) with its own usage: the line
+that names its shape and its flags, then its flags one to a row, then
+
+```
+run `aforge --help` for every command and the environment table.
+```
+
+It goes to **standard output** and the command leaves with **0**. Asking a program what
+it takes is not a failure, so a Makefile or a CI step that runs `aforge do --help` to
+check the binary is healthy reads a command that worked. This includes the commands that take
+no flags at all — `aforge show --help`, `aforge models --help` and `aforge cache --help`
+answer the same way rather than reading `--help` as a filename or ignoring it.
+
+**A flag that does not exist is still a refusal**, and it is said once, on the **error
+stream**, and leaves with **1**:
+
+```
+error: flag provided but not defined: -nosuchflag
+  aforge do   "<task>" [-w dir] [--json] [-o file] ...
+```
+
+— the sentence, then that command's same usage, so the fix is on the screen beside the
+complaint. Nothing goes to standard output, so a script reading the answer never sees a
+refusal mixed into it.
+
+The usage one command prints is **read out of the table** `aforge --help` prints, not
+typed out a second time beside the flags, so the two can never disagree about what a
+command takes or what its codes mean.
+
 ## What /manual refuses — a page name that does not exist, and a question with no answer
 
 A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
@@ -1740,3 +1903,43 @@ aforge does not do that" is a fact about aforge, not a broken command.
 
 The manual describes **this** conversation surface. It has no pages about anything else,
 and it will not answer out of what the model remembers about other programs.
+
+## aforge --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
+
+`aforge --help` prints every command, what each is for, and the environment table under
+them. **Any single command answers for itself the same way:**
+
+```
+aforge do --help
+aforge logs --help
+aforge exec --help
+```
+
+Each one prints that command's own line — the shape it is called with, and what its exit
+codes mean where it has any — then its flags, one to a line, with what each does and what
+it defaults to. It goes to **standard output** and the command **exits 0**: asking for help
+is not a failure, so `aforge do --help` inside a Makefile or a health check reads as a
+command that worked. `-h` says the same thing.
+
+A flag that does not exist is the other answer: the refusal said once, then that same usage,
+both on the **error stream**, and a non-zero exit.
+
+Flags are written with two dashes for a word and one for a single letter — `--json`,
+`--timeout`, `-w`, `-o`. Either spelling is accepted whichever way you type it.
+
+## A command name I typed wrong, and a command I gave nothing to
+
+A word aforge does not have is answered with the nearest one it does:
+
+```
+there is no `aforge lgos`. did you mean `aforge logs`?
+run `aforge --help` for every command
+```
+
+Two lines, not the whole book — the command list is behind `aforge --help`, and the
+environment table behind `help env` on the same door, where either can be read without the
+answer scrolling off the top.
+
+`aforge do` and `aforge plan new` with nothing after them say `no goal given` and print
+**that command's** line, not every command's. Pipe the task in instead if it is long:
+`echo "the task" | aforge do`.

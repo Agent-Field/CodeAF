@@ -1,0 +1,45 @@
+ aforge                                                                                              1 want you · $0.13 / $500 · thu 3:39am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+13 chats · what wants you first                 alt+g group by project · alt+q hide the quiet ones    Sweeping the Frame Budget
+? tell me when CI goes red on master                                                 aforge-v2 43m    …/scratchpad/homehome/aforge-v2 · here
+○ Sweeping the Frame Budget                                                         aforge-v2 here
+○ Porting the Picker                                                                 aforge-v2 45m
+○ The Certificate Rotation                                                                infra 1h    work
+○ The Tab Bar's Counts                                                                aforge-v2 1h    ? Cut every list on the task su… $0.52
+○ 国際化とレイアウト幅 🌏 the Café Pricing Page                                    pricing-site 2h      ? needs your look · The four lists …
+○ Why the Frame Jumps                                                                 aforge-v2 3h      4 files
+○ Pricing Research                                                                 pricing-site 3h    ✗ Rebuild the frame budget report
+○ Standing Up the Watches                                                             aforge-v2 5h                                   $0.04
+○ The Annual Toggle                                                                pricing-site 5h      ✗ failed · The sweep it re-runs nee…
+○ Reading the Ledger                                                                  aforge-v2 1d    ✓ Measure the frame budget in e… $0.21
+○ What the Discount Means                                                          pricing-site 1d
+○ The Backup Window                                                                       infra 2d
+○ Rotating the Deploy Key                                                                 infra 4d    touched 5 files · spent $1.84
+                                                                                                      191k tokens · last active 44m
+                                                                                                      thinking high
+
+
+                                                                                                      → verbs: put it away, new chat here,
+                                                                                                               open folder, copy path
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                  here ~/aforge-v2
+ type to search or start something new · ↑↓ pick · enter open · tab next place

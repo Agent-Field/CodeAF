@@ -37,6 +37,108 @@ const SpecUnchangedNotice = "The criterion this work is judged against has not c
 // smallest of the four and must stay that way.
 const overrunCriterionLimit = 1200
 
+// The wrappers a remainder's goal is written in, and the one header they share.
+//
+// A REMAINDER IS THE SAME PIECE WITH A FINDING, AND ITS SIZE IS THE SIZE OF THE
+// FINDING AND NEVER OF THE GOAL. Both wrappers open by saying what happened and
+// then hand the planner the assignment itself, so the text a round composes is
+// the wrapper plus a brief; and the brief a second round is handed is the FIRST
+// round's composed text, because the node the first round planned carries the
+// whole goal as its brief (plan.Build's undivided shortcut writes Brief: goal).
+// Wrapping that again nests: measured on the canary, a second remainder's goal
+// read "Finish work… The original assignment: Finish work… The original
+// assignment: Implement issue #4031 …" at 28,468 characters with the issue text
+// twice over and the current finding last, and the round's gate call cost
+// 116,674 prompt tokens. So a wrapper is written around the INNERMOST original
+// assignment, which is what originalAssignment recovers, and the finding for
+// this round is added once by the blocks below.
+const (
+	// OriginalAssignmentHeader introduces the assignment itself, in both
+	// wrappers, so the unwrap has one shape to recognise rather than two.
+	OriginalAssignmentHeader = "The original assignment:\n"
+	// OverrunPreamble is exactly what overrunGoal writes before the assignment.
+	// It is a constant because the unwrap matches it EXACTLY: a wrapper found by
+	// loose substring matching is a wrapper that will one day be found inside
+	// somebody's actual assignment.
+	OverrunPreamble = "Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\n" + OriginalAssignmentHeader
+)
+
+// overrunGapHeader introduces what a reviewer found missing. It is a constant
+// because it is one of the blocks that ENDS the assignment, and the unwrap
+// below has to know where the assignment stops.
+const overrunGapHeader = "A reviewer compared that result against the assignment and named what is missing. Plan the work that closes these gaps and nothing else:"
+
+// overrunRecordsHeader introduces the readable record the earlier work left.
+// It is a constant for the same reason overrunGapHeader is.
+const overrunRecordsHeader = "The record of what the earlier work actually did, as readable files on disk. " +
+	"Open them: any statement this assignment makes about what was wrong, what was changed, " +
+	"or why, has to come from what is in them. Where they do not settle something, the honest " +
+	"answer is that the record does not name it — never an inference from the fact that the " +
+	"work succeeded, and never an example of what the answer might have been:"
+
+// remainderSections is every block either wrapper can write AFTER the
+// assignment, and it is the one place that says where an assignment stops.
+//
+// Each is written as "\n\n" followed by the header, so the earliest of them
+// inside a composed goal is the end of the assignment that goal wrapped. Adding
+// a block to overrunGoal or CooperativeGoal without adding its header here
+// would leave that block inside the next round's "original assignment" — which
+// is the whole defect, one section at a time — and
+// TestEverySectionOfARemainderGoalEndsTheAssignment fails when it happens.
+var remainderSections = []string{
+	SpecUnchangedNotice,
+	ContinuationPartialHeader,
+	ContinuationStateHeader,
+	overrunGapHeader,
+	ContinuationFilesHeader,
+	overrunRecordsHeader,
+	OpenFindingsHeader,
+	ContinuationTranscriptHeader,
+	CooperativeFindingHeader,
+}
+
+// originalAssignment recovers the innermost assignment from a brief that is
+// itself a composed remainder goal, and returns any other brief unchanged.
+//
+// It peels rather than strips once, because a third round is handed a second
+// round's text: each turn of the loop takes off one exact preamble and cuts at
+// the first block that ends an assignment, so what is left is what the person
+// actually asked for. A brief that never went through either wrapper matches no
+// preamble and comes back as it went in, which is every fresh job.
+func originalAssignment(brief string) string {
+	for {
+		rest, wrapped := strings.CutPrefix(brief, OverrunPreamble)
+		if !wrapped {
+			rest, wrapped = strings.CutPrefix(brief, CooperativePreamble)
+		}
+		if !wrapped {
+			return brief
+		}
+		// A wrapper around nothing means the round that composed it was given
+		// nothing, and the honest answer is nothing: keeping the wrapper here
+		// so the goal is not empty is the one way this function could still
+		// nest, and an empty assignment is a cheaper wrong answer than a
+		// doubled one.
+		brief = strings.TrimSpace(rest[:assignmentEnd(rest)])
+		if brief == "" {
+			return ""
+		}
+	}
+}
+
+// assignmentEnd is where the assignment stops inside a composed goal: the first
+// block of remainderSections, or the end of the text when the goal carried the
+// assignment alone.
+func assignmentEnd(text string) int {
+	end := len(text)
+	for _, section := range remainderSections {
+		if at := strings.Index(text, "\n\n"+section); at >= 0 && at < end {
+			end = at
+		}
+	}
+	return end
+}
+
 // OverrunPlanFunc plans the remaining work of an exhausted leaf into a
 // subtree, with prefix as the id namespace for the new nodes.
 type OverrunPlanFunc func(ctx context.Context, goal, prefix string) (store.Subtree, error)
@@ -83,8 +185,11 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state
 // same four blocks in the same order for the in-place retry.
 func overrunGoal(node store.Node, partial string, artifacts []string, gap, state, transcript string, findings OpenFindings, records ...string) string {
 	var goal strings.Builder
-	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
-	goal.WriteString(node.Brief)
+	goal.WriteString(OverrunPreamble)
+	// The ORIGINAL assignment, never the last round's account of it: a remainder
+	// after a gate fail is the same piece with a finding, and the finding below
+	// is the only thing this round adds. See originalAssignment.
+	goal.WriteString(originalAssignment(node.Brief))
 	// The criterion travels with the remainder rather than being re-derived
 	// from the brief. A replan that re-derives it writes a new one, and a new
 	// one written from a partial result is a criterion aimed at the work that
@@ -109,7 +214,7 @@ func overrunGoal(node store.Node, partial string, artifacts []string, gap, state
 		goal.WriteString(state)
 	}
 	if strings.TrimSpace(gap) != "" {
-		goal.WriteString("\n\nA reviewer compared that result against the assignment and named what is missing. Plan the work that closes these gaps and nothing else:\n")
+		goal.WriteString("\n\n" + overrunGapHeader + "\n")
 		goal.WriteString(gap)
 		// What comes back from this round is what the person reads, and it is
 		// the last thing they read: a repair on a top-level job continues as a
@@ -124,11 +229,7 @@ func overrunGoal(node store.Node, partial string, artifacts []string, gap, state
 		goal.WriteString(strings.Join(artifacts, "\n"))
 	}
 	if len(records) > 0 {
-		goal.WriteString("\n\nThe record of what the earlier work actually did, as readable files on disk. " +
-			"Open them: any statement this assignment makes about what was wrong, what was changed, " +
-			"or why, has to come from what is in them. Where they do not settle something, the honest " +
-			"answer is that the record does not name it — never an inference from the fact that the " +
-			"work succeeded, and never an example of what the answer might have been:\n")
+		goal.WriteString("\n\n" + overrunRecordsHeader + "\n")
 		goal.WriteString(strings.Join(records, "\n"))
 	}
 	// The measured shortfall, verbatim from the record, so the planner sizes the
@@ -176,31 +277,39 @@ func RemainderDigest(gap string) string {
 // Returns the spliced node count and the repair sink's id. DailyBudgetUSD zero
 // is unlimited; at the rail the durable question is posted and no splice lands.
 func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
-	return ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, Growth{Reason: GrowOverrun}, planRemainder)
+	spliced, sink, _, err := ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, Growth{Reason: GrowOverrun}, planRemainder)
+	return spliced, sink, err
 }
 
-// ReplanOverrunAs is the same splice with the growth named for what asked.
+// ReplanOverrunAs is the same splice with the growth named for what asked, and
+// it hands back WHICH GOVERNOR SPOKE when one refused the round.
 //
 // The delivery gate grows a job for a reason this file never had — a reviewer
 // found the result wrong, not the budget short — and it used to inherit this
 // path's governors by borrowing its whole function, which left the journal
 // unable to say afterwards which of the two had spent the round. The reason
 // travels now; everything else is identical.
-func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, growth Growth, planRemainder OverrunPlanFunc) (int, string, error) {
-	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", growth, planRemainder)
-	return spliced, sink, err
+//
+// refused is [GrowVerdict.Cause] verbatim, and empty when nothing refused —
+// including at the rail, which is a question waiting on a person rather than a
+// refusal. It is RETURNED rather than left in the journal for the caller to
+// read back, because the caller's next three decisions turn on it and a fact
+// re-derived from a row is a fact that can disagree with the row.
+func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, growth Growth, planRemainder OverrunPlanFunc) (spliced int, sink string, refused string, err error) {
+	return replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", growth, planRemainder)
 }
 
-// replanOverrun reports capped=true when a governor refused the splice: the
-// repair is abandoned for good, unlike the rail's zero-splice pause, which is
-// waiting for consent. Deferred resumption needs the difference — a capped
-// repair must resolve rather than wait forever.
-func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, growth Growth, planRemainder OverrunPlanFunc) (int, string, bool, error) {
+// replanOverrun reports a non-empty cause when a governor refused the splice:
+// the repair is abandoned for good, unlike the rail's zero-splice pause, which
+// is waiting for consent. Deferred resumption needs the difference — a capped
+// repair must resolve rather than wait forever — and every other caller needs
+// the cause itself, so the one value answers both.
+func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, growth Growth, planRemainder OverrunPlanFunc) (int, string, string, error) {
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
 		if err != nil {
-			return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
+			return 0, "", "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 		}
 	}
 	// The round is the prefix's own arithmetic rather than the journal's count:
@@ -238,7 +347,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	request = request.weighed(graph, request.JobRoot, lineage)
 	verdict, err := growJob(ctx, graph, growth.Ask, request)
 	if err != nil {
-		return 0, "", false, fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
+		return 0, "", "", fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
 	}
 	if !verdict.Allow {
 		if verdict.Cause == CauseRail {
@@ -252,11 +361,14 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap,
 				Artifacts: artifacts, Prefix: prefix, State: growth.State}
 			if err := graph.DeferOverrun(deferred); err != nil {
-				return 0, "", false, fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
+				return 0, "", "", fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
 			}
-			return 0, "", false, nil
+			// A RAIL IS NOT A REFUSAL. The repair is journaled and waiting on
+			// consent, so nothing downstream may read this as the job having
+			// concluded anything — see GrowthStopped.
+			return 0, "", "", nil
 		}
-		return 0, "", true, nil
+		return 0, "", verdict.Cause, nil
 	}
 	anchor := PlanAnchor{NodeID: request.JobRoot, SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
@@ -283,10 +395,10 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	}
 	subtree, err := planRemainder(planCtx, goal, prefix)
 	if err != nil {
-		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		return 0, "", "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	if len(subtree.Nodes) == 0 {
-		return 0, "", false, nil
+		return 0, "", "", nil
 	}
 	// The ceiling is read twice on purpose. On the way in it can only ask
 	// whether there is room for anything at all, because until the plan exists
@@ -298,7 +410,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	exact.Rechecking = true
 	exact.DailyBudgetUSD = 0
 	if recheck, err := growJob(ctx, graph, nil, exact); err == nil && !recheck.Allow {
-		return 0, "", true, nil
+		return 0, "", recheck.Cause, nil
 	}
 	subtree = attachNeeds(subtree, repairSources(graph, node))
 
@@ -310,7 +422,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		}
 	}
 	if sink == "" {
-		return 0, "", false, fmt.Errorf("replan overrun %s: subtree has no sink", node.ID)
+		return 0, "", "", fmt.Errorf("replan overrun %s: subtree has no sink", node.ID)
 	}
 
 	// The repair joins the exhausted node's own job when there is one; an
@@ -339,7 +451,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		Attachments: append([]string(nil), node.Provenance.Attachments...),
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
-		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		return 0, "", "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	admitGrowth(graph, request, verdict, len(subtree.Nodes))
 	// THE RESUMPTION IS JOURNALED, on the node that is actually resuming. A
@@ -373,7 +485,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			_ = graph.AddEdge(sink, edge.To, store.FeedsInto)
 		}
 	}
-	return len(subtree.Nodes), sink, false, nil
+	return len(subtree.Nodes), sink, "", nil
 }
 
 // OverrunLineage names the lineage a node belongs to and how deep into it the
@@ -468,14 +580,15 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			}
 			continue
 		}
-		spliced, _, capped, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
+		spliced, _, refused, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
 			dailyBudgetUSD, deferred.Prefix, Growth{Reason: GrowOverrun, State: deferred.State}, planRemainder)
 		if err != nil {
 			return resumed, err
 		}
-		// A capped repair is abandoned for good: resolve it so it stops
-		// occupying the queue. A rail pause keeps waiting for consent.
-		if capped {
+		// A refused repair is abandoned for good: resolve it so it stops
+		// occupying the queue. A rail pause names no governor and keeps waiting
+		// for consent, which is why the cause is what is asked here.
+		if refused != "" {
 			if err := graph.ResolveOverrun(deferred); err != nil {
 				return resumed, err
 			}

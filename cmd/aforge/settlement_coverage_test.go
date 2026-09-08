@@ -47,7 +47,7 @@ func TestAGovernorRefusesTheRoundAndNeverTheReviewsFinding(t *testing.T) {
 	// open. See verify.RememberBaseline.
 	verify.ForgetBaselines()
 	revision.ForgetChecklists()
-	verify.RememberBaseline(workspace, verify.JobKey(dryRunRequest), verify.Reading{Taken: true})
+	verify.RememberBaseline(workspace, verify.JobKey(dryRunRequest), "", verify.Reading{Taken: true})
 
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
@@ -56,9 +56,9 @@ func TestAGovernorRefusesTheRoundAndNeverTheReviewsFinding(t *testing.T) {
 	})
 
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitPartial {
+	if !asExitStatus(err, &status) || status != exitIncomplete {
 		t.Fatalf("a run holding an unclosed coverage finding left with %v, want %d\nstderr:\n%s",
-			err, exitPartial, stderr.String())
+			err, exitIncomplete, stderr.String())
 	}
 	// THE COUNT THE PERSON READS IS THE POINT COUNT. Both behaviours quote the
 	// same single line of the request, which is exactly the case that reported a

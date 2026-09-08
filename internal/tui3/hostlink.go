@@ -302,7 +302,7 @@ func latencyWord(elapsed time.Duration) string {
 // exactly when a link is most likely to have dropped.
 //
 // It is an ordinary note because it is an ordinary one-off sentence, and the
-// surface has one way of saying those (app.go's [app.note]) — the same road the
+// surface has one way of saying those (app.go's [feed.note]) — the same road the
 // door's own entry notice takes on the first frame.
 func (a *app) takeLinkNotice() {
 	if a.link.Notice == nil {

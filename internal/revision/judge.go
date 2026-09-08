@@ -147,6 +147,8 @@ Where a working method is given, it is the standard this kind of work set for it
 
 A confirmation is the fact of what came back, in the deliverable's own words: what was run, how many passed, what failed, how it ended. When the request asked for a thing to be run and confirmed, that reading satisfies it, and the verbatim transcript of the command is never the gap — demanding the raw output, the exact formatting, or the full terminal text of a check the deliverable already states the result of is a preference of yours, and the honest answer for a preference is pass. Only a request that asked for the output itself — the log, the listing, the exact text — is failed by its absence.
 
+Where the rules the person set are listed above, they are the one standard beside the request that is about what the run may not DO rather than about what it must produce: a rule they set and the work broke is a gap, and you name it by quoting the rule.
+
 When you name a gap, quote the words of the request it is a failure of — a span of the person's own text, copied exactly as they wrote it, long enough to be unmistakably theirs. Quote the part of what they asked for that is not there. A gap you cannot quote from their request is a preference of yours rather than something they asked for and did not get, and the honest answer for it is pass.
 
 The deliverable is fenced. Everything between the line ` + deliverableOpen + ` and the line ` + deliverableClose + ` is the deliverable, the whole of it, and nothing outside those two lines is any part of it. What sits above the fence — settled taste, lessons from earlier work, the request, the goal, the working method — is how to judge, never what is judged, and what sits below it is the record of the run. A lesson from earlier work describes a job that is not this one: it may tell you what to look for and it can never tell you what is there. Read the fenced text itself before you say anything about it, and describe only what is in it. If you are about to say the deliverable is a progress report, a series of messages, or a set of pointers to files, that sentence must be true of the fenced text in front of you — check it there first, because that is a description earlier work has been given and it is the easiest one to repeat about work it does not fit.
@@ -399,6 +401,18 @@ type Judgment struct {
 	// about. See unbound.go.
 	Unbound []string
 
+	// Constraint is the finding this gate's newest law produced: one line per
+	// rule the person SET that this work broke, their own words followed by the
+	// files the run changed in spite of them.
+	//
+	// It is a field of its own for the reason Unbound and Unexercised are, and
+	// for one more that is its alone: it is the only finding here that no round
+	// may be bought against. Every other gap can be answered with more work;
+	// this one says the work did the thing it was forbidden to do, and more of
+	// it is not the answer. See ExtendForGap, which refuses before anything is
+	// planned, and store.DeliveryGate.Whole.
+	Constraint []string
+
 	// Finding names WHICH MEASUREMENT this gap is, in one stable word, and
 	// Cited above holds the things it names. Empty for a model judge's verdict,
 	// which is a reading of a request and not a measurement of the world.
@@ -413,6 +427,42 @@ type Judgment struct {
 	// record could say so. The pair is the comparable thing: this kind, and the
 	// names.
 	Finding string
+
+	// Receipt is the positive sentence this delivery earned, in the words the
+	// person reads: that the request was met exactly as it was stated, or that
+	// the work's own checks ran and settled while coverage could not be
+	// measured. Empty is the ordinary case and says nothing either way.
+	//
+	// IT IS THE ONE FIELD ON THIS VALUE THAT IS NOT A COMPLAINT. Everything
+	// else here names something wanting, and a run that ends because the thing
+	// asked for is in hand had no way to say so — so "the plan ran out" and
+	// "the request was met" reached the person as the same silence, and the
+	// silence was spelled `partial`. It is deliberately NOT read by
+	// store.DeliveryGate.Whole: a receipt says why the run stopped, and whether
+	// the delivery is whole is still settled by the pass, the repair and the
+	// world-doors exactly as it was.
+	Receipt string
+
+	// RequestAsked says the one question — is this request, as the person wrote
+	// it, satisfied by what is in hand — has already been put for this verdict.
+	//
+	// It travels because the question has two doors and one price. The gate's
+	// caller asks before it buys a repair round; the extension door asks before
+	// it buys a remainder; and a gate that asked and was told no must not pay
+	// for the same answer twice on the way to the same conclusion. See
+	// RequestMet, and satisfied.go for the whole of it.
+	RequestAsked bool
+
+	// Request is that question, carried as the ability to ask it.
+	//
+	// A FUNC ON A VALUE IS UNUSUAL HERE AND IT IS THE CHEAPER OF TWO EVILS. The
+	// question needs a model client and a settings object; the two doors are in
+	// two packages and only the gate's caller holds either; and the alternative
+	// was widening ExtendForGap's signature at every call site — including six
+	// in tests — for a door that today has exactly one caller. Nil is the
+	// ordinary case and means this verdict cannot ask, which is how every
+	// caller that never set it already behaves.
+	Request RequestQuestion
 
 	// Fallback says this verdict was reached under the CLAIM contract after the
 	// tree contract could not be answered — free text where there were enums —
@@ -688,6 +738,19 @@ type Evidence struct {
 	// Empty on every job whose request states nothing checkable, which is most
 	// of them, and empty reads as NO CHECKLIST rather than as nothing asked for.
 	Accept []plan.Point
+	// Constraints are the rules the person's REQUEST states about what the run
+	// may or may not DO, in their own words, carried on the plan's spec.
+	//
+	// They are Accept's other half and they answer to a different question.
+	// The checklist is what the finished thing must DO; a constraint is what the
+	// run may not do on the way there, and no reading of a deliverable can
+	// settle it — only the list of what the run changed can. The mechanical
+	// kinds are held here before a judge is bought (HoldConstraints); the rest
+	// are shown to the judge as the standard beside the request.
+	//
+	// Empty on every job whose request stated no rule, which is most of them,
+	// and empty reads as NO RULE rather than as a rule nobody could check.
+	Constraints []plan.Constraint
 	// Verification is the photograph of the project's own checks the run took —
 	// the roster before the work and the roster after it, on the budget PERF.md
 	// states. The gate reads it instead of reading the deliverable's sentence
@@ -1211,7 +1274,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// there, on the same budget the worker was held to, so that the world's
 	// answer exists wherever a verdict is being reached rather than only where a
 	// worker happened to be able to take one.
-	evidence.measureFinalTree(ctx)
+	evidence.measureFinalTree(ctx, verify.JobKey(node.Provenance.Intent))
 	// AND THE RECORD OF WHAT WAS LEFT BEHIND IS SETTLED AGAINST THE WORLD BEFORE
 	// ANYTHING IS ASKED OF IT. Every reader below — the mechanical gate, the
 	// block the judge is shown, the door that refuses a gap the disk has already
@@ -1252,9 +1315,27 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// And the other half of the same question, derived the same way and for the
 	// same reason: WHICH behaviour this verdict was held to, or that there was
 	// no list to hold it to. See heldPointWords.
-	judgment.HeldPoint = heldPointWords(evidence,
-		Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done},
+	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	judgment.HeldPoint = heldPointWords(evidence, grounds,
 		newBounds(options).budget(DeliverablePrompt), judgment)
+	// AND A REFUSAL THAT QUOTES A RULE THE PERSON SET IS A BROKEN RULE, WHOEVER
+	// REACHED IT. The mechanical door settles the two readings arithmetic can
+	// settle; the rest are put to the judge, and a judge that convicts on one was
+	// right about the finding and had no way to say what KIND of finding it is.
+	// It is stamped here, at the one exit, above every reader that decides what a
+	// round may be bought for. See ConstraintQuoted.
+	judgment = ConstraintQuoted(judgment, evidence.Constraints)
+	// AND THE ONE QUESTION THIS VERDICT CAN STILL BE ASKED IS BOUND HERE, ONCE,
+	// FOR THE SAME REASON EVERYTHING ELSE ABOVE IS.
+	//
+	// The question needs a model client, and only this function's caller has
+	// one — so a field left for some later caller to fill in is a field nothing
+	// fills in, and `ExtendForGap`'s door was dead wiring on every caller that
+	// is not the chat surface. Bound at the one exit every verdict in this
+	// program leaves through, it is live for all of them and there is nothing
+	// left for a constructor to forget. Nil where there is no client, which is
+	// how a caller that cannot ask already behaves. See satisfied.go.
+	judgment.Request = requestQuestion(settings, client, node, grounds, deliverable, evidence)
 	return judgment
 }
 
@@ -1325,6 +1406,17 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// than it was found. It is settled before a model round is bought for the
 	// same reason a missing promised file is — the answer is already known and a
 	// judge's cost would buy nothing.
+	// A RULE THE PERSON SET OUTRANKS EVERY READING OF THE WORK, INCLUDING THIS
+	// ONE. The findings below are measurements of a repository; this is the
+	// person's own sentence held against the files the run changed, and a run
+	// that broke it has failed at the one thing it was told without ambiguity.
+	// It is settled first and without a model for the reason the regression is
+	// settled without one: the answer is already known, and a judge's cost would
+	// buy nothing. See constraint.go and issue #427.
+	if held, broken := ConstraintsHeld(evidence); broken {
+		held.Grounds = grounds
+		return held
+	}
 	if regression, broke := Regressions(evidence.Regressed); broke {
 		regression.Grounds = grounds
 		return regression
@@ -1428,6 +1520,14 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 			body += "\n\n" + behavioursBlock(spans)
 		}
 	}
+	// And the rules the person set that no arithmetic could settle, beside the
+	// behaviours and for the same reason: they are a standard the delivery is
+	// held to, written by the person, before any work existed. The mechanical
+	// ones never reach here — they were held above, without a model — so what
+	// is shown is exactly the set a reader has to weigh. See ConstraintsBlock.
+	if rules := ConstraintsBlock(evidence.Constraints); rules != "" {
+		body += "\n\n" + rules
+	}
 	// And the definitions this run reshaped that the rest of the project still
 	// uses, beside the behaviours because it belongs to the same half of the
 	// prompt: how to judge, read from the world, rather than what is judged. It
@@ -1466,6 +1566,11 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
+	// And the same node on the model-call log, which is a separate carrier from
+	// the spend one above: the bill is keyed by the job that pays, the log by
+	// the work a row belongs to, and a gate row with no node cannot be read
+	// beside the leaf rows for the deliverable it just refused.
+	judgeCtx = provider.WithCallNode(judgeCtx, node.ID)
 	// The answer's shape follows the subject. Over a changed tree a refusal must
 	// name one file of the record and quote the behaviour it fails, which is
 	// what makes a finding about the worker's sentence unsayable rather than
@@ -1493,6 +1598,26 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
 	}
 	_, err := askVerdict(judgeCtx, client, messages, schema, &verdict)
+	// ONE MORE ASK, INSIDE THE WALL, BEFORE A DELIVERY GOES OUT WITH NOTHING
+	// HAVING READ IT.
+	//
+	// A call that never landed says nothing about the work, and the cheapest
+	// thing that can be done about it is to make it again. reef-145 delivered
+	// unjudged twice on a route that answered 404 in 58 ms — a failure fast
+	// enough that the run had four minutes of wall left and spent none of it
+	// asking a second time. The answer to which happened rides the note below,
+	// because "asked twice and still nothing" and "there was no time to ask" are
+	// different facts about a run and only one of them is anybody's to fix.
+	//
+	// It is one more ask and never a loop: the wall is the run's, the gate is
+	// spending it, and a judge that cannot be reached twice inside a floor of
+	// time is not going to be reached on the third.
+	asked := ""
+	if err != nil && !shaped.Unreadable(err) {
+		if asked = worthAskingAgain(judgeCtx, err); asked == gateAskedTwice {
+			_, err = askVerdict(judgeCtx, client, messages, schema, &verdict)
+		}
+	}
 	// A CONTRACT MAY NOT BE THE REASON A RUN ENDS WITH NOTHING STARTED.
 	//
 	// The tree contract is narrow on purpose, and igel s15 shows both halves of
@@ -1544,8 +1669,12 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		// A transport failure is a different thing and stays fail-open: the
 		// model was never reached, so nothing about this deliverable was
 		// examined and holding it hostage to the weather buys nobody anything.
+		// What it is NOT any more is silent — the note says the gate was never
+		// reached and what was done about it, the delivery path turns that into
+		// a gate row of its own kind, and the run leaves unchecked rather than
+		// ok. See GateUnreached and cmd/aforge/chat.go's seam.
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return unjudged(node, "the gate could not be reached", err)
+		return unjudged(node, gateNote(GateUnreached, asked), err)
 	}
 	if verdict.Pass {
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
@@ -1668,10 +1797,77 @@ func GateFaultHandover(fault string) string {
 func unjudged(node store.Node, why string, err error) Judgment {
 	note := why
 	if err != nil {
-		note += ": " + firstLine(err.Error())
+		note = gateNote(why, firstLine(err.Error()))
 	}
 	log.Printf("note: the delivery gate did not judge %s — %s; delivering unjudged", node.ID, note)
 	return Judgment{Pass: true, Unjudged: note}
+}
+
+// GateUnreached is why a delivery went out with nothing having read it, in the
+// words the door prints, the journal keeps and a rig reads back.
+//
+// IT IS THE FIRST CLAUSE OF THE NOTE AND NEVER THE WHOLE OF IT. What follows it
+// — how the gate was asked, and the provider's own sentence — is detail a person
+// may or may not need; this is the fact they are owed, and cmd/aforge/do.go
+// prints it verbatim after "delivered without a check: ". Spelled once here
+// because a sentence in two places is two sentences.
+const GateUnreached = "the gate could not be reached"
+
+// The three answers to "and what was done about it", which is the question a
+// person reading an unchecked delivery asks second. One of them is always on the
+// note: the gate was asked again, or there was no wall left to ask inside, or
+// asking again would have bought the same refusal.
+const (
+	gateAskedTwice  = "asked twice"
+	gateNoTimeToAsk = "the wall left no time for a second call"
+	gateAskRefused  = "the request itself was refused, so asking again would say the same"
+)
+
+// gateSecondAskFloor is the least wall one more gate call is worth starting in.
+//
+// It is the smallest honest figure rather than a share of anything: a structured
+// verdict over a whole deliverable is not a call that finishes in seconds, and
+// starting one with less than this left buys a certain timeout in place of the
+// run's remaining time. STATED ONCE — worthAskingAgain is its only reader.
+const gateSecondAskFloor = 30 * time.Second
+
+// worthAskingAgain answers whether a gate call that never landed is worth making
+// once more, and NAMES ITS ANSWER in the words the note carries — so the reading
+// and the sentence a person gets cannot drift apart.
+//
+// Two things say no. A refusal that is about the REQUEST will be refused the
+// same way by every endpoint, and provider.APIError.OurRequest is the shape that
+// says so — already the reading two other retry seams take (internal/exec and
+// internal/session), so this is that question asked again rather than a second
+// answer to it. And a wall with no room left for a call is a wall this gate may
+// not spend on one: the run's remaining time belongs to the work.
+//
+// A context with no deadline at all has all the time there is, and is asked.
+func worthAskingAgain(ctx context.Context, err error) string {
+	if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
+		return gateAskRefused
+	}
+	if deadline, timed := ctx.Deadline(); timed && time.Until(deadline) < gateSecondAskFloor {
+		return gateNoTimeToAsk
+	}
+	return gateAskedTwice
+}
+
+// gateNote joins an unjudged delivery's clauses into the one line the record
+// keeps and the door prints.
+//
+// The separator is " · " rather than ": " because every clause after the first
+// is an aside — how it was asked, what the provider said — and a colon would
+// promise that what follows explains what precedes it. Empty clauses are dropped
+// on the emptiness law: a run that has nothing to add says nothing.
+func gateNote(clauses ...string) string {
+	kept := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		if clause = strings.TrimSpace(clause); clause != "" {
+			kept = append(kept, clause)
+		}
+	}
+	return strings.Join(kept, " · ")
 }
 
 // The citation invariant: a gate's gap may commission new work only if it
@@ -1806,6 +2002,16 @@ func citationKey(text string) string { return strings.Join(strings.Fields(text),
 // would be told.
 type Extension struct {
 	Spliced int
+	// Met says the one question was put at this door and came back yes: the
+	// request, as the person wrote it, is satisfied by what is in hand, so no
+	// remainder was bought and none was owed. Refused then carries the receipt
+	// rather than a refusal, and Unclosed is false — the gap did not survive,
+	// it was answered.
+	//
+	// The gate's own caller asks the same question one door earlier and passes
+	// the delivery there, so it never sees this. It is here for the callers
+	// that reach the extension without going through that door.
+	Met bool
 	// Quote is the citations as one line, and Citations is the list the
 	// admission rule actually weighed. They travel together for the same reason
 	// they do on a Judgment: the ledger that bounds the next round reads the
@@ -1815,6 +2021,14 @@ type Extension struct {
 	Round      int
 	Refused    string
 	Mechanical bool
+	// Cause is the growth governor's machine-readable word for WHICH governor
+	// refused, verbatim from resident.GrowVerdict, and empty when nothing
+	// refused. Refused above is what a person reads; this is what a decision is
+	// made from, and the two are separate fields because a decision read out of
+	// a sentence is a decision that breaks when the sentence is reworded. See
+	// resident.GrowthStopped, which is the only thing allowed to turn one of
+	// these words into an ending.
+	Cause string
 	// Unclosed says the gap is still open: the repair was refused for want of
 	// money, rounds or a planner, rather than because the gap itself was found
 	// inadmissible. See store.DeliveryGate.Unclosed for why the difference is
@@ -1892,6 +2106,21 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	cited := unmet.Cited()
 	extension := Extension{Quote: joinCitations(cited), Citations: cited, Round: round + 1,
 		Mechanical: unmet.Mechanical}
+	// A BROKEN CONSTRAINT NEVER BUYS A ROUND, and the refusal comes before
+	// anything is planned so that it costs nothing at all.
+	//
+	// Every other finding here is something more work could close: a file that
+	// is not on disk, a behaviour nothing exercises, a check the run turned red.
+	// This one says the run did what the person forbade, and a remainder planned
+	// to close it is one more worker inside the same workspace with the same
+	// permission the last one abused. #427 is that mechanism measured: the
+	// remainder spliced for a coverage finding wrote the file the person had
+	// said not to write.
+	if len(unmet.Constraint) > 0 {
+		extension.Refused = "the work broke a rule the person set, and no round is bought to close that"
+		extension.Unclosed = true
+		return extension
+	}
 	if graph == nil || planRemainder == nil {
 		extension.Refused, extension.Unclosed = "there is nothing here that could plan the rest", true
 		return extension
@@ -1932,6 +2161,15 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// direction here is to try, because the alternative is the defect this whole
 	// change is about: eight runs that stopped at a tenth of their wall by
 	// choice. See PERF.md and docs/design/gate/SETTLEMENT.md §3.
+	// A REQUEST ALREADY SATISFIED BUYS NO ROUND. It is asked here, before the
+	// wall is weighed and before anything is planned, because a run that has
+	// done what was asked should end saying so rather than end saying it ran out
+	// of clock. See satisfied.go: it is one call, at the one moment a round
+	// would otherwise be bought, and never where the gate's own caller has
+	// already put it.
+	if settled, met := metExtension(ctx, extension, unmet); met {
+		return settled
+	}
 	if refusal := outOfWall(ctx, node); refusal != "" {
 		extension.Refused, extension.Unclosed = refusal, true
 		return extension
@@ -1939,7 +2177,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// The reason travels rather than being inherited: this is quality failure
 	// growing a job, not resource failure, and the journal that bounds growth
 	// could not tell the two apart while one borrowed the other's whole path.
-	spliced, _, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
+	spliced, _, cause, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
 		dailyBudgetUSD, resident.Growth{Reason: resident.GrowGap, Records: records,
 			// A finding that names a file of the record is a reading of the
 			// world, so the first round it buys is not the coverage question's
@@ -1950,6 +2188,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		extension.Refused, extension.Unclosed = "the work that would close it could not be planned", true
 		return extension
 	}
+	extension.Cause = cause
 	if spliced == 0 {
 		// A governor has already said so in the thread in its own words, or the
 		// rail has journaled the repair and is waiting on consent. Either way
@@ -1962,6 +2201,15 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		if coverageRefused(graph, base) {
 			extension.Refused, extension.Unclosed = "the job's own reading of what it is "+
 				"judged on found nothing left to add, so nothing further was started", true
+			return extension
+		}
+		// AND THE TWO GOVERNORS THAT READ THE WORLD SAY IT IN THEIR OWN WORDS.
+		// "no more work could be started on it" is true of a cap, a wall and a
+		// planner that came back empty, and it is the wrong account of a job
+		// that has concluded nothing is changing — which is a finding about the
+		// work rather than about what is left to spend on it.
+		if words, stopped := resident.GrowthStopped(cause); stopped {
+			extension.Refused, extension.Unclosed = words, true
 			return extension
 		}
 		extension.Refused, extension.Unclosed = "no more work could be started on it", true
@@ -2179,6 +2427,8 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
+	// And on the log, for the reason the delivery gate names its own node.
+	judgeCtx = provider.WithCallNode(judgeCtx, node.ID)
 	var verdict struct {
 		Done      bool   `json:"done"`
 		Remaining string `json:"remaining"`
@@ -2418,9 +2668,22 @@ func PlanNodeFor(planGraph *plan.Graph, prefix, nodeID string) *plan.Node {
 // It is a measurement and never a gate: a command that will not run, an
 // entrypoint that vanished, or a ceiling that fires all leave the evidence
 // exactly as it arrived.
-func (e *Evidence) measureFinalTree(ctx context.Context) {
+//
+// job is the request this tree is being changed for, and it is here for the one
+// question that has to be asked before the suite is: HAS ANYTHING HAPPENED SINCE
+// SOMEBODY LOOKED. Where the job has produced or changed no file since its
+// reading was taken, the tree in front of this gate is the tree in that reading,
+// and running the suite again spends an eighth of a wall to reproduce a roster
+// the evidence is already carrying. See verify.TreeState.
+func (e *Evidence) measureFinalTree(ctx context.Context, job string) {
 	reading := e.Verification
 	if !reading.Taken || reading.AfterTaken || strings.TrimSpace(e.Workspace) == "" {
+		return
+	}
+	if verify.TreeUnchangedSince(e.Workspace, job, verify.TreeState(e.Workspace, e.Artifacts)) {
+		if settled, unchanged := reading.OnAnUnchangedTree(); unchanged {
+			e.Verification = settled
+		}
 		return
 	}
 	// The SAME strategy the first reading was taken with, pinned rather than

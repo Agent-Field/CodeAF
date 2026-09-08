@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,10 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"golang.org/x/sys/unix"
 )
 
 // The session file is JSONL: one header line, then one line per COMPLETED
@@ -55,6 +56,33 @@ const sessionFileVersion = 1
 // ErrSessionLocked is what a second open of a live session file returns. Match
 // it with errors.Is; the *SessionLockedError it wraps carries the path.
 var ErrSessionLocked = errors.New("session file is open in another aforge")
+
+// errNewerFormat is the ONE refusal a reading of a session file can carry that
+// is about the file's FORMAT rather than about this machine's luck with it — a
+// header declaring a version above [sessionFileVersion].
+//
+// It is a sentinel because a caller has to be able to tell it apart. "This was
+// written by a newer aforge" is a true and useful thing to say to somebody, and
+// saying it about a disk that went away, or a read that was cut off, would be a
+// confident wrong answer sending them to upgrade a build that is already fine.
+// Match it with errors.Is; the *newerFormatError it wraps carries the path and
+// both versions, and prints the sentence people are shown and the manual quotes
+// (internal/manual/chat/sessions-and-rewind.md).
+var errNewerFormat = errors.New("session file was written by a newer aforge")
+
+// newerFormatError names the file and the two format versions.
+type newerFormatError struct {
+	Path    string
+	Version int
+	Reads   int
+}
+
+func (e *newerFormatError) Error() string {
+	return fmt.Sprintf("session file: %s was written by a newer aforge (format version %d; this build reads %d)",
+		e.Path, e.Version, e.Reads)
+}
+
+func (e *newerFormatError) Unwrap() error { return errNewerFormat }
 
 // SessionLockedError names the file another process holds.
 type SessionLockedError struct{ Path string }
@@ -275,8 +303,13 @@ type journalPrincipal struct {
 	Failed     []string `json:"failed,omitempty"`
 	Removed    []string `json:"removed,omitempty"`
 	Kept       []string `json:"kept,omitempty"`
-	WallMS     int64    `json:"wallMs,omitempty"`
-	CostUSD    float64  `json:"costUsd,omitempty"`
+	// Stashed is how many entries `git stash list` named at the terminal
+	// reading, and it rides the `checked` row: work the session took out of the
+	// tree and never put back is part of what that reading found, and a run
+	// that finished over a stashed fix used to be unreadable afterwards.
+	Stashed int     `json:"stashed,omitempty"`
+	WallMS  int64   `json:"wallMs,omitempty"`
+	CostUSD float64 `json:"costUsd,omitempty"`
 }
 
 // journalRule is ONE MOMENT OF ONE PROCESS RULE the turn loop can hold a model
@@ -494,7 +527,13 @@ type journalFailure struct {
 // it fired, which together say whether the ladder is landing where the policy
 // says it does. Sketch is THE SHAPE LINE ALONE — the legend is a sentence for a
 // worker and not evidence for a reader of the file — and Decision is what the
-// harness took off it: `split` when the turn was handed over on account of the
+// harness took off it. Kept is the part of that drawing THAT DID NOT TRAVEL — the
+// parts about work the conversation was still holding, which stay with it
+// (checkpoint.go's [checkpointRead] and checkpoint_custody.go). It is absent on
+// every mark that withheld nothing, which is nearly all of them, and it is what
+// tells a reader of the file that a worker opened on less than was drawn and
+// exactly how much less. Decision is what the harness took off the drawing:
+// `split` when the turn was handed over on account of the
 // parts, `continue` when nothing happened, `failed` when no reading came back at
 // all. The ceiling's own read is a `continue` too: it decides nothing, and the
 // ceiling line that follows it says what actually happened.
@@ -504,24 +543,37 @@ type journalMark struct {
 	Model      string  `json:"model,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
 	Sketch     string  `json:"sketch,omitempty"`
+	Kept       string  `json:"kept,omitempty"`
 	Decision   string  `json:"decision,omitempty"`
 	DurationMS int64   `json:"durationMs,omitempty"`
 }
 
-// journalCeiling is what the LAST mark did with the turn: moved the remaining
-// work onto the one road, or dropped the handover and left the turn to finish.
+// journalCeiling is what a HANDOVER did with the turn: moved the remaining work
+// onto the one road, or ended it where it stood.
+//
+// IT IS WRITTEN ONCE PER HANDOVER ROAD AND NOT ONLY AT THE CEILING. Every door
+// into checkpoint.go's [Agent.handOverRunningTurn] writes one — a mark whose
+// drawing had parts in it, a turn past its write allowance, and the ceiling that
+// gave this record its name — because the ending is decided there and nowhere
+// else. Seam below says which door it was.
 //
 // It is a line of its own rather than a field on the mark above it because the
 // two are different facts about different moments — the mark is a reading and
-// this is an act — and because the ceiling can fire with no reading behind it at
+// this is an act — and because a handover can fire with no reading behind it at
 // all (a sidecar nobody could reach still meets the ceiling).
 //
 // Decision is `moved`, `dropped:nothing-left` — the running model declared the
-// work finished AND the mark's own reader agreed nothing remained — or
-// `dropped:no-brief`, which is the one other way a ceiling ends with no task:
-// nothing could be written down for anybody. TaskID names the node when one was
-// admitted, and is absent otherwise by the emptiness law the rest of the line
-// keeps.
+// work finished AND the mark's own reader agreed nothing remained — or one of the
+// two ways a handover ends with no task of its own: `dropped:no-brief`, when
+// nothing could be written down for anybody, and `dropped:work-already-out`, when
+// everything there was to write down was about pieces this conversation is still
+// holding and therefore nobody else's to take (checkpoint.go's custody road). On a
+// run with a goal owner two more are possible, and both mean the turn was sealed
+// at the handover with no task started: `dropped:stopped`, the owner read the
+// ending and stopped the run with a reason, and `dropped:done`, the owner read it
+// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). TaskID
+// names the node when one was admitted, and is absent otherwise by the emptiness
+// law the rest of the line keeps.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.
@@ -530,9 +582,33 @@ type journalMark struct {
 // on the person's bare sentence — and until this field the file could not tell
 // them apart. The [journalCarry] lines directly above say WHY it was that rung;
 // this is the one-word answer a bench can count.
+//
+// ── AND SEAM IS WHICH DOOR TOOK THE ENDING ──
+//
+// THE NAME OF THIS RECORD IS OLDER THAN WHAT IT RECORDS. It was the CEILING's
+// line, because the ceiling was the only door that wrote one — so a handover the
+// MARK road or the WRITE SEAM declined left no decision word in the file at all,
+// and the real-model runs behind #567 all ended with an empty list of these while
+// the refusal had plainly happened. The row now belongs to the ending rather than
+// to the clock that noticed, and Seam says which of the three it was: `mark` for a
+// drawing with parts in it, `write` for a turn past its write allowance, `ceiling`
+// for the last rung of the ladder.
+//
+// A ROW WITH NO SEAM ON IT WAS WRITTEN BEFORE THIS EXISTED, and it is a ceiling by
+// construction, because the ceiling was the only writer. An old file still reads.
+//
+// Reason is the reason WHERE THERE IS ONE and is empty everywhere else, which is
+// the emptiness law and is most of the time: `dropped:no-brief` has the whole
+// [journalCarry] ladder above it saying why each rung produced nothing, and
+// `dropped:nothing-left` has no reason to give — two minds agreed the work was
+// done. `dropped:work-already-out` carries one, because the decision word alone
+// does not say what was already out, and an autopsy grepping the word should get
+// the why in the same line (checkpoint.go's carryHeldWork).
 type journalCeiling struct {
 	Rounds   int    `json:"rounds,omitempty"`
+	Seam     string `json:"seam,omitempty"`
 	Decision string `json:"decision,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 	TaskID   uint64 `json:"taskId,omitempty"`
 	Carry    string `json:"carry,omitempty"`
 }
@@ -615,6 +691,15 @@ type journalDivision struct {
 	// it is the one place an autopsy can tell a part that was CALLED careful from
 	// one that EARNED it.
 	Lifted []string `json:"lifted,omitempty"`
+	// Shared names the check commands that stood in the done-condition of more
+	// than one part, on the one decision where that is why the division was
+	// turned down ([divisionRefusedShared]). It is empty on every other line.
+	//
+	// IT IS HERE SO THAT AN AUTOPSY CAN PROVE WHICH RUN WAS THE FAMILY'S rather
+	// than infer it: the alternative is counting shell calls across four
+	// worktrees that no longer exist, and the fact worth keeping is the one
+	// command that would have been bought once per part.
+	Shared []string `json:"shared,omitempty"`
 	// Frozen is the commit the family tree stood at when this division was
 	// admitted — the one world every part of it starts from — and Checkpoint is
 	// the commit this division WROTE to get there, when the parent had work on
@@ -741,6 +826,32 @@ func (p journalPart) contentPart() ai.ContentPart {
 	return ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
 		URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
 	}}
+}
+
+// reference is one journaled part as a REFERENCE AND NOTHING MORE: where the
+// picture was, never its bytes.
+//
+// IT IS WHAT A READING DOOR REBUILDS, and the difference from [contentPart] is
+// the whole of it. That one opens the file, hashes it and base64s it, because
+// the messages it builds are about to be SENT and the model has to see the
+// picture. A reading door builds messages nobody sends — they are shaped for
+// display and thrown away ([ReadTranscript]) — so opening the file would be
+// three syscalls and a hash per picture per read, on every room opened, every
+// hosted record fetched and every beat of a run page's four-times-a-second poll.
+//
+// AND ON A HOSTED PAGE THE REBUILD WOULD ALSO BE FALSE. The paths in a record
+// carried over a wire are the OTHER machine's, so every one of them fails to
+// open here and [journalPart.placeholder] writes `[image /their/path — file
+// changed or gone]` into the person's own line, about a file sitting untouched
+// on the machine that made it.
+//
+// THE PATH IS CARRIED IN THE PART so that two pictures in one message stay two
+// parts: [partKey] fingerprints a part by its body, and two empty parts would be
+// one key — which is what lets [sessionFile.imageRefs] hand each of them its own
+// name back. It is not a "text" part, so it puts no words in the person's line
+// ([messageContentText] takes text parts and nothing else).
+func (p journalPart) reference() ai.ContentPart {
+	return ai.ContentPart{Type: p.Type, Text: p.Path}
 }
 
 // placeholder is what the model reads where a picture used to be. It names the
@@ -1188,11 +1299,11 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 // certain. So an unsupported lock opens unlocked, and the caller carries
 // locked=false so Close does not unlock what it never took.
 func lockSessionFile(file *os.File, path string) (bool, error) {
-	err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	err := filelock.Lock(file, true, true)
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, unix.EWOULDBLOCK):
+	case filelock.IsBusy(err):
 		// EAGAIN on Linux, EWOULDBLOCK on darwin — the same value, and the one
 		// answer that means "somebody else holds this".
 		return false, &SessionLockedError{Path: path}
@@ -1220,6 +1331,65 @@ func replaySessionFile(path string) (replayedSession, error) {
 	}
 	defer file.Close()
 
+	// TRUE, because this is the transcript that gets SENT: a resumed turn has to
+	// put the same bytes on the wire the original turn did.
+	replayed, err := readJournal(file, path, true)
+	if err != nil {
+		return replayed, err
+	}
+	// THE REPAIR BELONGS TO THE CALLER THAT IS GOING TO SEND THESE MESSAGES, and
+	// this is that caller: a resumed conversation goes to a provider on its next
+	// request and an illegal transcript is a 400 forever. A reader that only
+	// DRAWS the record wants the record ([ReadTranscript]) — an unanswered call
+	// is what it is there to show, not a shape to mend.
+	original := append([]ai.Message(nil), replayed.messages...)
+	replayed.messages = repairTranscript(replayed.messages)
+	replayed.reasoning = reasoningAfterRepair(replayed.messages, original, replayed.reasoning)
+	// The earlier region goes through the SAME repair as the live one. It is
+	// never sent, so the 400 the repair exists to prevent cannot happen to it —
+	// but a tool result whose call is missing is a row a surface would draw with
+	// nothing above it either way, and two shapings of one journal that disagreed
+	// about which lines are real would be the seam lying in a second way.
+	replayed.earlier = repairTranscript(replayed.earlier)
+	// The overlap was counted against the lines the file holds and is applied to
+	// the transcript the repair left behind, so it is clamped to it. The repair
+	// only ever drops an unanswered trailing batch and orphaned results — the tail
+	// and the rare stray — so the two agree in every session that was not killed
+	// mid-batch, and a message of drift at the seam is a row nobody can see.
+	if replayed.overlap > len(replayed.messages) {
+		replayed.overlap = len(replayed.messages)
+	}
+	return replayed, nil
+}
+
+// readJournal is the scan itself, over any reader of a session file: every line
+// rebuilt into the message it was, with the three indexes a display shaping asks
+// the journal for built in the same pass.
+//
+// IT REPAIRS NOTHING. What it hands back is what the file says, unanswered calls
+// and all, which is what a page reading somebody else's work has to be able to
+// draw ([ReadTranscript]); [replaySessionFile] is where a transcript that is
+// about to be SENT is made legal again.
+//
+// rebuild says whether a journaled picture is rebuilt into its BYTES or kept as
+// a reference to where it was ([journalPart.reference]). A transcript that is
+// about to be sent needs the bytes; a reading that only draws must not pay three
+// syscalls and a hash per picture per read, and on a hosted record must not open
+// the other machine's paths at all.
+//
+// path is named only in the error a newer file's format version raises, so a
+// reader with no path (a tail carried across a wire) passes "".
+//
+// ── A READER KEEPS EVERYTHING IT COULD READ AND NAMES THE LINE IT COULD NOT ──
+//
+// A line too long for the scanner's buffer used to end this function with an
+// error and NO MESSAGES, and every caller took that for "this file is not
+// readable": a conversation with one very large paste in it resumed EMPTY. The
+// person had not lost a line, they had lost the session. So the scan now keeps
+// every message above the line it could not get past and says which line that
+// was ([replayedSession.unread]) — the same answer on the resume path and at
+// both reading doors, because it is the same fact about the same file.
+func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, error) {
 	var (
 		messages  []ai.Message
 		reasoning []provider.MessageReasoning
@@ -1228,6 +1398,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 		title     string
 		id        string
 		lines     int
+		scanned   int
 		spent     Usage
 		created   []fileChange
 	)
@@ -1246,7 +1417,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 	// an ordinary user message once it has been rebuilt, and the mark that says
 	// it was typed INTO the turn above it is on the line (steer.go).
 	steers := make(map[string]SteerMark)
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(reader)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
 	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
@@ -1257,6 +1428,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 		// every string they keep out of it. Text() would instead allocate a copy
 		// of the line, and []byte(...) of that copy a second one — two copies of
 		// every line of the journal, and a tool result is tens of kilobytes.
+		// Counted before the blank check so the number below is a LINE OF THE
+		// FILE, which is what somebody opening it in an editor needs, and not a
+		// count of the lines this reader found interesting.
+		scanned++
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
@@ -1277,9 +1452,8 @@ func replaySessionFile(path string) (replayedSession, error) {
 				continue
 			}
 			if header.Version > sessionFileVersion {
-				return replayedSession{existed: true}, fmt.Errorf(
-					"session file: %s was written by a newer aforge (format version %d; this build reads %d)",
-					path, header.Version, sessionFileVersion)
+				return replayedSession{existed: true}, &newerFormatError{
+					Path: path, Version: header.Version, Reads: sessionFileVersion}
 			}
 			// FIRST one wins, unlike the title: the header is written once, at
 			// creation, and a second one in the same file would be a file two
@@ -1292,7 +1466,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			if entry.Role == "" {
 				continue
 			}
-			message := replayedMessage(entry)
+			message := replayedMessage(entry, rebuild)
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
@@ -1332,7 +1506,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
-			rebuilt := compactionMessages(entry)
+			rebuilt := compactionMessages(entry, rebuild)
 			// AND THE REGION IS ONLY KEPT IF IT CAN BE PLACED. The pass wrote its
 			// whole rebuilt window back below the marker, so the lines above it
 			// and the first Window lines below it are two renderings of ONE
@@ -1472,30 +1646,22 @@ func replaySessionFile(path string) (replayedSession, error) {
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, created: created, existed: lines > 0}, fmt.Errorf("session file: %w", err)
-	}
-	original := append([]ai.Message(nil), messages...)
-	repaired := repairTranscript(messages)
-	repairedReasoning := reasoningAfterRepair(repaired, original, reasoning)
-	// The overlap was counted against the lines the file holds and is applied to
-	// the transcript the repair left behind, so it is clamped to it. The repair
-	// only ever drops an unanswered trailing batch and orphaned results — the tail
-	// and the rare stray — so the two agree in every session that was not killed
-	// mid-batch, and a message of drift at the seam is a row nobody can see.
-	if overlap > len(repaired) {
-		overlap = len(repaired)
+	// The line the reading stopped at, and zero for a file read to its end. It is
+	// a FACT ON THE READING and not an error, because an error here is what every
+	// caller already reads as "refuse to open this file" — which is the loss this
+	// arm exists to end. The one thing that still refuses is a file written by a
+	// newer aforge, above, where refusing is the honest answer.
+	var unread int
+	if scanner.Err() != nil {
+		// The failing Scan never enters the loop, so the line nobody could read is
+		// the one AFTER the last one counted.
+		unread = scanned + 1
 	}
 	return replayedSession{
-		messages:  repaired,
-		reasoning: repairedReasoning,
-		// The earlier region goes through the SAME repair as the live one. It is
-		// never sent, so the 400 the repair exists to prevent cannot happen to
-		// it — but a tool result whose call is missing is a row a surface would
-		// draw with nothing above it either way, and two shapings of one journal
-		// that disagreed about which lines are real would be the seam lying in a
-		// second way.
-		earlier:   repairTranscript(earlier),
+		messages:  messages,
+		unread:    unread,
+		reasoning: reasoning,
+		earlier:   earlier,
 		overlap:   overlap,
 		title:     title,
 		id:        id,
@@ -1519,7 +1685,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 // A line WITH references is text-then-parts, which is the order [imageUserMessage]
 // assembled and therefore the order the model read the first time. The text part
 // is dropped when there was no text, for the same reason it was never added.
-func replayedMessage(entry sessionEntry) ai.Message {
+func replayedMessage(entry sessionEntry, rebuild bool) ai.Message {
 	message := ai.Message{
 		Role:       entry.Role,
 		Content:    []ai.ContentPart{{Type: "text", Text: entry.Content}},
@@ -1534,10 +1700,20 @@ func replayedMessage(entry sessionEntry) ai.Message {
 		content = append(content, ai.ContentPart{Type: "text", Text: entry.Content})
 	}
 	for _, part := range entry.Parts {
-		content = append(content, part.contentPart())
+		content = append(content, rebuiltPart(part, rebuild))
 	}
 	message.Content = content
 	return message
+}
+
+// rebuiltPart is the one place the two rebuilds are chosen between: the bytes
+// for a transcript about to be sent, the reference for a reading that only
+// draws ([journalPart.reference] says why in full).
+func rebuiltPart(part journalPart, rebuild bool) ai.ContentPart {
+	if rebuild {
+		return part.contentPart()
+	}
+	return part.reference()
 }
 
 // compactionMessages rebuilds one compaction marker into the context prefix it
@@ -1557,7 +1733,7 @@ func replayedMessage(entry sessionEntry) ai.Message {
 //     matches ([journalPart]), with the summary of any overflow after them.
 //
 // Neither is written any more.
-func compactionMessages(entry sessionEntry) []ai.Message {
+func compactionMessages(entry sessionEntry, rebuild bool) []ai.Message {
 	summary := strings.TrimSpace(entry.Summary)
 	if len(entry.Parts) == 0 {
 		if summary == "" {
@@ -1568,7 +1744,7 @@ func compactionMessages(entry sessionEntry) []ai.Message {
 	content := make([]ai.ContentPart, 0, len(entry.Parts)+1)
 	content = append(content, ai.ContentPart{Type: "text", Text: legacyFramesNote})
 	for _, part := range entry.Parts {
-		content = append(content, part.contentPart())
+		content = append(content, rebuiltPart(part, rebuild))
 	}
 	messages := []ai.Message{{Role: "user", Content: content}}
 	if summary != "" {
@@ -1674,6 +1850,11 @@ type replayedSession struct {
 	// already running, keyed by [noteKey] — the index [sessionFile.steers] is
 	// opened holding (steer.go).
 	steers map[string]SteerMark
+	// unread is the 1-based line of the file this reading could not get past, and
+	// zero for a file read to its end. Everything above it is in `messages`; the
+	// number is what lets a caller say WHICH line rather than "something went
+	// wrong somewhere" (see [readJournal]).
+	unread int
 	// usage is the SUM of the file's usage lines — what this conversation has
 	// spent across every process that ever held it. Summed rather than stored,
 	// so the total cannot drift from the lines it is made of.
@@ -1877,23 +2058,29 @@ func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
 	s.append(message, true, nil, tags...)
 }
 
-// appendSteer is appendMessage for a person's line that was SPLICED into a turn
-// already running (steer.go). It is the same message line every other user
-// message writes, with the mark that says it did not open the turn it sits in
-// and the instant the person actually sent it.
+// appendSteer is appendMessage for a person's line that was typed INTO work
+// already running: spliced into this conversation's turn (steer.go), or carried
+// across to a node the person is standing in the room of (task_room.go). It is
+// the same message line every other user message writes, with the mark that says
+// it did not open the turn it sits in and the instant the person actually sent
+// it.
+//
+// ONE DOOR FOR BOTH, because the record keeps one fact about both: the person
+// corrected work that was moving. The two engine doors stay two doors — one
+// splices a turn and one delivers to another agent, and they promise different
+// things — and what the mark carries says which promise was kept ([SteerMark]).
 //
 // It is a separate door rather than a flag on the common one, on
 // [sessionFile.appendNote]'s terms: exactly one caller has the answer —
-// [Agent.recordUserLocked], which is holding the [userMessage] the slip comes
+// [Agent.recordUserLocked], which is holding the [userMessage] the mark comes
 // off — and every other call site should stay the call it was.
 //
-// A steer carries no pictures ([Agent.Steer] takes words only), which is why
-// this door takes no references.
-func (s *sessionFile) appendSteer(message ai.Message, note SteerNote) {
+// A steer carries no pictures (neither door takes any), which is why this takes
+// no references.
+func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) {
 	if s == nil {
 		return
 	}
-	mark := SteerMark{At: note.At, Consumed: true, Landing: note.Landing}
 	s.mu.Lock()
 	if s.steers == nil {
 		s.steers = make(map[string]SteerMark, 4)
@@ -1904,7 +2091,7 @@ func (s *sessionFile) appendSteer(message ai.Message, note SteerNote) {
 		Type:      "message",
 		Role:      message.Role,
 		Content:   messageContentText(message),
-		Steer:     &journalSteer{At: steerStamp(note.At), Consumed: true, Landing: note.Landing},
+		Steer:     &journalSteer{At: steerStamp(mark.At), Consumed: mark.Consumed, Landing: mark.Landing},
 		Timestamp: stamp(),
 	})
 }
@@ -2045,7 +2232,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		// its mark would come back from the next resume as a question of its own,
 		// and the turn it was typed into would lose the correction that shaped it.
 		if mark := s.steerMark(message); mark != nil {
-			s.appendSteer(message, SteerNote{At: mark.At, Landing: mark.Landing})
+			s.appendSteer(message, *mark)
 			continue
 		}
 		var reasoning provider.MessageReasoning
@@ -2315,7 +2502,7 @@ func (s *sessionFile) Close() error {
 	}
 	if s.locked {
 		s.locked = false
-		_ = unix.Flock(int(s.file.Fd()), unix.LOCK_UN)
+		_ = filelock.Unlock(s.file)
 	}
 	return s.file.Close()
 }
@@ -2344,10 +2531,10 @@ func InUse(path string) bool {
 		return false
 	}
 	defer file.Close()
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return errors.Is(err, unix.EWOULDBLOCK)
+	if err := filelock.Lock(file, true, true); err != nil {
+		return filelock.IsBusy(err)
 	}
-	_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	_ = filelock.Unlock(file)
 	return false
 }
 

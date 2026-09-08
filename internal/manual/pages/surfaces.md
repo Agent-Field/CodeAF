@@ -153,7 +153,14 @@ locally.
   stdout instead, with the files under `artifacts`. Both lists are the files the
   run actually produced, not every path it mentioned. It is a one-shot and
   schedules nothing for later: an errand never practices, whatever store it is
-  pointed at with `--db`. It runs on this profile's crew unless `--model`,
+  pointed at with `--db`. Without `--db` it works in a private store of its
+  own under `runs/` in the state root — `~/.aforge/runs/`, or wherever
+  `AFORGE_HOME` points, never the machine's temporary directory. It is deleted
+  when the run leaves with 0 and **kept when it does not**, including a run you
+  stop with Ctrl+C: the last line on the error stream is `record kept at
+  <path>`, and that directory holds the whole record as `graph.db`. `--keep`
+  keeps it whatever happened, and so does `AFORGE_DEBUG` set to anything but
+  `0`, `false` or `off`. It runs on this profile's crew unless `--model`,
   `--plan-model` or the matching variables name something else, and it opens by
   saying which of those chose its two models.
 - `aforge wake` — run one bounded pass and exit. This is what the standing watch
@@ -172,11 +179,16 @@ locally.
   how it ended. It answers from the record the worker wrote while it ran, so it
   still answers after the job's working directory is gone. A node whose worker
   keeps no record says so rather than printing nothing.
-- `aforge plan "<goal>"`, `aforge run <graph.json>`, `aforge revise`,
-  `aforge show` — the static pipeline: build a graph to a file, execute exactly
-  what the file says, re-plan it from what happened. Reach for these to read or
-  hand-edit a plan. To *do* a job, `aforge do` is the one that thinks while it
-  works.
+- `aforge plan new "<goal>"`, `aforge plan show`, `aforge plan revise`,
+  `aforge plan run` — the static pipeline: build a plan to a file, read it,
+  re-plan it from what happened, execute exactly what the file says. Reach for
+  these to read or hand-edit a plan. To *do* a job, `aforge do` is the one that
+  thinks while it works. The four used to be top-level verbs — `plan`, `show`,
+  `revise` and `run` — and those spellings still work for one release, printing
+  one line that names the new one.
+- `aforge run <program> --input <file.json>` — run one saved program on typed
+  input. It was `aforge run subharness <name>`; `run` used to name this and the
+  pipeline both.
 
 ## Writing the task for `aforge do`
 

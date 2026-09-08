@@ -379,7 +379,7 @@ func TestImageReplayPlaceholderWhenTheFileChangedOrWentAway(t *testing.T) {
 // since — replays exactly as it did.
 func TestReplayOfATextMessageIsUnchanged(t *testing.T) {
 	entry := sessionEntry{Type: "message", Role: "assistant", Content: "plain words"}
-	message := replayedMessage(entry)
+	message := replayedMessage(entry, true)
 	if len(message.Content) != 1 || message.Content[0].Type != "text" || message.Content[0].Text != "plain words" {
 		t.Fatalf("replayed %+v", message.Content)
 	}
@@ -476,6 +476,9 @@ func TestImagePartsReachTheWire(t *testing.T) {
 	var bodies []map[string]json.RawMessage
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &body); err == nil {

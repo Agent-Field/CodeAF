@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -36,8 +35,30 @@ type doctorSnapshot struct {
 	// CallLog is where the model-call log is and how big it has got
 	// (internal/calllog), or nothing when nothing has ever been written to it.
 	CallLog callLogReport
-	Now     time.Time
+	// Key is whether this machine can talk to a model at all, and where the key
+	// came from. It is the FIRST row doctor prints and the reason doctor was
+	// worth changing: the command exists to tell somebody why nothing works,
+	// and a missing key is the most common answer there is.
+	Key keyReport
+	Now time.Time
 }
+
+// fallbackKeyEnv is the OpenAI-shaped variable [config.Load] accepts when the
+// OpenRouter one is unset. It is spelled here because internal/config has no
+// exported name for it — and [TestDoctorNamesTheSameKeyVariablesTheDoorDoes]
+// pins this spelling against `config.ErrNoAPIKey`, so a rename there fails here
+// rather than leaving doctor pointing at a variable nobody reads any more.
+const fallbackKeyEnv = "OPENAI_API_KEY"
+
+// keyReport is the provider key doctor found, named by WHERE IT CAME FROM and
+// never by what it is: a key is a secret, and a report that printed one would
+// be a report nobody could paste into a defect.
+//
+// An empty Where is a machine with no key on any rung, which is a state and not
+// an absence — so unlike every other figure on this page it is PRINTED. The
+// emptiness law is about a measurement nobody made; this is a measurement that
+// came back "none", and it is the whole reason somebody ran doctor.
+type keyReport struct{ Where string }
 
 // callLogReport is where the model-call log is and how big it has got, or
 // nothing at all. Nothing is the honest answer on a machine that has not called
@@ -63,10 +84,9 @@ func runDoctor(args []string) error {
 // runDoctorWith is doctor with its one outside reading injectable: the standing
 // watch.
 func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
-	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	flags := commandFlags("doctor")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -111,8 +131,44 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	// `--db` does not move: it is read from the same environment runDoctor read
 	// the budget from.
 	snapshot.CallLog = readCallLogReport(calllog.PathFor(strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))))
+	// The key is read from the same profile, and for the same reason: `--db`
+	// moves the store and moves nothing about who this machine can talk to.
+	snapshot.Key = readKeyReport(strings.TrimSpace(os.Getenv(config.ProfileDirEnv)))
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
+}
+
+// readKeyReport climbs the ladder [config.Load] climbs — the OpenRouter
+// variable, the OpenAI one, then the profile file — and reports the rung that
+// answered rather than the key it holds.
+//
+// IT CLIMBS THE RUNGS SEPARATELY RATHER THAN CALLING [config.APIKeyAt], because
+// the whole point of the row is WHICH ONE ANSWERED and that function folds them
+// into one string. [TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey] pins the
+// two together at every rung, so a ladder that grows a step is a red test here
+// and not a doctor that quietly says "none" to a machine that runs fine.
+func readKeyReport(profileDir string) keyReport {
+	if strings.TrimSpace(os.Getenv(config.APIKeyEnv)) != "" {
+		return keyReport{Where: config.APIKeyEnv}
+	}
+	if strings.TrimSpace(os.Getenv(fallbackKeyEnv)) != "" {
+		return keyReport{Where: fallbackKeyEnv}
+	}
+	if config.PersistedAPIKey(profileDir) != "" {
+		return keyReport{Where: config.BudgetConfigPath(profileDir)}
+	}
+	return keyReport{}
+}
+
+// formatKey is the row: where the key came from, or that there is none and what
+// to type. The remedy is [remedyFor]'s own — the same sentence every door
+// answers a keyless run with — so the page a person opens when nothing works
+// and the refusal they just read cannot tell them two different things.
+func formatKey(report keyReport) string {
+	if report.Where == "" {
+		return "none · " + remedyFor(config.ErrNoAPIKey.Error())
+	}
+	return "set · " + report.Where
 }
 
 // readCallLogReport measures the log without opening it for writing. A path
@@ -152,7 +208,7 @@ func collectDoctorSnapshot(path string, graph *store.Store, watch standingWatchS
 	if watch != nil {
 		status, err := watch.Status()
 		if err != nil {
-			return doctorSnapshot{}, fmt.Errorf("standing watch status is unavailable")
+			return doctorSnapshot{}, fmt.Errorf("the background timer's state is unavailable")
 		}
 		snapshot.Watch = status
 	}
@@ -201,19 +257,60 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		snapshot.Now.Sub(snapshot.Watch.LastWake) > 3*watchdog.Interval {
 		watch += " · checks look stalled"
 	}
-	spend := fmt.Sprintf("$%.2f today · rail $%.2f", snapshot.Spend, snapshot.Rail)
+	// THE EMPTINESS LAW ON THE ONE PAGE PEOPLE OPEN WHEN NOTHING WORKS. A
+	// machine that has not spent anything today has not measured zero — it has
+	// not measured — and `$0.00 today` beside a rail reads as a machine that
+	// counted. The rail itself is a figure somebody chose, so it stays.
+	rail := fmt.Sprintf("rail $%.2f", snapshot.Rail)
 	if snapshot.RailUnlimited {
-		spend = fmt.Sprintf("$%.2f today · rail unlimited", snapshot.Spend)
+		rail = "rail unlimited"
 	}
-	standing := fmt.Sprintf("%d active %s · %d pending %s",
-		snapshot.ActiveCharters, pluralWord(snapshot.ActiveCharters, "charter"),
-		snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question"))
+	spend := rail
+	if today := config.SpentFigure(snapshot.Spend); today != "" {
+		spend = today + " today · " + rail
+	}
+	// The same law on the counts beside it: no charters and no questions is
+	// nothing to say, not two zeros.
+	var standingParts []string
+	if snapshot.ActiveCharters > 0 {
+		standingParts = append(standingParts, fmt.Sprintf("%d active %s",
+			snapshot.ActiveCharters, pluralWord(snapshot.ActiveCharters, "charter")))
+	}
+	if snapshot.PendingQuestions > 0 {
+		standingParts = append(standingParts, fmt.Sprintf("%d pending %s",
+			snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question")))
+	}
+	// ── TWO LABELS THAT NAMED THE MACHINERY AND NOT THE MEASUREMENT ─────────
+	//
+	// `brain` was this row's word for the file the journal and every derived
+	// table live in. Nobody looking for where their data is searches for
+	// *brain*, and `--db`'s own help already called the same file a store.
+	//
+	// `standing watch` was the row about the background timer, and it is the
+	// RESIDENT's vocabulary — a different product in this binary, with a corpus
+	// of its own. A test forbids the chat's manual from speaking that word, so
+	// the manual could not quote doctor's own output and stay legal: the page
+	// had to describe the row in other words and hope a reader recognised it.
+	// The label moved and the ban stayed. What this row measures, in a
+	// developer's words, is what is running, since when, and whether it still
+	// answers — which is a background timer, and says so.
+	//
+	// ── AND THE ROW THAT WAS NOT THERE AT ALL ───────────────────────────────
+	//
+	// Doctor is the command somebody runs when nothing works, and on a machine
+	// with no provider key it used to report six healthy-looking rows and leave
+	// with 0 — saying nothing about the single most common reason nothing
+	// works. The key row goes FIRST because it is the answer to the question
+	// the command was opened with.
 	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
-		"brain", brain,
+		"key", formatKey(snapshot.Key),
+		"store", brain,
 		"resident", snapshot.Resident,
-		"standing watch", watch,
-		"spend", spend,
-		"standing", standing)
+		"background timer", watch,
+		"spend", spend)
+	if standing := strings.Join(standingParts, " · "); standing != "" {
+		block += fmt.Sprintf("%-16s %s\n", "standing", standing)
+	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
 	}

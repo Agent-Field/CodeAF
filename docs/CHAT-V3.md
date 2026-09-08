@@ -406,12 +406,15 @@ four turns and over 1500 bytes are replaced in the *live* transcript with a
 bounded stub naming the artifact path the full bytes were written to. The
 journal is never stubbed; the record stays whole.
 
-**A single turn is bounded before session compaction.** Above a 64k-token request estimate
-(or half the trusted window when smaller), already-seen tool results from the current turn
-are stubbed in whole oldest-first batches while the recent 20k-token tail stays verbatim.
-The pass folds to the midpoint between the trigger and that tail so one cache-invalidating
-rewrite buys several rounds of headroom. The newest unseen result, user messages and
-assistant text are never folded; `[folded N results · M tokens]` records each pass.
+**A single turn is bounded before session compaction.** Above 64k tokens of actual tool
+observations (or half the trusted window when smaller), consumed read results from the
+current turn are stubbed in whole oldest-first batches. “Consumed” means the model
+successfully changed a file after receiving them; merely seeing research does not make it
+disposable. The pass runs only when those eligible results can reach the midpoint between
+the trigger and the recent 20k-token tail, so a cache-invalidating rewrite always buys real
+headroom. Unacted observations, the rest of the running turn (including assistant notes,
+tool calls and arguments, and mutating batches), user messages and assistant text remain
+verbatim; `[folded N results · M tokens]` records each pass.
 
 **Compaction is a ladder, SOTA-ordered** (researched, D9 amended): rung 1
 stub (deletion — best fidelity per cost, runs every turn); rung 2 *frames*

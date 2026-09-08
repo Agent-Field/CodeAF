@@ -1,0 +1,4 @@
+$ ./bin/aforge do x --dir /nope
+models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the work model (default)
+error: create chat workspace: mkdir /nope: permission denied
+exit=1

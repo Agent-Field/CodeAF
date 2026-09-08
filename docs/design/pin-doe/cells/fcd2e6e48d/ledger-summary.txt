@@ -1,0 +1,91 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+15:57:25.454 4068a701 start -     anthropic      -    -       
+15:57:25.493 4068a701 end   -     anthropic      404  39      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+15:57:25.493 7642ecc0 start -     DigitalOcean   -    -      hedged arms=2 
+15:57:25.807 7642ecc0 end   -     DigitalOcean   429  313    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+15:57:26.776 f7bde017 start -     DigitalOcean   -    -      hedged arms=2 
+15:57:26.979 f7bde017 end   -     DigitalOcean   429  203    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+15:57:28.560 56e74354 start -     DigitalOcean   -    -      hedged arms=2 
+15:57:28.758 56e74354 end   -     DigitalOcean   429  197    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+15:57:32.487 2cad46ea start -     DigitalOcean   -    -      hedged arms=2 
+15:57:32.709 2cad46ea end   -     DigitalOcean   429  221    hedged arms=2 API error (429): Provider returned error (via DigitalOcean: deepseek/deepseek-v4-flash is temporaril
+15:57:39.753 d1093586 start -     DigitalOcean   -    -      hedged arms=2 
+15:58:04.345 d1093586 end   -     DigitalOcean   200  38851  hedged arms=2 
+15:58:04.348 02838022 start turn  CoreWeave      -    -       
+15:58:07.720 02838022 end   turn  CoreWeave      200  3373    
+15:58:07.726 bbadc665 start turn  CoreWeave      -    -       
+15:58:14.326 bbadc665 end   turn  CoreWeave      200  6600    
+15:58:14.332 4765c5b8 start turn  CoreWeave      -    -       
+15:58:18.029 4765c5b8 end   turn  CoreWeave      200  3697    
+15:58:18.047 ad3bb4bf start turn  CoreWeave      -    -       
+15:58:24.210 ad3bb4bf end   turn  CoreWeave      200  6162    
+15:58:24.219 ddfa120b start turn  CoreWeave      -    -       
+15:58:29.558 ddfa120b end   turn  CoreWeave      200  5339    
+15:58:29.561 3a691633 start turn  CoreWeave      -    -       
+15:58:37.049 3a691633 end   turn  CoreWeave      200  7488    
+15:58:37.053 e4d27a4a start turn  CoreWeave      -    -       
+15:58:39.801 e4d27a4a end   turn  CoreWeave      200  2749    
+15:58:39.806 ff516714 start turn  CoreWeave      -    -       
+15:58:44.512 ff516714 end   turn  CoreWeave      200  4706    
+15:58:45.223 0d8a2d5f start turn  CoreWeave      -    -       
+15:58:48.922 0d8a2d5f end   turn  CoreWeave      200  3699    
+15:58:48.998 023771f1 start turn  CoreWeave      -    -       
+15:58:52.704 885de004 start turn  CoreWeave      -    -       
+15:58:58.051 2800e43b start turn  CoreWeave      -    -       
+15:59:10.579 284f13a3 start turn  CoreWeave      -    -       
+15:59:19.056 284f13a3 end   turn  CoreWeave      200  8477    
+15:59:19.059 80ddc127 start turn  CoreWeave      -    -       
+15:59:29.305 e767db6f start turn  CoreWeave      -    -       
+15:59:39.177 4b1086fb start turn  CoreWeave      -    -       
+15:59:42.379 4b1086fb end   turn  CoreWeave      200  3202    
+15:59:42.381 3469f067 start turn  CoreWeave      -    -       
+15:59:50.707 17299c5a start turn  CoreWeave      -    -       
+16:00:00.530 b1cd6141 start turn  CoreWeave      -    -       
+16:00:28.426 ef31fdf5 start turn  CoreWeave      -    -       
+16:00:41.350 a8e3ea26 start turn  CoreWeave      -    -       
+16:00:59.589 c9b08d16 start turn  CoreWeave      -    -       
+16:01:05.397 c9b08d16 end   turn  CoreWeave      200  5809    
+16:01:05.401 4695a10c start turn  CoreWeave      -    -       
+16:01:13.700 4695a10c end   turn  CoreWeave      200  8300    
+16:01:13.710 8d0178da start turn  CoreWeave      -    -       
+16:01:22.345 8d0178da end   turn  CoreWeave      200  8635    
+16:01:22.354 d44c82bf start turn  CoreWeave      -    -       
+16:01:28.381 6a2fd72d start turn  CoreWeave      -    -       
+16:01:37.310 145da52b start turn  CoreWeave      -    -       
+16:01:57.170 a593e4ec start -     StreamLake     -    -       
+16:01:57.170 608c80b8 start -     Baidu          -    -       
+16:02:02.759 a593e4ec end   -     StreamLake     200  5589    
+16:02:02.760 f8fd6c4d start -     StreamLake     -    -       
+16:02:02.955 608c80b8 end   -     Baidu          200  5785    
+16:02:02.966 1ec42bdd start -     Baidu          -    -       
+16:02:05.078 1ec42bdd end   -     Baidu          200  2111    
+16:02:08.035 f8fd6c4d end   -     StreamLake     200  5275    
+16:03:27.281 88117b8f start task  anthropic      -    -       
+16:03:27.333 88117b8f end   task  anthropic      404  52      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:03:27.334 fa47ad60 start task  CoreWeave      -    -      hedged arms=2 
+16:03:27.360 fa47ad60 end   task  CoreWeave      404  27     hedged arms=2 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:03:27.361 db2b17d5 start task  NextBit        -    -      hedged arms=3 
+16:03:27.386 db2b17d5 end   task  NextBit        404  24     hedged arms=3 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+16:03:27.446 0412b9ef start turn  Phala          -    -       
+16:03:31.866 deb11508 start turn  Phala          -    -       
+16:03:35.920 c39f4983 start turn  Phala          -    -       
+16:03:45.992 e9cf188a start turn  Phala          -    -       
+16:03:50.370 e9cf188a end   turn  Phala          200  4379    
+16:03:50.376 72a948cf start turn  Phala          -    -       
+16:04:02.103 e4ba2633 start turn  Phala          -    -       
+16:04:34.598 f2f33ba6 start turn  Phala          -    -       
+16:04:39.079 f2f33ba6 end   turn  Phala          200  4483    
+16:04:39.083 6fae4b9b start turn  Phala          -    -       
+16:04:52.745 0c4a8f76 start turn  Phala          -    -       
+16:05:25.622 c1663c24 start turn  Phala          -    -       
+16:05:29.201 c1663c24 end   turn  Phala          200  3581    
+16:05:29.206 7fee6db4 start turn  Phala          -    -       
+16:05:37.065 e5e514ee start turn  Phala          -    -       
+16:05:41.203 3fe605cb start turn  Phala          -    -       
+16:06:15.269 3fe605cb end   turn  Phala          200  34067   
+16:06:15.285 ae391e7d start turn  Phala          -    -       
+16:06:22.508 1111ee08 start turn  Phala          -    -       
+16:06:25.561 c462fd6e start turn  Phala          -    -       
+16:06:30.155 89b58a82 start turn  Phala          -    -       
+16:06:35.138 6f77a963 start reflex StreamLake     -    -       
+16:06:41.582 6f77a963 end   reflex StreamLake     200  6444    

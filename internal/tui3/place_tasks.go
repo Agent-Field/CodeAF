@@ -299,13 +299,25 @@ func (a *app) taskIndexHolds(node *taskNode) bool {
 
 // taskNodeEnded is when a node of this session's graph LANDED, and the zero time
 // while it is still going — which is what the index writes for a live row, and
-// what the emptiness law asks for over a node whose clock nobody started.
+// what the emptiness law asks for over a node whose record carried no clock.
+// FOR A SETTLED NODE, THE RECORD'S LANDING TIME IS THE FIRST ANSWER. The live
+// guard comes before that fact because a row that says it is running must never
+// also claim it has landed. The fallback is computed from [taskNode.began],
+// anchored off the age a running node's own update reported, only for a node
+// this surface watched. Dating an older checkpoint that carried no stamp by when
+// this WINDOW met it stamped work that finished twenty minutes ago at twelve
+// minutes from now, which the page's date filter then read as tomorrow and
+// dropped: the one task waiting on a person went missing from the tasks place
+// while its shorter siblings sat on it saying `now`.
 func taskNodeEnded(node *taskNode) time.Time {
 	if node.state == session.TaskRunning || node.state == session.TaskQueued {
 		return time.Time{}
 	}
+	if !node.ended.IsZero() {
+		return node.ended
+	}
 	at := node.began
-	if at.IsZero() {
+	if at.IsZero() && !node.restored {
 		at = node.met
 	}
 	if at.IsZero() {
@@ -710,7 +722,7 @@ func (p *tasksPlace) window(a *app, key string) bool {
 	// is the one predicate standing and spend ask as well (placeprose.go's
 	// [placeWindowFits]).
 	width, _ := a.size()
-	arrows, grain := placeWindowFits(width, p.reading.head(false), p.reading.win)
+	arrows, grain := placeWindowFits(width, p.reading.head(width, false), p.reading.win)
 	if !arrows {
 		return false
 	}
@@ -1022,6 +1034,15 @@ func taskSheetFilterLine(needle string, kept int) string {
 // this row can actually be asked for, and the filter — replaced, while one is
 // on, by the one key whose meaning just moved.
 func (p *tasksPlace) hint(a *app) string {
+	// A TEACHING PAGE PROMISES NO ROW KEYS. On a machine that has run nothing the
+	// body spends the whole frame saying what tasks ARE ([tasksTeach], gated on
+	// this same `held == 0`), and the foot under it went on offering `type to
+	// filter` over a page with no rows to filter, no fold to open and no verb to
+	// press. What is true there is the way out, and [placeTailed] puts `tab next
+	// place` in front of it.
+	if !p.detailOn && a.tasksFiltered().held == 0 {
+		return "esc"
+	}
 	var parts []string
 	item, ok := a.taskSheetCurrent()
 	switch {
@@ -1302,6 +1323,36 @@ func (placeTasks) wheel(a *app, delta int) bool {
 	a.taskSheetScroll(delta)
 	a.touch()
 	return true
+}
+
+// owns is the task room — the card drawn over the roster — and the door home is
+// the reason it is written here rather than left where it was. SPACE PAGES A
+// CARD IN THE TASK ROOM, SO THE HOME DOOR YIELDS THERE. The card's own map
+// spells the key `pgdown`, `ctrl+f`, `space` ([app.taskCardKey]), and that arm
+// lived inside [app.taskSheetKeyPress] — which the router reaches through
+// [placeTasks.key], BELOW the door. So a filter left holding one space, which
+// is the exact state the door's own first press creates and which draws nothing
+// a person could see, armed the door on a box the card types nothing into: the
+// space meant to page the record took the person to home instead. Memory's card
+// editor was the same hole in the same shape ([placeMemory.owns]), and this is
+// the same claim the settings panel makes for its nested boxes
+// ([placeSettings.owns]).
+//
+// THE ROUTER KEEPS ITS CHORDS WHILE THE CARD IS UP, which is why this reads
+// [app.placeKey] before the card rather than swallowing the keyboard whole. That
+// is the order [app.taskSheetKeyPress] has always used, restated here because
+// the whole point of moving the card above the door is that nothing else about
+// it moves: `tab`, the place chords and the map answer over an open card exactly
+// as they did.
+func (placeTasks) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.taskSheet.detailOn {
+		return nil, false
+	}
+	defer a.touch()
+	if cmd, took := a.placeKey(msg); took {
+		return cmd, true
+	}
+	return a.taskCardKey(msg.String()), true
 }
 
 // key is this place's own reading of a key the router did not take

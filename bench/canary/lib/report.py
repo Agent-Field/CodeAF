@@ -30,7 +30,7 @@ import subprocess
 COLUMNS = ["run", "sha", "id", "door", "anchor", "pass", "wall_s", "cost_usd", "ttft_ms",
            "changed_files", "f2p_passed", "f2p_failed", "suite_passed", "suite_failed", "load", "reason",
            "door_verdict", "tests_verdict", "source", "tier", "gate_rounds", "task_done_s", "done_to_wall_s",
-           "mark_fails", "carry_ons"]
+           "mark_fails", "carry_ons", "steward_last", "asked_s", "commits", "install_constrained"]
 
 
 def cells(run_dirs):
@@ -41,8 +41,27 @@ def cells(run_dirs):
     for run_dir in run_dirs:
         for path in sorted(glob.glob(os.path.join(run_dir, "cells", "*", "cell.json"))):
             with open(path) as handle:
-                found.append(json.load(handle))
+                cell = json.load(handle)
+            # The pool entry `run.sh` wrote sits in the same directory and is
+            # already the only place the base counts live: the cell record
+            # carries what the suite did on the tree the door left, but not the
+            # baseline that reading has to be held against. It is read from
+            # there rather than copied into a second file, because a number
+            # that appears in two places drifts.
+            cell["base_suite"] = base_suite(os.path.join(os.path.dirname(path), "entry.json"))
+            found.append(cell)
     return found
+
+
+def base_suite(path):
+    """The whole suite as the pool measured it at base, from the cell's own
+    `entry.json`. A cell directory without one, or an entry whose suite was
+    never measured, answers None and the suite column reads as it always has."""
+    try:
+        with open(path) as handle:
+            return json.load(handle).get("base_suite")
+    except (OSError, ValueError):
+        return None
 
 
 def row(meta, cell):
@@ -64,6 +83,14 @@ def row(meta, cell):
         "done_to_wall_s": cell.get("done_to_wall_s") if cell.get("done_to_wall_s") is not None else "",
         "mark_fails": cell.get("mark_fails") if cell.get("mark_fails") is not None else "",
         "carry_ons": cell.get("carry_ons") if cell.get("carry_ons") is not None else "",
+        "steward_last": cell.get("steward_last") if cell.get("steward_last") is not None else "",
+        "asked_s": cell.get("asked_s") if cell.get("asked_s") is not None else "",
+        "commits": cell.get("commits") if cell.get("commits") is not None else "",
+        # `pinned` when the suite installed under the resolution the base was
+        # measured in, `unpinned` when the cell had to fall back, and empty
+        # when the entry named no constraints — a pool written before the
+        # resolution was frozen, where there was nothing to fall back from.
+        "install_constrained": {True: "pinned", False: "unpinned"}.get(cell.get("install_constrained"), ""),
     }
     # Missing measurements stay empty everywhere. In particular, older chat
     # rows may carry an explicit null gate count, which must not print `None`.
@@ -83,7 +110,31 @@ def provenance(r):
     return "·".join(parts)
 
 
-def table(rows):
+def suite_reading(r, base):
+    """The suite column for one row. Normally the door's own passed/failed, but
+    a base that collected NOTHING — nothing passed and something errored — is
+    not a baseline to compare against, and failures counted against it would
+    read as a regression the run never caused. Such a row says `base ⊘`
+    instead, which is the truth: the base never ran."""
+    if r["suite_passed"] == "":
+        return ""
+    if base and base.get("passed", 0) == 0 and base.get("errors", 0) > 0:
+        return "base ⊘"
+    return "%s/%s" % (r["suite_passed"], r["suite_failed"])
+
+
+def why(r):
+    """The `why` column: the first thing that went wrong, and in front of it
+    `unpinned` when the cell could not build the environment its base was
+    measured in. A row that ran under a resolution nobody measured must say so
+    even when it passed, because the base counts it was read against belong to
+    a different environment."""
+    if r["install_constrained"] != "unpinned":
+        return r["reason"]
+    return "unpinned · " + r["reason"] if r["reason"] else "unpinned"
+
+
+def table(rows, bases=None):
     # `via` is which door was used; `door` is that door's own verdict on its
     # run and `tests` is the pull request's verdict on the tree it left. The two
     # are never merged, because a door that ends badly on work the tests call
@@ -98,12 +149,12 @@ def table(rows):
         wall = "%ds" % r["wall_s"] if r["wall_s"] != "" else ""
         ttft = "%sms" % r["ttft_ms"] if r["ttft_ms"] != "" else ""
         f2p = "%s/%s" % (r["f2p_passed"], r["f2p_failed"]) if r["f2p_passed"] != "" else ""
-        suite = "%s/%s" % (r["suite_passed"], r["suite_failed"]) if r["suite_passed"] != "" else ""
+        suite = suite_reading(r, (bases or {}).get((r["id"], r["door"])))
         done_to_wall = "%ss" % r["done_to_wall_s"] if r["done_to_wall_s"] != "" else ""
         out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
             r["id"], r["door"], provenance(r), r["door_verdict"], r["tests_verdict"], wall, cost, ttft,
             r["changed_files"], f2p, suite, r["gate_rounds"], done_to_wall, r["mark_fails"], r["carry_ons"],
-            r["load"], r["reason"]))
+            r["load"], why(r)))
     return "\n".join(out)
 
 
@@ -159,7 +210,11 @@ def main():
     first = args.run_dir[0]
     with open(os.path.join(first, "run.json")) as handle:
         meta = json.load(handle)
-    rows = [row(meta, cell) for cell in cells(args.run_dir)]
+    graded = cells(args.run_dir)
+    rows = [row(meta, cell) for cell in graded]
+    # The base counts stay out of rows.csv — they are a property of the pool,
+    # not of the run — and are carried to the table by the cell they came from.
+    bases = {(cell["id"], cell["door"]): cell.get("base_suite") for cell in graded}
     with open(os.path.join(first, "rows.csv"), "w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=COLUMNS)
         writer.writeheader()
@@ -169,7 +224,7 @@ def main():
     body = io.StringIO()
     body.write("### canary · `%s` · %s · %s\n\n" % (meta["sha"], meta["run"], meta["model"]))
     body.write("binary `%s` · wall %ss · cap $%s · doors %s\n\n" % (meta["bin"], meta["wall"], meta["cap"], meta["doors"]))
-    body.write(table(rows) + "\n\n**" + totals(rows) + "**\n")
+    body.write(table(rows, bases) + "\n\n**" + totals(rows) + "**\n")
     for note in args.note:
         body.write("\n- " + note + "\n")
     if args.baseline:

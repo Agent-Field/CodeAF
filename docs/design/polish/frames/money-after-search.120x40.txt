@@ -1,0 +1,40 @@
+ aforge                                                                                   $0.13 / $500.00 · thu 12:25am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+search reads every message in every conversation on this machine.
+typing here searches; typing on home starts something.
+enter opens the conversation at the matching turn.
+type words you remember — "the docker error", a person's name, a filename
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ type to search · tab next place · esc clears the words

@@ -20,6 +20,16 @@ import re
 import subprocess
 import sys
 
+# THE BASE IS MEASURED EXACTLY THE WAY A CELL IS GRADED. The whole-suite run
+# continues past a module that cannot import, so an unmet optional dependency
+# counts as one error and the rest of the suite still runs; without the flag
+# pytest stops at collection in half a second and the suite column says nothing
+# at all. The fix pull request's own tests are NOT run this way — a collection
+# error there is the grade. pick.py spells the same list in its own
+# `SUITE_FLAGS`, because the two files do not import each other; change one and
+# change the other in the same edit.
+SUITE_FLAGS = ["--continue-on-collection-errors"]
+
 
 def sh(args, cwd=None, cap=None):
     """Run one command and answer (exit code, combined output); a cap that hits reads as exit 124."""
@@ -27,7 +37,16 @@ def sh(args, cwd=None, cap=None):
         done = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=cap)
         return done.returncode, done.stdout + done.stderr
     except subprocess.TimeoutExpired as expired:
-        return 124, (expired.stdout or "") + (expired.stderr or "")
+        # A run cut at its cap hands its output back as bytes even in text mode,
+        # and a grade must not die on the one suite that is slow: decode it.
+        return 124, _text(expired.stdout) + _text(expired.stderr)
+
+
+def _text(chunk):
+    """Whatever a cut run left in a pipe, as text: bytes decode, None is nothing."""
+    if chunk is None:
+        return ""
+    return chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else chunk
 
 
 def counts(output):
@@ -39,15 +58,23 @@ def counts(output):
     return {"passed": found["passed"], "failed": found["failed"], "errors": found["error"] + found["errors"]}
 
 
-def keep_diff(work, out):
+def keep_diff(work, out, base):
     """Record what the door changed: the tracked diff and the untracked names."""
     _, status = sh(["git", "status", "--porcelain"], cwd=work)
-    _, diff = sh(["git", "diff"], cwd=work)
+    _, diff = sh(["git", "diff", base], cwd=work)
+    _, tracked = sh(["git", "diff", "--name-only", base], cwd=work)
+    _, commits = sh(["git", "rev-list", "--count", f"{base}..HEAD"], cwd=work)
+    _, commit_log = sh(["git", "log", "--oneline", f"{base}..HEAD"], cwd=work)
     with open(os.path.join(out, "work.patch"), "w") as handle:
         handle.write(diff)
+    with open(os.path.join(out, "work.commits"), "w") as handle:
+        handle.write(commit_log)
     with open(os.path.join(out, "work.status"), "w") as handle:
         handle.write(status)
-    return len([line for line in status.splitlines() if line.strip()])
+    untracked = [line[3:] for line in status.splitlines() if line.startswith("?? ")]
+    changed = set(line for line in tracked.splitlines() if line.strip())
+    changed.update(untracked)
+    return len(changed), int(commits.strip())
 
 
 def overlay(work, mirror, merge, tests):
@@ -62,9 +89,9 @@ def overlay(work, mirror, merge, tests):
             handle.write(body)
 
 
-def pytest(work, targets, cap, log):
+def pytest(work, targets, cap, log, flags=()):
     python = os.path.join(work, ".venv", "bin", "python")
-    code, output = sh([python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *targets], cwd=work, cap=cap)
+    code, output = sh([python, "-m", "pytest", "-q", "-p", "no:cacheprovider", *flags, *targets], cwd=work, cap=cap)
     with open(log, "w") as handle:
         handle.write(output)
     return code, counts(output)
@@ -75,16 +102,17 @@ def main():
     parser.add_argument("--work", required=True)
     parser.add_argument("--mirror", required=True)
     parser.add_argument("--merge", required=True)
+    parser.add_argument("--base", required=True)
     parser.add_argument("--tests", nargs="+", required=True)
     parser.add_argument("--base-suite", default="", help="JSON of the pool's base counts, or empty")
     parser.add_argument("--out", required=True, help="directory for judge.json and the logs")
     parser.add_argument("--suite-cap", type=int, default=600)
     args = parser.parse_args()
 
-    changed = keep_diff(args.work, args.out)
+    changed, commits = keep_diff(args.work, args.out, args.base)
     overlay(args.work, args.mirror, args.merge, args.tests)
     f2p_code, f2p = pytest(args.work, args.tests, 600, os.path.join(args.out, "f2p.log"))
-    suite_code, suite = pytest(args.work, [], args.suite_cap, os.path.join(args.out, "suite.log"))
+    suite_code, suite = pytest(args.work, [], args.suite_cap, os.path.join(args.out, "suite.log"), SUITE_FLAGS)
 
     base = json.loads(args.base_suite) if args.base_suite.strip() else None
     regressed = None
@@ -92,6 +120,7 @@ def main():
         regressed = suite["failed"] + suite["errors"] > base.get("failed", 0) + base.get("errors", 0)
     json.dump({
         "changed_files": changed,
+        "commits": commits,
         "f2p": {**f2p, "exit": f2p_code, "pass": f2p_code == 0 and f2p["passed"] > 0},
         "suite": {**suite, "exit": suite_code, "capped": suite_code == 124},
         "regressed": regressed,

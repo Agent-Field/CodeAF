@@ -224,9 +224,25 @@ moved — this leaf's own before-and-after comparison of the workspace, or an
 earlier round of the same job having already changed it. A first leaf that
 changed nothing cannot have regressed anything; a continuation that changed
 nothing still hands over a tree an earlier round may have broken, which is why
-the inherited baseline is reason enough on its own. So the quarter-of-the-wall
-worst case is paid only by a long leaf, in a project that says how it is checked,
-in a job that actually wrote something.
+the job's own account of what it has changed is what decides it. So the
+quarter-of-the-wall worst case is paid only by a long leaf, in a project that
+says how it is checked, in a job that actually wrote something.
+
+**A reading is retaken only when the tree changed, and never over the scope that
+was just killed.** The baseline is remembered against the state of the tree it is
+a reading of — `verify.TreeState`, a digest of the job's own artifact record at
+the moment it was taken — and a leaf or a gate standing in a tree that carries the
+same state inherits the reading rather than running the suite again over identical
+bytes (`verify.TreeUnchangedSince`, `Reading.OnAnUnchangedTree`). What used to
+stand in for that question was "did this leaf inherit a baseline", which every
+leaf after the first does whatever it touched, so every one of them bought a whole
+second reading. `Reading.Retakeable` carries the other half: a reading killed at
+its budget is taken again only where the measured pace affords a **strictly
+smaller** selection, because a second identical attempt cannot finish where the
+first did not. A whole-suite reading has no narrower scope to fall to and stands
+as it is. The measured cost of neither rule existing (#429): nine readings of `go
+test -json ./...` over 4,587 tests on one errand, each killed at its two-minute
+budget, 82% of an 11m40s wall, for a request that named one package.
 
 `capturedOutputLimit` bounds the memory rather than the time: it keeps the last
 4 MiB of a reading's output, ten times the largest suite output in that sweep
@@ -556,6 +572,42 @@ lets a patch that deleted an attribute the repository already had ship as whole
 going red; both are read off a run, which is why the numbers are written down
 here.
 
+## What the change set's own text costs
+
+The leaf's account of what it changed carries a PATCH — the change's own text,
+written to a file under the harness's own directory and handed on as a path
+(`Account.Patch`, filled by `AccountFor` in `internal/exec/accountfor.go`). It is
+what nothing downstream ever had: a judge asked whether a deliverable's account
+of the change is true can read the change, and a method writer handed the goal of
+describing it can read it instead of inferring it.
+
+It is derived on the landing seam, from git, on the leaf's own context: `git diff`
+over the committed range, `git diff HEAD` for what nobody committed, and one
+`git diff --no-index` per untracked file the leaf created. Every one of them runs
+with **`--no-ext-diff`**, which is a law and not a flag: a repository may
+configure an external diff driver per-repository or per-path, and a helper this
+program never named is not a helper that cancelling a context reliably reaps — a
+measurement taken from a defer on the landing path must not be able to outlive the
+leaf.
+
+| budget | value | what it bounds |
+| --- | --- | --- |
+| `accountPatchBytes` | **1 MiB** | the whole patch file. Past it the text is cut at a line boundary and the file SAYS where it was cut — a clipped patch that reads whole is a false account of the change set rather than a smaller one. |
+| `accountPathspecBytes` | **96 KiB** | the paths one `git diff` is handed at once. `git diff` reads no pathspec from a file the way `git add` does (git 2.43), so a change set large enough to pass the kernel's argv limit is sent in runs; they concatenate to exactly the patch one invocation would have written, because the paths are disjoint. |
+
+The paths ARE the bound that matters, and they are the account's own: the diffs
+are read over the shared tree, where a sibling leaf that landed in between is in
+the same history, and a patch that swept that up would hand every reader another
+node's work as this node's.
+
+**A source that could not be read abandons the patch entirely.** git's exit 0 and
+1 are answers — a diff exits 1 having found something — and anything from 2 up is
+git refusing the command; a refusal read as an empty diff is how an oversized
+argv came back as "this leaf changed nothing". A patch missing its untracked half
+is not a smaller patch, it is one that is silent about the files the leaf
+created, so the account claims none. `TestAPatchTooLargeToWriteOutSaysWhereItWasCut`
+pins the clip and its sentence.
+
 ## What the symbol-level photograph costs
 
 The check-level reading answers *what does this project's suite say*. It cannot
@@ -798,6 +850,36 @@ finding's last line is the score, `N of the M behaviours this request states are
 still exercised by nothing`, so a repair brief says what REMAINS rather than
 restating the list.
 
+**And three questions are now never asked, which is where the cost actually
+fell.** The mapping call is not bought at all for a checklist of ACTIONS
+(`plan.Behaviours`), for a run that changed no code (`revision.codeChanged`), or
+against a roster that could not be read (`revision.rosterSpeaks`). The errand
+that measured this spent two mapping calls carrying ~127k prompt tokens each —
+$0.022 — on a request whose whole instruction was to change no files, and then
+bought the rounds that ran it into a 700-second wall. See
+docs/design/gate/ACCEPTANCE.md, "What #428 proved".
+
+## What the request-met question costs
+
+**One model call, at the moment a round would otherwise be bought, and nowhere
+else.**
+
+| number | value | where |
+| --- | --- | --- |
+| when it is asked | **once per gate that is about to buy a repair or a remainder** | `cmd/aforge/chat.go requestSettled`, `revision.ExtendForGap` |
+| how many times per gate | **one** | `revision.Judgment.RequestAsked` |
+| the deliverable it carries | **24KB** | `revision.requestMetDeliverableBytes` |
+| the record it carries | **the gate's own evidence block** | `revision.Evidence.block` |
+
+THE BOUND IS THE ROUND IT REPLACES. A repair round is a whole leaf — a worker,
+its tools, its wall — and this is one structured call against a prompt whose
+static half and whose request half are fixed for the job's lifetime, so two
+rounds of one job share the entire prefix. It is asked at no other seam: not per
+turn, not per node, and never on a gate that passed. A run that would have bought
+no round pays nothing, and a run that would have bought four pays for at most as
+many as it reached. `Judgment.RequestAsked` is what stops the two doors paying
+twice for one answer on the way to one conclusion.
+
 **A pass over a suite nobody could read is not whole.** `store.DeliveryGate.
 Unreadable` says the project DECLARED a way of checking itself and this run could
 not read it, and `Whole()` spends it: the run settles partial, exit 2, with
@@ -887,7 +969,10 @@ bound's direction wherever the journal is missing.
 `verify`'s own, not a second one: `verify.Locate` resolves what the request names
 against the tree, bounded at `scopeScanLimit` (**6000** entries) like every other
 walk in that package, and `verify.OwnChecks` / `verify.ChangedSources` are two
-passes over the round's own artifact list. It runs a handful of times in a job's
+passes over the round's own artifact list. The paths the request SPELLS join that
+focus for **one `os.Stat` each** and no walk at all — a file the request names is
+never scratch, and settling a name a person wrote out in full against the disk is
+a single stat rather than a search. It runs a handful of times in a job's
 life — once per growth ask, and the exact-ceiling recheck deliberately reuses the
 first reading rather than taking a second, because a recheck that could answer
 differently is not a recheck. See `internal/resident/progress.go`.
@@ -1003,7 +1088,7 @@ room = one object × how many objects the ask asks for + what the answer echoes
 | term | value | where |
 | --- | --- | --- |
 | one object | `CompletionReserve() / 8`, floored at **4096** | `objectShare`, `objectFloor`, `internal/shaped/ceiling.go` |
-| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
+| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, `sequenceDepth` (**4**) for the stage question a sequence is divided by, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
 | the echo | `2 × len(material) / 3` — tokens ≈ bytes/3, twice, because the compiled goal restates the request and then quotes it | `Ask.Echo` |
 | the memo | the widest cut this model has been watched taking on this lane, **doubled** | `provider.WidestAnswerCut`, `model-quirks.json` |
 | the bound | never past `CompletionReserve()` | `reserve()` |
@@ -1026,7 +1111,10 @@ separately and which is now written here alone.
 The width the fan-out prompt states and the width its ceiling is derived from
 are one constant, interpolated into the prompt (`fanOutWidth`,
 `internal/plan/fanout.go`). `TestAFanOutIsSizedForTheWidthItsPromptPermits` fails
-if they ever become two.
+if they ever become two. The stage question that divides a node no worker can
+carry to an end is the same arrangement one constant along (`sequenceDepth`,
+`internal/plan/sequence.go`), pinned by
+`TestTheStagePromptAsksTheSizePromptsSecondQuestion`.
 
 `internal/shaped/shaped_test.go` pins the derivation, the operator's reserve
 never being outrun, and the three repairs.

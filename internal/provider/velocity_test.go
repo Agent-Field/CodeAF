@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -481,18 +482,34 @@ func TestRoutingOffSendsNoPreferencesAndMeasuresNothing(t *testing.T) {
 	}
 }
 
-// The preference object is a router's dialect. An endpoint that is not a router
-// either ignores it or 400s on it, and neither is worth risking.
+// A PLAIN ENDPOINT NOBODY PINNED ANYTHING ON CARRIES NO PREFERENCES.
+//
+// The `sort` word, the fallback flag and the parameter filter are this adapter's
+// own knobs for breaking a tie among machines a ROUTER already knows about, and
+// a base that has never shown it has such machines has no tie to break. Issue
+// #433 changed which fact decides this — the base's own answer rather than its
+// hostname — and did not change this: an unasked base with no pin sends nothing,
+// so a plain endpoint's request is byte-for-byte what it always was.
 func TestNonRouterEndpointCarriesNoPreferences(t *testing.T) {
 	client, recorded := newTestClient(t, Config{Routing: StaticRouting(RoutingLatency)})
 	client.velocity = newVelocityLedger()
-	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
-		t.Fatal(err)
-	}
-	if raw := recorded.body(0); raw != nil {
-		if _, ok := raw["provider"]; ok {
-			t.Fatalf("provider = %v on a plain endpoint, want the field absent", raw["provider"])
+	for _, turn := range []string{"hello", "again"} {
+		if _, err := client.CompleteWithMessages(context.Background(), userMessages(turn)); err != nil {
+			t.Fatal(err)
 		}
+	}
+	for index := range 2 {
+		if raw := recorded.body(index); raw != nil {
+			if _, ok := raw["provider"]; ok {
+				t.Fatalf("provider = %v on a plain endpoint nobody pinned, want the field absent", raw["provider"])
+			}
+		}
+	}
+	// AND NOTHING WAS LEARNT, because nothing was asked. The base is still
+	// unasked rather than filed as refusing, so somebody who pins tomorrow is
+	// asked then (prefcarry.go).
+	if !lanes.PrefsCarried(client.config.BaseURL) {
+		t.Fatal("a base nobody asked anything of was filed as refusing a preference")
 	}
 }
 

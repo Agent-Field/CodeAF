@@ -138,7 +138,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"foldMoreWord": {
 		screen: " more",
-		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since aug 31`",
+		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since 6d`",
 		pkg:    tui3Pkg,
 	},
 	// The two fold hints are the CLAUSE THE ROW OWNS and not the whole drawn
@@ -356,13 +356,65 @@ var tuiWords = map[string]tuiWord{
 		source: " accept",
 		why:    "the answer a person presses, drawn from two constants — the key and the word beside it",
 	},
+	"settleNotRight": {
+		screen: "[n] not right",
+		source: " not right",
+		why:    "the answer that says checked work is not finished, and drives the refused ending",
+	},
 	"settleTookLine": {
 		screen: "you took this as done",
 		why:    "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed",
 	},
+	"settleNotRightLine": {
+		screen: "you said it is not finished",
+		why:    "the receipt proving the not-right answer reached the engine's settle door",
+	},
+	"taskIncompleteWord": {
+		screen: " · incomplete",
+		source: "incomplete",
+		why:    "the person-facing state for work a check refused with concrete gaps still open",
+	},
+	"taskFailedWord": {
+		screen: " · failed",
+		source: "failed",
+		why:    "the state reserved for a runtime error or an older row whose ending is unknown",
+	},
 	"starterTaskWord": {
 		screen: "/task <brief> starts work",
 		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
+	},
+
+	// ── the task room, and the key the door home had to give back ────────────
+	//
+	// #457/#486 widened `space space` to open home from every place. The room a
+	// task's record is read in is the one place on the surface where a bare space
+	// already MEANT something — it pages the card, the way `pgdown` and `ctrl+f`
+	// do — and the widened door took it. These two words are what the real screen
+	// is read for: that the roster offered the room, and that the room was still
+	// standing after the space was pressed.
+	"tasksEnterRoomWord": {
+		screen: "enter open its room",
+		why:    "the roster's foot over a node this window's graph is still holding: the door into the LIVE room",
+	},
+	"landingKeysWord": {
+		screen: "esc interrupts · ctrl+c twice quits",
+		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
+	},
+	"tasksEnterInsideWord": {
+		screen: "enter go inside it",
+		why: "the roster's other door, over work no window is holding any more — it is the one that opens the " +
+			"record card, which is the mode `space` pages and the door home had to give the key back to",
+	},
+	"taskRoomFootWord": {
+		screen: "m puts it in your message · ↑↓ scroll",
+		why: "the record's own foot, and the one sentence that says a person is still standing in the room — " +
+			"it names `↑↓ scroll`, which is the family of keys `space` belongs to on this card. " +
+			"IT WAS `esc back · ↑↓ scroll · m puts it in your message` AND THE ORDER IS THE POINT OF THE CHANGE: " +
+			"the foot is fitted by [hintFit], which keeps a key row's FINAL clause and drops the ones in front of " +
+			"it working backwards, so a sheet that opened on `esc back` gave the way out away first and a " +
+			"sixty-cell card offered the mention and no way off the page. This is the HELD sheet — the one the " +
+			"foot draws wherever the head's own corner already says `esc back`, which is every width the suite " +
+			"runs at — so the way out is not on it at all",
 	},
 
 	// ── the seat a crew older than it never wrote ────────────────────────────
@@ -378,7 +430,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the observation half: a profile older than the seat is told so, once, when work starts on it",
 	},
 	"inheritedSeatPromise": {
-		screen: "it is running on your small work model",
+		screen: "it is running on your small work seat's model",
 		source: "it is running on your ",
 		pkg:    "internal/config",
 		why: "the promise half, naming the row the work is actually on. It stops at the row rather " +

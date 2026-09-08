@@ -12,107 +12,56 @@ import (
 // How many bytes of raw tool output the transcript may carry before older
 // results start fading. Everything past the window is still referenced, just
 // not quoted.
+//
+// The four sizes below, and the window computed from them, are ctxbudget's.
+// They are aliased here rather than restated because the planner asks the same
+// question this loop answers — how much material one worker holds at a time —
+// before any worker exists, and a number two packages both need is a number
+// that drifts unless exactly one of them owns it. The reasoning behind each
+// figure is written down where it is owned; only the names are local.
 const (
-	// observationBudget is the minimum the unknown-context default may fall to,
-	// and nothing else. It is deliberately not a floor under the computed
-	// window: when a model's context really is small, the honest answer is a
-	// small window, and clamping it upwards would size a prompt past what the
-	// model accepts in order to look generous.
-	observationBudget = 24 << 10
-
-	// minObservationBudget is arithmetic protection rather than policy. Below
-	// it the fixed floor and the completion reserve have already eaten the
-	// model's whole context and this loop cannot run there at all; the window
-	// stops at a value the decay pass can still reason about instead of going
-	// to zero or negative.
-	minObservationBudget = 4 << 10
-
-	// defaultObservationBudget is the window a leaf carries when nothing can
-	// say how much context its model actually has.
-	//
-	// It replaces a category error. The window used to be one sixth of the
-	// leaf's *token budget* — a ceiling on cumulative spend across every turn
-	// of the run, which has nothing to do with how much material fits in one
-	// request. At the default budget that arithmetic produced a 25KB window in
-	// front of a model holding hundreds of thousands of tokens, so a single
-	// 26KB subject did not fit in the memory meant to hold it and the leaf
-	// re-read what it had already been shown.
-	//
-	// The number is conservative on purpose, and that is the correction to the
-	// obvious first instinct. Not knowing a model's context length is not
-	// evidence that it is large: an offline catalog, an unrecognised slug and a
-	// row cached before the field was kept all look identical here, and a
-	// small-context model is exactly the kind that goes unrecognised. A
-	// generous default would be a silent regression for it — prompts sized past
-	// what it accepts, failing as provider rejections rather than as
-	// degradation. So the unknown case buys back a little room over the 25KB the
-	// spend ceiling used to give, and no more; the real win is claimed only when
-	// the catalog actually answers, which is the ordinary case on every surface
-	// that loads one.
-	defaultObservationBudget = 32 << 10
-
-	// observationBytesPerToken converts a context length into the byte budget
-	// this package actually measures. Four is the conservative direction for
-	// mixed prose and code: over-estimating bytes per token would size the
-	// window past the context it is supposed to fit inside. It is the shared
-	// estimator rather than a second opinion about the same question — when a
-	// real tokenizer arrives it replaces ctxbudget's constant and this follows.
-	observationBytesPerToken = ctxbudget.BytesPerToken
-
-	// observationFixedFloorTokens is the measured per-turn cost of everything
-	// that is not observations — the standing contract, the tool schemas, the
-	// brief. Measured at ~3,778 tokens across 332 leaf turns; rounded up,
-	// because the window must not be sized from an optimistic floor.
-	observationFixedFloorTokens = 4_000
+	observationBudget           = ctxbudget.ObservationFloorBytes
+	minObservationBudget        = ctxbudget.MinObservationBytes
+	defaultObservationBudget    = ctxbudget.DefaultObservationBytes
+	observationBytesPerToken    = ctxbudget.BytesPerToken
+	observationFixedFloorTokens = ctxbudget.ObservationFixedFloorTokens
 )
 
-// observationWindow sizes the leaf's observation window from the one quantity
-// that governs it: how much the model can hold in a single request.
+// observationWindow is ctxbudget.ObservationBytes under the name the rest of
+// this package has always called it. The derivation moved; nothing about it
+// changed.
 //
-// The share of the context it may take is no longer this file's opinion. It is
-// the process-wide fill law — see ctxbudget, which owns the one statement of how
-// full an agent's window may get before compaction fires, and the completion
-// reserve every call keeps for its answer and its reasoning. What is left after
-// the fixed floor and that reserve is what observations may carry. The rest of
-// the window is not slack: it is the assistant messages, which are compressed
-// state and fade last and only under pressure (see fold), plus the user's brief,
-// the upstream results, and everything the loop appends as it goes.
-//
-// There is no longer a ceiling over the answer that is this file's own opinion,
-// and the deleted one is worth naming because it was the only absolute byte
-// number left in the sizing. It stood at 64KB and it was a cost decision wearing
-// a memory decision's clothes: the window is re-sent every turn and billed
-// against the leaf's spend ceiling, so a big window on a small grant was
-// measured crossing the wrap-up threshold before the leaf had done any work.
-// Capping the memory at a buried literal was the wrong half to fix.
-//
-// What replaced it is not that literal coming back. The pot the fill law is
-// taken of is now min(window, working set) — see ctxbudget.WithinWorkingSet —
-// and the difference between the two is the whole point: 64KB was a number this
-// file believed about every model in existence, while the working set is a named
-// setting with a stated default, an environment pin, a row in the sheet, and a
-// reason measured on this harness. It is also the correction to a real, measured
-// failure of the unbounded version: on a 1M-context model the fill law alone
-// handed a leaf a 2.2MB observation window against 181KB of tool output across
-// TWELVE nodes, so the decayer fired zero times, nothing ever left any
-// transcript, and 90% of every input token billed was material the model had
-// already been shown.
-//
-// A known context under the ceiling still gets the law's own answer, including
-// when that answer is small. Only the unknown case takes a default, and only the
-// default gets a floor under it — see observationBudget.
+// What the deleted local ceiling was worth naming: it stood at 64KB and it was
+// a cost decision wearing a memory decision's clothes: the window is re-sent
+// every turn and billed against the leaf's spend ceiling, so a big window on a
+// small grant was measured crossing the wrap-up threshold before the leaf had
+// done any work. What replaced it is not that literal coming back — the pot the
+// fill law is taken of is now min(window, working set), which is a named
+// setting with a stated default rather than a number this file believed about
+// every model in existence. On a 1M-context model the fill law alone handed a
+// leaf a 2.2MB observation window against 181KB of tool output across TWELVE
+// nodes: the decayer fired zero times, nothing ever left any transcript, and
+// 90% of every input token billed was material the model had already been
+// shown.
 func observationWindow(contextTokens int) int {
-	budget := ctxbudget.For(contextTokens).WithinWorkingSet().WithFloor(observationFixedFloorTokens)
+	return ctxbudget.ObservationBytes(contextTokens)
+}
+
+// observationSafetyWindow is the last-resort bound for material that has not
+// been used yet. The ordinary observation window is intentionally a working-set
+// target: it limits repeated billing, not what the provider can accept. Treating
+// that soft target as a hard memory limit made a gather-before-write task throw
+// away its earliest reads before it had a chance to use them, then spend the
+// remaining turns reading its own spill files.
+//
+// A known model gets the fill law applied to its real context window without
+// the working-set clamp. Unknown models have no defensible larger bound, so the
+// ordinary named fallback remains their safety bound.
+func observationSafetyWindow(contextTokens int) int {
+	budget := ctxbudget.For(contextTokens).WithFloor(observationFixedFloorTokens)
 	if !budget.Known() {
-		if defaultObservationBudget < observationBudget {
-			return observationBudget
-		}
-		return defaultObservationBudget
+		return observationWindow(contextTokens)
 	}
-	// Deliberately not BytesOr: an unaffordable window on a genuinely small
-	// model must come back small, not fall through to the unknown-case default.
-	// Sizing a prompt past what the model accepts in order to look generous is
-	// a provider rejection rather than a shorter memory.
 	if window := budget.Bytes(); window > minObservationBudget {
 		return window
 	}
@@ -295,14 +244,57 @@ type decayer struct {
 	// filled up or a directory that has gone away between the two can no longer
 	// turn a live target into a pathless tombstone with pointers aimed at it.
 	preserved map[string]string
+	// consumedFrom is how far into the transcript this leaf has demonstrably
+	// acted. Everything below the mark was already in front of the model at the
+	// moment it last changed the workspace, so its value has been extracted;
+	// everything at or above it is material the model has read and not yet used.
+	// An index is identity enough because the transcript is append-only — the
+	// same property the "#index" fallback key below already relies on.
+	consumedFrom int
+	// consumedKeys is the same fact for the results an index cannot speak for:
+	// a result whose bytes were quoted again later, where the second copy is a
+	// pointer naming a durable path that outlives the stub. See observations.
+	consumedKeys map[string]bool
 	// inflow is what this leaf actually adds per turn, which is what decides
 	// how deep a firing pass has to reach. See decayHeadroomTurns.
 	inflow inflowMeter
 }
 
 func newDecayer(labels map[string]string, spill spillFunc) *decayer {
-	return &decayer{labels: labels, spill: spill,
-		spilled: map[string]string{}, preserved: map[string]string{}}
+	return &decayer{labels: labels, spill: spill, spilled: map[string]string{},
+		preserved: map[string]string{}, consumedKeys: map[string]bool{}}
+}
+
+// actedPast records that everything the transcript held below index was in
+// front of the model when it last changed the workspace. The loop calls it with
+// the workspace's monotonic mutation revision, the same world-backed signal the
+// no-progress guard reads. A revision rather than a distinct-path count matters:
+// editing the same file again still consumes what the model read before it.
+func (d *decayer) actedPast(index int) {
+	if index > d.consumedFrom {
+		d.consumedFrom = index
+	}
+}
+
+// used records that one result's bytes have been asked for a second time and
+// answered from somewhere durable, which spends the copy in the transcript.
+func (d *decayer) used(key string) { d.consumedKeys[key] = true }
+
+// retired reports whether a result has already been shortened to a stub — so
+// its bytes are no longer quoted where the model can read them — and the
+// address they went to, which is "" when no file could be written.
+func (d *decayer) retired(key string) (string, bool) {
+	path, stubbed := d.spilled[key]
+	return path, stubbed
+}
+
+// inherit hands a durable address that already exists to a second key holding
+// exactly those bytes, so the retire pass reuses the file rather than writing a
+// second copy of material that is already on disk.
+func (d *decayer) inherit(key, path string) {
+	if key != "" && path != "" {
+		d.preserved[key] = path
+	}
 }
 
 // preserve writes a result's bytes to the workspace ahead of any decay, and
@@ -351,10 +343,39 @@ func (d *decayer) observe(bytes int) { d.inflow.observe(bytes) }
 // the line, one pass retires in bulk to the low-water mark rather than shaving
 // off exactly the overflow, buying several quiet turns before the next rewrite.
 func (d *decayer) decay(messages []ai.Message, budget int) int {
-	if liveObservationBytes(messages) <= budget {
+	return d.decayWithin(messages, budget, budget)
+}
+
+// decayWithin distinguishes the cost target from the provider-safety limit.
+// Crossing the working-set target may retire material the leaf has acted on;
+// it may not evict still-needed observations merely to save tokens. Only the
+// larger safety limit permits that last-resort degradation.
+//
+// A soft pass is also all-or-nothing with respect to its low-water target. A
+// handful of spent bytes that cannot buy the intended headroom are left alone,
+// because changing them would invalidate the provider prefix for no useful
+// reduction and is exactly the repeated tiny-fold pathology this mechanism is
+// meant to prevent.
+func (d *decayer) decayWithin(messages []ai.Message, workingBudget, safetyBudget int) int {
+	live := liveObservationBytes(messages)
+	if live <= workingBudget {
 		return 0
 	}
-	return d.retire(messages, budget, d.lowWater(budget))
+	workingTarget := d.lowWater(workingBudget)
+	if d.canRetireTo(messages, live, workingTarget, retireSpent) {
+		return d.retireTo(messages, live, workingTarget, retireSpent)
+	}
+
+	if safetyBudget > workingBudget && live <= safetyBudget {
+		return 0
+	}
+	retired := d.retireTo(messages, live, d.lowWater(safetyBudget),
+		retireSpent, retireNeeded)
+	live = liveObservationBytes(messages)
+	if live > safetyBudget {
+		retired += d.retireTo(messages, live, safetyBudget, retireFresh)
+	}
+	return retired
 }
 
 // lowWater is where this leaf's firing pass stops: far enough below the budget
@@ -407,86 +428,216 @@ func liveObservationBytes(messages []ai.Message) int {
 	return total
 }
 
-// retire walks the transcript newest-first and stubs whatever raw tool output
-// no longer fits, oldest results going first. Selection is unchanged from the
-// trim-to-budget pass it replaces — keep while it fits, stub when it does not —
-// only the level it fills to is lower.
+// retireOrder classifies observations by how urgently their verbatim bytes
+// must remain in the prompt.
+type retireOrder int
+
+const (
+	// retireFresh is the newest assistant turn's own results: raw material the
+	// model has not read yet, measured against the full budget.
+	retireFresh retireOrder = iota
+	// retireNeeded is history the leaf has not been shown to have acted on.
+	retireNeeded
+	// retireSpent is history whose value has already been extracted.
+	retireSpent
+)
+
+// Retirement chooses what goes by how long ago each result was last needed.
 //
-// The most recent turn's results are the exception, and they are measured
-// against the full budget rather than the low-water mark. Decay runs *before* a
-// turn, so those bytes are the raw material the model has not read yet; the
-// low-water mark governs how deep into history the batch reaches, never whether
-// the current turn gets to see its own output. Everything from the last
-// assistant message backwards is history and fades to the mark.
-func (d *decayer) retire(messages []ai.Message, budget, lowWater int) int {
-	spent, decayed := 0, 0
-	// fresh is true while the walk is still inside the results of the newest
-	// assistant turn; the transcript is append-only, so crossing an assistant
-	// message is exactly the boundary between this turn and history.
-	fresh := true
-	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index].Role == "assistant" {
-			fresh = false
-			continue
-		}
+// THE LAW: AN OBSERVATION IS RETIRED IN ORDER OF HOW LONG AGO IT WAS LAST
+// NEEDED, NOT HOW LONG AGO IT ARRIVED. A leaf that must read more material than
+// the window holds before it can act on any of it was losing the earliest reads
+// first — the ones it had not used yet — and spent the rest of its budget
+// getting the same material back. Age is the wrong question: what a result has
+// cost is the same whenever it arrived, and what it is still worth is whether
+// the model has acted past it.
+//
+// The ordinary working-set pass considers spent results only, oldest first,
+// and does not run unless those results can buy the intended headroom. A
+// separate pass at the model-derived provider-safety limit may continue into
+// still-needed history. The live turn's own results are last of all and are
+// shortened only as far as the hard limit requires. That makes "never at a
+// cost threshold; last at a provider threshold" the enforceable rule.
+//
+// The most recent turn's results are measured against the full safety budget
+// rather than its low-water mark. Decay runs *before* a turn, so those bytes
+// are raw material the model has not read yet; the low-water mark governs how
+// deep into history the emergency batch reaches, never whether the current
+// turn gets to see its own output.
+
+// canRetireTo is the no-rewrite preflight for a soft pass. Stubs cannot save
+// more than their whole bodies, so failing this cheap upper-bound test proves a
+// pass cannot reach its target. The exact path-bearing stub length is handled by
+// retireTo if the pass is viable.
+func (d *decayer) canRetireTo(messages []ai.Message, live, target int, orders ...retireOrder) bool {
+	if live <= target {
+		return true
+	}
+	wanted := map[retireOrder]bool{}
+	for _, order := range orders {
+		wanted[order] = true
+	}
+	boundary := newestAssistant(messages)
+	available := 0
+	for index := range messages {
 		if messages[index].Role != "tool" {
 			continue
 		}
-		limit := lowWater
-		if fresh {
-			limit = budget
+		key := observationKey(messages[index], index)
+		if !wanted[d.orderOf(key, index, boundary)] {
+			continue
+		}
+		if _, done := d.retired(key); done {
+			continue
 		}
 		body := contentOf(messages[index])
-		id := messages[index].ToolCallID
-		// The transcript is append-only, so a message's index is a stable
-		// identity even for the rare tool message without a call id.
-		key := id
-		if key == "" {
-			key = fmt.Sprintf("#%d", index)
+		stub := fmt.Sprintf("[%s — %d bytes, superseded]",
+			labelFor(d.labels, messages[index].ToolCallID), len(body))
+		if len(stub) < len(body) {
+			available += len(body)
 		}
-		if _, done := d.spilled[key]; done {
-			// Already a stub from an earlier turn; it stays exactly as it is.
-			spent += len(body)
-			continue
-		}
-		if spent+len(body) <= limit {
-			spent += len(body)
-			continue
-		}
-		label := labelFor(d.labels, id)
-		stub := fmt.Sprintf("[%s — %d bytes, superseded]", label, len(body))
-		if len(stub) >= len(body) {
-			// Already smaller than the note describing it; leave it alone.
-			// Checked before spilling so no file is written for a result that
-			// is kept.
-			spent += len(body)
-			continue
-		}
-		// Preserve the bytes before shortening the message: decay must defer
-		// detail, never destroy it.
-		//
-		// A result the pointer mechanism already preserved is not written
-		// again, and its recorded path is used verbatim. That is not an
-		// optimisation: pointers elsewhere in the transcript already name that
-		// path and are never rewritten, so the stub replacing their target has
-		// to agree with them, and a fresh write here could fail and leave the
-		// target pathless with pointers still aimed at it.
-		d.spilled[key] = ""
-		path, kept := d.preserved[key]
-		if !kept && d.spill != nil {
-			path, kept = d.spill(key, body)
-		}
-		if kept {
-			withPath := fmt.Sprintf("[%s — %d bytes, spilled to %s]", label, len(body), path)
-			if len(withPath) < len(body) {
-				stub = withPath
-				d.spilled[key] = path
+	}
+	if live-available > target {
+		return false
+	}
+
+	// The cheap check above proved the raw bodies are large enough. Now price
+	// the exact path-bearing pointers in retirement order. This may preserve
+	// bodies to disk, but it still leaves the prompt byte-identical if their
+	// real stubs cannot reach the target.
+	available = 0
+	for _, order := range orders {
+		for index := range messages {
+			if messages[index].Role != "tool" {
+				continue
+			}
+			key := observationKey(messages[index], index)
+			if d.orderOf(key, index, boundary) != order {
+				continue
+			}
+			if _, done := d.retired(key); done {
+				continue
+			}
+			body := contentOf(messages[index])
+			stub, _, ok := d.supersession(key,
+				labelFor(d.labels, messages[index].ToolCallID), body)
+			if !ok {
+				continue
+			}
+			available += len(body) - len(stub)
+			if live-available <= target {
+				return true
 			}
 		}
-		messages[index].Content = text(stub)
-		decayed++
+	}
+	return false
+}
+
+// retireTo walks least-valuable results first: spent, then still-needed, then
+// the newest unread results. Inside each class the oldest goes first. The last
+// two classes are supplied only by the provider-safety pass.
+func (d *decayer) retireTo(messages []ai.Message, live, target int, orders ...retireOrder) int {
+	decayed := 0
+	boundary := newestAssistant(messages)
+	for _, order := range orders {
+		for index := range messages {
+			if live <= target || messages[index].Role != "tool" {
+				continue
+			}
+			key := observationKey(messages[index], index)
+			if d.orderOf(key, index, boundary) != order {
+				continue
+			}
+			body := contentOf(messages[index])
+			if _, done := d.retired(key); done || !d.supersede(&messages[index], key, body) {
+				continue
+			}
+			live -= len(body) - len(contentOf(messages[index]))
+			decayed++
+		}
 	}
 	return decayed
+}
+
+func newestAssistant(messages []ai.Message) int {
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].Role == "assistant" {
+			return index
+		}
+	}
+	return -1
+}
+
+// orderOf places one result in the retirement order. live is the index of the
+// newest assistant message, so anything after it belongs to the turn about to
+// be read.
+func (d *decayer) orderOf(key string, index, live int) retireOrder {
+	switch {
+	case index > live:
+		return retireFresh
+	case index < d.consumedFrom || d.consumedKeys[key]:
+		return retireSpent
+	default:
+		return retireNeeded
+	}
+}
+
+// observationKey is how a result is named for the life of the leaf. The
+// transcript is append-only, so a message's index is a stable identity even for
+// the rare tool message without a call id.
+func observationKey(message ai.Message, index int) string {
+	if message.ToolCallID != "" {
+		return message.ToolCallID
+	}
+	return fmt.Sprintf("#%d", index)
+}
+
+// supersede shortens one result in place to a line naming what it was and where
+// its bytes went, and reports whether it did. It answers false for a result
+// already smaller than that note — checked before anything is written, so no
+// file is produced for a result that is kept.
+//
+// The bytes are preserved before the message is shortened: decay must defer
+// detail, never destroy it. A result the pointer mechanism already preserved is
+// not written again, and its recorded path is used verbatim. That is not an
+// optimisation: pointers elsewhere in the transcript already name that path and
+// are never rewritten, so the stub replacing their target has to agree with
+// them, and a fresh write here could fail and leave the target pathless with
+// pointers still aimed at it.
+func (d *decayer) supersede(message *ai.Message, key, body string) bool {
+	label := labelFor(d.labels, message.ToolCallID)
+	stub, path, ok := d.supersession(key, label, body)
+	if !ok {
+		return false
+	}
+	d.spilled[key] = path
+	message.Content = text(stub)
+	return true
+}
+
+// supersession prepares the exact replacement before the transcript changes.
+// Giving a result a durable address is allowed during preflight; rewriting the
+// model's prompt is not. path is empty when the compact pathless note is the
+// only useful replacement.
+func (d *decayer) supersession(key, label, body string) (stub, path string, ok bool) {
+	stub = fmt.Sprintf("[%s — %d bytes, superseded]", label, len(body))
+	if len(stub) >= len(body) {
+		return "", "", false
+	}
+	path, kept := d.preserved[key]
+	if !kept && d.spill != nil {
+		path, kept = d.spill(key, body)
+		if kept {
+			d.preserved[key] = path
+		}
+	}
+	if kept {
+		withPath := fmt.Sprintf("[%s — %d bytes, spilled to %s]", label, len(body), path)
+		if len(withPath) < len(body) {
+			return withPath, path, true
+		}
+	}
+	return stub, "", true
 }
 
 // liveTranscriptBytes is what the whole re-sent body of the transcript costs as
@@ -522,20 +673,13 @@ func liveTranscriptBytes(messages []ai.Message) int {
 // on the leaf whose own prose became the context: measured, assistant output was
 // 45% of context growth, and no governor in the harness could see a byte of it.
 //
-// When it does fire it folds every foldable message in one batch rather than
-// shaving off the overflow, for the reason decayLowWaterPercent spells out at
-// length: a rewrite anywhere in the transcript re-bills the entire tail cold, so
-// the cheap shape is one invalidation followed by many quiet turns, and the
-// expensive shape is a small correct rewrite every turn. Everything newer than
-// foldKeepAssistantTurns is untouchable, which is what stops the batch reaching
-// the model's live working memory or the deliverable.
-//
-// After that first batch the keep window slides forward one message per turn, so
-// a transcript that stays over budget folds one newly-aged turn per turn. That
-// is a rewrite per turn and it is affordable where the decay pass's would not
-// be, because of WHERE it lands: the fold point advances with the tail, so what
-// is re-billed cold behind it is the last few assistant turns and their results
-// rather than the whole history a head-of-transcript rewrite invalidates.
+// When it does fire it folds enough eligible messages in one batch to reach the
+// same low-water target as observations. A soft pass is skipped when already-
+// consumed reasoning cannot buy that full headroom: a rewrite anywhere in the
+// transcript re-bills the entire tail cold, so a tiny correct rewrite can cost
+// more than leaving the bytes alone. Everything newer than
+// foldKeepAssistantTurns remains untouchable even at the safety line, which
+// keeps the live edge and the deliverable intact.
 //
 // Nothing is lost. The full text goes to the same workspace spill the decay pass
 // writes to, under the same write-once bookkeeping, and the stub left behind
@@ -549,28 +693,79 @@ func liveTranscriptBytes(messages []ai.Message) int {
 // with no answering tool message — or a tool message answering nothing — is a
 // hard provider rejection rather than a degraded prompt.
 func (d *decayer) fold(messages []ai.Message, budget int) int {
-	if liveTranscriptBytes(messages) <= budget {
+	return d.foldWithin(messages, budget, budget)
+}
+
+// foldWithin gives assistant reasoning the same use boundary as observations.
+// At the working-set target, only reasoning that preceded a workspace mutation
+// may fold. Still-active reasoning is eligible only at the provider-safety
+// limit. This matters for read-many/edit-once work: the model's notes are part
+// of the work, not overhead merely because three newer turns exist.
+func (d *decayer) foldWithin(messages []ai.Message, workingBudget, safetyBudget int) int {
+	live := liveTranscriptBytes(messages)
+	if live <= workingBudget {
 		return 0
 	}
+	workingTarget := d.lowWater(workingBudget)
+	if d.canFoldTo(messages, live, workingTarget, true) {
+		return d.foldTo(messages, live, workingTarget, true)
+	}
+	if safetyBudget > workingBudget && live <= safetyBudget {
+		return 0
+	}
+	return d.foldTo(messages, live, d.lowWater(safetyBudget), false)
+}
+
+func (d *decayer) canFoldTo(messages []ai.Message, live, target int, consumedOnly bool) bool {
+	if live <= target {
+		return true
+	}
+	ordinal, turns := assistantOrdinals(messages)
+	available := 0
+	for index := range messages {
+		if !d.foldable(messages, ordinal, turns, index, consumedOnly) {
+			continue
+		}
+		body := contentOf(messages[index])
+		key := fmt.Sprintf("assistant#%d", index)
+		if _, done := d.spilled[key]; done || len(foldStub(ordinal[index], len(body), "")) >= len(body) {
+			continue
+		}
+		available += len(body)
+	}
+	if live-available > target {
+		return false
+	}
+	available = 0
+	for index := range messages {
+		if !d.foldable(messages, ordinal, turns, index, consumedOnly) {
+			continue
+		}
+		body := contentOf(messages[index])
+		key := fmt.Sprintf("assistant#%d", index)
+		if _, done := d.spilled[key]; done {
+			continue
+		}
+		stub, ok := d.foldSupersession(key, ordinal[index], body)
+		if !ok {
+			continue
+		}
+		available += len(body) - len(stub)
+		if live-available <= target {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *decayer) foldTo(messages []ai.Message, live, target int, consumedOnly bool) int {
 	// Which assistant message this is, counting from the start, so a stub can
 	// say which turn's reasoning it stands for. The transcript is append-only,
 	// so the ordinal is stable for the life of the leaf.
-	ordinal := make([]int, len(messages))
-	turns := 0
+	ordinal, turns := assistantOrdinals(messages)
+	folded := 0
 	for index := range messages {
-		if messages[index].Role == "assistant" {
-			turns++
-			ordinal[index] = turns
-		}
-	}
-
-	folded, fresh := 0, 0
-	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index].Role != "assistant" {
-			continue
-		}
-		if fresh < foldKeepAssistantTurns {
-			fresh++
+		if live <= target || !d.foldable(messages, ordinal, turns, index, consumedOnly) {
 			continue
 		}
 		body := contentOf(messages[index])
@@ -582,31 +777,58 @@ func (d *decayer) fold(messages []ai.Message, budget int) int {
 			// Already a stub from an earlier pass; it stays exactly as it is.
 			continue
 		}
-		// The length test comes before the write, so no file is produced for a
-		// message that is going to be kept — the same discipline retire applies
-		// to itself. The path only lengthens the note, so a body that cannot
-		// beat the pathless form can never beat the real one either.
-		if len(foldStub(ordinal[index], len(body), "")) >= len(body) {
+		stub, ok := d.foldSupersession(key, ordinal[index], body)
+		if !ok {
 			continue
 		}
-		path, kept := d.preserved[key]
-		if !kept && d.spill != nil {
-			path, kept = d.spill(key, body)
-		}
-		if !kept {
-			// No durable address, so no pointer may be made: the bytes are
-			// carried again, which is the cheap failure. See observations.
-			continue
-		}
-		stub := foldStub(ordinal[index], len(body), path)
-		if len(stub) >= len(body) {
-			continue
-		}
-		d.spilled[key] = path
+		d.spilled[key] = d.preserved[key]
 		messages[index].Content = text(stub)
+		live -= len(body) - len(stub)
 		folded++
 	}
 	return folded
+}
+
+func (d *decayer) foldSupersession(key string, turn int, body string) (string, bool) {
+	if len(foldStub(turn, len(body), "")) >= len(body) {
+		return "", false
+	}
+	path, kept := d.preserved[key]
+	if !kept && d.spill != nil {
+		path, kept = d.spill(key, body)
+		if kept {
+			d.preserved[key] = path
+		}
+	}
+	if !kept {
+		// No durable address, so no pointer may be made: the bytes are
+		// carried again, which is the cheap failure. See observations.
+		return "", false
+	}
+	stub := foldStub(turn, len(body), path)
+	if len(stub) >= len(body) {
+		return "", false
+	}
+	return stub, true
+}
+
+func assistantOrdinals(messages []ai.Message) ([]int, int) {
+	ordinal := make([]int, len(messages))
+	turns := 0
+	for index := range messages {
+		if messages[index].Role == "assistant" {
+			turns++
+			ordinal[index] = turns
+		}
+	}
+	return ordinal, turns
+}
+
+func (d *decayer) foldable(messages []ai.Message, ordinal []int, turns, index int, consumedOnly bool) bool {
+	if messages[index].Role != "assistant" || ordinal[index] > turns-foldKeepAssistantTurns {
+		return false
+	}
+	return !consumedOnly || index < d.consumedFrom
 }
 
 // foldStub is what a folded turn leaves in the transcript. It is written in the
@@ -727,6 +949,19 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 	sum := sha256.Sum256([]byte(body))
 	hash := hex.EncodeToString(sum[:])
 	if earlier, repeated := o.first[hash]; repeated {
+		// A RE-READ OF RETIRED BYTES IS ANSWERED WITH THE BYTES. Once decay has
+		// stubbed the earlier copy, a pointer at it would answer the model's
+		// re-read with a description of the material it just asked for again,
+		// and the only way left to it is reading the spill file in slices —
+		// each slice new bytes, each pushing the window over once more. So the
+		// body is carried whole and THIS copy becomes the canonical one, taking
+		// over the address the stub already names: nothing is written twice,
+		// and later duplicates point at a copy that is quoted.
+		if path, stubbed := o.fade.retired(earlier.key); stubbed {
+			o.fade.inherit(call.ID, path)
+			o.first[hash] = observationCopy{turn: turn, key: call.ID, label: callLabel(call), path: path}
+			return body
+		}
 		// The bytes in hand are the canonical copy's bytes — that is what the
 		// hash match means — so the durable copy can be written from here, now,
 		// without going back to whatever produced it.
@@ -740,6 +975,11 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 		// nothing and cost the model a hop; the same discipline the decay
 		// stub applies to itself.
 		if pointer, reachable := o.pointerTo(earlier); reachable && len(pointer) < len(body) {
+			// The earlier copy has now been read twice and is answerable from a
+			// durable address either way, so it is spent: the decay pass may
+			// retire it ahead of material the model has only read once. See
+			// decayer.retire.
+			o.fade.used(earlier.key)
 			return pointer
 		}
 	}
@@ -750,22 +990,19 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 // pointerTo names where the earlier copy of some bytes can be read, or reports
 // that no pointer may be emitted at it.
 //
-// Every pointer names the durable path, whether or not the earlier copy is
-// still quoted in the transcript, and that redundancy is the point: the "above"
-// half of the sentence is true when it is written and may stop being true when
-// decay stubs the target, while the path half was made true before the pointer
-// existed and stays true for the rest of the run.
+// Its target is always a copy still quoted in the transcript — admit carries
+// the bytes whole rather than pointing at a stub — so the sentence can say
+// "above" and mean it. It names the durable path as well, and that redundancy
+// is the point: the "above" half is true when it is written and may stop being
+// true when decay stubs the target three turns later, while the path half was
+// made true before the pointer existed and stays true for the rest of the run.
 func (o *observations) pointerTo(earlier observationCopy) (string, bool) {
 	if earlier.path == "" {
 		// Nothing durable behind those bytes, so nothing may point at them and
 		// this copy is carried in full instead.
 		return "", false
 	}
-	if _, stubbed := o.fade.spilled[earlier.key]; !stubbed {
-		return fmt.Sprintf("[identical to the result of %s at turn %d — read it above, or from %s]",
-			earlier.label, earlier.turn, earlier.path), true
-	}
-	return fmt.Sprintf("[identical to the result of %s at turn %d, whose bytes are in %s — read the part you need with sh]",
+	return fmt.Sprintf("[identical to the result of %s at turn %d — read it above, or from %s]",
 		earlier.label, earlier.turn, earlier.path), true
 }
 

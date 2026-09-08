@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -278,6 +279,20 @@ type Options struct {
 	// snapshot taken at build start and frozen for the build.
 	Terrain string
 
+	// Workspace is the directory the terrain above was drawn from. It is what
+	// makes the terrain measurable rather than only readable: the words of the
+	// goal and of every node name files, and this is where they are looked up.
+	// See reach.go.
+	//
+	// It is read exactly once, onto the graph at build start, because the pass
+	// that weighs a node's material against its siblings' runs off the document
+	// and not off these options. See Graph.Workspace and reach.go.
+	//
+	// Empty measures nothing, renders nothing, and changes no verdict — a
+	// caller with no workspace plans exactly as it always did, on the prompt
+	// bytes it always sent.
+	Workspace string
+
 	// Asked are the separable requests the caller's reading of the ask found in
 	// it, in the person's own words. Fewer than two is the ordinary ask and
 	// changes no prompt byte anywhere.
@@ -351,12 +366,15 @@ type Options struct {
 	// five to eight times the entire structuring cost of the original job, to
 	// produce a graph of one node.
 	//
-	// The judgement stays the model's and the structure stays the code's: the
-	// spine call already reads the goal and already answers "one stage" when
-	// the goal has no real gate — its prompt says so in as many words, and
-	// calls that a correct and common answer. When it says one, this stops
-	// there and hands back one worker. When it says more, the full pipeline
-	// runs exactly as before. Nothing matches a phrase against anything.
+	// The judgement stays the model's and the structure stays the code's, and
+	// the judgement is the RULER'S REACH. The spine is asked what has to wait
+	// for what, which is advice about the shape of a fresh plan; for a
+	// remainder its answer is a list of the steps one worker would take, so
+	// however many stages come back they are folded into one node and the ruler
+	// is asked whether that node is within one worker. Within reach, this stops
+	// there and hands back one worker; past it, the full pipeline runs exactly
+	// as before and the stages inform the fan-out as they always did. Nothing
+	// matches a phrase against anything, and the stage count divides nothing.
 	Undivided bool
 
 	// Ensemble chooses between the two ways of spending parallelism: splitting
@@ -457,7 +475,25 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		// reason: sizing, expansion and the panel decision must all weigh a
 		// division against one set of numbers rather than three snapshots taken
 		// as leaves landed underneath them.
-		Invoice: options.Invoice}
+		Invoice: options.Invoice,
+		// The workspace rides on for the same reason the window does: the pass
+		// that checks a size verdict against the material a node names is
+		// reached through the document and not through these options.
+		Workspace: strings.TrimSpace(options.Workspace)}
+	// The measurement is taken once, here, before any call is made: one pass
+	// over the material the GOAL names by name, weighed against what one worker
+	// holds. Its answer is frozen onto the graph beside the terrain because it
+	// joins the same shared prefix — a figure re-read while workers are writing
+	// into the workspace would move that prefix under passes still in flight.
+	//
+	// It is read off the document rather than off the options because the
+	// document is where the reach lives (see Graph.reach), and because a second
+	// derivation of the same two numbers is a second answer waiting to drift.
+	// This is the WHOLE-PLAN reading and it is never a verdict about a node: a
+	// node is weighed against its siblings, once, by correctBeyondReach.
+	// Nothing measurable renders nothing at all. See reach.go.
+	named := graph.reach().Measure(goal)
+	graph.Named = named.Line()
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal and the workspace it
@@ -507,7 +543,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				choice, spineErr = nil, guard.Note("plan/build spine", recovered)
 			}
 		}()
-		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, asked, options.SpineSamples, progress)
+		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, asked, named, options.SpineSamples, progress)
 	}()
 	go func() {
 		defer opening.Done()
@@ -516,7 +552,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				groundErr = guard.Note("plan/build ground", recovered)
 			}
 		}()
-		grounding, usage, err := GroundWith(groundCtx, client, goal, terrain, asked, options.Recall)
+		grounding, usage, err := GroundWith(groundCtx, client, goal, terrain, asked, graph.Named, options.Recall)
 		groundUsage.merge(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()
@@ -534,20 +570,88 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	report("spine", time.Since(start), fmt.Sprintf("%s %s", plural(len(choice.Stages), "stage"), spreadLabel(choice)))
 
 	// --- the undivided shortcut ---------------------------------------------
-	// The spine has spoken and there is nothing gated in this goal. For a
-	// remainder that is the whole answer: one fresh worker, one contract, and
-	// none of fan-out, bind, size, audit, expansion or per-leaf briefs.
-	if options.Undivided && len(choice.Stages) == 1 {
-		stage := choice.Stages[0]
-		graph.Add(Node{
+	// The spine has spoken. For a remainder that is nearly the whole answer:
+	// one fresh worker, one contract, and none of fan-out, bind, audit,
+	// expansion or per-leaf briefs.
+	//
+	// THE SHORTCUT IS A JUDGMENT ABOUT GATES AND NEVER ONE ABOUT SIZE. It used
+	// to be taken on the spine's answer alone, and the spine is asked what has to
+	// wait for what — a question a piece far too large for one worker answers
+	// "nothing" as honestly as a two-line errand does. So a leaf that had just
+	// measured itself at 263K of a 150K window was replanned as one worker with
+	// the goal as its brief, and nothing between the two runs was in a position
+	// to notice. The one node is therefore sized before it is handed out, and the
+	// shortcut is taken only where the ruler says it is within one worker's
+	// reach; anything larger falls through to the pipeline, which is where the
+	// division of a sequence lives (see sequence.go). That is one call, and it is
+	// the cheapest call in the system.
+	var reachErr error
+	if options.Undivided && len(choice.Stages) > 0 {
+		// AND THE SPINE'S STAGE COUNT IS NOT A DIVIDER FOR A REMAINDER. The
+		// shortcut used to require exactly one stage and hand anything else
+		// straight to the pipeline. The spine's shape is ADVICE FOR A FRESH PLAN
+		// AND A LIST FOR A REMAINDER: asked what has to wait for what, it
+		// answers a remainder's finding with the steps one worker would take —
+		// "Check unit tests", "Check integration test", "Verify no traceback" —
+		// and three such steps are one worker's list, not three jobs. Measured
+		// on the canary acceptance cell: a second remainder carrying "2
+		// unexercised behaviours" came back as three stages, was never offered
+		// the ruler at all, and bought fan-out, bind, sizing, audit and seven
+		// contracts. So the stages are folded into the one node and the ruler is
+		// asked its one question about the whole; only past its reach does the
+		// pipeline run, where the stages inform the fan-out exactly as they do
+		// today. See foldedStage and admitsEnumeratedPieces.
+		stage := foldedStage(choice.Stages)
+		single := Node{
 			Kind: KindWork, Stage: 1,
-			Title:   strings.TrimSpace(stage.Title),
-			Summary: strings.TrimSpace(stage.Summary),
+			Title:   stage.Title,
+			Summary: stage.Summary,
 			Brief:   goal,
-		})
-		emitProgress(progress, "steps", "1", "")
-		report("undivided", time.Since(start), "one worker — the spine found nothing gated")
-		return graph, groundErr
+		}
+		// AND THE REACH QUESTION IS THE ONLY ONE ASKED HERE. The shortcut used
+		// to read the stage's own words first as well (enumerated.go, free) and
+		// fall through wherever they named several pieces, which is the right
+		// reading for a fresh plan and the wrong one for the only build that
+		// ever reaches this line. THIS SHORTCUT IS ONLY EVER TAKEN FOR A
+		// REMAINDER — Options.Undivided has one caller, the replan a leaf that
+		// ran out of room asks for — and a remainder's words are a list of what
+		// is left, which is one worker's assignment written out rather than a
+		// division of it. A remainder that listed its failing tests was read as
+		// six pieces and then eight, and ran as fourteen parallel repairs; the
+		// door's spend doubled on the canary with quality flat. So the words are
+		// not asked here, the ruler's reach is, and a remainder past one worker
+		// still falls through to the pipeline where the fan-out and the stage
+		// question divide it on its size. See admitsEnumeratedPieces.
+		//
+		// AND WHERE THE MATERIAL HAS ALREADY BEEN WEIGHED PAST ONE WORKER, THE
+		// RULER IS NOT ASKED AT ALL. Its one question is whether this node fits
+		// inside one worker, and a goal whose named material has been measured
+		// larger than one worker holds is that question answered by arithmetic;
+		// putting it to a model afterwards is the guess this whole seam replaced
+		// (reach.go). It is the GOAL's measurement and not a node's, which is
+		// exactly what makes it usable here: there is one node on this road and
+		// the goal is its brief, so what the goal names is what that worker
+		// would hold. The per-node question — the one with a clause about
+		// siblings in it — is asked once, elsewhere, by correctBeyondReach, and
+		// nothing on this road may answer it a second time. Nothing measurable
+		// asks the ruler exactly as it always did.
+		withinReach, reachUsage, err := false, Usage{}, error(nil)
+		if !named.Exceeds() {
+			withinReach, reachUsage, err = withinOneWorker(ctx, client, graph, single)
+		}
+		graph.Usage.merge(reachUsage)
+		reachErr = err
+		if withinReach {
+			graph.Add(single)
+			emitProgress(progress, "steps", "1", "")
+			report("undivided", time.Since(start), "one worker — within the ruler's reach")
+			return graph, errors.Join(groundErr, reachErr)
+		}
+		if named.Exceeds() {
+			report("undivided", time.Since(start), "measured past one worker's reach — planned in full")
+		} else {
+			report("undivided", time.Since(start), "past one worker's reach — planned in full")
+		}
 	}
 
 	// --- ensemble hook (ensemble.go) ---------------------------------------
@@ -557,7 +661,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// it. It is decided here because grounding and the spine are both already
 	// paid for and both feed the judgment.
 	if ensemble, chosen, ensembleErr := ensembleHook(ctx, client, graph, options, report, start); chosen {
-		return ensemble, errors.Join(groundErr, ensembleErr)
+		return ensemble, errors.Join(groundErr, reachErr, ensembleErr)
 	}
 	// --- end ensemble hook --------------------------------------------------
 
@@ -706,10 +810,16 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// inside a worker, not a gate between workers. When the whole graph is that
 	// chain, the graph is the undivided answer the spine's one-stage sample
 	// would have given, reached by evidence instead of by sampling luck.
-	if collapsed := collapseAtomicChain(graph); collapsed != 0 {
+	// It cannot undo the second move, and the shape is what guarantees that
+	// rather than a flag: a node divided into ordered stages leaves a synthesis
+	// parent over links at depth 1, and this rule folds only a graph that is
+	// every-node-work at depth 0. A chain the ruler put past one worker's reach
+	// is not a chain of sittings, and folding one back would hand out exactly the
+	// node the division was bought to avoid.
+	if collapsed := collapseAtomicChain(graph, named); collapsed != 0 {
 		report("collapse", time.Since(start), fmt.Sprintf("chain of %d atomic nodes is one sitting", collapsed))
 		emitProgress(progress, "steps", "1", "")
-		return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr)
+		return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr)
 	}
 
 	graph.Prune()
@@ -723,13 +833,77 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// Everything that was still moving has now stopped.
 	announce(graph, options, settled, briefs, start, func(*Node) bool { return true })
 
-	briefUsage, briefErr := briefs.apply(graph)
+	// What apply returns is the internal fault the guard caught and nothing
+	// else — a call that would not answer is composed for rather than reported
+	// — and guard.Note has already written it to the log. It is deliberately
+	// not joined into the return below; see the law there.
+	briefUsage, _ := briefs.apply(graph)
 	graph.Usage.merge(briefUsage)
 	if options.Briefs {
 		report("brief", time.Since(start), plural(len(graph.writtenLeaves()), "leaf"))
 	}
 
-	return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr, briefErr)
+	// THE LAW: STRUCTURE THE PLANNER HAS ALREADY FOUND IS NEVER DISCARDED FOR A
+	// DOWNSTREAM FAULT. A brief is one leaf's instruction and never the graph's
+	// right to exist, so nothing the brief pass could not write travels out on
+	// this return — which every caller reads as "there is no plan", and which
+	// once cost a drawn six-node graph its life over a single reply. Every leaf
+	// carries an instruction either way: see briefWriter.launch.
+	return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr)
+}
+
+// withinOneWorker asks the ruler about a single node without letting the
+// question touch the graph.
+//
+// The probe is a copy of the graph by value, so it carries the same goal,
+// terrain, settled points, window and prices the real build carries — a probe
+// assembled field by field would go stale the day a field is added — and it
+// shares nothing the sizing pass writes to, because the node being judged exists
+// only in the copy. The stages come with it, so this is one call.
+//
+// A sizing call that fails leaves its node unjudged, which sizeApply reads as
+// atomic, so the shortcut is then taken exactly as it was before the question
+// was asked. That is the safe direction for a question whose whole purpose is to
+// avoid buying a pipeline.
+// foldedStage is the spine's answer read as ONE worker's assignment: the shape
+// a one-stage answer already has, whatever number of stages came back.
+//
+// It exists because the undivided shortcut is only ever taken for a remainder,
+// and a remainder's stages are the steps of a single piece of repair rather
+// than a division of it. One stage is passed through untouched, so nothing
+// about the shortcut's long-standing case moves. Several are joined into a
+// title that names them in order and a summary that spells each out — which is
+// the enumerated shape a remainder's own words already have, and which
+// admitsEnumeratedPieces refuses to read as a division precisely because a
+// remainder divides on its size and never on its list.
+func foldedStage(stages []Stage) Stage {
+	titles := make([]string, 0, len(stages))
+	lines := make([]string, 0, len(stages))
+	for _, stage := range stages {
+		title := strings.TrimSpace(stage.Title)
+		summary := strings.TrimSpace(stage.Summary)
+		if title != "" {
+			titles = append(titles, title)
+		}
+		switch {
+		case title != "" && summary != "":
+			lines = append(lines, title+": "+summary)
+		case summary != "":
+			lines = append(lines, summary)
+		case title != "":
+			lines = append(lines, title)
+		}
+	}
+	return Stage{Title: strings.Join(titles, "; "), Summary: strings.Join(lines, " ")}
+}
+
+func withinOneWorker(ctx context.Context, client Completer, graph *Graph, node Node) (bool, Usage, error) {
+	probe := *graph
+	probe.Nodes, probe.NextID, probe.Usage = nil, 1, Usage{}
+	id := probe.Add(node)
+	usage, err := SizeNodes(ctx, client, &probe)
+	judged := probe.Node(id)
+	return judged != nil && judged.Size == SizeAtomic, usage, err
 }
 
 // collapseAtomicChain folds a graph that is one short chain of atomic work
@@ -738,13 +912,16 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 // node's only need the node before it — work the spine
 // drew as stages and the ruler then measured as sittings one agent could each
 // just do. Four links is the most the rule trusts: past that the sittings sum
-// past what one context ought to hold, and the graph stands as drawn.
+// past what one context ought to hold, and the graph stands as drawn. Where the
+// material the GOAL names has been weighed, that ceiling stops being the only
+// guard — a fold whose brief names more than one worker's reach is not one
+// sitting however few links it has, and it is not folded.
 //
 // The collapse is the undivided shortcut reached by evidence rather than by
 // the spine's coin: one work node, the goal as its brief, the first link's
 // title. It returns how many nodes were folded, zero when the shape is
 // anything else.
-func collapseAtomicChain(graph *Graph) int {
+func collapseAtomicChain(graph *Graph, named Measurement) int {
 	var chain []*Node
 	for index := range graph.Nodes {
 		node := &graph.Nodes[index]
@@ -774,6 +951,36 @@ func collapseAtomicChain(graph *Graph) int {
 			return 0
 		}
 	}
+	// The fold is a third pass that hands a node to one worker, so it is bound
+	// by the same law as the one above it: THE FOLDED NODE CARRIES THE WHOLE
+	// GOAL AS ITS BRIEF, which is what one worker would be holding, and it is
+	// therefore the goal that is weighed here. Each link being a sitting on its
+	// own says nothing about their sum — that was the guess the four-link
+	// ceiling above was standing in for — and where the goal's material has
+	// actually been weighed and is larger than one worker's reach, the chain
+	// stands as drawn.
+	//
+	// IT IS THE GOAL AND NEVER THE LINKS. Measuring the links' own sources here
+	// would be this pass taking a second reading of a question that has one
+	// answer and one place that computes it: correctBeyondReach weighs a node
+	// against its SIBLINGS, and a lane of a division it deliberately spared
+	// would be refused again here by a reader that cannot see a sibling — the
+	// defect of issue #480 arriving by a third road. It needs no such reading
+	// either: every link in this shape is sized atomic, and a link the
+	// measurement had ruled beyond reach was corrected to oversized by that same
+	// pass and would have failed the shape test above.
+	//
+	// AND IT IS HANDED THE MEASUREMENT RATHER THAN TAKING ONE. This runs after
+	// sizing and expansion, and workers write into the workspace while a build
+	// is still going; a reading taken here would be a second, later answer about
+	// the same goal, disagreeing with the one frozen onto the graph and stated
+	// in every prompt this build sent. There is one measurement per build, taken
+	// before the first call. Nothing measurable folds exactly as it always did.
+	// See Graph.Named and reach.go.
+	if named.Exceeds() {
+		return 0
+	}
+
 	folded := len(chain)
 	first := chain[0]
 	graph.Nodes = graph.Nodes[:0]
@@ -1054,6 +1261,13 @@ func RunID(goal string) string {
 }
 
 func trim(value string) string { return strings.TrimSpace(value) }
+
+// callNodeKey spells a plan node's identity for the model-call log
+// (provider.WithCallNode). It is the node's own number, which is what the
+// executor's leaf key falls back to on this same path, so a planning pass about
+// one node and the leaf that ran it name the work the same way and the log can
+// be read one node at a time.
+func callNodeKey(id int) string { return strconv.Itoa(id) }
 
 func userMessage(text string) ai.Message {
 	return ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: text}}}

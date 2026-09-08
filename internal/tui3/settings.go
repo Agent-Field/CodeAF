@@ -65,16 +65,21 @@ import (
 
 // The tabs, in the order docs/CHAT-V3.md Decision 6 names them.
 const (
-	// tabSession is this conversation: what it may run, what it may spend, and
-	// which models answer the small calls it makes for itself.
+	// tabSession is this conversation and only this conversation: what it
+	// carries from the last one, and where it goes when its model will not
+	// answer. It is two rows, and that is the honest size of it — the models
+	// went to Providers, the money went to Spending, and the ssh link went to
+	// Workspace because it lands next launch rather than on this session.
 	tabSession = "Session"
 	// tabContext is what a model carries — the context law, whole.
 	tabContext = "Context"
 	// tabWorkspace is this machine and this project: what aforge does with its
-	// own time here, and what it may reach on your behalf. It is NOT where money
-	// lives any more, and that is the whole of docs/design/spending/DESIGN.md's
-	// first complaint — twenty rows answering four questions, with the dollar
-	// figures filed between `workers` and `memory floor`.
+	// own time here, and what it may reach on your behalf — a service it signs
+	// in to, and the ssh link it reaches another machine over. It is NOT where
+	// money lives any more, and that is the whole of
+	// docs/design/spending/DESIGN.md's first complaint — twenty rows answering
+	// four questions, with the dollar figures filed between `workers` and
+	// `memory floor`.
 	tabWorkspace = "Workspace"
 	// tabDisplay is how the surface draws itself and what it remembers of your
 	// typing.
@@ -207,42 +212,53 @@ var settingUI = map[string]settingMeta{
 			"are only asked about the rest.",
 	},
 	// And directly under those three, because it is the last thing that can
-	// happen to the question they raise: the clock that answers it when nobody
-	// does. It is a countdown toward NO — the row above can spare you a
-	// question, this one refuses on your behalf — which is why it sits here and
-	// not beside the task countdown it otherwise looks like.
+	// happen to the question they raise: the reminder clock. It used to count
+	// toward NO (F41) and does not — at expiry the card pauses and keeps
+	// waiting, which is why it still sits here and not beside the task
+	// countdown that starts work on its own.
 	config.KeyConsentTimeout: {
 		tab: tabSafety, label: "approval countdown", widget: widgetText,
-		about: "seconds an approval question waits before it answers no for you. " +
-			"Any key stops the clock; 0 turns it off.",
+		about: "seconds an approval question counts down before it pauses and keeps waiting. " +
+			"Never answers no; any key stops the clock; 0 waits from the start.",
 	},
 	config.KeyBashBackgroundAfter: {
 		tab: tabSafety, label: "background after", widget: widgetText,
 		about: config.BashBackgroundAfterHint,
 	},
-	// THE FOUR ssh ROWS ARE THIS CONVERSATION'S TOO, because a connection to
-	// another machine is a property of the session that runs over it and of
-	// nothing else on this screen — a change lands on the next launch, which the
-	// registry's own hint says. They sit together, after the rows about what a
-	// session may do, and they are text and a cycle for the same reason the
-	// countdown above is text: a number a person types, and one choice they turn.
+	// THE FOUR ssh ROWS ARE THE MACHINE'S AND NOT THE CONVERSATION'S, and that
+	// is a correction. They sat under Session for four waves on the argument
+	// that a link is a property of the session running over it — but every one
+	// of them lands NEXT LAUNCH, which the registry's own hint says, so none of
+	// them is about the conversation in front of the reader at all. What a
+	// person is actually looking for when their `--host` link keeps dropping is
+	// "how does this machine reach that one", and this tab is already the one
+	// that answers what aforge may reach on your behalf: the Google and Slack
+	// sign-in rows below are the same question asked about a service.
+	//
+	// THE TAB LITERALLY NAMED `Connections` COULD NOT TAKE THEM. It builds its
+	// rows from the engine's account catalog rather than from the registry
+	// (connectcaps.go), so a registry row filed there would be a row nobody can
+	// reach — which is the fault this map exists to prevent. The word doing two
+	// jobs on one screen is a real defect and it is still open; moving these off
+	// Session is the half of it that can be fixed without renaming a tab whose
+	// rows are all sign-ins.
 	config.KeySSHControlPersist: {
-		tab: tabSession, label: "ssh reuse", widget: widgetText,
+		tab: tabWorkspace, label: "ssh reuse", widget: widgetText,
 		about: "seconds an ssh connection stays reusable after it closes, so a quick " +
 			"reconnect skips the handshake. 0 turns it off; a change lands next launch.",
 	},
 	config.KeySSHServerAlive: {
-		tab: tabSession, label: "ssh heartbeat", widget: widgetText,
+		tab: tabWorkspace, label: "ssh heartbeat", widget: widgetText,
 		about: "seconds of silence before ssh asks whether the far machine is still there. " +
 			"0 turns heartbeats off; a change lands next launch.",
 	},
 	config.KeySSHServerMisses: {
-		tab: tabSession, label: "ssh missed heartbeats", widget: widgetText,
+		tab: tabWorkspace, label: "ssh missed heartbeats", widget: widgetText,
 		about: "how many unanswered heartbeats end a dead connection — three with the " +
 			"default heartbeat notices one in about nine seconds. A change lands next launch.",
 	},
 	config.KeySSHIPQoS: {
-		tab: tabSession, label: "ssh traffic", widget: widgetCycle,
+		tab: tabWorkspace, label: "ssh traffic", widget: widgetCycle,
 		about: "how ssh marks its traffic: lowdelay by default, af21 on networks that honor " +
 			"it, none where marking is filtered. A change lands next launch.",
 	},
@@ -890,6 +906,31 @@ type sheetEdit struct {
 	label  string
 	secret bool
 	box    editor
+}
+
+// sheetEditNote is what the panel says ABOUT the box a value is being typed
+// into — the line above it, where the one thing the box cannot say goes.
+//
+// IT SAYS WHAT THE ROW TAKES AS WELL AS WHICH ROW IT IS, because the box itself
+// asks the wrong question. Opening an empty money limit leaves the composer's
+// own resting sentence — `say what you want done` — in the place a dollar
+// amount is typed, which invites prose into a field that refuses it and tells
+// nobody what it wants instead. The sentence is [config.Setting.Accepts], the
+// row's own writer read forwards, so the invitation and the refusal cannot
+// drift apart.
+//
+// A PLAIN TEXT ROW HAS NOTHING TO ADD. Its answer is the word "text", which is
+// not a fact about the row — a row with an off word ("text, or blank for none")
+// is, and so is every kind that names a shape.
+func sheetEditNote(label string, row config.Setting) string {
+	if row.Kind == config.SettingText && row.EmptyLabel == "" {
+		return label
+	}
+	accepts := row.Accepts()
+	if accepts == "" {
+		return label
+	}
+	return label + " · " + accepts
 }
 
 // sheetSelect is a model slot being answered: which registry row is being
@@ -1888,7 +1929,7 @@ func (a *app) activate() tea.Cmd {
 		box := editor{}
 		box.setText(value)
 		s.edit = &sheetEdit{
-			key: item.row.Key, label: item.meta.label,
+			key: item.row.Key, label: sheetEditNote(item.meta.label, item.row),
 			secret: item.row.Secret, box: box,
 		}
 	}
@@ -2155,7 +2196,7 @@ func (a *app) sheetPress(x, y int) tea.Cmd {
 	}
 	switch hit := hits[y]; hit.kind {
 	case sheetHitTabs:
-		if tab, ok := tabAtColumn(x); ok {
+		if tab, ok := tabAtColumn(x, width, a.sheet.tab); ok {
 			if a.sheet.searching() {
 				a.sheet.query.reset()
 			}
@@ -2306,20 +2347,132 @@ const (
 	tabLead = 1
 )
 
-func tabSpans() []tabSpan {
-	spans := make([]tabSpan, 0, len(settingTabs))
+// tabChipCols is one chip's cells: its word and the air each side of it.
+//
+// THE WORD IS MEASURED IN CELLS. It was `len(title)`, a count of bytes, while
+// everything that reads this number — [tabWindow]'s fit, [tabSpans]'s
+// arithmetic, the band [sheetTabBar] paints — is laid out in terminal columns.
+// The two agree only while every tab title is ASCII: give one a wide rune and
+// the strip hides the wrong number of chips and a click lands on its
+// neighbour; give one a combining accent and it does the same in the other
+// direction. [ansi.StringWidth] is the one measure this surface uses for how
+// much room a string takes.
+func tabChipCols(title string) int { return ansi.StringWidth(title) + tabPadCols }
+
+// tabWindow is WHICH CHIPS THE STRIP SHOWS at this width, and it is the answer
+// to a bar that used to stop telling a person where they were standing.
+//
+// THE BUG IT FIXES. The strip was built from index 0 and, on overflow, cut with
+// a left-anchored fit — so at eighty columns, standing on Providers or
+// Connections, the accent was on a chip that had been cut off the end and NO
+// TAB WAS INKED ANYWHERE. Two of nine tabs, the two that hold every third-party
+// account, were also unreachable by eye: nobody discovers a tab they have never
+// seen.
+//
+// SCROLLING, NOT COLLAPSING, AND HERE IS WHY. The place bar solves the same
+// squeeze by giving words up in a stated order until only the word you are
+// standing in is left ([app.placeTabBar]'s width ladder), and that is right
+// THERE because its words are rooms — each one is a door you reach by name, the
+// bar is a list of the ones worth naming, and a room with something new in it
+// earns its cells over a room with nothing. These nine are not a list of doors;
+// they are one ordered strip that `←` and `→` walk a step at a time. Drop the
+// middle of it and the two keys start jumping between words that are not
+// neighbours, which is the surface lying about its own geometry. So the strip
+// SCROLLS: the cursor's chip is always drawn, its neighbours are drawn while
+// they fit, and each cut end wears a [glyphMore] saying there is more that way.
+//
+// It anchors left while the cursor is near the start and right while it is near
+// the end, so the common case — Session, or Connections — looks exactly like a
+// strip that fits, and only the middle of the walk carries two marks.
+func tabWindow(width, active int) (int, int) {
+	n := len(settingTabs)
+	if n == 0 {
+		return 0, 0
+	}
+	if active < 0 || active >= n {
+		active = 0
+	}
+	mark := ansi.StringWidth(glyphMore)
+	// The cells one window costs: the lead margin, every chip in it, a gap
+	// between each pair, and a mark plus its own gap at each cut end.
+	cost := func(lo, hi int) int {
+		total := tabLead
+		for i := lo; i < hi; i++ {
+			if i > lo {
+				total += tabGap
+			}
+			total += tabChipCols(settingTabs[i])
+		}
+		if lo > 0 {
+			total += mark + tabGap
+		}
+		if hi < n {
+			total += tabGap + mark
+		}
+		return total
+	}
+	if cost(0, n) <= width {
+		return 0, n
+	}
+	// Anchored left: as many chips from the first as fit. Anchored right: as
+	// many back from the last. Either is taken whole when the cursor is inside
+	// it, which is what keeps the two ends of the walk looking untouched.
+	hi := 1
+	for hi < n && cost(0, hi+1) <= width {
+		hi++
+	}
+	if active < hi {
+		return 0, hi
+	}
+	lo := n - 1
+	for lo > 0 && cost(lo-1, n) <= width {
+		lo--
+	}
+	if active >= lo {
+		return lo, n
+	}
+	// And in the middle, the cursor's own chip with whatever fits either side of
+	// it — right first, so a walk rightwards shows where it is going.
+	lo, hi = active, active+1
+	for {
+		grew := false
+		if hi < n && cost(lo, hi+1) <= width {
+			hi, grew = hi+1, true
+		}
+		if lo > 0 && cost(lo-1, hi) <= width {
+			lo, grew = lo-1, true
+		}
+		if !grew {
+			return lo, hi
+		}
+	}
+}
+
+// tabSpans is where each chip landed, so the draw and the click agree. A chip
+// the window left out gets a zero span, which no column can be inside — a press
+// on a tab that is not drawn lands on nothing, which is this surface's rule that
+// nothing acts on something a person cannot see.
+func tabSpans(width, active int) []tabSpan {
+	spans := make([]tabSpan, len(settingTabs))
+	lo, hi := tabWindow(width, active)
 	at := tabLead
-	for _, title := range settingTabs {
-		width := len(title) + tabPadCols
-		spans = append(spans, tabSpan{from: at, to: at + width})
-		at += width + tabGap
+	if lo > 0 {
+		at += ansi.StringWidth(glyphMore) + tabGap
+	}
+	for i := lo; i < hi; i++ {
+		if i > lo {
+			at += tabGap
+		}
+		cols := tabChipCols(settingTabs[i])
+		spans[i] = tabSpan{from: at, to: at + cols}
+		at += cols
 	}
 	return spans
 }
 
-func tabAtColumn(x int) (int, bool) {
-	for i, span := range tabSpans() {
-		if x >= span.from && x < span.to {
+func tabAtColumn(x, width, active int) (int, bool) {
+	for i, span := range tabSpans(width, active) {
+		if span.to > span.from && x >= span.from && x < span.to {
 			return i, true
 		}
 	}
@@ -2341,24 +2494,31 @@ func tabAtColumn(x int) (int, bool) {
 // that is open — moving the focus switches the page — so the bar has nothing to
 // say that the band does not already say, and it draws no second mark.
 func sheetTabBar(width, active int, pal palette) string {
-	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
-	for i, title := range settingTabs {
-		if i > 0 {
+	lo, hi := tabWindow(width, active)
+	line := strings.Repeat(" ", tabLead)
+	if lo > 0 {
+		line += pal.dim(glyphMore) + strings.Repeat(" ", tabGap)
+	}
+	for i := lo; i < hi; i++ {
+		if i > lo {
 			line += strings.Repeat(" ", tabGap)
-			plain += strings.Repeat(" ", tabGap)
 		}
+		title := settingTabs[i]
 		chip := tabPad + title + tabPad
 		if i == active {
-			line += pal.selected(pal.bold(pal.accent(chip)), len(title)+tabPadCols)
+			line += pal.selected(pal.bold(pal.accent(chip)), tabChipCols(title))
 		} else {
 			line += pal.dim(chip)
 		}
-		plain += chip
 	}
-	if ansi.StringWidth(plain) > width {
-		return fit(line, width)
+	if hi < len(settingTabs) {
+		line += strings.Repeat(" ", tabGap) + pal.dim(glyphMore)
 	}
-	return line
+	// A LAST FIT AND NOT A FIRST ONE. [tabWindow] already sized the strip to the
+	// frame, so this cuts nothing at any width the surface actually draws; it is
+	// here for the one-column frames the geometry cannot satisfy at all, where a
+	// bar that ran off the row would take the rule under it with it.
+	return fit(line, width)
 }
 
 // listLines is the rows, plus the ONE description this panel ever shows: the
@@ -2419,14 +2579,43 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 		if about == "" {
 			continue
 		}
-		for n, line := range wrap(about, width-6) {
-			if n >= 2 {
-				break
-			}
+		for _, line := range settingAboutLines(about, width) {
 			put("    "+pal.dim(line), i)
 		}
 	}
 	return lines, owner
+}
+
+// settingAboutRows is the most lines the ONE description this panel shows may
+// take, and it is three because it used to be two.
+//
+// A DESCRIPTION THAT STOPS MID-CLAUSE READS AS A RENDERING FAULT. The cut was
+// silent — `…new work waits for midnight or` at sixty cells, `…none removes` at
+// eighty — so a person reading what a limit does could not tell whether the
+// sentence had been trimmed or the panel had broken, and either way the only way
+// to find the rest was the source. Two fixes, and both of them: the description
+// takes a third line, which is room this panel has at every tier it is drawn at,
+// and whatever is still over the end is marked with the same [glyphMore] every
+// other cut on this surface wears.
+const settingAboutRows = 3
+
+// settingAboutLines wraps the selected row's sentence into the lines the panel
+// will draw, ellipsis and all.
+func settingAboutLines(about string, width int) []string {
+	room := width - 6
+	if room < 1 {
+		return nil
+	}
+	lines := wrap(about, room)
+	if len(lines) <= settingAboutRows {
+		return lines
+	}
+	lines = lines[:settingAboutRows]
+	// fit adds the mark itself when the sentence plus the mark is over the
+	// line, and leaves it where it fits — so the last line ends in one either
+	// way and nothing has to measure the string twice.
+	lines[settingAboutRows-1] = fit(lines[settingAboutRows-1]+glyphMore, room)
+	return lines
 }
 
 // cursorLine is the display row the cursor's item starts on.
@@ -2491,7 +2680,14 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if item.row.Category == config.CategorySpending && item.row.Kind == config.SettingDollars {
 		return overlayLines(item.meta.label, s.spendNote(item, width, pal.ascii), selected, false, hovered, width, pal)
 	}
-	value := item.row.Value()
+	// THE ROW DRAWS ITS READING AND THE BOX OPENS ON ITS VALUE. `300` is three
+	// hundred WHAT — seconds, connections, kilobytes? — and the answer used to
+	// live only in the one sentence under the row a person happened to be
+	// standing on, which made a whole tab of numbers undecidable at a glance.
+	// The unit is the registry's ([config.Setting.Unit]), so it is stated once,
+	// beside the default, rather than spelled again by every surface that draws
+	// a number ([config.Setting.Reading]).
+	value := item.row.Reading()
 	if value == "" {
 		value = "—"
 	}
@@ -2536,7 +2732,19 @@ func (s *sheet) laneWord(item sheetItem) string {
 	// they could disagree would be a panel that is wrong about one of them.
 	if row, ok := s.registry.Row(config.LaneSettingKey(talkSlot)); ok {
 		if word := row.Value(); word != "" && !strings.EqualFold(word, config.LaneAuto) {
-			return strings.ToLower(word)
+			word = strings.ToLower(word)
+			// AND THE ROW SAYS SO WHEN THE CHOICE IS NOT REACHING THE WIRE
+			// (issue #433). A base that has answered that it will not carry a
+			// routing preference — a proxy, a mirror, a plain endpoint — leaves
+			// `pinned: cloudflare` standing on the screen as a claim about a
+			// request that did not carry it, which is the silent substitution
+			// this build forbids. The conversation is told once
+			// ([provider.UncarriedPinLine]); this row keeps saying it, because
+			// it is the row somebody comes back to look at.
+			if !provider.BaseTakesLaneChoice() {
+				word += " (not taken on this base)"
+			}
+			return word
 		}
 	}
 	if best, ok := bestLane(laneViews(s.sessionModel, timeNow())); ok {

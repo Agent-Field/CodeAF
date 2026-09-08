@@ -35,23 +35,51 @@ fi
 
 CHAT_POLL="${CHAT_POLL:-3}"
 CHAT_QUIET="${CHAT_QUIET:-20}"
+# How far inside the rig's wall aforge's own wall sits (seconds): the session
+# gets to end on its own law and write its ending before the rig stops watching.
+CHAT_WALL_MARGIN=${CHAT_WALL_MARGIN:-60}
 CHAT_STALL="${CHAT_STALL:-420}"
 CHAT_FRAME_WAIT="${CHAT_FRAME_WAIT:-60}"
+
+chat_asked_frame() {
+  local frame="$1" quiet="$2"
+  printf '%s\n' "$frame" | grep -q '\[a\] accept' &&
+    printf '%s\n' "$frame" | tail -1 | grep -q ' · idle' &&
+    ! printf '%s\n' "$frame" | grep -Eq '[0-9]+ running' &&
+    [ "$quiet" -ge "$CHAT_QUIET" ]
+}
+
+chat_blocked_on_line() {
+  python3 -c 'import re, sys
+for line in sys.stdin:
+    if "needs your look" in line:
+        line = "".join(ch for ch in line if not "\u2500" <= ch <= "\u257f")
+        print(re.sub(r"\s+", " ", line).strip())
+        break'
+}
 
 canary_chat() {
   local bin="$1" home="$2" work="$3" prompt="$4" model="$5" cap="$6" wall="$7" out="$8"
   local here="$CHAT_LIB"
   local name="canary-$$-$(basename "$out")"
   local calls="$home/logs/calls.jsonl"
-  local ended="" started now seals quiet screen working task_done_s=""
+  local ended="" started now seals quiet screen working task_done_s="" asked_s="" blocked_on=""
 
   tmux kill-session -t "=$name" 2>/dev/null
   # Its stderr is kept: a session that never comes up is a cell that says
   # `noframe` and nothing else, and the reason is here or nowhere.
   tmux new-session -d -s "$name" -c "$work" "sleep $((wall + 300))" 2>>"$out/tmux.err"
   tmux resize-window -t "=$name" -x 140 -y 45
+  # THE RIG'S CLOCK IS THE BACKSTOP, NOT THE ENDING. aforge is given its own
+  # wall, CHAT_WALL_MARGIN seconds inside the rig's, so an unattended session
+  # ends on its own law ("hours ran out") and the tmux clock only catches a
+  # session that ignored it. Before this line every --yolo chat cell ran with a
+  # money ceiling and no wall at all (Budget().Wall was 0), and every chat
+  # `wall` verdict up to the 713945e3 table was the tmux clock; see #407.
+  local hours
+  hours=$(python3 -c "print(round(max($wall - $CHAT_WALL_MARGIN, 60) / 3600, 4))")
   tmux respawn-window -k -t "=$name" -c "$work" \
-    "env AFORGE_HOME='$home' PATH='$PATH' TERM=xterm-256color '$bin' chat -yolo -one-model -model '$model' -max-cost '$cap'"
+    "env AFORGE_HOME='$home' PATH='$PATH' TERM=xterm-256color '$bin' chat -yolo -one-model -model '$model' -max-cost '$cap' -max-hours '$hours'"
 
   # The composer has to be up before it can be typed at; the status line's
   # idle word is the frame that says so.
@@ -81,10 +109,16 @@ canary_chat() {
       now=$(date +%s)
       tmux capture-pane -p -t "=$name:" 2>/dev/null | tail -1 >> "$out/frames.log"
       if [ "$(tmux list-panes -t "=$name" -F '#{pane_dead}' 2>/dev/null)" = "1" ]; then ended="crash"; break; fi
-      if [ $(( now - started )) -ge "$wall" ]; then ended="wall"; break; fi
       seals=$(python3 "$here/journal.py" seals "$home")
       quiet=$(( now - $(stat -c %Y "$calls" 2>/dev/null || echo "$now") ))
       screen="$(tmux capture-pane -p -t "=$name:" 2>/dev/null)"
+      if chat_asked_frame "$screen" "$quiet"; then
+        ended="asked"
+        asked_s=$(( now - started ))
+        blocked_on="$(printf '%s\n' "$screen" | chat_blocked_on_line)"
+        break
+      fi
+      if [ $(( now - started )) -ge "$wall" ]; then ended="wall"; break; fi
       if [ -z "$task_done_s" ] && echo "$screen" | grep -Eq '[0-9]+ done' && ! echo "$screen" | grep -Eq '[0-9]+ running'; then
         task_done_s=$(( now - started ))
       fi
@@ -105,12 +139,14 @@ canary_chat() {
   # on a shared box a pattern kill is how somebody else's run dies.
   ss -xlp 2>/dev/null | grep -F "$home" > "$out/listeners.txt" || true
 
-  CANARY_ENDED="$ended" CANARY_WALL="$(( $(date +%s) - started ))" CANARY_TASK_DONE="$task_done_s" CANARY_HOME="$home" \
+  CANARY_ENDED="$ended" CANARY_WALL="$(( $(date +%s) - started ))" CANARY_TASK_DONE="$task_done_s" \
+  CANARY_ASKED_S="$asked_s" CANARY_BLOCKED_ON="$blocked_on" CANARY_HOME="$home" \
   CANARY_LIB="$here" CANARY_OUT="$out/door.json" python3 - <<'PY'
 import json, os, subprocess
 lib, home = os.environ["CANARY_LIB"], os.environ["CANARY_HOME"]
 ended, wall_s = os.environ["CANARY_ENDED"], int(os.environ["CANARY_WALL"])
 task_done_s = int(os.environ["CANARY_TASK_DONE"]) if os.environ["CANARY_TASK_DONE"] else None
+asked_s = int(os.environ["CANARY_ASKED_S"]) if os.environ["CANARY_ASKED_S"] else None
 def ask(word):
     return subprocess.run(["python3", os.path.join(lib, "journal.py"), word, home],
                           capture_output=True, text=True).stdout.strip()
@@ -124,6 +160,8 @@ json.dump({
     "ttft_ms": int(ask("ttft") or 0) or None,
     "calls": int(ask("calls") or 0),
     "turns": int(ask("seals") or 0),
+    **({"asked_s": asked_s} if asked_s is not None else {}),
+    **({"blocked_on": os.environ["CANARY_BLOCKED_ON"]} if os.environ["CANARY_BLOCKED_ON"] else {}),
 }, open(os.environ["CANARY_OUT"], "w"), indent=1)
 PY
 }

@@ -125,6 +125,27 @@ const wideEvidence = "the adapters directory holds 11 files, one interface each:
 // narrowEvidence names too few items to pay for a division.
 const narrowEvidence = "there are 3 bugs in the reconciler"
 
+// floorPinnedOn puts the six-item floor back in charge for one test.
+//
+// THE DEFAULT MOVED, AND THESE TESTS ARE ABOUT THE THING IT MOVED AWAY FROM.
+// The evidence gate was armed by default until 2026-09-02, so a test that
+// wanted a floor refusal simply asked for one. Then a designed experiment ran
+// four planner arms against four readings of that gate over 273 judged plan
+// draws and put the arm with the gate OFF on the front — same quality as the
+// best armed cell, a third of its unrecoverable draws, the lowest cost
+// (docs/design/plan-gate-doe/REPORT.md). So an unpinned binary now keeps every
+// division a worker asks for, and the refusal, the tiebreak and the mastermind
+// behind it are reachable only where a run asked for a floor.
+//
+// EVERY TEST BELOW THAT CALLS THIS IS TESTING A PINNED RUN, and that is the
+// honest shape: the machinery still has to be right for whoever pins it. What
+// an UNPINNED binary does with a narrow division is
+// [TestAnUnpinnedBinaryKeepsANarrowDivisionTheWorkerAskedFor].
+func floorPinnedOn(t *testing.T) {
+	t.Helper()
+	t.Setenv("AFORGE_SPLITGATE", "1")
+}
+
 // heldGovernor is a machine that is over its load ceiling and stays there. It
 // reads a fixed sample rather than the host, so the answer does not depend on
 // what else is running on the box the suite is on.
@@ -418,7 +439,47 @@ func TestTheRoadOffProducesWorkersWithoutTheVerb(t *testing.T) {
 
 // ── the two gates ───────────────────────────────────────────────────────────
 
+// AN UNPINNED BINARY KEEPS THE NARROW DIVISION, and this is the pin that moved.
+//
+// The evidence gate was armed by default and refused this exact division for
+// free; a designed experiment then measured four planner arms against four
+// readings of it and put the arm with the gate OFF on the front
+// (docs/design/plan-gate-doe/REPORT.md), so the default moved on 2026-09-02.
+// The same three-bug evidence the floor calls too narrow now becomes parts,
+// because the worker asking is the one that read the work.
+//
+// AND ARMING IS UNTOUCHED, which is why this is not "everything divides now":
+// the parent here was armed by its brief naming eleven adapter files, and work
+// whose text names nothing is still never handed the verb at all
+// ([Agent.armDivision]'s third signal, enumeratesWidth, which reads the count
+// whatever the gate is pinned to).
+func TestAnUnpinnedBinaryKeepsANarrowDivisionTheWorkerAskedFor(t *testing.T) {
+	t.Setenv("AFORGE_SPLITGATE", "")
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"one","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"two","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"three","summary":"s","brief":"b","acceptance":"a"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+
+	answer := nest.divide(t, divideArgs(narrowEvidence, 3))
+
+	if !strings.HasPrefix(answer, "split into 3 parts:") {
+		t.Fatalf("the worker was told %q, want the division it asked for", answer)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 3 {
+		t.Fatalf("the kept division bore %d parts, want 3", len(kids))
+	}
+	// AND WHAT THE FLOOR WAS SAVING IS WHAT IT NOW SPENDS: a division the gate
+	// keeps goes to the mastermind exactly as a wide one always did. The gate
+	// itself still costs nothing either way — the reading below is the paid
+	// check that was always behind it, not a new one.
+	if reviewer.reads() != 1 {
+		t.Fatalf("the kept division was read %d times, want the one reading every division gets", reviewer.reads())
+	}
+}
+
 func TestADivisionTheEvidenceDoesNotSupportChangesNothingAtAll(t *testing.T) {
+	floorPinnedOn(t)
 	nest := newDivideNest(t, wideBrief, 0)
 	before := len(nest.graph.order)
 	// AND NOT ONE CALL IS MADE TO DECIDE. The whole bargain that lets this road
@@ -576,6 +637,7 @@ var judgedWide = taskSpec{
 const issueEvidence = "the person raised four separate asks: the auth test flakes, the http client is a major version behind, the release notes for 2.4 do not exist, and the billing code is dead"
 
 func TestTheFloorsRefusalIsFinalOnWorkNoModelCalledWide(t *testing.T) {
+	floorPinnedOn(t)
 	// The parent is armed by its own text — the same counter that is about to
 	// refuse the evidence — so there is no disagreement to settle and nobody is
 	// paid to look at one.
@@ -610,6 +672,7 @@ func TestTheFloorsRefusalIsFinalOnWorkNoModelCalledWide(t *testing.T) {
 // on this path is whether they are a division at all, and its yes admits them
 // under the same review it already performs.
 func TestAFloorRefusalOnJudgedWideWorkIsPutToTheReviewer(t *testing.T) {
+	floorPinnedOn(t)
 	reviewer := &divideReviewer{answer: `{"parts":[` +
 		`{"title":"the auth test","summary":"s","brief":"SHARPENED ONE","acceptance":"it passes ten runs"},` +
 		`{"title":"the release notes","summary":"s","brief":"SHARPENED TWO","acceptance":"RELEASE-2.4.md exists"}]}`}
@@ -652,6 +715,7 @@ func TestAFloorRefusalOnJudgedWideWorkIsPutToTheReviewer(t *testing.T) {
 // worker — the gates' own ending, which is the one thing about any of this that
 // must not be new.
 func TestAReviewerThatWillNotOverruleTheFloorLeavesTheRefusalStanding(t *testing.T) {
+	floorPinnedOn(t)
 	for _, test := range []struct {
 		name     string
 		reviewer *divideReviewer
@@ -693,6 +757,7 @@ func TestAReviewerThatWillNotOverruleTheFloorLeavesTheRefusalStanding(t *testing
 // count, which is right — but a retry that reached the mastermind every time
 // would be paying to argue with a reader that has already read this work.
 func TestTheTiebreakIsOfferedOncePerTask(t *testing.T) {
+	floorPinnedOn(t)
 	reviewer := &divideReviewer{answer: `{"refuse": true, "why": "these are stages of one job"}`}
 	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
 
@@ -724,6 +789,7 @@ func TestTheTiebreakIsOfferedOncePerTask(t *testing.T) {
 // and abandoned the road. So silence refunds the ask, and the refusal says
 // what actually happened instead of speaking the counter's words.
 func TestAnAdjudicationNobodyAnsweredIsRefundedAndSaysSo(t *testing.T) {
+	floorPinnedOn(t)
 	reviewer := &divideReviewer{fails: true}
 	nest := newDivideNestFrom(t, judgedWide, 0, reviewer, nil)
 
@@ -1328,11 +1394,11 @@ func (c *partCompleter) CompleteWithMessages(_ context.Context, messages []ai.Me
 			return textResponse("VERIFIED — beta.go is there and declares Beta"), nil
 		}
 		return textResponse("REFUTED — nothing declares Alpha: the file was never written"), nil
-	case strings.Contains(text, "write beta.go") && !tooled:
+	case partScope(messages, "write beta.go") && !tooled:
 		return writeResponse("call-beta", "beta.go", "package taskaudit\n\nfunc Beta() string { return \"beta\" }\n"), nil
-	case strings.Contains(text, "write beta.go"):
+	case partScope(messages, "write beta.go"):
 		return textResponse("Wrote beta.go."), nil
-	case strings.Contains(text, "write alpha.go"):
+	case partScope(messages, "write alpha.go"):
 		// THE PART THAT DOES NOT DO THE WORK still says it did, which is the whole
 		// reason a checker stands in front of the word "done".
 		return textResponse("Alpha is done."), nil
@@ -1340,6 +1406,22 @@ func (c *partCompleter) CompleteWithMessages(_ context.Context, messages []ai.Me
 	// Everything else — the division review among it — gets nothing it can read,
 	// which is the fail-open path and the division exactly as the worker wrote it.
 	return textResponse("(unscripted)"), nil
+}
+
+// partScope reports which part this transcript belongs to, read off the one
+// line only the part's own brief carries: its "WHAT THIS PART WORKS ON" scope.
+// Matching the whole transcript instead reads a sibling's brief too — every
+// part's message names the others under "THE OTHER PARTS ARE IN SOMEBODY
+// ELSE'S HANDS", and the parent's division JSON names them all — so alpha's
+// turn was being handed beta's write call, and beta's file landed on the
+// wrong branch or never at all.
+func partScope(messages []ai.Message, scope string) bool {
+	for _, message := range messages {
+		if message.Role == "user" && strings.Contains(messageText(message), "WHAT THIS PART WORKS ON\n"+scope) {
+			return true
+		}
+	}
+	return false
 }
 
 // audits is how many checkers were handed one particular done-condition.
@@ -1697,6 +1779,7 @@ func TestAReviewerThatCannotAnswerAdmitsTheOriginalParts(t *testing.T) {
 // worker whose work is not wide, or whose session has no free hand, never
 // reaches it.
 func TestTheGatesRefuseADivisionBeforeAnybodyPaysToReadIt(t *testing.T) {
+	floorPinnedOn(t)
 	for _, test := range []struct {
 		name     string
 		limit    int
@@ -1829,6 +1912,48 @@ func TestTheDivisionSchemaCarriesTheGrade(t *testing.T) {
 	if !strings.Contains(renderSystem(nest.node.config), gradeCareful) {
 		t.Error("prompts/divide.md does not teach the grade the schema asks for")
 	}
+}
+
+// THE VERB DOES NOT PROMISE A REFUSAL NOBODY WILL MAKE.
+//
+// The floor clause in divide_work's description was unconditional while the
+// gate was armed by default; the experiment that turned the gate off
+// (docs/design/plan-gate-doe/REPORT.md) made it a promise about one pinned
+// binary. A model reasons from this string, so a floor it is told about and
+// that nobody will enforce costs a division that would have been granted —
+// which is CLAUDE.md's law about system.md, applied to a tool block.
+func TestTheDivideVerbNamesTheFloorOnlyWhereTheFloorWillDecide(t *testing.T) {
+	floorSentence := "names at least " + strconv.Itoa(splitgate.Floor) + " separate items"
+	t.Run("unpinned", func(t *testing.T) {
+		t.Setenv("AFORGE_SPLITGATE", "")
+		nest := newDivideNest(t, wideBrief, 0)
+		tool, found := onBelt(nest.node, "divide_work")
+		if !found {
+			t.Fatal("this worker was built armed and has no divide_work")
+		}
+		if strings.Contains(tool.Description, floorSentence) {
+			t.Errorf("the verb promises a floor no unpinned binary applies: %s", tool.Description)
+		}
+		// AND IT STILL SAYS WHAT THE VERB IS FOR. Taking the number out may not
+		// take the judgment out: sequential work is never divided, whatever the
+		// gate is doing.
+		for _, want := range []string{"genuinely wide", "Sequential work is never divided"} {
+			if !strings.Contains(tool.Description, want) {
+				t.Errorf("the verb never says %q: %s", want, tool.Description)
+			}
+		}
+	})
+	t.Run("pinned", func(t *testing.T) {
+		floorPinnedOn(t)
+		nest := newDivideNest(t, wideBrief, 0)
+		tool, found := onBelt(nest.node, "divide_work")
+		if !found {
+			t.Fatal("this worker was built armed and has no divide_work")
+		}
+		if !strings.Contains(tool.Description, floorSentence) {
+			t.Errorf("a pinned run's verb never names the floor it will be refused by: %s", tool.Description)
+		}
+	})
 }
 
 // ── NO TWO PARTS OWN THE SAME PATH ──────────────────────────────────────────

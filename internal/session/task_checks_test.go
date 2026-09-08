@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -161,7 +162,7 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 				continue
 			}
 		}
-		got := declaredChecks("Check it with `"+one.span+"`, please.", one.ground)
+		got := declaredChecks("Check it with `"+one.span+"`, please.", one.ground, checksFromWork)
 		if one.door && len(got) != 1 {
 			t.Errorf("%s (%q) is runnable here and did not become a check: %q", one.what, one.span, got)
 		}
@@ -189,6 +190,79 @@ func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
 	// acceptance and the one that ends the audit instead of spinning it.
 	if !strings.Contains(door.line(), "NOTHING THIS WORK DECLARES OR RAN") {
 		t.Fatalf("a node with no runnable check is not told so:\n%s", door.line())
+	}
+}
+
+// A PROMPT LINE IN THE PERSON'S PASTED REPRODUCTION IS NEVER A NODE CHECK, AND
+// THE SAME LINE IN THE WORK'S OWN ACCOUNT STILL IS.
+//
+// A measured tox run harvested `chmod 000 tox.ini` from the pasted issue and
+// tried it against the deliverable tree. On a tree holding that file, success
+// would make the project's own configuration unreadable. Only prompt lines
+// move: a backticked command in the person's words still names a check.
+func TestAStepOutOfThePastedReproductionIsNeverANodeCheck(t *testing.T) {
+	tree := checkedTree(t, "tox.ini", "run_tests.sh")
+
+	pasted := checkedNode("repair the tox configuration", "`run_tests.sh` passes")
+	pasted.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
+	fromPaste := auditDoorFor(pasted, auditPlace{ground: tree, ran: tree})
+	if !containsWord(fromPaste.checks, "run_tests.sh") {
+		t.Fatalf("the acceptance's backticked check was not harvested: %v", fromPaste.checks)
+	}
+	if containsWord(fromPaste.checks, "chmod 000 tox.ini") {
+		t.Fatalf("a pasted reproduction step became a node check: %v", fromPaste.checks)
+	}
+	if containsWord(fromPaste.allowed, "chmod 000 tox.ini") {
+		t.Fatalf("a pasted reproduction step entered the node's door: %v", fromPaste.allowed)
+	}
+	if strings.Contains(fromPaste.offer(), "chmod 000 tox.ini") {
+		t.Fatalf("the node offered a pasted reproduction step:\n%s", fromPaste.offer())
+	}
+	if _, ok := auditRefusal("chmod 000 tox.ini", fromPaste.allowed); ok {
+		t.Fatal("the gate allowed a pasted reproduction step")
+	}
+
+	owned := auditDoorFor(checkedNode("repair it with:\n$ chmod 000 tox.ini", "it is repaired"),
+		auditPlace{ground: tree, ran: tree})
+	if !containsWord(owned.checks, "chmod 000 tox.ini") {
+		t.Fatalf("the work's own prompt line did not become a node check: %v", owned.checks)
+	}
+
+	named := checkedNode("repair the tox configuration", "it is repaired")
+	named.spec.request = "check it with `run_tests.sh`"
+	fromBackticks := auditDoorFor(named, auditPlace{ground: tree, ran: tree})
+	if !containsWord(fromBackticks.checks, "run_tests.sh") {
+		t.Fatalf("a backticked command in the person's words stopped being a node check: %v", fromBackticks.checks)
+	}
+}
+
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO PROMPT STEP ONTO
+// A NODE'S DOOR, WHILE A BACKTICKED CHECK IN THOSE WORDS STILL OPENS IT.
+//
+// The auto-started road puts [routeAskAcceptance] in front of the request when
+// nobody could write a separate done-condition. The measured tox transcript
+// must remain the person's account even while that frame occupies the node's
+// acceptance field.
+func TestANodesDoneWhenThatIsThePastedAskCarriesNoStepOutOfIt(t *testing.T) {
+	tree := checkedTree(t, "tox.ini", "run_tests.sh")
+	node := checkedNode("repair the tox configuration", routeAskAcceptance+
+		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
+	door := auditDoorFor(node, auditPlace{ground: tree, ran: tree})
+
+	if containsWord(door.checks, "chmod 000 tox.ini") ||
+		containsWord(door.allowed, "chmod 000 tox.ini") ||
+		strings.Contains(door.offer(), "chmod 000 tox.ini") {
+		t.Fatalf("the ask-fallback done-condition opened a node door onto its prompt step: %+v\n%s",
+			door.checks, door.offer())
+	}
+	if _, ok := auditRefusal("chmod 000 tox.ini", door.allowed); ok {
+		t.Fatal("the gate allowed a prompt step out of the ask-fallback done-condition")
+	}
+	if !containsWord(door.checks, "run_tests.sh") {
+		t.Fatalf("a backticked check in the same fallback was not harvested: %v", door.checks)
+	}
+	if refusal, ok := auditRefusal("run_tests.sh", door.allowed); !ok {
+		t.Fatalf("a backticked check in the same fallback did not open the node's door: %s", refusal)
 	}
 }
 
@@ -545,8 +619,9 @@ func TestATwoWordSpellingMustNameTheFilesOwnInterpreter(t *testing.T) {
 		// The program the line names, and any path that reaches that program.
 		"python3 direct.py",
 		"/usr/bin/python3 ./direct.py",
-		// A line that goes and finds the program names it last, so that is the
-		// word — read by shape, with no knowledge of what does the finding.
+		// A line whose first word is the launcher that GOES AND FINDS a program
+		// names that program next, options and all, so it is the word — read by
+		// shape, with nothing here knowing what does the finding.
 		"bash found.sh",
 		"python3 flagged.py",
 		// And the file on its own, which the executable bit already vouched for.
@@ -637,5 +712,141 @@ func TestAFileThatDeclaresNoInterpreterIsRunTheWayTheWorkRanIt(t *testing.T) {
 		if _, ok := doorRefusal(refused, ran); ok {
 			t.Fatalf("%q was admitted, and the work never ran it that way", refused)
 		}
+	}
+}
+
+// ── #468: how the session's harvest opens what the work named ───────────────
+
+// A FILE THE TREE HOLDS OUTRANKS A PROGRAM OF THE SAME NAME ON PATH.
+//
+// A repository that carries its own `check` or `build` beside the work means THAT
+// file. A lookup that answered first would quietly run somebody else's program of
+// the same name, against somebody else's assumptions, and report on it — which is
+// the exact shape of wrongness this whole reading exists to remove.
+func TestAFileTheTreeHoldsOutranksAProgramOnThePath(t *testing.T) {
+	// `true` is on every PATH this build runs on, so the collision is real rather
+	// than arranged. If it ever is not, there is no ordering to test.
+	if !onThePath("true") {
+		t.Skip("no program called true on this machine, so there is no collision to read")
+	}
+	dir := t.TempDir()
+	mine := writeCheckFile(t, dir, "true", "#!/bin/sh\nexit 0\n", 0o755)
+
+	got := checkCommand(dir, "true")
+	if got != shellQuoted(mine) {
+		t.Fatalf("the tree's own file lost to a program of the same name:\n got %q\nwant %q",
+			got, shellQuoted(mine))
+	}
+	// AND AN ORDINARY COMMAND IS LEFT EXACTLY AS THE WORK WROTE IT. Two words ask
+	// the tree about the SECOND one — the file a program is being handed — and
+	// nothing here is called `--version`, so the program on the path stands.
+	if got := checkCommand(dir, "true --version"); got != "true --version" {
+		t.Fatalf("a command the tree knows nothing about was not left alone: %q", got)
+	}
+}
+
+// EVERY PATH HANDED TO A SHELL IS ONE WORD, WHATEVER IS IN IT.
+//
+// A checkout under a directory with a space in its name split into two words, and
+// the check then ran against neither of them — while reporting, forever, that it
+// did not pass.
+func TestACheckPathWithASpaceRunsWhole(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "a tree with spaces")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("making the tree: %v", err)
+	}
+	writeCheckFile(t, dir, "run.sh", "#!/bin/sh\nexit 0\n", 0o755)
+
+	command := checkCommand(dir, "run.sh")
+	if command == "" {
+		t.Fatal("a script the tree holds was not a check at all")
+	}
+	if ran := runOneCheck(context.Background(), dir, command); !ran.Passed {
+		t.Fatalf("the check split on the space in its own path: %q said %q", command, ran.Tail)
+	}
+}
+
+// AND THE PATH IN A TWO-WORD CHECK IS QUOTED TOO.
+//
+// The work says WHICH program runs its check, and it is not the authority on how
+// a shell splits a word: `sh run'tests.sh` handed back as the work wrote it is an
+// unterminated quote, and what a shell does with that is not run the check.
+func TestATwoWordCheckQuotesTheFileItNames(t *testing.T) {
+	dir := t.TempDir()
+	name := "run'tests.sh"
+	path := writeCheckFile(t, dir, name, "exit 0\n", 0o644)
+
+	command := checkCommand(dir, "sh "+name)
+	if want := "sh " + shellQuoted(path); command != want {
+		t.Fatalf("the file behind the program was not quoted:\n got %q\nwant %q", command, want)
+	}
+	if ran := runOneCheck(context.Background(), dir, command); !ran.Passed {
+		t.Fatalf("the check broke on the quote in its own path: %q said %q", command, ran.Tail)
+	}
+	// AND A SECOND WORD THE TREE DOES NOT HOLD IS LEFT ALONE, because there is no
+	// path to resolve and the work's own spelling is the whole of what is known.
+	if got := checkCommand(dir, "sh missing.sh"); got != "sh missing.sh" {
+		t.Fatalf("a command naming no file of ours was rewritten: %q", got)
+	}
+}
+
+// THE FIRST WORD OF A SHEBANG IS THE PROGRAM, AND `env` IS THE ONE EXCEPTION.
+//
+// Everything after the first word is an argument handed to that program. Reading
+// the LAST word instead promoted a mode flag to a launcher: `#!/usr/bin/python3
+// isolated` answered `isolated`, so the door would have admitted `isolated <the
+// check>` and refused the interpreter that really starts it.
+func TestTheShebangNamesItsFirstWordAndEnvNamesTheNext(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		what string
+		name string
+		line string
+		want string
+	}{
+		{"a flag after the program is an argument, not the program",
+			"isolated.py", "#!/usr/bin/python3 isolated\n", "python3"},
+		{"the launcher that finds a program names it next",
+			"found.py", "#!/usr/bin/env python3\n", "python3"},
+		{"and its own options are skipped on the way",
+			"flagged.py", "#!/usr/bin/env -S python3 -u\n", "python3"},
+		{"a program alone on the line is the program",
+			"plain.sh", "#!/bin/sh\n", "sh"},
+	} {
+		path := writeCheckFile(t, dir, c.name, c.line+"exit 0\n", 0o644)
+		if got, _ := fileFacts(path); got != c.want {
+			t.Errorf("%s: %q names %q, want %q", c.what, strings.TrimSpace(c.line), got, c.want)
+		}
+	}
+}
+
+// TestAForgottenAccountReadsAsThePersonsAndNotTheWorks pins the ORDER of the
+// [checkSource] constants, which is a safety property and not a detail.
+//
+// The gate this file exists for asks whose account a prompt line came from, and
+// answers with a comparison against one of two values. Whichever of them is the
+// zero is the answer a caller gets for free when it forgets to say — and this
+// gate's whole reason for being is that the free answer used to be "the work's",
+// so a pasted `$ chmod 000 tox.ini` was a promise. A caller that forgets now
+// loses a check it could have made. That is the failure this gate should have.
+func TestAForgottenAccountReadsAsThePersonsAndNotTheWorks(t *testing.T) {
+	var forgotten checkSource
+	if forgotten != checksFromAsk {
+		t.Fatal("the zero checkSource is not checksFromAsk, so a caller that forgets whose account this is harvests the person's pasted commands")
+	}
+
+	ground := t.TempDir()
+	pasted := "To see it:\n\n$ echo reproduction-step\n\nand `echo named-check` is the check.\n"
+	got := declaredChecks(pasted, ground, forgotten)
+
+	for _, command := range got {
+		if strings.HasPrefix(command, "echo reproduction-step") {
+			t.Errorf("a prompt line was harvested under the zero account: %q", got)
+		}
+	}
+	// The backticked span is admitted from either account, which is the
+	// deliberate exception stated on [declaredChecks].
+	if len(got) != 1 || !strings.HasPrefix(got[0], "echo named-check") {
+		t.Errorf("the backticked check did not survive the zero account: %q", got)
 	}
 }

@@ -379,6 +379,12 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 		}
 		asked = steward.Ask()
 	}
+	// THE FLOOR IS THE ASK, and it is cheaper than a model call. A commit,
+	// an undo, a one-line edit or a single read is answered here; paying a
+	// judge to be told it is work is how F26's commit became a task.
+	if trivialAsk(asked) {
+		return
+	}
 	if !routeSubstantial(asked) {
 		return
 	}
@@ -784,6 +790,12 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 		// which is the same law the wake check above keeps.
 		asked = said
 	}
+	// THE FLOOR IS THE ASK. A trivial verb is never worth a raced yes, and
+	// a yes here only pulls the checkpoint's first mark forward — which is
+	// still a look a one-command turn must not pay for.
+	if trivialAsk(asked) {
+		return nil
+	}
 	if !routeSubstantial(asked) {
 		return nil
 	}
@@ -977,6 +989,13 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // still in flight rides the spec, and the graph waits for it rather than asking
 // again.
 func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
+	// THE LAST LINE OF THE FLOOR (spawnfloor.go). Both roads into this function
+	// already return above on a one-command ask; a reserved id for work that
+	// must not start would be the floor leaking a node number into a conversation
+	// that is answering inline.
+	if trivialAsk(a.taskRequest()) {
+		return "", 0
+	}
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{

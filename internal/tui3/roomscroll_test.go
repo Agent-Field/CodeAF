@@ -19,8 +19,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// callsJournal is a node whose one turn made n calls in a row and then reported:
-// the shape of every long refactor, and the one the fold was built for.
+// callsJournal is a node whose one turn made n calls in a row and has not
+// written a paragraph since: the shape of every long refactor, and the one the
+// tool tail was built for.
+//
+// IT ENDS ON THE CALLS ON PURPOSE — this is the LIVE FRONTIER, which is the
+// stretch of a room the whole-screenful tail is for now that settled work folds
+// into phase chips behind it (workfold.go's [derivePhaseFolds], and
+// roomwork_test.go for the chips). A trailing paragraph would settle the whole
+// run into one phase, and every test below would be measuring a chip instead of
+// the fold it is about.
 func callsJournal(t *testing.T, n int) string {
 	t.Helper()
 	lines := []string{`{"type":"message","role":"user","content":"Port the loader"}`}
@@ -31,7 +39,6 @@ func callsJournal(t *testing.T, n int) string {
 				`","function":{"name":"read","arguments":"{\"path\":\"file`+strconv.Itoa(i)+`.go\"}"}}]}`,
 			`{"type":"message","role":"tool","toolCallId":"`+id+`","content":"12 lines"}`)
 	}
-	lines = append(lines, `{"type":"message","role":"assistant","content":"All read."}`)
 	return roomJournal(t, lines...)
 }
 
@@ -52,7 +59,7 @@ func callsRoom(t *testing.T) (*app, int) {
 func foldRows(rs []row) (folds, calls int, fold string) {
 	for _, r := range rs {
 		switch r.hit {
-		case hitFold:
+		case hitFold, hitCaption:
 			folds++
 			fold = plain(r.text)
 		case hitTool:
@@ -78,7 +85,7 @@ func TestARoomWithManyCallsFillsItsFrameAndFoldsOnlyTheOverflow(t *testing.T) {
 		t.Fatalf("%d calls on the page at %d rows high — the fold starved the screen:\n%s",
 			calls, height, roomText(a))
 	}
-	if want := strconv.Itoa(n-height) + " earlier tool calls · scroll up or ctrl+o"; !strings.Contains(fold, want) {
+	if want := "reading " + strconv.Itoa(n) + " files"; !strings.Contains(fold, want) {
 		t.Fatalf("the room's fold reads %q, want %q", fold, want)
 	}
 	visible, pad := a.roomWindow(width, height)
@@ -96,7 +103,7 @@ func TestARoomWithManyCallsFillsItsFrameAndFoldsOnlyTheOverflow(t *testing.T) {
 // transcript's deck sets none, and its fold still names only the key.
 func TestTheConversationsFoldStillKeepsThreeCallsAndNamesOnlyTheKey(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	if got := a.conversation().window(); got != toolWindow {
+	if got := a.foldWindow(a.conversation()); got != toolWindow {
 		t.Fatalf("the conversation's window is %d, want toolWindow (%d)", got, toolWindow)
 	}
 	if word := foldWord(2, false); word != "2 earlier tool calls · ctrl+o" {
@@ -122,14 +129,14 @@ func TestScrollingUpAtTheTopOfARoomOpensTheFoldWithoutLosingThePlace(t *testing.
 	before, _ := a.roomWindow(width, height)
 	foldAt := -1
 	for i, r := range before {
-		if r.hit == hitFold {
+		if r.hit == hitCaption {
 			foldAt = i
 		}
 	}
 	if foldAt < 0 || foldAt+1 >= len(before) {
 		t.Fatalf("no fold line with a call under it on the first screen:\n%s", roomText(a))
 	}
-	turn := before[foldAt].turn
+	turn := a.room.entries[before[foldAt].entry].turn
 	anchorLine := foldAt + 1
 	anchor := plain(before[anchorLine].text)
 
@@ -144,8 +151,8 @@ func TestScrollingUpAtTheTopOfARoomOpensTheFoldWithoutLosingThePlace(t *testing.
 	if got := plain(after[anchorLine].text); got != anchor {
 		t.Fatalf("the anchor moved: line %d was %q and is now %q", anchorLine, anchor, got)
 	}
-	if folds, _, _ := foldRows(a.roomRows(width)); folds != 0 {
-		t.Fatalf("the fold line survived the unfold:\n%s", roomText(a))
+	if folds, _, _ := foldRows(a.roomRows(width)); folds != 1 {
+		t.Fatalf("the caption did not remain as the unfolded cluster's head:\n%s", roomText(a))
 	}
 	grown := len(a.roomRows(width)) - len(rows)
 	if got := a.roomOffsetFor(len(a.roomRows(width)), height); got != grown {
@@ -167,8 +174,8 @@ func TestTheWheelOverARoomAtTheTopOpensTheFold(t *testing.T) {
 	a.roomScroll(-len(rows))
 	turn := rows[0].turn
 	for _, r := range rows {
-		if r.hit == hitFold {
-			turn = r.turn
+		if r.hit == hitCaption {
+			turn = a.room.entries[r.entry].turn
 		}
 	}
 	y := a.bodyTop() + 2
@@ -178,16 +185,16 @@ func TestTheWheelOverARoomAtTheTopOpensTheFold(t *testing.T) {
 	}
 }
 
-// SCROLLING BACK DOWN RE-STICKS, AND THE UNFOLD STAYS. ctrl+o remains the
-// toggle either way, and folds the page back to a screenful.
+// SCROLLING BACK DOWN RE-STICKS, AND THE UNFOLD STAYS. The caption remains the
+// live step's head while ctrl+o opens that step rather than replacing its head.
 func TestScrollingDownReturnsARoomToTheLiveEdgeWithTheHistoryStillOpen(t *testing.T) {
 	a, _ := callsRoom(t)
 	width, height := a.bodyWidth(), a.viewHeight()
 	rows := a.roomRows(width)
 	a.roomScroll(-len(rows))
 	a.roomScroll(-1)
-	if folds, _, _ := foldRows(a.roomRows(width)); folds != 0 {
-		t.Fatal("the fold did not open")
+	if folds, calls, _ := foldRows(a.roomRows(width)); folds != 1 || calls <= height {
+		t.Fatal("the caption did not open the hidden calls")
 	}
 
 	a.roomScroll(len(a.roomRows(width)))
@@ -196,14 +203,14 @@ func TestScrollingDownReturnsARoomToTheLiveEdgeWithTheHistoryStillOpen(t *testin
 		t.Fatalf("scrolling down did not re-stick at the live edge: stick=%v offset=%d of %d",
 			a.room.stick, a.roomOffsetFor(total, height), total)
 	}
-	if folds, _, _ := foldRows(a.roomRows(width)); folds != 0 {
-		t.Fatal("returning to the live edge folded the history back up")
+	if folds, _, _ := foldRows(a.roomRows(width)); folds != 1 {
+		t.Fatal("returning to the live edge lost the caption")
 	}
 
 	drive(t, a, key("ctrl+o"))
 	folds, calls, _ := foldRows(a.roomRows(width))
-	if folds != 1 || calls != height {
-		t.Fatalf("ctrl+o did not fold the room back to a screenful: %d folds, %d calls at %d high",
+	if folds != 1 || calls < height {
+		t.Fatalf("ctrl+o changed the live caption or lost calls: %d captions, %d calls at %d high",
 			folds, calls, height)
 	}
 }

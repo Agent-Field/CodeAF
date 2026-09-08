@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -27,7 +28,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"structure":"enumerates|stratifies|one_judgement|single_act","goal":"...","title":"...","scale":"lookup|task|project","contract":"","parts":["..."],"builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
+{"structure":"enumerates|stratifies|one_judgement|single_act","goal":"...","title":"...","scale":"lookup|task|project","contract":"","parts":["..."],"builds_on":["<job id>"],"assumptions":["..."],"constraints":[{"text":"...","kind":"no_writes|paths_only|other","paths":["..."]}],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it. Write success from the seat of whoever will use the result: what they will do with it the first time, and what they must observe for it to count as working. Parts of it behaving in a test harness is the builder's evidence, never theirs, and a goal that settles for it buys work that passes its own checks and fails the first real use.
@@ -37,6 +38,7 @@ Rules:
 - No instruction compiles to impossible. When the ask looks blocked or out of reach, name what actually makes it hard — access, tooling, scale, uncertainty — and reshape around that by safe means: substitute an available source or route for an unavailable one, split the achievable core from the blocked remainder and name both in the goal, or reach the target by approximation first and refinement after. Every such reshaping is declared in assumptions like any other default.
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
 - List every default you supplied in assumptions, and write each one as a decision that changes what the workers will do. Two kinds qualify. One is an ambiguity you settled with a concrete choice — which branch, which base, which source, which format — stated as the choice itself rather than as the fact that a choice was made. The other is a commitment about method or evidence the work will be held to: what must be run, checked, reviewed or matched before the deliverable is handed over. Never restate the request; what the user already asked for is not something you decided. Never record a fact that alters nothing — if a line vanished and no worker would do anything differently, it was never a decision. Assumptions are revisable receipts, not hidden guesses, and they travel with the work as standing orders, so write each one as something a worker could follow or fail.
+- Every rule the request states about what the run may or may not DO — as distinct from what it must produce — is a constraint. Quote it in the person's own words, exactly as they wrote it, in "text". "kind" is the mechanical reading of it: "no_writes" when the run may change no files at all, "paths_only" when it may change only named places and those places go in "paths", "other" for every rule neither of those describes. Never invent one: constraints is [] unless the request states a rule, which is the ordinary case. And a stated constraint is never also written as an assumption — an assumption is a decision you made, and this is a decision they made.
 - Fill gaps with defaults, with two exceptions that go in "question" (empty otherwise). First: a gap both high-consequence and hard to reverse — spending real money externally, deleting or overwriting something that exists, sending or publishing on the user's behalf, or a wrong guess that would waste most of the budget — asked as ONE crisp casual question stating your best-guess default so the user can simply say yes. Second: referent ambiguity — the instruction points at earlier work and MORE THAN ONE prior job plausibly matches. Guessing the referent wastes the whole job and reads as not listening; ask which one, listing the candidates as numbered options identified by the user's own words from each job. A single plausible match is not ambiguity. Never ask about reversible preferences, and never leave placeholders such as TBD or unknown.
 - When the answers are enumerable, put them in question_options in the order they should be shown. Options never prevent a free-text answer. Use [] when the question has no useful choices.
 - The trial-shaping rule fires only on the explicit notebook flag "an unsettled pair applies here: fact #N". When that flag appears, set trial_of to N and shape the goal so a small, cheap trial of both named approaches runs first and the bulk of the work follows whichever proves out. When no such flag appears, set trial_of to 0. Never infer a trial from ordinary prose.
@@ -118,6 +120,20 @@ func (p *PartList) UnmarshalJSON(data []byte) error {
 type Brief struct {
 	Goal        string   `json:"goal"`
 	Assumptions []string `json:"assumptions"`
+
+	// Constraints are the rules the request states about what the run may or
+	// may not DO, in the person's own words.
+	//
+	// They are a field rather than prose because prose is not something a gate
+	// can hold anything to. "Change no files" used to survive only inside the
+	// goal and inside the working method, and the run that was told it ran the
+	// command it was asked for, reported the line it was asked for, and was
+	// then sent back by its own review to write a test file (#427). The field
+	// travels to every spec of the job, is shown to every worker first, and is
+	// held against the workspace's own before-and-after list at the gate. See
+	// plan.Constraint and keepStatedConstraints, which is what keeps the field
+	// to the person's words rather than the compiler's.
+	Constraints []plan.Constraint `json:"constraints,omitempty"`
 
 	// Title is the rail-sized display name for the job, produced by the one
 	// call that has already read the whole ask. It used to be a second model
@@ -337,6 +353,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	}
 	brief.QuestionOptions = nil
 	tidyBrief(&brief)
+	keepStatedConstraints(&brief, instruction)
 	brief.Note = noGlossNote(brief.Goal)
 	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
 	brief.Scale = reconcileScale(brief.Structure, normalizeScale(brief.Scale))
@@ -564,6 +581,66 @@ func tidyBrief(brief *Brief) {
 		}
 	}
 	brief.Assumptions = kept
+}
+
+// keepStatedConstraints holds the compiler to the person's own words.
+//
+// THE GATE MAY ONLY HOLD PEOPLE TO THEIR OWN WORDS, and a constraint is the one
+// field on this brief that ends in a mechanical refusal — a broken one fails the
+// delivery outright and buys no repair round. So a constraint the compiler
+// invented is not a smaller mistake than a missing one: it is a rule nobody
+// made, enforced by arithmetic, against work that did exactly what was asked.
+// The test is the same one the acceptance checklist's quotes answer to, applied
+// deterministically here because it can be: a rule kept is a rule whose text is
+// a span of the instruction, compared with whitespace normalized and case
+// folded so a model that retyped the sentence tidily is not punished for it.
+//
+// It also removes any assumption that says the same thing as a kept constraint,
+// and that is not tidiness either. A constraint must never live only in
+// Assumptions, because `aforge do` DISCARDS assumptions — the headless surface's
+// whole law is that the caller's sentence is the specification and the
+// compiler's speculative decisions are not (resident.keepTheAskVerbatim). A rule
+// duplicated into that field would be a rule the one-shot surface silently
+// dropped, which is the shape of the defect this whole change is about.
+func keepStatedConstraints(brief *Brief, instruction string) {
+	if brief == nil {
+		return
+	}
+	said := constraintFold(instruction)
+	kept := make([]plan.Constraint, 0, len(brief.Constraints))
+	stated := make(map[string]bool, len(brief.Constraints))
+	for _, constraint := range plan.NormalizeConstraints(brief.Constraints) {
+		folded := constraintFold(constraint.Text)
+		if folded == "" || !strings.Contains(said, folded) {
+			continue
+		}
+		stated[folded] = true
+		kept = append(kept, constraint)
+	}
+	if len(kept) == 0 {
+		kept = nil
+	}
+	brief.Constraints = kept
+	if len(stated) == 0 {
+		return
+	}
+	remaining := brief.Assumptions[:0]
+	for _, assumption := range brief.Assumptions {
+		if stated[constraintFold(assumption)] {
+			continue
+		}
+		remaining = append(remaining, assumption)
+	}
+	brief.Assumptions = remaining
+}
+
+// constraintFold is the one reading both halves above compare on: the text with
+// its whitespace collapsed and its case folded. It is deliberately not a
+// looser match — a rule matched by a few shared words would let an invented
+// constraint through on the strength of borrowing the request's vocabulary,
+// which is the failure the substring test exists to stop.
+func constraintFold(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
 }
 
 // NoGlossNote is the receipt line for a compile whose goal came back blank.

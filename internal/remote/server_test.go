@@ -49,6 +49,11 @@ type fakeAgent struct {
 	tasks    []string
 	planners []string
 
+	// startNote is what the far engine's shaper asked the surface to carry on
+	// the started row. Empty is every ordinary start; a test that wants the
+	// note to cross the wire sets it.
+	startNote string
+
 	model  string
 	window int
 	levels map[string]string
@@ -96,9 +101,9 @@ func (f *fakeAgent) Cancel(id string) (string, error) {
 	return "stopping task 17", f.failing
 }
 
-func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, error) {
+func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, string, error) {
 	f.tasks = append(f.tasks, brief)
-	return 17, "far task", f.failing
+	return 17, "far task", f.startNote, f.failing
 }
 
 func (f *fakeAgent) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {

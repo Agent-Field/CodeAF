@@ -20,18 +20,23 @@ const faultMessage = "aforge hit an internal fault and had to stop. Nothing is l
 // read, and answers with the process exit code.
 func reportFault(stderr io.Writer, detail string, stack []byte) int {
 	// A fault has no settings to read — it is what is left when the launch did
-	// not get that far — so it names the file the way a launch with no profile
-	// of its own does.
-	path := chatLogPath("")
+	// not get that far — but the profile is an environment pin and is still
+	// readable, and it is read HERE for the reason the running log reads it: the
+	// surface's log and the crash's append are one file, and a profile that moved
+	// the first has to move the second, or "Details: <path>" names a file the
+	// running log never touched (chatv3_surface.go's [withSurfaceLogger] is the
+	// other reader of this path).
+	path := chatLogPath(config.ProfileDir())
 	writeFaultLog(path, detail, stack)
 	fmt.Fprintf(stderr, faultMessage, displayPath(path))
 	return 1
 }
 
 // chatLogPath is the ONE name of the file this binary parks the standard logger
-// in: the v3 surface does it for its whole lifetime so a log line cannot tear
-// through the frame (chatv3.go), and a fault appends its stack to the same file
-// so that "what happened" has one answer.
+// in: EVERY door that opens the v3 surface does it for the surface's whole
+// lifetime so a log line cannot tear through the frame (chatv3_surface.go's
+// [withSurfaceLogger]), and a fault appends its stack to the same file so that
+// "what happened" has one answer.
 //
 // AN EMPTY PROFILE IS THE STATE ROOT AND NEVER THE WORKING DIRECTORY. Most
 // launches set no AFORGE_PROFILE_DIR at all, and joining "chat.log" onto an

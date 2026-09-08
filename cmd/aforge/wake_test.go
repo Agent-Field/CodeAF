@@ -120,7 +120,10 @@ func TestWakeCommandRunsOnePassAndExits(t *testing.T) {
 	if err := runWakeWith([]string{"--db", path}, &output, builder); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || !strings.Contains(output.String(), "examined 0") {
+	// A SECOND PASS OVER THE SAME STORE FINDS NOTHING, AND SAYS SO IN A
+	// SENTENCE. It used to read `examined 0, checked 0, …` — eight figures
+	// asserting a measurement where nothing happened (wakePassWords).
+	if calls != 1 || !strings.Contains(output.String(), "nothing was waiting to be looked at.") {
 		t.Fatalf("second one-pass output = %q calls=%d", output.String(), calls)
 	}
 }

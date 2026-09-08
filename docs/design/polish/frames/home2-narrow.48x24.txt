@@ -1,0 +1,24 @@
+ home                                 esc close
+────────────────────────────────────────────────
+ waiting on you
+  ? tell me when CI goes red on master
+    needs your look · May I re-run the typechec…
+
+ aforge-v2
+› ○ Sweeping the Frame Budget
+    here · 44m
+  ○ Porting the Picker
+    1 task · 45m
+  ○ The Tab Bar's Counts
+    4 tasks · 1h
+  ○ Why the Frame Jumps
+    1 task · 3h
+  ◦ never change the public API without telling…
+    holds
+  ◦ sweep the repo every morning at nine and te…
+    every morning at nine · last 18h
+  ▸ 2 more, quiet since 5h
+
+────────────────────────────────────────────────
+ enter open
+ open           new           ask here

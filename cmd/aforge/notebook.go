@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -24,10 +23,9 @@ func runNotebook(args []string) error {
 }
 
 func runNotebookTo(args []string, output io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("notebook", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	flags := commandFlags("notebook")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
@@ -95,6 +93,58 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// A COLUMN HEADER IS NEVER PRINTED WITHOUT A ROW UNDER IT. `SEQ SCOPE KIND
+	// AGE USES RIDES BAD STATUS BELIEF` over nothing was the entire output of
+	// this command on a fresh machine, and nine column names with no rows read
+	// as a table that failed to load rather than as a notebook nothing has been
+	// written in yet. One short sentence instead — and it says what fills the
+	// page, because a person who typed the command wants to know what to do to
+	// see something on it. `aforge why self` answers its own emptiness the same
+	// way (why.go), and `aforge cache` was the model for both.
+	if len(facts) == 0 {
+		fmt.Fprintln(output, "the notebook is empty — hand aforge some work, and what it learns lands here.")
+	} else {
+		if err := writeNotebookRows(output, graph, facts, outcomes, now); err != nil {
+			return err
+		}
+	}
+	dailyBudget, err := config.DailyBudgetUSD()
+	if err != nil {
+		return err
+	}
+	rail, err := graph.DailyRailToday(dailyBudget)
+	if err != nil {
+		return err
+	}
+	// THE EMPTINESS LAW. A day that has cost nothing says nothing about what it
+	// cost: the rail is a figure somebody chose and is printed, and `$0.00 of
+	// $500.00` is a measurement nobody made ([config.SpentFigure]).
+	fmt.Fprintln(output)
+	spent := config.SpentFigure(rail.Spend)
+	switch {
+	case rail.Unlimited && spent == "":
+		fmt.Fprintln(output, "daily rail: unlimited")
+	case rail.Unlimited:
+		fmt.Fprintf(output, "today's spend: %s; daily rail unlimited\n", spent)
+	case spent == "":
+		fmt.Fprintf(output, "daily rail: $%.2f\n", rail.Ceiling)
+	default:
+		fmt.Fprintf(output, "today's spend: %s of $%.2f daily rail\n", spent, rail.Ceiling)
+	}
+	if len(aliases) > 0 {
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, notebookAliasStyle.Render("aliases"))
+		for _, alias := range aliases {
+			fmt.Fprintln(output, notebookAliasStyle.Render("  "+alias.From+" → "+alias.To))
+		}
+	}
+	return nil
+}
+
+// writeNotebookRows is the table itself, lifted out so the emptiness answer
+// above reads as one decision rather than as a header guarded in three places.
+func writeNotebookRows(output io.Writer, graph *store.Store, facts []store.Fact,
+	outcomes map[int64]store.FactOutcome, now time.Time) error {
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(table, "SEQ\tSCOPE\tKIND\tAGE\tUSES\tRIDES\tBAD\tSTATUS\tBELIEF")
 	for _, fact := range facts {
@@ -109,27 +159,6 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	}
 	if err := table.Flush(); err != nil {
 		return fmt.Errorf("write notebook: %w", err)
-	}
-	dailyBudget, err := config.DailyBudgetUSD()
-	if err != nil {
-		return err
-	}
-	rail, err := graph.DailyRailToday(dailyBudget)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(output)
-	if rail.Unlimited {
-		fmt.Fprintf(output, "today's spend: $%.2f; daily rail unlimited\n", rail.Spend)
-	} else {
-		fmt.Fprintf(output, "today's spend: $%.2f of $%.2f daily rail\n", rail.Spend, rail.Ceiling)
-	}
-	if len(aliases) > 0 {
-		fmt.Fprintln(output)
-		fmt.Fprintln(output, notebookAliasStyle.Render("aliases"))
-		for _, alias := range aliases {
-			fmt.Fprintln(output, notebookAliasStyle.Render("  "+alias.From+" → "+alias.To))
-		}
 	}
 	return nil
 }

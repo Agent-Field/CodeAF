@@ -108,7 +108,7 @@ func (a *app) echoing(token uint64) (int, bool) {
 // so the caller can put the refusal where the line was.
 //
 // THE BLOCK IS TRUNCATED WHEN IT IS LAST AND EMPTIED IN PLACE OTHERWISE — and an emptied block gives up its pictures with its words, which is
-// [app.dropLive]'s rule and it is here for [app.dropLive]'s reason: removing an
+// [feed.dropLive]'s rule and it is here for [feed.dropLive]'s reason: removing an
 // entry from the middle would move every index after it, and the forming rows,
 // the selection and the thought marker are all held by index. A refused message
 // is nearly always the last thing on the page — nothing else has been drawn

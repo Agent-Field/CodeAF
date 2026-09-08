@@ -295,6 +295,14 @@ const (
 	// division that gave back the node in different words, or in the same size.
 	RefusalOnePiece  = "the division gave back one piece, which is the node again"
 	RefusalNoSmaller = "its pieces came back no smaller than it is"
+	// RefusalBeyondReach is the measurement, and it is the only one of these
+	// that is not a judgment at all. The node names material larger than one
+	// worker's window, so it cannot be brought to an end in one sitting — and
+	// nobody could name two pieces to divide it into, so it is being handed over
+	// whole anyway. It is journaled because a leaf in that state is the exact
+	// shape a run fails in, and a person reading the plan afterwards is owed the
+	// sentence rather than the symptom.
+	RefusalBeyondReach = "its named material exceeds what one worker holds"
 	// RefusalNotPaying is the EV-lookahead's verdict: the node could divide,
 	// but the measured history says its parts do not buy back the fixed cost a
 	// second worker pays before it produces. It is a measured refusal, not a
@@ -342,13 +350,77 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	// whose expansion the acceptance check is going to throw away anyway.
 	// Skipping it here saves the whole fan-out — one run burned 17,000 output
 	// tokens producing splits that were all rejected.
-	if len(node.Parts) < 2 {
+	//
+	// An oversized node is the one exception, and the sizing prompt is why: it
+	// is told to name the ordered stages of a node whose inside is a sequence,
+	// and a node it has ALSO put beyond one worker's reach with nothing named is
+	// a node it could not name a division of at all. Neither is a reason to leave
+	// it whole — the burden's second discharge stands either way — so it goes to
+	// the stage question, which costs one call and no fan-out. Everything else
+	// keeps the pre-check: atomic-and-run is still the null hypothesis, and a
+	// node within one worker's reach is never staged.
+	//
+	// AND A NODE WHOSE OWN WORDS NAME TWO OR MORE PIECES IS NOT ONE SITTING
+	// UNTIL THE STAGE QUESTION SAYS SO. The pre-check reads what the ruler
+	// named; this reads what the node itself says, which is the evidence that
+	// was on the node all along and that nothing was looking at. A stage the
+	// spine wrote as "North: …; South: …; East: …" and the ruler then called
+	// atomic with no parts was refused here as unnamed and run whole — three
+	// disjoint lanes over one 144 KB file, in one sitting, on two draws of
+	// three. Reading the enumeration is free (enumerated.go, no call), and it
+	// decides nothing: it only stops the refusal, and the division is then
+	// asked for and either drawn or refused as it always was.
+	//
+	// It is asked of a fresh plan and never of a remainder, which is the whole
+	// of what admitsEnumeratedPieces adds to the reading: a remainder's list is
+	// one worker's assignment, so a remainder is admitted on the ruler's size
+	// and on nothing else.
+	// The measurement, decided before any of the judgments below are weighed —
+	// and READ, never retaken. The node names the material it must touch; where
+	// that material has been weighed and is larger than what one worker holds,
+	// the null hypothesis is discharged by arithmetic rather than by opinion: it
+	// is not a claim that dividing would be nicer, it is the observation that
+	// not dividing cannot work.
+	//
+	// IT IS THE SIZING PASS'S VERDICT AND NOT A SECOND OPINION ABOUT THE SAME
+	// DISK. Measuring here looks free and is not: this function sees one node
+	// and the options, and the law it is applying has a clause about the node's
+	// SIBLINGS — a lane of a division is spared even though its share is larger
+	// than one worker's window. Taking the measure again here re-derived half
+	// the law and reached the opposite verdict on exactly the nodes the clause
+	// exists for: three lanes over one register, spared by the correction and
+	// left atomic, were journaled "its named material exceeds what one worker
+	// holds" by this pass a moment later, on the same draw. So the verdict is
+	// computed once, where the siblings are visible, and stored. See
+	// correctBeyondReach and Node.BeyondReach in reach.go.
+	beyondReach := node.BeyondReach
+	enumerated := admitsEnumeratedPieces(node, options)
+	if len(node.Parts) < 2 && node.Size != SizeOversized && !enumerated {
+		// Still whole, and now for the more serious of the two reasons: nobody
+		// could name pieces for a node that measurement says one worker cannot
+		// hold. The refusal says which, because the two call for different
+		// repairs from whoever reads the plan.
+		if beyondReach {
+			return SplitVerdict{Reason: RefusalBeyondReach}
+		}
 		return SplitVerdict{Reason: RefusalUnnamed}
 	}
 	switch node.Size {
 	case SizeOversized, SizeBorderline:
 		return SplitVerdict{Divide: true}
 	case SizeAtomic:
+		if beyondReach {
+			return SplitVerdict{Divide: true}
+		}
+		// The atomic verdict is the ruler's reading of a title and a summary,
+		// and where those same words enumerate their own pieces the two
+		// readings disagree. The disagreement is not settled here — this
+		// admits the node to the question, and the question (sequence.go) is
+		// free to answer with one piece, which is the refusal that gets
+		// journaled.
+		if enumerated {
+			return SplitVerdict{Divide: true}
+		}
 		if options.CapacitySamples >= capacityEvidenceFloor &&
 			options.CapacityOverrunRate > capacityOverrunThreshold {
 			return SplitVerdict{Divide: true}
@@ -398,12 +470,19 @@ func selectForExpansion(graph *Graph, options Options) []int {
 			JournalRefusal(node, verdict.Reason)
 			continue
 		}
-		switch node.Size {
-		case SizeOversized:
+		// EVERY ADMISSION LANDS IN A LIST. An oversized node is the strong claim
+		// and always qualifies; everything else JudgeSplit admits — a borderline
+		// node, and an atomic one admitted on measured capacity because the
+		// journal says work this size overruns — is the weaker claim and queues
+		// where the ties queue, behind the oversized and only while there is
+		// room. Switching on the size alone dropped the measured admission on the
+		// floor: the node was neither divided nor refused, so nothing divided it
+		// and nothing could say why.
+		if node.Size == SizeOversized {
 			oversized = append(oversized, node.ID)
-		case SizeBorderline:
-			borderline = append(borderline, node.ID)
+			continue
 		}
+		borderline = append(borderline, node.ID)
 	}
 
 	// Each expansion adds roughly a handful of nodes; budgeting at four keeps
@@ -475,18 +554,26 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	// is not the same measurement, so the class the inner calls would name for
 	// themselves is overridden for the whole subtree.
 	ctx = provider.WithCallClass(ctx, provider.ClassPlanExpand)
+	// WHICH NODE IS BEING SPLIT. The class above already says these calls are an
+	// expansion rather than a top-level fan-out; the node says whose, which is
+	// the fact a person reading a run with several expansions in it needs.
+	ctx = provider.WithCallNode(ctx, callNodeKey(nodeID))
 
-	// A sub-decomposition is deliberately flat: one fan-out, no spine, no
-	// binding. Running a full staged build inside each node was the first
-	// instinct and it was wrong — every subtree contributed its own internal
-	// depth, and two levels of recursion turned a graph with a critical path of
-	// 3 into one with a critical path of 12. Depth multiplies where width adds.
+	// A sub-decomposition is one fan-out, no spine, no binding. Running a full
+	// staged build inside each node was the first instinct and it was wrong —
+	// every subtree contributed its own internal depth, and two levels of
+	// recursion turned a graph with a critical path of 3 into one with a
+	// critical path of 12. Depth multiplies where width adds. The expansion
+	// costs two calls instead of eight, and that is the discipline the second
+	// move below is written to keep.
 	//
-	// The restriction is also the honest reading of what expansion is for. We
-	// split an oversized node to find work that can happen at the same time; if
-	// what is inside it is a sequence, splitting it buys nothing and the node
-	// should stay whole, which is exactly what the shrinkage guard then decides.
-	// As a side effect the expansion costs two calls instead of eight.
+	// What the restriction may NOT do is decide that a node whose inside is a
+	// sequence stays whole. That was the reading here for a long time — split to
+	// find work that can happen at once, and where there is none, leave it — and
+	// it is only half of the burden the sizing pass states: a node that cannot be
+	// brought to an end inside what one worker can hold is divided whether or not
+	// anything in it runs at the same time. The fan-out asks the first question;
+	// sequence.go asks the second, of the nodes the first one could not answer.
 	// The subtree inherits the settled points verbatim, the evidence standard
 	// included. Without this a sub-planner rebinds the goal's free variables for
 	// itself, which is exactly how one expansion produced Berlin, Paris and
@@ -507,22 +594,55 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 		// invoice would be the one place in the system that still weighs a
 		// division against nothing.
 		Invoice: graph.Invoice,
-		Stages:  []Stage{{Title: node.Title, Summary: node.Summary}},
-		NextID:  1,
+		// The workspace and the window travel for the same reason, and it is
+		// the sharper case: the sizing pass inside this expansion checks its
+		// verdicts against the material each NEW node names, and a sub-graph
+		// that lost them would be the one place in the system that mints a leaf
+		// and hands it over unweighed. A child spliced back carrying an
+		// uncomputed verdict is a child both seams then read as within reach.
+		Workspace:     graph.Workspace,
+		ContextTokens: graph.ContextTokens,
+		Stages:        []Stage{{Title: node.Title, Summary: node.Summary}},
+		NextID:        1,
 	}
+	// AN OVERSIZED NODE WITH NO SIMULTANEOUS PIECES NAMED IS EVIDENCE OF A
+	// SEQUENCE, NOT A REASON TO LEAVE IT WHOLE. The ruler has already been asked
+	// which pieces of this node could run at the same time and has answered with
+	// none, so buying a fan-out to ask a second time is buying the answer twice.
+	// The stage question is asked directly, and the whole expansion is one call.
+	if node.Size == SizeOversized && len(node.Parts) < 2 {
+		return expandAsStages(ctx, client, sub, node, goal, Usage{})
+	}
+
 	nodes, fanUsage, err := FanOutWith(ctx, client, sub.context(), sub.Stages, sub.Settled)
 	usage := fanUsage
 	if len(nodes) == 0 {
 		return expansion{nodeID: nodeID, usage: usage, err: fmt.Errorf("expand %q: %w", node.Title, err)}
 	}
+	// THE SECOND MOVE. The fan-out has answered the simultaneity question with
+	// the node itself, which for a node past one worker's reach is the answer
+	// that leaves the burden's other discharge standing: it cannot be carried to
+	// an end in one sitting, so it is divided in time instead. Sizing the single
+	// restated part would buy a verdict nobody can act on — the node's own size
+	// is already on the node — so that call is spent on the stages instead.
+	if len(nodes) == 1 && dividesInTime(node, options) {
+		return expandAsStages(ctx, client, sub, node, goal, usage)
+	}
 	for _, child := range nodes {
 		sub.Add(child)
 	}
-	sizeUsage, sizeErr := SizeNodes(ctx, client, sub)
+	// A failed sizing pass leaves every child unjudged, which sizeApply reads as
+	// atomic, so the division stands as it was drawn. It is deliberately not
+	// carried out as this expansion's error: an expansion that returns one would
+	// be thrown away whole, and a ruler that could not answer is no reason to
+	// discard a division that has already been paid for.
+	sizeUsage, _ := SizeNodes(ctx, client, sub)
 	usage.merge(sizeUsage)
-	if sizeErr != nil {
-		err = joinErrors([]error{err, sizeErr})
-	}
+	// AND EVERY CHILD IS MINTED INSIDE ITS PARENT'S SPEC. It is the last thing
+	// done here, below every pass that adds a node, so a branch that mints
+	// children another way still passes through it. See Graph.mintedInside for
+	// what each field of the spec inherits and why.
+	sub.mintedInside(node.Spec)
 	sub.Goal = node.Title
 	return expansion{nodeID: nodeID, sub: sub, usage: usage}
 }

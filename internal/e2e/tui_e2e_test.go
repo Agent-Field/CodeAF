@@ -65,6 +65,19 @@ const (
 	tuiCardAt = 134
 )
 
+// tuiShortRows is a deliberately SHORT terminal, and it is a fixture rather than
+// a taste: [testTaskRoomKeepsSpace] is about a key that PAGES a record, and a
+// record that fits on the screen cannot page.
+//
+// FOURTEEN IS MEASURED AND NOT GUESSED. A landed `/task solo` draws a record of
+// about seventeen rows — the state line, what it said at the end, the model and
+// the bill, the branch, the two paths — and at twenty rows the whole of it fit,
+// so the first passing run of that subtest could only report that there had been
+// nothing to page. Fourteen is an ordinary small window, a split pane or a
+// laptop with a browser over half of it, and it is short enough that the record
+// runs past the bottom of the frame.
+const tuiShortRows = 14
+
 func TestTUIE2E(t *testing.T) {
 	requireTmuxAndKey(t)
 
@@ -79,8 +92,10 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("alt_g_groups_the_list_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
+	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
 	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
+	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 }
 
 // ── 13 ──────────────────────────────────────────────────────────────────────
@@ -149,7 +164,7 @@ func testFreshInstallSetup(t *testing.T) {
 // asked anything, so what this subtest measures is the surface and the engine's
 // settle door and nothing else — which is exactly what went wrong.
 func testNestedGate(t *testing.T) {
-	home := newHome(t, nil)
+	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "gatews", false)
 	seedDecidedFamily(t, home, ws)
 	r := start(t, "afe2e_gate", home, ws, tuiWide, 40)
@@ -179,6 +194,30 @@ func testNestedGate(t *testing.T) {
 	r.lit("a")
 	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
 	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+	r.quit()
+}
+
+// testRefusedLanding is the other answer to the same real engine gate as
+// [testNestedGate]. The graph is deterministic: the person says the work is not
+// right, the engine keeps its failed plus refused state, and the built surface
+// must call that result incomplete rather than turning the useful finding into
+// a generic failure.
+func testRefusedLanding(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "ask"})
+	ws := newWorkspace(t, "refusedgatews", false)
+	seedUndecidedRoot(t, home, ws)
+	r := start(t, "afe2e_refused_gate", home, ws, tuiWide, 40)
+
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
+	r.keys("Escape")
+	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
+	r.keys("Up")
+	r.lit("n")
+	screen := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "taskIncompleteWord"))
+	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
+	if strings.Contains(screen, say(t, "taskFailedWord")) {
+		t.Errorf("the refused landing still says failed:\n%s", screen)
+	}
 	r.quit()
 }
 
@@ -1330,7 +1369,7 @@ func testInheritedWorkSeat(t *testing.T) {
 	})
 	dropWorkerRow(t, home)
 	ws := newWorkspace(t, "seatws", false)
-	r := start(t, "afe2e_seat", home, ws, tuiPlain, 40)
+	r := start(t, "afe2e_seat", home, ws, tuiWide, 40)
 
 	// Whichever door the launch took — home on a machine with several
 	// conversations, and straight into a greeted conversation on a fresh one,
@@ -1451,4 +1490,209 @@ func callLogModels(t *testing.T, home, tag string) []string {
 		models = append(models, record.Model)
 	}
 	return models
+}
+
+// ── 14 ──────────────────────────────────────────────────────────────────────
+
+// testTaskRoomKeepsSpace is #457/#486's acceptance ON THE REAL SCREEN: the door
+// home yields inside a task's record, where a bare `space` already means page
+// the card.
+//
+// THE DEFECT THIS MEASURES WAS INTRODUCED BY THE FEATURE IT SHIPS WITH. #457
+// widened `space space` so it opens home from every place and not only from a
+// conversation, and the widened door is read at the bottom of the place router
+// — ABOVE each place's own reading of the key. The record is a mode of the
+// tasks place whose arm sits in that reading ([app.taskSheetKeyPress]), and its
+// map spells the page key `pgdown`, `ctrl+f`, `space` ([app.taskCardKey]). So a
+// roster filter left holding ONE space — which is exactly the state the door's
+// own first press leaves, and which draws nothing a person can see — armed the
+// door on a box the record types nothing into, and the next space, pressed to
+// scroll, walked the person out of the record and onto home.
+//
+// WHY IT IS HERE AND NOT ONLY IN internal/tui3. The unit test beside the fix
+// (TestSpaceInTheTaskRoomPagesTheCardAndDoesNotOpenHome) drives the same three
+// keys through the same router, and it is the cheap gate. What it cannot say is
+// that a person doing this at a terminal — a real task, started the ordinary
+// way, read back off the project's own record — lands where the router says
+// they land.
+//
+// IT IS READ IN A SECOND WINDOW, AND THE FIRST SCREEN THIS SUBTEST EVER DREW IS
+// WHY. `enter` on the roster has two doors and the row chooses between them
+// ([tasksPlace.enter]): over a node THIS session's graph is still holding it
+// opens the live room, which is a fullscreen surface of its own and not the
+// mode this test is about; over work no window is holding any more it opens the
+// record card. So the task is started in one window and read in the next, which
+// is also how a person meets a finished task — the record outlives the session
+// that ran it.
+//
+// IT IS DELIBERATELY THE CHEAPEST TASK THERE IS — `/task solo` on a one-file
+// brief, the shape [testInheritedWorkSeat] already pays for. The measured run
+// lands in about thirty seconds and costs five cents.
+//
+// AND IT RUNS SHORT ON PURPOSE ([tuiShortRows]): a record that fits on the
+// screen has nothing to page, so a tall frame would make the positive half of
+// this test vacuous without ever saying so.
+func testTaskRoomKeepsSpace(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "roomws", false)
+
+	// ── the window that does the work ────────────────────────────────────────
+	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows)
+	// Whichever door the launch took. On a state root built one minute ago it is
+	// the setup, whose own foot says `esc skips setup`, and esc is what the rest
+	// of this file presses at this rung anyway.
+	first.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
+	first.keys("Escape")
+	first.lit("/task solo write a file called hello.txt containing the word hello")
+	first.keys("Enter")
+
+	// `/history` IS THE DOOR AND THE CHORD IS NOT. The page's own row names
+	// `ctrl+.` (commands.go), and that chord only reaches the program from a
+	// terminal that answered the keyboard query — so a suite that pressed it
+	// would be testing tmux's encoding rather than this surface's grammar.
+	first.lit("/history")
+	time.Sleep(700 * time.Millisecond)
+	first.keys("Enter")
+	// THE WORK IS REALLY OUT. `enter open its room` stands on the foot only over
+	// a node this window's graph is holding, so waiting for that sentence is
+	// waiting for the task to have actually started rather than for a row to
+	// appear.
+	started := first.waitFor(4*time.Minute, say(t, "tasksEnterRoomWord"))
+	t.Logf("the task is out, and this window is holding it:\n%s", started)
+	// AND THEN THE WORK HAS TO LAND, because the row this test reads back is
+	// written when the node finishes and not when it starts
+	// ([session.appendTaskIndex]). The file is the wait: a window closed a
+	// second too early leaves a project with no record in it, which is what the
+	// fourth measured run of this subtest actually did.
+	bucket := waitForRecord(t, home, 5*time.Minute)
+	t.Logf("the project's record was written at %s", filepath.Join(bucket, "tasks.jsonl"))
+	first.quit()
+
+	// ── and the window that reads it back ────────────────────────────────────
+	//
+	// IT IS LAUNCHED ON A CONVERSATION OF ITS OWN, INSIDE THE SAME PROJECT, AND
+	// THREE MEASURED RUNS ARE WHY. A second window opened the ordinary way
+	// RESUMES the conversation the task was started from, graph and all
+	// ([app.tasks] is replayed with it), so the roster went on offering the live
+	// room; `/new` after that resume left the page reading an index it had
+	// already marked loaded; and `--session` on a path OUTSIDE the projects tree
+	// reads its index beside that path and finds nothing, because the record is
+	// the project's and not the machine's ([session.TaskIndexPath] joins the
+	// bucket ABOVE a `transcript.jsonl`). So the path is built inside the bucket
+	// the first window wrote, which is what makes this window a stranger to the
+	// node and a reader of its record at the same time — the only combination
+	// the record card exists for.
+	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
+	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh)
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
+	r.keys("Escape")
+	r.lit("/history")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	// AND NOW THE OTHER DOOR. No window is holding the node any more, so the
+	// foot offers the record rather than the room — which is the mode this test
+	// is about.
+	roster := r.waitFor(2*time.Minute, say(t, "tasksEnterInsideWord"))
+	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
+
+	// THE ARMING PRESS, AND IT IS THE ORDINARY ONE. A single space on a place
+	// types itself into that place's filter and opens nothing — this is the first
+	// half of the gesture, done by hand, and it is what leaves the door loaded.
+	r.keys("Space")
+	armed := r.waitFor(15*time.Second, say(t, "tasksEnterInsideWord"))
+	if strings.Contains(armed, say(t, "homeFootWord")) {
+		t.Fatalf("one space opened home from the roster:\n%s", armed)
+	}
+
+	// Inside the record, over the roster, the way the foot just said.
+	r.keys("Enter")
+	record := r.waitFor(30*time.Second, say(t, "taskRoomFootWord"))
+	t.Logf("the record is open, over a filter holding one space:\n%s", record)
+
+	// AND HERE IS THE KEY THE DOOR HAD TO GIVE BACK.
+	r.keys("Space")
+	after := r.waitFor(15*time.Second, say(t, "taskRoomFootWord"))
+	t.Logf("the record after the space that used to walk out of it:\n%s", after)
+	if strings.Contains(after, say(t, "homeFootWord")) {
+		t.Fatalf("space in the record opened home, which is #457's own defect:\n%s", after)
+	}
+
+	// AND IT PAGED, which is the positive half and the reason `space` is worth
+	// keeping here at all. `g` puts the record back at its top and `pgdown` is
+	// the same key as space on this card, so pgdown is the control: whatever it
+	// carries off the top of the frame, space owes the same. If pgdown cannot
+	// move the record either then this record is shorter than the frame and there
+	// was nothing to page, which this says out loud rather than passing quietly.
+	r.lit("g")
+	top := r.waitFor(15*time.Second, say(t, "taskRoomFootWord"))
+	r.keys("PageDown")
+	control := r.waitFor(15*time.Second, say(t, "taskRoomFootWord"))
+	head := recordHeadLine(top)
+	switch {
+	case head != "" && !strings.Contains(control, head):
+		if strings.Contains(after, head) {
+			t.Errorf("pgdown carried %q off the frame and space did not, so space did not page:\n%s", head, after)
+		} else {
+			t.Logf("space paged the record exactly as pgdown does: %q is off both frames", head)
+		}
+	default:
+		t.Logf("this record fits the frame — pgdown could not move it either — so only the negative half was measured here; top:\n%s", top)
+	}
+
+	r.quit()
+}
+
+// recordHeadLine is the first line of the record's own SCROLLING body: the row
+// that stands under the card's top rule while the card is at its top, and is
+// gone once the card has paged.
+//
+// IT IS THE LINE UNDER THE RULE AND NOT THE FIRST LINE ON THE FRAME, because
+// the row above the rule is the card's title band and the title band does not
+// scroll — a test that watched it would watch a line that can never move and
+// would call every page a failure to page. And it is READ OFF THE SCREEN rather
+// than named here because what stands there is a sentence about work a model
+// did, which is exactly the kind of string this suite's own header forbids
+// anybody from remembering.
+func recordHeadLine(screen string) string {
+	lines := strings.Split(screen, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "─") {
+			continue
+		}
+		for _, under := range lines[i+1:] {
+			if text := strings.TrimSpace(under); len(text) >= 12 && !strings.HasPrefix(text, "─") {
+				return text
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
+// waitForRecord waits until the project's task record exists and holds a row,
+// and answers the bucket it is in.
+//
+// IT IS FOUND RATHER THAN SPELLED because the folder's name is a slug of a
+// temporary workspace path, which is a string no test may write down and none
+// could get right twice. And it is WAITED FOR rather than read once because the
+// row is written when the node lands: this is the one place in this subtest
+// that is about the work finishing rather than about the keyboard.
+func waitForRecord(t *testing.T, home string, within time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		matches, err := filepath.Glob(filepath.Join(home, "v3", "projects", "*", "tasks.jsonl"))
+		if err != nil {
+			t.Fatalf("projects: %v", err)
+		}
+		for _, path := range matches {
+			if raw, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(raw)) != "" {
+				return filepath.Dir(path)
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waited %s for a task record under %s and found %v", within, home, matches)
+		}
+		time.Sleep(2 * time.Second)
+	}
 }

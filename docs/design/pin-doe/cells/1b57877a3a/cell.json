@@ -1,0 +1,38 @@
+{
+ "id": "Human-Agent-Society-reef-145",
+ "repo": "Human-Agent-Society/reef",
+ "issue": 145,
+ "anchor": true,
+ "door": "chat",
+ "pass": false,
+ "reason": "wall \u00b7 tests: 2 failed, 0 errors, 4 passed",
+ "door_verdict": "wall",
+ "tests_verdict": "red",
+ "ended": "wall",
+ "exit": null,
+ "source": "fresh",
+ "tier": "small",
+ "wall_s": 902,
+ "cost_usd": 0.000126,
+ "ttft_ms": 1808,
+ "calls": 3,
+ "changed_files": 0,
+ "f2p": {
+  "passed": 4,
+  "failed": 2,
+  "errors": 0,
+  "exit": 1,
+  "pass": false
+ },
+ "suite": {
+  "passed": 0,
+  "failed": 0,
+  "errors": 6,
+  "exit": 2,
+  "capped": false
+ },
+ "regressed": false,
+ "subharness": null,
+ "nodes": null,
+ "load": "7.14 7.33"
+}

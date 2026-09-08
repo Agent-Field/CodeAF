@@ -416,8 +416,8 @@ the crew moved everything about a task except its cost.
 ## Does my crew reach aforge do, or only this conversation — what models a headless run uses
 
 **It reaches both.** A crew you set here is the crew a run started from a script or a
-terminal uses — `aforge do`, `aforge exec`, `aforge plan`, `aforge run`, `aforge revise`
-and `aforge run subharness`. Set it once with `/crew frugal` and the same policy holds
+terminal uses — `aforge do`, `aforge exec`, `aforge run`, `aforge plan new`,
+`aforge plan revise` and `aforge plan run`. Set it once with `/crew frugal` and the same policy holds
 whether the work is asked for here or run with nobody watching.
 
 Those runs seat two models, and each one is resolved the same way. The first of these that
@@ -458,7 +458,7 @@ models line:
 
 ```
 models: work deepseek/deepseek-v4-flash (crew custom, inherited) · plan deepseek/deepseek-v4-flash (crew custom)
-your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
 ```
 
 `inherited` beside the class means exactly that: **the model came from your crew, but from a
@@ -485,7 +485,7 @@ work takes the class the worker was split out of, **small work**, and the thread
 once, the first time a task starts:
 
 ```
-your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
 ```
 
 **It is said once per session**, when work actually starts, and never per task or per part.
@@ -776,7 +776,8 @@ seating anything this run.
 
 **And no crew receipt is posted.** The line a profile older than the work seat ordinarily gets
 when its first task starts — `your crew was set before the work seat existed · it is running on
-your small work model until you pick a crew again` — is not said under this flag. That line
+your small work seat's model until you pick a crew with /crew in the conversation` — is not said
+under this flag. That line
 reports a substitution, and under the flag there is none: every call is already on the model
 you are talking to, which is your own answer to the question it asks. Picking a crew would not
 change what runs, so the sentence is not offered, and the `/crew` sheet says nothing about an
@@ -1273,8 +1274,10 @@ arrives.
 
 ## What has this conversation cost me — /cost, how much this chat has cost, and why the same conversation suddenly costs more
 
-`/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on
-what, into the conversation. Up to eight aligned lines:
+`/cost` (also `/usage`, `/tokens`) prints what this conversation has spent, and on
+what, into the conversation. `/spend` is a different command and opens the **spend place**,
+which is the whole machine's ledger rather than this conversation's — it was an alias of
+`/cost` until the polish wave and is not one now. Up to eight aligned lines:
 
 | Line | What it is |
 |---|---|
@@ -1290,6 +1293,17 @@ what, into the conversation. Up to eight aligned lines:
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
+
+## Why do the tokens on the status line jump instead of counting up
+
+They count up. While a turn is running, the money and the token figures on the status
+line **walk toward the new reading** over a couple of tenths of a second — the same
+ease as the reply writing in — rather than popping from one number to the next. The
+books stay exact; only what the line paints is in motion.
+
+`/cost` and `/status` print the exact books, not the figure in motion. Opening a
+resumed conversation, or switching to another one, lands on that conversation's own
+bill at once. A screen-reader session never eases a number.
 
 ## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
 
@@ -1449,10 +1463,19 @@ correction of the other.
 `alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
 same three-second beat every place runs on, and it draws three things:
 
-- **the window and its total** — `$34.10 · 41.2M tokens` on the left of the head row and the
-  window itself at the right, as the control `shift+← aug 12 – aug 25 →` with `shift+↑
-  coarser` beside it — then a sparkline under it, one cell per day, and today's figure at the
-  right. The span is spelled once, between the arrows;
+- **the window and its total** — `14 days came to $34.10 · 41.2M tokens` on the left of the
+  head row and the window itself at the right, as the control `shift+← aug 12 – aug 25 →`
+  with `shift+↑ coarser` beside it. The left field **says which total it is**: the line above
+  it is the day (`today $3.42 of $500`) and this one is the whole window, so each figure
+  carries the period it is the total of. It is counted in the grain's own noun — `14 days`,
+  `4 weeks`, `6 months` — and on a narrow frame it gives up the words before the figure:
+  `14 days · $34.10`, then `$34.10`. The dates themselves are spelled once, between the
+  arrows;
+- **a chart of the window**, under that row, as wide as the frame allows — every bucket gets
+  the same number of cells, up to eight, so a fortnight on a wide terminal is a shape you can
+  read rather than fourteen cells in the corner. Its axis is **two dates**: the first bucket
+  at the left, and at the right the last one, called `today` when it is today. There is no
+  money on the axis — the money is the line above it;
 - **what ran it**, by the model and **the role it is bound to**, dearest first, each row with
   a bar, its call count and its tokens. The role is the **crew binding** — `execution`,
   `conversation`, `verification`, `naming`, `planning` — read from the settings as they
@@ -1482,6 +1505,12 @@ name on the row. A thing neither of them knows keeps its id.
 
 **`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
 place, a standing promise to the standing place, a conversation to home.
+
+**The loudest day is a row like those.** It reads
+`aug 20 was the loudest day — $21.40, the-filings-sweep` with the door out at its right —
+`enter opens it in tasks`, or `in tasks` on a narrower frame, or nothing at all where the
+sentence needs the whole row. `enter` on it opens that thing, exactly as it does on the rows
+under *what it was for*.
 
 **There is no budget editor here and there will not be one.** The page answers *what did it
 cost*; *what may it spend* is the Spending tab, and this page **points** at it rather than
@@ -1844,7 +1873,7 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` |
+| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` — the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
 | the first-run setup | its third screen, `what may aforge spend?` |
@@ -1906,6 +1935,12 @@ nothing new, and asks you to top it up, finish on what is done, or stop.
 If you want to see where you stand before anything asks, `today` at the top of the
 Spending tab and `/cost` are the two readings — `/cost` is this conversation, `today` is
 the whole machine since midnight.
+
+The machine's day is drawn in **three** places and they are **one reading of one file**:
+`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+5`), and the
+green figure on the **top line of every place** — `$3.42 / $500.00`, beside the clock. All
+three sum the same rows of the machine ledger, so they cannot come apart, and the top line
+says the same thing whichever place you are standing on.
 
 ## What does per plan mean — the limit that asks instead of stopping
 
@@ -2009,6 +2044,23 @@ Setting **routing** yourself overrides all of that everywhere: `latency` asks fo
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
+## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
+
+This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
+then excluded that endpoint under your OpenRouter account's privacy setting because its
+provider may train on prompts. It does not mean the model disappeared or that your prompt
+was rejected.
+
+aforge drops the cap and asks the same model again on the same turn. The attempt line says
+`dropped the price ceiling and relaxed the endpoint filter`. A rescue request or a request
+pinned to one lane never carries the cap, because that lane has already passed aforge's
+price choice. Once a capped request to this model is refused, the cap stays off that model
+for the rest of this session, including the next rescue.
+
+You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
+another model, or pin a lane that serves this model. Pinning chooses the provider for this
+conversation; it does not change your OpenRouter privacy setting.
+
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
 One model id is served by a dozen different endpoints, and they are not alike: on one
@@ -2056,7 +2108,11 @@ the uptime because `no tools` changes the answer you get. `←` or `tab` closes 
 again.
 
 `enter` on a lane **pins** it: every request for this conversation goes to that lane
-and nowhere else. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
+and nowhere else — unless the router says that lane cannot serve that model at all, which
+is the one thing that ends a pin without you. It says so once, in the conversation
+(`coreweave cannot serve this model; routing on auto for this model until you pin again`),
+routes that one model on auto for the rest of the run, and leaves your row and every other
+model alone. *Lanes → Pinning one lane yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
 at all and lets the router balance on price. If the lanes were open under a model you are
 not talking to, `enter` switches to that model as well — choosing a lane under a name
 means you want that name served from there.
@@ -2175,7 +2231,8 @@ something is already being done about it.
 
 **A machine that REFUSED is not a machine that was slow, and the line says so.** When the
 router answers that the machine aforge asked for is not one that serves this model —
-`your request's provider.only preference permits only: coreweave` — the same spot reads
+`No allowed providers are available for the selected model. … but your request's
+provider.only preference permits only: coreweave` — the same spot reads
 `refused · trying nextbit…`. That machine is then finished for this model: it is not asked
 again, and it leaves the set aforge chooses from for thirty minutes. If the
 machine the answer moved to refuses as well, the promise is withdrawn rather than left on
@@ -2237,7 +2294,7 @@ Settings → Providers has two rows under **routing**:
 | Value | What it does |
 |---|---|
 | `auto` | aforge picks the fastest lane each answer |
-| `pinned: cloudflare` | every request goes to that lane and nowhere else |
+| `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
 | `openrouter` | no lane is asked for; the router balances on price |
 
@@ -2305,7 +2362,9 @@ One line per call, and it reads like this:
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
-`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`), which model was asked, **which endpoint
+`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`, `satisfied`, and the errands aforge runs
+for itself — `distill`, `narrate`, `title`, `consolidate`, `reflect`, `sentinel`, `quorum`,
+`morning-brief`, `craft-repair`, `craft-params`), which model was asked, **which endpoint
 was asked for and which one actually answered**, the thinking level and the **ceiling that
 really travelled** — which is larger than the one asked for, because the thinking pass is
 given room in front of the answer — how many messages and tools the request carried, the
@@ -2423,9 +2482,12 @@ newest answer this process has heard — the call log's own memory, kept even wi
 switched off — not the moment the work was booked. A worker ten minutes into its work says
 `last call … 1s ago`, because that is what is true.
 
-The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. `aforge doctor` names
-the file and its size. Set `AFORGE_CALL_LOG=off` to write nothing at all, or
-`AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere you can watch.
+The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. With
+`AFORGE_CALL_LOG_BODIES=1` the live file is allowed 256 MB instead — a body-bearing
+line is tens of kilobytes and the ordinary cap would turn over after a few dozen
+calls. `aforge doctor` names the file and its size. Set `AFORGE_CALL_LOG=off` to
+write nothing at all, or `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere
+you can watch.
 
 ## What does the total at the end of aforge do include — the last line, and why the printed cost should match the call log
 
@@ -2473,7 +2535,9 @@ AFORGE_CALL_LOG_BODIES=1 aforge
 Every line then also carries `request_body` and `response_body`, whole and unedited: your
 prompts, your attached file contents, the model's whole reply. Turn it on for the run you
 are debugging and off again afterwards, and treat the file as you would the conversation
-itself.
+itself. The live file is allowed 256 MB with this pin on (32 MB without it), so a long
+session keeps the bodies you asked for rather than rotating them away after a few dozen
+calls.
 
 That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
 in a conversation — which keeps the **debug record** of a run in a folder of its own. The

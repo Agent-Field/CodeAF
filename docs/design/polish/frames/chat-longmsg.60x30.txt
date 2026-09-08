@@ -1,0 +1,30 @@
+
+› LINE-ONE the tab bar keeps two counts and they disagree
+  after a task lands, so I want you to look at LINE-TWO
+  where the count is read and where the list is built, and
+
+They do not share a reading.
+  · 3 standing orders here — /standing
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-
+  8173-4e64-b3ec-
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-
+  claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-
+  73decce3d3d5-scratchpad-demohome-aforge-
+  v2/ffff0000longmsg1/transcript.jsonl
+  · esc interrupts · ctrl+c twice quits
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+
+                                                      ⠿ high
+ ›
+Long Question · deepseek-v4-flash-latest
+            ◦ keeping an eye on 3 · $0.00 · 5.5k/1.3M · idle

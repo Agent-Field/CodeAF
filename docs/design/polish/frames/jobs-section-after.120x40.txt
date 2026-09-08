@@ -1,0 +1,40 @@
+                                                                                          │ tasks
+› the frame budget is over the cap in four packages — take it back under, one package at a│ ✓ Measure the frame       #1
+  time                                                                                    │ ├─ ✓ Move the tab         #2
+                                                                                          │ ├─ ? Cut every list       #3
+Measured all eleven first so the order is a fact rather than a guess. The tab bar is      │ │  │    finished — look it
+under; the row fitter wants your eye before it lands, and the two behind it are parked    │ │  │    over
+on that.                                                                                  │ │  └─ ◌ Fold the settl… ▸ +1
+                                                                                          │ └─ ✗ Rebuild the frame    #5
+› what are the jobs doing?                                                                │ + /task
+                                                                                          │
+  The dev server was still up when this window last closed, the tui3 suite came back      │ standing
+  clean, and `make check` stopped on a vet error in tasksplace.go — its log has the line. │ ◦ the morning sweep
+                                                                                          │ ? CI on master
+  · 3 standing orders here — /standing                                                    │ ◦ the public API
+  · resumed · Sweeping the Frame Budget                                                   │ + /standing
+  · esc interrupts · ctrl+c twice quits                                                   │
+                                                                                          │ ▾ jobs · 3 ran
+✓ ◇ Measure the frame · done 4m00s · 1 file · merged                                      │   make check    3 · exited 0
+  "Eleven packages measured. Four are over the cap; the plan takes the t…" · ctrl+o output│   go test ./intern… 2 · done
+? □ Cut every list · needs your look 12m00s · 4 files · merged                            │   npm run dev    1 · stopped
+  "The four lists are on the fitter and the frames read right at 160 and…" · ctrl+o output│
+  finished, but nobody has checked it — your call                                         │
+  [a] accept · [l] look again · [n] not right · [d] decide these for me                   │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $1.07 · 52.9k tok
+                                                                                          │ 1 needs you · 2 parked
+                                                                                          │ 3 done
+                                                                                          │ ctrl+. earlier
+                                                                                          │ alt+w widen · click seam
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────── ↑↓ move · →← tree · enter open · alt+w wide · esc ─
+
+                                                                                                                  ⠿ high
+ ›
+Sweeping the Frame Budget · deepseek-v4-flash-latest    crew balanced · ◦ keeping an eye on 3 · $1.07 · 5.5k/1.3M · idle

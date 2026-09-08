@@ -129,6 +129,16 @@ func stubbedRouter(t *testing.T) (*Client, *lanestub.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// AND THE RIG STATES WHAT THIS STUB IS. A shipped build learns that a base
+	// carries a routing preference from the base itself — the endpoints page the
+	// beat fetches, or the lane an answer names (issue #433) — and neither has
+	// happened here: no beat runs in a test, and the belief below is SCRIPTED
+	// rather than measured. This stub publishes an endpoints page and names its
+	// lane on every answer, so it does carry one; saying so is stating a fact
+	// about the fixture, not turning a law off. A rig that left it unsaid would
+	// send no `provider` object at all until something was pinned, which is
+	// exactly right for a plain endpoint and wrong for a router.
+	lanes.HeardPrefsCarried(server.URL())
 	// Its own strike ledger: the shared one is process-wide, and a lane another
 	// test in this package taught it about would arrive here as an order nobody
 	// in this test asked for.
@@ -414,23 +424,222 @@ func TestTheSheetFetcherTurnsARefusalIntoAnError(t *testing.T) {
 	if !strings.Contains(err.Error(), "500") {
 		t.Errorf("the error was %q and does not say what the router answered", err)
 	}
+	// AND A 500 IS NOT A VERDICT ABOUT THE BASE. Only a 404 may be read as "no
+	// endpoints page here"; a router having an afternoon must stay an ordinary
+	// error, or one bad reply would cost a base its lanes for five minutes.
+	if errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Error("a 500 was read as the base saying it publishes no endpoints page")
+	}
 }
 
-// TestOnlyARouterBaseWiresTheSheet pins the gate both wire points share. The
-// sheet is fetched FROM THE BASE URL, so a client pointed anywhere else has no
-// sheet to read however its model is spelled — and the session reads the same
-// answer to decide whether to run a beat at all.
-func TestOnlyARouterBaseWiresTheSheet(t *testing.T) {
+// The live router answers 404 twice over, and the two mean opposite things about
+// the base (measured with curl on 2026-09-02). These two bodies are quoted
+// exactly, because the reading is made on the body and a paraphrase would be
+// testing a router that does not exist.
+const (
+	// routerModel404 is GET /api/v1/models/nonexistent/model-xyz/endpoints: the
+	// router's own error envelope, the route answering about one model.
+	routerModel404 = `{"error":{"message":"Not Found","code":404}}`
+	// routerRoute404 is GET /api/v1/nonexistent-route/x/endpoints, cut to its
+	// head: a page, not an envelope, for an address the router does not serve.
+	routerRoute404 = "<!DOCTYPE html><html><head><title>Not Found | OpenRouter</title></head><body>Not Found</body></html>"
+)
+
+// TestTheSheetFetcherReadsA404AsNoPageHere is the one answer the sheet may
+// remember a base by, made where only the transport can see a status and a
+// body: a 404 whose body is NOT the router's envelope is "no such route".
+func TestTheSheetFetcherReadsA404AsNoPageHere(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(routerRoute404))
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "sk-test")
+	if err == nil {
+		body.Close()
+		t.Fatal("a 404 handed back a body")
+	}
+	if !errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("a route 404 came back as %v, want one wrapping lanes.ErrNoSheetHere", err)
+	}
+	if errors.Is(err, errNoSheetForModel) {
+		t.Fatalf("a route 404 was also read as a verdict about a model: %v", err)
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("the error was %q and does not say what the router answered", err)
+	}
+}
+
+// TestTheSheetFetcherReadsTheRoutersOwn404AsNoSheetForThatModel is the other
+// 404: the router's own error envelope, which is the route answering about ONE
+// MODEL it does not publish. It marks nothing about the base — reading it as
+// "no page here" would hold a whole proxy or mirror sheetless for five minutes
+// on the strength of one model the beat happened to ask about first, which is
+// the defect class of #373 over again.
+func TestTheSheetFetcherReadsTheRoutersOwn404AsNoSheetForThatModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(routerModel404))
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "sk-test")
+	if err == nil {
+		body.Close()
+		t.Fatal("a 404 handed back a body")
+	}
+	if errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("the router's own envelope 404 was read as the base having no endpoints route: %v", err)
+	}
+	if !errors.Is(err, errNoSheetForModel) {
+		t.Fatalf("the envelope 404 came back as %v, want one wrapping errNoSheetForModel", err)
+	}
+	// AND IT IS DECODED THROUGH THE ONE REFUSAL OBJECT this package has, not a
+	// second reader of the same shape: the router's sentence is recoverable
+	// from the chain exactly as it is from a refused completion.
+	refused, ok := RefusalFrom(err)
+	if !ok || refused.Status != http.StatusNotFound || refused.Message != "Not Found" {
+		t.Fatalf("the router's own refusal did not survive the read: %v", err)
+	}
+}
+
+// TestTheShippedRouterIsCertainAndEveryOtherBaseIsAsked pins what the hostname
+// still decides, which is only whether the asking can be skipped. A loopback
+// base, a gateway, an empty base: none of them is refused, all of them are
+// wired and asked ([WireLaneSheet]).
+func TestTheShippedRouterIsCertainAndEveryOtherBaseIsAsked(t *testing.T) {
 	for base, want := range map[string]bool{
 		"https://openrouter.ai/api/v1":   true,
 		" https://OpenRouter.ai/api/v1 ": true,
 		"http://localhost:8080/v1":       false,
+		"http://127.0.0.1:43121/api/v1":  false,
 		"https://api.openai.com/v1":      false,
 		"":                               false,
 	} {
-		if got := LaneSheetAvailable(base); got != want {
-			t.Errorf("LaneSheetAvailable(%q) = %v, want %v", base, got, want)
+		if got := LaneSheetCertain(base); got != want {
+			t.Errorf("LaneSheetCertain(%q) = %v, want %v", base, got, want)
 		}
+	}
+}
+
+// TestAPlainLoopbackBaseGetsASheetFromItsOwnAnswer is acceptance 1 of #373,
+// end to end: a client built against a stub at its plain loopback address —
+// no hostname trick anywhere — has a sheet after one refresh, and the only
+// request it ever made was that refresh. THE PROBE IS THE FETCH: construction
+// costs nothing, and neither a known base nor an unknown one pays a second
+// round trip to find out what it is.
+func TestAPlainLoopbackBaseGetsASheetFromItsOwnAnswer(t *testing.T) {
+	forgetLanes(t)
+	const model = "openrouter/plain-base"
+	server := lanestub.New(model,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+		lanestub.Lane{Name: "brass", Profile: lanestub.Profile{TTFT: 30 * time.Millisecond, Rate: 300, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+	if LaneSheetCertain(server.URL()) {
+		t.Fatalf("the stub's address %q reads as the shipped router, so this test would not be asking anything", server.URL())
+	}
+
+	if _, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model, Routing: StaticRouting(RoutingLatency)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := server.Sheets(lanes.LedgerModel(model)); got != 0 {
+		t.Fatalf("building a client made %d endpoints requests; the probe is the beat's fetch and never construction's", got)
+	}
+
+	if err := lanes.Default().Sheet().Refresh(context.Background(), model); err != nil {
+		t.Fatalf("one refresh against a plain loopback base: %v", err)
+	}
+	rows := lanes.Default().Sheet().Rows(model)
+	if len(rows) != 2 {
+		t.Fatalf("a plain loopback base gave %d rows after one refresh, want 2", len(rows))
+	}
+	if got := server.Sheets(lanes.LedgerModel(model)); got != 1 {
+		t.Fatalf("one refresh cost %d endpoints requests, want exactly the fetch itself", got)
+	}
+}
+
+// TestABaseWithNoEndpointsPageIsAskedOnce is acceptance 2 through the real
+// transport: the stub answers completions and 404s every endpoints page, the
+// client is wired to it regardless, and after the base's one answer nothing
+// asks it again.
+func TestABaseWithNoEndpointsPageIsAskedOnce(t *testing.T) {
+	forgetLanes(t)
+	const model = "openrouter/no-sheet"
+	server := lanestub.New(model,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+	server.Sheetless()
+
+	if _, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model, Routing: StaticRouting(RoutingLatency)}); err != nil {
+		t.Fatal(err)
+	}
+	sheet := lanes.Default().Sheet()
+	if err := sheet.Refresh(context.Background(), model); !errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("the base's 404 came back as %v, want lanes.ErrNoSheetHere", err)
+	}
+	for _, again := range []string{model, "openrouter/another-model"} {
+		if err := sheet.Refresh(context.Background(), again); !errors.Is(err, lanes.ErrNoSheetHere) {
+			t.Fatalf("a refresh of %s after the base had answered came back as %v", again, err)
+		}
+	}
+	if got := server.Sheets(lanes.LedgerModel(model)) + server.Sheets("openrouter/another-model"); got != 1 {
+		t.Fatalf("a base that said it has no endpoints page was asked %d times, want once", got)
+	}
+	if rows := sheet.Rows(model); rows != nil {
+		t.Fatalf("a sheetless base produced rows: %v", rows)
+	}
+}
+
+// TestAModelTheRouterDoesNotPublishHoldsNothingAgainstTheBase is the body rule
+// through the real transport against the stub, which answers its two 404s the
+// way the live router does: the first model the beat asks about is one the
+// router does not publish, and that must cost the base nothing — the very next
+// refresh, for a model it does publish, gets its sheet with no wait and no
+// second answer needed.
+func TestAModelTheRouterDoesNotPublishHoldsNothingAgainstTheBase(t *testing.T) {
+	forgetLanes(t)
+	const published = "openrouter/published-model"
+	const unknown = "openrouter/unknown-model"
+	server := lanestub.New(published,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+
+	if _, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: unknown, Routing: StaticRouting(RoutingLatency)}); err != nil {
+		t.Fatal(err)
+	}
+	sheet := lanes.Default().Sheet()
+	err := sheet.Refresh(context.Background(), unknown)
+	if err == nil {
+		t.Fatal("a model the router does not publish came back with a sheet")
+	}
+	if errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("the router's 404 about one model was read as the base having no endpoints route: %v", err)
+	}
+	if !errors.Is(err, errNoSheetForModel) {
+		t.Fatalf("the router's 404 about one model came back as %v", err)
+	}
+	if rows := sheet.Rows(unknown); rows != nil {
+		t.Fatalf("an unpublished model produced rows: %v", rows)
+	}
+
+	// The base was not held: the published model is fetched at once.
+	if err := sheet.Refresh(context.Background(), published); err != nil {
+		t.Fatalf("a refresh for a published model after an unpublished one: %v", err)
+	}
+	if rows := sheet.Rows(published); len(rows) != 1 {
+		t.Fatalf("the published model has %d rows after one refresh, want 1", len(rows))
+	}
+	if got := server.Sheets(lanes.LedgerModel(published)); got != 1 {
+		t.Fatalf("the published model's refresh cost %d endpoints requests, want exactly the fetch itself", got)
+	}
+	if got := server.Sheets(lanes.LedgerModel(unknown)); got != 1 {
+		t.Fatalf("the unpublished model was asked %d times, want once", got)
 	}
 }
 
@@ -453,12 +662,25 @@ func TestConstructionWiresTheSheetAtARouter(t *testing.T) {
 		t.Fatalf("a fresh registry's sheet refused with %v, want ErrNoSheet", err)
 	}
 
-	// A base that is not a router wires nothing: there is no sheet there.
+	// A BASE NOBODY HAS VOUCHED FOR IS WIRED TOO. It used to wire nothing on
+	// the strength of its hostname (issue #373); now every base is wired, and
+	// whether there is a page there is the base's own to answer on the first
+	// refresh. Through a cancelled context that answer is the context's own
+	// error, which is exactly what proves the wiring reached the transport.
 	if _, err := NewClient(Config{BaseURL: "http://localhost:8080/v1", Model: "local/model", APIKey: "sk-test"}); err != nil {
 		t.Fatalf("build a client against a local base: %v", err)
 	}
+	if err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a local base left the sheet unwired; it refused with %v, want the cancelled context's own error", err)
+	}
+
+	// AND AN EMPTY BASE WIRES NOTHING, because there is nowhere to ask. The
+	// constructor refuses an empty base before it gets this far, so the door
+	// the process beat uses is asked directly.
+	lanes.Default().Reset()
+	WireLaneSheet("   ", "sk-test")
 	if err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash"); !errors.Is(err, lanes.ErrNoSheet) {
-		t.Fatalf("a non-router base wired the sheet; it refused with %v, want ErrNoSheet", err)
+		t.Fatalf("an empty base wired the sheet; it refused with %v, want ErrNoSheet", err)
 	}
 
 	if _, err := NewClient(Config{BaseURL: "https://openrouter.ai/api/v1", Model: "deepseek/deepseek-v4-flash", APIKey: "sk-test"}); err != nil {

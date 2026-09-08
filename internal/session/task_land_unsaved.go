@@ -1,9 +1,11 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // task_land_unsaved.go is one law for both landing roads: A LANDING THAT COULD
@@ -29,7 +31,126 @@ import (
 // work that could not be committed at all — walked straight past all five of
 // them. A mark nobody may land on is added here once, and every road refuses it.
 func cameHome(merge string) bool {
-	return merge != mergeConflicted && merge != mergeAborted
+	switch merge {
+	case mergeConflicted, mergeAborted:
+		return false
+	case mergeKept:
+		// FINISHED WORK ON A PROTECTED CHECKOUT IS COMPLETE. It is visible on
+		// the named branch and unblocks dependents even though no checkout moved.
+		return true
+	default:
+		return true
+	}
+}
+
+// landingRefusal is WHY a landing could not be saved, in the two kinds that have
+// to be answered differently.
+//
+// ── THE DIFFERENCE IS WHETHER ASKING AGAIN CAN CHANGE ANYTHING ──────────────
+//
+// A landing that failed goes back to somebody to decide, and their answer runs
+// the same commands into the same place. Where what refused was THE WORK — a
+// commit a hook would not take, a change git would not sign — a second answer is
+// worth having: the person can fix the thing that was refused and accept it
+// again. Where what refused was THE PLACE — a directory that is not a repository,
+// a read-only mount, a full disk, a folder with a file where a directory has to
+// go — the second answer gets the same refusal, and the third, which is exactly
+// the loop a measured run spent its parent's remaining minutes on: accept,
+// refuse, offer, accept, refuse, offer (#513).
+//
+// SO THE PLACE REFUSING SETTLES THE NODE WHERE IT STANDS and the work refusing
+// keeps today's road. Nothing is lost either way: no merge happens, no working
+// copy is released, and the report names the directory the only copy is in.
+//
+// AND IT IS DECIDED WHERE THE REFUSAL HAPPENS, never afterwards from the
+// sentence. [stageTaskWork] asks git whether the place is a repository at all and
+// answers that arm outright; [taskTree.landMirror] knows a folder that would not
+// take the lay is the folder refusing; and the one arm where only git's prose
+// exists puts the question to the tree itself ([askTheTree]) rather than reading
+// it back out of git's prose.
+type landingRefusal uint8
+
+const (
+	// refusedNothing is a landing that was not refused at all.
+	refusedNothing landingRefusal = iota
+	// refusedByTheWork is a refusal a second answer could get past.
+	refusedByTheWork
+	// refusedByTheTree is a refusal that will be the same refusal next time.
+	refusedByTheTree
+)
+
+// askTheTree asks THE REPOSITORY ITSELF whether it can still be written to, and
+// it is how a landing that could not be saved is told apart from a place that
+// will refuse it again.
+//
+// ── IT USED TO READ GIT'S PROSE, AND PROSE IS NOT EVIDENCE ──────────────────
+//
+// The five phrases that name a place git will not write — no repository, a
+// read-only mount, a permission, a full disk, a quota — turn up in sentences
+// that are about the WORK just as readily. A hook that prints "permission
+// denied" and refuses the commit, a path with `read-only file system` in its
+// name, a message quoting an error somebody else's tool produced: each of those
+// is answerable, and each of them was being settled for good on the strength of
+// a substring (#513). A landing settled wrongly this way cannot be accepted
+// again, which is the one mistake on this road that a person cannot undo.
+//
+// ── SO THE QUESTION IS A WRITE, WHICH IS THE THING THAT WAS REFUSED ─────────
+//
+// A scratch file is created inside the repository's own git directory and
+// removed again. A tree that takes it is a tree a second answer could get past,
+// whatever git said about the first; a tree that refuses it with the errno of a
+// read-only mount, a permission, a disk with nothing left on it or a quota is
+// the PLACE refusing, and it will refuse the same way next time.
+//
+// AND ANYTHING ELSE IS THE WORK. A probe that fails for a reason nobody
+// recognises keeps the landing on the road it has always taken — back to
+// somebody, with the branch kept and another answer allowed — rather than
+// settling a node on a guess. The one tree refusal that is NOT asked here is a
+// directory that is no repository at all: [stageTaskWork] already asks git that
+// as a question and answers it where it happens.
+func askTheTree(dir string) landingRefusal {
+	// THE GIT DIRECTORY IS ASKED FOR BY NAME rather than assumed to be `dir/.git`,
+	// because a node works in a worktree, where `.git` is a FILE naming the real
+	// directory somewhere under the parent repository. A tree that will not say
+	// where it keeps itself is probed where it stands, which is the safe side of
+	// the answer: an unrecognised failure is the work.
+	place := dir
+	if out, err := git(dir, "rev-parse", "--absolute-git-dir"); err == nil {
+		if named := strings.TrimSpace(out); named != "" {
+			place = named
+		}
+	}
+	scratch, err := os.CreateTemp(place, ".aforge-write-")
+	if err != nil {
+		return refusalFromWrite(err)
+	}
+	name := scratch.Name()
+	_ = scratch.Close()
+	_ = os.Remove(name)
+	return refusedByTheWork
+}
+
+// refusalFromWrite reads the ERRNO of a refused write, which is the one account
+// of a refusal that nobody wrote in prose.
+//
+// The four kinds are the place refusing in the only ways a place can: the mount
+// is read-only, the permission is not there, the disk is full, the quota is
+// spent. Everything else — a name that is already taken, a directory that moved
+// under us, anything the operating system spells some other way — is left as the
+// work, so an unfamiliar failure keeps a landing answerable.
+func refusalFromWrite(err error) landingRefusal {
+	for _, refusing := range []error{
+		syscall.EROFS,
+		syscall.EACCES,
+		syscall.EPERM,
+		syscall.ENOSPC,
+		syscall.EDQUOT,
+	} {
+		if errors.Is(err, refusing) {
+			return refusedByTheTree
+		}
+	}
+	return refusedByTheWork
 }
 
 // unsavedTail is the phrase BOTH unsaved sentences carry, and it is one constant

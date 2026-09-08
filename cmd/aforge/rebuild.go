@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -27,11 +26,10 @@ func runRebuild(args []string) error {
 }
 
 func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
-	flags := flag.NewFlagSet("rebuild", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	flags := commandFlags("rebuild")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	yes := flags.Bool("yes", false, "skip the confirmation prompt")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -61,15 +59,40 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 		return fmt.Errorf("a resident is running (pid %d) — close it before rebuilding", holder.PID)
 	}
 	if !*yes {
-		fmt.Fprintf(output, "Rebuild every materialized view in %s from the event journal?\n", path)
-		fmt.Fprint(output, "The journal itself is untouched; everything derived from it is discarded and replayed. [y/N] ")
+		// THE QUESTION IS AN ASIDE AND THE ANSWER IS NOT. This went to the
+		// command's `output` — os.Stdout in the shipped binary — so `aforge
+		// rebuild | tee log` handed the person a blank terminal waiting for a
+		// word they could not see, and put the question in the data file
+		// (streams.go). The result line below is the answer and stays where it
+		// is; everything a person reads ABOUT the command goes here.
+		//
+		// AND IT IS SAID IN THE PRODUCT'S OWN WORDS. `materialized view` is how
+		// the storage engine thinks about itself, and nobody typing this
+		// command has to know the term to decide whether they want it: what is
+		// thrown away is everything aforge worked out from the journal, and the
+		// journal is what is kept.
+		fmt.Fprintf(aside, "Rebuild everything aforge worked out from the journal in %s?\n", path)
+		fmt.Fprint(aside, "The journal itself is untouched; everything worked out from it is discarded and replayed. [y/N] ")
 		reader := bufio.NewReader(input)
 		answer, readErr := reader.ReadString('\n')
 		if readErr != nil && strings.TrimSpace(answer) == "" {
-			return fmt.Errorf("rebuild cancelled")
+			// NOBODY WAS THERE TO ANSWER, which is a rung of the ladder rather
+			// than a plain error: the command asked, and there was no keyboard
+			// on the other end. It used to come back as `error: rebuild
+			// cancelled` on exit 1 — telling a script that a DESTRUCTIVE
+			// command had failed to start, when in truth it had refused to
+			// guess. The remedy is named, because a person who hit this from a
+			// pipe wanted the rebuild and needs to know how to ask for it.
+			fmt.Fprintln(aside, "nothing was changed — there was nobody to answer the question.")
+			fmt.Fprintln(aside, "pass --yes to rebuild without being asked.")
+			return exitUnanswered
 		}
 		if reply := strings.ToLower(strings.TrimSpace(answer)); reply != "y" && reply != "yes" {
-			_, err = fmt.Fprintln(output, "cancelled")
+			// SAYING NO IS NOT AN ERROR. Nothing was rebuilt, so there is no
+			// answer to write and nothing went wrong: this is the aside saying
+			// what happened to the question it just asked, and the command
+			// leaves on the rung that means it is done.
+			_, err = fmt.Fprintln(aside, "nothing was changed.")
 			return err
 		}
 	}
@@ -89,6 +112,11 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(output, "rebuilt %d nodes from %d journaled events\n", len(nodes), events)
+	// WHAT WAS REBUILT IS COUNTED IN STEPS. `nodes` is the store's own word for
+	// them and it is machinery in front of a person — the same pieces of work
+	// are `steps` in the `--json` envelope, on the task page and everywhere
+	// else a person is shown a count of them, and one thing may not have two
+	// names depending on which command printed it.
+	_, err = fmt.Fprintf(output, "rebuilt %d steps from %d journaled events\n", len(nodes), events)
 	return err
 }

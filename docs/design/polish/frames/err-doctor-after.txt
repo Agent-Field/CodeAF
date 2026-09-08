@@ -1,0 +1,7 @@
+$ ./bin/aforge doctor  (no key on any rung)
+key              none · export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+store            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/home/.aforge/graph.db · 456 KiB
+resident         this terminal while open
+background timer not installed · last wake not yet
+spend            rail $500.00
+exit=0

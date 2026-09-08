@@ -21,7 +21,7 @@ import (
 // what is under test is the header, and the journal and the lane are not part of
 // it.
 func roomOn(a *app, id uint64, title string) {
-	a.room = &taskRoom{id: id, title: title, unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(id, title)
 }
 
 // kinRows is the kin block as a reader sees it.
@@ -88,18 +88,34 @@ func TestARootsRoomListsEveryPieceAndClaimsNoParent(t *testing.T) {
 	}
 }
 
-// A CHILD HELD BEHIND ANOTHER SAYS "queued" AND NOT THE WHOLE DEPENDENCY. The
+// A CHILD HELD BEHIND ANOTHER SAYS "parked" AND NOT THE WHOLE DEPENDENCY. The
 // prerequisite's name belongs to the page a person would open to act on it; a
 // header row carrying three tasks' business says least about the one it is for.
-func TestASpawnedPieceWaitingOnAnotherSaysOnlyQueued(t *testing.T) {
+//
+// AND THE WORD IS THE COLUMN'S. This row used to read `queued`, which promises
+// that a scheduler will get to the child — while what is actually true is that
+// it is behind the piece of work whose room this is, which is itself waiting on
+// the person reading the page. The column called the same child `parked` the
+// whole time, and two surfaces one keypress apart may not have two words for one
+// fact.
+func TestAHandedOutPieceWaitingOnAnotherSaysParkedInTheColumnsWord(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
 	a.tasks[4].dependsOn = []uint64{5}
 	roomOn(a, 3, "Write the tree")
 
 	row := kinRows(a)[1]
-	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+roomQueuedWord) {
-		t.Fatalf("the held piece does not say queued:\n%s", row)
+	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+railGroupWords[railParked]) {
+		t.Fatalf("the held piece reads %q and should say %q, which is what the column calls it",
+			row, railGroupWords[railParked])
+	}
+	if strings.Contains(row, roomQueuedWord) {
+		t.Fatalf("the held piece still says %q, which promises a scheduler that is not coming:\n%s", roomQueuedWord, row)
+	}
+	// AND THE LINE'S OWN LEAD IS NOT THE MACHINERY'S VERB. `spawned:` is what one
+	// process does to another; this work handed some of itself out.
+	if strings.Contains(strings.ToLower(strings.Join(kinRows(a), "\n")), "spawned") {
+		t.Fatalf("the kin block still says `spawned`:\n%q", kinRows(a))
 	}
 	if strings.Contains(row, "waits:") || strings.Contains(row, "Wire the seam") {
 		t.Fatalf("the piece's own prerequisite is spelled out on the parent's header:\n%s", row)

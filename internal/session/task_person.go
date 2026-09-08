@@ -60,14 +60,24 @@ type taskJudgeVerdict struct {
 // WHAT IS STILL THEIRS, WORD FOR WORD, is the summary under the row and the
 // request the worker is told outranks anything a model wrote. A shaper that could
 // not run leaves the brief exactly as they typed it.
-func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, error) {
+func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, string, error) {
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
-		return 0, "", errors.New("a task needs a brief")
+		return 0, "", "", errors.New("a task needs a brief")
 	}
 	shaped := a.shapeBrief(ctx, brief)
 	title := taskName(shaped.Title, brief)
 	work, acceptance := shaped.Brief, shaped.Acceptance
+	// THE ONE HONEST LINE ABOUT A CUT SHAPER. Path (a) of issue #133: the
+	// person's words are the brief either way — display-only — but where a
+	// shaper was genuinely invoked and came back cut, the surface that draws
+	// the started row carries one dim line saying so. Every silent
+	// pass-through (no shaper configured, an empty request, a whole answer
+	// that failed to parse) leaves this empty.
+	note := ""
+	if shaped.FellBack {
+		note = TaskShapeFallbackNote
+	}
 	graph := a.graph()
 	id := graph.reserve()
 	// THE MODEL IS SETTLED HERE, AT ADMISSION, and frozen with the rest of the
@@ -119,8 +129,9 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	// takes the rung below rather than stopping.
 	stand := a.taskGroundOrStandingIn(spec)
 	spec.ground, spec.mode = stand.dir, stand.mode
+	note = withReport(note, stand.redirect)
 	graph.admit(id, spec)
-	return id, title, nil
+	return id, title, note, nil
 }
 
 // THE PLANNER DOOR A PERSON'S COMMAND USED TO OPEN IS GONE FROM THIS FILE.

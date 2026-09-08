@@ -549,6 +549,43 @@ func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
 		t.Fatalf("the panel did not re-read the pin it just wrote:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
 	}
+	// AND THE TAIL SAYS NOTHING ABOUT THE BASE WHILE THE BASE TAKES THE CHOICE.
+	// The emptiness law: an unremarkable fact adds no words (issue #433).
+	if sheetHas(a, "not taken on this base") {
+		t.Fatalf("the panel warned about a base that takes the choice:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
+}
+
+// AND THE ROW SAYS SO WHEN THE CHOICE IS NOT REACHING THE WIRE.
+//
+// Issue #433. A base that has answered that it does not take a routing
+// preference — a plain endpoint behind AFORGE_BASE_URL, a proxy that strips the
+// field — leaves `pinned: Cloudflare` standing as a claim about a request that
+// did not carry it. The conversation is told once; this row keeps saying it,
+// because it is the row somebody comes back to look at.
+func TestThePinnedRowSaysWhenTheBaseWillNotTakeTheChoice(t *testing.T) {
+	laneLab(t, threeLanes())
+	a, dir := laneSheet(t)
+
+	cursorTo(t, a, config.ModelSettingKey(talkSlot))
+	drive(t, a, key("enter"), key("right"), key("down"), key("down"), key("enter"))
+	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
+		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
+	}
+	// The base answers through the one door the transport files answers with,
+	// which is the seam a shipped build writes through too.
+	const base = "https://proxy.example/v1"
+	lane.WireSheet(base, "", nil, false)
+	t.Cleanup(func() { lane.WireSheet("", "", nil, false) })
+	if !lane.HeardPrefsSilent(base) {
+		t.Fatal("the answer was not filed against the base the sheet is wired to")
+	}
+	drive(t, a, key("down"), key("up"))
+	if !sheetHas(a, "pinned: cloudflare (not taken on this base)") {
+		t.Fatalf("the row still reads as though the pin were on the wire:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
 }
 
 // ENTER ON THE `lane` ROW OPENS THE MACHINES rather than walking four words
@@ -958,5 +995,29 @@ func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
 	}
 	if got != " · coreweave refused" {
 		t.Fatalf("the retraction reads %q, want the fact that is left", got)
+	}
+}
+
+// AND A PIN THE WIRE HAS REFUSED SAYS WHAT HAPPENS NEXT (issue #456). It is the
+// one sentence on this line that is about a person's own row rather than about
+// the answer in front of them, so it is written out whole and it names the
+// machine the way they spelled it when they pinned it.
+//
+// The words are the transport's ([provider.RetiredPinLine]) so that this row
+// and the note the same fact leaves in the conversation cannot come to
+// disagree — the conversation's copy is the one a person really reads, because
+// this row is outranked by the phase clock while the request is in flight.
+func TestARetiredPinSaysWhereTheRequestsGoNow(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.state = stateWorking
+
+	PostLaneNews(LaneNews{
+		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
+		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRetired,
+	})
+	want := " · CoreWeave cannot serve this model; routing on auto for this model until you pin again"
+	if got := a.laneRider(); got != want {
+		t.Fatalf("a retired pin reads %q, want %q", got, want)
 	}
 }

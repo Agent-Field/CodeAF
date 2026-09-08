@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -86,7 +87,39 @@ import (
 // back at the model, and the three-part propose_task contract its own schema
 // fields spell out field by field. It went 23,954 → 20,589; the tool block went
 // 26,678 → 26,579; the prefix is 47,168, which is 832 under.
+// THE CAPTION WAVE PAID FOR ITSELF OUT OF THE STANDING SECTION (2026-09-03).
+// #563 asked the model for one short present-tense line before each tool batch
+// and put 319 bytes of prompt on a prefix that was already 5 under, which is
+// how it landed 314 over. Nothing was raised: 783 bytes came out of `# Things
+// that keep working after this window`, where the recognition warning, the
+// discharge test and the anchoring rule were the SECOND copy of what
+// `stand`'s own description already says at greater length (tools_standing.go's
+// [standDescription], which owns all three by name). A belt without `stand`
+// loses nothing either — that section opens by saying it is about the tool. The
+// prompt went 21,495 → 20,712 and the prefix is 47,531, which is 469 under.
 const fixedPrefixBudget = 48_000
+
+// widestPage is the page at its heaviest: prompts/system.md with every one of
+// its tool-naming facts in the PRESENT case (beltfacts.go).
+//
+// THE BUDGET WEIGHS THE WIDEST PAGE AND NOT ONE SHAPE'S. Those facts are
+// composed per agent now — a worker without `watch` reads one sentence where a
+// conversation reads another — so there is no single string to measure any
+// more, and the honest thing to bound is the most any agent can be handed. It
+// is also the page the person's own conversation reads, which is the one that
+// is paid for on every turn of every day.
+func widestPage() string {
+	widest := func(facts []beltFact, join string) string {
+		lines := make([]string, 0, len(facts))
+		for _, fact := range facts {
+			lines = append(lines, fact.present)
+		}
+		return strings.Join(lines, join)
+	}
+	page := strings.Replace(systemPrompt, beltFactsToken, widest(beltFacts, "\n"), 1)
+	page = strings.Replace(page, handoffFactsToken, widest(handoffFacts, "\n"), 1)
+	return strings.Replace(page, programFactsToken, widest(programFacts, "\n\n"), 1)
+}
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
@@ -101,7 +134,7 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, prompt := len(block), len(systemPrompt)
+	tools, prompt := len(block), len(widestPage())
 	total := tools + prompt
 	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d", total, total/4, prompt, tools)
 

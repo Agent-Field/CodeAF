@@ -259,6 +259,54 @@ func TestCompactionFoldsTheOldestAssistantWorkAndKeepsTheWords(t *testing.T) {
 	}
 }
 
+// A general compaction may run between two tool rounds, but the current turn is
+// not old conversation history. Its exact calls and results are the model's
+// working memory and must be left to the use-aware turn-output pass.
+func TestCompactionKeepsTheRunningTurnsToolBatches(t *testing.T) {
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) {
+		config.ContextWindow = 4000
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+	long := strings.Repeat("working context. ", 700)
+
+	agent.mu.Lock()
+	agent.messages = append(agent.messages,
+		textMessage("user", "old question"),
+		textMessage("assistant", long),
+		textMessage("user", "current work"),
+	)
+	agent.running = true
+	agent.turnFloor = len(agent.messages)
+	agent.messages = append(agent.messages,
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{
+			ID: "edit-now", Function: ai.ToolCallFunction{
+				Name: "edit", Arguments: `{"path":"main.go","old_text":"old","new_text":"new"}`,
+			},
+		}}},
+		ai.Message{Role: "tool", ToolCallID: "edit-now", Content: []ai.ContentPart{{Type: "text", Text: "edited main.go"}}},
+		textMessage("user", long),
+	)
+	folded, _ := agent.foldLocked()
+	messages := append([]ai.Message(nil), agent.messages...)
+	agent.mu.Unlock()
+
+	if folded == 0 {
+		t.Fatal("fixture did not create enough old context for a fold")
+	}
+	callKept, resultKept, noteKept := false, false, false
+	for _, message := range messages {
+		for _, call := range message.ToolCalls {
+			callKept = callKept || call.ID == "edit-now"
+		}
+		resultKept = resultKept || message.ToolCallID == "edit-now"
+		noteKept = noteKept || messageContentText(message) == long
+	}
+	if !callKept || !resultKept || !noteKept {
+		t.Fatalf("running work was folded: call=%v result=%v note=%v roles=%v",
+			callKept, resultKept, noteKept, rolesOf(messages))
+	}
+}
+
 // foldMarkerTarget reads a fold marker the way the model is asked to: the file
 // is the word after `grep or read`, and the lines it folded are said after the
 // path in prose so that the path itself stays a word either tool takes.

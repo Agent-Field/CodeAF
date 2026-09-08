@@ -206,11 +206,31 @@ type taskNode struct {
 	// every row from an older engine or checkpoint, drawn as it always was
 	// (taskending.go).
 	ending session.TaskEnding
-	// began is the moment the node started, derived once from the update's own
-	// Elapsed so the clock is the frame's and not the event's. met is when this
-	// surface first heard of the node at all, which is the honest spawn time for
-	// a node that never reached running.
-	began, met time.Time
+	// started and ended are the record's own instants, carried by the engine on
+	// every node update when it has them. began is the older live fallback,
+	// derived once from the update's own Elapsed so the clock is the frame's and
+	// not the event's. met is when this surface first heard of the node at all,
+	// which is the honest spawn time for a node that never reached running IN THIS
+	// WINDOW — see [taskNode.restored] for the case where it is not.
+	started, ended time.Time
+	began, met     time.Time
+	// restored is a node this window never watched: the first news it had of it
+	// was already settled, which is what a conversation reopened off a checkpoint
+	// replays (session's task_run.go rebuilds the roster from the graph).
+	//
+	// THE RECORDED CLOCK ON ONE OF THESE BELONGS TO THE WORK. A current checkpoint
+	// keeps the instants the work started and landed beside how long it ran, so a
+	// reopened surface reads those facts directly. An older checkpoint may carry
+	// only elapsed_ms; there met is the moment this terminal opened and not the
+	// moment the work began — and met plus elapsed, which is what the page used to
+	// date these rows by, is a landing time in the FUTURE. A window opened at 23:40
+	// dated a twelve-minute node at 23:52 and the tasks place's own date filter then
+	// threw it off the page altogether.
+	//
+	// So a restored node reads the record's start and landing time, and one whose
+	// record genuinely carried neither draws neither ([taskNode.spawnedAt],
+	// [taskNodeEnded]): absence for want of a figure is silence, never a guess.
+	restored bool
 	// elapsed is the node's final age, as the update that ended it reported.
 	elapsed time.Duration
 	// cost is what this node's own agent has spent, as the engine last
@@ -405,12 +425,25 @@ func taskRenamesContext(notice *session.TaskNotice, node *taskNode) bool {
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
 // began running, or — for a node that failed before it ever ran — the moment
-// this surface first met it. It is what the completion card's "spawned 14:02"
-// says, and it is deliberately not the moment the proposal was made: a question
-// asked at 13:58 and answered at 14:02 spawned at 14:02.
+// this surface first met it. It is what the completion card's "14:02" says, and
+// it is deliberately not the moment the proposal was made: a question asked at
+// 13:58 and answered at 14:02 started at 14:02.
+//
+// A NODE THIS WINDOW NEVER WATCHED READS THE RECORD'S START. Only a record that
+// genuinely carries none answers the zero time so the card draws no stamp at
+// all. Meeting a settled node is meeting it AFTER the fact — the terminal's open
+// time is not the work's start, and a card that stamped one with the other told a
+// person the work happened at the moment they sat down ([taskNode.restored]
+// carries the whole reasoning).
 func (n *taskNode) spawnedAt() time.Time {
+	if !n.started.IsZero() {
+		return n.started
+	}
 	if !n.began.IsZero() {
 		return n.began
+	}
+	if n.restored {
+		return time.Time{}
 	}
 	return n.met
 }
@@ -460,16 +493,83 @@ func (n *taskNode) spent() float64 {
 // restated here because the surface reads them and internal/session exports
 // them nowhere.
 //
-// THEY ARE THE ENGINE'S WORDS AND NOT THIS SURFACE'S. Three of them are read out
-// as they stand, because "merged" and "conflicted" mean on screen what they mean
-// in the branch. "aborted" does not, and it is translated where it is drawn (see
-// [taskStoppedKept]).
+// THEY ARE THE ENGINE'S WORDS AND NOT THIS SURFACE'S, and nothing draws one:
+// every reader goes through [mergeScreenWord] below.
 const (
 	mergeWordMerged     = "merged"
 	mergeWordConflicted = "conflicted"
 	mergeWordInPlace    = "inplace"
 	mergeWordAborted    = "aborted"
+	mergeWordKept       = "kept"
 )
+
+// ── WHERE THE WORK LANDED, IN A PERSON'S WORDS ──────────────────────────────
+//
+// mergeScreenWords is THE TABLE: one screen word for every merge word the
+// engine can publish, and the ONLY place this surface translates them.
+//
+// IT EXISTS BECAUSE THREE READERS WERE EACH PRINTING THE ENGINE'S TOKEN. The
+// room's header, the settled card's tail and the roster's row all reached for
+// [taskNode.merge] and drew whatever string was in it, with a case for the two
+// words that needed translating and a fall-through for the rest — so a person
+// whose task ran in a folder with no repository read `inplace` on all three
+// (`✓ run these shell · inplace · 55s`, seen on a real run). That is the
+// machinery's own vocabulary on a person's screen, which this codebase bans,
+// and it was reachable on a perfectly ordinary launch: every task in a
+// directory that is not a repository lands that way.
+//
+// A TABLE AND NOT A SWITCH, so the guarantee is checkable. A switch says what
+// happens to the words somebody thought of; a table can be walked against the
+// engine's own list, and taskwords_test.go's structural test does exactly that
+// — it reads internal/session's const block and fails when a word in it has no
+// line here. That is what makes "the next token cannot leak" a fact rather than
+// a hope.
+//
+// AND NOBODY FALLS BACK TO THE TOKEN. A word this build has never heard of — an
+// engine newer than the binary reading it — draws the honest [roomDoneWord]
+// instead, because "this work is over" is true of every merge outcome there can
+// be and a token nobody can read is true of nothing.
+var mergeScreenWords = map[string]string{
+	// Two of the five already mean on screen what they mean in the branch.
+	mergeWordMerged:     mergeWordMerged,
+	mergeWordConflicted: mergeWordConflicted,
+	// "aborted" reads as a crash and is almost never one: the commonest way a
+	// node wears it is that a person stopped it or it spent the steps it was
+	// given (see [taskStoppedKept], which adds the branch clause where a row has
+	// the cells for it).
+	mergeWordAborted: taskStoppedWord,
+	// "kept" says what the engine did with a ref; the person-facing fact is
+	// that a finished branch is waiting for them to take it.
+	mergeWordKept: taskBranchKept,
+	// "inplace" is not an outcome at all — it is WHERE the work is. There was no
+	// branch, so nothing had to come home, and the fact a person needs is that
+	// their own files were the ones edited.
+	mergeWordInPlace: taskInPlaceLanding,
+}
+
+// taskInPlaceLanding is what a task with no branch to bring home says: the
+// person's own folder, in the words internal/session already uses for that
+// ground (groundladder.go's [session.GroundWord]).
+//
+// IT IS DERIVED AND NOT TYPED OUT, because the settled card, the project's
+// record and this line all name one place, and a phrase spelled twice is two
+// phrasings a person is asked to reconcile. The lead word is this surface's,
+// because the slot here is a clause about the work and the table's line is a
+// noun.
+var taskInPlaceLanding = "in " + session.GroundWord(session.GroundRungHere, "")
+
+// mergeScreenWord is the door onto the table: what to draw for one merge word,
+// and "" when the engine published none. Every reader of [taskNode.merge] goes
+// through here.
+func mergeScreenWord(merge string) string {
+	if merge == "" {
+		return ""
+	}
+	if word, ok := mergeScreenWords[merge]; ok {
+		return word
+	}
+	return roomDoneWord
+}
 
 // The two words a stopped node is drawn with.
 //
@@ -666,6 +766,18 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		mentions = a.refreshTasks()
 	case session.EventTaskPhase:
 		a.taskPhaseMoved(ev)
+	case session.EventJobUpdate:
+		// A CONVERSATION REOPENED REDRAWS THE JOBS IT RAN, and this lane is the
+		// only one that can carry them: the engine replays every restored job
+		// row onto it when it wakes a checkpointed conversation (session's
+		// task_run.go), long after the turn that started them ended. Without
+		// this case the column beside a transcript full of jobs draws nothing,
+		// and because the section is the only door to a job's page there is no
+		// way left to read the log — which is the one thing a person coming
+		// back the next morning actually wants.
+		if ev.Job != nil && a.jobUpdate(*ev.Job) {
+			a.touch()
+		}
 	case session.EventStandingProposal:
 		a.proposeStanding(ev)
 	case session.EventTakeover:
@@ -2362,11 +2474,11 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 // off. That is worth keeping — it is why the roster keeps everything — and it is
 // not worth the top of the column and a group that never folds.
 //
-// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Three
+// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Four
 // outcomes pass it and nothing else does: work nobody could judge, which moves
 // only when a person decides (session's ResolveUnverified); a branch that
-// conflicted; and a run that stopped with its branch kept. The last two are the
-// same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
+// was deliberately kept; a branch that conflicted; and a run that stopped with
+// its branch kept. The last three are the same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
 // nobody but a person is going to bring home — and they are read off the merge
 // word rather than off the state, because a failed node and a done node can each
 // wear either one. A failure with NO kept branch left nothing behind to deliver,
@@ -2420,9 +2532,9 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 // it lives on a branch that never came home, and nothing but a person is going
 // to bring it home.
 //
-// THE BRANCH IS THE WHOLE OF THE CLAIM. "conflicted" and "aborted" are the two
-// merge words session writes when it keeps a branch (task_run.go's comeHome and
-// abortedMerge), and a node wearing one of them WITH a branch name has real work
+// THE BRANCH IS THE WHOLE OF THE CLAIM. "kept", "conflicted" and "aborted" are
+// the merge words session writes when it keeps a branch (task_run.go's comeHome
+// and abortedMerge), and a node wearing one of them WITH a branch name has real work
 // sitting somewhere a person can go and get. A node that ran in the person's own
 // tree, or one that ended before there was ever a branch, wears no name here and
 // has left nothing behind — so it is not undelivered, it is simply over.
@@ -2489,7 +2601,7 @@ func (a *app) taskParentDeciding(node *taskNode) bool {
 
 func taskUndelivered(node *taskNode) bool {
 	switch node.merge {
-	case mergeWordConflicted, mergeWordAborted:
+	case mergeWordConflicted, mergeWordAborted, mergeWordKept:
 		return strings.TrimSpace(node.branch) != ""
 	}
 	return false
@@ -4143,11 +4255,16 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 		return nil, -1, -1, -1
 	}
 	var segs []string
+	// THE BOOKS DECIDE WHETHER A FIGURE IS DRAWN AND THE CLOCK DECIDES WHAT IT
+	// SAYS. The guards ask the exact totals, because the emptiness law is about
+	// whether there is anything to report; the figures themselves come off the
+	// eased readings, so this foot counts up with the status line rather than
+	// jumping beside it (reveal.go).
 	if a.cost > 0 {
-		segs = append(segs, dollars(a.cost))
+		segs = append(segs, dollars(a.spendDrawn()))
 	}
 	if a.tokens > 0 {
-		segs = append(segs, tokenWord(a.tokens)+" tok")
+		segs = append(segs, tokenWord(a.tokensDrawn())+" tok")
 	}
 	members := a.railMembers()
 	for _, g := range railFootOrder {
@@ -4858,6 +4975,10 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		paint, text = a.pal.warn, taskUnverifiedWaits
 	default:
 		switch node.merge {
+		case mergeWordKept:
+			// FINISHED AND WAITING ON ITS BRANCH. The state stays done because the
+			// work is complete; the row names the one action left to the person.
+			text = taskBranchKept + " · " + node.branch
 		case mergeWordConflicted:
 			// THE ONE LOUD ROW ON THE RAIL. A branch that did not merge is work
 			// that is finished and not delivered, and its branch is the only
@@ -4887,15 +5008,15 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// THE MERGE WORD ALWAYS SURVIVES. The price is appended only when the
 			// engine published one and only when the row has the cells for both: a
 			// column too narrow for "merged · $0.42" says "merged", never "$0.42".
-			text = node.merge
+			text = mergeScreenWord(node.merge)
 			// A FAILED NODE WITH NO BRANCH TO KEEP — a non-git workspace ran it in
 			// the person's own tree — still leads with why it stopped, when the
-			// engine said (taskending.go): "inplace" alone is a row that names
-			// where the work is and not what happened to it.
+			// engine said (taskending.go): where the work is is not what happened
+			// to it.
 			if word := endingWord(node.ending); word != "" && node.state == session.TaskFailed {
 				text = word
-				if node.merge != "" {
-					text += railSep + node.merge
+				if landed := mergeScreenWord(node.merge); landed != "" {
+					text += railSep + landed
 				}
 				if halted(node.ending) {
 					paint = a.pal.warn
@@ -5249,6 +5370,12 @@ func (a *app) taskStateMark(node *taskNode) string {
 	if mark, stopped := a.stoppedGlyph(node); stopped {
 		return mark
 	}
+	// A CHECK REFUSAL IS UNFINISHED WORK, NOT A FAULT. The engine still holds
+	// the failed state so nothing depending on it advances; the person sees the
+	// steer mark and the report's concrete next move.
+	if mark, incomplete := a.incompleteGlyph(node); incomplete {
+		return mark
+	}
 	// AND ! IS THE NEXT: a node the wire, a threshold, a loop or another task's
 	// copy halted settles as `failed` on the wire too, and the cross would be
 	// the same finding nobody made (taskending.go).
@@ -5288,6 +5415,9 @@ func (a *app) taskStateMark(node *taskNode) string {
 func (a *app) taskStateInk(node *taskNode) func(string) string {
 	if _, stopped := a.stoppedGlyph(node); stopped {
 		return a.pal.dim
+	}
+	if _, incomplete := a.incompleteGlyph(node); incomplete {
+		return a.pal.warn
 	}
 	if _, halted := a.haltedGlyph(node); halted {
 		return a.pal.warn
@@ -5335,7 +5465,12 @@ func (a *app) railJoin(text, rail string) string {
 		return text
 	}
 	body := a.bodyWidth()
-	switch width := ansi.StringWidth(text); {
+	// MEASURED THE WAY IT WILL BE DRAWN. `ansi.StringWidth` reads a
+	// variation-selector emoji and a flag as two cells; the renderer under us
+	// draws them as one unless the terminal answered mode 2027, so padding
+	// computed the first way left the rail two cells short on exactly those rows
+	// and straight everywhere else (cellwidth.go).
+	switch width := a.ruler.cells(text); {
 	case width < body:
 		text += strings.Repeat(" ", body-width)
 	case width > body:
@@ -5429,7 +5564,18 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if a.tasks == nil {
 			a.tasks = map[uint64]*taskNode{}
 		}
-		node = &taskNode{id: notice.ID, ident: identFor(notice.ID), met: a.now()}
+		// A NODE WHOSE FIRST NEWS IS ALREADY SETTLED WAS NEVER WATCHED HERE. Live
+		// work is announced from every state change it passes through, so a node
+		// this window saw at all was seen queued or running first; one that turns
+		// up done, failed or needing a look is a row replayed out of a checkpoint
+		// by a conversation being reopened. It is marked here, at the only moment
+		// the difference is visible, and [taskNode.restored] says what the mark
+		// costs a clock that is not there.
+		node = &taskNode{
+			id: notice.ID, ident: identFor(notice.ID), met: a.now(),
+			started: notice.StartedAt, ended: notice.EndedAt,
+			restored: notice.State != session.TaskRunning && notice.State != session.TaskQueued,
+		}
 		// THE CONTRACT IS COPIED OFF THE PROPOSAL, ONCE. The updates carry a state
 		// and a title and nothing about what the work was for; the card that lands
 		// minutes from now wants the brief, the acceptance and the sentence the
@@ -5558,6 +5704,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// that stood, which is the whole of what [taskRenamesContext] lets through.
 	if word := strings.TrimSpace(notice.Context); word != "" {
 		node.context = word
+	}
+	// THE RECORD'S CLOCK IS KEPT LIKE EVERY OTHER FACT ABOVE. A later resolution
+	// may move the landing instant, while an update from an older engine that
+	// carries no stamp cannot erase one this surface already received.
+	if !notice.StartedAt.IsZero() {
+		node.started = notice.StartedAt
+	}
+	if !notice.EndedAt.IsZero() {
+		node.ended = notice.EndedAt
 	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.

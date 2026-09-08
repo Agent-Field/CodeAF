@@ -20,6 +20,7 @@ Usage:
   pick.py --fresh 2 --exclude pool.json --out f.json  fresh picks for one run
   pick.py --dry-run                                   list candidates and reasons, no clones
   pick.py --seed 7 ...                                reproducible candidate order
+  pick.py --remeasure owner/repo [owner/repo ...]     re-measure those entries' base in pool.json
 
 Only the standard library is used; `gh`, `git` and `python3 -m venv` are
 shelled out to. Nothing is pushed, opened or commented anywhere: repositories
@@ -39,6 +40,13 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_POOL = os.path.join(HERE, "pool.json")
+
+# Frozen resolutions live under lib/ deliberately: run.sh copies lib/ into
+# <run>/rig for every run, so the constraints a base was measured under travel
+# beside the code that produced the rows, and cell.sh reaches them from its own
+# $HERE without knowing where the checkout is.
+CONSTRAINTS_REL = "lib/constraints"
+CONSTRAINTS_DIR = os.path.join(HERE, "lib", "constraints")
 
 # The closing sentence every harness receives, spelled exactly as bench/run.sh
 # spells it, so a canary prompt and a benchmark prompt are the same instruction.
@@ -78,6 +86,16 @@ CRITERIA = {
     "install_cap_seconds": 240,
     "suite_cap_seconds": 600,
 }
+
+# THE BASE IS MEASURED EXACTLY THE WAY A CELL IS GRADED. The whole-suite run
+# continues past a module that cannot import, so an unmet optional dependency
+# counts as one error and the rest of the suite still runs; without the flag
+# pytest stops at collection in half a second and the base says nothing at all.
+# The fix's own tests are NOT run this way — a collection error there is the
+# finding. lib/judge.py spells the same list in its own `SUITE_FLAGS`, because
+# the two files do not import each other; change one and change the other in
+# the same edit.
+SUITE_FLAGS = ["--continue-on-collection-errors"]
 
 # Files whose change would mean the fix needed packaging or CI work, which a
 # harness given only the source tree cannot be expected to reproduce.
@@ -125,7 +143,17 @@ def run(cmd, cwd=None, timeout=None, env=None):
         return subprocess.run(cmd, cwd=cwd, timeout=timeout, env=env,
                               capture_output=True, text=True, errors="replace")
     except subprocess.TimeoutExpired as exc:
-        return subprocess.CompletedProcess(cmd, 124, exc.stdout or "", exc.stderr or "")
+        # A run cut at its cap hands its output back as bytes even in text
+        # mode, and a caller concatenating it with a string would die on the
+        # one suite that is slow: decode it here, once.
+        return subprocess.CompletedProcess(cmd, 124, _text(exc.stdout), _text(exc.stderr))
+
+
+def _text(chunk):
+    """Whatever a cut run left in a pipe, as text: bytes decode, None is nothing."""
+    if chunk is None:
+        return ""
+    return chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else chunk
 
 
 RATE_LIMITED = re.compile(r"rate limit|secondary|abuse|HTTP 403|HTTP 422|HTTP 429", re.I)
@@ -451,6 +479,81 @@ def not_green(what, counts, code, wb):
     return "%s (pytest exit %d: %s)" % (what, code, wb.last_line)
 
 
+def ladder_from(rung):
+    """The install ladder from `rung` downwards, or the whole of it when no rung
+    is named. A rung that is not on the ladder at all — an entry written when the
+    ladder was spelled differently — walks the whole ladder rather than nothing."""
+    ladder = CRITERIA["install_ladder"]
+    return ladder[ladder.index(rung):] if rung in ladder else ladder
+
+
+# ── the resolution, frozen ───────────────────────────────────────────────────
+#
+# THE ENVIRONMENT A CELL BUILDS IS THE ONE THE BASE WAS MEASURED IN. An install
+# rung is a recipe, not a resolution: `--group dev` is re-resolved by pip at
+# every cell, so the environment a cell gets is whatever PyPI answered that
+# hour. On 2026-09-03 pypa/virtualenv's dev group died with pip's
+# `resolution-too-deep` in every cell of two whole tables, one hour after the
+# same rung resolved here with identical counts. The recipe was right and the
+# resolution was weather. So the venv a base was measured in is frozen to a
+# constraints file, the entry records where it is, and every cell installs
+# under it — with the graph pinned, pip's resolver has nothing left to search.
+
+NAME_IN_TOML = re.compile(r"""^\s*name\s*=\s*["']([^"']+)["']""", re.M)
+NAME_IN_CFG = re.compile(r"^\s*name\s*=\s*(\S.*?)\s*$", re.M)
+
+# WHAT MAY GO IN A CONSTRAINTS FILE IS NARROWER THAN WHAT pip freeze PRINTS.
+# pip refuses a constraint that carries a link, an extra or an editable — the
+# whole install dies on the file rather than on one line — so only the plain
+# `name==version` a PyPI resolution produces is kept. That drops exactly the
+# lines a cell could not honour anyway: an `-e .` or an `@ file://` names a
+# path on the box the measurement ran on, which no cell will ever see.
+PIN_LINE = re.compile(r"^([A-Za-z0-9._-]+)==[^\s@\[;]+$")
+
+
+def normalised(name):
+    """A distribution name compared the way packaging compares one: case does
+    not matter, and any run of `-`, `_` or `.` is the same character. The dot
+    matters as much as the underscore — a project spelled `zope.interface` in
+    its metadata freezes as `zope_interface`, and folding only the underscore
+    would leave the project's own pin in a file that must not carry it."""
+    return re.sub(r"[-_.]+", "-", name.strip().lower())
+
+
+def named_table(text, header):
+    """The body of one `[header]` table, from its header to the next one. A
+    regular expression rather than tomllib, because this file is standard
+    library down to whatever python3 the box has and one `name =` key is all
+    that is read out of it. TOML and setup.cfg spell a section header alike."""
+    start = re.search(r"^\[%s\]\s*$" % re.escape(header), text, re.M)
+    if not start:
+        return ""
+    rest = text[start.end():]
+    nxt = re.search(r"^\[", rest, re.M)
+    return rest[:nxt.start()] if nxt else rest
+
+
+def project_dist_name(tree):
+    """The name the project installs itself under, from `pyproject.toml` or
+    `setup.cfg`, or "" when neither says. It is the one line dropped from the
+    freeze on purpose: a cell installs the project from its own checkout at
+    base, and a version pin on it would either contradict that checkout or
+    drag the released copy down from PyPI over the top of it."""
+    for filename, tables in (("pyproject.toml", ("project", "tool.poetry")),
+                             ("setup.cfg", ("metadata",))):
+        try:
+            with open(os.path.join(tree, filename)) as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for table in tables:
+            body = named_table(text, table)
+            found = NAME_IN_TOML.search(body) or NAME_IN_CFG.search(body)
+            if found:
+                return normalised(found.group(1))
+    return ""
+
+
 class Workbench:
     """One scratch clone with its own venv, at the candidate's base commit."""
 
@@ -460,6 +563,8 @@ class Workbench:
         self.venv = os.path.join(scratch, cand["id"] + "-venv")
         self.install = None
         self.python = None
+        self.constraints = None
+        self.version = None
         self.last_line = ""
 
     def py(self):
@@ -482,11 +587,18 @@ class Workbench:
         env = dict(os.environ, PIP_DISABLE_PIP_VERSION_CHECK="1")
         return run([self.py(), "-m", "pip", "install", "--quiet"] + args, cwd=self.dir, timeout=remaining, env=env)
 
-    def make_venv(self):
+    def make_venv(self, start_rung=None):
         """Install the tests' dependencies by the same ladder bench/run.sh
         climbs: dev extras first, then the bare package, then requirement
         files, then nothing but pytest. The first rung that installs is
-        recorded, because a run must reproduce the same environment."""
+        recorded, because a run must reproduce the same environment.
+
+        A remeasure passes `start_rung` so a frozen entry is rebuilt from the
+        rung it was validated on, and — when that rung has stopped resolving —
+        from the next one DOWN. Never from a richer rung above it: the ladder is
+        ordered by how much of the suite's dependencies a rung installs, so
+        climbing back up would quietly measure a fuller environment than the
+        cells that read this base will ever build."""
         shutil.rmtree(self.venv, ignore_errors=True)
         if run([sys.executable, "-m", "venv", self.venv], timeout=120).returncode != 0:
             return "venv creation failed"
@@ -494,7 +606,7 @@ class Workbench:
         # The system pip predates PEP 735 dependency groups; bench/run.sh
         # upgrades before installing and this must build the same environment.
         self.pip(["--upgrade", "pip"], deadline)
-        for rung in CRITERIA["install_ladder"]:
+        for rung in ladder_from(start_rung):
             if time.time() > deadline:
                 return "install exceeded %ds" % CRITERIA["install_cap_seconds"]
             if self.try_rung(rung, deadline):
@@ -506,7 +618,55 @@ class Workbench:
             if self.pip(["pytest"], deadline).returncode != 0:
                 return "pytest could not be installed"
         self.python = run([self.py(), "-c", "import sys; print('%d.%d' % sys.version_info[:2])"], timeout=30).stdout.strip()
+        # The resolution is frozen as the last act of building the venv, after
+        # pytest, so that a fresh pick and a --remeasure capture it from ONE
+        # code path: whatever a base was measured in is what a cell rebuilds.
+        self.constraints = self.freeze()
+        # The version the project installed as is captured from the same one
+        # code path and for the same reason: this clone has the repository's
+        # tags and a cell's work tree has none, so the version measured here is
+        # the only version a cell can be told to build.
+        self.version = self.measure_version()
         return None
+
+    def measure_version(self):
+        """The version the project installed as in this venv, read with the
+        venv's own python, or None when nothing can be read — a version is a
+        convenience for the cells and never a reason to drop a validated pick,
+        so the failure is one printed line and an absent field."""
+        own = project_dist_name(self.dir)
+        if not own:
+            log("  version not read: the project does not name itself in pyproject.toml or setup.cfg")
+            return None
+        proc = run([self.py(), "-c",
+                    "import importlib.metadata as md, sys; print(md.version(sys.argv[1]))", own],
+                   cwd=self.dir, timeout=60)
+        version = proc.stdout.strip()
+        if proc.returncode != 0 or not version:
+            log("  version could not be read for %s: %s" % (own, last_line_of(proc.stderr)))
+            return None
+        return version
+
+    def freeze(self):
+        """Write this venv's third-party resolution to `lib/constraints/<repo
+        slug>.txt` and return the relative path an entry records, or None when
+        the freeze itself failed — which leaves the entry unpinned rather than
+        pointing it at a file nobody wrote. The slug spells `/` as `__`, the
+        same way cell.sh spells the mirror directory."""
+        proc = run([self.py(), "-m", "pip", "freeze", "--exclude-editable"], cwd=self.dir, timeout=120)
+        if proc.returncode != 0:
+            return None
+        own = project_dist_name(self.dir)
+        pins = []
+        for line in proc.stdout.splitlines():
+            found = PIN_LINE.match(line.strip())
+            if found and not (own and normalised(found.group(1)) == own):
+                pins.append(line.strip())
+        slug = self.cand["repo"].replace("/", "__")
+        os.makedirs(CONSTRAINTS_DIR, exist_ok=True)
+        with open(os.path.join(CONSTRAINTS_DIR, slug + ".txt"), "w") as fh:
+            fh.write("".join(pin + "\n" for pin in pins))
+        return "%s/%s.txt" % (CONSTRAINTS_REL, slug)
 
     def try_rung(self, rung, deadline):
         """One rung. An extra the project does not declare is a failed rung,
@@ -523,13 +683,21 @@ class Workbench:
             proc = self.pip(["-e", rung], deadline)
         return proc.returncode == 0 and "does not provide the extra" not in proc.stderr
 
-    def pytest(self, paths, timeout):
+    def pytest(self, paths, timeout, flags=()):
         """Run pytest with the cache disabled so the tree stays clean between
         checks; returns (counts, exit code). The last line pytest printed is
         kept on the counts, because a non-zero exit with no summary line (a
-        usage error, a broken conftest) is only explicable from that line."""
-        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        proc = run([self.py(), "-m", "pytest", "-q", "-p", "no:cacheprovider"] + paths,
+        usage error, a broken conftest) is only explicable from that line.
+        Only the whole-suite measurement passes `flags`; see SUITE_FLAGS."""
+        # pytest keeps its basetemp under $TMPDIR/pytest-of-<user>, shared by
+        # every pytest on the box; a measurement running beside cells or other
+        # sessions died in that shared directory's cleanup ("Directory not
+        # empty") and counted nothing. THE MEASUREMENT OWNS ITS TEMP DIRECTORY,
+        # exactly as cell.sh gives every cell its own.
+        tmp = self.dir + "-tmp"
+        os.makedirs(tmp, exist_ok=True)
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", TMPDIR=tmp)
+        proc = run([self.py(), "-m", "pytest", "-q", "-p", "no:cacheprovider"] + list(flags) + paths,
                    cwd=self.dir, timeout=timeout, env=env)
         counts = pytest_counts(proc.stdout + proc.stderr)
         self.last_line = last_line_of(proc.stdout + proc.stderr)
@@ -590,10 +758,17 @@ def measure_base_suite(wb, record):
     instead of a number."""
     wb.reset()
     cap = CRITERIA["suite_cap_seconds"]
-    counts, code = wb.pytest([], cap)
+    counts, code = wb.pytest([], cap, SUITE_FLAGS)
     if code == 124:
         record["base_suite"] = None
         record["base_suite_note"] = "full suite exceeded the %ds cap; not measured" % cap
+    elif code != 0 and not any(counts[k] for k in ("passed", "failed", "errors")):
+        # pytest that exits red having counted nothing did not run the suite —
+        # a usage error, a broken conftest, an interrupted collection — and
+        # ZEROS ARE NOT A BASELINE: a judge comparing against them would call
+        # every failure a regression. The last line pytest printed is the note.
+        record["base_suite"] = None
+        record["base_suite_note"] = "full suite did not run (pytest exit %d: %s); not measured" % (code, wb.last_line)
     else:
         record["base_suite"] = {"passed": counts["passed"], "failed": counts["failed"], "errors": counts["errors"]}
 
@@ -628,6 +803,18 @@ def entry_for(cand, wb, record, source="fresh"):
     entry["tier"] = band_of(len(cand["src_files"]), cand["src_lines"])
     entry["install"] = wb.install
     entry["python"] = wb.python
+    # Where the resolution this base was measured under is written down. A
+    # freeze that failed records nothing, and a cell then installs the rung
+    # the old way: unpinned, and saying so in its own record.
+    if wb.constraints:
+        entry["constraints"] = wb.constraints
+    # The version the project was measured at, so a cell can build the same
+    # one: a cell's work tree is fetched without tags and a project versioned
+    # from VCS metadata would otherwise build as a placeholder. Absent when the
+    # version could not be read, and a cell then installs the rung as it always
+    # did — with whatever version the tagless tree produces.
+    if wb.version:
+        entry["version"] = wb.version
     entry.update(record)
     entry["picked_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return entry
@@ -652,11 +839,93 @@ def excluded_repos(paths):
     return repos
 
 
-def write_pool(path, key, entries, seed):
-    doc = {"criteria": CRITERIA, "seed": seed, key: entries}
+def write_json(path, doc):
+    """Write a pool document in the one spelling this file uses, so a pool
+    rewritten in place differs from the one it replaced only where a
+    measurement actually moved."""
     with open(path, "w") as fh:
         json.dump(doc, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
+
+
+def write_pool(path, key, entries, seed):
+    write_json(path, {"criteria": CRITERIA, "seed": seed, key: entries})
+
+
+# ── remeasuring a pool that is already frozen ────────────────────────────────
+#
+# A frozen anchor is still a measurement of a moving world. A dependency rung
+# that resolved in June stops resolving in September, and a base measured before
+# SUITE_FLAGS existed was measured differently from how every cell is now
+# graded. Neither is a reason to repick the issue, so a remeasure rewrites ONLY
+# what was measured — the rung that installed, the counts at base, and the day
+# it was measured. The issue, its base, its merge, its tests and its prompt are
+# left exactly as they were, which is what keeps the anchor an anchor.
+
+def counts_text(suite):
+    """One phrase for a base_suite, for the line a remeasure prints."""
+    if not suite:
+        return "not measured"
+    return "%d passed, %d failed, %d errors" % (suite["passed"], suite["failed"], suite["errors"])
+
+
+def remeasure_entry(entry, scratch, keep):
+    """Rebuild one entry's environment and re-measure its base. A clone or an
+    install that fails leaves the entry untouched and says so: a base nobody
+    could measure today must not overwrite the one somebody measured before."""
+    was_rung, was_suite = entry.get("install"), entry.get("base_suite")
+    wb = Workbench(entry, scratch)
+    record = {}
+    try:
+        reason = wb.clone() or wb.make_venv(entry.get("install"))
+        if reason:
+            print("remeasure %s: %s — entry left unchanged" % (entry["repo"], reason), flush=True)
+            return
+        measure_base_suite(wb, record)
+    finally:
+        if not keep:
+            wb.cleanup()
+    entry["install"] = wb.install
+    # A remeasure re-resolves the environment, so the constraints file it just
+    # wrote is the one this base now belongs to. A freeze that failed leaves
+    # the field standing: the last one somebody captured is still closer to
+    # this measurement than no pin at all.
+    if wb.constraints:
+        entry["constraints"] = wb.constraints
+    # The version follows the same rule as the constraints: this remeasure
+    # rebuilt the environment, so the version it read is the one this base now
+    # belongs to, and a read that failed leaves the standing field alone rather
+    # than blanking a version the base still has.
+    if wb.version:
+        entry["version"] = wb.version
+    entry["base_suite"] = record["base_suite"]
+    # The cap's note is rewritten with the number beside it: a measurement that
+    # no longer hits the cap must not leave the old note standing over a count.
+    if "base_suite_note" in record:
+        entry["base_suite_note"] = record["base_suite_note"]
+    else:
+        entry.pop("base_suite_note", None)
+    entry["measured"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    print("remeasure %s: %s -> %s · %s -> %s" % (
+        entry["repo"], was_rung, wb.install, counts_text(was_suite), counts_text(entry["base_suite"])), flush=True)
+
+
+def remeasure(pool_path, repos, scratch, keep):
+    """Re-measure every entry of the named repositories, in place. A repository
+    that is not in the pool is a typo rather than a no-op, so it stops the run
+    before anything is cloned."""
+    doc = load_json(pool_path)
+    by_repo = {}
+    for entry in doc.get("anchors", []) + doc.get("picks", []):
+        by_repo.setdefault(entry["repo"], []).append(entry)
+    missing = [repo for repo in repos if repo not in by_repo]
+    if missing:
+        sys.exit("not in %s: %s" % (pool_path, ", ".join(missing)))
+    for repo in repos:
+        for entry in by_repo[repo]:
+            remeasure_entry(entry, scratch, keep)
+    write_json(pool_path, doc)
+    log("rewrote %s" % pool_path)
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -665,6 +934,8 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--anchors", type=int, default=0, help="write this many frozen anchors into --pool")
     p.add_argument("--fresh", type=int, default=0, help="produce this many fresh validated picks into --out")
+    p.add_argument("--remeasure", nargs="+", default=[], metavar="REPO",
+                   help="re-measure these repositories' entries in --pool in place: install rung, base counts, date")
     p.add_argument("--pool", default=DEFAULT_POOL, help="the anchors file (default: pool.json beside this script)")
     p.add_argument("--out", default=None, help="where fresh picks are written")
     p.add_argument("--exclude", action="append", default=[], help="pool or pick files whose repositories are skipped")
@@ -739,8 +1010,16 @@ def consider(cand, meta, args, used, tally, admitted):
 
 def main():
     args = parse_args()
-    if not args.dry_run and not (args.anchors or args.fresh):
-        sys.exit("say what you want: --anchors N, --fresh N, or --dry-run")
+    if args.remeasure and (args.anchors or args.fresh):
+        # A remeasure edits entries that already exist and a pick writes new
+        # ones; asking for both in one invocation can only mean one of them was
+        # a mistake, and guessing which would rewrite a frozen pool.
+        sys.exit("--remeasure cannot be combined with --anchors or --fresh")
+    if not args.dry_run and not (args.anchors or args.fresh or args.remeasure):
+        sys.exit("say what you want: --anchors N, --fresh N, --remeasure REPO..., or --dry-run")
+    if args.remeasure:
+        os.makedirs(args.scratch, exist_ok=True)
+        return remeasure(args.pool, args.remeasure, args.scratch, args.keep)
     if args.anchors:
         refuse_overwrite(args.pool)
     if args.fresh and not args.out:

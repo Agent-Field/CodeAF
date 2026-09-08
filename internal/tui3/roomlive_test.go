@@ -144,7 +144,7 @@ func TestAnEndSettlesTheCallItIsActuallyAbout(t *testing.T) {
 
 // A NODE THAT DIED MID-CALL STOPS PULSING. The lane closing is the last word
 // there will ever be about that call, so a row still animating at it is a page
-// drawing work that ended — the same law [app.roomResolveUnfinished] states for
+// drawing work that ended — the same law [feed.resolveUnfinished] states for
 // a call that was still being spelled out. The row keeps its status, because
 // nobody watched what became of the call; what it stops doing is claiming to be
 // alive.
@@ -217,7 +217,7 @@ func TestARoomOpensShowingTheStepTheNodeIsInTheMiddleOf(t *testing.T) {
 	// AND IT IS DRAWN ONCE. The journal's history and the catch-up meet at one
 	// instant and must not overlap: a second copy of the same paragraph is the
 	// failure mode a replay-everything catch-up would have had.
-	if n := strings.Count(page, "Running the tests now."); n != 1 {
+	if n := strings.Count(page, "Running the tests now"); n != 1 {
 		t.Fatalf("the settled reply is drawn %d times:\n%s", n, page)
 	}
 

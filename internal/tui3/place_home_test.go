@@ -48,6 +48,13 @@ func (l *switchLab) open(width, height int) *app {
 	a := l.app(l.mine)
 	a.width, a.height = width, height
 	a.openHome()
+	// AND ONE FRAME IS DRAWN, because the column's height reaches the list
+	// through the draw (place_home.go's [placeHome.body] hands the room to
+	// switcher.go's reading) and the list draws as many rows as the frame can
+	// hold. A terminal does this before a person can look at it; a test that
+	// read `a.home.lines` without it would be reading the list of a window with
+	// no height.
+	homeText(a)
 	return a
 }
 
@@ -118,7 +125,7 @@ func TestHomeAtRestIsOneFlatRankedListWithNoTreeAndNoStrips(t *testing.T) {
 // EIGHT ROWS AND A DOOR OVER THE REST, and the door opens and folds back.
 func TestHomesOneFoldIsADoorBothWays(t *testing.T) {
 	lab := newSwitchLab(t)
-	a := lab.open(120, 40)
+	a := lab.open(120, 19)
 	text := switchFrame(a)
 	if !strings.Contains(text, "more, quiet since") {
 		t.Fatalf("no fold over the quiet tail:\n%s", text)
@@ -407,7 +414,7 @@ func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
 // every other fold on this column keeps ([homeView.fold]).
 func TestTheFoldLeavesTheCursorOnTheLineThatOpenedIt(t *testing.T) {
 	lab := newSwitchLab(t)
-	a := lab.open(120, 40)
+	a := lab.open(120, 19)
 	at := -1
 	for i, line := range a.home.lines {
 		if line.kind == homeSwitchFold {

@@ -1,0 +1,24 @@
+ aforge                                             $123.45 / $500 · thu 2:30am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────
+
+today $123.45 of $500 · /budget sets the limits
+14 days came to $125.47 · 491.2k tokens                 shift+← aug 21 – sep 3 →
+⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣿⣿⣿⣿⣿
+aug 21                                                           today
+sep 3 was the loudest day — $123.45, aforge-v2 tui porting               on home
+
+what ran it · by the model, and the role it was bound to
+· claude-opus-5 ████████████ 9 calls · 128k                              $123.45
+· claude-opus-4.1 █ 18 calls · 89.9k                                       $1.41
+· claude-sonnet-4 █ 23 calls · 92.1k                                       $0.43
+· gpt-5-mini █ 57 calls · 130.6k                                           $0.17
+· claude-3-haiku █ 2 calls · 40.5k                                         $0.01
+· deepseek-v4-flash-0731 █ 6 calls · 5k                             under a cent
+· mistral-nemo █ 7 calls · 5.1k                                     under a cent
+
+what it was for
+
+────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                      here ~/aforge-v2
+ enter opens what spent it · → the limits · tab next place · esc

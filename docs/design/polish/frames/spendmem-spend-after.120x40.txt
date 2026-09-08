@@ -1,0 +1,40 @@
+ aforge                                                                                    $0.14 / $500.00 · thu 1:20am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+today $0.14 of $500 · /budget sets the limits
+14 days came to $2.06 · 377.1k tokens                                          shift+← aug 21 – sep 3 →  shift+↑ coarser
+⣀⣀⣀⣀⣀⣀⣀⣀⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣦⣿⣿⣿⣿⣿⣿⣿⣿⣦⣦⣦⣦⣦⣦⣦⣦⣷⣷⣷⣷⣷⣷⣷⣷⣶⣶⣶⣶⣶⣶⣶⣶⣷⣷⣷⣷⣷⣷⣷⣷⣤⣤⣤⣤⣤⣤⣤⣤⣶⣶⣶⣶⣶⣶⣶⣶⣄⣄⣄⣄⣄⣄⣄⣄⣶⣶⣶⣶⣶⣶⣶⣶⣀⣀⣀⣀⣀⣀⣀⣀⣦⣦⣦⣦⣦⣦⣦⣦
+aug 21                                                                                                     today
+aug 24 was the loudest day — $0.29, rebuild-the-frame-budget-report                              enter opens it in tasks
+
+what ran it · by the model, and the role it was bound to
+· claude-opus-4.1 ████████████ 18 calls · 89.9k                                                                    $1.41
+· claude-sonnet-4 ████ 25 calls · 97k                                                                              $0.46
+· gpt-5-mini ██ 61 calls · 139.6k                                                                                  $0.18
+· claude-3-haiku █ 2 calls · 40.5k                                                                                 $0.01
+· deepseek-v4-flash-0731 █ 6 calls · 5k                                                                     under a cent
+· mistral-nemo █ 7 calls · 5.1k                                                                             under a cent
+
+what it was for
+· Why the Frame Jumps · aforge-v2 · a conversation                                                                 $0.38
+· What the Discount Means · pricing-site · a conversation                                                          $0.34
+· rebuild-the-frame-budget-report · aforge-v2 · a task                                                             $0.32
+▸ 17 more
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc

@@ -37,10 +37,10 @@ and never the size — a long dull part is ordinary work, and a short part that
 has to be RIGHT is careful. A careful part is done with more thinking behind it,
 so grading every part careful says nothing at all.
 
-TWO THINGS DECIDE, AND NEITHER OF THEM IS YOUR CONFIDENCE. There must be enough
-separate items to be worth it — below the floor, one worker doing them in order
-beats paying for a working copy, a check and a wait for each part —
-and somebody has to be free to pick the parts up. If either says no you are told
+WHAT DECIDES IS NOT YOUR CONFIDENCE. Somebody has to be free to pick the parts
+up, and the width has to be real — parts one worker could do in order cost more
+in a working copy, a check and a wait apiece than handing them out saves, and
+some runs put a hard floor under that count. If anything says no you are told
 so in one line and NOTHING HAPPENS: nothing is cancelled, nothing is spent, and
 you carry on with the work in your own hands exactly as you were. A no is not a
 failure and is not worth a paragraph in your report.
@@ -107,6 +107,10 @@ as it lands, and your job at the end is one deliverable made out of all of it �
 not a list of what the parts said back to you. A part that failed is still a
 report: say what is missing, integrate everything that did land, and retry the
 missing part only when that is the right way to finish the whole.
+
+The person's protected branch does not change where a part lands: each part comes
+back into your working tree. Only the whole task's final branch can be kept for the
+person to merge when they are ready.
 
 DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that
 write the same file are not independent, and are refused. A part that needs what

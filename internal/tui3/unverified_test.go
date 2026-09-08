@@ -44,7 +44,11 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		// own word — and the branch named in the half of the stopped sentence
 		// that is true of work which ran to the end.
 		glyphUnverified + " " + plain(a.taskMark(identFor(7))) + " Port the parser",
-		"· " + taskUnverifiedWord + " " + taskSpanWord(400*time.Second),
+		// THE SPAN IS A FACT OF ITS OWN, joined with the row's own separator since
+		// 2026-09-03: `needs your look 6m40s` fused the state word — the reason
+		// this card is asking for a hand at all — into a duration (taskdone.go's
+		// [app.doneTail]).
+		"· " + taskUnverifiedWord + " · " + taskSpanWord(400*time.Second),
 		"2 files",
 		"· " + taskBranchKept + " · task/parser",
 		// THE OUTCOME LINE IS THE ENGINE'S OWN SENTENCE, quoted, exactly as a

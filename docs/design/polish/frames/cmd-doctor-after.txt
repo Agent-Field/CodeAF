@@ -1,0 +1,6 @@
+store            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db · 520 KiB
+resident         wake · pid 3722878
+background timer not installed · last wake 9m ago
+spend            rail $500.00
+standing         1 active charter
+model calls      /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl · 36 KiB

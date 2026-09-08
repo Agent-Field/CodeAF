@@ -22,6 +22,9 @@ func TestSetModelChangesTheWireModel(t *testing.T) {
 	var bodies []map[string]json.RawMessage
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &body); err == nil {

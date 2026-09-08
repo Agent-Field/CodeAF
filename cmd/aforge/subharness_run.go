@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -17,8 +16,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/substore"
 )
 
-// `aforge run subharness <name> --input <file.json|->` is one program, run once,
-// with nobody watching.
+// `aforge run <program> --input <file.json|->` is one program, run once, with
+// nobody watching. It was `aforge run subharness <name>` until `run` stopped
+// meaning two things, and that spelling still works for one release
+// (rename.go).
 //
 // It is the third of the three doors docs/SUBHARNESS-PRD.md §9 names, and it is
 // the one with NO TASK SURFACE AT ALL — no roster row, no room, no intake card,
@@ -33,12 +34,18 @@ import (
 // exit code without parsing a word of prose.
 //
 //	exit 0   it finished, and the output above is the shape it promised
-//	exit 2   it ran and did not finish, and stderr says what ran out
 //	exit 1   it could not be made to happen at all
+//	exit 2   it ran and did not finish, and stderr says what ran out
 //
-// THE THREE ENDINGS ARE THE DELIVERABLE and they are decided in exactly one
-// place, [reportSubharnessRun]. A second reading of "done" anywhere in this file
-// would be a second program disagreeing with this one about what happened.
+// THOSE THREE NUMBERS ARE NOT THIS FILE'S TO CHOOSE. They are three rungs of
+// the one exit ladder every headless verb in this binary leaves on, and the
+// table is in envelope.go — this command says WHY it ended, as a [stopReason],
+// and the ladder says what that costs. It used to write its own numbers here,
+// and `do` wrote different ones for the same two facts.
+//
+// THE ENDINGS ARE STILL DECIDED IN EXACTLY ONE PLACE, [reportSubharnessRun]. A
+// second reading of "done" anywhere in this file would be a second program
+// disagreeing with this one about what happened.
 //
 // The vocabulary law reaches every line either stream carries: work is running,
 // finishing, done, incomplete, or needs your look. A run that did not finish is
@@ -52,21 +59,42 @@ import (
 // above the seam needs a provider key, a workspace and a network; everything
 // below it needs a registry, some bytes, and two writers.
 func runSubharnessCommand(args []string) error {
-	flags := flag.NewFlagSet("run subharness", flag.ContinueOnError)
+	flags := commandFlags("run")
 	input := flags.String("input", "",
 		`the typed input, as a JSON file — "-" reads it from what is piped in`)
-	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
+	workspace := flags.String("dir", "", "the directory to work in, edited in place (default: the current directory)")
+	shorthandFlag(flags, "w", "dir")
 	model := flags.String("model", "", modelFlagHelp)
 	journalPath := flags.String("journal", "",
 		"keep an account of every call this run makes in this file, one JSON object per line")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	asJSON := flags.Bool("json", false, jsonFlagHelp)
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return fmt.Errorf("usage: aforge run subharness <name> --input <file.json|->")
+		return fmt.Errorf("usage: aforge run <program> --input <file.json|->")
 	}
 	name := strings.TrimSpace(rest[0])
+	// THE NAME IS CHECKED BEFORE THE INPUT, because the name is what the person
+	// typed and the input is what they piped.
+	//
+	// `aforge run nosuchharness --input -` used to answer `the input is empty —
+	// there is nothing here for the run to do` and never mention the name at
+	// all, so somebody who had misspelled a program went away and fixed their
+	// input. Two things were wrong and the message named the one they had not
+	// got wrong.
+	//
+	// It costs nothing: the programs a person can name are the bundles in the
+	// two stores below, read off a directory listing with no provider
+	// connection, no toolbox and no workspace. A store that cannot be listed
+	// says nothing here and the run goes on to the full lookup, which is the
+	// authority — this is an earlier reading of the same question, never a
+	// second answer to it.
+	if err := checkSubharnessName(name, *workspace); err != nil {
+		return err
+	}
 	// The input is read before anything is built, because a run with no input is
 	// a program handed nothing and there is no sense in opening a provider
 	// connection to discover it.
@@ -175,6 +203,7 @@ func runSubharnessCommand(args []string) error {
 	return runSubharness(ctx, subharnessRun{
 		registry: registry, name: name, input: material, journal: journal,
 		stdout: os.Stdout, stderr: os.Stderr,
+		asJSON: *asJSON, model: settings.Model, started: time.Now(),
 		env: func(manifest exec.Manifest) exec.Env {
 			return newHeadlessEnv(client, tools, *policy, manifest, journal, os.Stderr)
 		},
@@ -203,6 +232,17 @@ type subharnessRun struct {
 	journal *runJournal
 	stdout  io.Writer
 	stderr  io.Writer
+	// asJSON prints the one result envelope every headless verb returns
+	// (envelope.go) instead of the report and the typed output, and prints it
+	// EVEN WHEN THE RUN FAILED — a machine contract that only holds on success
+	// is not one a script can be written against.
+	asJSON bool
+	// model is the seat this run sat in, and started is when it began. Both are
+	// facts the envelope carries and neither is otherwise this file's business;
+	// a test driving the endings leaves them empty and the envelope then says
+	// nothing about them rather than guessing.
+	model   string
+	started time.Time
 	// record is told how the run went, once, the moment it lands. Nil is a build
 	// that keeps no history — a test driving the endings, a store that could not
 	// be opened — and a run then simply leaves no note, which is not an error and
@@ -229,9 +269,9 @@ func runSubharness(ctx context.Context, run subharnessRun) error {
 			// is right to — a leaf still has work to get done — but somebody who
 			// spelled a name and silently received something else is worse served
 			// than somebody who was told.
-			return noSuchSubharness(run.registry, run.name)
+			return run.sayFailedEnvelope(noSuchSubharness(run.registry, run.name))
 		}
-		return err
+		return run.sayFailedEnvelope(err)
 	}
 	manifest := runner.Manifest()
 	env := exec.Env(exec.UnwiredEnv{})
@@ -266,7 +306,7 @@ func runSubharness(ctx context.Context, run subharnessRun) error {
 			// carried. A note that stayed silent about it would send somebody
 			// back to try the same broken program again tomorrow.
 			run.note(result, err)
-			return err
+			return run.sayFailedEnvelope(err)
 		}
 	}
 	run.note(result, nil)
@@ -313,6 +353,9 @@ func reportSubharnessRun(run subharnessRun, result exec.RunResult) error {
 	sayArtifacts(run.stderr, result.Artifacts)
 	sayLedger(run.stderr, run.journal.Ledger())
 	if result.Finished() {
+		if run.asJSON {
+			return run.sayEnvelope(stopDone, result, "")
+		}
 		if report := strings.TrimSpace(result.Report); report != "" {
 			fmt.Fprintln(run.stdout, report)
 		}
@@ -331,15 +374,121 @@ func reportSubharnessRun(run subharnessRun, result exec.RunResult) error {
 		reason = "it stopped without producing what it promised, and without saying why"
 	}
 	fmt.Fprintln(run.stderr, reason)
+	if run.asJSON {
+		return run.sayEnvelope(stopIncomplete, result, reason)
+	}
 	// What the run DID manage still goes to stdout where there is any of it. A
-	// partial answer is the thing exitPartial exists to describe.
+	// partial answer is the thing the incomplete rung exists to describe.
 	if report := strings.TrimSpace(result.Report); report != "" {
 		fmt.Fprintln(run.stdout, report)
 	}
 	if len(bytes.TrimSpace(result.Output)) > 0 && string(result.Output) != "null" {
 		fmt.Fprintln(run.stdout, string(compactJSON(result.Output)))
 	}
-	return exitPartial
+	return exitFor(stopIncomplete)
+}
+
+// sayEnvelope writes the one machine contract (envelope.go) and returns what
+// the process leaves with. It is this command's ONLY mapping between a saved
+// program's result and what a caller reads, which is what stops `run` from
+// growing a third `--json` shape.
+//
+// `answer` is the run's own account of what it did, because that is what
+// `answer` is on the other two verbs; a program that wrote no account carries
+// its typed output there instead, so `jq -r .answer` is never empty on a run
+// that produced something. The typed output is ALWAYS in `output`, whole and
+// unflattened, which is what a script actually wants from a function.
+func (run subharnessRun) sayEnvelope(stop stopReason, result exec.RunResult, incomplete string) error {
+	files := make([]string, 0, len(result.Artifacts))
+	for _, artifact := range result.Artifacts {
+		files = append(files, artifact.Path)
+	}
+	// WHAT IT COST IS ASKED OF THE ONE THING THAT CAN SAY, in the same order
+	// [subharnessRun.note] asks it: a runner that journals its own calls has
+	// already summed them, and adding this command's journal to that would be
+	// counting one run twice.
+	spend := result.Spend
+	if !spend.Reported() {
+		spend = run.journal.Ledger()
+	}
+	answer := strings.TrimSpace(result.Report)
+	output := bytes.TrimSpace(result.Output)
+	if len(output) > 0 && string(output) != "null" {
+		if answer == "" {
+			answer = string(compactJSON(result.Output))
+		}
+	} else {
+		output = nil
+	}
+	extra := map[string]any{}
+	if len(output) > 0 {
+		extra["output"] = json.RawMessage(compactJSON(result.Output))
+	}
+	if report := strings.TrimSpace(result.Report); report != "" {
+		extra["report"] = report
+	}
+	// The reason it did not finish, in the same words stderr just carried. It is
+	// NOT `error`: `error` means the run never produced an answer at all, and a
+	// run that got part of the way did.
+	if incomplete != "" {
+		extra[envelopeIncomplete] = incomplete
+	}
+	var seconds float64
+	if !run.started.IsZero() {
+		seconds = time.Since(run.started).Seconds()
+	}
+	envelope := buildResultEnvelope(runResult{
+		Stop: stop, Answer: answer, Files: files,
+		SpendUSD: spend.CostUSD, TokensIn: spend.Input, TokensOut: spend.Output,
+		Seconds: seconds, Model: run.model,
+		// A saved program is one call to one function and does not count steps
+		// the way `do` counts nodes or `exec` counts turns. Nothing renders as
+		// nothing everywhere a person reads; this is a machine contract, where
+		// an absent key is indistinguishable from an older binary, so the field
+		// is present and honest at 0.
+		Steps: 0,
+		Extra: extra,
+	})
+	encoded, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(run.stdout, string(encoded))
+	if code := exitFor(stop); code != exitDone {
+		return code
+	}
+	return nil
+}
+
+// sayFailedEnvelope is the same contract for a run that COULD NOT BE MADE TO
+// HAPPEN — a name that is not a program, a bundle that would not load, a
+// generalist that could not be reached. Under --json the object is printed
+// anyway and the sentence goes in `error`, because a caller reading stdout must
+// never have to tell a crashed process apart from a failed run by the emptiness
+// of the stream.
+func (run subharnessRun) sayFailedEnvelope(err error) error {
+	if !run.asJSON || err == nil {
+		return err
+	}
+	var seconds float64
+	if !run.started.IsZero() {
+		seconds = time.Since(run.started).Seconds()
+	}
+	spend := run.journal.Ledger()
+	envelope := buildResultEnvelope(runResult{
+		Stop: stopError, Error: plainWords(err.Error()),
+		SpendUSD: spend.CostUSD, TokensIn: spend.Input, TokensOut: spend.Output,
+		Seconds: seconds, Model: run.model,
+	})
+	encoded, marshalErr := json.MarshalIndent(envelope, "", "  ")
+	if marshalErr != nil {
+		return err
+	}
+	fmt.Fprintln(run.stdout, string(encoded))
+	// The sentence still reaches stderr through main's own door, so a person
+	// watching and a script parsing are told the same thing.
+	fmt.Fprintln(run.stderr, "error:", plainWords(err.Error()))
+	return exitFor(stopError)
 }
 
 // noSuchSubharness is what somebody who mistyped a name is told: the name they
@@ -357,10 +506,69 @@ func noSuchSubharness(registry *exec.Registry, name string) error {
 		}
 		names = append(names, manifest.Name)
 	}
+	return noSuchSubharnessNamed(name, names)
+}
+
+// noSuchSubharessNamed is the SENTENCE, apart from the lookup, so the early
+// reading at the door and the full one inside the run cannot say it two ways.
+func noSuchSubharnessNamed(name string, names []string) error {
 	if len(names) == 0 {
 		return fmt.Errorf("there is no subharness called %q, and this build has none to offer", name)
 	}
 	return fmt.Errorf("there is no subharness called %q — this build has: %s", name, strings.Join(names, ", "))
+}
+
+// checkSubharnessName is the cheap half of the lookup, run at the door.
+//
+// It lists the two bundle stores — the person's own and the project's, which is
+// where every nameable program lives — and refuses a name that is in neither.
+// The generalist is reachable BY NAME and is on no list a person reads
+// (registerSubharnessRunners), so it is admitted here and left off the offer.
+//
+// A STORE THAT CANNOT BE READ IS NOT A REFUSAL. Nothing about this reading may
+// stop a run that would otherwise have worked, so a directory that will not
+// list leaves the whole question to the full lookup inside the run, which is
+// still the authority and still answers with the same sentence.
+//
+// AND IT MUST STAY A READING OF THE SAME TWO STORES THE RUN REGISTERS.
+// [TestTheEarlyNameCheckReadsEveryBundleStoreTheRunRegisters] fails the day a
+// third source is added below — the packed trailer the seam comment there
+// anticipates — because an early reading that knew about fewer stores than the
+// run would refuse a program that exists.
+func checkSubharnessName(name, workspace string) error {
+	if name == "" || name == exec.LinearSubharness {
+		return nil
+	}
+	var names []string
+	stores := []*substore.Store{substore.Home()}
+	// The project store is looked for where the run will WORK, resolved by the
+	// same reading the run itself uses, so `--dir` cannot make the door and the
+	// run disagree about which repository's programs are in reach.
+	dir, err := errandWorkspace(workspace)
+	if err != nil {
+		return nil
+	}
+	if root, ok := v3GitRoot(dir); ok {
+		stores = append(stores, substore.At(substore.ProjectDir(root)))
+	}
+	for _, store := range stores {
+		found, err := store.Names()
+		if err != nil {
+			// An unreadable store is a question this reading cannot answer, so
+			// it does not answer it: the run goes on and the full lookup does.
+			return nil
+		}
+		names = append(names, found...)
+	}
+	// A pair of stores that read cleanly and hold nothing is an ANSWER, not a
+	// silence: this build has no programs to offer, and the name is wrong. Only
+	// a store that could not be read at all is left to the full lookup.
+	for _, known := range names {
+		if known == name {
+			return nil
+		}
+	}
+	return noSuchSubharnessNamed(name, names)
 }
 
 // sayArtifacts lists the files a run left, where it left any. Nothing renders as

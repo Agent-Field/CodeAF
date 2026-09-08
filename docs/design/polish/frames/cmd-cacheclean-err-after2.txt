@@ -1,0 +1,4 @@
+This deletes the shared build cache — 195.3 KB at /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/cache.
+Toolchains and modules are re-downloaded cold on the next task. Conversations,
+settings and credentials live elsewhere and are not touched.
+Type "now" to delete it; anything else keeps it: 

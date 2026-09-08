@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+› port the picker onto the new list widget                                                │
+                                                                                          │ standing
+Done — it walks the same rows and keeps its own cursor, so nothing about the keys         │ ◦ the morning sweep
+changed.                                                                                  │ ? CI on master
+                                                                                          │ ◦ the public API
+› does it still fold the quiet ones?                                                      │ + /standing
+                                                                                          │
+Yes, and the fold line is the list's rather than the picker's now, so the two cannot      │
+drift.                                                                                    │
+  · 3 standing orders here — /standing                                                    │
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-                │
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af- │
+  dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-                    │
+  v2/be29efe670838d6f/transcript.jsonl                                                    │
+  · esc interrupts · ctrl+c twice quits                                                   │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.44 · 21k tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                                                                  ⠿ high
+ ›
+Porting the Picker · deepseek-v4-flash-latest           crew balanced · ◦ keeping an eye on 3 · $0.44 · 5.4k/1.3M · idle

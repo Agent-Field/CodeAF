@@ -125,9 +125,11 @@ func (a *Agent) subharnessTools() []bare.Tool {
 // is the door's own statement that somebody is on the other end of it, and it is
 // exactly how the design card is switched off over a connection (cmd/aforge's
 // engine.go).
-func (a *Agent) canProposeSubharness() bool {
-	return a.config.AskConsent && a.config.HarnessCards && len(a.SubharnessList()) > 0
-}
+// It is [Config.mayProposeSubharness] asked of a live agent — the same three
+// questions of the same three fields, the registry counted by the same reader —
+// because the page's own sentences about saved programs are composed from it
+// before this agent exists (beltfacts.go).
+func (a *Agent) canProposeSubharness() bool { return a.config.mayProposeSubharness() }
 
 // proposeSubharnessTool raises one card and waits for its answer.
 func (a *Agent) proposeSubharnessTool() bare.Tool {

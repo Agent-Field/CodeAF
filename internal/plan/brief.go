@@ -192,6 +192,52 @@ func decodeBrief(text string) (string, Done) {
 	return instruction, NormalizeDone(reply.Done)
 }
 
+// synthesisBrief is the gathering node's instruction, and the harness writes it
+// rather than buying one. A synthesis has no subject of its own — it is always
+// the same act performed on whatever arrived — so there is nothing for a model
+// to learn about it that these sentences do not already say.
+const synthesisBrief = "Several separate pieces of work have been completed and their results are above. " +
+	"Bring them together into the one finished outcome the goal asked for. " +
+	"Where they disagree, resolve it explicitly rather than averaging it away. " +
+	"Where they have been done separately and now need to work as a whole, make that so. " +
+	"Do not redo work that is already finished — everything you need is above or in the " +
+	"files it names. If the outcome is a document, write it out; if it is something that " +
+	"has to work, check that it does."
+
+// ComposedBrief is a node's instruction written from what the plan already knows
+// about it, for the nodes no model wrote one for.
+//
+// Two roads reach this and they have to arrive at the same words. A graph
+// planned with briefs turned off is dispatched carrying none, and the scheduler
+// composes one at the moment it hands the job over; a brief call that would not
+// answer twice is composed for here, while the plan is still being built. A
+// second composition written for the second road would be a second answer to
+// "what does a node say when nobody wrote its instruction", which is precisely
+// the drift the one-source-of-truth law is about.
+//
+// The goal is deliberately absent from it. Every leaf is already handed the goal
+// beside its brief — "This work is part of a larger goal" — and a composition
+// that repeated it would put the same paragraph into one prompt twice.
+func ComposedBrief(node Node) string {
+	if node.Kind == KindSynthesis {
+		return synthesisBrief
+	}
+	var composed strings.Builder
+	if title := trim(node.Title); title != "" {
+		composed.WriteString(title + "\n\n")
+	}
+	if summary := trim(node.Summary); summary != "" {
+		composed.WriteString(summary + "\n")
+	}
+	// The sources are the one fact the summary reliably leaves out, and they are
+	// the difference between an agent that opens the right file and one that
+	// goes looking for it.
+	if len(node.Sources) > 0 {
+		fmt.Fprintf(&composed, "\nThis work is expected to touch: %s\n", strings.Join(node.Sources, "; "))
+	}
+	return trim(composed.String())
+}
+
 // BriefJournal writes one node's rendered brief as a first-class, queryable
 // event, when the build has a durable home to journal to. The plan package
 // knows the plan node id and the rendered brief; it does not know the store id
@@ -200,6 +246,18 @@ func decodeBrief(text string) (string, Done) {
 // id and the caller forms the store id. It is best-effort for the same reason
 // RecordPlanGraph is: losing it costs an audit and never the plan.
 type BriefJournal func(graph *Graph, nodeID int, brief store.NodeBrief)
+
+// briefResult is one node's finished brief and the account of how it was
+// arrived at. fault is empty on the ordinary node, whose instruction a model
+// wrote; on a node whose call would not answer it carries the reason, the
+// instruction beside it is composed, and the reason is journaled rather than
+// returned. The two travel together because a brief written and a brief
+// composed are the same object to every reader downstream and different objects
+// to anyone reading the run back afterwards.
+type briefResult struct {
+	briefReply
+	fault string
+}
 
 // briefWriter writes leaf instructions in the background.
 //
@@ -234,7 +292,7 @@ type briefWriter struct {
 
 	group     sync.WaitGroup
 	mutex     sync.Mutex
-	results   map[int]briefReply
+	results   map[int]briefResult
 	usage     Usage
 	errs      []error
 	launched  int
@@ -249,7 +307,7 @@ type briefWriter struct {
 }
 
 func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress, journal BriefJournal) *briefWriter {
-	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, journal: journal, results: map[int]briefReply{}}
+	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, journal: journal, results: map[int]briefResult{}}
 }
 
 // launch starts one node's brief. Everything it needs is passed by value —
@@ -278,26 +336,44 @@ func (w *briefWriter) launch(shared string, node Node, inputs []string, delivera
 			}
 		}()
 		brief, done, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
+		// One entry per call actually made, because Usage.Add counts a call
+		// whether or not the provider returned any numbers with it.
+		spent := []*ai.Usage{usage}
+		if err != nil {
+			// One free retry, on the same bytes. This is the discipline the
+			// ground and fan-out passes already keep and not a new one: the ask
+			// was right and the reply was not an answer, so what is worth
+			// asking again is the same question rather than a different one.
+			var retry *ai.Usage
+			brief, done, retry, err = writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
+			spent = append(spent, retry)
+		}
+		written := briefResult{briefReply: briefReply{Instruction: brief, Done: done}}
+		if err != nil {
+			// THE LAW: STRUCTURE THE PLANNER HAS ALREADY FOUND IS NEVER
+			// DISCARDED FOR A DOWNSTREAM FAULT. A brief is one leaf's
+			// instruction; it is not the graph's right to exist. A six-node
+			// plan was thrown away for one node's reply that stopped being
+			// language, and the whole job then ran as a single oversized
+			// worker. So the node keeps an instruction composed from what the
+			// plan already knows about it, and the reason the call would not
+			// answer is journaled against that node instead of returned.
+			written = briefResult{briefReply: briefReply{Instruction: ComposedBrief(node)}, fault: err.Error()}
+		}
 		w.mutex.Lock()
 		defer w.mutex.Unlock()
-		w.usage.Add(usage)
-		if err != nil {
-			w.errs = append(w.errs, err)
-		} else {
-			w.results[node.ID] = briefReply{Instruction: brief, Done: done}
+		for _, usage := range spent {
+			w.usage.Add(usage)
 		}
+		w.results[node.ID] = written
 		w.completed++
+		// The node is briefed either way, so the row names it either way. A gap
+		// here used to be the only sign a call had failed, which read on the
+		// stream as a node that had simply not finished yet.
+		latest := nodeProgressTitle(node)
 		if w.reporting && w.progress != nil {
-			latest := ""
-			if err == nil {
-				latest = nodeProgressTitle(node)
-			}
 			emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total), latest)
 		} else {
-			latest := ""
-			if err == nil {
-				latest = nodeProgressTitle(node)
-			}
 			w.completions = append(w.completions, latest)
 		}
 	}()
@@ -339,9 +415,13 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 			// the store id; this is a no-op when no journal was wired in.
 			if w.journal != nil {
 				w.journal(graph, id, store.NodeBrief{
-					Node:       id,
-					Brief:      written.Instruction,
-					Criterion:  written.Done.Sentence(),
+					Node:      id,
+					Brief:     written.Instruction,
+					Criterion: written.Done.Sentence(),
+					// Why no model wrote this one, on the nodes where none did.
+					// It is the only place an autopsy can tell a composed brief
+					// from a written one after the fact.
+					Fault:      written.fault,
 					Subharness: node.Subharness,
 				})
 			}
@@ -451,6 +531,10 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 		userMessage(target.String()),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanBrief)
+	// WHICH NODE THIS CALL BELONGS TO, for the reason the contract pass names
+	// its own: the briefs of a stage are written concurrently and are otherwise
+	// indistinguishable in the log.
+	ctx = provider.WithCallNode(ctx, callNodeKey(node.ID))
 	response, err := client.CompleteWithMessages(ctx, messages, options...)
 	if err != nil {
 		provider.Report(ctx, provider.VerdictProviderFailure)

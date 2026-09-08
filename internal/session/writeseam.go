@@ -331,8 +331,9 @@ func writesAimedAt(cwd, program string, rest []string) []string {
 // counter. The handover can only be declined on TWO MINDS agreeing that nothing
 // remains, and the second of them is this reading; without it a turn that made
 // its two edits and finished would be converted into a task nobody needed.
-func (a *Agent) checkpointWriting(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict) bool {
+func (a *Agent) checkpointWriting(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, taken *Decision) bool {
 	read := a.readMark(ctx)
 	a.journalMarkRead(read, 0, rounds, checkpointDecisionWrote)
-	return a.handOverRunningTurn(ctx, hub, turn, started, model, writeSeamNote, verdict, read).moved
+	return a.handOverRunningTurn(ctx, hub, turn, started, model,
+		writeSeamNote, checkpointSeamWrite, rounds, verdict, read, taken).moved
 }

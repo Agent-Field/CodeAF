@@ -15,6 +15,8 @@ package session
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // principalEar is the half of a principal that is TOLD things rather than
@@ -172,13 +174,18 @@ func dollarsWord(usd float64) string {
 // what THIS session finished, and the graph in front of us is the only thing
 // that answers it without filtering somebody else's rows.
 //
-// A node still running or still queued is not a landing and is left out — but
-// it does make [Remains.Landed] false, because a session with work in flight
-// has not finished anything and must never be told it has.
-func (a *Agent) landings() ([]Landing, bool) {
+// A NODE STILL RUNNING OR STILL QUEUED IS NOT A LANDING, AND IT IS NOT SILENCE
+// EITHER. It is left out of the landings — nothing came home — and it is answered
+// separately ([TaskGraph.flightLocked]), because a session with work in flight has
+// not finished the ask and must never be told it has. Before that third answer
+// existed, a graph holding one finished node and one still working read exactly
+// like a graph holding one finished node, so a stopped turn could be called done
+// over the top of work that was still moving, and a settled failure beside it
+// could look like a standstill while the run was in fact getting somewhere (#468).
+func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 	graph := a.tasker()
 	if graph == nil {
-		return nil, false
+		return nil, false, taskFlight{}
 	}
 	// THE NODES ARE TAKEN UNDER THE GRAPH LOCK AND READ WITHOUT IT. Every
 	// accessor below takes that same lock for itself (task_run.go), so holding
@@ -190,6 +197,10 @@ func (a *Agent) landings() ([]Landing, bool) {
 			nodes = append(nodes, node)
 		}
 	}
+	// THE FLIGHT IS READ UNDER THE SAME LOCK THAT TOOK THE NODES, so what is
+	// moving and what is stuck is one reading of one graph rather than two
+	// readings of a graph that changed in between.
+	flight := graph.flightLocked()
 	graph.mu.Unlock()
 
 	var out []Landing
@@ -200,12 +211,20 @@ func (a *Agent) landings() ([]Landing, bool) {
 			continue
 		}
 		settled++
-		report, _, _, _ := node.leavings()
+		report, changed, _, merge := node.leavings()
 		out = append(out, Landing{
 			ID:     node.id,
 			Title:  node.title(),
 			State:  state,
 			Report: report,
+			// WHY IT ENDED AND WHAT IT TOUCHED, so a reader of what is left can
+			// tell a gap in the ask from a sibling that died on the wire, and
+			// from one whose work somebody else has since brought home
+			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
+			Ending:  node.endingNow(),
+			Files:   changed,
+			Merged:  merge == mergeMerged,
+			Checked: node.checkAnswer() == provider.VerdictVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -215,7 +234,134 @@ func (a *Agent) landings() ([]Landing, bool) {
 			Signature: landingSignature(state, report),
 		})
 	}
-	return out, settled > 0
+	return out, settled > 0, flight
+}
+
+// taskFlight is the work that has NOT come home, sorted into the only two things
+// it can be. They are kept apart because a principal answers them differently:
+// moving work is a reason to wait, and stuck work is part of what is left.
+type taskFlight struct {
+	// moving is what is actually in flight, by title.
+	moving []string
+	// stuck is what will not start, said whole: what it waits on, and what
+	// became of that.
+	stuck []string
+}
+
+// flightLocked sorts the unsettled work, and it is the difference between an
+// unattended run that stops and one that never does.
+//
+// RUNNING MEANS IN FLIGHT. A node the runner has started is moving, and so is one
+// queued behind work that is itself moving, or waiting on nothing but a slot: each
+// of those has a turn coming. A node queued behind work that SETTLED SHORT has no
+// turn coming at all — an unverified prerequisite waits on a person resolving it
+// (task_run.go's [TaskGraph.readinessLocked]), and in an unattended run there is
+// no person. Counted as moving, it made every end-of-turn reading look like a
+// session that was waiting, so the floor under carrying on was dropped on every
+// turn and the run could not stop (#468).
+//
+// AND STUCK WORK IS PART OF WHAT IS LEFT rather than silence, so it is said the
+// way a person would say it: what it is waiting on, and what became of that.
+//
+// IT IS READ OFF `state` DIRECTLY because it runs under the graph's own lock,
+// which is the same reading [TaskGraph.readinessLocked] and
+// [TaskGraph.doomedDependencies] take one file over.
+func (g *TaskGraph) flightLocked() taskFlight {
+	var flight taskFlight
+	known := map[uint64]bool{}
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node == nil || node.state.settled() {
+			continue
+		}
+		if g.movingLocked(id, known) {
+			flight.moving = append(flight.moving, workWord(node.spec.title, node.id))
+			continue
+		}
+		flight.stuck = append(flight.stuck, g.stuckWordLocked(node, known))
+	}
+	return flight
+}
+
+// movingLocked answers [TaskGraph.flightLocked]'s question of ONE node, and it
+// answers it about the chain rather than about the node: work queued behind work
+// that is moving is moving, and work queued behind work that is not is not.
+//
+// THE ANSWERS ARE REMEMBERED AS THEY ARE FOUND, which is both the saving on a
+// wide graph and the guard on a bent one: an id already being asked about is
+// written down as NOT moving before the walk descends, so a cycle — which can
+// never start anything — answers stuck instead of recurring forever.
+func (g *TaskGraph) movingLocked(id uint64, known map[uint64]bool) bool {
+	if answer, asked := known[id]; asked {
+		return answer
+	}
+	known[id] = false
+	node := g.nodes[id]
+	if node == nil {
+		return false
+	}
+	if node.state == TaskRunning {
+		known[id] = true
+		return true
+	}
+	if node.state != TaskQueued {
+		return false
+	}
+	for _, need := range node.dependsOn {
+		if prerequisite := g.nodes[need]; prerequisite != nil && prerequisite.state == TaskDone {
+			continue
+		}
+		if !g.movingLocked(need, known) {
+			return false
+		}
+	}
+	known[id] = true
+	return true
+}
+
+// stuckWordLocked says why one unit of work will not start, by naming the first
+// thing it waits on that is not coming. The first is enough: somebody reading it
+// wants a thread to pull, and a sentence listing four dead prerequisites is one
+// nobody finishes.
+func (g *TaskGraph) stuckWordLocked(node *TaskNode, known map[uint64]bool) string {
+	name := workWord(node.spec.title, node.id)
+	for _, need := range node.dependsOn {
+		prerequisite := g.nodes[need]
+		if prerequisite == nil {
+			return fmt.Sprintf("%s is waiting on work that is not in this session", name)
+		}
+		if prerequisite.state == TaskDone || g.movingLocked(need, known) {
+			continue
+		}
+		return fmt.Sprintf("%s is waiting on %s, which %s",
+			name, workWord(prerequisite.spec.title, prerequisite.id), waitWord(prerequisite.state))
+	}
+	// A NODE THAT WAITS ON NOTHING AND IS STILL NOT MOVING should not exist —
+	// [TaskGraph.movingLocked] answers moving for exactly that shape — and if one
+	// ever does, this says what is true and invents no reason for it.
+	return name + " has not started"
+}
+
+// waitWord says what became of the thing a stuck unit of work is waiting on, in
+// the vocabulary a person reads: work that did not finish, and work that nobody
+// could judge and that is therefore waiting on THEM.
+func waitWord(state TaskState) string {
+	switch state {
+	case TaskFailed:
+		return "did not finish"
+	case TaskUnverified:
+		return "needs your look"
+	}
+	return "has not started either"
+}
+
+// workWord names one unit of work as a person reads it: its own title, and the
+// id when it has not been given one yet.
+func workWord(title string, id uint64) string {
+	if title = strings.TrimSpace(title); title != "" {
+		return title
+	}
+	return fmt.Sprintf("unit %d", id)
 }
 
 // landingSignature is what makes two failures the same failure, until something
@@ -242,15 +388,49 @@ func landingSignature(state TaskState, report string) string {
 // once, at the one moment their answer can change anything: after a principal
 // has said the ask is met (principal_audit.go). Everything here is a read of
 // what the session already holds.
-func (a *Agent) remainsFor(said, reader string) Remains {
-	landings, landed := a.landings()
-	return Remains{
+func (a *Agent) remainsFor(said string, reader readerLine) Remains {
+	landings, landed, flight := a.landings()
+	remains := Remains{
 		Said:       said,
-		Reader:     reader,
+		Reader:     reader.said,
 		Acceptance: a.who().Acceptance(),
 		Landings:   landings,
 		Landed:     landed,
+		Running:    flight.moving,
+		Blocked:    flight.stuck,
 	}
+	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
+	// job inline never settles a task, so [Remains.Landed] — which is a reading of
+	// the graph and nothing else — stays false over a tree it has just written, and
+	// "nothing has been finished yet" was the first line of both briefs the
+	// standstill then compared (#513). What it made is the session's own ledger,
+	// sorted into the deliverable exactly as the tidy sorts it (principal_audit.go's
+	// [reconcile]), and it counts only WITH the reader agreeing — a session's own
+	// files are not a second opinion about themselves
+	// ([Remains.finishedSomething]).
+	//
+	// IT IS FILES THIS SESSION CREATED OR CHANGED under the tree. The two are
+	// kept in separate ledgers because only the created ones may ever be swept
+	// ([Agent.rememberCreated]); the changed ones are read and never acted on
+	// ([Agent.rememberChanged]). A fix that is one edit to a file the project
+	// already had is the commonest shape of finished work there is, and a Made
+	// that counted only new files read it as nothing (#513).
+	//
+	// AND CHANGED MEANS ITS CONTENT IS STILL DIFFERENT, not that its path was
+	// once written. A stash, a revert or an edit that puts a file back the way it
+	// was leaves the path in the ledger and nothing in the tree, so each modified
+	// path is settled against the digest taken before the write
+	// ([Agent.changedInDeliverable]).
+	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0 || a.changedInDeliverable()
+	remains.ReaderSaysDone = reader.nothingLeft
+	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
+	// decision — rather than beside the checks themselves: the checks are run
+	// once, after a principal has said the ask is met, and a baseline attached at
+	// that moment would be a baseline of a tree this session has already changed
+	// ([Agent.openBaseline]). The reading runs in the background, so it may not
+	// have landed; a reading with no baseline counts nothing as this run's own.
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	return remains
 }
 
 // ── ADDRESSING A LANDING ────────────────────────────────────────────────────
@@ -323,5 +503,9 @@ func landingFromNotice(notice TaskNotice) Landing {
 		State:     notice.State,
 		Report:    notice.Report,
 		Signature: landingSignature(notice.State, notice.Report),
+		Ending:    notice.Ending,
+		Files:     notice.Changed,
+		Merged:    notice.Merge == mergeMerged,
+		Checked:   notice.Checked == provider.VerdictVerifiedSuccess,
 	}
 }

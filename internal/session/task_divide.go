@@ -153,16 +153,32 @@ func init() {
 	roles.Register(roles.RoleCareful, roles.TierHigh)
 }
 
-// divideDescription is what the worker reads. THE FLOOR AND THE FAN CAP ARE
-// INTERPOLATED for taskSchemaJSON's stated reason: a number a model reasons
-// with must be the number the code enforces.
+// divideDescription is what the worker reads. THE FAN CAP IS INTERPOLATED for
+// taskSchemaJSON's stated reason: a number a model reasons with must be the
+// number the code enforces.
+//
+// AND THE FLOOR SENTENCE IS CONDITIONAL, BECAUSE THE FLOOR IS. This string used
+// to promise "refused unless your evidence names at least 6 separate items",
+// which was true of every binary until 2026-09-02 and is now true only of one
+// somebody pinned (splitgate's modes.go). A prompt that promises a refusal
+// nobody will make is the fault CLAUDE.md names about system.md — the model
+// reasons from it, and here it would reason its way out of asking for a
+// division that would have been granted. So the clause is spoken where it will
+// be enforced and left out where it will not, and the number is read from the
+// same package that would do the refusing.
 //
 // IT IS WRITTEN FOR DENSITY, for the reason [taskDescription] states about
 // itself: this string is marshalled into the tool block in front of every
 // request of every turn a divided worker takes, so it says each rule once and
 // leaves the teaching to the field it governs — the evidence field says what
 // evidence is, and this preamble no longer says it a second time.
-var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own taken as this work stands right now — everything you have already written is on their disk, and nothing you write afterwards reaches them — and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them PRODUCE, which is refused outright (material they all read is shared and is fine) — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+func divideDescription() string {
+	width := " — and the work has to be genuinely wide: parts one worker could do in order cost more in a working copy, a check and a wait apiece than handing them out saves."
+	if splitgate.Armed() {
+		width = " — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part."
+	}
+	return "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own taken as this work stands right now — everything you have already written is on their disk, and nothing you write afterwards reaches them — and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them PRODUCE, which is refused outright (material they all read is shared and is fine)" + width + " Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+}
 
 // divideSchemaJSON is the wire schema. It is deliberately the SAME vocabulary
 // the resident's `request_split` uses — parts, each with a title, a summary and
@@ -273,7 +289,7 @@ func (a *Agent) divideTools() []bare.Tool {
 	}
 	return []bare.Tool{{
 		Name:        "divide_work",
-		Description: divideDescription,
+		Description: divideDescription(),
 		Schema:      json.RawMessage(divideSchemaJSON),
 		Execute:     a.divideWork,
 	}}
@@ -505,6 +521,16 @@ func (a *Agent) armDivision(spec taskSpec) string {
 // The pieces are joined with newlines because that is how [splitgate.WorthIt]
 // reads a plan: a number and its noun must stand together, and gluing a title
 // onto the front of a brief invents adjacencies neither of them wrote.
+//
+// AND THIS COUNT IS ARMING, NOT THE GATE, which since 2026-09-02 is the whole
+// difference between them. The gate now keeps every division unless somebody
+// pinned AFORGE_SPLITGATE on (splitgate's modes.go, and the experiment behind
+// it in docs/design/plan-gate-doe/REPORT.md), so on an unpinned binary this is
+// the only place the six-item floor still decides anything: it asks whether
+// work looks wide enough to be handed the verb at all, not whether a division
+// somebody already drew is allowed to stand. Reading the pin here would make
+// every task divisible by default, which is a different change and not the one
+// that was measured.
 func enumeratesWidth(pieces ...string) bool {
 	return splitgate.WorthIt(strings.Join(pieces, "\n"))
 }
@@ -570,6 +596,27 @@ const (
 	// work as one job from a road that would have handed it out happily if the
 	// briefs had drawn the line anywhere.
 	divisionRefusedScope = "refused:scope"
+	// divisionRefusedShared is one check standing in the done-condition of two
+	// or more parts (task_divide_scope.go). It is its own word beside `scope`
+	// because it is a different finding about a division that is otherwise
+	// right: the boundaries may be perfect and the parts may own nothing in
+	// common, and what is wrong is that they were all told to make the same
+	// family-wide run. A bench counting it beside `scope` could not tell a
+	// division that would have lost work from one that would merely have bought
+	// one suite four times.
+	divisionRefusedShared = "refused:shared-check"
+	// divisionRepairedShared is the SECOND firing of that rule on one node: the
+	// worker was told, came back with the same shape, and the harness lifted the
+	// shared command onto the parent rather than refusing again
+	// (task_divide_scope.go). The parts were admitted, so `Admitted` counts them
+	// and `Shared` names what moved.
+	//
+	// IT IS A THIRD WORD AND NOT A FLAG ON THE SECOND, because an autopsy has to
+	// tell "the worker was told and fixed it" from "the worker was told twice and
+	// the harness moved it". Those are two different facts about a model, and a
+	// record that counted them together would be adding this road's successes to
+	// its rescues.
+	divisionRepairedShared = "repaired:shared-check"
 	// divisionRefusedFreeze is a family whose own tree would not take the commit
 	// its parts have to start from (task_divide_wip.go). It is its own word
 	// because it is the only refusal here that is about THE MACHINE rather than
@@ -627,6 +674,12 @@ func (a *Agent) divideWork(ctx context.Context, args json.RawMessage) (string, b
 func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source string) (string, string, bool) {
 	parent := a.config.taskID
 	line := journalDivision{TaskID: parent, Source: source}
+	// repaired is what the harness lifted off the parts on the way through, and
+	// it is declared up here because the rule that fills it is asked at two
+	// separate moments and the word it writes on the record goes on at the end
+	// (task_divide_scope.go). It is empty on every division that needed no
+	// repair, which is every division a worker got right either time.
+	var repaired []string
 	defer func() { a.file.appendDivision(line) }()
 
 	parsed, problem := parseDivideArguments(args)
@@ -674,7 +727,19 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// decided, and handing back the adjudication it never used
 	// ([divisionUnadjudicated]).
 	node := graph.node(parent)
-	thin := splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence)
+	// The gate is asked once, through the one function both products ask
+	// (splitgate's modes.go), and with no leaves: the parts this division wants
+	// do not exist yet, so nothing has sized them, and the mode that would
+	// rather read the plan's sizing than the brief is told honestly that there
+	// is no plan to read.
+	//
+	// AND ON AN UNPINNED BINARY IT IS NEVER THIN. The gate is off unless
+	// somebody pinned AFORGE_SPLITGATE, so this evidence test — and the tiebreak
+	// and the refusal that hang off it below — are reachable only where a run
+	// asked for a floor. Everything they say is still true when it is asked for,
+	// which is why the machinery stays rather than being deleted with the
+	// default.
+	thin := !splitgate.Judge(parsed.Evidence, nil).Keep
 	if thin && !node.armedByJudgement() {
 		line.Decision = divisionRefusedFloor
 		return divisionTooNarrow(parsed.Evidence), "", false
@@ -719,6 +784,30 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		line.Decision = divisionRefusedScope
 		return said, "", false
 	}
+
+	// AND THE SAME MOMENT ASKS THE SECOND ADMISSION RULE: NO CHECK MAY BE
+	// ORDERED BY TWO PARTS (task_divide_scope.go states the law, why it
+	// classifies by repetition rather than by any program's name, and why the
+	// SECOND telling repairs instead of refusing). It stands here for gate
+	// three's reason exactly — it is free, and a division that was never going
+	// to be allowed to stand should not buy a reading to find that out — and it
+	// is asked again below on the parts the reviewer settled, because the
+	// reviewer may sharpen a family-wide run into a brief the worker never put
+	// it in.
+	//
+	// WHAT COMES BACK ON THE REPAIR ROAD IS THE PARTS WITH THE CHECK TAKEN OUT,
+	// and they are what everything below this line works on. The decision is
+	// NOT written here on that road: the parts are about to be admitted, and
+	// [Agent.startTheParts] writes `admitted` over anything standing on the line
+	// — so the word is put back at the end, on the one path that got there.
+	said, lifted, shared := a.sharedCheckAnswer(node, parsed.Parts, scopeSpentNothing)
+	if said != "" {
+		line.Decision = divisionRefusedShared
+		line.Shared = shared
+		return said, "", false
+	}
+	parsed.Parts = lifted
+	repaired = append(repaired, shared...)
 
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
 	// both gates because it is the only step here that costs money: a division
@@ -794,6 +883,14 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		line.Decision = divisionRefusedScope
 		return said, "", false
 	}
+	said, lifted, shared = a.sharedCheckAnswer(node, parsed.Parts, scopeSpentTheRead)
+	if said != "" {
+		line.Decision = divisionRefusedShared
+		line.Shared = shared
+		return said, "", false
+	}
+	parsed.Parts = lifted
+	repaired = append(repaired, shared...)
 
 	// AND THE PARTS COME INTO EXISTENCE, which is ONE operation and not a
 	// sequence this function holds the bookkeeping for (task_divide_wip.go's
@@ -812,6 +909,15 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	ids, titles, refused := a.startTheParts(node, parsed.Parts, &line)
 	if refused != "" {
 		return refused, "", false
+	}
+	// AND THE RECORD SAYS THE HARNESS REPAIRED THIS ONE. It is written HERE and
+	// not where the lifting happened because [Agent.startTheParts] settles
+	// `admitted` on its own way through, and a word written above it would be
+	// silently replaced. The parts really were admitted — `Admitted` counts them
+	// — and what this says is HOW they came to stand up.
+	if len(repaired) > 0 {
+		line.Decision = divisionRepairedShared
+		line.Shared = repaired
 	}
 	return divisionDone(ids, titles, graph.machineBusy()), "", false
 }
@@ -972,7 +1078,7 @@ const (
 // from here.
 var divideReviewBrief = `A worker part-way through a piece of work has decided it is wider than one pair of hands, and has written the parts it wants to hand out. You read the whole division ONCE and answer for it.
 
-Each part becomes a worker of its own, in a copy of its own. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part works on, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice. WHAT A PART OWNS IS WHAT ITS ` + "`acceptance`" + ` NAMES: the done-condition says what must be true once the part is finished, so it names what that part produces. Material several parts read is shared and belongs in the brief, not in a done-condition.
+Each part becomes a worker of its own, in a copy of its own. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part works on, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice. WHAT A PART OWNS IS WHAT ITS ` + "`acceptance`" + ` NAMES: the done-condition says what must be true once the part is finished, so it names what that part produces. Material several parts read is shared and belongs in the brief, not in a done-condition. A check that proves the whole proves nothing about a part: each part names the check that proves its own slice, and the whole is yours to make once, after their work is home.
 
 READ THE PARTS TOGETHER, WHICH IS THE ONE THING THEIR AUTHOR COULD NOT DO:
 
@@ -1234,6 +1340,12 @@ func divideReviewQuestion(parent *TaskNode, parsed divideArguments, thin bool) s
 // divisionTooNarrow is the answer to a division the evidence does not support.
 // It says the number back, because the worker's next move depends on whether it
 // under-counted what it saw or genuinely has narrow work in front of it.
+//
+// IT IS ONLY REACHED WHERE THE GATE WAS PINNED ON. An unpinned binary keeps
+// every division a worker asks for (splitgate's modes.go), so a worker meets
+// this sentence only under AFORGE_SPLITGATE=1 or judgment — which is also why
+// it goes on quoting the floor: a run that asked for a floor is owed the
+// number it is being held to.
 func divisionTooNarrow(evidence string) string {
 	return fmt.Sprintf(
 		"not split: what you found names %d separate items, and work is only split at %d or more — below that one worker doing them in order is faster than a working copy, a check and a wait for each part. Carry on with the work in your own hands. If there really are more items than that, say what they are and how many, and ask again.",

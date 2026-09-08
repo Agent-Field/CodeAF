@@ -25,6 +25,11 @@ const (
 	// for a hint is "what the row under the cursor can be asked for".
 	memoryShelfHint = "enter open a shelf · type to filter · alt+s walk the shelves"
 	memoryEditHint  = "edit memory · enter save · esc cancel"
+	// AND A PAGE WITH NOTHING ON IT HAS ONLY A WAY OUT. [placeTailed] adds `tab
+	// next place` in front of the `esc`, so this is the whole of the foot on a
+	// machine that has remembered nothing — three keys fewer than the shelf line
+	// and none of them a promise the body cannot keep.
+	memoryBareHint = "esc"
 )
 
 // The words this place's own doors are spelled in, once.
@@ -129,6 +134,11 @@ type memoryPlace struct {
 	// that opens it, which is one query for one door rather than one per row.
 	expanded string
 	origins  map[string]memoryOrigin
+	// width is the frame the reading was last laid out for. It is kept because
+	// the teaching prose is WRAPPED into the reading rather than cut on the way
+	// out ([memoryReading.wrapped]), so a resize is a re-lay and not only a
+	// re-measure.
+	width int
 	// edit is the wording being fixed, and editID the line it belongs to.
 	edit   *editor
 	editID string
@@ -173,8 +183,22 @@ func (p *memoryPlace) refresh(shelves store.MemoryShelves, now time.Time) {
 // `rank` because that is what the overlay's own re-filter was called and what
 // every paste path on this surface still asks for by name (app.go).
 func (p *memoryPlace) rank() {
-	p.reading = readMemory(p.shelves, p.shelfOpen, p.filter.String(), p.read)
+	p.reading = readMemory(p.shelves, p.shelfOpen, p.filter.String(), p.read).wrapped(p.width)
 	p.cursor = p.nearestStop(p.cursor)
+}
+
+// remeasure re-lays the reading for a frame of this width, keeping the cursor on
+// the THING it was standing on rather than on the line number it was standing at
+// — [memoryPlace.followStop]'s law, for the same reason: wrapping the prose to a
+// narrower frame moves every line under it down.
+func (p *memoryPlace) remeasure(width int) {
+	if width < 1 || p.width == width {
+		return
+	}
+	was, _ := p.reading.at(p.cursor)
+	p.width = width
+	p.rank()
+	p.followStop(was)
 }
 
 // followStop puts the cursor back on the thing it was standing on rather than
@@ -657,6 +681,7 @@ func (placeMemory) tick(a *app, now time.Time) bool {
 // words already decided rather than five hundred rows re-ranked.
 func (placeMemory) body(a *app, width, room int) []placeRow {
 	p := &a.mem
+	p.remeasure(width)
 	var body []string
 	switch {
 	case p.expanded != "":
@@ -848,6 +873,16 @@ func (placeMemory) hint(a *app) string {
 	if a.mem.edit != nil {
 		return memoryEditHint
 	}
+	// A PAGE WITH NO SHELVES ON IT PROMISES NO SHELF KEYS. The fall-through at
+	// the foot of this function is [memoryShelfHint], which is right whenever
+	// there are shelves and was drawn over a bare page too — so a machine that
+	// has remembered nothing read `enter open a shelf · type to filter · alt+s
+	// walk the shelves` under a body with nothing to open, nothing to filter and
+	// no shelves to walk. What is true there is the way out and the sentence the
+	// body already gave ([memoryEmptyWord]).
+	if a.mem.reading.bare() {
+		return memoryBareHint
+	}
 	if _, ok := a.mem.shelfUnder(); ok {
 		return memoryShelfHint
 	}
@@ -888,3 +923,20 @@ func (placeMemory) wheel(a *app, delta int) bool {
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeMemory) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.memoryKey(msg) }
+
+// owns is the card editor, and the door home is the reason it is here: the
+// editor is a whole-keyboard surface inside [placeMemory.key], and without this
+// method it lived BELOW the door in the place router — so a card cleared down to
+// its last space armed the door on the editor's own box ([placeMemory.box] hands
+// the editor over while it is open), and the second space wiped the wording and
+// stood the person on home mid-edit. The settings panel already holds this exact
+// shape for its own nested boxes ([placeSettings.owns]); this is the same claim,
+// and [app.memoryKey]'s edit arm answers every key the way that one does — a
+// chord it does not know is swallowed rather than walking the place and leaving
+// the editor dangling open over a page the person is no longer reading.
+func (placeMemory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.mem.edit == nil {
+		return nil, false
+	}
+	return a.memoryKey(msg), true
+}

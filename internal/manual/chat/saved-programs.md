@@ -184,15 +184,30 @@ nobody has run says nothing there rather than "never run".
 The general worker is not on the list. It is what you get when you pick nothing, not
 something you pick.
 
-## Running one without the chat — aforge run subharness
+## Running one without the chat — aforge run
 
 ```
-aforge run subharness <name> --input <file.json>
-aforge run subharness <name> --input -          # read the input from a pipe
+aforge run <name> --input <file.json>
+aforge run <name> --input -          # read the input from a pipe
 ```
 
-Optional: `-w <dir>` for the directory to work in, `--model <slug>` for the work model,
-`--journal <path>` to append every call the run makes to a file, one JSON object per line.
+**This was `aforge run subharness <name>`.** `run` used to name two unrelated commands —
+the saved-program runner and the static plan pipeline — and it names only this one now,
+matching `/subharness <name>` in the chat. The old spelling still works for one release,
+is absent from `--help`, and prints one line on stderr the first time it is used:
+`note: \`aforge run subharness <name>\` is now \`aforge run <name>\` — the old spelling
+works for one more release.` The pipeline is `aforge plan run <plan.json>`.
+
+**The name is a bare word, and that is what tells the two apart.** `aforge run formatter`
+runs the saved program `formatter` from any directory, including one with a file of that
+name sitting in it; only an argument spelled as a path — a separator in it, a leading `./`,
+`../` or `~`, or a file extension — is read as a plan file and sent down the retired
+`aforge run <plan.json>` road. It used to be decided by whether the file existed, so the
+same command meant two different things in two different folders.
+
+Optional: `--dir <dir>` for the directory to work in (`-w` still works), `--model <slug>` for the work model,
+`--journal <path>` to append every call the run makes to a file, one JSON object per line,
+and `--json` for the one result object `aforge do` and `aforge exec` also print.
 
 With no `--model` it runs on your crew's small-work class — the same crew `/crew` sets —
 and it opens by saying which model it took and what chose it.
@@ -202,12 +217,19 @@ There is no task surface and no card here. What comes back:
 | what happened | where it is said | exit code |
 | --- | --- | --- |
 | it finished | the report and the typed answer on stdout | 0 |
-| it did not finish | the reason on stderr, in plain words | non-zero |
+| the name is not a program here | the typo named on stderr, with what there is | 1 |
+| it did not finish | the reason on stderr, in plain words | 2 |
 | it needed a closer look | the long-way line on stderr, then the general worker's answer | 0 if that finished |
-| the name is not a program here | the typo named on stderr, with what there is | non-zero |
+
+Those numbers are the same table `aforge do` and `aforge exec` leave on — 0 done, 1 it
+could not be run at all, 2 it ran and did not finish, 3 a limit you set stopped it, 4 it
+needed an answer and nobody was there. *Commands you type in a terminal* has the whole of
+it, and the `--json` object beside it.
 
 The reason a run did not finish is written for a person to read, and the word for it is
-**incomplete** — the run happened and did not get to the end.
+**incomplete** — the run happened and did not get to the end. Under `--json` that reason is
+the `incomplete` field and the object says `"stop": "incomplete"`; the typed answer is in
+`output`, whole.
 
 ## What is not available yet
 

@@ -93,7 +93,7 @@ func TestARawSpacePictureTypedAndEnteredIsNeverAnUnknownCommand(t *testing.T) {
 	drive(t, a, key("enter"))
 
 	got := plain(frame(a))
-	if strings.Contains(got, "unknown command") {
+	if strings.Contains(got, unknownCommandLead) {
 		t.Fatalf("a raw-space picture was refused as a command:\n%s", got)
 	}
 	if !strings.Contains(got, "[#1 "+name+"]") {
@@ -110,7 +110,7 @@ func TestADropTypedInAndEnteredIsNeverAnUnknownCommand(t *testing.T) {
 	drive(t, a, key("enter"))
 
 	got := plain(frame(a))
-	if strings.Contains(got, "unknown command") {
+	if strings.Contains(got, unknownCommandLead) {
 		t.Fatalf("a dropped file was refused as a command:\n%s", got)
 	}
 	// The tray emptied into the message, which is what enter does with it: the
@@ -148,7 +148,7 @@ func TestAnOversizeDroppedPictureIsNotAnUnknownCommand(t *testing.T) {
 	drive(t, a, key("enter"))
 
 	got := plain(frame(a))
-	if strings.Contains(got, "unknown command") {
+	if strings.Contains(got, unknownCommandLead) {
 		t.Fatalf("an oversize picture was routed as a slash command:\n%s", got)
 	}
 	if !strings.Contains(got, name+" is over the 10MB image limit") {
@@ -164,7 +164,7 @@ func TestAnUnknownCommandThatNamesNothingStillRefuses(t *testing.T) {
 	a, _, _ := dropLab(t, nil)
 	typeText(t, a, "/nonsense")
 	drive(t, a, key("enter"))
-	if got := plain(frame(a)); !strings.Contains(got, "unknown command: /nonsense") {
+	if got := plain(frame(a)); !strings.Contains(got, unknownCommandWord("nonsense")) {
 		t.Fatalf("an unknown command stopped refusing:\n%s", got)
 	}
 }
@@ -430,7 +430,7 @@ func TestTypingASlashCommandArmsNothingAndAsksTheDiskNothing(t *testing.T) {
 	a, _, _ := dropLab(t, nil)
 	typeText(t, a, "/help")
 	drive(t, a, key("enter"))
-	if got := plain(frame(a)); !strings.Contains(got, "settings") || strings.Contains(got, "unknown command") {
+	if got := plain(frame(a)); !strings.Contains(got, "settings") || strings.Contains(got, unknownCommandLead) {
 		t.Fatalf("/help stopped being a command:\n%s", got)
 	}
 }

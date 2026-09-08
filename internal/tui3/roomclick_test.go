@@ -448,8 +448,8 @@ func TestTheRoomsMarkIsOnTheRosterAtEveryWidth(t *testing.T) {
 func TestARunsPageMarksNoNodeRowOffItsZeroId(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
-	a.room = &taskRoom{id: 0, title: "a run", unfolded: map[int]bool{}, live: -1, think: -1,
-		orch: &orchRun{id: "run-1", goal: "a run", seen: map[string]bool{}, fresh: map[string]bool{}}}
+	a.room = a.newRoom(0, "a run")
+	a.room.orch = &orchRun{id: "run-1", goal: "a run", seen: map[string]bool{}, fresh: map[string]bool{}}
 	for _, row := range a.railRows(a.viewHeight()) {
 		if strings.Contains(row, bandSeq()) {
 			t.Fatalf("a run's page marked a roster row that is not its door:\n%q", row)

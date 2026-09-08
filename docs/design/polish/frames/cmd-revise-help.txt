@@ -1,0 +1,12 @@
+Usage of revise:
+  -done string
+    	mark these node ids finished before revising
+  -json
+    	print the graph as JSON instead of a table
+  -model string
+    	work model for this run (flag › AFORGE_MODEL › crew › default)
+  -o string
+    	write the revised graph as JSON to this file
+  -plan-model string
+    	model that revises the plan, when different from the work model (flag › AFORGE_PLAN_MODEL › crew mastermind › the work model)
+error: flag: help requested

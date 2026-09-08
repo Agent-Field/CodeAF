@@ -109,7 +109,8 @@ const (
 	EventReasoning
 	// EventConsentRequest asks the person whether one tool call may run
 	// (consent.go). It carries the call's ID, Tool, Args and gloss in Hint, and
-	// the policy's own phrasing of why it is asking in Rule.
+	// the policy's own phrasing of why it is asking in Rule. Wait is
+	// ConsentWaiting: silence is not a no.
 	//
 	// It is a QUESTION, not a report: the call is blocked inside the tool batch
 	// until [Agent.ResolveConsent] answers it or the turn's context dies, and a
@@ -509,6 +510,16 @@ const (
 	// log and an exit code, and none of those is what a task row is drawn from,
 	// so it is published as what it is and the clauses go away.
 	EventJobUpdate
+	// EventCaption carries one line NAMING THE OPEN STEP (caption.go): the
+	// cheap narrator asked shortly after the tools begin. Text is the step
+	// title — a checklist item, not reasoning. It is news about the open step,
+	// never a new block of its own — the surface keys it onto the caption
+	// already drawn for that batch.
+	//
+	// A SURFACE THAT IGNORES THIS KIND IS UNCHANGED: the deterministic
+	// composite already stands in the caption slot, and this event only
+	// replaces that floor when a cheap model had something better to say.
+	EventCaption
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -705,6 +716,12 @@ type Event struct {
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
+
+	// Wait is how silence is held on EventConsentRequest: ConsentWaiting means
+	// the question stays up. A surface clock that recorded "denied" after a
+	// few seconds was F41, and this field is how the engine says that is not
+	// the mode. Empty on every other kind.
+	Wait string
 
 	// Memo says whether a ConsentToolSession answer to this question WOULD DO
 	// ANYTHING. It is set on EventConsentRequest and false everywhere else.
@@ -1758,6 +1775,41 @@ type Agent struct {
 	// the node so the graph's own struct stays what it is — the person's work —
 	// and so a node that nothing classified simply has no entry.
 	tallies map[uint64]*taxonomy.Tally
+
+	// baselineRed is the declared checks that were already failing before this
+	// session did any work, and baselineTaken says the reading has happened —
+	// which is not the same as the list being non-empty, because a clean tree
+	// reads as no red at all ([Agent.openBaseline]).
+	baselineRed   []string
+	baselineTaken bool
+	// baselineRead says the reading has LANDED, which is not the same as it
+	// having been started ([Agent.openBaseline] runs it in the background) and
+	// not the same as the list being non-empty (a clean tree reads as no red).
+	baselineRead bool
+	// baselineUnread is the checks the reading could not read at all — one that
+	// changed the tree, one the shell could not run, one the window never
+	// reached ([Remains.Unread]).
+	baselineUnread []string
+	// baselineDone is closed when the reading lands, so the one moment that has
+	// to have it can wait ([Agent.awaitBaseline]).
+	baselineDone chan struct{}
+	// stashBefore is every stash entry the deliverable tree ALREADY HELD when
+	// the run began, by sha, and stashBeforeRead says that reading happened —
+	// which is not the same as the set being empty, because a repository with no
+	// stash at all reads as none ([Agent.readStashBefore]).
+	//
+	// IT IS THE SAME SUBTRACTION THE CHECKS GET, FOR THE SAME REASON. A stash a
+	// person took last week is not this session's work sitting outside the tree,
+	// and a reading that named it would tell every run over that repository that
+	// something was left undone at every ending, for ever
+	// ([Agent.stashedWork]).
+	stashBefore     map[string]bool
+	stashBeforeRead bool
+
+	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
+	// so one unit of work whose job somebody else did is said once rather than
+	// at the end of every reply for the rest of the run.
+	absorbed map[string]bool
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string
@@ -2103,12 +2155,24 @@ type Agent struct {
 	// is days old on a resumed conversation, and a budget measured from it would
 	// stop a resumed session before its first turn.
 	startedAt time.Time
+	// readerAbsentNoted says the journal already carries this session's one line
+	// about having no second model to read a mark with (checkpoint.go's
+	// [Agent.noteReaderAbsent]). It is a bit rather than a count because the fact
+	// is about the install and is true for the whole session.
+	readerAbsentNoted bool
 	// createdFiles is EVERYTHING THIS SESSION MADE THAT WAS NOT THERE BEFORE, in
 	// first-touch order (principal_audit.go). It is folded in from the per-turn
 	// ledger recovery.go already keeps — one source of truth for "did this exist
 	// before the call" — because that ledger is dropped at the end of every turn
 	// and the question this answers is asked once, at the end of the session.
 	createdFiles []fileChange
+	// changedFiles is EVERY FILE THIS SESSION MODIFIED THAT WAS THERE BEFORE, in
+	// first-touch order (principal_audit.go). It is kept apart from createdFiles
+	// on purpose: that ledger is what the tidy may remove, and nothing in this
+	// build may remove a file the session did not make. This one is only ever
+	// READ, to answer whether the session put work on the deliverable with its
+	// own hands ([Remains.Made]).
+	changedFiles []fileChange
 	// writes is THE RUNNING TURN'S account of what it has changed under the
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a
@@ -2125,6 +2189,11 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	cancel    context.CancelFunc
+	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
+	// It sits outside mu and holds its own lock: Interrupt is the one call that
+	// must always be answerable, and the handlers it serializes must never need
+	// the session lock to ask whether they may fire.
+	interrupt interruptFan
 	// generation is the CURRENT provider request, independently cancellable from
 	// the turn around it (steer.go). A steer cuts this context and leaves cancel
 	// alone, so the same turn can record the partial answer, land the person's
@@ -2144,6 +2213,19 @@ type Agent struct {
 	// periodic telemetry.
 	ambient []userMessage
 	closed  bool
+	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
+	// the close complete for everybody rather than only for whoever got there
+	// first.
+	//
+	// A SECOND CLOSE MUST NOT RETURN BEFORE THE FIRST HAS FINISHED. `closed`
+	// above is set at the top of Close, before a single node is cut, so a
+	// concurrent caller that read it and returned was told the session was
+	// closed while its turn, its nodes and its jobs were all still running —
+	// which is the very sentence this session's quit exists to make true
+	// (issue #381). It is made under the same lock that sets `closed`, so a
+	// caller that loses the race is guaranteed to find a channel to wait on
+	// rather than a nil one.
+	closeDone chan struct{}
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.
@@ -2162,6 +2244,13 @@ type Agent struct {
 	// wakes for itself ([Agent.postTaskNews]).
 	taskNotes int
 	taskNews  chan struct{}
+	// jobParkBound is the allowance a task worker's run was given, and it is
+	// non-zero only on a worker: it is what ARMS the wait on a command this agent
+	// started in the foreground and had taken over into a job (task_job_park.go's
+	// [Agent.armJobPark]). A conversation leaves it zero, and its park returns
+	// having done nothing, because a person's chat answers a long command by
+	// yielding the keyboard rather than by waiting.
+	jobParkBound time.Duration
 	// handover is the seam a delivery's last two writes are made across, and the
 	// seam the runner reads them across ([Agent.handOverTaskNews] and
 	// [Agent.taskNewsStanding], which states the law). The pair it guards lives

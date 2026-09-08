@@ -1,0 +1,38 @@
+{
+ "id": "tox-dev-tox-4031",
+ "repo": "tox-dev/tox",
+ "issue": 4031,
+ "anchor": true,
+ "door": "chat",
+ "pass": false,
+ "reason": "wall \u00b7 tests green",
+ "door_verdict": "wall",
+ "tests_verdict": "green",
+ "ended": "wall",
+ "exit": null,
+ "source": "fresh",
+ "tier": "small",
+ "wall_s": 904,
+ "cost_usd": 0.043927,
+ "ttft_ms": 2549,
+ "calls": 39,
+ "changed_files": 0,
+ "f2p": {
+  "passed": 10,
+  "failed": 0,
+  "errors": 0,
+  "exit": 0,
+  "pass": true
+ },
+ "suite": {
+  "passed": 0,
+  "failed": 0,
+  "errors": 1,
+  "exit": 2,
+  "capped": false
+ },
+ "regressed": false,
+ "subharness": null,
+ "nodes": null,
+ "load": "8.06 4.34"
+}

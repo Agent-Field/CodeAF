@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -26,32 +25,156 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// runExecute is `aforge run`, and `aforge run` MEANS ONE THING NOW: run one
+// saved program.
+//
+// It used to mean two unrelated commands wearing one word — `aforge run
+// <graph.json>` executed a static plan and `aforge run subharness <name>` ran a
+// saved program — and the code admitted it out loud, in a `longerCommands`
+// table whose entire job was to stop `aforge run --help` printing the wrong
+// synopsis (usage.go). The pipeline is `aforge plan run <plan.json>` now, and
+// this door reads its argument to keep both old spellings working for one
+// release:
+//
+//   - a leading `subharness` is the old spelling of this very command;
+//   - a first positional SPELLED AS A PATH is the old spelling of `aforge plan
+//     run`, because a plan is a file a person points at and a program is a
+//     registry name. The positional is found through the union of both doors'
+//     flag sets ([namesAPlanPath]), so `--input in.json` cannot be mistaken
+//     for it;
+//   - anything else is a program name, which is what `run` means from here on.
 func runExecute(args []string) error {
-	// `aforge run subharness <name>` is a different program from `aforge run
-	// <graph.json>` and is handed over before a single flag is read, because the
-	// two share no flag at all: one executes a graph written to a file, the other
-	// runs one typed program once (subharness_run.go). Everything below this line
-	// is byte for byte what it was.
 	if len(args) > 0 && args[0] == "subharness" {
-		return runSubharnessCommand(args[1:])
+		return renamedTo("run subharness <name>", "run <name>", args[1:], runSubharnessCommand)
 	}
-	flags := flag.NewFlagSet("run", flag.ContinueOnError)
-	workspace := flags.String("w", "", "workspace directory (default ./aforge-run-<goal hash>)")
-	output := flags.String("o", "", "write the completed graph as JSON to this file")
-	concurrency := flags.Int("j", 32, "how many leaves may run at once")
-	maxTurns := flags.Int("turns", 200, "runaway backstop on iterations per leaf (clamped to the executor's own backstop)")
-	maxTokens := flags.Int("budget", 150000, "token budget per leaf — the limit that actually binds")
-	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
-	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
-	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
+	if namesAPlanPath(args) {
+		return renamedTo("run <plan.json>", "plan run <plan.json>", args,
+			func(args []string) error { return runGraph("plan run", args) })
+	}
+	return runSubharnessCommand(args)
+}
+
+// namesAPlanPath reports whether this invocation's first positional argument is
+// SPELLED AS A PATH — which is what tells the old `aforge run <plan.json>`
+// apart from the new `aforge run <program>`.
+//
+// IT IS A QUESTION ABOUT THE WORD AND NEVER ABOUT THE DISK. It used to be
+// os.Stat: a first positional that existed as a file took the old road. So a
+// saved program called `formatter` executed `./formatter` as a static plan
+// whenever a file of that name happened to be sitting in the working
+// directory, and WHICH WORKFLOW RAN DEPENDED ON WHERE THE CALLER WAS STANDING
+// — the same command, in two directories, meaning two different things. THE
+// CALLER'S DIRECTORY NEVER CHANGES WHAT A COMMAND MEANS, so the reading is the
+// shape of the token and nothing else ([looksLikeAPath]): a bare word is a
+// registry name, and only something a person wrote as a path is a file.
+//
+// AND THE PATH FORM WINS A TIE. `aforge run ./formatter` takes the old road
+// even where `formatter` is also a saved program, because the caller spelled a
+// path on purpose; `aforge run formatter` is the saved program whatever is on
+// disk beside it.
+//
+// The positional is found the way every other door finds one: by asking A FLAG
+// SET which tokens are flags and which of those consume the token after them
+// ([reorder]). The set here is the UNION of both doors' flags, so
+// `aforge run myprogram --input in.json` finds `myprogram` rather than the
+// input file named after it.
+func namesAPlanPath(args []string) bool {
+	union := commandFlags("run")
+	union.String("dir", "", "")
+	union.String("w", "", "")
+	union.String("out", "", "")
+	union.String("o", "", "")
+	union.Int("parallel", 0, "")
+	union.Int("j", 0, "")
+	union.Int("max-turns", 0, "")
+	union.Int("turns", 0, "")
+	union.Int("token-budget", 0, "")
+	union.Int("budget", 0, "")
+	union.Int("total-token-budget", 0, "")
+	union.Int("run-budget", 0, "")
+	union.Bool("no-method", false, "")
+	union.Bool("contracts", false, "")
+	union.Bool("yes-spend", false, "")
+	union.String("model", "", "")
+	union.String("plan-model", "", "")
+	union.String("input", "", "")
+	union.String("journal", "", "")
+	union.Bool("json", false, "")
+	ordered := reorder(union, args)
+	for index, token := range ordered {
+		if token != "--" {
+			continue
+		}
+		if index+1 >= len(ordered) {
+			return false
+		}
+		return looksLikeAPath(ordered[index+1])
+	}
+	return false
+}
+
+// looksLikeAPath reports whether a token is SPELLED as a path rather than as a
+// name: a separator anywhere in it, a `./`, `../` or `~` in front of it, or a
+// file extension on the end.
+//
+// Every one of those is something a person types on purpose to mean "this
+// file", and none of them can be answered differently in two directories,
+// which is the whole reason the test is written here and not against the disk.
+// A saved program's name is a bare word, so `formatter` is a program and
+// `formatter.json`, `./formatter` and `plans/formatter` are files.
+func looksLikeAPath(token string) bool {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false
+	}
+	if strings.ContainsRune(token, '/') || strings.ContainsRune(token, os.PathSeparator) {
+		return true
+	}
+	if strings.HasPrefix(token, "~") {
+		return true
+	}
+	// A dot in the last element is an extension, and `plan.json` is a file
+	// however it is reached. `filepath.Ext` is asked rather than a hand-rolled
+	// LastIndex, so this and the rest of the binary agree about what an
+	// extension is.
+	return filepath.Ext(token) != ""
+}
+
+// runGraph executes a plan file exactly as it is written: `aforge plan run`.
+func runGraph(name string, args []string) error {
+	flags := commandFlags(name)
+	workspace := flags.String("dir", "", "the directory to work in (default ./aforge-<goal hash>)")
+	shorthandFlag(flags, "w", "dir")
+	output := flags.String("out", "", "write the completed plan as JSON to this file")
+	shorthandFlag(flags, "o", "out")
+	concurrency := flags.Int("parallel", 32, "how many steps may run at once")
+	shorthandFlag(flags, "j", "parallel")
+	maxTurns := flags.Int("max-turns", 200, "runaway backstop on iterations per step (clamped to the executor's own backstop)")
+	renamedFlag(flags, "turns", "max-turns")
+	maxTokens := flags.Int("token-budget", 150000, "token budget per step — the limit that actually binds")
+	renamedFlag(flags, "budget", "token-budget")
+	runBudget := flags.Int("total-token-budget", 0, "token budget for the whole run; once passed, nothing new starts and steps in flight land (0 = per-step budgets only)")
+	renamedFlag(flags, "run-budget", "total-token-budget")
+	// A BOOLEAN THAT DEFAULTS ON GETS A NEGATIVE SPELLING. This was
+	// `--contracts`, defaulting true, so the only way to turn it off was
+	// `--contracts=false` — a form nothing else in this binary needs — and the
+	// thing it turned off was named after the machinery rather than after what
+	// it is: a working method for each step.
+	noMethod := flags.Bool("no-method", false, "do not write a working method for each step before running")
+	contractsOff := invertedFlag{off: noMethod}
+	flags.Var(&contractsOff, "contracts", hiddenRenamed+"no-method")
+	yesSpend := flags.Bool("yes-spend", false, yesSpendFlagHelp)
 	model := flags.String("model", "", modelFlagHelp)
-	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model ("+planLadderHelp+")")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	planModel := flags.String("plan-model", "", "model for instructions, working methods, and recalibration, when different from the work model ("+planLadderHelp+")")
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
+	contracts := new(bool)
+	*contracts = !*noMethod
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return fmt.Errorf("usage: aforge run <graph.json> [-w dir] [-j 8]")
+		return fmt.Errorf("usage: aforge plan run <plan.json> [--dir dir] [--parallel 8]")
 	}
 	data, err := os.ReadFile(rest[0])
 	if err != nil {
@@ -141,19 +264,21 @@ func runExecute(args []string) error {
 
 	// The scratch home is printed because it is now the only place the flight
 	// recorders are, and a debugger who cannot find them has no run to read.
-	fmt.Printf("goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
+	//
+	// ALL OF IT IS AN ASIDE. This is what a person reads about the run and not
+	// the run's answer, so it goes where `do` has always put the same lines
+	// (streams.go); `aforge plan run p.json > result.txt` keeps the result and
+	// nothing else.
+	fmt.Fprintf(aside, "goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
 	// Both seats, on every run rather than only on a split one, and each with
-	// the rung that chose it: a run whose models came from the profile's crew
-	// used to print nothing at all about them.
-	fmt.Printf("models:    %s\n", seats.Sentence())
-	// And, once, the reason a seat is not the row the person wrote — this door
-	// has a label column of its own, so the line sits under the models it is
-	// about rather than in front of them.
-	if notice := seats.Notice(); notice != "" {
-		fmt.Printf("           %s\n", notice)
-	}
+	// the rung that chose it, AND THE SENTENCE COMES FROM THE ONE PLACE THAT
+	// OWNS IT. This door used to spell the models line itself — its own label,
+	// its own padding, its own placement for the inheritance notice — which is
+	// the failure Seats.Report exists to prevent: the next field added to the
+	// report would have been missing here and nowhere else.
+	fmt.Fprintln(aside, seats.Report())
 	if len(settings.Panel.Models) > 0 {
-		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
+		fmt.Fprintf(aside, "panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
 	}
 
 	// A graph planned without --brief has nothing for an agent to read, so the
@@ -192,7 +317,7 @@ func runExecute(args []string) error {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			}
 		}
-		fmt.Printf("prepared:  %s in %s\n", plural(len(graph.Leaves()), "leaf"), time.Since(start).Round(10*time.Millisecond))
+		fmt.Fprintf(aside, "prepared:  %s in %s\n", plural(len(graph.Leaves()), "step"), time.Since(start).Round(10*time.Millisecond))
 	}
 	if preparedUsage.Calls > 0 {
 		if err := railStore.RecordUsage(store.NodeUsage{
@@ -317,10 +442,10 @@ func runExecute(args []string) error {
 		if event.Detail != "" {
 			line += "  " + event.Detail
 		}
-		fmt.Println(line)
+		fmt.Fprintln(aside, line)
 	}
 
-	fmt.Printf("\n── executing ───────────────────────────────────────────────────────\n")
+	fmt.Fprintf(aside, "\n── executing ───────────────────────────────────────────────────────\n")
 	start := time.Now()
 	// An interrupt must land the run, not vanish it: a Go process dies on
 	// Ctrl+C with nothing written, which is indistinguishable from a crash.
@@ -358,7 +483,7 @@ func runExecute(args []string) error {
 	graph.Usage.Cost += runUsage.Cost
 	clock.sample()
 	if report := recordAndCalibrate(ctx, planner, settings, settings.Model, graph); report != "" {
-		fmt.Printf("\n%s\n", report)
+		fmt.Fprintf(aside, "\n%s\n", report)
 	}
 	renderRunSummary(graph, space, runUsage, time.Since(start), clock, summaryErr)
 	if *output != "" {
@@ -369,7 +494,7 @@ func runExecute(args []string) error {
 		if err := os.WriteFile(*output, encoded, 0o644); err != nil {
 			return err
 		}
-		fmt.Printf("\nwritten to %s\n", *output)
+		fmt.Fprintf(aside, "\nwritten to %s\n", *output)
 	}
 	if railDeclined {
 		return nil
@@ -395,26 +520,37 @@ func spendPreauthorized(flagged bool, getenv func(string) string) bool {
 	return flagged || (getenv != nil && getenv("AFORGE_PREAUTHORIZE_SPEND") == "1")
 }
 
-func authorizeHeadlessRail(input io.Reader, output io.Writer, interactive, preauthorized bool, rail store.DailyRail) (bool, error) {
-	fmt.Fprintln(output, rail.Question())
+// authorizeHeadlessRail is the spend question `run` asks when a rail is
+// reached, and EVERY LINE IT WRITES IS AN ASIDE — the question, the two
+// sentences that answer it without asking, and the newline that tidies up after
+// a keystroke. Not one of them is the answer a script captures.
+//
+// SO THE WRITER IS NAMED FOR WHAT IT IS. It was called `output`, which is this
+// package's name for the stream that carries the answer
+// ([TestNoDoorPrintsItsCommentaryToStdout] reads exactly that name), while the
+// only caller has always handed it os.Stderr. A writer whose name says stdout
+// and whose value is stderr is how the next person threads the wrong one in and
+// puts a question a script cannot see into the pipe.
+func authorizeHeadlessRail(input io.Reader, commentary io.Writer, interactive, preauthorized bool, rail store.DailyRail) (bool, error) {
+	fmt.Fprintln(commentary, rail.Question())
 	if preauthorized {
-		fmt.Fprintln(output, "spend preauthorized; raising today's rail and continuing")
+		fmt.Fprintln(commentary, "spend preauthorized; raising today's rail and continuing")
 		return true, nil
 	}
 	if !interactive {
-		fmt.Fprintln(output, "stdin is not a TTY; rerun with --yes-spend or AFORGE_PREAUTHORIZE_SPEND=1 to continue without a prompt")
+		fmt.Fprintln(commentary, "stdin is not a TTY; rerun with --yes-spend or AFORGE_PREAUTHORIZE_SPEND=1 to continue without a prompt")
 		return false, nil
 	}
-	fmt.Fprint(output, "Continue? [y/N] ")
+	fmt.Fprint(commentary, "Continue? [y/N] ")
 	var answer string
 	if _, err := fmt.Fscan(input, &answer); err != nil {
 		if errors.Is(err, io.EOF) {
-			fmt.Fprintln(output)
+			fmt.Fprintln(commentary)
 			return false, nil
 		}
 		return false, err
 	}
-	fmt.Fprintln(output)
+	fmt.Fprintln(commentary)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	return answer == "y" || answer == "yes", nil
 }

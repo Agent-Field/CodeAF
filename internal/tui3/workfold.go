@@ -5,12 +5,25 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // workfold is render-time structure. Nothing here is journaled: replaying the
 // same entries derives the same fold, while a person's expansion dies with the
 // window that owns it.
 type workfold struct {
+	// key is THE CHIP'S OWN NAME — what [deck.workOpen] is keyed by, what the
+	// chip's row carries, and what a click and `ctrl+e` name when they open it.
+	//
+	// It is not the turn, and the difference is what makes a room's chips
+	// separable. Out in the conversation one turn holds at most one chip, so the
+	// turn number named it and nothing was lost. A room's page is ONE turn
+	// holding a chip per settled phase (see [derivePhaseFolds]), and a key that
+	// was the turn would have made every chip on the page one control: opening
+	// the second would open the first, the fourth and the tenth. The
+	// conversation keeps the turn as its key, so nothing about it changed.
+	key                 int
 	turn, start, answer int
 	tools               int
 	thought             time.Duration
@@ -23,32 +36,164 @@ type workfold struct {
 	stopped bool
 }
 
-// deckFolds is the chips ONE PAGE draws, and it is where the room's exemption
-// lives: A ROOM FOLDS NOTHING.
+// deckFolds is the chips ONE PAGE draws, resolved through the lens's fold style
+// (lens.go's [folders]).
 //
-// The chip is an affordance of the conversation and it earns its place there. A
-// turn out in the thread is a question somebody asked and the answer they were
-// given, and the machinery between the two is work they delegated precisely so
-// they would not have to watch it — so it collapses, and the page reads back as
-// the exchange it was.
+// ── THE LAW THIS USED TO STATE, AND THE RULING THAT REVERSED IT ─────────────
 //
-// A room is the opposite errand. It is the page somebody opened BECAUSE they
-// want to read the machinery, and a node's whole life is one long turn with a
-// report at the end of it — so the same rule swallowed the entire page the
-// instant the node stopped running, leaving `▸ worked · 10 tool calls · ctrl+e`
-// and the report under it. That is the complaint this answers: a person who
-// walked into a task to watch it work was shown its result and nothing else.
+// ~~A ROOM FOLDS NOTHING. The chip is an affordance of the conversation and it
+// earns its place there. A turn out in the thread is a question somebody asked
+// and the answer they were given, and the machinery between the two is work
+// they delegated precisely so they would not have to watch it — so it
+// collapses, and the page reads back as the exchange it was. A room is the
+// opposite errand. It is the page somebody opened BECAUSE they want to read the
+// machinery, and a node's whole life is one long turn with a report at the end
+// of it — so the same rule swallowed the entire page the instant the node
+// stopped running, leaving `▸ worked · 10 tool calls · ctrl+e` and the report
+// under it. It is stated as an absence of folds rather than as a fold that
+// opens itself, because [deck.workOpen] is the READER'S own answer and a
+// default that had to be inverted for one kind of page would give that map two
+// meanings.~~
 //
-// It is stated as an absence of folds rather than as a fold that opens itself,
-// because [deck.workOpen] is the READER'S own answer and a default that had to
-// be inverted for one kind of page would give that map two meanings. With no
-// chip there is nothing to open, and `ctrl+e` falls through to the thinking
-// block, which is the key's other meaning and the one a room advertises.
+//	> RULED BY THE OWNER, 2026-09-01 (issue #252, ruling 1): FOLD THE PAST.
+//	> "The task page folds settled work into phase chips by default; the
+//	> machinery stays one keypress away (ctrl+e / scroll-up). This reverses
+//	> the written law at workfold.go:26-52 … and the three tests pinning it."
+//
+// THE ARGUMENT THE RULING ENCODES, because the struck text above is a good
+// argument for the wrong page. It optimises the RARE visit — the audit — at the
+// cost of the common one. A person goes to a task to steer and to check, not to
+// read a transcript, and a page built on the premise that every call must be
+// read is the industry's linear machinery scroll reproduced one level down. The
+// reversal was possible without giving up the audit because the old law's own
+// objection — a chip per TURN swallows a page that is one turn — is answered by
+// folding per PHASE instead ([derivePhaseFolds]): the machinery collapses, every
+// paragraph the node wrote stays standing, and the live frontier never folds at
+// all. And [deck.workOpen] keeps its one meaning: the chips still default shut
+// and the reader's expansion is still the reader's.
+//
+// THE DOORS, all three, because DISCOVERABILITY BEFORE PURITY: `ctrl+e` opens
+// the newest chip ([app.toggleLatestWorkfold]), a click opens any of them
+// (app.go's [app.press]), and a scroll up at the top of a room opens the one
+// nearest the top (room.go's [app.roomUnfoldAtTop]) — which is what keeps the
+// disclosure ladder from dead-ending (docs/THREAD-UX.md).
 func (a *app) deckFolds(d deck) map[int]workfold {
-	if d.showsWork {
+	fold, ok := folders[d.lens.foldPast]
+	if !ok {
 		return nil
 	}
-	return deriveWorkfolds(d.entries, d.runningTurn)
+	return fold(d)
+}
+
+// ── A PHASE IS SETTLED WORK WITH A SETTLED PARAGRAPH AFTER IT ───────────────
+//
+// derivePhaseFolds is the room's chips. A PHASE is the settled work — thought,
+// calls, compaction, the surface's own notes — that precedes a settled block of
+// the node's prose. The chip hides that machinery and leaves the prose standing,
+// which is exactly what the conversation's chip does with an answer; the only
+// thing that changed is what counts as the end of one, because a node writes a
+// paragraph every few steps and asks a question once.
+//
+// THE LIVE FRONTIER NEVER FOLDS. Everything after the last settled paragraph is
+// what the node is doing NOW, and the person watching now is the one reader for
+// whom the machinery is the content — so it is left whole, at the room's own
+// whole-screenful tool tail (lens.go's [lens.toolTail]). It falls out of the
+// walk rather than being tested for: a run with no settled paragraph after it
+// never closes, so no chip is ever minted over it.
+//
+// WHAT NEVER FOLDS, AND WHY EACH ONE. A run carrying any of these keeps every
+// row it has, exactly as the conversation's `blocked` runs do:
+//
+//   - THE PERSON'S OWN WORDS — the brief, and every correction they typed into
+//     running work. A FOLD MAY NEVER HIDE THE PERSON'S WORDS ([groupBreaks]),
+//     and an elbow ends a run for the same reason it ends one out in the thread.
+//     The brief keeps its own three-lines-and-a-door instead (brieffold.go).
+//   - A FAILED CALL. ONLY FAILURE SPEAKS on this surface, so the one row that
+//     was allowed to raise its voice may not then be filed away by a chip.
+//   - AN ASK — a consent question, a task proposal, a standing card. It is a
+//     thing the work could not decide alone, and the record of what the person
+//     answered is the only account of where the next hour came from.
+//   - A CALL STILL IN FLIGHT, which is not settled work and therefore not part
+//     of a settled phase at all.
+//   - A SEAM, for [deriveWorkfolds]'s reason: a fold that swallowed one would be
+//     claiming the page above it is the same unbroken page.
+//
+// THE FINAL REPORT STANDS BY CONSTRUCTION. It is the last settled paragraph, so
+// it is the block the last chip stops at rather than a case anything tests for.
+//
+// Nothing here is journaled and nothing is summarised: a chip states counted
+// facts about the rows it covers, and a phrase that paraphrased the work would
+// be a second account of it that can drift from the work
+// ([app.workfoldLabel]).
+func derivePhaseFolds(es []entry) map[int]workfold {
+	out := make(map[int]workfold)
+	phase := phaseRun{start: -1}
+	for i := range es {
+		e := &es[i]
+		switch {
+		case groupBreaks(e) || phaseKeeps(e):
+			// The run is abandoned, not emitted: whatever it held, this row is
+			// something a chip may not cover, and a chip that stopped short of it
+			// would be a fold whose reason nobody can see.
+			phase = phaseRun{start: -1, key: phase.key}
+		case e.kind == entryAssistant && e.settled && strings.TrimSpace(e.text) != "":
+			if f, ok := phase.close(es, i); ok {
+				out[f.start] = f
+			}
+			phase = phaseRun{start: -1, key: phase.key}
+		default:
+			phase.open(i)
+		}
+	}
+	return out
+}
+
+// phaseRun is the run of rows [derivePhaseFolds] is currently inside: where it
+// began, and how many chips have been minted before it. It is a type rather
+// than four locals so that the walk above reads as three cases and no
+// bookkeeping.
+type phaseRun struct {
+	start, key int
+}
+
+func (p *phaseRun) open(i int) {
+	if p.start < 0 {
+		p.start = i
+	}
+}
+
+// close mints the chip for a run that just reached a settled paragraph, and
+// reports whether there was a run to mint one for. An empty run — a paragraph
+// straight after a paragraph — is no phase at all and gets no chip, which is the
+// emptiness law said about a fold.
+func (p *phaseRun) close(es []entry, answer int) (workfold, bool) {
+	if p.start < 0 || p.start >= answer {
+		return workfold{}, false
+	}
+	f := workfold{turn: es[p.start].turn, answer: answer}
+	// A RUN THAT COUNTED NOTHING IS NOT A PHASE. [countWork] steps over the rows
+	// a fold may not measure, so a run of nothing but dividers leaves no start
+	// behind — and a chip over no work is a chip that hides nothing and offers a
+	// door onto it.
+	if countWork(es, p.start, answer, &f); f.start < 0 {
+		return workfold{}, false
+	}
+	p.key++
+	f.key = p.key
+	return f, true
+}
+
+// phaseKeeps reports whether this row is one a chip may never cover. The list is
+// the argument in [derivePhaseFolds]'s comment, said once, as a table of
+// predicates rather than a condition spelled into the walk.
+func phaseKeeps(e *entry) bool {
+	switch e.kind {
+	case entryTask, entryStanding, entryConnect, entrySeam, entryHarness, entryDone:
+		return true
+	case entryTool:
+		return e.status != toolOK
+	}
+	return false
 }
 
 // deriveWorkfolds finds completed turns with machinery followed by a real
@@ -116,40 +261,55 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			}
 		}
 		if eligible && !blocked && es[lo].turn != runningTurn {
-			f := workfold{turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
-			var began, ended time.Time
-			for i := lo; i < end; i++ {
-				e := &es[i]
-				work := e.kind != entryUser && e.kind != entryDivider && e.kind != entrySteer
-				if !work {
-					continue
-				}
-				if f.start < 0 {
-					f.start = i
-				}
-				if e.kind == entryTool {
-					f.tools++
-				}
-				if e.kind == entryThinking {
-					f.thought += e.ended.Sub(e.began)
-				}
-				if !e.began.IsZero() && (began.IsZero() || e.began.Before(began)) {
-					began = e.began
-				}
-				if e.ended.After(ended) {
-					ended = e.ended
-				}
-			}
-			if f.start >= 0 {
-				if !began.IsZero() && ended.After(began) {
-					f.took = ended.Sub(began)
-				}
+			// THE CONVERSATION KEYS ITS CHIPS BY THE TURN, which is what
+			// [deck.workOpen], [app.stamps] and every gesture out here already
+			// name (see [workfold.key]). One turn, one chip: nothing to separate.
+			f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
+			if countWork(es, lo, end, &f); f.start >= 0 {
 				out[f.start] = f
 			}
 		}
 		lo = hi
 	}
 	return out
+}
+
+// countWork fills in WHAT A CHIP COUNTS over es[from:to] — where the work it
+// covers begins, how many calls it made, how long it thought, and how long the
+// whole of it took.
+//
+// It is one function because both fold styles state the same facts in the same
+// grammar, and a chip that counted differently on two pages would be the same
+// sentence meaning two things. THE PERSON'S OWN ROWS ARE NOT WORK and never
+// start a chip: a question, a divider and an elbow are all things a fold stops
+// at rather than things it measures.
+func countWork(es []entry, from, to int, f *workfold) {
+	f.start = -1
+	var began, ended time.Time
+	for i := from; i < to; i++ {
+		e := &es[i]
+		if e.kind == entryUser || e.kind == entryDivider || e.kind == entrySteer {
+			continue
+		}
+		if f.start < 0 {
+			f.start = i
+		}
+		if e.kind == entryTool {
+			f.tools++
+		}
+		if e.kind == entryThinking {
+			f.thought += e.ended.Sub(e.began)
+		}
+		if !e.began.IsZero() && (began.IsZero() || e.began.Before(began)) {
+			began = e.began
+		}
+		if e.ended.After(ended) {
+			ended = e.ended
+		}
+	}
+	if !began.IsZero() && ended.After(began) {
+		f.took = ended.Sub(began)
+	}
 }
 
 func workIndent(width int) string {
@@ -188,9 +348,24 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.cut {
 		return true
 	}
+	// A BLOCK INSIDE A CHIP IS WORK AND THE BLOCK A CHIP STOPS AT IS THE ANSWER,
+	// and both are asked BY POSITION rather than by turn. The turn was enough
+	// while one turn held one chip; a room's page is one turn holding a chip per
+	// settled phase ([derivePhaseFolds]), and a walk that stopped at the first
+	// fold of this turn would be reading a map in whatever order Go handed it —
+	// the second phase's narration answered by the first phase's boundary. The
+	// two tests are disjoint by construction, so the answer does not depend on
+	// that order; out in the conversation, where a turn has one chip, they give
+	// exactly what the turn test gave.
 	for _, f := range folds {
-		if f.turn == e.turn {
-			return i < f.answer
+		if f.turn != e.turn {
+			continue
+		}
+		if i >= f.start && i < f.answer {
+			return true
+		}
+		if i == f.answer {
+			return false
 		}
 	}
 	// During a live turn there is no completed fold yet, so the same question is
@@ -242,10 +417,18 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 // "cancelled", not "incomplete" — because they are the one who did it and they
 // know why; the line exists to say where the missing answer went, not to grade the
 // turn.
-func (a *app) workfoldLabel(f workfold) string {
+func (a *app) workfoldLabel(d deck, f workfold) string {
 	took := f.took
-	if stamp, ok := a.stamps[f.turn]; ok {
-		took = stamp.took
+	// THE SESSION'S RECEIPTS ARE THE SESSION'S, and only a page that runs the
+	// session's clock may read them (lens.go's [receiptsInline]). [app.stamps] is
+	// keyed by the CONVERSATION's turn numbers; a room numbers its own turns from
+	// one, so a chip in there that consulted the map would quote the time the
+	// conversation's first turn took as the time this node's first phase took —
+	// a figure about somebody else's work, said with confidence.
+	if d.lens.receipts == receiptsInline {
+		if stamp, ok := a.stamps[f.turn]; ok {
+			took = stamp.took
+		}
 	}
 	parts := []string{"▸ worked"}
 	if f.stopped {
@@ -259,12 +442,20 @@ func (a *app) workfoldLabel(f workfold) string {
 	if word := tookWord(f.thought); word != "" {
 		parts = append(parts, "thought "+word)
 	}
-	if f.tools > 0 {
-		word := " tool call"
-		if f.tools != 1 {
-			word += "s"
+	steps := 0
+	for _, c := range d.captions {
+		if c.start >= f.start && c.start < f.answer {
+			steps++
 		}
-		parts = append(parts, itoa(f.tools)+word)
+	}
+	if steps > 1 {
+		parts = append(parts, itoa(steps)+" steps")
+	}
+	if f.tools > 0 {
+		// ONE SPELLING OF THIS NUMBER, and it is timestamps.go's
+		// ([toolCallWord]) — the receipt six rows under this chip counts the same
+		// calls and used to spell them differently.
+		parts = append(parts, toolCallWord(f.tools))
 	}
 	parts = append(parts, "ctrl+e")
 	return strings.Join(parts, " · ")
@@ -292,7 +483,7 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 	if r.text == "" {
 		return false
 	}
-	if r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitTool || r.hit == hitMore {
+	if r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitCaption || r.hit == hitTool || r.hit == hitMore {
 		return true
 	}
 	return workEntry(es, folds, r.entry)
@@ -300,47 +491,155 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 
 func (a *app) toggleLatestWorkfold() bool {
 	d := a.bodyDeck()
-	folds := a.deckFolds(d)
-	latest := -1
-	for _, f := range folds {
-		if f.turn > latest {
-			latest = f.turn
+	latest, found := 0, false
+	for _, f := range a.deckFolds(d) {
+		if !found || f.key > latest {
+			latest, found = f.key, true
 		}
 	}
-	if latest < 0 {
+	if !found {
 		return false
 	}
-	if d.workOpen == nil {
-		if a.room != nil {
-			a.room.workOpen = make(map[int]bool)
-			d.workOpen = a.room.workOpen
-		} else {
-			a.workOpen = make(map[int]bool)
-			d.workOpen = a.workOpen
-		}
-	}
-	d.workOpen[latest] = !d.workOpen[latest]
-	if a.room != nil {
-		a.room.dirty = true
-	}
-	a.touch()
+	a.setWorkOpen(d, latest, !d.workOpen[latest])
 	return true
 }
 
-func (a *app) toggleWorkfold(turn int) {
+// toggleWorkfold is a press on one chip: the click's door, and the one the
+// keyboard's own gesture resolves to.
+func (a *app) toggleWorkfold(key int) {
 	d := a.bodyDeck()
+	a.setWorkOpen(d, key, !d.workOpen[key])
+}
+
+// workFoldOpen reports whether one chip is SHOWING ITS WORK: because the reader
+// opened it, or because `ui.work = open` opened every chip on the surface.
+//
+// It is one function because two places ask it — the pass that draws the rows
+// and the scroll that looks for a chip still worth opening (room.go's
+// [app.roomFoldDoor]) — and a gesture that disagreed with the screen about
+// which chips were shut would spend itself on one that was already open.
+func (a *app) workFoldOpen(d deck, key int) bool {
+	return a.workMode == config.WorkOpen || d.workOpen[key]
+}
+
+// openWorkfold OPENS one chip and never closes it. It is the door a SCROLL takes
+// (room.go's [app.roomUnfoldAtTop]): a person reading history upward is asking
+// for more of it at every tick, and a gesture that closed the chip it had just
+// opened would make the wheel a switch.
+func (a *app) openWorkfold(key int) { a.setWorkOpen(a.bodyDeck(), key, true) }
+
+// setWorkOpen writes the reader's answer about one chip, minting the deck's map
+// where the page has not needed one yet.
+//
+// It is ONE function because the map lives on whichever list is being drawn and
+// the three doors above must not each carry their own copy of that reasoning:
+// the deck is a VIEW, so a map minted here has to be minted on the object the
+// deck was taken from or the next frame reads a map nobody wrote to.
+func (a *app) setWorkOpen(d deck, key int, open bool) {
 	if d.workOpen == nil {
+		d.workOpen = make(map[int]bool)
 		if a.room != nil {
-			a.room.workOpen = make(map[int]bool)
-			d.workOpen = a.room.workOpen
+			a.room.workOpen = d.workOpen
 		} else {
-			a.workOpen = make(map[int]bool)
-			d.workOpen = a.workOpen
+			a.workOpen = d.workOpen
 		}
 	}
-	d.workOpen[turn] = !d.workOpen[turn]
+	d.workOpen[key] = open
 	if a.room != nil {
 		a.room.dirty = true
 	}
 	a.touch()
+}
+
+// toggleCap opens or closes the calls under one outline heading.
+//
+// IT TOGGLES THE EFFECTIVE STATE, not the map's zero. A live frontier is open
+// without an entry in [deck.capOpen]; flipping the map's false would "open" it
+// again and the first click would do nothing.
+func (a *app) toggleCap(key int) {
+	d := a.bodyDeck()
+	folds := a.deckFolds(d)
+	stampHierarchy(d.entries, folds)
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	for _, c := range d.captions {
+		if c.start != key {
+			continue
+		}
+		a.setCapOpen(d, key, !a.captionCallsOpen(d, c))
+		return
+	}
+	a.setCapOpen(d, key, !d.capOpen[key])
+}
+
+// captionCallsOpen is THE ONE ANSWER for whether a heading shows its calls.
+//
+//	· under an open work chip, the outline defaults shut — click to open a step
+//	· on a running turn, past captions stay shut; the live frontier stays open
+//	· the reader's own click overrides either default
+//	· ctrl+o (unfolded) forces every step open
+func (a *app) captionCallsOpen(d deck, c caption) bool {
+	if d.unfolded != nil {
+		from, _ := captionTools(c, d.entries)
+		if from < len(d.entries) && d.unfolded[d.entries[from].turn] {
+			return true
+		}
+	}
+	if v, ok := d.capOpen[c.start]; ok {
+		return v
+	}
+	from, _ := captionTools(c, d.entries)
+	if from >= len(d.entries) {
+		return false
+	}
+	turn := d.entries[from].turn
+	// Inside an open workfold the page is the outline: every caption starts shut
+	// so the stack of what happened is readable, and a click opens one step.
+	for _, f := range a.deckFolds(d) {
+		if turn != f.turn {
+			continue
+		}
+		if a.workFoldOpen(d, f.key) && from >= f.start && from < f.answer {
+			return false
+		}
+	}
+	past := turn == d.runningTurn && !captionFrontier(c, d.captions, d.entries, turn)
+	return !past
+}
+
+// setCapOpen writes caption expansion state onto the page whose list supplied
+// the key. A turn number from another page has no meaning here.
+func (a *app) setCapOpen(d deck, key int, open bool) {
+	if d.capOpen == nil {
+		d.capOpen = make(map[int]bool)
+		if a.room != nil {
+			a.room.capOpen = d.capOpen
+		} else {
+			a.capOpen = d.capOpen
+		}
+	}
+	d.capOpen[key] = open
+	if a.room != nil {
+		a.room.dirty = true
+	}
+	a.touch()
+}
+
+// toggleLatestCaption toggles the newest caption in the visible turn.
+func (a *app) toggleLatestCaption() bool {
+	d := a.bodyDeck()
+	folds := a.deckFolds(d)
+	stampHierarchy(d.entries, folds)
+	captions := deriveCaptions(d.entries, d.runningTurn)
+	turn := a.bodyTurn()
+	key, found := 0, false
+	for _, c := range captions {
+		if c.start < len(d.entries) && d.entries[c.start].turn == turn {
+			key, found = c.start, true
+		}
+	}
+	if !found {
+		return false
+	}
+	a.setCapOpen(d, key, !d.capOpen[key])
+	return true
 }

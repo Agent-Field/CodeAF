@@ -51,8 +51,11 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +131,39 @@ type fileChange struct {
 	// approved. A created file is deleted by a revert; a modified one is
 	// restored, and the two are not interchangeable in either direction.
 	created bool
+	// before is the file's CONTENT as the pre-action stat found it, digested
+	// ([fileDigest]) — and "" for a file that was not there, was not a regular
+	// file, or could not be read.
+	//
+	// IT IS THE HALF OF "THIS SESSION MADE SOMETHING" THAT WAS MISSING. The rest
+	// of this ledger records that a path WAS WRITTEN, which is all a revert needs
+	// to know; the terminal reading asks a different question — is our work still
+	// in the tree — and a path alone cannot answer it. A stash, a revert, an edit
+	// that put the file back the way it was all leave the path written and the
+	// tree unchanged ([Agent.changedInDeliverable]).
+	before string
+}
+
+// fileDigest is one file's content as a single string to compare with: the
+// sha256 of its bytes, in hex, and "" for a file that is absent, is not a
+// regular file, or cannot be read.
+//
+// THERE IS NO SIZE CEILING AND THAT IS DELIBERATE. A file the model is about to
+// write is a file it read, so the whole of it has already been through this
+// process once and a ceiling would buy nothing back; what a ceiling WOULD do is
+// leave the biggest deliverables in the state this measurement exists to end —
+// counted as made whatever became of them afterwards.
+func fileDigest(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	sum := sha256.New()
+	if _, err := io.Copy(sum, file); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(sum.Sum(nil))
 }
 
 // fileLedger is one turn's record of what changed on disk.
@@ -142,6 +178,12 @@ type fileLedger struct {
 	// there. The FIRST sighting stands, so a file created and then edited five
 	// times is still a created file.
 	existed map[string]bool
+	// before is the other half of that same sighting: absolute path → the
+	// digest of what was in the file then ([fileChange.before]). It keeps the
+	// FIRST sighting for the same reason existed does — the state a turn's work
+	// has to be compared against is the state before the turn's first write, not
+	// before its fifth.
+	before map[string]string
 	// order is the paths in first-touch order, and changes is what is known
 	// about each. Two structures rather than a map with an index because the
 	// answer a person reads names files in the order the turn touched them.
@@ -152,18 +194,49 @@ type fileLedger struct {
 func newFileLedger() *fileLedger {
 	return &fileLedger{
 		existed: make(map[string]bool, 4),
+		before:  make(map[string]string, 4),
 		changes: make(map[string]fileChange, 4),
 	}
 }
 
-// note records what pre-action saw. Only the first sighting of a path is kept.
-func (l *fileLedger) note(path string, existed bool) {
+// note records what pre-action saw — that the file was there, and what was in
+// it. Only the first sighting of a path is kept.
+//
+// IT TAKES BOTH MEASUREMENTS ITSELF, UNDER THE LOCK, AND THAT IS THE WHOLE
+// POINT. A batch's calls run in parallel, so two writes to one path are two
+// pre-actions racing. With the caller measuring and only the RECORDING done
+// here, the stat and the first sighting are two steps with a gap between them,
+// and whether the digest that wins was taken before anybody wrote rests on a
+// happens-before argument that runs through the hook pipeline — a hook returns
+// before the tool it straddles runs, so the first note in a batch precedes every
+// write in it. That argument is true today and it is not local to this file: it
+// holds only for as long as nothing ever writes between a pre-action and its
+// note. Taken here, the first sighting to reach the lock is the one that
+// measures, and the guarantee is a property of these six lines.
+//
+// THE FILE IS READ WITH THE LOCK HELD, deliberately. It serializes the batch's
+// other pre-actions for as long as one digest takes, which is what the paragraph
+// above costs; only the FIRST sighting of a path pays it, and every later one
+// returns on the map lookup.
+//
+// WHAT IT STILL CANNOT SEE is a write by something the ledger does not watch —
+// `bash` is deliberately absent from [mutatingTools], and a shell command that
+// writes the file between two tracked calls is a change nothing here measured.
+// That hole is the ledger's and not this function's, and it is stated rather
+// than papered over.
+func (l *fileLedger) note(path string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if _, known := l.existed[path]; known {
 		return
 	}
-	l.existed[path] = existed
+	info, err := os.Stat(path)
+	l.existed[path] = err == nil
+	before := ""
+	if err == nil && info.Mode().IsRegular() {
+		before = fileDigest(path)
+	}
+	l.before[path] = before
 }
 
 // touched records one successful mutation. The created flag comes from the
@@ -179,7 +252,9 @@ func (l *fileLedger) touched(path, shown string) {
 	}
 	existed, known := l.existed[path]
 	l.order = append(l.order, path)
-	l.changes[path] = fileChange{path: path, shown: shown, created: known && !existed}
+	l.changes[path] = fileChange{
+		path: path, shown: shown, created: known && !existed, before: l.before[path],
+	}
 }
 
 // change is what the ledger knows about ONE path, and whether it knows
@@ -224,12 +299,23 @@ func (*changeLedger) Name() string { return "changes" }
 
 func (*changeLedger) EpisodeInit(ep *episode) { ep.changes = newFileLedger() }
 
-// PreAction takes the one measurement that cannot be taken later: whether the
-// file exists BEFORE the call that is about to write it.
+// PreAction takes the two measurements that cannot be taken later: whether the
+// file exists BEFORE the call that is about to write it, and WHAT IS IN IT.
+//
+// THE CONTENT IS TAKEN HERE FOR THE SAME REASON THE EXISTENCE IS. A moment after
+// this hook returns the file holds the session's work, and every later reader —
+// including the one that decides whether the session made anything at all — has
+// no way left to find out what it displaced. A path that is not a regular file
+// digests as "", which is what an absent one digests as: neither is content we
+// can be said to have changed.
+//
+// BOTH ARE TAKEN INSIDE [fileLedger.note], and this hook only names the path.
+// The batch's calls run in parallel, and a measurement taken out here and
+// recorded in there is two steps a second writer can get between; taken under
+// the ledger's own lock, the first sighting of a path is the one that measures.
 func (c *changeLedger) PreAction(_ context.Context, ep *episode, _ *eventHub, call ai.ToolCall) (ai.ToolCall, toolResult, bool) {
 	if path, _, ok := c.agent.mutatingPath(call); ok {
-		_, err := os.Stat(path)
-		ep.changes.note(path, err == nil)
+		ep.changes.note(path)
 	}
 	return call, toolResult{}, true
 }
@@ -252,7 +338,7 @@ func (c *changeLedger) PostFeedback(_ context.Context, ep *episode, _ *eventHub,
 			// fold here rather than a second stat there, because the only moment
 			// that measurement is available has already gone by then.
 			if change, known := ep.changes.change(path); known {
-				c.agent.rememberCreated(change)
+				c.agent.rememberChange(change)
 			}
 		}
 	}

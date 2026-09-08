@@ -245,7 +245,10 @@ var forkSchemaJSON = `{"type":"object","properties":{` +
 // a chat turn and a task worker both fork, because both are minds mid-work with
 // a context worth copying.
 func (a *Agent) forkTools() []bare.Tool {
-	if a.config.inHand {
+	// [Config.mayFork] is the one reading of it, and the page's own `fork`
+	// bullet is composed from the same predicate (beltfacts.go), so a hand is
+	// never offered a verb this line has just withheld.
+	if !a.config.mayFork() {
 		return nil
 	}
 	return []bare.Tool{{
@@ -979,6 +982,15 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	messages := make([]ai.Message, len(seed))
 	copy(messages, seed)
 	hand.mu.Lock()
+	// AND THE TAIL THAT MAKES THE PAGE TRUE FOR THIS READER ([handToolTail]).
+	// It is applied here rather than through Config.System for the reason the
+	// belt is: the belt only exists a few lines above, and the tail is the
+	// belt's own names. message[0] is rewritten with it because that element is
+	// what actually goes on the wire, and [Agent.refreshSystemLocked] would
+	// otherwise put the caller's page back over the top of it at the start of
+	// the hand's first turn.
+	hand.system = system + handToolTail(belt)
+	messages[0] = textMessage("system", hand.system)
 	hand.messages = messages
 	// The lineage is stamped on the agent AND on the wrapper every one of its
 	// requests passes through, because that wrapper is where the key reaches the
@@ -991,6 +1003,50 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	}
 	hand.mu.Unlock()
 	return hand, nil
+}
+
+// handToolTail is the ONE THING A HAND IS TOLD THAT ITS CALLER WAS NOT.
+//
+// A hand opens on the caller's transcript and the caller's system page, word for
+// word, because the shared prefix is the whole economy of the verb
+// ([Agent.forkSeed] states it). That page was composed for the caller's belt —
+// prompts/system.md's facts are rendered from the predicates that build it
+// (beltfacts.go) — and a hand's belt is not that belt: it is the fixed
+// allowlist below, nine verbs, with no `fork`, no task verb and no machine. So
+// the page names tools this reader does not have, and the law that every other
+// shape is held to ("the prompt names exactly the tools the call carries")
+// cannot be kept here by rendering: a page rendered for the hand would be a
+// different page, and the prefix it shares with its caller would end at byte
+// one.
+//
+// It is kept by APPENDING instead. The caller's page stays byte-for-byte at the
+// front, while the cache benefit is bounded by the hand's tool block diverging
+// from its caller's before the system message. What follows says whose page
+// that was and which verbs are actually this reader's.
+//
+// THE NAMES ARE THE BELT'S OWN, never a list typed here: [forkBelt] decides
+// what a hand carries, and a second list would be the place the two drift
+// (CLAUDE.md's one-source-of-truth law). prompt_belt_test.go holds this tail to
+// naming every tool on the belt and no tool that is off it.
+func handToolTail(belt []bare.Tool) string {
+	if len(belt) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(belt))
+	for _, tool := range belt {
+		names = append(names, "`"+tool.Name+"`")
+	}
+	list := names[0]
+	if len(names) > 1 {
+		list = strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
+	return "\n\n# The list above is not yours\n" +
+		"YOU ARE A HAND: the page in front of this one is your CALLER'S, kept word " +
+		"for word because that is what makes a copy of a mind cheap. Every tool it " +
+		"names is theirs. YOURS ARE " + list + ", and there are no others however " +
+		"the page above reads — `bash` here only looks at what the repository " +
+		"already says about itself, and there is nobody to ask for anything more. " +
+		"Do the slice you were given with these, and say what you found."
 }
 
 // forkBelt is a hand's hands: the readers, the two writers the scope guard

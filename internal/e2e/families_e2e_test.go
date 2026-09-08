@@ -271,7 +271,7 @@ func runFamily(t *testing.T, w *world, ground, ask string, attempt int, during f
 	wide, parts, why := agent.JudgeDecomposable(ctx, ask)
 	t.Logf("SIZING attempt %d → wide=%v parts=%v why=%q", attempt, wide, parts, why)
 
-	id, title, err := agent.StartTask(ctx, ask)
+	id, title, _, err := agent.StartTask(ctx, ask)
 	if err != nil {
 		t.Fatalf("start the task: %v", err)
 	}
@@ -1062,6 +1062,10 @@ func newRepositoryGround(t *testing.T) string {
 	}
 	gitAt(t, dir, "add", ".keep")
 	gitAt(t, dir, "commit", "--quiet", "-m", "the material")
+	// THIS FIXTURE EXERCISES THE ORDINARY MERGE ROAD. Git's default may be main
+	// or master, both of which are protected, so it chooses an ordinary branch
+	// explicitly rather than letting machine configuration change the scenario.
+	gitAt(t, dir, "checkout", "--quiet", "-b", "work")
 	return dir
 }
 

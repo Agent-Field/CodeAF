@@ -144,16 +144,15 @@ const (
 	// model standing in for them — and grouping it with the rule rows would file
 	// it as one more exception in a list of exceptions.
 	KeyGuardian = "approval.guardian"
-	// KeyConsentTimeout is how long an approval question waits for a keystroke
-	// before it answers itself. It answers DENY — never allow — so the clock can
-	// only ever be the cautious one, and it stops the moment a key is pressed,
-	// because a person who has started reading is a person who is going to
-	// answer.
+	// KeyConsentTimeout is how long an approval question counts down before it
+	// PAUSES and keeps waiting. It never answers for the person — silence is
+	// not a no (F41) — and it stops the moment a key is pressed, because a
+	// person who has started reading is a person who is going to answer.
 	//
 	// Seconds, not a duration string, for the reason [KeyTaskAutoApprove] is
 	// spelled that way: the number is small and read at a glance off a line that
-	// is counting it down. 0 turns the clock off and the question waits forever,
-	// which is what a person who reads every prompt wants.
+	// is counting it down. 0 turns the clock off and the question waits from
+	// the start, which is what a person who reads every prompt wants.
 	KeyConsentTimeout = "approval.timeout_seconds"
 	KeyTierLowModel   = "models.tiers.low"
 	KeyTierHighModel  = "models.tiers.high"
@@ -1008,16 +1007,26 @@ var OperatorEnvPins = []string{
 	// disappears when nobody has a reason to turn the default off any more,
 	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
-	// AFORGE_SPLITGATE is the split gate's rollback switch
+	// AFORGE_SPLITGATE names which reading of the split gate the binary runs
 	// (internal/splitgate, read by cmd/aforge/cooperative.go and by
-	// internal/session's task_divide.go): set to 0 and a request to divide is
-	// taken at its word instead of being weighed against the evidence it names.
-	// It matters more now that swarm is the default, because the gate is what
-	// makes that default free: it is the thing that refuses narrow work. It is
-	// plumbing for the reason AFORGE_SWARM is — a wave's escape hatch while the
-	// gate proves itself against real runs, not a preference — and it has the
-	// same lifetime: it disappears when the gate has earned the last word,
-	// which is exactly the lifetime a persisted setting must not have.
+	// internal/session's task_divide.go). UNSET IS OFF: every division the
+	// planner or a worker drew is kept, and nothing here counts anything. `1`
+	// arms the gate as it shipped until 2026-09-02, weighing a division against
+	// the items its evidence enumerates against a six-item floor; `judgment`
+	// asks the plan's own sizing instead of the text, and falls back to that
+	// count where the plan has no opinion. `0` is the rollback spelling this
+	// switch has always carried and now selects what an unset pin does anyway.
+	// Anything unrecognised reads as OFF, because off is the default and a typo
+	// must not quietly put a floor back under somebody's divisions.
+	// THE DEFAULT MOVED ON MEASUREMENT, not on argument: a designed experiment
+	// ran four planner arms against four readings of this gate over 273 judged
+	// plan draws, and the front it drew is the planner with the gate off —
+	// docs/design/plan-gate-doe/REPORT.md, issues #418 and #384. It is plumbing
+	// for the reason AFORGE_SWARM is — it picks which decomposition doctrine the
+	// binary runs, not something the product has an opinion about — and it has
+	// the same lifetime: it disappears when nobody has a reason to reach for a
+	// floor any more, which is exactly the lifetime a persisted setting must not
+	// have.
 	"AFORGE_SPLITGATE",
 	// AFORGE_MECHANISM names which coordination mechanism the binary arms —
 	// today its one recognized word is `quorum`, which sets Config.Quorum the
@@ -1031,6 +1040,26 @@ var OperatorEnvPins = []string{
 	// verified by two cheap validators before it commits; off, the judge's
 	// pass is the final word. Same lifetime as AFORGE_SWARM.
 	"AFORGE_QUORUM",
+	// AFORGE_EXIT_CODES is the migration hatch for the ONE EXIT LADDER
+	// (cmd/aforge/envelope.go). It takes exactly one word, `legacy`, and unset
+	// — which is every ordinary run — means the ladder every headless verb now
+	// leaves on: 0 done, 1 it could not be run at all, 2 it ran and did not
+	// finish, 3 a limit you set stopped it, 4 it needed an answer and nobody
+	// was there. What it decides: whether `aforge exec` returns its OLD
+	// 2/3/4/5/6 instead, so that a harness written against those numbers keeps
+	// working while it is being fixed. It decides nothing about `aforge do`,
+	// nothing about `aforge run subharness`, and nothing about `--json`.
+	//
+	// IT IS PLUMBING AND NOT A ROW, for the reason AFORGE_SWARM and
+	// AFORGE_SPLITGATE are: it is a wave's escape hatch, it lives for one
+	// release and then goes, and that is exactly the lifetime a persisted
+	// setting must not have. A row would also be worse than useless here — a
+	// person who set `legacy` in the sheet once would have their exit codes
+	// quietly rolled back on a machine where the variable is nowhere in sight,
+	// which is the failure the hatch exists to prevent, not to cause. The
+	// scripts that need it set it in the environment beside the command, which
+	// is where a compatibility switch belongs.
+	"AFORGE_EXIT_CODES",
 	// The three numbers the response boundary reads (internal/taxonomy, and
 	// [ResponseAttemptsAt] below). They are plumbing rather than rows for the
 	// reason the context-budget pins are: nobody sets them to express a
@@ -1155,14 +1184,13 @@ const (
 	// developer's machine is usually theirs.
 	DefaultTaskMinFreeMB = 1536
 
-	// DefaultConsentTimeout is ten seconds, and it is a different number from
-	// the one above because it is a different KIND of clock. The task countdown
-	// runs toward the permissive answer, so it is kept short enough to notice.
-	// This one runs toward the refusal: at expiry the call is denied, the model
-	// is handed a refusal it can act on, and nothing has happened to the disk.
-	// So it can afford to be the longer of the two — ten seconds is long enough
-	// to read a command and a rule — and its cost when it fires is one call the
-	// model has to ask for again.
+	// DefaultConsentTimeout is ten seconds of reminder, and it is a different
+	// number from the one above because it is a different KIND of clock. The
+	// task countdown runs toward the permissive answer, so it is kept short
+	// enough to notice. This one used to run toward the refusal (F41) and
+	// does not: at expiry the question pauses and keeps waiting. Ten seconds
+	// is long enough to read a command and a rule; after that the card stays
+	// up until somebody answers.
 	DefaultConsentTimeout = 10
 
 	// DefaultSearchProvider pins nothing. Auto is the only default that stays
@@ -1201,6 +1229,32 @@ type Setting struct {
 	Label    string
 	Hint     string
 	Kind     SettingKind
+
+	// Unit is WHAT THIS ROW'S NUMBER IS COUNTED IN, and it lives here beside
+	// the default rather than in the surface that draws the row. `ssh reuse
+	// 300` is a row nobody can decide — three hundred seconds, connections,
+	// kilobytes? — and a panel that spelled the `s` for itself would be a
+	// second place for that answer to live, drifting the day somebody widened
+	// the row. One source: the registry says what the number is, every surface
+	// renders it ([Setting.Reading]).
+	//
+	// THE SYMBOLS ATTACH AND THE WORDS DO NOT. `300s`, `60%`, `20m` are one
+	// token in every terminal font, the way the two SettingDuration rows beside
+	// them already read; `1536 MB` and `65536 tok` are two words and read as
+	// two ([unitAttaches] is the whole list).
+	//
+	// A ROW WHOSE READING ALREADY CARRIES ITS UNIT LEAVES THIS EMPTY — a
+	// duration writes `20m`, a dollar row writes `$5`, [formatPercent] writes
+	// its own `%`. A row whose LABEL already names what is counted declares
+	// [UnitInLabel] rather than nothing, so "somebody decided this row needs no
+	// suffix" and "nobody has looked at this row yet" are different states and
+	// the completeness test can tell them apart.
+	Unit string
+
+	// UnitOne is [Setting.Unit] at exactly one — `1 clean firing` rather than
+	// `1 clean firings`. Empty means the unit reads the same at every number,
+	// which is true of every symbol and of `tok`, `MB` and `per core`.
+	UnitOne string
 
 	// Slot is the model role a SettingModel row fronts.
 	Slot string
@@ -1266,6 +1320,52 @@ func (s Setting) Value() string {
 	return value
 }
 
+// UnitInLabel is the [Setting.Unit] of a row whose own LABEL names what is
+// counted: `tasks at once  3` needs no `tasks` on the end, and `task repair
+// rounds  1 round` would be the row saying `rounds` twice. It reads as nothing
+// and it is not nothing — it is the row saying it was looked at.
+const UnitInLabel = "-"
+
+// Reading is [Setting.Value] with the row's unit on the end — the string a
+// surface DRAWS, where Value is the string an editor opens on.
+//
+// The two are separate because a unit is a fact about the number and never part
+// of it: an edit box that opened on `300s` would be asking a person to type the
+// `s` back, and the writers refuse anything that is not a bare figure.
+func (s Setting) Reading() string {
+	value := s.Value()
+	if value == "" || s.Unit == "" || s.Unit == UnitInLabel {
+		return value
+	}
+	// A ROW READING ITS OFF WORD IS NOT READING A NUMBER. `no limit` is the
+	// answer to "how many", not a quantity of them, and `no limit tasks` would
+	// be this surface putting a unit on a refusal.
+	if s.EmptyLabel != "" && value == s.EmptyLabel {
+		return value
+	}
+	unit := s.Unit
+	if value == "1" && s.UnitOne != "" {
+		unit = s.UnitOne
+	}
+	if unitAttaches(unit) {
+		return value + unit
+	}
+	return value + " " + unit
+}
+
+// unitAttaches is the short list of units that are written against the figure
+// rather than beside it. It is a list and not a rule about length because the
+// reason is typographic: `s`, `m`, `h` and `%` are read as part of the number
+// the way `20m` on the two duration rows already is, and every word is read as
+// a word.
+func unitAttaches(unit string) bool {
+	switch unit {
+	case "s", "m", "h", "%":
+		return true
+	}
+	return false
+}
+
 // Accepts is what this row will take, in the words its own writer refuses in.
 //
 // It lives here rather than in the surfaces because it is the WRITER'S sentence
@@ -1317,7 +1417,25 @@ func (s Setting) Apply(raw string) error {
 	if s.write == nil {
 		return fmt.Errorf("%s cannot be changed here", s.Label)
 	}
-	return s.write(raw)
+	return s.write(s.withoutUnit(raw))
+}
+
+// withoutUnit takes the row's own unit back off what was typed, because a row
+// that DRAWS `300s` and then refuses `300s` is a row arguing with itself: the
+// suffix is this registry's word and the person is handing it back. Anything
+// else — a unit that is not this row's, a bare figure — reaches the writer
+// untouched and is refused or accepted in the writer's own words.
+func (s Setting) withoutUnit(raw string) string {
+	text := strings.TrimSpace(raw)
+	for _, unit := range []string{s.Unit, s.UnitOne} {
+		if unit == "" || unit == UnitInLabel {
+			continue
+		}
+		if trimmed, cut := strings.CutSuffix(text, unit); cut && strings.TrimSpace(trimmed) != "" {
+			return strings.TrimSpace(trimmed)
+		}
+	}
+	return raw
 }
 
 // SettingGroup is one rendered category.
@@ -1696,16 +1814,16 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyConsentTimeout, Category: CategorySafety, Kind: SettingCount,
-			Label: "approval countdown",
-			Hint: "how many seconds an approval question waits for you before it answers itself. " +
-				"It answers no — the call is refused and the model is told, never approved — " +
-				"and the clock stops the moment you press any key. 0 waits for you forever.",
+			Label: "approval countdown", Unit: "s",
+			Hint: "how many seconds an approval question counts down before it pauses and keeps waiting. " +
+				"It never answers no for you — the call stays blocked until you answer — " +
+				"and the clock stops the moment you press any key. 0 waits from the start.",
 			read:  func() string { return strconv.Itoa(ConsentTimeoutAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
 		},
 		Setting{
 			Key: KeyBashBackgroundAfter, Category: CategorySafety, Kind: SettingCount,
-			Label: "background after", Hint: BashBackgroundAfterHint,
+			Label: "background after", Unit: "s", Hint: BashBackgroundAfterHint,
 			read:  func() string { return strconv.Itoa(BashBackgroundAfterAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyBashBackgroundAfter, raw) },
 		},
@@ -1839,7 +1957,7 @@ func (s *Settings) build() []Setting {
 		// something about work it has already decided to hand off.
 		Setting{
 			Key: KeyTaskAutoApprove, Category: CategorySafety, Kind: SettingCount,
-			Label: "task countdown",
+			Label: "task countdown", Unit: "s",
 			Hint: "how many seconds a proposed task waits for you before it starts on its own. " +
 				"The countdown is your window to redirect it or wave it off, not a gate — " +
 				"0 waits for your answer instead of starting. A change lands on the next session.",
@@ -1851,7 +1969,7 @@ func (s *Settings) build() []Setting {
 		// sent back to close them before it is called incomplete.
 		Setting{
 			Key: KeyTaskRepairRounds, Category: CategoryTasks, Kind: SettingCount,
-			Label: "task repair rounds",
+			Label: "task repair rounds", Unit: UnitInLabel,
 			Hint: "how many times a task that came back with something missing is sent back " +
 				"to finish the job — same working copy, same brief, with the gaps in front of " +
 				"it — before it lands as incomplete. Each round costs another run and another " +
@@ -1865,7 +1983,7 @@ func (s *Settings) build() []Setting {
 		// will say no to whatever you named.
 		Setting{
 			Key: KeyTaskParallel, Category: CategoryTasks, Kind: SettingCount,
-			Label: "tasks at once", EmptyLabel: "no limit",
+			Label: "tasks at once", EmptyLabel: "no limit", Unit: UnitInLabel,
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
 				"tasks back when it is loaded — and the model provider's own rate limit, which " +
@@ -1880,7 +1998,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTaskMaxLoad, Category: CategoryTasks, Kind: SettingText,
-			Label: "busy machine",
+			Label: "busy machine", Unit: "per core",
 			Hint: "the load average per core at which aforge stops starting new tasks — 1.5 by " +
 				"default, which is where the machine is handing out slices rather than running " +
 				"work. Tasks already running are never touched, so the queue moves again on " +
@@ -1890,7 +2008,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTaskMinFreeMB, Category: CategoryTasks, Kind: SettingCount,
-			Label: "memory floor",
+			Label: "memory floor", Unit: "MB",
 			Hint: "how many MB of memory must be available before another task may start — " +
 				"1536 by default, roughly what one more task and its build need. Under it, new " +
 				"tasks wait rather than push the machine into swap; running ones carry on. " +
@@ -2033,9 +2151,9 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyContextFill, Category: CategoryModels, Kind: SettingCount,
-			Label: "context fill", Env: "AFORGE_CONTEXT_FILL_PCT",
+			Label: "context fill", Unit: "%", Env: "AFORGE_CONTEXT_FILL_PCT",
 			Hint: "how much of a model's context window aforge fills before it starts " +
-				"compacting, as a percent. Higher packs more in; the rest stays as thinking " +
+				"compacting. Higher packs more in; the rest stays as thinking " +
 				"and answer room. Left alone, a conversation follows its own model's window " +
 				"instead — set this and it becomes the line, which /status then says. " +
 				"A change lands on the next call.",
@@ -2044,7 +2162,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyCompletionReserve, Category: CategoryModels, Kind: SettingCount,
-			Label: "answer room", Env: "AFORGE_COMPLETION_RESERVE",
+			Label: "answer room", Unit: "tok", Env: "AFORGE_COMPLETION_RESERVE",
 			Hint: "tokens every call keeps free for its answer and its reasoning. " +
 				"Generous costs nothing on turns that do not use it; small produces empty " +
 				"replies from a model that thinks past it. A change lands on the next call.",
@@ -2053,7 +2171,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyWorkingSet, Category: CategoryModels, Kind: SettingCount,
-			Label: "working set", Env: "AFORGE_WORKING_SET",
+			Label: "working set", Unit: "tok", Env: "AFORGE_WORKING_SET",
 			Hint: "the most material aforge keeps quoted in front of a worker at once, in tokens, " +
 				"however large the model's window is. A huge window is permission to send a lot, " +
 				"not a reason to: past this the older material fades to pointers it can still read " +
@@ -2063,20 +2181,21 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyContextReuse, Category: CategoryModels, Kind: SettingCount,
-			Label: "context reuse", Env: "AFORGE_CONTEXT_REUSE_PCT",
-			// THE UNIT IS A MULTIPLE IN HUNDREDTHS, AND THE SENTENCE LEADS WITH
-			// THAT. "as a percent" over a row whose default reads 250 asks a
-			// reader to find the whole this is a percentage OF — a window, a
-			// budget — and there is no such whole: 100 is one context over, 250 is
-			// two and a half. The old wording is also why the floor reads as a
-			// mistake (writeContextReuse refuses below 100, where a percentage
-			// would clamp above it), so the worked example comes before anything
+			Label: "context reuse", Unit: "%", Env: "AFORGE_CONTEXT_REUSE_PCT",
+			// THE UNIT NAMES THE WHOLE, AND THE SENTENCE LEADS WITH THE WORKED
+			// EXAMPLE. A bare "as a percent" over a row whose default reads 250
+			// asks a reader to find the whole this is a percentage OF — a window,
+			// a budget — and the answer is none of those: it is ONE WHOLE
+			// CONTEXT, so 100% is one context over and 250% is two and a half.
+			// Naming that whole is also what stops the floor reading as a mistake
+			// (writeContextReuse refuses below 100%, where a percentage of a
+			// window would clamp above it), so the example comes before anything
 			// else the row has to say.
 			Hint: "how many times over one piece of work may re-send its whole context before " +
-				"aforge tells it to land, in hundredths — 100 is once, 250 is two and a half " +
-				"times, and 100 is the floor. Every turn re-sends everything before it, so this " +
-				"is what stops a worker going round in circles at full price. " +
-				"A change lands on the next job.",
+				"aforge tells it to land, as a share of one whole context — 100% is once, " +
+				"250% is two and a half times, and 100% is the floor. Every turn re-sends " +
+				"everything before it, so this is what stops a worker going round in circles " +
+				"at full price. A change lands on the next job.",
 			read:  func() string { return strconv.Itoa(ContextReuseAt(dir)) },
 			write: func(raw string) error { return writeContextReuse(dir, raw) },
 		},
@@ -2095,7 +2214,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
-			Label: "tenure after", Env: "AFORGE_TENURE_AFTER",
+			Label: "tenure after", Unit: "clean firings", UnitOne: "clean firing", Env: "AFORGE_TENURE_AFTER",
 			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
 			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
 			write: func(raw string) error { return writeTenure(dir, raw) },
@@ -2194,7 +2313,7 @@ func (s *Settings) build() []Setting {
 		// ~/.ssh/config, because command-line options win.
 		Setting{
 			Key: KeySSHControlPersist, Category: CategoryInterface, Kind: SettingCount,
-			Label: "ssh reuse",
+			Label: "ssh reuse", Unit: "s",
 			Hint: "seconds an ssh connection stays reusable after its channel closes. 300 makes a " +
 				"quick reconnect avoid a new handshake; 0 turns persistence off. A change lands next launch.",
 			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ControlPersistSeconds) },
@@ -2202,7 +2321,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeySSHServerAlive, Category: CategoryInterface, Kind: SettingCount,
-			Label: "ssh heartbeat",
+			Label: "ssh heartbeat", Unit: "s",
 			Hint: "seconds of silence before ssh asks whether the far machine is still there. 3 detects " +
 				"a dead link promptly; 0 turns heartbeats off. A change lands next launch.",
 			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveSeconds) },
@@ -2210,7 +2329,7 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeySSHServerMisses, Category: CategoryInterface, Kind: SettingCount,
-			Label: "ssh missed heartbeats",
+			Label: "ssh missed heartbeats", Unit: UnitInLabel,
 			Hint: "how many unanswered ssh heartbeats end a dead connection. 3 with the default heartbeat " +
 				"notices an unresponsive link in about 9 seconds. A change lands next launch.",
 			read:  func() string { return strconv.Itoa(SSHTransportAt(dir).ServerAliveMisses) },
@@ -2273,7 +2392,7 @@ func moneyValue(value float64) string {
 	return formatDollars(value)
 }
 
-// spentFigure is how a SPEND is written, which is not how a LIMIT is written.
+// SpentFigure is how a SPEND is written, which is not how a LIMIT is written.
 //
 // A limit is a figure somebody typed and [formatDollars] writes it back the
 // shortest way that is still the same number — right for a config file and right
@@ -2283,7 +2402,17 @@ func moneyValue(value float64) string {
 // twenty-two digits of float noise where a person wanted to read a price. So a
 // spend is cents, and four decimals under a cent — the same ladder the surface's
 // own money word uses, so the receipt and the figure beside it agree.
-func spentFigure(usd float64) string {
+//
+// AND A SPEND OF NOTHING SAYS NOTHING. The emptiness law lives here rather than
+// at each caller so there is one answer to "how is a spend written" and not two:
+// `$0.00` and `$0.0000` are claims nobody earned, and a headless footer that
+// ended `0s · 0 nodes · $0.0000` made three of them on the one line a person
+// reads to find out what happened. It is exported for the doors outside this
+// package — the headless footer, doctor, the notebook — for the same reason.
+func SpentFigure(usd float64) string {
+	if usd <= 0 {
+		return ""
+	}
 	if usd < 0.01 {
 		return fmt.Sprintf("$%.4f", usd)
 	}
@@ -2305,7 +2434,7 @@ func (s *Settings) spentTodayReceipt() string {
 	if !counted || spent <= 0 {
 		return ""
 	}
-	return spentFigure(spent) + " today"
+	return SpentFigure(spent) + " today"
 }
 
 // spentThisSessionReceipt is the conversation ceiling's own receipt: what THIS
@@ -2323,7 +2452,7 @@ func (s *Settings) spentThisSessionReceipt() string {
 	if !counted || spent <= 0 {
 		return ""
 	}
-	return "this one " + spentFigure(spent)
+	return "this one " + SpentFigure(spent)
 }
 
 func (s *Settings) modelRow(slot ModelSlot) Setting {
@@ -3597,7 +3726,8 @@ func TaskModelAt(profileDir string) string {
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock
-// that is off: the question waits for an answer and never answers itself.
+// that is off: the question waits from the start. A positive number is how
+// long the reminder runs before the card pauses; it never answers no.
 //
 // It tests ok before it tests the number for the reason [TaskAutoApproveAt]
 // does: a persisted 0 is a person who turned the clock off, not an absence.

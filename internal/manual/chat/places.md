@@ -300,12 +300,72 @@ The verbs are the row's own. A conversation that is not asking anything has no `
 that cannot be paused has no `p`. Where a row has no verbs at all, `→` keeps every other
 meaning it already had.
 
+## Why does the line at the bottom say fewer things on a narrow window — the hint line drops whole clauses
+
+**The foot never cuts a word, and it never cuts a key in half.** When the frame is too
+narrow for everything the line has to say, whole clauses are dropped, in a stated order,
+and what is left reads as a shorter sentence rather than as a truncated one. There is no
+`…` on this line.
+
+**What goes, and what never goes.** The way out is the last clause and it is kept to the
+last cell there is — `tab next place`, and the `esc` after it where a place adds one. What
+is dropped is taken from the clause *nearest* that protected tail, working backwards, so at
+80 columns the composer's own line loses `alt+. for the map`, then
+`alt+enter send it off as a task`, leaving `enter talk about it · tab next place`. The head
+clause — what `enter` does on the row you are standing on — is the last thing to go, being
+the only one on the line about the thing under the cursor.
+
+**A foot that is a sentence rather than a key list is cut the same way.** Home's own foot
+says things like
+
+```
+ open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
+```
+
+which has no `·` in it at all. The bracketed gloss goes first, because it explains a clause
+that is still on the line; then the clause hanging off the dash; and what a 40-column
+terminal is left with is the statement, `open in another window`. It used to read
+`open in another window — enter again to move it here (it …`, which named a key and then ate
+it.
+
+**A clause that begins `or` goes first, because it is an alternative and not a way out.**
+The gate card in an adaptive run says
+`↑ ↓ pick · enter answers · or keep typing to steer the planner`, and the last clause there
+is not the escape hatch the rule above protects — it offers a *second* route to something
+the clause in front of it already offers a first route to. So it is the first thing off the
+line, and a narrow gate card keeps `↑ ↓ pick · enter answers`, which is the pair the card
+exists to be answered with.
+
+## Why the note above the composer drops its *end* while the key line drops its middle
+
+They are two different kinds of line and they are fitted by two different rules.
+
+- **A key line** — the foot, a filter box's placeholder, a gate card's gestures — has the
+  way out at the **end**, so the end is protected and the clause nearest it is what goes.
+- **A note** — the dim line under the rule that says what just happened — has the answer at
+  the **front**, so the front is protected and the line gives up its later clauses. Settings
+  says `saved to your profile · a project's own .aforge-v3/config.json is a hand edit`; at
+  sixty columns that becomes `saved to your profile`, which is the half you asked for. The
+  macOS chord note behaves the same way: `your terminal sends ⌥ as a letter — turn on "use
+  option as meta" in Terminal: Profiles › Keyboard` shortens to
+  `your terminal sends ⌥ as a letter`.
+
+Neither of them ever ends in `…`, and neither ever cuts inside a word.
+
 ## alt+. — see all the keyboard shortcuts at once, on the page you are on
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
 - the tab bar's words grow their numbers — `1 home`, `2 tasks`, `3 standing`, …
 - the hint line becomes the chord list
+
+`?` over an empty box draws the same map, which is what that key means on a place — show me
+the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
+
+**The chord list is built from the place you are on.** It reads
+`alt+1…7 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
+— and the `→` clause is left out on a place whose rows have no verbs, such as search, rather
+than naming a key that would open nothing there.
 
 Nothing moves, nothing pops up, and the next key you press takes it away and then does what
 it was always going to do. `esc` just takes it away.
@@ -376,6 +436,10 @@ where the full text and where it was learned live, `e fix the wording`, `f forge
 
 The foot follows the row: `enter ask me about it · e fix the wording · f forget it` on a
 line, `enter open a shelf · type to filter · alt+s walk the shelves` on a shelf heading.
+**On a machine that has remembered nothing there are no shelves, so none of those keys is
+named** — the foot is `tab next place · esc` and nothing else, and the body's last line says
+what to do instead: `nothing learned yet — say "remember that …" and the first line lands
+here`.
 
 `delete` also forgets the line under the cursor.
 
@@ -401,11 +465,23 @@ opens the Spending tab of `/settings`, which is the one editor for every money l
 any row of the page opens a verb strip with one letter on it, `b the limits`, which opens the
 same tab; `b` works there because the strip naming it is drawn, and everywhere else on this
 surface a bare letter belongs to the message box, which is why `/budget` is the keyboard
-door. `/cost` (also `/usage`, `/tokens`, `/spend`) still prints **this conversation's**
+door. `/cost` (also `/usage`, `/tokens`) still prints **this conversation's**
 figures into the conversation — a different question from this place's, which is the whole
 machine.
 
-With nothing spent inside the window, the place says what it is for and nothing else.
+**`/spend` is the typed door onto this place.** It used to be an alias of `/cost`, so the
+one word most people guess for "what has this cost" printed one conversation's bill and
+never mentioned the machine-wide ledger. It opens the place now.
+
+**The foot names the keys this place has**, and it is built from the row under the cursor:
+`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc`.
+Where the head row is too narrow to draw its own arrows the window clause is dropped, and
+over an empty ledger only the way out is named.
+
+With nothing spent inside the window, the place says what it is for and then says which
+kind of empty it is: `nothing spent yet — the first model call writes a line here.`
+Without that sentence a machine that has spent nothing looks exactly like a ledger that
+could not be read, because the emptiness law keeps every `$0.00` off the page.
 
 ## search — finding anything said or run
 
@@ -417,9 +493,31 @@ Nothing is indexed behind your back — this reads the record that was already b
 read happens after the box has been quiet for a moment, never on the keystroke, so typing
 never waits on a search.
 
-`enter` opens the conversation the matching turn was said in. Above the results, a legend
-counts the projects the matches came from. Twelve conversations are shown and the rest fold
-into one line.
+`enter` opens the conversation the matching turn was said in, and **the foot says so**:
+`enter opens it at that turn · ↑↓ pick · type to search · esc clears the words · tab next
+place`. With nothing typed there is no row to stand on, so the foot drops to `type to
+search · esc clears the words · tab next place` — `enter` is not named where it does
+nothing. (This foot used to be the router's own default, which said `enter talk about it`
+and was wrong in both states.) Above the results, a legend counts the projects the matches
+came from. Twelve conversations are shown and the rest fold into one line.
+
+**`/search` is the typed door onto this place**, beside `alt+6`, `tab` and the tab bar. It
+takes no argument: the place is a box, and typing in it searches.
+
+With nothing typed the place says what it is for, and the last of its four lines says what
+to type: `type words you remember — "the docker error", a person's name, a filename`. Those
+sentences **wrap** at a reading measure like every other place's — none of them is cut short
+with an ellipsis on a narrow window.
+
+**A search that finds nothing says what to do about it**:
+`nothing on this machine says "amber rail" · try fewer words, or a name`.
+
+**And a window with no index behind it says so** rather than reporting an empty result:
+`there is no index of this machine's conversations behind this window, so nothing can be
+searched from here.` — which is a different sentence from "nobody has said that", and the
+difference matters. Over `--host` the sentence names the machine instead: the index is the
+one this machine's conversations were written into, and the conversation you are in was
+written on the other one.
 
 Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,
@@ -434,6 +532,42 @@ It has a **second bar** under the place bar: its own sections. Those two bars ar
 repetition — the upper one is the seven places, the lower one is settings' own pages. `←` and
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
+
+## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
+
+**Every one of the seven words is still on the bar at 60 columns.** What a narrow frame
+gives up is the *air between the chips*, not a place: the seven words with the padding each
+chip carries are 57 cells, and the spaces between them are six more, so a 60-column
+terminal — a split pane, an ssh session, a phone in landscape — draws
+
+```
+  home  tasks  standing  memory  spend  search  settings
+```
+
+with two cells between the words instead of three. Nothing else changes: the band under the
+word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+7` all mean exactly
+what they mean on a wide screen.
+
+**Under about 57 columns the bar carries what it can and counts the rest.** It keeps the
+place you are standing in, the word the cursor is on, and any place wearing a count, then
+fills in the bar's own order until the row is full and ends with a dim `▸ 3` — the number of
+places that are not on the row:
+
+```
+  home  tasks  standing  ▸ 4
+```
+
+`▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
+same fold mark every other list on this surface puts over the rows it is not drawing, so a
+count on the bar reads as the same idea as `▸ 15 more` at the foot of home. The word gives
+way before the mark does: `▸` is what says there is more behind the row. **The
+count is a sign and not a button** — pressing it does nothing, because it stands for several
+places at once and no single one of them is the answer.
+
+**The key that reaches them is `tab`**, and it is named on the foot of every place —
+`… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+7`
+still go straight to a place whether or not its word is on the row, and the numbers never
+move: they are the bar's full seven-place order, not the order of what happens to be drawn.
 
 ## Why a nearly-empty place says what it is for
 

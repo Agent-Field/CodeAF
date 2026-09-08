@@ -231,11 +231,13 @@ two more that were never written down, and it was fixed rather than described
 beside it is now a bug report, not a known shape: **reproduce it, do not rerun it
 in isolation and move on.**
 
-**The laws run on every pull request.** `make test-laws` is every test that reads
-the tree itself with `go/ast` or `go/parser`, found by that import
-(`scripts/laws.sh`) and run in about twenty seconds; the pull-request gate runs it
-and the full suite of every package the change touched. Write a structural test
-with that import and it is on the gate the day it lands.
+**The laws and the touched packages run on every pull request, and both block.**
+`make test-laws` is every test that reads the tree itself with `go/ast` or
+`go/parser`, found by that import (`scripts/laws.sh`) and run in about twenty
+seconds; `touched packages` is the full suite of every package the change touched,
+with `-count=1`; `check` is green only when both are. Write a structural test with
+that import and it is on the gate the day it lands. A red `touched packages` on
+your pull request is yours to read before anything merges.
 
 **The tmux TUI suite** is the only test that drives the real binary in a real
 terminal against a real model, and it is how a wave verifies that the surface
@@ -260,6 +262,22 @@ sources — so `go test ./internal/e2e/` (no tag, no model, under a second) fail
 the moment the surface stops spelling a sentence the suite waits for. That gate
 exists because the suite silently rotted for a week after the home redesign
 (#184); if you respell a person-facing string, expect it to name you.
+
+**The router's own laws** have one live-key test beside the fake-router suites,
+because a claim about how many machines are behind a model is a claim about the
+world and no fixture can answer it:
+
+```sh
+go test -tags e2e ./internal/provider/ -run TestRealRouter -v   # ~45s, a fraction of a cent
+```
+
+It thins a real serving set — striking every machine it sees answer until its own
+vetoes cover all of them — and asserts the router refuses that at most once. On
+2026-09-03 against `deepseek/deepseek-v4-flash` and its sixteen machines, dev
+`713945e3b` paid 8 refusals over 36 calls and the fix paid 1 over 23 (#586). It
+SKIPS green without `OPENROUTER_API_KEY`; the package's `TestMain` re-roots
+`AFORGE_HOME`, so the profile's key is not found and the variable is the way in.
+`internal/lane` has the sibling live test, `-run TestReal`.
 
 **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
 

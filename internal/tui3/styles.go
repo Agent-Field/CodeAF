@@ -1641,11 +1641,16 @@ func (p palette) railCont() string {
 	return railCont
 }
 
-// product is what this surface calls itself, everywhere it speaks: the status
-// line, the welcome box's wordmark, /help. It is written down ONCE because a
-// product name spelled out at four call sites is a product name that gets
-// renamed at three of them.
-const product = "openaf"
+// product is what this surface calls itself, everywhere it speaks: the pulse
+// line, the welcome box's wordmark, the first-run wordmark, /help, the OAuth
+// consent line and the desktop notification's title. It is written down ONCE
+// because a product name spelled out at four call sites is a product name that
+// gets renamed at three of them — which is exactly what had happened: this
+// constant said `openaf` while pulse.go held a second spelling of the same fact
+// (`pulseName = "aforge"`), so a fresh install met a wordmark naming one
+// product and, three rows under it, prose naming another. There is one name and
+// it is the one a person types.
+const product = "aforge"
 
 // The glyph vocabulary of this surface.
 //

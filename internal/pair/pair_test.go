@@ -188,7 +188,7 @@ func TestPairingCarriesBothKeysPastTheMiddle(t *testing.T) {
 			failed <- err
 			return
 		}
-		one, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now)
+		one, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(Paired) error { return nil })
 		if err != nil {
 			failed <- err
 			return
@@ -227,6 +227,109 @@ func TestPairingCarriesBothKeysPastTheMiddle(t *testing.T) {
 	}
 }
 
+// THE MACHINE WRITES THE DEVICE DOWN BEFORE IT SAYS THE PAIRING HELD.
+//
+// This is the law the whole ordering exists for, and the only way to pin it is to
+// make the write slow and check what the other end knows the moment it returns.
+// The surface says "paired" on that reply and dials back on it at once — so if the
+// book can still be empty here, a first `--at` on a slow disk is told the device
+// has been stopped, which is the sentence for one somebody revoked.
+func TestTheMachineWritesTheDeviceDownBeforeItSaysThePairingHeld(t *testing.T) {
+	surfaceEnd, machineEnd := net.Pipe()
+	machine := aDevice(t)
+	surface := aDevice(t)
+	now := time.Now()
+
+	book := BookAt(filepath.Join(t.TempDir(), "devices.json"))
+	failed := make(chan error, 1)
+	go func() {
+		var intent [1]byte
+		if _, err := io.ReadFull(machineEnd, intent[:]); err != nil {
+			failed <- err
+			return
+		}
+		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(one Paired) error {
+			// The disk this stands in for is a directory create, a write and a
+			// rename, and on a loaded machine that is not instant.
+			time.Sleep(50 * time.Millisecond)
+			return book.Admit(one)
+		})
+		failed <- err
+	}()
+
+	if _, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now); err != nil {
+		t.Fatal(err)
+	}
+	// Not "eventually" and not after a wait: the assertion is about this instant,
+	// because this instant is when the surface starts dialling back.
+	if _, ok, err := book.Allows(surface.Public()); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Fatal("the machine said the pairing held before it had written the device into its book")
+	}
+	if err := <-failed; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// AND A BOOK THAT WOULD NOT TAKE THE DEVICE PAIRS NOTHING. A machine that
+// cannot write a pairing down refuses it — it announces nothing, and leaves no
+// device believing it is a key to a machine that has no record of it.
+//
+// WHAT THE DEVICE IS TOLD IS THE SENTENCE FOR A WRONG CODE, and that is not an
+// oversight to fix in a test. The machine's last pairing message is its key and
+// its name, in the shape every build has sent, so there is nothing in it for a
+// machine to say why it stopped: it hangs up, which on this side is the same
+// event as the hang-up after six digits that did not agree. The device learns
+// the true and useful half — the pairing did not hold, nothing was paired — and
+// the half it could not act on anyway, a path on somebody else's disk, stays on
+// the machine that owns the disk. This test pins both halves.
+func TestAPairingTheMachineCannotWriteDownIsRefusedAndNotAnnounced(t *testing.T) {
+	surfaceEnd, machineEnd := net.Pipe()
+	machine := aDevice(t)
+	surface := aDevice(t)
+	now := time.Now()
+
+	book := BookAt(filepath.Join(t.TempDir(), "devices.json"))
+	disk := errors.New("devices.json.new: no space left on device")
+	machineSaid := make(chan error, 1)
+	go func() {
+		var intent [1]byte
+		_, _ = io.ReadFull(machineEnd, intent[:])
+		// The book is never written, which is the failure this stands in for:
+		// the device must not come away paired against a book like this one.
+		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(Paired) error { return disk })
+		machineSaid <- err
+		_ = machineEnd.Close()
+	}()
+
+	if _, err := pairAsSurface(surfaceEnd, "http://relay", machine.Name(), "715302", "laptop", surface, now); err == nil {
+		t.Fatal("a pairing the machine could not write down was reported to the device as a pairing")
+	} else if !errors.Is(err, ErrWrongCode) {
+		t.Fatalf("the device was told %v", err)
+	}
+
+	// AND THE BOOK DOES NOT HOLD THE DEVICE. This is the assertion that makes
+	// the refusal worth having: the ordering is only safe if a pairing that was
+	// not written down is also not announced.
+	if _, ok, err := book.Allows(surface.Public()); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("a device the machine could not write down is in its book anyway")
+	}
+
+	// And this machine's own screen gets the part the person at the other end
+	// cannot act on: which write failed, and why.
+	said := <-machineSaid
+	var write notWrittenDown
+	if !errors.As(said, &write) {
+		t.Fatalf("the machine read its own failed write as %v", said)
+	}
+	if !errors.Is(said, disk) {
+		t.Fatalf("the machine lost the reason its book refused: %v", said)
+	}
+}
+
 // A WRONG CODE PAIRS NOTHING, and it fails as a refusal rather than as a
 // connection that quietly means something different.
 func TestTheWrongCodePairsNothing(t *testing.T) {
@@ -239,7 +342,7 @@ func TestTheWrongCodePairsNothing(t *testing.T) {
 	go func() {
 		var intent [1]byte
 		_, _ = io.ReadFull(machineEnd, intent[:])
-		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now)
+		_, err := pairAsMachine(machineEnd, machine.Name(), "715302", machine, now, func(Paired) error { return nil })
 		machineSaid <- err
 		_ = machineEnd.Close()
 	}()

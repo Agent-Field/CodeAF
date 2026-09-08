@@ -172,9 +172,39 @@ func railFigure(usd float64) string {
 		// AND A SUB-CENT LIMIT IS STILL A LIMIT. Two decimals turn a tenth of a
 		// cent into `$0.00`, which is the one reading this tab exists to never
 		// give: the figure a person typed rendered as its own opposite.
-		return fmt.Sprintf("$%.4f", usd)
+		return subCent(usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
+}
+
+// moneyFloor is the smallest amount this surface writes as a figure: a
+// hundredth of a cent, which is four places after the point. It is here rather
+// than spelled into a format string twice because it is the number [subCent]
+// compares against AND the number it prints.
+const moneyFloor = 0.0001
+
+// subCent is how an amount SMALLER THAN A CENT is written, and it is the one
+// rule both [railFigure] and [dollars] read.
+//
+// THE DEFECT IT FIXES. Four places is right down to a hundredth of a cent and
+// silently wrong under one: a real, positive, non-zero cost of six millionths
+// of a dollar came out as `$0.0000`, which is four zeros where the emptiness
+// law has taught every reader of this surface to see nothing at all. That is
+// the law's own failure mode inverted — it forbids drawing a zero for something
+// unknown, and this drew a zero for something known and spent. A person
+// checking what a turn cost read "nothing", and nothing is the one thing it was
+// not.
+//
+// SO THE FLOOR SAYS IT IS A FLOOR. `<$0.0001` is eight cells, it never rounds
+// to a lie, and it holds one width for every amount beneath it — which is what
+// the status line needs from a segment whose stillness is the point. More
+// decimals were the other answer and they are worse: `$0.000006` is a figure
+// nobody acts on, and the number of cells it costs depends on how small it is.
+func subCent(usd float64) string {
+	if usd < moneyFloor/2 {
+		return "<" + fmt.Sprintf("$%.4f", moneyFloor)
+	}
+	return fmt.Sprintf("$%.4f", usd)
 }
 
 // taskReading is the rail a task actually runs under, said plainly.
@@ -343,26 +373,36 @@ func (s *sheet) cursorTo(key string) {
 // ZERO — it has not counted.
 func (a *app) spentTodayUSD() (float64, bool) { return a.dayCost, a.dayCosted }
 
-// readDayCost takes that reading.
+// readDayCost takes that reading, THROUGH THE SEAM THAT ANSWERS FOR THE MACHINE
+// THE WINDOW IS ABOUT — and through the one function that says what a day cost.
+//
+// IT DOES NOT OPEN [app.usageLedger] ITSELF, AND IT USED TO. Over a connection
+// the money belongs to the far machine and arrives through the cache the link
+// keeps warm ([app.usageSince] carries that seam's whole law), so a tab that
+// read this laptop's file drew THIS machine's `today` on a window about
+// somebody else's — the same defect, on the same figure, that the spend place
+// and the top line were both fixed for.
+//
+// AND THE ARITHMETIC IS [spendDayTotal]'S, which is the sum the pointer line on
+// the spend place and the pulse at the top of every place already answer from.
+// The walk that was here counted every row in the file, unpriced ones included,
+// so a day with a free-tier call on it read one way here and another way two
+// keystrokes away. There is one function, so there is one number.
 func (a *app) readDayCost() {
 	a.dayCost, a.dayCosted = 0, false
-	if strings.TrimSpace(a.usageLedger) == "" {
-		return
-	}
 	now := a.now()
 	if now.IsZero() {
 		now = time.Now()
 	}
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	lines, err := session.ReadUsage(a.usageLedger, day)
-	if err != nil {
+	day := machineDayStart(now)
+	if day.IsZero() {
 		return
 	}
-	total := 0.0
-	for _, line := range lines {
-		total += line.USD
+	lines, known := a.usageSince(day)
+	if !known {
+		return
 	}
-	a.dayCost, a.dayCosted = total, true
+	a.dayCost, a.dayCosted = spendDayTotal(lines, now), true
 }
 
 // spentThisSessionUSD is what the conversation in front of the person has spent,

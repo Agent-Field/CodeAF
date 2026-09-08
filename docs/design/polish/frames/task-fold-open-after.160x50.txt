@@ -1,0 +1,50 @@
+ aforge                                                                                                                           $0.37 / $500.00 · wed 11:39pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 10 pieces of work, $2.21 between them.                                                     shift+← aug 20 – sep 2 →  shift+↑ coarser
+
+done today
+    ✓ Port the picker onto the new list                                                                  1h · $0.31 · Porting the Picker · 2 files · saved shape
+› ▾ ✓ Count the tabs the bar draws                                                                                   2h · $0.42 · The Tab Bar's Counts · 3 files
+  ├ ✕ Port the docs                                                    1h · $0.04 · failed · The page it rewrites is generated, so the edit had nowhere to land.
+  ├ ✓ Port the tests                                                     2h · $0.19 · 2 files · Every table test moved over; two of them needed the new fixture.
+  └ ✓ Port the lexer                                                         2h · $0.11 · 1 file · The lexer reads the new list's rows and keeps its own cursor.
+    ✓ Write the morning sweep down              5h · $0.14 · Standing Up the Watches · 1 file · The sweep is a standing order now, with a cap of a dollar a day.
+    ✓ Put the annual toggle on the pricing page  5h · $0.27 · The Annual Toggle · 2 files · Annual is the default and the monthly price stays visible beside it.
+
+earlier
+    · Rotate the wildcard certificate                                                                                      incomplete · The Certificate Rotation
+    ✓ Take the backup window down to twenty minutes                                                                     2d · $0.55 · The Backup Window · 2 files
+    ✕ Rebuild the frame budget report                                                                                  8d · $0.18 · Why the Frame Jumps · failed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 7 done today · 3 earlier
+ › say what you want done                                                                                                                      here ~/aforge-v2
+ enter go inside it · ← fold it back up · type to filter · tab next place

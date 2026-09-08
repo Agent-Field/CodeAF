@@ -13,7 +13,8 @@ below. At rest it does nothing at all. Use `alt+enter` or `ctrl+j` to open a lin
 
 `cmd+enter` while a turn is running **holds** what you have typed for the answer
 after this one. It is the secondary choice for when you do not want to change the
-work already under way. At rest it does nothing at all.
+work already under way. At rest it does nothing at all. **On Linux and Windows that key
+is called `super+enter`** — see "What cmd+enter is called on your keyboard" below.
 
 `ctrl+enter` sends it as **something to keep true** — a standing order — instead of
 work to do once. The standing orders page has the whole of it.
@@ -77,7 +78,9 @@ follow-up queue. Each nonempty queue says what was dropped — `1 waiting messag
 or `N waiting messages dropped` for parked messages, and the corresponding `queued`
 word for follow-ups. Replacing the conversation with `/new` or from the welcome box also
 drops parked messages. Inside a **task room** `enter` steers the node instead and nothing
-is held; that is the room's own key (see the room section below).
+is held; that is the room's own key (see the room section below). Your line lands on the
+task's page as a `└ ` elbow where you said it, with a short `· delivered` clause that
+fades away.
 
 **Why it goes straight in.** Plain `enter` is the gesture people expect to act now.
 The current generation is itself made into a legal boundary: aforge keeps its partial
@@ -174,6 +177,53 @@ begins `enter steers it in`, because plain enter works everywhere, and ends with
 stop clause that works in the current state.
 
 **What works everywhere instead.** `ctrl+q` queues a new turn after the current one.
+
+## What cmd+enter is called on your keyboard — super+enter off a Mac
+
+It is one keystroke with two names, and aforge spells it for the keyboard you are on.
+
+| Where you are | What `/help` and this page's key sheet draw | What the terminal sends |
+| --- | --- | --- |
+| macOS | `⌘enter` | `super+enter` or `meta+enter` |
+| Linux, Windows, WSL | `super+enter` | `super+enter` or `meta+enter` |
+
+`super` is the key with the diamond, the Windows logo, or the command symbol on it,
+depending on whose keyboard it is. aforge binds **both** names the terminals send, because
+which one arrives is a fact about the road the bytes took rather than about your hand.
+
+This page writes it `cmd+enter` throughout, which is the name it was chosen under; the key
+sheet substitutes the spelling for your platform at the moment it draws, exactly as it
+does for `alt+`/`⌥`.
+
+## ctrl+r means two things, and each says where it acts
+
+`ctrl+r` appears twice on the `/help` sheet, and the two are not the same key doing two
+jobs at random — each is scoped, and each row says its scope:
+
+- `ctrl+r` **over a draft** spells the draft out: aforge says back what it takes the
+  sentence to mean, and `enter` adds that to what you are saying. It is offered only while
+  the hint slot says `ctrl+r spell it out`, and it does nothing at all otherwise.
+- `ctrl+r` **in `/files`** reveals the folder a landed file is in, with `ctrl+y` beside it
+  to copy the file somewhere.
+
+`/files` is a full-screen list with its own keyboard, so the two never contend for one
+keystroke on one screen.
+
+## ? — the key that opens the key sheet
+
+`?` **over an empty box** opens `/help`: every command and every chord, written into the
+transcript where you can scroll it.
+
+**On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
+map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
+was already using. One meaning, two screens: show me the keys for where I am standing.
+
+**It never eats a question mark you are typing.** The binding wants the box EMPTY. With
+anything at all in the draft the key is an ordinary `?` and goes into your sentence; and
+every overlay, filter box, picker, panel and question on this surface takes the keyboard
+before this binding is read, so a `?` typed into one of those reaches it and nothing else.
+
+`/?` is an alias of `/help` as well, for fingers that arrived from elsewhere.
 
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
@@ -293,7 +343,7 @@ typed something and this terminal can deliver `shift+enter`. A foreground comman
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
 `esc stops and drops`. On the very first frame of a session the conversation carries the note
-`esc interrupts · ctrl+c twice quits`.
+`esc interrupts · ctrl+c twice quits · ? for help`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
 see "Interrupt and say something new in one key" above. `esc` on its own stops without
@@ -400,6 +450,11 @@ drops the second, and a quiet single conversation reads exactly `ctrl+c again to
 one on screen.** There is no way to ask an agent you are not drawing what shells it has
 promoted, so the line is short of a fact there rather than guessing at one.
 
+## Quitting from a running answer, picker, or panel — why ctrl+c stopped the turn instead
+
+The ordinary quit gesture is `ctrl+c` twice within **1.5 seconds**, but where the first
+press lands changes what it does.
+
 **Mid-turn it is still only the interrupt.** While an answer is streaming, `ctrl+c` is
 the same key `esc` is: it stops the turn and does **not** arm the door. So the two-tap
 people make mid-turn — press it again, harder — stops the model once and then arms;
@@ -409,6 +464,8 @@ you would have to press a third time to leave.
 and paste bracket — leaving is never modal. Pressing it with the model picker or the
 settings panel up does not close them: it arms the door underneath, the hint slot
 shows `ctrl+c again to quit`, and the second press leaves with the panel still up.
+
+## What quitting saves and closes — kill, SIGTERM, SIGHUP, terminal closed, or hung up
 
 **What quitting does.** Your unsent draft is written to disk first, with any message
 still waiting for an answer folded in underneath it, then the turn is interrupted and
@@ -423,12 +480,27 @@ disk when you switched away from them.
   with the previous one forward when this terminal is holding another. It leaves only when
   that was the last one. `ctrl+c` twice is the key that closes everything. `/exit` and `/q`
   are the same command.
-- A real signal — `kill -INT`, `kill -TERM`, or `^C` on a terminal that is not in raw
-  mode — also leaves at once, through the same clean exit: draft written, session
-  closed, status 0. Only the keystroke asks twice.
+- A real signal — `kill -INT`, `kill -TERM`, `kill -HUP`, a closed terminal window,
+  or `^C` on a terminal that is not in raw mode — also leaves through the same clean
+  exit: draft written, session closed, status 0. Only the keystroke asks twice. A second
+  signal ends the process at once with status `128 + the signal's number`. The screen is
+  handed back on a bounded best effort first; if that could not finish, the terminal may
+  need `reset` afterwards.
 - The 1.5-second window cannot be changed.
-- Closing the terminal window is not a quit aforge sees; the draft written 300ms after
-  you stopped typing is what survives that.
+
+## Quitting while a task is running — what happens to tasks and background work when the session closes
+
+Every task this session is running is stopped when the session closes, and aforge waits for
+all of them before it leaves. A task that was only just admitted is stopped before it opens
+anything — no worktree, no log, no model call for a session that has left. Nothing can
+start in the session afterwards: `this session has closed; nothing new starts in it`.
+
+Background jobs go the same way, a moment later. What a task wrote is on its branch and
+stays there; a stop is an interruption and never a finding about the work.
+
+An interrupt from outside — including a closed terminal window — stops the session's work
+the same way. A headless `aforge chat --once` leaves by that road too: the turn stops, the
+session closes, and the process exits cleanly.
 
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
@@ -476,7 +548,7 @@ key arrives as ordinary `enter` and the message steers instead.
 
 | Chord | What it does |
 |---|---|
-| `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Inside a task's page: open or fold the long instruction at the top. Otherwise: fold or unfold this turn's tool cluster |
+| `ctrl+o` | Selected landed card: open its output. Selected proposal: open its brief. Inside a task's page: open or fold the long instruction at the top. Otherwise: open or fold the live caption's tool rows; before a live caption exists, open or fold the `N earlier tool calls` fallback. It never opens a `▸ worked` chip — that is `ctrl+e` |
 | `ctrl+b` | Enter copy mode — freeze the view so you can read and copy |
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
@@ -486,7 +558,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
-| `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
+| `ctrl+e` | Empty box: open or close the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
@@ -505,7 +577,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
 | any printing key | Types the character |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
@@ -696,7 +768,8 @@ your sent message too. It adds no characters and no cells; see "Slash commands a
 as chips" in the commands page for the whole of it.
 
 **A key chord is never given that background.** Where aforge names a key — the hint slot
-on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits` — the
+on the legend, the `/help` sheet, the opening `esc interrupts · ctrl+c twice quits · ? for
+help` — the
 chord is drawn one tier brighter than the words around it and nothing else changes. A
 tinted background always means a slash command and only ever that, so the two marks
 never have to be told apart. See "Why is one word in a line brighter than the rest" on
@@ -1195,14 +1268,17 @@ cursor — `enter open its room · → verbs: stop it · type to filter` over a 
 running, `enter go inside it` on a task another conversation ran, which has no room to open,
 no `enter` clause at all where the row under the cursor has no door — which is a page
 holding only work running in other aforge windows — and `esc clear the filter` in place of
-`type to filter` while you are typing one. Clicking a row acts on the first press; the wheel
+`type to filter` while you are typing one. On a machine that has run **nothing at all**,
+where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
+there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
 walks the cursor. The tasks pages describe what is on it.
 
 **Inside an old task's card** (`enter` on an `earlier` row): `esc` or `←` backs out to the
 list · `ctrl+.` closes the whole page · `↑`/`↓` (also `k`/`j`) scroll · `pgup`/`pgdown` and
 `space` move a screenful · `home`/`end` the ends · **`m` puts that task's name in your
 message box** and closes the page. Its foot reads
-`esc back · ↑↓ scroll · m puts it in your message`. Clicking its head row or its foot goes
+`m puts it in your message · ↑↓ scroll`; `esc back` is in the head's right corner instead,
+said once. Clicking its head row or its foot goes
 back to the list; its body is read.
 
 **Rewind timeline** (`/rewind`, or `tab` from inside the quick `esc` `esc` mode): `esc`
@@ -1528,7 +1604,10 @@ place key that does: `tab` belongs to the composer's path completion while you a
 and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
 is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
 number opens its room whatever is in it: a place with nothing of its own to draw spends the
-frame saying what it is for, and none of the seven is ever a key that does nothing.
+frame saying what it is for, and none of the seven is ever a key that does nothing. **On
+such a page the line under the box names only the way out** — `tab next place · esc` — on
+tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
+filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
 taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
@@ -1543,6 +1622,19 @@ space you actually wanted is never eaten (space then `x` leaves ` x`). It does n
 the box has words in it, and it is not a paste: text pasted with two leading spaces is two
 spaces. A machine with one conversation, or none, opens an empty home; so does a session
 over `--host`, where what opens is the **far machine's** home.
+
+**It answers from every place as well as from a conversation.** Wherever a place is
+standing, the two spaces are read against that place's own box — the tasks filter, the
+memory filter, the search and spend composers — and open home just as they do from a
+draft. On home itself the door is a no-op: the page is already open, and two spaces type
+into home's own filter. It also does not answer from under a layer that owns the
+keyboard: on the settings panel space is the drawn verb on a row (`activate`),
+memory's card editor keeps every key while it is open, and inside a task's
+record — the room the roster opens on `enter` — `space` pages the card the way
+`pgdown` and `ctrl+f` do, so the door yields there and the key scrolls. Standing
+cannot arm the door — its own keys never type into its box — but the box is the
+shared composer, so a space left in it on another place still opens home from
+standing.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
 `alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,
@@ -1585,7 +1677,7 @@ and the box is asleep — `y`/`n` in a question's own words, `a put it away`, `t
 `o open folder`, `c copy path`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. On a row
 with no verbs the arrows are the fold's, the way they are in the task column: on home's one
-fold — `▸ 15 more, quiet since aug 21` — `enter` or `→` shows every row and `enter` or `←`
+fold — `▸ 15 more, quiet since 6d` — `enter` or `→` shows every row and `enter` or `←`
 folds them back, and on a card `→` opens every folded band while `←` folds them again.
 While something is typed the two arrows move the caret in the box instead.
 
@@ -1634,7 +1726,7 @@ on that same row when what is typed is a slash command, because `enter` runs it 
 sending it (home's page has that rule whole).
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in; a card stands beside it only at 160 columns and wider. **While anything
+this window is in; a card stands beside it only at 136 columns and wider. **While anything
 is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
 with `ask here: "…"` directly above it, both directly above the box, and the matches rise
 above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
@@ -1786,7 +1878,8 @@ the key then closes the column it would just have raised, so a second press brin
 back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
-cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
+cancelled first · `enter` steers the node (see *What steering a task looks like on its
+page* below) · `ctrl+b` freezes the room's own rows for
 copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` walk your history,
 and scroll the page one row only when there is no history to walk. `left` is
 deliberately **not** taken here — it falls through to the message box's
@@ -1800,6 +1893,28 @@ into a task goes into it**, so `↑` brings back the last thing you said to the 
 you can edit it and send it again. A line the steer guard refused is not remembered. On
 an **adaptive run's page** `↑`/`↓` over an empty box walk the graph's chips and the fuel
 gate's answers instead; type something and they walk the history from there.
+
+**What steering a task looks like on its page.** Your line is drawn where you said it,
+under whatever the task had already done, as an elbow:
+
+```
+└ the config lives under etc/ · delivered
+```
+
+The `└ ` says it is a correction to the work already running and not a new question, so
+the page's turn count does not move — a task's page is one question, the instruction it
+was given, with your corrections hanging off it. The clause after your words is what the
+sending did, and it is there for a few seconds and then gone: `· delivered` ordinarily,
+and `· it was waiting on its pieces — your line wakes it` when the task had handed its
+work out and was parked on the reports, because then your line is what starts it moving
+again. The elbow itself stays.
+
+**A task's page reopened later reads your corrections as corrections.** Leave the room
+and come back, or open the task tomorrow, and every line you steered into it comes back
+as a `└ ` elbow in the place you said it — with no clause, because what happened to those
+words is news and the elbow's position is the whole of the record. They used to come back
+as fresh questions with a `›`, which made yesterday's correction read as a second
+instruction and made the page count turns nobody opened.
 
 **`esc` in a room never interrupts and never stops.** Out in the conversation `esc`
 interrupts the running turn; inside a room the first `esc` leaves the room and the next
@@ -1870,7 +1985,7 @@ task you asked for, or a part of one it handed out itself:
 | --- | --- |
 | `a` | accept — take the work; its branch merges and its dependents unblock |
 | `l` | look again — a fresh check runs; the task keeps waiting until that answers |
-| `n` | not right — the task fails, its branch is kept, its dependents fail with it |
+| `n` | not right — the task becomes incomplete and keeps its branch; its dependents still fail because it did not finish |
 | `d` | decide these for me — hands this one to aforge and sets `task.settle` to `auto` |
 
 **They are held to the same rule `x` is.** The card must be the **selected** one — walk to
@@ -2531,10 +2646,18 @@ answer are never hidden — nor is a second message you sent into a running turn
 ends the chip above it and starts a new one. Fold state belongs to this window; resumed
 sessions derive fresh closed chips from their saved entries.
 
-**The chip is the conversation's alone.** A task's room, and a node's transcript inside an
-adaptive run's page, never fold their work: those pages are the machinery, and a chip there
-would hide the only thing on them. So in a room `ctrl+e` over an empty box opens the
-thinking block, and `ui.work` changes nothing.
+**A task's page has chips too, cut differently.** The conversation folds by turn — one
+chip per question you asked. A task's page is one long turn, so it folds by **phase**
+instead: the work that came before each paragraph the task wrote goes behind its own
+chip, and every paragraph stays standing. The work it is doing right now never folds.
+`ctrl+e` opens the newest chip there, a click opens any of them, and scrolling up when
+the page is already at its top opens the one nearest the top. `ui.work = open` opens them
+all, exactly as it does out here. Where a task's page has no chip yet, `ctrl+e` falls
+through to the thinking block as before.
+
+**A node's transcript inside an adaptive run's page never folds.** You got there by
+asking to see what that one node did, and the page draws the tail of its journal under
+the graph — so there is nothing there to fold away.
 
 ## How do I keep everything expanded?
 

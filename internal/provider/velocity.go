@@ -309,11 +309,35 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // ago applies to the request now being written, without anything having to
 // carry it forward.
 //
-// It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
-// compatible endpoint that is not a router either ignores it or 400s on it —
-// neither of which is worth risking for a preference it could not honour.
+// IT IS THE DECISION SITE OF ISSUE #433, and the gate on it is what the BASE
+// ANSWERED rather than what its hostname says. The field is a router's dialect
+// and an endpoint that is not a router either ignores it or 400s on it — but
+// which of the two a base does is a thing only the base can say, so it is asked
+// once and remembered, and only a base that has answered "no" is left off
+// (prefcarry.go's [Client.carriesPreferences]).
+//
+// ── AND AN UNASKED BASE SENDS ONLY WHAT A PERSON ASKED FOR ──────────────────
+//
+// THE LAW IS ABOUT A PREFERENCE THE PERSON HAS, NOT ABOUT THIS ADAPTER'S OWN
+// DEFAULT KNOBS. `sort`, `allow_fallbacks` and `require_parameters` are nobody's
+// instruction: they are how this build asks a ROUTER to break a tie among
+// machines it already knows about, and putting them on a plain endpoint's every
+// request would be a field that every plain-base user suddenly carries, for a
+// tie there is nothing to break. So on a base that has not yet SHOWN it carries
+// a preference, the object goes out only when there is something to ask WITH,
+// and there is exactly one such thing: a lane the person pinned. A ranking
+// cannot be the reason, because a ranking only exists once a sheet arrived —
+// and a sheet arriving is the base proving it carries.
+//
+// The consequence, stated so nobody has to derive it: a plain base with nobody
+// pinning anything is never asked, never answers, and its requests are
+// byte-for-byte the requests it got before this law existed. The moment somebody
+// pins a lane, that pin IS the asking.
 func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
-	if !c.isOpenRouter() {
+	if !c.carriesPreferences() {
+		return nil
+	}
+	if !c.prefsProven() && c.pinnedLaneFor(model) == "" {
 		return nil
 	}
 	strategy := c.routingFor(knobs.intent)
@@ -385,10 +409,19 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 // request was offered no first rung and climbed every other one still pinned to
 // the machine that had refused it (issue #266).
 func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+	if knobs.noProvider {
+		// THE ONE ENCODE THAT ASKS THE OPPOSITE QUESTION. See [callKnobs] —
+		// this is the widened retry that finds out whether a base's 400 was
+		// about the field, and it can only find out by sending none.
+		return nil
+	}
 	prefs := hedgePreference(c.providerPreferences(model, knobs, request), knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)
 	}
+	// AND THE LAW READS WHAT IS ACTUALLY GOING OUT, after every hand that
+	// narrows the set has had its say ([velocityLedger.keepTheSetServable]).
+	c.velocity.keepTheSetServable(model, prefs)
 	return prefs
 }
 
@@ -406,6 +439,133 @@ func (p *providerPrefs) narrowing() bool {
 	}
 	return p.RequireParameters != nil || len(p.Ignore) > 0 || p.MaxPrice != nil ||
 		len(p.Only) > 0 || p.AllowFallbacks != nil
+}
+
+// keepTheSetServable is the one place AN IGNORE LIST NEVER EMPTIES THE SET THE
+// REQUEST IS SENT TO is enforced.
+//
+// IT READS THE FINISHED OBJECT, LAST, because the two things that can empty a
+// set arrive at different moments and neither can see the other. The ledger
+// writes its vetoes while the request is being composed
+// ([Client.providerPreferences]); a demand narrows the set to one machine
+// afterwards, in the belief's own hand (lanes.go) or a rescue's
+// ([hedgePreference]). So the law is asked once, of what is about to go out,
+// rather than three times of three halves.
+//
+// IT IS ONE RULE OVER TWO DENOMINATORS, and naming them is the whole of it.
+// WITH A DEMAND, the set is exactly what `only` names: `allow_fallbacks: false`
+// forbids every other machine, so vetoes covering those names leave the router
+// nothing, and it says so before asking any endpoint. WITHOUT ONE, the set is
+// the router's whole roster, of which this process knows only the lanes it has
+// timed. Either way the question is the same — is anything in the set still
+// servable — and so is the answer when nothing is: the lane whose cooldown
+// expires soonest is released. It is the one the ledger was about to forgive
+// anyway, so it is the smallest departure from the ledger's own verdict, and
+// every lane it is still surer about stays refused. A COVERED SET RELEASES ONE
+// LANE AND NEVER THE LIST: a demand naming two machines with one of them vetoed
+// is already servable through the other, and nothing is owed to the first.
+//
+// THE SECOND DENOMINATOR WAITS FOR EVIDENCE AND MAY NOT COUNT INSTEAD, which is
+// the part that is easy to get wrong and was. This process cannot know how many
+// machines serve a model, so "the vetoes cover everything I know" is routinely
+// TRUE of a healthy ledger doing its job — one refusing lane written out of a
+// set of five, and the router picks one of the four this process has never
+// seen. Releasing on that arithmetic would send every request straight back to
+// the machine that had just refused it, which is the measured failure a whole
+// rule in [velocityLedger.preferences] exists to prevent. So it turns on
+// [velocityLedger.coveringIgnoreRefused]: the router is the only authority on
+// the size of the set, it says so in a sentence, and it is asked once per model.
+// A demand needs no such evidence, because a demand IS the set.
+func (l *velocityLedger) keepTheSetServable(model string, prefs *providerPrefs) {
+	if prefs == nil || len(prefs.Ignore) == 0 {
+		return
+	}
+	set := prefs.Only
+	if len(set) == 0 {
+		if !l.coveringIgnoreRefused(model) {
+			return
+		}
+		set = l.lanesKnown(model)
+	}
+	if len(set) == 0 {
+		return
+	}
+	for _, name := range set {
+		if !namesEndpoint(prefs.Ignore, name) {
+			// Something in the set is still servable, so the vetoes have narrowed
+			// it rather than emptied it, which is their whole job.
+			return
+		}
+	}
+	release := l.nearestForgiveness(model, set)
+	if release == "" {
+		return
+	}
+	prefs.Ignore = withoutEndpoint(prefs.Ignore, release)
+	prefs.dropEmptyIgnore()
+}
+
+// lanesKnown is every endpoint this process has timed for a model, in the order
+// it first saw them.
+func (l *velocityLedger) lanesKnown(model string) []string {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	held := l.lanes[normalizeModel(model)]
+	ranked := make([]*lane, 0, len(held))
+	for _, entry := range held {
+		ranked = append(ranked, entry)
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].seen < ranked[j].seen })
+	names := make([]string, 0, len(ranked))
+	for _, entry := range ranked {
+		names = append(names, entry.provider)
+	}
+	return names
+}
+
+// nearestForgiveness is the name in `set` whose refusal expires soonest — the
+// lane the ledger is closest to taking back on its own.
+//
+// A LANE THE LEDGER HAS NEVER TIMED IS NOT NEAREST ANYTHING. It carries no
+// cooldown to be near the end of, so it sorts behind every lane that does, and
+// the order `set` arrived in breaks the rest: which lane comes back must be a
+// fact about the ledger rather than about map iteration.
+func (l *velocityLedger) nearestForgiveness(model string, set []string) string {
+	if len(set) == 0 {
+		return ""
+	}
+	if l == nil {
+		return set[0]
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	held := l.lanes[normalizeModel(model)]
+	release, soonest := "", time.Time{}
+	for _, name := range set {
+		entry := held[name]
+		if entry == nil {
+			continue
+		}
+		if release == "" || entry.ignoredUntil.Before(soonest) {
+			release, soonest = name, entry.ignoredUntil
+		}
+	}
+	if release == "" {
+		return set[0]
+	}
+	return release
+}
+
+// dropEmptyIgnore keeps an emptied list ABSENT rather than present and empty,
+// which is the emptiness law spelled on the wire: `"ignore": []` is a sentence
+// about no endpoints, and what we mean is that we are not asking.
+func (p *providerPrefs) dropEmptyIgnore() {
+	if len(p.Ignore) == 0 {
+		p.Ignore = nil
+	}
 }
 
 // relaxedPreferences is the preference object with everything that can EXCLUDE
@@ -601,7 +761,10 @@ func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens i
 // joining the queue behind it — the retries of the call that drew the 429
 // still wait it out, because their body is already written.
 func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433): a pace is written against a NAMED lane, and lane
+	// names come back only from a base that carries a preference. `pace` itself
+	// refuses an unnamed one, which is the attribution law and the real floor.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return
 	}
 	c.velocity.pace(model, served, wait)
@@ -620,7 +783,9 @@ func (c *Client) notePacedProvider(model, served string, wait time.Duration) {
 // provider — and in every one of those the next attempt goes back to the same
 // lane. See [StreamCut.Rerouted] for what is decided from it.
 func (c *Client) noteCutProvider(model, served string) bool {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433), under [Client.notePacedProvider]'s gate word for
+	// word: a strike against a named lane, on a base that carries a preference.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
 	}
 	return c.velocity.pace(model, served, 0)
@@ -720,11 +885,30 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 // is both paced here and written out of the serving set, because a pin the
 // frontier can still choose is a pin that comes back on the next turn.
 func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error) bool {
-	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	return c.strikeRefusal(c.modelFor(request), c.refusalObject(request, knobs, err))
+}
+
+// strikeRefusal is the strike itself, asked by a caller that has already
+// classified the refusal.
+//
+// IT IS AN ENTRANCE AND NOT A SECOND STRIKE, for [Client.laneRefusalFor]'s
+// reason exactly: the fork every routing refusal passes through
+// (client.go's [Client.sendRecovered]) holds the object already, and asking the
+// classifier a second time from there would be the classification happening
+// twice — which is the whole defect refusalobject.go closed. Everything a
+// strike DOES is here, once, and [Client.refuseUpstream] is this function with
+// the classification in front of it.
+//
+// STRIKING TWICE IS HARMLESS AND IS RELIED ON. A refusal that reaches a caller
+// as a 4xx is struck at this seam and struck again by whoever reads the status;
+// both halves are writes of a state rather than counters ([lane.RefuseServing]
+// files a moment, [velocityLedger.pace] sets strikes rather than incrementing
+// them), so the second is the first said again.
+func (c *Client) strikeRefusal(model string, refusal laneRefusal) bool {
+	// A BELIEF SITE (#433), under the same gate as the two paces above.
+	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
 	}
-	model := c.modelFor(request)
-	refusal := c.refusalObject(request, knobs, err)
 	if !refusal.struck() {
 		return false
 	}
@@ -892,15 +1076,32 @@ type velocityLedger struct {
 	// provider switched off. Nothing about that changes between one call and
 	// the next, so a memo that expired would just buy the same 404 back.
 	noCeiling map[string]bool
+	// coveredIgnore is model → "an ignore list covering everything this process
+	// knows has emptied this model's serving set once, do not send one again".
+	//
+	// IT IS EVIDENCE RATHER THAN ARITHMETIC, and that is the whole reason it
+	// exists. This process cannot count a model's endpoints: it knows only the
+	// lanes it has itself timed, and a single refusing lane written out of a
+	// five-machine set is the ledger working exactly as intended — the router
+	// picks one of the four the ledger has never seen. So "the vetoes cover
+	// everything I know" is not a reason to believe the set is empty. The one
+	// authority on that question is the router, which says so in a sentence,
+	// and it is asked once per model rather than on every request.
+	//
+	// Process-lifetime, like the ceiling's memo above and for the same reason:
+	// what it records is the shape of a model's serving set, which does not
+	// change between one call and the next.
+	coveredIgnore map[string]bool
 }
 
 func newVelocityLedger() *velocityLedger {
 	return &velocityLedger{
-		now:       time.Now,
-		lanes:     map[string]map[string]*lane{},
-		last:      map[string]Sighting{},
-		runs:      map[string]map[string]time.Duration{},
-		noCeiling: map[string]bool{},
+		now:           time.Now,
+		lanes:         map[string]map[string]*lane{},
+		last:          map[string]Sighting{},
+		runs:          map[string]map[string]time.Duration{},
+		noCeiling:     map[string]bool{},
+		coveredIgnore: map[string]bool{},
 	}
 }
 
@@ -918,6 +1119,58 @@ func (v *velocityLedger) ceilingRefused(model string) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.noCeiling[normalizeModel(model)]
+}
+
+// holdsVetoes reports whether this process currently refuses any endpoint for a
+// model — that is, whether a veto of ours was in play when a request went out.
+//
+// IT IS A PURE READ, AND THAT IS THE WHOLE REASON IT EXISTS. The obvious way to
+// ask "did the refused request carry our list" is to build the object again and
+// look; [Client.onlyLane] does exactly that for its one field and says why it is
+// safe THERE. It is not safe here. Rebuilding runs [velocityLedger.preferences],
+// which EXPIRES cooldowns as it goes, and the lane chooser, which is a sampled
+// decision that records the ask it drew — so a question asked on the way back
+// would quietly move the ledger and rewrite the attribution of a request that
+// was never sent. Nothing here writes anything.
+//
+// It answers a slightly weaker question than "the wire carried it", and the
+// difference does not matter: the memo it guards only ever permits releasing a
+// lane when the vetoes cover every lane this process knows, which cannot happen
+// unless this process was vetoing.
+func (l *velocityLedger) holdsVetoes(model string) bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	for _, entry := range l.lanes[normalizeModel(model)] {
+		if !entry.ignoredUntil.IsZero() && now.Before(entry.ignoredUntil) {
+			return true
+		}
+	}
+	return false
+}
+
+// refuseCoveringIgnore records that the router answered an ignore list covering
+// everything this process knows with an empty serving set. From here on
+// [velocityLedger.keepTheSetServable] releases a lane rather than send one for
+// that model.
+func (v *velocityLedger) refuseCoveringIgnore(model string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.coveredIgnore[normalizeModel(model)] = true
+}
+
+// coveringIgnoreRefused reports whether [refuseCoveringIgnore] has been called
+// for model.
+func (v *velocityLedger) coveringIgnoreRefused(model string) bool {
+	if v == nil {
+		return false
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.coveredIgnore[normalizeModel(model)]
 }
 
 // noteRun remembers how long one COMPLETED reply took, under the endpoint that

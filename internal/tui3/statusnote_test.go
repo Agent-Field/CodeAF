@@ -34,11 +34,19 @@ func TestStatusAndCostAreOnTheCommandList(t *testing.T) {
 	// The other words for them reach them, and the list is what says so.
 	for word, want := range map[string]string{
 		"info": "status", "context": "status",
-		"usage": "cost", "tokens": "cost", "spend": "cost",
+		"usage": "cost", "tokens": "cost",
 	} {
 		if got := canonicalCommand(word); got != want {
 			t.Fatalf("/%s ran as /%s and not /%s", word, got, want)
 		}
+	}
+	// AND `spend` IS NO LONGER ONE OF THEM. It was an alias of /cost, which
+	// prints THIS CONVERSATION's bill — so the one word a person guesses for
+	// "what has this cost me" landed on a different question from the
+	// machine-wide place, and said nothing about it. It is a command of its own
+	// now and opens that place (commands.go, app.go's dispatch).
+	if got := canonicalCommand("spend"); got != "spend" {
+		t.Fatalf("/spend ran as /%s — it must open the spend place, not print one conversation's bill", got)
 	}
 }
 

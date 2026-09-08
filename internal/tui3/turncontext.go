@@ -129,8 +129,11 @@ func (a *app) markRoomContext(room *taskRoom) {
 	if word == "" {
 		return
 	}
+	// EVERY LINE OF THEIRS TAKES IT, the instruction and every correction alike
+	// (steerelbow.go): a page's corrections are the person's own words as much as
+	// its brief is, and the mark is about who was being talked to.
 	for i := range room.entries {
-		if room.entries[i].kind == entryUser {
+		if kind := room.entries[i].kind; kind == entryUser || kind == entrySteer {
 			room.entries[i].context = word
 		}
 	}

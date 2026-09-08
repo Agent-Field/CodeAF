@@ -59,6 +59,19 @@ const (
 	// hoverFold is the "N earlier tool calls" line, which belongs to a turn
 	// rather than to an entry.
 	hoverFold
+	// hoverCaption is one step heading, keyed by its start in this page's list.
+	hoverCaption
+	// hoverWorkFold is the "▸ worked …" chip, which belongs to a chip's own key
+	// (workfold.go's [workfold.key]) rather than to a turn.
+	//
+	// It is a kind of its own rather than a [hoverFold] for that one's own
+	// stated reason, said one door along: a room's page is one turn carrying a
+	// cluster's fold line AND a chip per settled phase, and the two are numbered
+	// in different systems — so a pointer resting on the chip named 1 would
+	// light the tool fold of turn 1 as well, which is two rows brightening for
+	// one pointer on a surface whose whole hover law is that a row lights on
+	// exactly the cells a click acts on.
+	hoverWorkFold
 	// hoverBrief is the door under a node's folded instruction (brieffold.go).
 	// It is a kind of its own rather than a hoverFold because that one is keyed
 	// by TURN and the instruction shares its turn with the node's first calls —
@@ -453,8 +466,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				}
 			}
 			return hoverAt{}
-		case r.hit == hitFold || r.hit == hitWorkFold:
+		case r.hit == hitFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
+		case r.hit == hitCaption:
+			return hoverAt{kind: hoverCaption, turn: r.turn}
+		case r.hit == hitWorkFold:
+			return hoverAt{kind: hoverWorkFold, turn: r.turn}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
 		case r.hit == hitForming:

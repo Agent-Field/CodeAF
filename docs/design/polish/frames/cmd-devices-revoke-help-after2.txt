@@ -1,0 +1,10 @@
+  aforge devices revoke <name> [--all]
+                                stop one device from opening a conversation here — or, with
+                                --all, every device answering to that name. It needs a new
+                                pairing code to come back.
+
+flags:
+  --all
+      stop every device answering to that name, not just the one
+
+run `aforge --help` for every command, `aforge help env` for the environment table.

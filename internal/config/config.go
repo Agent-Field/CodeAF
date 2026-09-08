@@ -25,6 +25,10 @@ const (
 	// floating alias, so a new dated snapshot is picked up without a code change.
 	// 1M context, ~$0.09/M in and ~$0.18/M out, and it advertises both
 	// structured_outputs and reasoning on OpenRouter.
+	//
+	// A first-prompt stall on this default names `/model` rather than hanging
+	// silent (F42). The slug itself is not swapped for a more expensive one:
+	// the cheap default stays, and the stall is what must recover visibly.
 	DefaultModel = "~deepseek/deepseek-v4-flash-latest"
 
 	// DefaultVoiceModel is the independent speech-to-text slot. Voice never
@@ -321,9 +325,20 @@ func Load() (Config, error) { return load(true) }
 // LoadKeyless is [Load] for a launch that can collect the key itself: the
 // interactive chat, whose provider screen connects OpenRouter or takes a pasted
 // key (internal/tui3's firstrun.go). Everything else resolves exactly as Load
-// resolves it, and APIKey is simply empty until the person hands one over. A
-// door that has nobody to ask — --once, an engine, a pipe — has no business
-// calling this.
+// resolves it, and APIKey is simply empty until the person hands one over.
+//
+// AND FOR A PASS THAT WILL PROBABLY DO NOTHING, which is the second legitimate
+// caller and the one nobody expects: the standing tick (cmd/aforge's
+// v3StandingTicker), run every five minutes by whichever of a window or the
+// operating system's timer gets there first. Most passes decline the lock or
+// find every item asleep, and a pass that will do nothing costs nothing and
+// needs nothing — so it builds keyless and carries whatever key was there
+// through to the one moment a judgment actually calls a model, where a machine
+// with none says so on that item's own row.
+//
+// A door that has nobody to ask AND something to spend — --once, an engine, a
+// pipe — still has no business calling this: it would fail on its first request
+// instead of at the door, where the sentence can be read.
 func LoadKeyless() (Config, error) { return load(false) }
 
 func load(requireKey bool) (Config, error) {

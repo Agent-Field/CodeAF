@@ -1,0 +1,50 @@
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ + /task[39m
+[38;5;243m  ## home · Can home search by meaning — semantic search[39m                                                                          [38;5;243m│ [39m
+[38;5;243m  **No, and it is not going to.** Home's search is lexical and local — it matches the words[39m                                       [38;5;243m│ + /standing[39m
+[38;5;243m  you type against names, task titles and outcomes already in memory, and answers inside a[39m                                        [38;5;243m│ [39m
+[38;5;243m  keystroke with nothing loaded and no model called.[39m                                                                              [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  Two things cover what a meaning-search would have been for:[39m                                                                     [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  - **The row that offers to start a conversation never goes away.** A query that matches[39m                                         [38;5;243m│ [39m
+[38;5;243m    nothing still reads `start a new conversation: "…"` above the box, so the worst case of a search that[39m                         [38;5;243m│ [39m
+[38;5;243m    missed is that your words become the first message of a new chat — which is very often[39m                                        [38;5;243m│ [39m
+[38;5;243m    what you wanted.[39m                                                                                                              [38;5;243m│ [39m
+[38;5;243m  - **Ask the chat instead.** It has a `tasks` tool over the whole project record and you can[39m                                     [38;5;243m│ [39m
+[38;5;243m    ask it in sentences: *"what was that thing where we fixed the flaky auth test?"* Home is[39m                                      [38;5;243m│ [39m
+[38;5;243m    the fast layer; the conversation is the thoughtful one.[39m                                                                       [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  ## sessions-and-rewind · Jumping to an old message from far back in the conversation[39m                                            [38;5;243m│ [39m
+[38;5;243m  Open `/rewind`, type a word you remember from the message, and press `enter` twice. That is[39m                                     [38;5;243m│ [39m
+[38;5;243m  the whole route. The search reaches the entire conversation, not just the part drawn on[39m                                         [38;5;243m│ [39m
+[38;5;243m  screen, which is why `esc esc` is the wrong tool for anything older than the last screenful.[39m                                    [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  `tab` inside the inline mode does the same thing without retyping the command: it lifts you[39m                                     [38;5;243m│ [39m
+[38;5;243m  onto the timeline with the cut you had already chosen, and your half-written draft comes[39m                                        [38;5;243m│ [39m
+[38;5;243m  with you. The inline mode's own legend names the key.[39m                                                                           [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  If the cut is refused, the page stays up with the engine's sentence in the foot, and the[39m                                        [38;5;243m│ [39m
+[38;5;243m  same `enter` retries it a moment later.[39m                                                                                         [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  ## places · search — finding anything said or run[39m                                                                               [38;5;243m│ [39m
+[38;5;243m  Everything that has been said on this machine. `alt+6` opens it, and typing searches: the[39m                                       [38;5;243m│ [39m
+[38;5;243m  matches come back with the conversation they were said in, how long ago, and the project it[39m                                     [38;5;243m│ [39m
+[38;5;243m  belongs to, with your own words picked out in the line.[39m                                                                         [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  Nothing is indexed behind your back — this reads the record that was already being kept. The[39m                                    [38;5;243m│ [39m
+[38;5;243m  read happens after the box has been quiet for a moment, never on the keystroke, so typing[39m                                       [38;5;243m│ [39m
+[38;5;243m  never waits on a search.[39m                                                                                                        [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  `enter` opens the conversation the matching turn was said in. Above the results, a legend[39m                                       [38;5;243m│ [39m
+[38;5;243m  counts the projects the matches came from. Twelve conversations are shown and the rest fold[39m                                     [38;5;243m│ [39m
+[38;5;243m  into one line.[39m                                                                                                                  [38;5;243m│ [39m
+[38;5;243m  [39m                                                                                                                                [38;5;243m│ [39m
+[38;5;243m  Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers[39m                                   [38;5;243m│ [39m
+[38;5;243m  the standing place beside the chats that match) — the same offer made twice, one `tab` apart,[39m                                   [38;5;243m│ [39m
+[38;5;243m  would be two rankings that could disagree.[39m                                                                                      [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m─ master ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                                                                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243maforge · deepseek-v4-flash-latest[39m                                                                                       [38;5;243mcrew balanced · $0.00 · 5.4k/1.3M · idle

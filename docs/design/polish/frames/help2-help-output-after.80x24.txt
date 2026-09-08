@@ -1,0 +1,24 @@
+  ctrl+.         every task this project has run · /history · type to filter
+  ctrl+g         close the roster's column, or bring it back · remembered
+  ctrl+l         back to the latest · the chip above the box says so too
+  ctrl+k         switch conversations · tap it like alt+tab · esc goes back
+                 → reaches every other one on this machine · ctrl+w closes one
+  → ←            over an empty box: into a running task, and back out
+  ← ←            out of a task room · the conversation, at the live edge
+  space space    over an empty box: home · /home · esc comes back
+  ctrl+w         delete the word behind the caret · ctrl+u the line
+  ctrl+,         settings
+  d              in /permissions: drop the line under the cursor · press it
+  twice
+  p s n          in /standing: pause one · stop it · not here
+  ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere
+  session · ~/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-
+  2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-
+  v2/b531a33df5787095/transcript.jsonl
+
+─ master* ────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                          ⠿ high
+ ›
+aforge-v2 · deepseek-v4-flash-latest
+                crew balanced · ◦ keeping an eye on 3 · $0.00 · 5.3k/1.3M · idle

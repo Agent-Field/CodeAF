@@ -1,0 +1,50 @@
+                                                                                                                                  │ + /task
+  ## home · Can home search by meaning — semantic search                                                                          │
+  **No, and it is not going to.** Home's search is lexical and local — it matches the words                                       │ + /standing
+  you type against names, task titles and outcomes already in memory, and answers inside a                                        │
+  keystroke with nothing loaded and no model called.                                                                              │
+                                                                                                                                  │
+  Two things cover what a meaning-search would have been for:                                                                     │
+                                                                                                                                  │
+  - **The row that offers to start a conversation never goes away.** A query that matches                                         │
+    nothing still reads `start a new conversation: "…"` above the box, so the worst case of a search that                         │
+    missed is that your words become the first message of a new chat — which is very often                                        │
+    what you wanted.                                                                                                              │
+  - **Ask the chat instead.** It has a `tasks` tool over the whole project record and you can                                     │
+    ask it in sentences: *"what was that thing where we fixed the flaky auth test?"* Home is                                      │
+    the fast layer; the conversation is the thoughtful one.                                                                       │
+                                                                                                                                  │
+  ## sessions-and-rewind · Jumping to an old message from far back in the conversation                                            │
+  Open `/rewind`, type a word you remember from the message, and press `enter` twice. That is                                     │
+  the whole route. The search reaches the entire conversation, not just the part drawn on                                         │
+  screen, which is why `esc esc` is the wrong tool for anything older than the last screenful.                                    │
+                                                                                                                                  │
+  `tab` inside the inline mode does the same thing without retyping the command: it lifts you                                     │
+  onto the timeline with the cut you had already chosen, and your half-written draft comes                                        │
+  with you. The inline mode's own legend names the key.                                                                           │
+                                                                                                                                  │
+  If the cut is refused, the page stays up with the engine's sentence in the foot, and the                                        │
+  same `enter` retries it a moment later.                                                                                         │
+                                                                                                                                  │
+  ## places · search — finding anything said or run                                                                               │
+  Everything that has been said on this machine. `alt+6` opens it, and typing searches: the                                       │
+  matches come back with the conversation they were said in, how long ago, and the project it                                     │
+  belongs to, with your own words picked out in the line.                                                                         │
+                                                                                                                                  │
+  Nothing is indexed behind your back — this reads the record that was already being kept. The                                    │
+  read happens after the box has been quiet for a moment, never on the keystroke, so typing                                       │
+  never waits on a search.                                                                                                        │
+                                                                                                                                  │
+  `enter` opens the conversation the matching turn was said in. Above the results, a legend                                       │
+  counts the projects the matches came from. Twelve conversations are shown and the rest fold                                     │
+  into one line.                                                                                                                  │
+                                                                                                                                  │
+  Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers                                   │
+  the standing place beside the chats that match) — the same offer made twice, one `tab` apart,                                   │
+  would be two rankings that could disagree.                                                                                      │ ❯ ctrl+g hide
+
+─ master ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── space space home · / commands ─
+
+                                                                                                                                                          ⠿ high
+ ›
+aforge · deepseek-v4-flash-latest                                                                                       crew balanced · $0.00 · 5.4k/1.3M · idle

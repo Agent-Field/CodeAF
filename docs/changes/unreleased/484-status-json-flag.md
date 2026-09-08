@@ -3,6 +3,9 @@ kind: added
 title: /status --json prints the status note as one JSON object
 pr: 484
 surface: [chat]
+invalidates:
+  - "The status note only had aligned text. /status --json now serializes the same ordered facts; missing values remain absent and the result stays a conversation note."
+  - "The branch predates the separate /spend place. Its update onto dev preserves /spend as the machine ledger, with only /usage and /tokens remaining aliases of /cost."
 ---
 
 `/status` answers a new argument: `--json` prints the same facts the text form prints as one

@@ -1,0 +1,45 @@
+                                                                                                              │ + /task
+  · carrying its own work on: $1                                                                              │
+  · esc interrupts · ctrl+c twice quits                                                                       │ + /standing
+                                                                                                              │
+› [paste 1 · 56 lines]                                                                                        │
+                                                                                                              │
+  · done when · All existing tests pass (pytest returns zero failures) and the provided minimal repro script  │
+  prints the expected repr and attrs version without raising any error.                                       │
+  · error: API error (404): No allowed providers are available for the selected model. Providers serving      │
+  deepseek/deepseek-v4-flash-20260423: digitalocean, baidu, streamlake, deepinfra, but your request's         │
+  provider.only preference permits only: anthropic.                                                           │
+                                                                                     · 16:46 · 17s · $0.0001 ·│
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │ Σ $0.0001 · 1.2k tok
+                                                                                                              │ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+work · deepseek-v4-flash · via digitalocean                                               crew custom · $0.0001 · 5.8k/1M · 1% · YOLO · idle

@@ -1,0 +1,24 @@
+ aforge                                                                                                              1 want you · $1.85 / $500.00 · wed 11:05pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+12 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones    Porting the Picker
+? tell me when CI goes red on master       aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 7m    …iles dirty · open in another window
+○ Porting the Picker                                                     aforge-v2 another window · enter brings it here    enter again moves it here
+○ The Certificate Rotation                                                                                     infra 27m    its reply finishes first
+○ The Tab Bar's Counts                                                                                     aforge-v2 47m    its tasks come here
+○ Why the Frame Jumps                                                                                       aforge-v2 3h
+○ Pricing Research                                                                                       pricing-site 3h    work
+○ Standing Up the Watches                                                                                   aforge-v2 5h    ✓ Port the picker onto the ne… $0.31
+○ The Annual Toggle                                                                                      pricing-site 5h
+▸ 5 more, quiet since sep 1                                                                                                 touched 2 files · spent $0.75
+                                                                                                                            69.9k tokens · last active 9m
+                                                                                                                            thinking high
+
+                                                                                                                            → verbs: put it away, new chat here,
+                                                                                                                                     open folder, copy path
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                      here ~/aforge-v2
+ open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)

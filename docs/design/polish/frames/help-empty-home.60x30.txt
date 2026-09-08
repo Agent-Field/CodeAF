@@ -1,0 +1,30 @@
+
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-
+  8173-4e64-b3ec-
+  73decce3d3d5/scratchpad/emptyhome/.aforge/v3/projects/-
+  tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-
+  b3ec-73decce3d3d5-scratchpad-emptyhome-
+  proj/6861ae3f03f47ad2/transcript.jsonl
+  · esc interrupts · ctrl+c twice quits
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+
+                                                      ⠿ high
+ ›
+aforge · deepseek-v4-flash-latest
+                    crew balanced · $0.00 · 5.4k/1.3M · idle

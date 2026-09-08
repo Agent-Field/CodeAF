@@ -116,3 +116,36 @@ func TestRepairedGateVerdictStillTeaches(t *testing.T) {
 		}
 	})
 }
+
+// A GATE THAT NAMED NO GAP CAUGHT NO MISSING ELEMENT. The harness stops asking
+// for a judgement once nothing is changing and journals the refusal that stood
+// in for it, unclosed and with no gap; a later accepted round bears the row out
+// exactly as it bears out a verdict, and the block would then tell the distiller
+// that the gate caught this missing element: and then stop.
+func TestADeclinedJudgementTeachesTheNotebookNothing(t *testing.T) {
+	graph := openStore(t)
+	var distilled string
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(_ context.Context, _, outcome string, _ bool) ([]Learned, error) {
+			distilled = outcome
+			return nil, nil
+		})
+	settleWithGate(t, graph, reconciler, "job", "finish the migration",
+		"the migration, as far as it got", store.DeliveryGate{
+			Refused:  "nothing here was written or altered while this ran",
+			Unclosed: true,
+		})
+	settleWithGate(t, graph, reconciler, "job-x1", "finish the migration",
+		"the migration is finished", store.DeliveryGate{Pass: true})
+	node, ok, err := graph.Node("job")
+	if err != nil || !ok {
+		t.Fatalf("read job: ok=%t err=%v", ok, err)
+	}
+	reconciler.distillJob(context.Background(), node, false)
+	if strings.Contains(distilled, "Delivery gate evidence") {
+		t.Fatalf("a gate that named no gap was taught as a missing element: %q", distilled)
+	}
+	if !strings.Contains(distilled, "the migration, as far as it got") {
+		t.Fatalf("the deliverable itself stopped reaching the distiller: %q", distilled)
+	}
+}

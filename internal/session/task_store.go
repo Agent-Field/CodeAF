@@ -134,8 +134,9 @@ func (c Config) checkpointFile() string {
 // It carries the node's whole life in three parts: the FROZEN SPEC it was
 // admitted with (title, summary, request, brief, deliverable, acceptance,
 // depends_on, thresholds),
-// where it had got to (state, elapsed), and its LEAVINGS (report, changed,
-// branch, worktree, merge). The assembled brief is deliberately absent: it is
+// where it had got to (state, elapsed, and the instants its run began and
+// landed), and its LEAVINGS (report, changed, branch, worktree, merge). The
+// assembled brief is deliberately absent: it is
 // JIT by contract (task_run.go), so a queued node that resumes assembles it from
 // the reports its prerequisites left, which is the same thing it would have done
 // had nothing died.
@@ -178,6 +179,10 @@ type taskRecord struct {
 	// the road it took when it was written.
 	Ground string   `json:"ground,omitempty"`
 	Mode   TaskMode `json:"groundMode,omitempty"`
+	// Home is the root checkout's branch when the task branch was cut. It is
+	// additive: an older record without it still gets the detached and protected
+	// checks at landing, and simply cannot detect that the checkout moved.
+	Home string `json:"home,omitempty"`
 
 	// Rung, Seal, Base and Universe are WHICH COPY OF THE GROUND the work
 	// actually happened in (session/groundladder.go): which rung of the ground
@@ -206,6 +211,12 @@ type taskRecord struct {
 	// siblings ever saw. Additive: a checkpoint written before it existed decodes
 	// without it and seals exactly as it always did.
 	Frozen string `json:"groundFrozen,omitempty"`
+	// Family is the checks this node owns for the family it handed out
+	// ([TaskNode.Family]). It is here because the parent's own check is made
+	// after every part is home, which can be a different process from the one
+	// that divided — a resumed node that had forgotten it would be a check
+	// nobody ever makes.
+	Family []string `json:"familyChecks,omitempty"`
 
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
@@ -290,6 +301,12 @@ type taskRecord struct {
 	// moment it landed. Milliseconds because a duration in JSON should be a
 	// number a person can read, not a Go-shaped string.
 	ElapsedMS int64 `json:"elapsed_ms,omitempty"`
+	// StartedAt and EndedAt are the instants the node began running and landed.
+	// THEY ARE ADDITIVE AND ABSENCE IS ORDINARY. A checkpoint written before
+	// these facts were carried decodes with neither, and a node whose process
+	// never recorded one keeps the zero time rather than inventing a clock.
+	StartedAt time.Time `json:"startedAt,omitzero"`
+	EndedAt   time.Time `json:"endedAt,omitzero"`
 
 	// CostUSD and the four token counts are the node's BILL: what every agent it
 	// took — the worker, each repair round, the auditor, a design thread — spent
@@ -653,10 +670,7 @@ const orchestrateEndedReport = "it ended when aforge closed; its journal is kept
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {
-	elapsed := n.elapsed
-	if elapsed == 0 && !n.started.IsZero() {
-		elapsed = time.Since(n.started)
-	}
+	elapsed := n.ageLocked()
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
 	wrote := make([]string, len(n.wrote))
@@ -682,11 +696,13 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Where:         n.spec.where,
 		Ground:        n.Ground,
 		Mode:          n.Mode,
+		Home:          n.Home,
 		Rung:          n.Rung,
 		Seal:          n.Seal,
 		Base:          n.Base,
 		Universe:      n.Universe,
 		Frozen:        n.Frozen,
+		Family:        n.Family,
 		Acceptance:    n.spec.acceptance,
 		DependsOn:     dependsOn,
 		Parent:        n.parent,
@@ -707,6 +723,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		MaxSteps:      n.spec.maxSteps,
 		NoProgress:    n.spec.noProgress,
 		ElapsedMS:     elapsed.Milliseconds(),
+		StartedAt:     n.started,
+		EndedAt:       n.ended,
 		CostUSD:       n.cost,
 		Input:         n.input,
 		Output:        n.output,
@@ -847,7 +865,7 @@ func validTaskState(state TaskState) bool {
 
 func validMergeOutcome(merge string) bool {
 	switch merge {
-	case "", mergeMerged, mergeConflicted, mergeInPlace, mergeAborted:
+	case "", mergeMerged, mergeConflicted, mergeInPlace, mergeAborted, mergeKept:
 		return true
 	}
 	return false
@@ -1169,11 +1187,13 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		},
 		Ground:      record.Ground,
 		Mode:        record.Mode,
+		Home:        record.Home,
 		Rung:        record.Rung,
 		Seal:        record.Seal,
 		Base:        record.Base,
 		Universe:    record.Universe,
 		Frozen:      record.Frozen,
+		Family:      record.Family,
 		state:       record.State,
 		report:      record.Report,
 		ending:      record.Ending,
@@ -1186,6 +1206,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		merge:       record.Merge,
 		journal:     record.Journal,
 		elapsed:     time.Duration(record.ElapsedMS) * time.Millisecond,
+		started:     record.StartedAt,
+		ended:       record.EndedAt,
 		cost:        record.CostUSD,
 		input:       record.Input,
 		output:      record.Output,
@@ -1248,6 +1270,28 @@ const harnessInterruptedReport = "the design did not finish before aforge closed
 // merged, deleted or pruned by the person in between, and a report promising
 // work on a branch that is gone is worse than no report: it is the harness
 // telling somebody their work is safe when it is not.
+// interruptedAt is when a node that SETTLES on interruption ended, which is
+// now: the process is closing and this is the last moment anything knew about
+// this node.
+//
+// AN INTERRUPT IS AN ENDING FOR THE KINDS THAT SETTLE ON IT. A design still
+// writing and a run that cannot be re-entered are both handed back as failed
+// and never return to the frontier, so this is the only instant anything will
+// ever have for them — and without it their rows rebuild undated while
+// [Agent.TaskIndex] has the live graph row REPLACE the durable one, discarding
+// the better stamp closeInflightTaskIndexRows had written. An ordinary task
+// takes none of this: it goes back on the frontier queued, has not ended, and
+// must not be stamped as though it had.
+//
+// A record that already carries one keeps it, because a node that landed and
+// was then caught by the close ended when it landed.
+func interruptedAt(record taskRecord) time.Time {
+	if !record.EndedAt.IsZero() {
+		return record.EndedAt
+	}
+	return time.Now()
+}
+
 func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	record.Interrupted = true
 	// The completion note is owed: nobody ever announced this node, because
@@ -1287,6 +1331,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// was still being written and nothing was kept.
 		record.State = TaskFailed
 		record.Report = harnessInterruptedReport
+		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}
 
@@ -1306,6 +1351,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// finish, and what it got through is in its journal.
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
+		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}
 

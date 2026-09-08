@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+  · 3 standing orders here — /standing                                                    │
+  · new conversation · aforge-v2                                                          │ standing
+                                                                                          │ ◦ the morning sweep
+› list the files in this directory with the list tool, then in one sentence say what this │ ? CI on master
+  project is                                                                              │ ◦ the public API
+  ··                                                                                      │ + /standing
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+aforge-v2 · claude-3-haiku           crew balanced · 2 open · ◦ keeping an eye on 3 · $0.00 · 5.3k/200k · 3% · ⠹ working

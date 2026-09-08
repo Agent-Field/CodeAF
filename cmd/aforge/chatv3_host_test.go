@@ -147,13 +147,19 @@ func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
 }
 
 // The flag exists and is documented in exactly one place: `aforge chat -h`.
+//
+// ASKING FOR HELP IS NOT A FAILURE (usage.go), so the page goes to stdout and
+// the door leaves with 0 rather than handing back the flag package's internal
+// `flag: help requested`. The old shape of this test accepted that string and
+// never read the page at all, which meant it passed whether or not `--host`
+// was on it — the one fact it is named for.
 func TestHostFlagIsOnTheChatUsage(t *testing.T) {
-	err := openChatV3("chat", []string{"--help"}, false)
-	if err == nil {
-		return
+	page, _ := captureUsage(t)
+	if code := exitCodeOf(openChatV3("chat", []string{"--help"}, false)); code != 0 {
+		t.Fatalf("`aforge chat --help` left with %d, want 0", code)
 	}
-	if !strings.Contains(err.Error(), "flag: help requested") {
-		t.Fatalf("chat --help = %v", err)
+	if !strings.Contains(page.String(), "--host") {
+		t.Fatalf("`aforge chat --help` does not document --host:\n%s", page)
 	}
 }
 
@@ -243,7 +249,12 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 		Version: remote.Version, Workspace: "/srv/app",
 		Build: "1265feda built 2026-08-27 13:28", BashBackgroundAfterSeconds: 47,
 	}
-	options := hostOptions(nil, nil, "devbox", welcome, false)
+	// A REAL CLIENT, not a nil: the door primes three readings on goroutines
+	// of their own the moment it is built, and a nil here used to be three
+	// recovered nil dereferences per run that the guard swallowed
+	// (chatv3_host_duty_test.go pins the seam that now refuses them).
+	client := hostedClient(t)
+	options := hostOptions(client, nil, "devbox", welcome, false)
 	if options.Build != welcome.Build {
 		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
 	}
@@ -283,10 +294,8 @@ func TestTheHostStandingSeamAnswersFromItsCacheWithoutBlocking(t *testing.T) {
 			<-held
 			return []standing.Item{{ID: "01HQ", Words: "watch CI", Workspace: workspace}}, nil
 		},
-		put:      func(standing.Item) error { return nil },
-		items:    map[string][]standing.Item{},
-		read:     map[string]time.Time{},
-		fetching: map[string]bool{},
+		put:   func(standing.Item) error { return nil },
+		items: map[string][]standing.Item{},
 	}
 
 	// The first reading has nothing to answer with and answers nothing, at once.
@@ -334,11 +343,9 @@ func TestSavingOneItemOverTheWireRefreshesWhatHomeDraws(t *testing.T) {
 	item := standing.Item{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app", Status: standing.StatusActive}
 	var written []standing.Item
 	stands := &hostStanding{
-		ask:      func(string) ([]standing.Item, error) { return []standing.Item{item}, nil },
-		put:      func(saved standing.Item) error { written = append(written, saved); return nil },
-		items:    map[string][]standing.Item{"/srv/app": {item}},
-		read:     map[string]time.Time{"/srv/app": time.Now()},
-		fetching: map[string]bool{},
+		ask:   func(string) ([]standing.Item, error) { return []standing.Item{item}, nil },
+		put:   func(saved standing.Item) error { written = append(written, saved); return nil },
+		items: map[string][]standing.Item{"/srv/app": {item}},
 	}
 	paused := item
 	paused.Status = standing.StatusPaused
@@ -360,11 +367,9 @@ func TestSavingOneItemOverTheWireRefreshesWhatHomeDraws(t *testing.T) {
 func TestARefusedRemoteWriteLeavesTheRowAsItWas(t *testing.T) {
 	item := standing.Item{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app", Status: standing.StatusActive}
 	stands := &hostStanding{
-		ask:      func(string) ([]standing.Item, error) { return []standing.Item{item}, nil },
-		put:      func(standing.Item) error { return errors.New("an item needs a per-run budget") },
-		items:    map[string][]standing.Item{"/srv/app": {item}},
-		read:     map[string]time.Time{"/srv/app": time.Now()},
-		fetching: map[string]bool{},
+		ask:   func(string) ([]standing.Item, error) { return []standing.Item{item}, nil },
+		put:   func(standing.Item) error { return errors.New("an item needs a per-run budget") },
+		items: map[string][]standing.Item{"/srv/app": {item}},
 	}
 	paused := item
 	paused.Status = standing.StatusPaused
@@ -384,19 +389,17 @@ func TestARefusedRemoteWriteLeavesTheRowAsItWas(t *testing.T) {
 func TestALostConnectionDoesNotEmptyTheItemBand(t *testing.T) {
 	item := standing.Item{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app"}
 	stands := &hostStanding{
-		ask:      func(string) ([]standing.Item, error) { return nil, errors.New("the connection to devbox is gone") },
-		put:      func(standing.Item) error { return nil },
-		items:    map[string][]standing.Item{"/srv/app": {item}},
-		read:     map[string]time.Time{},
-		fetching: map[string]bool{},
+		ask:   func(string) ([]standing.Item, error) { return nil, errors.New("the connection to devbox is gone") },
+		put:   func(standing.Item) error { return nil },
+		items: map[string][]standing.Item{"/srv/app": {item}},
 	}
 	if held := stands.list("/srv/app"); len(held) != 1 {
 		t.Fatalf("the seam answered %+v before the fetch even failed", held)
 	}
 	if !waitFor(func() bool {
-		stands.mu.Lock()
-		defer stands.mu.Unlock()
-		return !stands.fetching["/srv/app"] && !stands.read["/srv/app"].IsZero()
+		stands.duty.mu.Lock()
+		defer stands.duty.mu.Unlock()
+		return !stands.duty.out["/srv/app"] && !stands.duty.ended["/srv/app"].IsZero()
 	}) {
 		t.Fatal("the failing fetch never finished")
 	}
@@ -451,7 +454,7 @@ func TestTheEntryNoticeSaysWhoElseIsOnTheConversation(t *testing.T) {
 // of them is a fact a person would never be told, so the test is about presence
 // rather than wording — the sentences themselves belong to internal/remote.
 func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
-	var client *remote.Client
+	client := hostedClient(t)
 	seams := newHostSeams(client)
 	var _ func() string = seams.Link
 	var _ func() (time.Duration, error) = seams.Ping

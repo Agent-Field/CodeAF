@@ -3,6 +3,7 @@ package tui3
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -260,14 +261,75 @@ func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal 
 	return painted + strings.Repeat(" ", gap) + right
 }
 
-// foldLine keeps every collapsed count in one sentence grammar. A clause is
-// already prose and therefore follows the count after one comma.
-func foldLine(n int, clause string) string {
-	line := tokens.GlyphCollapsed + " " + groupedInt(n) + " more"
+// foldWords is THE ONE SENTENCE a fold says, and the reason it lives here
+// rather than beside either of its callers is that home spelled it twice for a
+// wave: the list said `▸ 4 more, quiet since sep 1` ([switcherReading.addFold])
+// while the phone and the project tails said `▸ …7 more, quiet since 3h`
+// ([homeQuietWord]) — a leading ellipsis on one and not the other, and a
+// calendar date against an elapsed span, for one idea.
+//
+// A SHUT FOLD SAYS HOW MANY IT HIDES; AN OPEN ONE SAYS THE WAY BACK. The count
+// is the same number both ways — what a fold stands over is counted at the cap
+// and never at what is drawn ([switcherReading.addRowsAndFold] states that law)
+// — but `12 more` over a list already showing all twelve is a sentence that is
+// not true, so an open fold is `12 fewer`, which is what pressing it does.
+//
+// THE MARK IS THE CALLER'S. Home draws `>` and `v` in an ASCII palette and the
+// places draw `▸` from the token table, so a speller that owned the glyph would
+// have to know which of them was asking.
+func foldWords(open bool, n int, clause string) string {
+	if open {
+		return groupedInt(n) + " fewer"
+	}
+	line := groupedInt(n) + " more"
 	if clause = strings.TrimSpace(strings.TrimPrefix(clause, ",")); clause != "" {
 		line += ", " + clause
 	}
 	return line
+}
+
+// foldLine is [foldWords] wearing the shut mark, for the folds that are only
+// ever shut — the shelves on the memory place, a search's tail, the spend
+// sheet's, the command list's.
+func foldLine(n int, clause string) string {
+	return tokens.GlyphCollapsed + " " + foldWords(false, n, clause)
+}
+
+// foldSpellings is the fold line at EVERY LENGTH IT WILL GIVE WAY THROUGH,
+// widest first, so a caller with a measured row can walk down it and take the
+// first rung that fits.
+//
+// THE MARK IS ON EVERY RUNG AND THE WORDS ARE WHAT GO. `▸` is the part that
+// carries the meaning — it says a list has more behind it and that the line is a
+// door — and `more` only says it again in letters. A ladder that dropped the
+// glyph first would leave `+3`, which cannot be told from a count, a badge or a
+// door; the narrow place bar spelled it exactly that way for a wave while the
+// command menu one file over said `▸ 3 more` about the same idea.
+func foldSpellings(n int, clause string) []string {
+	return []string{
+		foldLine(n, clause),
+		foldLine(n, ""),
+		tokens.GlyphCollapsed + " " + groupedInt(n),
+	}
+}
+
+// quietFoldClause is the one spelling of HOW LONG the rows behind a fold have
+// been quiet, and it is [sinceAt] — the same ladder every row's own age is
+// drawn with — because a fold and the rows it stands over sit on the same list
+// and get compared. A fold that said `quiet since sep 1` beside rows reading
+// `3h` and `4d` was asking a person to convert between two units to find out
+// whether those meant the same day; and past thirty days [sinceAt] reaches for a
+// calendar date by itself, which is exactly when the elapsed form stops being
+// readable.
+//
+// AN AGE OF `now` IS NO CLAUSE AT ALL. "quiet since now" is a contradiction, and
+// the emptiness law would rather the sentence stopped after the count.
+func quietFoldClause(at, now time.Time) string {
+	age := sinceAt(at, now)
+	if age == "" || age == "now" {
+		return ""
+	}
+	return "quiet since " + age
 }
 
 // appendPlaceSection gives consecutive blocks exactly one breath without

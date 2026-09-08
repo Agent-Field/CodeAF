@@ -1,0 +1,50 @@
+                                                                                                                                  │ + /task
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-│
+  tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-                                │ + /standing
+  proj/770391df4a5f1343/transcript.jsonl                                                                                          │
+  · esc interrupts · ctrl+c twice quits                                                                                           │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │ ❯ ctrl+g hide
+
+─ master ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ↑↓ · enter · esc ─
+
+                                                                                                                                                          ⠿ high
+ › /
+› /model                                                                                                     pick a model · or press its name in the status line
+  /model <slug>                                                                                                                                 switch the model
+  /image <path>                                                                                                        attach a picture · tab completes the path
+  /settings                                                                                                 open the settings panel · ctrl+, · also /set /config
+  /connect                                                                                         your connected accounts · connect another · also /connections
+  /new                                                                                    start another conversation in this project · also /clear /clean /reset
+  /resume                                                                                                          open an earlier conversation · also /sessions
+  /compact                                                                                                                        summarize the conversation now
+aforge · deepseek-v4-flash-latest                                                                                       crew balanced · $0.00 · 5.4k/1.3M · idle

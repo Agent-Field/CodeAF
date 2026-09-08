@@ -1,20 +1,25 @@
 package tui3
 
-// ── THE ROOM SHOWS THE WORK ─────────────────────────────────────────────────
+// ── THE ROOM FOLDS THE PAST AND KEEPS THE PRESENT WIDE ──────────────────────
 //
-// The report these tests hold shut: "when a subharness is built and I click and
-// go there I see no discussion of the chat at all, I wait with scrolling text in
-// single line and at the end get the result … same for inside a task recursive …
-// we can't even see chat in UI".
+// These tests used to hold the opposite law shut — A ROOM FOLDS NOTHING — and
+// they were right about the defect they were written for and wrong about the
+// page. The defect was that the CONVERSATION's chip, which is one chip per
+// turn, ate a page that is one turn: a node's life ends in a report, so the
+// instant it stopped running everything it had said and done went behind
+// "▸ worked · 10 tool calls · ctrl+e" and the person who walked in to watch the
+// work was handed the report and nothing else.
 //
-// The room was reading the whole journal and drawing it through the
-// conversation's renderers, exactly as room.go promises. What nobody had noticed
-// was that the conversation's renderer FOLDS: a completed turn with work and a
-// trailing answer collapses to "▸ worked · N tool calls · ctrl+e"
-// (workfold.go). A node's life is one long turn ending in a report, so the whole
-// page went behind that chip the instant the node stopped running — and a person
-// who walked in to watch the work was handed the report and nothing else, which
-// is the complaint word for word.
+// The owner ruled the other way on 2026-09-01 (issue #252, ruling 1): the task
+// page folds settled work into phase chips by default and the machinery stays
+// one keypress away. The chip is spent per SETTLED PHASE now — the work that
+// preceded each paragraph the node wrote — so the machinery collapses, every
+// paragraph stays standing, and the live frontier does not fold at all. That
+// answers the original complaint without building the page on the premise that
+// every call has to be read.
+//
+// So these tests are rewritten WITH the design: what folds, what may never
+// fold, and every door that opens what did.
 
 import (
 	"strings"
@@ -25,11 +30,14 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// workedJournal is a node with a life behind it: an instruction, prose, calls,
-// an answer, and then a second turn — the landing instruction the runner sends
-// when a node is stopped at a checkpoint (internal/session's task_run.go), which
-// is what makes the FIRST turn a completed one with an answer at the end of it,
-// and therefore foldable.
+// workedJournal is a node with a life behind it: an instruction, then two
+// stretches of work each ending in a paragraph of the node's own prose, then the
+// landing instruction the runner sends when a node is stopped at a checkpoint
+// (internal/session's task_run.go) and the report it answers with.
+//
+// TWO PHASES AND A REPORT is the shape the page is designed against: the first
+// two paragraphs are what the node said as it went, and the last is what it came
+// home with.
 func workedJournal(t *testing.T) string {
 	t.Helper()
 	return roomJournal(t,
@@ -44,85 +52,300 @@ func workedJournal(t *testing.T) string {
 	)
 }
 
-// A FINISHED NODE'S ROOM IS THE WHOLE STORY, NOT THE LAST PARAGRAPH OF IT. This
-// is the reproduction: the room is opened on a node whose lane is already over,
-// and every earlier turn is a completed one.
-func TestAFinishedRoomShowsTheWorkAndNotAWorkedChip(t *testing.T) {
+// openWorked opens the room on [workedJournal] with its lane already over, which
+// is the state every one of these reads the page in unless it says otherwise.
+func openWorked(t *testing.T) *app {
+	t.Helper()
 	a, fake, _ := roomApp(t)
 	fake.journal = workedJournal(t)
 	a.workMode = config.WorkFold
-
 	a.openRoom(7, "Draw two posters")
 	a.touch()
 	drive(t, a, roomClosedMsg{gen: a.room.gen})
+	return a
+}
 
+// A FINISHED ROOM READS AS WHAT THE WORK CAME TO, WITH THE MACHINERY FILED. The
+// paragraphs the node wrote stand, the report stands, and the calls between them
+// are behind chips that say what they cost.
+func TestAFinishedRoomFoldsSettledPhasesAndLeavesTheProseStanding(t *testing.T) {
+	a := openWorked(t)
 	page := roomText(a)
-	if strings.Contains(page, "▸ worked") {
-		t.Fatalf("the node's work collapsed into a chip:\n%s", page)
-	}
+
 	for _, want := range []string{
-		"Reading the site first.",
-		"read index.html",
-		"I have the aesthetic. Generating both.",
-		"generate_image",
 		"Both rendered at the wrong size.",
 		"Here is the honest state of the deliverables.",
 	} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("the room is missing %q — a person who walked in to read the work:\n%s",
-				want, page)
+			t.Fatalf("a fold hid what the node SAID (%q):\n%s", want, page)
 		}
+	}
+	// Narration that tools followed is now the caption under each chip — open
+	// the newest chip to read it back as the outline.
+	if !a.toggleLatestWorkfold() {
+		t.Fatal("no chip to open for the narration check")
+	}
+	opened := roomText(a)
+	if !strings.Contains(opened, "Reading the site first") &&
+		!strings.Contains(opened, "I have the aesthetic") {
+		t.Fatalf("opened chips lost their narration captions:\n%s", opened)
+	}
+	if strings.Contains(page, "index.html") || strings.Contains(page, "generate_image") {
+		t.Fatalf("the settled calls are still on the page:\n%s", page)
+	}
+	// THE CHIP'S GRAMMAR IS THE CONVERSATION'S, counted and never paraphrased.
+	if n := strings.Count(page, "▸ worked"); n != 2 {
+		t.Fatalf("want one chip per settled phase, got %d:\n%s", n, page)
+	}
+	if !strings.Contains(page, "1 tool call · ctrl+e") {
+		t.Fatalf("the chip does not count its calls or name its door:\n%s", page)
 	}
 }
 
-// AND IT IS THE WHOLE STORY WHILE THE NODE IS STILL RUNNING TOO. A node between
-// steps has completed turns behind it, so the fold bit here as well — the page
-// filled in live and then swallowed itself one turn at a time.
-func TestARunningRoomShowsTheTurnsBehindTheOneInFlight(t *testing.T) {
+// AND THE REPORT IS NEVER INSIDE ONE. It is the last paragraph, so the last chip
+// stops at it — the one line a person opens a landed task for.
+func TestTheFinalReportNeverFolds(t *testing.T) {
+	a := openWorked(t)
+	page := roomText(a)
+	report := strings.Index(page, "Here is the honest state of the deliverables.")
+	if report < 0 {
+		t.Fatalf("the report is gone:\n%s", page)
+	}
+	if last := strings.LastIndex(page, "▸ worked"); last > report {
+		t.Fatalf("a chip was drawn after the report:\n%s", page)
+	}
+}
+
+// A RUNNING ROOM FOLDS WHAT IS BEHIND THE FRONTIER AND LEAVES THE FRONTIER WIDE.
+// The person watching NOW is the one reader for whom the machinery is the
+// content, so everything after the last settled paragraph keeps every row.
+func TestARunningRoomFoldsThePastAndKeepsTheFrontierWide(t *testing.T) {
 	a, fake, _ := roomApp(t)
 	fake.journal = workedJournal(t)
 	a.workMode = config.WorkFold
 
 	a.openRoom(7, "Draw two posters")
 	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolBegin, Tool: "bash", CallID: "live", Hint: "bash convert", Args: `{"cmd":"convert"}`,
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
 		Kind: session.EventTextDelta, Text: "Still working.",
 	}})
 
 	page := roomText(a)
-	if strings.Contains(page, "▸ worked") {
-		t.Fatalf("a running node's earlier turns collapsed into a chip:\n%s", page)
+	if !strings.Contains(page, "▸ worked") {
+		t.Fatalf("a running node's settled phases did not fold:\n%s", page)
 	}
-	if !strings.Contains(page, "Reading the site first.") || !strings.Contains(page, "Still working.") {
-		t.Fatalf("the room lost either its history or its live edge:\n%s", page)
+	if !strings.Contains(page, "Still working.") {
+		t.Fatalf("the room lost its live edge:\n%s", page)
+	}
+	// THE LIVE CALL IS ON THE PAGE. It arrived after the last settled paragraph,
+	// so no chip may cover it.
+	if !strings.Contains(page, "bash") {
+		t.Fatalf("the frontier's own call was folded away:\n%s", page)
 	}
 }
 
-// AND ui.work = open CHANGES NOTHING IN HERE, because there was never anything
-// to open: the setting is about the conversation's chips, and a room has none.
-func TestTheWorkSettingDoesNotReachARoom(t *testing.T) {
+// THE BRIEF, A FAILED CALL AND A CORRECTION ARE NEVER FOLDED. Each is one of the
+// five acts and each has its own reason, so each is asked separately.
+func TestTheBriefAFailureAndAnElbowNeverFold(t *testing.T) {
+	base := time.Unix(100, 0)
+	work := func(extra ...entry) []entry {
+		out := []entry{
+			{kind: entryUser, text: "Draw two posters", turn: 1, brief: true},
+			{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base, ended: base.Add(time.Second)},
+		}
+		out = append(out, extra...)
+		return append(out, entry{kind: entryAssistant, text: "Both rendered.", turn: 1, settled: true})
+	}
+	cases := []struct {
+		name    string
+		entries []entry
+		folds   int
+	}{
+		{"plain work folds", work(), 1},
+		{"a failed call does not", work(entry{kind: entryTool, tool: "bash", turn: 1, status: toolFailed}), 0},
+		{"an ask does not", work(entry{kind: entryTask, text: "may I?", turn: 1}), 0},
+		{"a call still in flight does not", work(entry{kind: entryTool, tool: "bash", turn: 1, status: toolRunning}), 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			folds := derivePhaseFolds(c.entries)
+			if len(folds) != c.folds {
+				t.Fatalf("want %d chips, got %d", c.folds, len(folds))
+			}
+			for _, f := range folds {
+				if f.start == 0 {
+					t.Fatalf("a chip started on the brief — the person's own words")
+				}
+			}
+		})
+	}
+	// AND A CORRECTION BREAKS THE RUN IT LANDED IN. The elbow is the overseer's
+	// primary act; a chip that covered it would be hiding the person's own words.
+	steered := []entry{
+		{kind: entryUser, text: "Draw two posters", turn: 1, brief: true},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base, ended: base.Add(time.Second)},
+		{kind: entrySteer, text: "portrait, not landscape", turn: 1, steer: &steerElbow{}},
+		{kind: entryAssistant, text: "Both rendered.", turn: 1, settled: true},
+	}
+	if folds := derivePhaseFolds(steered); len(folds) != 0 {
+		t.Fatalf("a chip covered a correction: %v", folds)
+	}
+}
+
+// AND THE WIRING HOLDS FOR THE ELBOW THE PRODUCT ACTUALLY MAKES. The table above
+// holds the LAW — a run carrying a correction folds nothing — against a
+// hand-built elbow, and it is the test that fails if [groupBreaks] stops ending
+// a run at one. This one holds the WIRING: a correction typed at a running task
+// draws a real entrySteer now (#252, ruling 2, landed by L3), the work that
+// follows it settles into a phase of its own, and the person's words are on the
+// page with every chip shut.
+//
+// IT IS DELIBERATELY NOT A SECOND COPY OF THE LAW TEST, and saying so is worth a
+// line: the elbow is protected TWICE — [groupBreaks] ends the run, and
+// [countWork] steps over corrections when it picks a chip's start — so a chip
+// can never be keyed on one even if the first guard were removed. Asserting the
+// law here would pass with that guard gone and prove nothing. What this asserts
+// is what only the live path can be wrong about.
+func TestACorrectionTypedIntoARunningTaskBreaksThePhaseFold(t *testing.T) {
 	a, fake, _ := roomApp(t)
 	fake.journal = workedJournal(t)
+	a.workMode = config.WorkFold
+	a.openRoom(7, "Draw two posters")
 
+	before := len(derivePhaseFolds(a.room.entries))
+	if before == 0 {
+		t.Fatal("the page folded nothing before the correction, so this proves nothing")
+	}
+
+	// The correction, typed and sent at the page the way a person sends one.
+	a.input.setText("portrait, not landscape")
+	drive(t, a, key("enter"))
+
+	if len(fake.steered) != 1 {
+		t.Fatalf("the line did not reach the node: %v", fake.steered)
+	}
+	elbow := -1
+	for i := range a.room.entries {
+		if a.room.entries[i].kind == entrySteer {
+			elbow = i
+		}
+	}
+	if elbow < 0 {
+		t.Fatalf("the correction did not draw an elbow:\n%s", roomText(a))
+	}
+
+	// AND THE NODE GOES ON WORKING AND THEN SPEAKS, which is what makes this a
+	// real test rather than a vacuous one: a settled paragraph after the elbow is
+	// exactly what would close a phase ACROSS it if the law did not hold.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolBegin, Tool: "generate_image", CallID: "c9",
+		Hint: "generate_image", Args: `{"prompt":"portrait"}`,
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolEnd, Tool: "generate_image", CallID: "c9", Output: "wrote portrait.png",
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventTextDelta, Text: "Redrawn in portrait.",
+	}})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{Kind: session.EventTurnDone}})
+	if after := len(derivePhaseFolds(a.room.entries)); after <= before {
+		t.Fatalf("the work after the correction never settled into a phase (%d then %d), "+
+			"so nothing here could have covered the elbow", before, after)
+	}
+	// THE PHASE THAT CLOSED STARTS AFTER THE CORRECTION, never on or before it.
+	for start, f := range derivePhaseFolds(a.room.entries) {
+		if start <= elbow && f.answer > elbow {
+			t.Fatalf("a chip covers the correction at %d: %+v\n%s", elbow, f, roomText(a))
+		}
+	}
+	// AND THE WORDS ARE ON THE PAGE WITH EVERY CHIP SHUT, which is the whole of
+	// what the person is owed: they said something to running work and can see
+	// that they did, without opening anything.
+	page := roomText(a)
+	if !strings.Contains(page, "portrait, not landscape") {
+		t.Fatalf("the page does not show what the person said:\n%s", page)
+	}
+	if !strings.Contains(page, "Redrawn in portrait.") {
+		t.Fatalf("the paragraph the correction bought is not standing:\n%s", page)
+	}
+	if strings.Contains(page, "generate_image") {
+		t.Fatalf("the work after the correction did not fold into its chip:\n%s", page)
+	}
+}
+
+// EVERY DOOR OPENS A CHIP, because the disclosure ladder may never dead-end:
+// ctrl+e opens the newest, and a scroll up at the top of the page opens the one
+// nearest the top.
+func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
+	a := openWorked(t)
+	if strings.Contains(roomText(a), "generate_image") {
+		t.Fatalf("the page did not start folded")
+	}
+	if !a.toggleLatestWorkfold() {
+		t.Fatal("ctrl+e found no chip to open")
+	}
+	openFirstCaption(t, a)
+	if page := roomText(a); !strings.Contains(page, "generate_image") {
+		t.Fatalf("ctrl+e did not open the newest chip:\n%s", page)
+	}
+
+	// The scroll gesture, from the top, opens the chip nearest the top — the one
+	// ctrl+e did not take.
+	b := openWorked(t)
+	b.room.offset, b.room.stick = 0, false
+	b.roomScroll(-1)
+	openFirstCaption(t, b)
+	if page := roomText(b); !strings.Contains(page, "index.html") {
+		t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
+	}
+}
+
+// ui.work = open BEHAVES IN A ROOM EXACTLY AS IT DOES IN THE CONVERSATION, which
+// is the answer this change owes: the setting says "I never want work folded",
+// and a page that ignored it would be the surface keeping a second opinion about
+// a preference the person already stated.
+func TestTheWorkSettingOpensARoomsChipsToo(t *testing.T) {
+	a, fake, _ := roomApp(t)
+	fake.journal = workedJournal(t)
 	for _, mode := range []string{config.WorkFold, config.WorkOpen} {
 		a.workMode = mode
 		a.openRoom(7, "Draw two posters")
-		a.room.dirty = true
-		if page := roomText(a); strings.Contains(page, "▸ worked") {
-			t.Fatalf("ui.work=%s drew a chip in a room:\n%s", mode, page)
+		a.touch()
+		drive(t, a, roomClosedMsg{gen: a.room.gen})
+		page := roomText(a)
+		if mode == config.WorkFold {
+			if strings.Contains(page, "generate_image") {
+				t.Fatalf("ui.work=%s drew the wrong page:\n%s", mode, page)
+			}
+		} else {
+			// WorkOpen opens chips onto the caption outline; tools stay one
+			// expand further.
+			openFirstCaption(t, a)
+			page = roomText(a)
+			if !strings.Contains(page, "generate_image") && !strings.Contains(page, "index.html") {
+				t.Fatalf("ui.work=%s drew no work under open chips:\n%s", mode, page)
+			}
+		}
+		// THE CHIP STAYS EITHER WAY. It is the door and the receipt, and a page
+		// that removed it when the work was open would leave no way back.
+		if !strings.Contains(page, "▸ worked") && !strings.Contains(page, "▾ worked") {
+			t.Fatalf("ui.work=%s lost the chip:\n%s", mode, page)
 		}
 		a.closeRoom()
 	}
 }
 
-// THE CONVERSATION STILL FOLDS. The exemption is the room's alone, and a change
-// that quietly took the chip away from the thread would be trading one
-// complaint for its opposite.
+// THE CONVERSATION STILL FOLDS BY TURN. The room's phases are the room's; a
+// change that quietly re-cut the thread's chips would be trading one complaint
+// for its opposite.
 func TestTheConversationStillFoldsItsFinishedWork(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries, a.workMode = foldFixture(), config.WorkFold
 	a.stamps = map[int]turnStamp{1: {took: 47 * time.Second}}
 	a.touch()
-	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "▸ worked") {
+	if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "▸ worked 47s") {
 		t.Fatalf("the conversation lost its work chip:\n%s", got)
 	}
 }

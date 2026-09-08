@@ -71,6 +71,10 @@ type SelfCloseFinding struct {
 	// Names is what the finding is ABOUT, in the reading's own words. A kind
 	// alone sends a worker off to run a suite; the name is the diagnosis.
 	Names []string
+	// Fact is the finding without an instruction addressed to a worker that may
+	// already have stopped. A handover needs this clause on its own, while
+	// Sentence composes it with the move offered to a leaf still standing.
+	Fact string
 	// Sentence is the finding put to the leaf in the person-facing register: a
 	// fact, then the one move that settles it, then the honest alternative —
 	// because a measurement can be right about the tree and wrong about the
@@ -93,31 +97,38 @@ func SelfCloseFindings(outcome *Outcome) []SelfCloseFinding {
 	}
 	var found []SelfCloseFinding
 	if names := trimmedNames(outcome.Removed); len(names) > 0 {
+		fact := "this work removed public names that the tree spelled before it — " +
+			describeChecks(names)
 		found = append(found, SelfCloseFinding{
 			Kind: SelfCloseLostNames, Names: names,
-			Sentence: "this work removed public names that the tree spelled before it — " +
-				describeChecks(names) + ". Restore them, or say in your delivery why the " +
+			Fact: fact,
+			Sentence: fact + ". Restore them, or say in your delivery why the " +
 				"request requires their removal.",
 		})
 	}
 	if names := trimmedNames(outcome.Unbound); len(names) > 0 {
+		fact := "this work reads names that nothing in the tree defines — " + describeChecks(names)
 		found = append(found, SelfCloseFinding{
 			Kind: SelfCloseUnbound, Names: names,
-			Sentence: "this work reads names that nothing in the tree defines — " +
-				describeChecks(names) + ". Bind them where they are read from, or stop reading them.",
+			Fact:     fact,
+			Sentence: fact + ". Bind them where they are read from, or stop reading them.",
 		})
 	}
 	if names := trimmedNames(outcome.OwnFailing); len(names) > 0 {
+		fact := "the checks this work wrote are red — " + describeChecks(names)
 		found = append(found, SelfCloseFinding{
 			Kind: SelfCloseOwnChecks, Names: names,
-			Sentence: "the checks this work wrote are red — " + describeChecks(names) +
+			Fact: fact,
+			Sentence: fact +
 				". Get them passing, or say in your delivery which of them the request does not ask for.",
 		})
 	}
 	if names := trimmedNames(outcome.Regressed); len(names) > 0 {
+		fact := "this work turned checks red that passed before it — " + describeChecks(names)
 		found = append(found, SelfCloseFinding{
 			Kind: SelfCloseRegressed, Names: names,
-			Sentence: "this work turned checks red that passed before it — " + describeChecks(names) +
+			Fact: fact,
+			Sentence: fact +
 				". Get them green again — nobody asked for their repository to stop working.",
 		})
 	}

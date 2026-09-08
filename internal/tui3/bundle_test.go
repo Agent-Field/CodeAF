@@ -1,7 +1,9 @@
 package tui3
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -1270,8 +1272,8 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 		which   string
 	}{
 		{
-			at: 20 * time.Second, want: "20s / 1m 0s",
-			wantInk: a.pal.dim("20s / 1m 0s"), which: "the bound, stated in dim",
+			at: 20 * time.Second, want: "20s / 1m",
+			wantInk: a.pal.dim("20s / 1m"), which: "the bound, stated in dim",
 		},
 		{
 			at: 51 * time.Second, want: "51s · 9s left",
@@ -1843,10 +1845,14 @@ func TestALongNameDoesNotChangeTheLegend(t *testing.T) {
 	}
 }
 
-// THE NARROW LADDER: the microcopy goes before the branch, and below the tight
-// floor the branch goes too — the name is the last fact standing, because it is
-// the only one a person cannot read off the pane behind this one.
-func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
+// THE NARROW LADDER: THE BRANCH GOES BEFORE THE DOOR. It used to be the other
+// way round, and the phone tier paid for it — under the tight floor the hint
+// slot went silent AND the branch was dropped, so the line was refused at both
+// ends and drew a bare rule with nothing written on it, at the one width where
+// a newcomer most needs to be told that `/` opens the list of everything this
+// surface can be told to do. A branch is on the shell prompt behind this pane;
+// the door is written nowhere else on a frame this narrow.
+func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 	// The branch is long enough that the two cannot share an eighty-column frame.
@@ -1858,8 +1864,11 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	a.branch, a.branchDirty = branch, false
 
 	tight := plain(a.legend(60))
-	if strings.Contains(tight, microcopy) || strings.Contains(tight, "feature/") {
-		t.Fatalf("a tight frame kept its furniture: %q", tight)
+	if strings.Contains(tight, "feature/") {
+		t.Fatalf("a tight frame kept the branch: %q", tight)
+	}
+	if !strings.Contains(tight, microcopy) {
+		t.Fatalf("a tight frame is a rule with nothing written on it: %q", tight)
 	}
 	if strings.Contains(tight, "porting the parser") {
 		t.Fatalf("the tight legend repeated identity: %q", tight)
@@ -2359,9 +2368,10 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		// telemetry cannot both fit with a barrier between them — and everything
 		// else is still on.
 		{width: 70, delta: false, sp: true, branch: true, mic: true, rows: 2},
-		// Below the tight floor the legend gives up its facts and the meter keeps
-		// the number alone.
-		{width: 60, delta: false, sp: false, branch: false, mic: false, rows: 2},
+		// Below the tight floor the legend gives up THE BRANCH and keeps the
+		// door — the one fact on this line a person cannot read off the pane
+		// behind it — and the meter keeps the number alone.
+		{width: 60, delta: false, sp: false, branch: false, mic: true, rows: 2},
 	} {
 		rows := a.statusRows(tc.width)
 		if len(rows) != tc.rows {
@@ -3021,7 +3031,15 @@ func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	}
 	// THE CARD IS FOUND BY ITS HIT and not by its words: it is a block of two
 	// rows now, and what this test owns is the blank under the LAST of them.
-	if !strings.Contains(taskText(a), "Fix the nil-map · "+doneWord+" 8s · "+mergeWordMerged) {
+	//
+	// THE HEAD IS SPELLED THE WAY THIS WAVE SPELLS IT, and both halves of that
+	// moved on 2026-09-03. The name arrives WHOLE — taskident.go's [taskTitleOf]
+	// stopped cutting to three words, because a fitter cannot give back cells
+	// spent before it was asked (rowfit.go's first law) — and the span is joined
+	// to the state word with ` · ` like every other fact on the row, because
+	// `done 8s` fuses two separate facts into one phrase (taskdone.go's
+	// [app.doneTail] states the whole of it).
+	if !strings.Contains(taskText(a), "Fix the nil-map crash · "+doneWord+" · 8s · "+mergeWordMerged) {
 		t.Fatalf("the landed card is not in the transcript:\n%s", taskText(a))
 	}
 	// The card is the last entry here, so what it owes the next one is asserted
@@ -3185,7 +3203,11 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	drive(t, a, append(runCmd(cmd), streamEventMsg{gen: a.gen, ev: done})...)
 
 	text := taskText(a)
-	want := "Fix the nil-map · " + doneWord + " " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
+	// THE NAME IS WHOLE AND THE SPAN IS A FACT OF ITS OWN, both since 2026-09-03:
+	// taskident.go's [taskTitleOf] no longer cuts a title to three words before
+	// any width is known, and taskdone.go's [app.doneTail] joins the span to the
+	// state word with the row's own separator rather than with a bare space.
+	want := "Fix the nil-map crash · " + doneWord + " · " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
 	if strings.Count(text, want) != 1 {
 		t.Fatalf("the transcript holds %d copies of %q:\n%s", strings.Count(text, want), want, text)
 	}
@@ -3197,7 +3219,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
 	for _, want := range []string{
-		"Collect sources · " + doneFailWord + " " + taskSpanWord(4*time.Second),
+		"Collect sources · " + doneFailWord + " · " + taskSpanWord(4*time.Second),
 		`"the tests did not build"`,
 	} {
 		if !strings.Contains(taskText(a), want) {
@@ -3217,7 +3239,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
 	for _, want := range []string{
-		"Mix audio · " + doneFailWord + " " + taskSpanWord(90*time.Second) +
+		"Mix audio · " + doneFailWord + " · " + taskSpanWord(90*time.Second) +
 			" · " + taskStoppedKept + " · task/mix",
 		`"stopped: 40 steps and no finish"`,
 	} {
@@ -3429,16 +3451,27 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 			}
 		}
 		// The roster opens on the node itself — there are no headings any more, and
-		// a session of one node is one family of one (task.go). The slim rail fits
-		// the title to its column, so the assertion reads the prefix both widths
-		// keep.
+		// a session of one node is one family of one (task.go).
 		// The column opens with its section label now (margin.go), so the node is
 		// the row under it.
+		//
+		// EACH WIDTH IS ASSERTED IN ITS OWN SPELLING rather than in the prefix they
+		// share. The name reaches this column WHOLE now (taskident.go's
+		// [taskTitleOf] stopped cutting to three words on 2026-09-03, so the ROW
+		// decides what it can afford), and twenty-one cells do not fit a slim
+		// rail's title slot — so the full column draws the name and the slim one
+		// draws as much of it as [railTitleFloor] leaves once the id is measured
+		// out. Both are the roster naming the node, which is what this row of the
+		// test is here to say.
+		name := "Fix the nil-map crash"
+		if railColsFor(tc.width) < railCols {
+			name = "Fix the nil-ma"
+		}
 		top := a.bodyTop()
 		if tc.rail && !strings.Contains(lines[top], marginTasksWord) {
 			t.Fatalf("at %d columns the column does not open with its label:\n%q", tc.width, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[top+1], "Fix the nil-map") {
+		if tc.rail && !strings.Contains(lines[top+1], name) {
 			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top+1])
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
@@ -3988,7 +4021,7 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 		t.Fatal("a rail click did not open the node's room")
 	}
 	page := roomText(a)
-	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first.",
+	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first",
 		"read internal/parse/keys.go"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the replayed journal is missing %q:\n%s", want, page)
@@ -4042,7 +4075,7 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 	clickRail(t, a, 0)
 
 	page := roomText(a)
-	if !strings.Contains(page, "Looking at the loader.") {
+	if !strings.Contains(page, "Looking at the loader") {
 		t.Fatalf("the deltas did not coalesce into one block:\n%s", page)
 	}
 	if n := strings.Count(page, "read etc/load.go"); n != 1 {
@@ -4060,8 +4093,8 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 }
 
 // THE INPUT TALKS TO THE NODE. Enter steers, the words arrive at the engine as
-// the person wrote them, and they land in the room in the PERSON's hue — the
-// same law the conversation's own messages follow.
+// the person wrote them, and they land on the page as the ELBOW a correction is
+// drawn as everywhere on this surface (steerelbow.go).
 func TestEnterInARoomSteersTheNode(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	clickRail(t, a, 0)
@@ -4093,15 +4126,44 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	if !strings.Contains(roomText(a), "the config lives under etc/") {
 		t.Fatalf("the steered line is not in the room:\n%s", roomText(a))
 	}
-	// The person's own voice, in the person's own hue.
+	// IT IS AN ELBOW AND NOT A QUESTION: the dim `└ ` mark, the words one reading
+	// step under a question's own, and no `›` anywhere on the page — a task page
+	// is one question with corrections hanging off it (#252, ruling 2).
 	var said string
 	for _, r := range a.roomRows(a.bodyWidth()) {
-		if strings.Contains(plain(r.text), "the config lives under etc/") {
+		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
 			said = r.text
 		}
 	}
-	if !strings.Contains(said, sgr256(hueAccent)) {
-		t.Fatalf("the steered line is not painted in the person's hue:\n%q", said)
+	if said == "" {
+		t.Fatalf("the steered line is not drawn as an elbow:\n%s", roomText(a))
+	}
+	if !strings.HasPrefix(said, sgrOf(a.pal.dim)) {
+		t.Fatalf("the elbow glyph is not dim furniture: %q", said)
+	}
+	// Past the whole ramp, so what is left is the tier the row RESTS at: the
+	// person's own prose one reading step under a question's, never the accent.
+	a.clock = func() time.Time { return time.Now().Add(hudWarm + time.Second) }
+	a.roomTouched()
+	settled := ""
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
+			settled = r.text
+		}
+	}
+	if !strings.Contains(settled, sgrOf(a.pal.narr)+"the config lives under etc/") {
+		t.Fatalf("the correction's words are not one step under a question's: %q", settled)
+	}
+	if strings.Contains(settled, sgr256(hueAccent)) {
+		t.Fatalf("the correction spent the accent a question is drawn in: %q", settled)
+	}
+	if strings.Contains(roomText(a), "› the config lives under etc/") {
+		t.Fatalf("the correction was drawn as a question of its own:\n%s", roomText(a))
+	}
+	// AND IT OPENS NO TURN. The page's whole life is the one turn its instruction
+	// opened; a correction bends that question rather than asking another.
+	if a.room.turn != 0 {
+		t.Fatalf("steering opened turn %d on a page with no instruction in it", a.room.turn)
 	}
 	// It went to the NODE and not to the model, and the box is empty for the
 	// next thing to say.
@@ -4158,11 +4220,15 @@ func TestEscLeavesTheRoomAndRestoresTheScroll(t *testing.T) {
 	}
 }
 
-// AND A ROOM ON A NODE THAT IS WAITING ON ITS OWN PIECES SAYS SO WHEN IT TAKES
-// THE LINE. Such a node has handed its work out and parked on the reports
+// AND A ROOM ON A NODE THAT IS WAITING ON ITS OWN PIECES SAYS THE TRUER FACT.
+// Such a node has handed its work out and parked on the reports
 // (internal/session's task_room.go): it is not in a step, so the line is what
 // wakes it, and a page that drew the person's words and went quiet is the page
 // they would see if the words had gone nowhere at all.
+//
+// THE SENTENCE IS THE ENGINE'S AND THE PAGE DRAWS IT VERBATIM
+// ([session.SteerDelivered]), because the live clause and the one the record
+// keeps for tomorrow have to be one sentence with one author.
 func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	agent.steerWaiting = true
@@ -4178,27 +4244,62 @@ func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
 	if !strings.Contains(body, "the config lives under etc/") {
 		t.Fatalf("the steered line is not in the room:\n%s", body)
 	}
-	if !strings.Contains(plain(body), steerWokeWord) {
+	if !strings.Contains(body, session.SteerDelivered(true)) {
 		t.Fatalf("the room took a line into a parked node and said nothing about it:\n%s", body)
 	}
-	// AND IT IS THE ROOM'S OWN DIM LINE, not a second thing the node said.
+	// AND IT IS A CLAUSE ON THE CORRECTION'S OWN ROW, not a second line of the
+	// page's own: what happened to those words is a fact about those words.
+	if !strings.Contains(elbowRowIn(a, "the config lives under etc/"), session.SteerDelivered(true)) {
+		t.Fatalf("the clause is not on the correction's row:\n%s", body)
+	}
 	if countKind(a, entryNote) != 0 {
 		t.Fatal("the note went into the conversation instead of the room")
 	}
 }
 
-// A NODE THAT IS TAKING STEPS IS NOT ANNOUNCED, because there is nothing to say:
-// the line lands at its next step, which is what a room that keeps moving shows
-// on its own.
-func TestSteeringAWorkingNodeSaysNothingExtra(t *testing.T) {
+// EVERY TASK STEER CONFIRMS DELIVERY (the owner's ruling 4, 2026-09-01). A
+// correction typed into this conversation is answered by the answer; one typed
+// into a task crosses to ANOTHER AGENT and the page can stay silent afterwards
+// for as long as the node's current step runs. That silence is what the person
+// would also see if the words had gone nowhere, so the elbow says they arrived —
+// briefly, on the same fade the conversation's own landing clause takes.
+func TestEveryTaskSteerConfirmsDelivery(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
 
 	a.input.setText("the config lives under etc/")
 	drive(t, a, key("enter"))
-	if strings.Contains(plain(roomText(a)), steerWokeWord) {
+
+	row := elbowRowIn(a, "the config lives under etc/")
+	if !strings.Contains(row, steerClauseSep+session.SteerDelivered(false)) {
+		t.Fatalf("a delivered correction carries no receipt: %q\n%s", row, roomText(a))
+	}
+	// AND IT DOES NOT CLAIM THE OTHER FACT. A node taking steps was not parked.
+	if strings.Contains(roomText(a), session.SteerDelivered(true)) {
 		t.Fatalf("a working node's room claims the line woke it:\n%s", roomText(a))
 	}
+	// THE CLAUSE IS NEWS AND GOES WHEN THE NEWS DOES, and the elbow stays: the
+	// block's position is what says where the words went, and a receipt that
+	// stayed for ever would be furniture rather than an answer.
+	a.clock = func() time.Time { return time.Now().Add(hudWarm + time.Second) }
+	a.roomTouched()
+	settled := elbowRowIn(a, "the config lives under etc/")
+	if settled == "" {
+		t.Fatalf("the correction left the page with its clause:\n%s", roomText(a))
+	}
+	if strings.Contains(settled, session.SteerDelivered(false)) {
+		t.Fatalf("the delivery receipt never stopped being news: %q", settled)
+	}
+}
+
+// elbowRowIn is the drawn row a task page's correction is on, plain, or "".
+func elbowRowIn(a *app, words string) string {
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if line := plain(r.text); strings.HasPrefix(line, glyphSteer+words) {
+			return line
+		}
+	}
+	return ""
 }
 
 // A ROOM ON A NODE THAT HAS LANDED says so at its foot and ASKS about what is
@@ -4358,9 +4459,19 @@ func (noReaderRefusal) Unwrap() error { return session.ErrNobodyToRead }
 // replay.go's replayUserLine, which this is the third reader of).
 func TestARoomsMessagesKeepTheirPictures(t *testing.T) {
 	a, agent, _ := roomApp(t)
+	// THE FILE IS REALLY THERE, digest and all. A page reads the record the way
+	// the conversation does now (#252), and the conversation says so when a
+	// picture's file has gone — so a fixture pointing at nothing would be testing
+	// the missing-file sentence rather than the marker.
+	picture := filepath.Join(t.TempDir(), "chart.png")
+	if err := os.WriteFile(picture, []byte("not really a png"), 0o600); err != nil {
+		t.Fatalf("writing the picture: %v", err)
+	}
+	sum := sha256.Sum256([]byte("not really a png"))
 	agent.journal = roomJournal(t,
 		`{"type":"message","role":"user","content":"what is wrong with this",`+
-			`"parts":[{"type":"image","path":"/tmp/lab/chart.png","sha256":"abc"}]}`,
+			`"parts":[{"type":"image","path":`+strconv.Quote(picture)+
+			`,"sha256":"`+hex.EncodeToString(sum[:])+`"}]}`,
 	)
 	clickRail(t, a, 0)
 
@@ -4368,7 +4479,7 @@ func TestARoomsMessagesKeepTheirPictures(t *testing.T) {
 	if !strings.Contains(page, "[#1 chart.png]") {
 		t.Fatalf("a page dropped the message's picture:\n%s", page)
 	}
-	if strings.Contains(page, "/tmp/lab/chart.png") {
+	if strings.Contains(page, picture) {
 		t.Fatalf("a page drew the whole path instead of the name:\n%s", page)
 	}
 }
@@ -4427,7 +4538,7 @@ func TestARoomFoldsItsOwnToolCluster(t *testing.T) {
 		}})
 	}
 	page := roomText(a)
-	if !strings.Contains(page, "earlier tool call") {
+	if !strings.Contains(page, "reading") && !strings.Contains(page, "earlier tool call") {
 		t.Fatalf("a screenful and one more of calls on a page did not fold:\n%s", page)
 	}
 	if strings.Contains(page, "read a.go") {

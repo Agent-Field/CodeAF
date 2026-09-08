@@ -129,6 +129,9 @@ func TestALeafRestoresThePublicNameItDeletedBeforeItLands(t *testing.T) {
 	if len(outcome.Removed) != 0 {
 		t.Fatalf("the leaf put the names back and still landed with a finding: %v", outcome.Removed)
 	}
+	if len(outcome.Standing) != 0 {
+		t.Fatalf("the leaf settled its own finding and still landed holding it: %+v", outcome.Standing)
+	}
 	if outcome.Stop != StopDone {
 		t.Fatalf("the leaf landed as %q — a close is not an ending", outcome.Stop)
 	}
@@ -211,6 +214,13 @@ func TestASpentMeterLandsTheFindingWithNoClose(t *testing.T) {
 	if len(outcome.Removed) == 0 {
 		t.Fatal("the finding did not reach the outcome")
 	}
+	if len(outcome.Standing) != 1 {
+		t.Fatalf("the leaf landed holding %+v, want its one closing finding", outcome.Standing)
+	}
+	if fact := outcome.Standing[0].Fact; !strings.Contains(fact, "temp_post_req_data_path") ||
+		!strings.Contains(fact, "removed public names") {
+		t.Errorf("the standing finding does not name the measured fact: %q", fact)
+	}
 	closings := selfCloses(t, history)
 	if len(closings) != 1 || closings[0].Closed {
 		t.Fatalf("journaled closings = %+v, want one declined", closings)
@@ -273,6 +283,11 @@ func TestEveryFindingALeafRaisesAgainstItselfNamesWhatItIsAbout(t *testing.T) {
 	for _, name := range []string{"results_path", "temp_post_req_data_path", "test_fit", "test_predict"} {
 		if !strings.Contains(note, name) {
 			t.Errorf("the note does not name %s:\n%s", name, note)
+		}
+	}
+	for _, finding := range found {
+		if finding.Fact == "" || !strings.HasPrefix(finding.Sentence, finding.Fact+".") {
+			t.Errorf("the instruction was not composed from its handover fact: %+v", finding)
 		}
 	}
 	if !strings.Contains(note, "4 things") {

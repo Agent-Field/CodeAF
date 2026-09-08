@@ -1,0 +1,165 @@
+$ aforge plan --help
+  aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json] [--instructions]
+                       [--passes auto|off|N] [--model slug] [--plan-model slug]
+  aforge plan show <plan.json>
+  aforge plan revise <plan.json> "<what happened>" [--done 1,2,3] [--out plan.json]
+                       [--model slug] [--plan-model slug]
+  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]
+                       [--model slug] [--plan-model slug]
+                         the by-hand pipeline: a plan written to a file, then executed
+                         exactly as written. It is not what most people want — nothing
+                         it learns mid-flight can change a plan that is already frozen.
+
+run `aforge --help` for every command, `aforge help env` for the environment table.
+
+$ aforge plan run --help
+  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]
+                       [--model slug] [--plan-model slug]
+                         the by-hand pipeline: a plan written to a file, then executed
+                         exactly as written. It is not what most people want — nothing
+                         it learns mid-flight can change a plan that is already frozen.
+
+flags:
+  --dir string
+      the directory to work in (default ./aforge-<goal hash>)
+  --max-turns int
+      runaway backstop on iterations per step (clamped to the executor's own
+      backstop) (default 200)
+  --model string
+      work model for this run (flag › AFORGE_MODEL › crew › default)
+  --no-method
+      do not write a working method for each step before running
+  --out string
+      write the completed plan as JSON to this file
+  --parallel int
+      how many steps may run at once (default 32)
+  --plan-model string
+      model for instructions, working methods, and recalibration, when different
+      from the work model (flag › AFORGE_PLAN_MODEL › crew mastermind ›
+      the work model)
+  --token-budget int
+      token budget per step — the limit that actually binds (default 150000)
+  --total-token-budget int
+      token budget for the whole run; once passed, nothing new starts and steps
+      in flight land (0 = per-step budgets only)
+  --yes-spend
+      spend past today's limit and past the plan-price question, without
+      stopping to ask
+
+run `aforge --help` for every command, `aforge help env` for the environment table.
+
+$ aforge run --help
+  aforge run  <program> --input <file.json|-> [--dir dir] [--model slug] [--journal path]
+                       [--json]
+                         run one saved program, with nobody watching: typed input in,
+                         its account and its typed output on stdout, everything else on stderr
+                         a question it was not told how to answer stops it rather than being guessed
+                         exit 0 done · 1 could not be run at all · 2 ran and did not finish · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+                         the three differ by how much thinking happens before the work starts:
+                         do plans and may split the job, exec does not plan, run follows a
+                         plan somebody already saved
+
+flags:
+  --dir string
+      the directory to work in, edited in place (default: the current directory)
+  --input string
+      the typed input, as a JSON file — "-" reads it from what is piped in
+  --journal string
+      keep an account of every call this run makes in this file, one JSON object
+      per line
+  --json
+      print one machine-readable object instead of the answer: ok says whether
+      the work stands, stop says why it ended, answer carries what was produced,
+      files what it wrote, and error the sentence when it could not be run at
+      all
+  --model string
+      work model for this run (flag › AFORGE_MODEL › crew › default)
+
+run `aforge --help` for every command, `aforge help env` for the environment table.
+
+$ aforge exec --help
+  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N] [--token-budget N]
+                         [--timeout 15m] [--model slug] [--context-fill N]
+                         [--completion-reserve N] [--json] [--out file] [--debug]
+                         run one worker for one pass, with no planning at all
+                         exit 0 done · 1 could not be run at all · 2 ran and did not finish · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+                         why it stopped is in --json's stop field; AFORGE_EXIT_CODES=legacy restores
+                         exec's old 2/3/4/5/6 for one release
+
+flags:
+  --completion-reserve int
+      tokens every call keeps free for its answer and its reasoning (default
+      65536)
+  --context-fill int
+      how full a model's context window may get before it is compacted, in
+      percent (default 60, clamped 10-90)
+  --debug
+      keep the full record of this run — call bodies, tool calls and the
+      choices made — in a folder of its own under the state root (env
+      AFORGE_DEBUG)
+  --dir string
+      the directory to work in, edited in place (default .)
+  --json
+      print one machine-readable object instead of the answer: ok says whether
+      the work stands, stop says why it ended, answer carries what was produced,
+      files what it wrote, and error the sentence when it could not be run at
+      all
+  --max-turns int
+      runaway backstop on agent iterations (env AFORGE_EXEC_TURNS) (default 200)
+  --model string
+      work model for this run (flag › AFORGE_MODEL › crew › default)
+  --out string
+      write the machine-readable result to this file
+  --system string
+      working method for the agent
+  --timeout value
+      hard wall, as a duration such as 15m or 2h (a bare number is seconds); env
+      AFORGE_EXEC_TIMEOUT; unset, it scales from the token budget
+  --token-budget int
+      token budget for this run (env AFORGE_EXEC_BUDGET) (default 150000)
+
+run `aforge --help` for every command, `aforge help env` for the environment table.
+
+$ aforge do --help
+  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m] [--json] [--yes-spend]
+                       [--model slug] [--plan-model slug] [--context-fill 60]
+                       [--completion-reserve 65536] [--debug]
+                         do one task and exit — the same living agent the chat runs, with nobody watching
+                         the task is run verbatim: what you type is the goal, and what it has to assume it declares
+                         exit 0 done · 1 could not be run at all · 2 ran and did not finish · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+
+flags:
+  --completion-reserve int
+      tokens every call keeps free for its answer and its reasoning (default
+      65536)
+  --context-fill int
+      how full a model's context window may get before it is compacted, in
+      percent (default 60, clamped 10-90)
+  --db string
+      work in this durable store instead of a private one
+  --debug
+      keep the full record of this run — call bodies, tool calls and the
+      choices made — in a folder of its own under the state root (env
+      AFORGE_DEBUG)
+  --dir string
+      the directory to work in, edited in place (default: the current directory)
+  --json
+      print one machine-readable object instead of the answer: ok says whether
+      the work stands, stop says why it ended, answer carries what was produced,
+      files what it wrote, and error the sentence when it could not be run at
+      all
+  --keep
+      keep the private store instead of deleting it on the way out
+  --model string
+      work model for this run (flag › AFORGE_MODEL › crew › default)
+  --plan-model string
+      model that plans, when different from the work model (flag ›
+      AFORGE_PLAN_MODEL › crew mastermind › the work model)
+  --timeout value
+      hard wall, as a duration such as 15m or 2h (a bare number is seconds, kept
+      for one release) (default 15m0s)
+  --yes-spend
+      spend past today's limit and past the plan-price question, without
+      stopping to ask
+
+run `aforge --help` for every command, `aforge help env` for the environment table.

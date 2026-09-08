@@ -1,0 +1,190 @@
+{
+ "seed": 1,
+ "n": 2,
+ "arms": {
+  "A": {
+   "bin": "/home/santosh/af-pin-a/bin/aforge",
+   "lane": "anthropic"
+  },
+  "B": {
+   "bin": "/home/santosh/af-pin-b/bin/aforge",
+   "lane": "anthropic"
+  },
+  "C": {
+   "bin": "/home/santosh/af-pin-c/bin/aforge",
+   "lane": "anthropic"
+  },
+  "N": {
+   "bin": "/home/santosh/af-pin-a/bin/aforge",
+   "lane": ""
+  }
+ },
+ "anchors": [
+  "Human-Agent-Society-reef-145",
+  "python-attrs-attrs-1416",
+  "pallets-click-3740",
+  "tox-dev-tox-4031"
+ ],
+ "cells": {
+  "fcd2e6e48d": {
+   "arm": "B",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 2
+  },
+  "4835a3b6fc": {
+   "arm": "N",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 1
+  },
+  "68c038cb44": {
+   "arm": "A",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 2
+  },
+  "151c89cd30": {
+   "arm": "C",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 2
+  },
+  "e13be0103b": {
+   "arm": "N",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 2
+  },
+  "1b57877a3a": {
+   "arm": "A",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 1
+  },
+  "b4c5c1b3f7": {
+   "arm": "C",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 1
+  },
+  "43c455ed9b": {
+   "arm": "B",
+   "brief": "Human-Agent-Society-reef-145",
+   "replicate": 1
+  },
+  "676fd2f3ac": {
+   "arm": "B",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 1
+  },
+  "e9f9996059": {
+   "arm": "N",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 1
+  },
+  "d7733921ef": {
+   "arm": "C",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 1
+  },
+  "bed059cbad": {
+   "arm": "A",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 1
+  },
+  "a40753e97e": {
+   "arm": "A",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 2
+  },
+  "2b173a4896": {
+   "arm": "B",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 2
+  },
+  "b71a68febf": {
+   "arm": "C",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 2
+  },
+  "77bc6318e1": {
+   "arm": "N",
+   "brief": "python-attrs-attrs-1416",
+   "replicate": 2
+  },
+  "afb7e903bc": {
+   "arm": "B",
+   "brief": "pallets-click-3740",
+   "replicate": 1
+  },
+  "4d2a84a40b": {
+   "arm": "C",
+   "brief": "pallets-click-3740",
+   "replicate": 2
+  },
+  "0f0ebcea38": {
+   "arm": "A",
+   "brief": "pallets-click-3740",
+   "replicate": 2
+  },
+  "3d5f19609c": {
+   "arm": "N",
+   "brief": "pallets-click-3740",
+   "replicate": 2
+  },
+  "43a638a550": {
+   "arm": "A",
+   "brief": "pallets-click-3740",
+   "replicate": 1
+  },
+  "8d64be03a4": {
+   "arm": "C",
+   "brief": "pallets-click-3740",
+   "replicate": 1
+  },
+  "9b00fe72e0": {
+   "arm": "B",
+   "brief": "pallets-click-3740",
+   "replicate": 2
+  },
+  "b9b14f5221": {
+   "arm": "N",
+   "brief": "pallets-click-3740",
+   "replicate": 1
+  },
+  "bb3d742840": {
+   "arm": "N",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 2
+  },
+  "c5854addfc": {
+   "arm": "B",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 2
+  },
+  "13fa8fd8e7": {
+   "arm": "N",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 1
+  },
+  "15775ac481": {
+   "arm": "C",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 1
+  },
+  "7a638f9163": {
+   "arm": "C",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 2
+  },
+  "28f3a56faa": {
+   "arm": "A",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 1
+  },
+  "67c028ec58": {
+   "arm": "B",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 1
+  },
+  "4bf9eecf1f": {
+   "arm": "A",
+   "brief": "tox-dev-tox-4031",
+   "replicate": 2
+  }
+ }
+}

@@ -3,13 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
@@ -20,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/leave"
 	"github.com/Agent-Field/aforge-v2/internal/openrouterauth"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -67,7 +67,7 @@ func v3OpenRouterConnection(settings config.Config, interactive bool) func(conte
 }
 
 func openChatV3(name string, args []string, pickSession bool) error {
-	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags := commandFlags(name)
 	model := flags.String("model", "", "model slug for this session; beats the configured default")
 	once := flags.String("once", "", "run one message non-interactively, print the reply, and exit")
 	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
@@ -95,9 +95,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	maxCost := flags.Float64("max-cost", envFloat("AFORGE_MAX_COST"),
 		"how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)")
 	debug := flags.Bool("debug", false,
-		"keep the full record of this run — call bodies, tool calls and the choices made — "+
-			"in a folder of its own under the state root (env AFORGE_DEBUG; /debug turns it on mid-session)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+		debugFlagHelp()+" · /debug turns it on mid-session")
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the
@@ -424,28 +423,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	settled.SessionFile, settled.Resumed = transcript, resumed
 	seam := &v3Seam{proc: proc, boot: &settled, seed: seed}
 
-	// The byte meter, off unless a developer named a log file (wire.go). A nil
-	// writer here is the same launch this door has always made.
-	wire, closeWire := v3Wire()
-	defer closeWire()
-
-	// Anything written to the standard logger while the surface owns the
-	// terminal tears straight through the frame as a raw row — a checkpoint
-	// warning or a media fallback lands spliced into whatever the person is
-	// typing. Same fix as the v2 door, for the same reason: the logger goes to
-	// a file beside the profile for the surface's whole lifetime, and comes
-	// back to stderr on the way out. A profile that cannot take the file keeps
-	// stderr — a lost frame is better than a lost warning.
-	if logFile, logErr := os.OpenFile(chatLogPath(settings.ProfileDir),
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
-		log.SetOutput(logFile)
-		defer func() {
-			log.SetOutput(os.Stderr)
-			_ = logFile.Close()
-		}()
-	}
-
-	return tui3.Run(ctx, tui3.Options{
+	// The byte meter and the logger redirect both belong to the surface rather
+	// than to this door, and [runSurface] (chatv3_surface.go) is where every
+	// door gets them.
+	return runSurface(ctx, tui3.Options{
 		Agent: agent,
 		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
@@ -461,7 +442,6 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// once by internal/session so a reader and a writer cannot spell it two
 		// ways (internal/session's UsageLedgerPath).
 		UsageLedger: session.UsageLedgerPath(),
-		Output:      wire,
 		// The sub-harness registry under the state root, which is where every
 		// window on this machine writes and reads them: /harness is a list of
 		// what is SAVED, so it has to be the same directory the builder saved
@@ -1346,6 +1326,13 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// down — and it is handed to a process-wide knob rather than onto the config
 	// because the picker rewrites it while the program is running
 	// (internal/provider's lanepin.go says why that is not a Config field).
+	//
+	// IT IS THE RESOLVER'S ENTRANCE AND NOT A PERSON'S. This function reads the
+	// row and hands the answer down, and it runs again on every standing tick
+	// for as long as the window lives ([v3StandingTicker], five minutes apart) —
+	// so it must not be able to forget what the wire said about the row while
+	// nobody has touched it. A person's own act goes to [provider.RepinLane]
+	// (internal/tui3's laneRowChanged), which forgets unconditionally.
 	provider.SetLanePin(v3LanePin(profileDir))
 	// And whether a slow answer is worth one extra call to rescue. It is one
 	// switch over the hedge and the probe together, for the reason it is one row.
@@ -2132,12 +2119,37 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
 func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, resumed bool) error {
+	// The leaving road stands before session opening because opening can take
+	// time, and a signal there would otherwise take the default disposition and
+	// skip every defer — the whole of #471. Cancelling the turn is all the
+	// leaving work needed here: the deferred agent.Close below settles the tasks
+	// and checkpoint. Defers run last-in-first-out, so Close runs before this
+	// road stands down and keeps the second signal live through a close that can
+	// take the turn's grace plus two job rounds.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var leaving atomic.Bool
+	// A leaving somebody asked for is not a failure to report: a person who
+	// typed kill -INT is not owed an "error: context canceled" line, and the
+	// manual promises the surface the same clean status-0 exit.
+	reported := func(failure error) error {
+		if leaving.Load() {
+			return nil
+		}
+		return failure
+	}
+	stopLeaving := leave.On(func() {
+		leaving.Store(true)
+		cancel()
+	}, nil)
+	defer stopLeaving()
+
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
 	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace, v3OpenSession)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	agent.SetReasoning(level)
 	if notice != "" {
@@ -2147,7 +2159,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	// wrote tracks whether the reply has begun, so a tool line never opens the
 	// output with a stray blank line and never lands mid-sentence.
@@ -2192,7 +2204,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 		}
 	}
 	newline()
-	return failure
+	return reported(failure)
 }
 
 // v3RecentSessionSlots bounds one listing. Twenty is far more than the four the

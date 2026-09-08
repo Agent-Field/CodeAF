@@ -1,0 +1,24 @@
+ home                             esc close
+────────────────────────────────────────────
+ waiting on you
+  ? tell me when CI goes red on master
+    needs your look · May I re-run the type…
+
+ aforge-v2
+› ○ Aforge-v2 Tui Porting
+    another window · 59m
+  ○ Wrapping Torture
+    1h
+  ○ About Something You Remember: Deploys o…
+    1h
+  ○ Notakey
+    1h
+  ◦ never change the public API without tel…
+    holds
+  ◦ sweep the repo every morning at nine an…
+    every morning at nine · last 15h
+  ▸ …8 more, quiet since 1h
+
+────────────────────────────────────────────
+ enter open
+ open in another window

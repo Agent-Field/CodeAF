@@ -51,6 +51,18 @@ type OpenFindings struct {
 	// refused or could not be bought — which is a different fact from a gap
 	// that a later round answered.
 	Unclosed bool
+	// Declined is the sentence a gate wrote INSTEAD OF a judgement: the harness
+	// stopped spending on the job before the delivery was ever judged, so the
+	// row carries a refusal and no gap. store.DeliveryGate.Refused, on a row
+	// whose Unclosed is set.
+	//
+	// It is a field beside Gap and not a value in it because the two are
+	// different news and a brief that ran them together would lie either way: a
+	// gap is what a review found missing, this is that nobody looked, and the
+	// last gap a review DID find still stands underneath it. Reading the row as
+	// silence was the other half of the same lie — a job that produced nothing
+	// and was judged by nothing read as a job with nothing outstanding.
+	Declined string
 	// Unreadable says the last gate passed over a tree whose checks nobody
 	// could read, which is not a pass over a checked delivery.
 	Unreadable bool
@@ -80,7 +92,7 @@ type OpenFindings struct {
 func (f OpenFindings) Empty() bool {
 	return len(f.Unexercised) == 0 && len(f.Unasserted) == 0 && len(f.Failing) == 0 &&
 		len(f.Consumers) == 0 && len(f.Unbound) == 0 && strings.TrimSpace(f.Gap) == "" &&
-		!f.Unclosed && !f.Unreadable
+		strings.TrimSpace(f.Declined) == "" && !f.Unclosed && !f.Unreadable
 }
 
 // OpenFindingsHeader introduces the section. It is one wording, exported, and
@@ -135,9 +147,22 @@ func (f OpenFindings) Words() string {
 	if gap := strings.TrimSpace(f.Gap); gap != "" {
 		section.WriteString("\n\nWhat the last review found missing:\n")
 		section.WriteString(gap)
+		// Inside the gap's own clause, because it is a sentence ABOUT that
+		// finding: "that finding was never answered" with no finding named above
+		// it is a line a worker cannot act on, which is what a declined
+		// judgement — a row with a refusal and no gap — would print here.
+		if f.Unclosed {
+			section.WriteString("\n\nThat finding was never answered — no round has closed it yet.")
+		}
 	}
-	if f.Unclosed {
-		section.WriteString("\n\nThat finding was never answered — no round has closed it yet.")
+	// AND A DELIVERY NOTHING JUDGED IS NOT A DELIVERY THAT PASSED. It is said
+	// last because it is the weakest kind of news here — every line above is
+	// something measured, and this is the absence of a measurement — and it is
+	// said at all because a worker told nothing would read the silence as a
+	// delivery that had been checked.
+	if declined := strings.TrimSpace(f.Declined); declined != "" {
+		section.WriteString("\n\nThe last delivery was never judged:\n")
+		section.WriteString(declined)
 	}
 	if f.Unreadable {
 		section.WriteString("\n\nThe project's own checks could not be read on the last attempt, " +
@@ -204,9 +229,21 @@ func ReadOpenFindings(graph *store.Store, lineage string) OpenFindings {
 				// answer is the coverage above, which is a measurement rather
 				// than a judgement and stands until it is re-measured.
 				findings.Gap, findings.Unclosed, findings.Mechanical = "", false, false
+				// And a judgement, having happened, answers the news that an
+				// earlier round was never judged.
+				findings.Declined = ""
 			} else if strings.TrimSpace(gate.Gap) != "" {
 				findings.Gap, findings.Unclosed = strings.TrimSpace(gate.Gap), gate.Unclosed
 				findings.Mechanical = gate.Mechanical
+				findings.Declined = ""
+			} else if declined := strings.TrimSpace(gate.Refused); declined != "" && gate.Unclosed {
+				// A GATE THAT WAS DECLINED RATHER THAN HELD NAMES NO GAP, and
+				// falling through this row left a job that produced nothing and
+				// was judged by nothing reading as a job with nothing
+				// outstanding. It is kept beside the gap and never in it: the
+				// last finding a review DID raise still stands, because nothing
+				// since has answered it. See store.RecordDeliveryGate.
+				findings.Declined = declined
 			}
 			findings.Unreadable = gate.Unreadable
 		}

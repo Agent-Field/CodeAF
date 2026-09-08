@@ -44,11 +44,16 @@ var systemPromptSource string
 //go:embed prompts/discipline.md
 var disciplinePrompt string
 
-// systemPrompt is what the model actually reads: [systemPromptSource] with
-// [disciplineToken] replaced by the one wording of [disciplinePrompt]. It is
-// assembled at init rather than at render because it does not depend on the
-// config, the clock or the workspace — and because the fixed-prefix budget
-// weighs THIS string (prefixbudget_test.go).
+// systemPrompt is [systemPromptSource] with [disciplineToken] replaced by the
+// one wording of [disciplinePrompt]. It is assembled at init rather than at
+// render because neither half depends on the config, the clock or the
+// workspace.
+//
+// IT IS NOT YET WHAT THE MODEL READS. It still carries [beltFactsToken], and
+// what stands in for that is the one part of the page that DOES depend on the
+// config: the session facts that name a tool, composed for this agent's belt
+// (beltfacts.go). [promptWithBeltFacts] is the finished page, and it is what
+// the fixed-prefix budget weighs (prefixbudget_test.go).
 var systemPrompt = strings.Replace(systemPromptSource, disciplineToken,
 	strings.TrimRight(disciplinePrompt, "\n"), 1)
 
@@ -145,7 +150,11 @@ func renderSystem(config Config) string { return renderSystemAt(config, time.Now
 func renderSystemAt(config Config, now time.Time) string {
 	workspace := config.Workspace
 	var out strings.Builder
-	out.WriteString(strings.TrimRight(systemPrompt, "\n"))
+	// THE PAGE, WITH ITS TOOL-NAMING FACTS COMPOSED FROM THIS BELT'S OWN
+	// PREDICATES (beltfacts.go). Everything below conditions a whole page on
+	// the shape; this conditions the sentences INSIDE one, which is where five
+	// families of tools were being promised to workers that do not carry them.
+	out.WriteString(strings.TrimRight(promptWithBeltFacts(config), "\n"))
 
 	// A node that may hand work out is told how to decide; a node standing on
 	// the floor of the tree is not, because it has no propose_task to decide

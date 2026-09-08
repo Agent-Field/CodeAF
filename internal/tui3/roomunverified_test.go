@@ -30,7 +30,7 @@ func TestTheRoomHeaderSaysTheNodeNeedsALook(t *testing.T) {
 	}
 
 	// And the line a person actually reads, in one piece.
-	a.room = &taskRoom{id: 7, title: "Port the parser", unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(7, "Port the parser")
 	head := plain(a.roomHeadWord(120))
 	want := glyphUnverified + " " + roomCrumbRoot + roomCrumbSep + "Port the parser · " + taskUnverifiedWord
 	if !strings.Contains(head, want) {

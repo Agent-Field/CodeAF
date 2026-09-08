@@ -19,13 +19,61 @@ The unit is a **cell**: one issue, one door, one clone, one home, one grade.
 2. **The suite, installed before the clock starts,** by the rung `pick.py`
    validated the pick on, so a cell builds the environment its grade was
    measured in. The venv's `bin` leads `PATH` for the door.
+
+   The base counts a grade is read against are measured the way a cell is
+   graded: the whole suite runs with `--continue-on-collection-errors`, so a
+   module that cannot import is one error and the rest of the suite still
+   runs. Two things can leave a base stale — a rung that stopped resolving,
+   so every cell reads `venv: pip install ... failed` at 0 s, or a base
+   measured before that flag existed, where one unmet optional dependency
+   stopped pytest at collection and the base says nothing at all.
+   `pick.py --remeasure owner/repo ...` fixes both in place: it clones the
+   entry's `base`, walks the ladder from the rung the entry records and down
+   from there — never up — and rewrites `install`, `base_suite` and
+   `measured`. The issue, its base, its merge and its tests are untouched,
+   which is what keeps a frozen anchor an anchor. A base that collected
+   nothing is not a baseline, so those rows read `base ⊘` in the suite column
+   instead of a comparison that would mean nothing.
+
+   **The rung is a recipe, not a resolution.** `--group dev` is re-resolved by
+   pip at every cell, so on its own it builds whatever PyPI answered that
+   hour: on 2026-09-03 `pypa/virtualenv`'s dev group died with pip's
+   `resolution-too-deep` in every cell of two whole tables, an hour after the
+   same rung resolved in `--remeasure` with identical counts. The recipe was
+   right and the resolution was weather. So the venv a base is measured in is
+   frozen. `pick.py` runs `pip freeze --exclude-editable` in it and writes the
+   plain `name==version` pins to `lib/constraints/<owner>__<name>.txt` — the
+   project's own line dropped, because a cell installs the project from its
+   checkout at `base`, and links, extras and editables dropped because pip
+   refuses a constraints file that carries them. The entry records the path as
+   `constraints`, and every `pip install` in a cell's rung passes `-c` on it;
+   with the whole graph pinned the resolver has nothing left to search. The
+   directory lives under `lib/` deliberately: `run.sh` freezes `lib/` into
+   `<run>/rig` for every run, so the constraints travel with the code that
+   produced the rows and a cell reaches them beside its own `cell.sh`. A
+   constrained install that fails falls back **once** to the same rung
+   unconstrained rather than losing the cell — and says so: `cell.json` carries
+   `install_constrained: false` and the table's `why` column reads `unpinned`,
+   because a cell that built an environment nobody measured must not be read
+   against counts from one that was.
+
+   **The cell builds the version the base was measured at.** The working tree
+   fetches the base commit and no tags, so a project versioned from VCS
+   metadata installs as a placeholder like `0.1.dev1+g1d4a338`, which cannot
+   satisfy its own dependents — `pypa/virtualenv`'s dev group carries
+   `pre-commit-uv`, which requires `virtualenv>=20`, so pip's resolution is
+   impossible and every one of its cells read `venv: pip install --group dev
+   failed`. `pick.py` records the version its own tagged clone installed as in
+   the entry's `version`, and a cell exports it as
+   `SETUPTOOLS_SCM_PRETEND_VERSION` and `HATCH_VCS_PRETEND_VERSION` around its
+   pip installs only, never for the door.
 3. **A home of its own.** `AFORGE_HOME` moves the whole state root, so every
    cell has its own journal, call log, budget and first-run history. Only the
    api key is carried over from the person's profile; the talk model, all four
    tiers and the approval posture are written to the one model under test.
 4. **One door.** `do`: `aforge do "<issue>" -w <clone> -json -yes-spend -model M
    -plan-model M -timeout 900`. `chat`: the binary in a tmux window standing in
-   the clone, `aforge chat -yolo -one-model -model M -max-cost 1`, the issue
+   the clone, `aforge chat -yolo -one-model -model M -max-cost 1 -max-hours H` (H is the wall minus a 60 s margin, in hours, so aforge ends on its own law before the rig clock stops watching), the issue
    pasted as a bracketed paste, enter. Nothing on the screen is trusted to say
    the turn is over: it is over when the journal holds a non-aux `usage` seal,
    the call log shows nothing in flight, the status line reads idle, and the
@@ -98,11 +146,14 @@ of it is written by `pick.py` and validated before the entry is kept.
 | `stars` | the repository's stars when picked; a floor keeps toy repos out |
 | `prompt` | what is handed to the door, verbatim — the issue, nothing else |
 | `install` | the rung of `pick.py`'s ladder the suite installed on |
+| `constraints` | the resolution that rung was measured under, frozen by `pick.py` as `lib/constraints/<owner>__<name>.txt`; every `pip install` in a cell passes `-c` on it. Absent means the entry predates the freeze, and its cells resolve the rung afresh |
+| `version` | the version the project installed as when the base was measured, read from that venv with `importlib.metadata`; a cell exports it as `SETUPTOOLS_SCM_PRETEND_VERSION` and `HATCH_VCS_PRETEND_VERSION` for its pip installs. Absent when it could not be read, and a cell then installs with whatever version its tagless tree produces |
 | `python` | the interpreter the pick was validated with |
 | `original_tests` | how the pull request's test files stood before it, or a note |
 | `f2p_at_base` | those tests run at `base`: they must fail there or it is no test |
 | `gold` | those tests run on the merge: they must pass or the pick is unsound |
 | `base_suite` | the whole suite at `base`; a regression is measured against it |
+| `measured` | the day the base was last re-measured by `--remeasure`; absent means it has stood since `picked_at` |
 | `picked_at` | when `pick.py` wrote the entry |
 | `source` | `fresh` — the picker's own search — or `swe-bench-verified`, fed from that public list and so an issue a model may already have read. Absent means `fresh` |
 | `tier` | the narrowest size band the fix fits: `small` (≤2 files, ≤150 lines) or `medium` (≤4 files, ≤400 lines). Absent means `small` |
@@ -110,13 +161,13 @@ of it is written by `pick.py` and validated before the entry is kept.
 `run.sh` writes two more into each cell's `entry.json`: `anchor` (true for a
 frozen pool entry) and `door` (`do` or `chat`).
 
-**`cell.json`**, one per cell, written by `cell.sh` and the only thing the
-scoreboard reads. It carries `id`, `repo`, `issue`, `anchor`, `door`, `source`
+**`cell.json`**, one per cell, written by `cell.sh` and what the scoreboard
+reads — beside its own `entry.json`, for the base counts. It carries `id`, `repo`, `issue`, `anchor`, `door`, `source`
 and `tier` from the entry, and then:
 
 | field | what it is |
 | --- | --- |
-| `door_verdict` | **the door's own verdict**: `ok` (ended by itself, exit 0, no question left), `partial` (ended by itself, non-zero exit), `asked` (a question left for a person), `wall`, `stall`, `crash`, `noframe`, or empty when there is no door record |
+| `door_verdict` | **the door's own verdict**. `do` exits on a five-rung ladder and the column reads it: `0` done → `ok`, `1` could not run → `could-not-run`, `2` ran and did not finish → `partial`, `3` a limit the person set — the wall, a budget, the turn cap → `wall` when the rig's own wall is what fired and `limit` otherwise, `4` needed a person → `asked`. `chat` has no such ladder and is read from its record: `ok` (sealed its turn, exit 0, no question left), `partial` (ended by itself, non-zero exit), `asked` (a question left for a person), `wall`, `stall`, `crash`, `noframe`. Empty when there is no door record |
 | `tests_verdict` | **the tests' verdict**: `green`, `red`, `regressed`, `no grade` |
 | `pass` | true only when both verdicts are good, the cell was set up, cost is under cap and wall under the limit — the conjunction, and what a regression is measured on |
 | `reason` | the first thing that went wrong, in a reader's order |
@@ -125,6 +176,7 @@ and `tier` from the entry, and then:
 | `changed_files` | how many files the door left changed, before the overlay |
 | `f2p`, `suite`, `regressed` | `judge.py`'s two pytest readings and the comparison against `base_suite` |
 | `subharness`, `nodes` | what `do` planned; empty for `chat` |
+| `install_constrained` | whether the suite installed under the entry's `constraints`: `true`, `false` when it fell back to the rung unconstrained — which the table shows as `unpinned` — and `null` when the entry names no constraints to honour |
 | `load` | the one-minute load average at the start and end of the cell |
 
 **`rows.csv`**, written by `report.py`, one row per cell. Its columns are

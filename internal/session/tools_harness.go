@@ -101,9 +101,12 @@ func (a *Agent) harnessTools() []bare.Tool {
 // store to write the page into, a runner to run what was written, and somebody
 // watching who can answer the card. A design nobody can approve is two model
 // calls spent on a page that will be dropped.
-func (a *Agent) canDesignHarness() bool {
-	return a.config.HarnessStore != nil && a.config.RunHarness != nil && a.config.AskConsent
-}
+// It is [Config.mayDesignHarness] asked of a live agent, and it is written that
+// way round because the render step asks the CONFIG the same question before
+// there is an agent to ask: the bullet offering `build_harness` and the
+// paragraph saying what a sub-harness IS are both composed from it
+// (beltfacts.go).
+func (a *Agent) canDesignHarness() bool { return a.config.mayDesignHarness() }
 
 // THE RUN GATE THAT USED TO SIT HERE IS GONE WITH THE HAND IT GUARDED. It read
 // `OrchestrateRunner != nil && AskConsent`, and it was here because `run_adaptive`

@@ -96,6 +96,14 @@ paired. this device is now a key to otter-lamp-42.
 and the chat opens. Every later `aforge chat --at otter-lamp-42` from that device just
 opens; the code is never asked for again.
 
+**Once that machine says a device is paired, the very next connection is accepted.** The
+machine writes the device into its list of devices *before* it says the pairing held, so a
+first pairing never says `paired.` and then
+`this device has been stopped on that machine — pair it again from there` a moment later.
+That second sentence belongs to a device somebody deliberately stopped. A machine that
+cannot write the pairing down does not say it held: it refuses the pairing instead, and
+what you get is the sentence below for a code that did not work.
+
 **A code is good for 10 minutes and for 5 attempts, whichever runs out first**, and one
 successful pairing spends it — the machine shows a fresh one for the next device. A wrong
 code says:
@@ -256,8 +264,23 @@ A name nothing matches says:
 no device called "phone" is paired with this machine — `aforge devices` lists the ones that are
 ```
 
-Two devices with the same name are refused rather than guessed at, and
-`aforge devices revoke --all laptop` stops both.
+Two devices with the same name are refused rather than guessed at, and `--all` stops every
+device answering to that name:
+
+```
+aforge devices revoke laptop --all
+aforge devices revoke --all laptop
+```
+
+**Both spellings work.** `--all` is an ordinary flag and is read wherever you put it, before
+the name or after it; `aforge devices revoke --help` prints it. It used to be read only when
+it came first, so `aforge devices revoke laptop --all` was refused with a usage line that did
+not mention `--all` at all.
+
+Stopping one device with `--all` answers in the ordinary sentence — `laptop has been stopped
+— it can no longer open a conversation here, and it will need a new pairing code to come
+back.` Stopping several answers `2 devices called laptop have been stopped — each needs a new
+pairing code to come back.`
 
 **Revoking is always the decision of the machine that owns the work.** There is no way to
 do it from the device, and no way for a device to remove another one.
@@ -320,6 +343,21 @@ Two more you may meet. A machine that does not answer the handshake at all:
 And a relay that is turning connections away:
 `the relay is turning connections away right now — try again in a minute` — it allows
 30 connections a minute from one address.
+
+**A pairing that says the code was wrong when you are sure it was right** has one other
+cause, and it is the machine's own disk. The machine writes a device into its list
+*before* it tells the device the pairing held, so a write that fails refuses the pairing
+outright rather than leaving a device that believes it is a key to a machine with no
+record of it. It refuses it by hanging up, which from this end looks exactly like a code
+that did not agree — the last message of a pairing carries a key and a name and has no
+room for a reason. **The machine's own screen is where the difference shows**, in the same
+place it says a code was wrong:
+
+```
+could not write down that pairing: <what the write said>
+```
+
+So if a code you read carefully keeps being refused, go and look at that machine.
 
 A name of the wrong shape is caught before anything is dialled:
 

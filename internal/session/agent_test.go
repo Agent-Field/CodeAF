@@ -60,7 +60,8 @@ type scriptedCompleter struct {
 	// An aside that answers returns its own response and spends NO step, so the
 	// script the test wrote still reaches the turn in the order the test wrote
 	// it. taskname_test.go met this race first and routes by shape with
-	// [isNameCall]; this is the same remedy, made available to every fixture.
+	// [isNameCall]; this is the same remedy, made available to every fixture, and
+	// applied by default to the one errand below that no fixture is about.
 	aside func(messages []ai.Message) (*ai.Response, bool)
 	// asides is what the aside answered, kept out of [scriptedCompleter.seen] so
 	// that a request's index is still the index of the step it rode, and kept at
@@ -89,6 +90,30 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 			s.mu.Unlock()
 			return answer, nil
 		}
+	}
+	// AND THE NARRATOR IS ANSWERED HERE BY DEFAULT, because it is the one errand
+	// beside a turn that NO fixture in this package is about. It arms half a
+	// second into every tool batch (caption.go), which means it can arrive in the
+	// middle of any scripted turn that runs a command for longer than that —
+	// three steer and promote fixtures read an empty tool result where the
+	// sentence carried back to the caller should have been, because the narrator
+	// had taken the step they scripted for the turn. Defaulting it here fixes
+	// every such fixture at once, including the ones nobody has written yet.
+	//
+	// THE NAMERS ARE NOT DEFAULTED, and that is a fact about the fixtures rather
+	// than about the errand: three tests in this package are ABOUT the namer —
+	// they assert its ordering against the work, its request and the tier it ran
+	// on — and a request answered here is one they can no longer see. They opt in
+	// with [answerTheNamerOffTheQueue] instead.
+	//
+	// The answer is silence, which is what an errand nobody could reach already
+	// gives its caller and what every caller in this package already handles. A
+	// fixture that wants the narrator ANSWERED installs an aside, consulted
+	// above, which wins — caption_test.go is the one that does.
+	if isCaptionCall(snapshot) {
+		s.asides = append(s.asides, snapshot)
+		s.mu.Unlock()
+		return textResponse(""), nil
 	}
 	index := len(s.seen)
 	s.seen = append(s.seen, snapshot)
@@ -2690,6 +2715,9 @@ func TestTheSessionStampsItsCacheKeyOnTheWire(t *testing.T) {
 	var keys []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !answersChatOnly(w, r) {
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		var body struct {
 			PromptCacheKey string `json:"prompt_cache_key"`
@@ -3079,28 +3107,30 @@ func TestRoutingOffRunsNoLaneBeat(t *testing.T) {
 	}
 }
 
-func TestABaseThatIsNotARouterRunsNoLaneBeat(t *testing.T) {
+// TestABaseNobodyVouchedForStillRunsTheLaneBeat is the session's half of issue
+// #373. This seam used to read the hostname and run no beat unless it said
+// `openrouter.ai`, so a session on a proxy, a mirror or a router reached by its
+// IP never fetched a sheet. Whether a base publishes an endpoints page is the
+// base's own to answer, on the first refresh, so the beat runs and asks.
+func TestABaseNobodyVouchedForStillRunsTheLaneBeat(t *testing.T) {
 	sheet := installBeatSheet(t)
 
 	agent, err := newAgent(Config{
 		Workspace: t.TempDir(),
 		Model:     "talk/model",
-		// There is no sheet behind a gateway of somebody's own, however the
-		// model is spelled, so there is nothing for a beat to fetch.
-		BaseURL: "http://localhost:8080/v1",
+		BaseURL:   "http://localhost:8080/v1",
 	}, &scriptedCompleter{})
 	if err != nil {
 		t.Fatalf("open the session: %v", err)
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 
-	if agent.laneBeating {
-		t.Error("a base that publishes no sheet still armed a beat")
+	if !agent.laneBeating {
+		t.Error("a base nobody vouched for ran no beat, so it was never asked whether it has a sheet")
 	}
-	select {
-	case <-sheet.called:
-		t.Fatalf("a non-router base still fetched a sheet for %v", sheet.models())
-	case <-time.After(150 * time.Millisecond):
+	sheet.waitForRefreshes(t, 1)
+	if asked := sheet.models(); len(asked) != 1 || asked[0] != "talk/model" {
+		t.Fatalf("the beat asked about %v, want the session's own model", asked)
 	}
 }
 

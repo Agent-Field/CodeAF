@@ -303,6 +303,7 @@ func TestADivisionUnderAFiringIsWaitedForAndBilledToTheRun(t *testing.T) {
 // product's own — the same evidence floor an attended worker meets, reached
 // through a firing's own belt.
 func TestANarrowLookInsideAWideFiringIsStillRefused(t *testing.T) {
+	floorPinnedOn(t)
 	root, workspace := t.TempDir(), t.TempDir()
 	completer := &dividingModel{
 		evidence: narrowEvidence, parts: 2,

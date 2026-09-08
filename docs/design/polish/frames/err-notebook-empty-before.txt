@@ -1,0 +1,5 @@
+$ ./bin/aforge notebook
+SEQ  SCOPE  KIND  AGE  USES  RIDES  BAD  STATUS  BELIEF
+
+daily rail: $500.00
+exit=0

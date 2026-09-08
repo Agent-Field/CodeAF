@@ -1,0 +1,40 @@
+[38;5;238mmohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.[39m                     [38;5;248m│ + /task[39m
+                                                                                          [38;5;248m│ [39m
+[38;5;102m▏[38;5;255m[48;5;234m [38;5;182mfunc[38;5;255m (a *app) [38;5;152mburnSegment[38;5;255m() [38;5;182mstring[38;5;255m {[39m                                                    [38;5;248m[49m│ standing[39m
+[38;5;102m▏[38;5;255m[48;5;234m     [38;5;182mif[38;5;255m a.state != stateWorking || a.turnBegan.[38;5;152mIsZero[38;5;255m() { [38;5;182mreturn[38;5;255m a.[38;5;152mholdBurn[38;5;255m([38;5;151m""[38;5;255m) }        [38;5;248m[49m│ ◦[39m [38;5;103mthe morning sweep[39m
+[38;5;102m▏[38;5;255m[48;5;234m     [38;5;182mreturn[38;5;255m a.[38;5;152mholdBurn[38;5;255m([38;5;152mtokenWord[38;5;255m([38;5;152mburnStep[38;5;255m([38;5;182mint[38;5;255m([38;5;182mfloat64[38;5;255m(written)/elapsed.[38;5;152mSeconds[38;5;255m()))) + [38;5;151m"…[38;5;255m [38;5;248m[49m│ [1m[38;5;61m?[0m [38;5;103mCI on master[39m
+[38;5;102m▏[38;5;255m[48;5;234m }[39m                                                                                       [38;5;248m[49m│ ◦[39m [38;5;103mthe public API[39m
+                                                                                          [38;5;248m│ + /standing[39m
+[38;5;238mSupercalifragilisticexpialidociousandthensomeextraletterstomakeitlongerthansixtycolumnsw[39m  [38;5;248m│ [39m
+[38;5;238mide.[39m                                                                                      [38;5;248m│ [39m
+                                                                                          [38;5;248m│ [39m
+[38;5;238mUnicode: 日本語のテキストはここにあります、そして中文文本也在这里，很长很长。 And emoji:[39m  [38;5;248m│ [39m
+[38;5;238m🎉 🚀 ✅ 🧪 — plus a flag 🇯🇵 and a family 👩‍👩‍👧‍👦.[39m                                          [38;5;248m│ [39m
+                                                                                          [38;5;248m│ [39m
+[38;5;102m│[38;5;238m [38;5;145mA blockquote that runs on for a while so that it has to wrap at sixty columns and[39m       [38;5;248m│ [39m
+[38;5;102m│[38;5;238m [38;5;145mshows what the marker does on the second line.[39m                                          [38;5;248m│ [39m
+                                                                                          [38;5;248m│ [39m
+[38;5;102m1.[38;5;238m first[39m                                                                                  [38;5;248m│ [39m
+[38;5;102m2.[38;5;238m second, with a much longer body so that it wraps and we can see whether the hanging[39m    [38;5;248m│ [39m
+[38;5;238m   indent lines up under the text or under the number[39m                                     [38;5;248m│ [39m
+[38;5;102m3.[38;5;238m third[39m                                                                                  [38;5;248m│ [39m
+                                                                                          [38;5;248m│ [39m
+[38;5;102m·[38;5;238m bullet[39m                                                                                  [38;5;248m│ [39m
+[38;5;238m  [38;5;102m·[38;5;238m nested bullet with enough words to wrap at the narrow sizes we care about[39m             [38;5;248m│ [39m
+                                                                                          [38;5;248m│ [39m
+[38;5;67m› [38;5;103mfirst line of a draft that I am still writing[39m                                           [38;5;248m│ [39m
+  [38;5;103msecond line here[39m                                                                        [38;5;248m│ [39m
+  [38;5;103mthird line, which is quite a lot longer than the two above it so that it has to wrap[39m    [38;5;248m│ [39m
+                                                                                          [38;5;248m│ [39m
+  [38;5;248m· [38;5;31m3[38;5;248m standing orders here — [38;5;67m[48;5;254m/standing[39m[49m                                                    [38;5;248m│ [39m
+  [38;5;248m· resumed [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/ffff0000wrap0001/transcript.jsonl\/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-[0m]8;;\                [38;5;248m│ [39m
+[38;5;248m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/ffff0000wrap0001/transcript.jsonl\73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-[0m]8;;\ [38;5;248m│ [39m
+[38;5;248m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/ffff0000wrap0001/transcript.jsonl\dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-[0m]8;;\                    [38;5;248m│ Σ $0.12 · 12.7k tok[39m
+[38;5;248m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/ffff0000wrap0001/transcript.jsonl\v2/ffff0000wrap0001/transcript.jsonl[0m]8;;\                                                    [38;5;248m│ [38;5;31mctrl+.[38;5;248m earlier[39m
+  [38;5;248m· [38;5;31mesc[38;5;248m interrupts · [38;5;31mctrl+c[38;5;248m twice quits[39m                                                   [38;5;248m│ [38;5;238m❯[39m [38;5;31mctrl+g[38;5;248m hide[39m
+
+[38;5;248m─ master* ────────────────────────────────────────────────────────────── [38;5;31mspace[38;5;248m [38;5;31mspace[38;5;248m home · [38;5;31mctrl+k[38;5;248m switch · [38;5;31m/[38;5;248m commands ─
+
+[39m                                                                                                                  [38;5;248m⠿ high
+[39m [38;5;248m› [39m
+[38;5;248mWrapping Torture · deepseek-v4-flash-latest[39m             [38;5;248mcrew balanced · ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

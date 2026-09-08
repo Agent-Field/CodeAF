@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+  · 3 standing orders here — /standing                                                    │
+  · new conversation · aforge-v2                                                          │ standing
+                                                                                          │ ◦ the morning sweep
+› count to forty in words, one per line                                                   │ ? CI on master
+  ··· connecting · 0.3s                                                                   │ ◦ the public API
+                                                                                          │ + /standing
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ <$0.0001 · 551 tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+aforge-v2 · claude-3-haiku   crew balanced · 2 open · ◦ keeping an eye on 3 · <$0.0001 · 5.3k/200k · 3% · ⠙ working · 1s

@@ -1,0 +1,50 @@
+ aforge                                                                                                                                             wed 11:09pm
+  1 home   2 tasks   3 standing   4 memory   5 spend   6 search   7 settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+search reads every message in every conversation on this machine.
+typing here searches; typing on home starts something.
+enter opens the conversation at the matching turn.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                           here aforge
+ alt+1…7 go to a place · alt+enter send it off as a task · → verbs on this row · esc close

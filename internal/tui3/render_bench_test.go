@@ -79,14 +79,14 @@ func BenchmarkFrameStreaming(b *testing.B) {
 		b.Run(fmt.Sprintf("turns=%d", turns), func(b *testing.B) {
 			a := benchApp(turns)
 			a.state = stateWorking
-			a.appendText(strings.Repeat("a paragraph of the reply so far. ", 60))
+			a.say(strings.Repeat("a paragraph of the reply so far. ", 60))
 			live := a.entries[a.live].text
 			a.frame()
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				a.entries[a.live].text = live
-				a.appendText("more tokens arriving ")
+				a.say("more tokens arriving ")
 				a.dirty = true
 				a.frame()
 			}
@@ -131,7 +131,7 @@ func BenchmarkFrameStreamingPromoted(b *testing.B) {
 			// A prefix with the structure a real reply has — headings, a list, a
 			// fence — because the promoted half is rendered as markdown and flat
 			// prose would measure none of what markdown costs.
-			a.appendText(strings.Repeat("## a section of the reply\n\n"+
+			a.say(strings.Repeat("## a section of the reply\n\n"+
 				"a paragraph about what was found, long enough to wrap at a hundred columns and then a little more.\n\n"+
 				"- one finding\n- another finding\n\n"+
 				"```go\nfunc answer() int { return 42 }\n```\n\n", 6))
@@ -149,7 +149,7 @@ func BenchmarkFrameStreamingPromoted(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				a.entries[a.live].text = live
-				a.appendText("more tokens arriving ")
+				a.say("more tokens arriving ")
 				a.dirty = true
 				a.frame()
 			}
@@ -217,7 +217,7 @@ func BenchmarkAppendText(b *testing.B) {
 				a.state = stateWorking
 				b.StartTimer()
 				for d := 0; d < deltas; d++ {
-					a.appendText("token ")
+					a.say("token ")
 				}
 			}
 		})

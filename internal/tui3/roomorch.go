@@ -396,26 +396,17 @@ func (a *app) openOrchRoom(id, goal string) {
 		a.note(orchUnavailableWord)
 		return
 	}
-	a.roomGen++
 	run := &orchRun{
 		id: id, goal: goal,
 		seen:  map[string]bool{},
 		fresh: map[string]bool{},
 	}
-	a.room = &taskRoom{
-		// A RUN IS NOT A NODE, so the page carries no node id: the room's id is
-		// the tasker's counter and this page belongs to no row of it. Everything
-		// keyed on that id — the frozen clock, the model word, the rail's
-		// highlight — reads zero and draws nothing, which is the honest answer.
-		id: 0, title: firstNonEmpty(goal, id), gen: a.roomGen,
-		unfolded: map[int]bool{},
-		live:     -1,
-		think:    -1,
-		mdAt:     a.now(),
-		stick:    true,
-		dirty:    true,
-		orch:     run,
-	}
+	// A RUN IS NOT A NODE, so the page carries no node id: the room's id is the
+	// tasker's counter and this page belongs to no row of it. Everything keyed on
+	// that id — the frozen clock, the model word, the rail's highlight — reads
+	// zero and draws nothing, which is the honest answer.
+	a.room = a.newRoom(0, firstNonEmpty(goal, id))
+	a.room.orch = run
 	a.orchLive = id
 	a.sel = -1
 	a.dropHover()
@@ -1031,7 +1022,7 @@ func (a *app) orchReadTranscript() {
 	}
 	var next []entry
 	if path, found := doors.OrchestrateNodeJournal(run.id, run.transcript); found {
-		next, _ = readRoomJournalTail(path, a.pal, 0, !a.hosted())
+		next, _ = a.roomRecord(session.ReadTranscript(path), 0)
 	}
 	if run.journalSet && reflect.DeepEqual(run.journal, next) {
 		return
@@ -1076,14 +1067,17 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 
 // orchTranscriptDeck is the node transcript as the deck the renderers and the
 // expansion doors both read — ONE deck, so a click that opens a call and the
-// next paint that draws it are looking at the same entries. showsWork for the
-// reason a room sets it (workfold.go's [app.deckFolds]): somebody descended
-// from a chip into a node's transcript to read what that node did, and a page
-// that collapsed it into "▸ worked · 6 tool calls" would answer that gesture
-// with the one line they already had.
+// next paint that draws it are looking at the same entries.
+//
+// IT TAKES [transcriptLens], WHICH IS THE ONE POSTURE THAT FOLDS NOTHING, and
+// lens.go carries the argument in full: somebody descended from a graph into a
+// node's transcript to read what that node did, and this deck mints its fold
+// state fresh on every read — so a chip here would both answer the gesture
+// with the line they already had and have no door that worked.
 func (a *app) orchTranscriptDeck() deck {
 	run := a.orchOf()
-	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true, toolTail: a.roomToolTail()}
+	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{},
+		capOpen: map[int]bool{}, lens: transcriptLens}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.
@@ -1861,7 +1855,14 @@ func (a *app) orchGateRows(page *orchPage, width int) {
 	if layoutTier(width) == tierPhone {
 		hint = "tap an answer · typing steers the planner"
 	}
-	page.put(a.orchLead(false) + a.pal.dim(fit(hint, width-2)))
+	// AND IT DROPS A GESTURE WHOLE RATHER THAN HALF OF ONE. This is a key list in
+	// the surface's own idiom, so it is fitted the way every other key list is
+	// ([hintFit]): the last clause is protected and what goes is the clause
+	// nearest it, working backwards. A character ruler ended this row `· or keep
+	// ty…` at the widths a person is most likely to meet a gate card at, which is
+	// the worst possible thing to do to the one row on the card that says how the
+	// card is answered.
+	page.put(a.orchLead(false) + a.pal.dim(hintFit(hint, width-2)))
 }
 
 // ── the header ──────────────────────────────────────────────────────────────

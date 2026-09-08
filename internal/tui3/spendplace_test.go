@@ -55,10 +55,22 @@ func TestTheSpendPageCarriesTheWindowFiguresInItsHeader(t *testing.T) {
 	}
 }
 
+// THE CHART KEEPS EVERY DAY AND SPENDS THE FRAME IT IS GIVEN. It was one cell
+// per day at every width — fourteen cells on a hundred-and-sixty-cell line — so
+// the law is now that every bucket gets the SAME number of cells and the chart
+// is as wide as the frame allows.
 func TestTheSpendSparklineKeepsEveryDayInTheWindow(t *testing.T) {
 	r := spendTestReading()
-	if got, want := ansi.StringWidth(r.sparkline()), r.window.Buckets(); got != want {
-		t.Fatalf("sparkline has %d cells, want the window's %d days: %q", got, want, r.sparkline())
+	for _, width := range []int{160, 120, 80, 60} {
+		spark := r.sparkline(width)
+		cells := ansi.StringWidth(spark)
+		if cells%r.window.Buckets() != 0 || cells < r.window.Buckets() {
+			t.Fatalf("at %d cells the chart is %d wide, want a whole number of cells for each of the window's %d days: %q",
+				width, cells, r.window.Buckets(), spark)
+		}
+		if cells > width {
+			t.Fatalf("at %d cells the chart is %d wide, want it inside the frame: %q", width, cells, spark)
+		}
 	}
 }
 
@@ -229,6 +241,16 @@ func spendLab(t *testing.T, lines []session.UsageLine) *app {
 		t.Fatal(err)
 	}
 	a := placeApp(t)
+	// THE LAB OPENS ON THE FIXTURE'S CLOCK, NOT THE WALL'S. [app.openSpend]
+	// windows the ledger with session.LastDays(a.now(), 14), which is arithmetic
+	// on the moment of the open, while every line above is written on a fixed
+	// August 2026 date — so a lab left on the wall clock passes only until the
+	// fixture drifts out of the fortnight. It did: at midnight on 2026-09-03 the
+	// $21.40 line on August 20 fell out of the window and the two tests below
+	// went red on a clean tree with no merge behind it.
+	// placeeveryone_test.go's [spendPlaceLab] pins the same instant for the
+	// same reason, and is the shape to copy.
+	a.clock = func() time.Time { return spendTestNow }
 	a.usageLedger = path
 	a.showPage(pageSpend)
 	return a
@@ -409,12 +431,30 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 			t.Fatalf("row %d claims to be the pointer line", i)
 		}
 	}
-	if seen != spendSubjectCap {
-		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, spendSubjectCap)
+	// THE LOUDEST DAY IS A DOOR TOO, because its row names a thing money was
+	// spent on and now says `enter opens it in tasks` out at the right — a key
+	// drawn is a key bound (spendplace.go's [spendReading.loudestRow]).
+	if want := spendSubjectCap + 1; seen != want {
+		t.Fatalf("%d doors were drawn, want %d — the %d shown subjects and the loudest day", seen, want, spendSubjectCap)
+	}
+	if !a.spend.stops[a.loudestSpendRow(t)].ok {
+		t.Fatal("the loudest day names a task and says so, but nothing opens there")
 	}
 	if got := plain(a.spend.reading.rows(120, newPalette(tokens.NoColor, false))[0]); !strings.Contains(got, "/budget sets the limits") {
 		t.Fatalf("the pointer line reads %q", got)
 	}
+}
+
+// loudestSpendRow is the drawn row that says which day was loudest.
+func (a *app) loudestSpendRow(t *testing.T) int {
+	t.Helper()
+	for at, row := range plainSpendRows(a.spend.reading.rows(120, newPalette(tokens.NoColor, false))) {
+		if strings.Contains(row, "was the loudest day") {
+			return at
+		}
+	}
+	t.Fatal("no row says which day was loudest")
+	return 0
 }
 
 // THE POINTER LINE IS A POINTER AND NOT AN EDITOR, which is what keeps this

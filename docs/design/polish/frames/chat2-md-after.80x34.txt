@@ -1,0 +1,34 @@
+
+› show me every markdown shape you can draw
+
+Wrapping torture
+
+Here is a table and a code fence and an unbroken monster.
+
+column one  what it does                                 the default
+───────────────────────────────────────────────────────────────────────
+--host      runs the engine on another machine over ssh  unset
+--at        names the working directory on that machine  the launch dir
+--attach    carries a file across to the engine          nothing
+
+Look at
+https://openrouter.ai/api/v1/chat/completions?model=deepseek/deepseek-v4-flash-l
+atest&stream=true&provider=openinference for the shape.
+
+The file lives at
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scrat
+chpad/demohome/.aforge/v3/projects/aforge-v2/transcript.jsonl and it is long.
+
+  ▏ func (a *app) burnSegment() string {
+  ▏     if a.state != stateWorking || a.turnBegan.IsZero() { return
+↳ ▏ a.holdBurn("") }
+  ▏     return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Secon
+↳ ▏ ds()))) + " tok/s")
+  ▏ }
+                                                               ↓ latest · ctrl+l
+─ master* ────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                          ⠿ high
+ ›
+Wrapping Torture · deepseek-v4-flash-latest
+                crew balanced · ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · idle

@@ -69,10 +69,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 const (
@@ -419,7 +419,15 @@ func (r *jobRegistry) startWatch(spec watchSpec) (*job, error) {
 	// cancel, reached through job.signal by jobs kill and by Close.
 	ctx, cancel := context.WithCancel(context.Background())
 	started.stop = cancel
-	r.add(started)
+	if err := r.add(started); err != nil {
+		// THE SLOT GOES BACK, exactly as it does when the job could not be made
+		// above. It was claimed before the job existed, and a watch refused at
+		// the registry's door is never going to tick — a slot left claimed here
+		// would lower this session's watch limit for good.
+		r.releaseWatch()
+		cancel()
+		return nil, fmt.Errorf("could not start the watch: %w", err)
+	}
 
 	go r.runWatch(ctx, cancel, started, spec)
 	return started, nil
@@ -647,12 +655,12 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	// unchanged (a session leader leads its own group), and a tick's child that
 	// opens /dev/tty is refused rather than drawing on the person's frame
 	// (jobs.go states the measured case).
-	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	processgroup.ConfigureDetached(process)
 	// The timeout kills the whole GROUP, not just the shell: a tick that ran
 	// `sleep 600 | grep x` leaves two processes, and killing the parent alone
 	// would leak the rest of them once per tick, forever.
 	process.Cancel = func() error {
-		signalGroup(process, syscall.SIGKILL)
+		_ = processgroup.Kill(process.Process.Pid)
 		return nil
 	}
 	// And the wait is bounded too, because output is copied from a pipe a

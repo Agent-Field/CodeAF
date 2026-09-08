@@ -5,9 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,7 +45,15 @@ import (
 // AFORGE_HOME is the one seam that moves every path (internal/home), and HOME
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
-func TestMain(m *testing.M) { os.Exit(runTests(m)) }
+func TestMain(m *testing.M) {
+	code := runTests(m)
+	// EVERY DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody will
+	// write to, so the count at the end is the running total of what the harness
+	// gave up on — the measure that took #399 from a guess to a number. It is
+	// printed rather than asserted: it moves with which tests ran.
+	fmt.Fprintf(os.Stderr, "tui3: %d goroutines still parked at the end of the run\n", runtime.NumGoroutine())
+	os.Exit(code)
+}
 
 // runTests is TestMain's body as a function with a return value, so the
 // temporary root is still removed on the way out — os.Exit runs no deferred
@@ -251,9 +265,203 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 		default:
 			return []tea.Msg{produced}
 		}
-	case <-time.After(150 * time.Millisecond):
+	case <-time.After(budgetFor(cmd)):
 		return nil
 	}
+}
+
+// THE LAW: A HARNESS PAYS NOTHING FOR A TICK THAT CANNOT REACH IT, AND IT KNOWS
+// BY NAME WHICH OF ITS COMMANDS WILL NEVER ANSWER. The budget above was one
+// number for every command, and three quarters of this package's wall clock was
+// spent running it out: 2415 commands were dropped at 150ms each over a full
+// run, 362s of the 478s the package took, and each drop left one goroutine
+// blocked on a channel nobody would ever write to (806 of the 886 alive at the
+// end). CI's per-binary ceiling is eight minutes and the package reached it
+// (#399).
+//
+// WHAT WAS BELIEVED, AND WHAT IS TRUE. The reading that opened #399 was that the
+// fakes never feed the surface's wait channels, so a waiter could be answered
+// with nil the moment it was recognised, spawning nothing. That is false, and
+// measurably so: over one subset of this package [waitEvent] returned a real
+// event on 28 of 118 calls and bubbletea's tick fired on 451 of 593. Dropping
+// the recognised names outright fails better than thirty tests. These commands
+// DO answer; the fakes hand back a buffered channel and the events in it are
+// what the streaming tests assert on.
+//
+// SO THE WAITERS KEEP THE FULL [cmdBudget], and this file deliberately holds no
+// knob to shorten it. When a waiter answers it answers from a channel that
+// already holds the value, in microseconds — but "in microseconds" is a claim
+// about the scheduler, not about the code, and this suite runs beside others on
+// a loaded machine. A budget tuned to that claim turns a delivered event into a
+// drop the day the box is busy, which is a load-shaped red on dev for nobody's
+// change: the exact failure #399 exists to remove. The waiters are named here so
+// that the seam which will remove the guessing — fakes that own and close their
+// own channels, so a waiter ENDS rather than parks — has one place to work from,
+// and so that a new waiter cannot be added without meeting this note.
+//
+// WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all. A
+// tick is a real timer, so the surface's own constants decide it: the shortest
+// are the paint clock and [resizeGrace] at 80ms and taskmention's at 100ms, and
+// every tick at 150ms or longer — the polls, [homeEvery], [farRoomEvery],
+// [hostPingEvery] and their kind — is dropped today and would be dropped whatever
+// the harness did. [tickBudget] sits above the longest tick that still delivers
+// and below the shortest that never does, so it takes back the wait on the polls
+// and changes nothing that arrives.
+const (
+	// cmdBudget is what every command gets that is not a tick, the waiters
+	// included: unchanged, so nothing real is dropped faster than it was before.
+	cmdBudget = 150 * time.Millisecond
+	// tickBudget is what bubbletea's tick gets. It clears the 100ms tick — the
+	// longest one this package has that fires — with room for a loaded machine,
+	// and stops short of the 150ms debounce, which the old budget already raced.
+	tickBudget = 120 * time.Millisecond
+)
+
+// teaTickSymbol is bubbletea's tick closure, as the runtime spells it. It is
+// pinned rather than pattern-matched, and [TestTheHarnessKnowsEveryCommandThatCannotAnswer]
+// builds a real tick and fails if an upgrade moves the symbol.
+const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
+
+// blockingCommands is THE ONE TABLE. It names every command in this package that
+// parks on a channel a test's fakes usually never write to and never close.
+//
+// IT DOES NOT PRICE ANYTHING — see the note above [cmdBudget] for why shortening
+// a waiter's budget is a bet on the scheduler. It is the enumeration the fix
+// after this one works from: when the fakes own and close their channels, these
+// are the commands that stop parking, and this list is how that change knows it
+// has covered them all. [TestTheHarnessKnowsEveryCommandThatCannotAnswer] holds
+// it to the surface's own source so it cannot rot in the meantime.
+var blockingCommands = []string{
+	"pumpShaping",
+	"waitDesign",
+	"waitEvent",
+	"waitPilot",
+	"waitRoom",
+	"waitRun",
+	"waitSteerLane",
+	"waitStir",
+	"waitTask",
+	"waitWake",
+	"watchDesigns",
+	"watchDriving",
+	"watchFollowing",
+	"watchRuns",
+	"watchTasks",
+	"watchWakes",
+}
+
+// budgetFor prices one command. Only the tick is priced apart, by the runtime
+// symbol behind the closure.
+func budgetFor(cmd tea.Cmd) time.Duration {
+	if cmdSymbol(cmd) == teaTickSymbol {
+		return tickBudget
+	}
+	return cmdBudget
+}
+
+// cmdSymbol is the fully qualified name of the function behind a command.
+func cmdSymbol(cmd tea.Cmd) string {
+	fn := runtime.FuncForPC(reflect.ValueOf(cmd).Pointer())
+	if fn == nil {
+		return ""
+	}
+	return fn.Name()
+}
+
+// TestTheHarnessKnowsEveryCommandThatCannotAnswer reads the surface's own source
+// and fails when it has grown a waiting command [blockingCommands] does not
+// name. THE TABLE CANNOT BE KEPT BY HAND — it is the enumeration the fakes seam
+// will work from, and a waiter missing from it is a waiter that seam will leave
+// parking, which is how #399 grew to eight minutes without anyone adding a slow
+// test.
+//
+// The family is named by shape: a function whose name begins wait, pump or watch
+// and whose one result is a tea.Cmd. That is what every command in this package
+// that parks on a channel is called, and the naming is worth keeping for that
+// reason alone.
+func TestTheHarnessKnowsEveryCommandThatCannotAnswer(t *testing.T) {
+	// The tick symbol is a string in a table and bubbletea is a dependency that
+	// moves, so it is checked against a tick this test builds itself.
+	built := cmdSymbol(tea.Tick(time.Hour, func(time.Time) tea.Msg { return nil }))
+	if built != teaTickSymbol {
+		t.Fatalf("teaTickSymbol is %q but bubbletea's tick is now %q — every tick in the package is being billed the full %s", teaTickSymbol, built, cmdBudget)
+	}
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(f os.FileInfo) bool {
+		return !strings.HasSuffix(f.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatalf("reading the surface's source: %v", err)
+	}
+	known := map[string]bool{}
+	for _, name := range blockingCommands {
+		known[name] = true
+	}
+	found := map[string]bool{}
+	ticks := 0
+	for _, pkg := range pkgs {
+		for path, file := range pkg.Files {
+			ast.Inspect(file, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Tick" {
+						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "tea" {
+							ticks++
+						}
+					}
+					return true
+				}
+				fn, ok := n.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || !waitingName(fn.Name.Name) || !returnsOneCmd(fn) {
+					return true
+				}
+				found[fn.Name.Name] = true
+				if !known[fn.Name.Name] {
+					t.Errorf("%s declares %s, which returns a tea.Cmd that waits, and blockingCommands does not name it — add %q to blockingCommands in tui3_test.go, or the seam that is to replace the budget cannot bill it correctly and it goes on parking a goroutine per call", filepath.Base(path), fn.Name.Name, fn.Name.Name)
+				}
+				return true
+			})
+		}
+	}
+	if ticks == 0 {
+		t.Errorf("nothing in the package calls tea.Tick any more, so teaTickSymbol and tickBudget are dead — delete them")
+	}
+	var stale []string
+	for _, name := range blockingCommands {
+		if !found[name] {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(stale)
+	if len(stale) > 0 {
+		t.Errorf("blockingCommands names %s, which the surface no longer declares — remove the line", strings.Join(stale, ", "))
+	}
+}
+
+// waitingName is the shape of a command that parks: wait, pump or watch, then a
+// capital.
+func waitingName(name string) bool {
+	for _, prefix := range []string{"wait", "pump", "watch"} {
+		rest, cut := strings.CutPrefix(name, prefix)
+		if cut && rest != "" && rest[0] >= 'A' && rest[0] <= 'Z' {
+			return true
+		}
+	}
+	return false
+}
+
+// returnsOneCmd reports whether a declaration's only result is a tea.Cmd, which
+// is what tells a waiting command apart from a predicate like app.waiting.
+func returnsOneCmd(fn *ast.FuncDecl) bool {
+	if fn.Type.Results == nil || len(fn.Type.Results.List) != 1 {
+		return false
+	}
+	sel, ok := fn.Type.Results.List[0].Type.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Cmd" {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && id.Name == "tea"
 }
 
 // newTestApp pins the colour profile AND the glyph tier. A test inherits
@@ -503,6 +711,33 @@ func plainRows(a *app) []string {
 // shape, not the hierarchy the gutter carries, so it strips it first.
 func unindented(r string) string { return strings.TrimPrefix(r, "  ") }
 
+// openFirstCaption expands the first outline heading so its tool rows show.
+func openFirstCaption(t *testing.T, a *app) {
+	t.Helper()
+	d := a.bodyDeck()
+	stampHierarchy(d.entries, a.deckFolds(d))
+	caps := deriveCaptions(d.entries, d.runningTurn)
+	if len(caps) == 0 {
+		t.Fatalf("no captions to open:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	a.setCapOpen(d, caps[0].start, true)
+	a.touch()
+}
+
+// overlapToolClocks makes every tool in the turn share one parallel window so
+// they fall under a single caption (deriveCaptions splits sequential rounds).
+func overlapToolClocks(a *app) {
+	base := time.Unix(100, 0)
+	for i := range a.entries {
+		if a.entries[i].kind != entryTool {
+			continue
+		}
+		a.entries[i].began = base
+		a.entries[i].ended = base.Add(time.Second)
+	}
+	a.touch()
+}
+
 // clickHit drives a left click on the first VISIBLE row of a kind. Visible is
 // the point: a click carries a screen row, and a transcript taller than the
 // window has a screen row that is not its row-list index.
@@ -571,10 +806,14 @@ func TestATurnStreamsTextToolsAndSettles(t *testing.T) {
 	if strings.Contains(got, "✓") {
 		t.Fatalf("a settled call drew a success glyph:\n%s", got)
 	}
-	// And ctrl+e puts it back, drawn on the rail and indented under the chip.
+	// And ctrl+e opens the outline; a further expand on the caption shows the call.
 	drive(t, a, key("ctrl+e"))
+	if opened := plain(frame(a)); !strings.Contains(opened, "foo/bar") {
+		t.Fatalf("ctrl+e did not open the turn's outline:\n%s", opened)
+	}
+	openFirstCaption(t, a)
 	if opened := plain(frame(a)); !strings.Contains(opened, "  ╰─▶ read foo/bar.go") {
-		t.Fatalf("ctrl+e did not open the turn's work:\n%s", opened)
+		t.Fatalf("opening the caption did not show the turn's work:\n%s", opened)
 	}
 	if agent.sent[0] != "what does bar.go do?" {
 		t.Fatalf("submitted %q", agent.sent[0])
@@ -671,8 +910,10 @@ func TestSpacingLaw(t *testing.T) {
 			shape = append(shape, "_")
 		case strings.HasPrefix(bare, "›"):
 			shape = append(shape, "u")
-		case strings.HasPrefix(bare, "▸ worked"):
+		case strings.HasPrefix(bare, "▸ worked") || strings.HasPrefix(bare, "▾ worked"):
 			shape = append(shape, "w")
+		case strings.HasPrefix(bare, "▸ ") || strings.HasPrefix(bare, "▾ "):
+			shape = append(shape, "c")
 		case strings.HasPrefix(bare, "├─▶") || strings.HasPrefix(bare, "╰─▶"):
 			shape = append(shape, "t")
 		default:
@@ -680,13 +921,10 @@ func TestSpacingLaw(t *testing.T) {
 		}
 	}
 	got := strings.Join(collapse(shape), "")
-	// _ u _ w t _ x _ t _ x _ u _ x — one row of air where the conversation
-	// begins, a blank before each user message, the CHANGE-OF-SPEAKER blank
-	// after each one (render.go's wasUser: the reply is a different voice and
-	// does not open wedged under the question), one on each side of a cluster
-	// that sits between two blocks of text, and nowhere else. The chip still
-	// rides at the top of the work it stands for.
-	if want := "_u_wt_x_t_x_u_x"; got != want {
+	// _ u _ w c _ x _ u _ x — with WorkOpen the chip opens onto the caption
+	// outline (not the tool rows). Captions collapse to one `c`; tools stay
+	// behind a further expand.
+	if want := "_u_wc_x_u_x"; got != want {
 		t.Fatalf("layout shape is %q, want %q:\n%s", got, want, strings.Join(list, "\n"))
 	}
 	for i, r := range list {
@@ -720,8 +958,7 @@ func collapse(shape []string) []string {
 // A cluster that is the WHOLE turn still opens under the change-of-speaker
 // blank: the person said "build it", and the surface answering with a call is
 // a different voice, so exactly one row of silence sits between the message
-// and the first tool line (render.go's wasUser). A turn with no trailing
-// answer never folds (workfold.go), so the call is on the page to be measured.
+// and the first work row — the caption heading, with the tool under it.
 func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
@@ -733,7 +970,12 @@ func TestAClusterThatIsTheWholeTurnTakesTheSpeakerBlankAboveIt(t *testing.T) {
 
 	list := plainRows(a)
 	for i, r := range list {
-		if !strings.HasPrefix(unindented(r), "╰─▶") {
+		bare := unindented(r)
+		if !(strings.HasPrefix(bare, "▸ ") || strings.HasPrefix(bare, "▾ ") ||
+			strings.HasPrefix(bare, "╰─▶") || strings.HasPrefix(bare, "├─▶")) {
+			continue
+		}
+		if strings.HasPrefix(bare, "▸ worked") || strings.HasPrefix(bare, "▾ worked") {
 			continue
 		}
 		if i < 2 || strings.TrimSpace(list[i-1]) != "" || strings.TrimSpace(list[i-2]) == "" {
@@ -754,6 +996,9 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "read both")
+	// PARALLEL CALLS SHARE ONE CAPTION. Give both tools the same clocks so the
+	// outline treats them as one step — the rail still tees inside that step.
+	overlapToolClocks(a)
 
 	list := plainRows(a)
 	first, last := -1, -1
@@ -784,7 +1029,8 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	}
 }
 
-// Past three calls the older ones fold into one line, and ctrl+o opens them.
+// Past three calls the older ones fold into one line under their caption, and
+// ctrl+o opens them.
 func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	var events []session.Event
 	for _, name := range []string{"a.go", "b.go", "c.go", "d.go", "e.go"} {
@@ -795,12 +1041,27 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "read them all")
 
+	// One parallel step: the five reads share a caption. Sequential clocks from
+	// the harness would otherwise mint five captions of one call each.
+	base := time.Unix(100, 0)
+	for i := range a.entries {
+		if a.entries[i].kind != entryTool {
+			continue
+		}
+		a.entries[i].began = base
+		a.entries[i].ended = base.Add(time.Second)
+	}
+
 	list := plainRows(a)
-	if !strings.Contains(strings.Join(list, "\n"), "↳ 2 earlier tool calls · ctrl+o") {
-		t.Fatalf("the fold line is missing:\n%s", strings.Join(list, "\n"))
+	page := strings.Join(list, "\n")
+	if !strings.Contains(page, "reading 5 files") {
+		t.Fatalf("the caption is missing:\n%s", page)
+	}
+	if strings.Contains(page, "earlier tool calls") {
+		t.Fatalf("the old fold line survived under a caption:\n%s", page)
 	}
 	if n := countTools(a); n != toolWindow {
-		t.Fatalf("%d tool lines are visible, want %d:\n%s", n, toolWindow, strings.Join(list, "\n"))
+		t.Fatalf("%d tool lines are visible, want %d:\n%s", n, toolWindow, page)
 	}
 	if strings.Contains(strings.Join(list, "\n"), "a.go") {
 		t.Fatalf("a folded call is still on screen:\n%s", strings.Join(list, "\n"))
@@ -1032,9 +1293,9 @@ func TestDeltasCoalesceIntoOneFrame(t *testing.T) {
 		t.Fatal("a frame that was just built is still dirty")
 	}
 
-	a.appendText("one ")
-	a.appendText("two ")
-	a.appendText("three")
+	a.say("one ")
+	a.say("two ")
+	a.say("three")
 	if a.dirty {
 		t.Fatal("a streamed delta dirtied the frame — deltas paint on the clock, not on arrival")
 	}
@@ -1164,7 +1425,7 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	}
 
 	typeLine(t, a, "/nonsense")
-	if !strings.Contains(plain(frame(a)), "unknown command: /nonsense") {
+	if !strings.Contains(plain(frame(a)), unknownCommandWord("nonsense")) {
 		t.Fatalf("an unknown slash has to answer:\n%s", plain(frame(a)))
 	}
 
@@ -1203,7 +1464,7 @@ func notesSaying(a *app, text string) int {
 	return n
 }
 
-// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE (app.go's [app.note]).
+// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE (app.go's [feed.note]).
 //
 // A person who presses a command four times because they are not sure it
 // registered used to get four identical lines stacked in the transcript, which
@@ -1211,7 +1472,7 @@ func notesSaying(a *app, text string) int {
 // answered by the line that is already there.
 func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	const unknown = "unknown command: /nonsense · try /help"
+	unknown := unknownCommandWord("nonsense")
 	for range 4 {
 		typeLine(t, a, "/nonsense")
 	}
@@ -1303,7 +1564,7 @@ func TestScrollSticksToTheBottomUntilTheReaderLeaves(t *testing.T) {
 	agent := &fakeAgent{model: "m"}
 	a := newTestApp(agent)
 	// Numbered, because the note lane will not write the same sentence twice
-	// running ([app.note]) and this transcript has to be taller than its window.
+	// running ([feed.note]) and this transcript has to be taller than its window.
 	for i := range 40 {
 		a.note("line " + itoa(i))
 	}
@@ -1342,7 +1603,7 @@ func TestTheEllipsisOnlyShowsWhileNothingElseIsMoving(t *testing.T) {
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: toolEnd("bash", "ok")})
 
-	a.appendText("done: ")
+	a.say("done: ")
 	if _, ok := a.ellipsis(); ok {
 		t.Fatal("streaming text replaces the ellipsis")
 	}

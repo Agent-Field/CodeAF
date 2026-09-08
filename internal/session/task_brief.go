@@ -25,6 +25,7 @@ package session
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -37,6 +38,7 @@ const (
 	briefWorkHeading   = "THE WORK"
 	briefMakeHeading   = "WHAT TO PRODUCE"
 	briefDoneHeading   = "DONE WHEN"
+	briefCopyHeading   = "THE FOLDER THIS WORK IS ABOUT, AND YOUR OWN COPY OF IT"
 	briefOriginHeading = "THE PERSON'S ORIGINAL MESSAGE"
 )
 
@@ -49,6 +51,11 @@ const briefAskRule = "This is the message this work came out of. Where anything 
 // restatement above is bounded; this is where the uncut words live, and the
 // brief still governs what ships.
 const briefOriginRule = "The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships."
+
+// briefCopyRule is the one line that says what the mapping is FOR. A worker
+// reading two spellings of one directory needs to be told which of them it is
+// standing in, and it is never the one the contract was written from.
+const briefCopyRule = "Read anywhere on the machine; write only inside your copy."
 
 // briefAskLimit bounds the verbatim ask, and it is generous on purpose: a
 // person's request is usually a paragraph and occasionally a page, and the
@@ -73,12 +80,33 @@ const briefAskLimit = 6000
 // to put under THE WORK — their words are the whole of it — and printing the
 // same paragraph twice under two headings would read as two instructions that
 // happen to agree.
-func composeBrief(request, work, deliverable, acceptance, expects string, origin taskOrigin) string {
-	request = clip(strings.TrimSpace(request), briefAskLimit)
-	work = strings.TrimSpace(work)
-	if work == request {
-		work = ""
+//
+// AND THE ADDRESSES ARE THE WORKER'S OWN. The half of this document a model
+// wrote is bound to the copy the worker was actually given ([taskCopy]) before
+// a word of it is laid out, and where that leaves two spellings of one folder in
+// the same document — the person's quoted path and the copy's — the mapping is
+// said outright in a section of its own rather than smuggled into the quotation.
+func composeBrief(request, work, deliverable, acceptance, expects string, origin taskOrigin, own taskCopy) string {
+	request = briefAskText(request)
+	work = briefWorkText(request, work)
+	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
+	// here, BEFORE the binding below erases the evidence. A brief that never
+	// spelled the folder out has nothing to disambiguate and gets the document
+	// it has always got — an unconditional section would rewrite every worktree
+	// brief in the system to answer a question nobody in it had asked.
+	stated := ""
+	if own.real() && namesGround(own.ground, request, work, deliverable, acceptance, expects) {
+		stated = own.note()
 	}
+	// AND THE MODEL-AUTHORED HALF IS BOUND TO THE COPY, and only that half. The
+	// person's request is a quotation and is never edited ([briefAskRule] makes
+	// it the thing that wins, which a rewritten quotation could not be), and the
+	// origin pointer is a journal address that lives outside every worktree, so
+	// binding it would aim a worker at a file that is not there.
+	work = own.bind(work)
+	deliverable = own.bind(deliverable)
+	acceptance = own.bind(acceptance)
+	expects = own.bind(expects)
 	var out strings.Builder
 	section := func(heading, rule, body string) {
 		if strings.TrimSpace(body) == "" {
@@ -94,6 +122,9 @@ func composeBrief(request, work, deliverable, acceptance, expects string, origin
 		out.WriteString("\n\n" + body)
 	}
 	section(briefAskHeading, briefAskRule, request)
+	// AND WHICH FOLDER EVERY ADDRESS UNDER IT MEANS, second, because it is what
+	// the reader needs BEFORE the first path rather than after the last one.
+	section(briefCopyHeading, briefCopyRule, stated)
 	section(briefWorkHeading, "", work)
 	section(briefMakeHeading, "", deliverable)
 	section(briefDoneHeading, "", acceptance)
@@ -108,6 +139,201 @@ func composeBrief(request, work, deliverable, acceptance, expects string, origin
 	// governed by the brief above.
 	section(briefOriginHeading, briefOriginRule, originPointer(origin))
 	return out.String()
+}
+
+// ── the folder the work is about, and the folder the work happens in ─────────
+
+// A CONTRACT IS WRITTEN IN THE WORKER'S OWN DIRECTORY. Every address in the
+// model-authored half of a handoff — the work, what to produce, what done means
+// — is resolved against the copy the worker was given, never against the folder
+// that copy was made of. The person's own words are not rewritten; the copy is
+// stated instead.
+//
+// THE DEFECT THIS IS FOR (#566). A parent standing in the person's checkout
+// writes that checkout's absolute paths into `brief`, `deliverable` and
+// `acceptance` — which is exactly what prompts/system.md asks it for — while the
+// node it hands them to is stood up in `<session>/trees/<id>`. A worker that
+// follows the address it was given reads the directory that is still moving
+// under it, and its first write at that same address is refused by
+// [taskGroundGuard] as "is outside your copy". The isolation is right and the
+// refusal is right; what was wrong is the handoff, and this is upstream of both.
+//
+// A NESTED FAMILY IS THE SAME DEFECT ONE LEVEL DOWN AND TAKES NO SECOND
+// MECHANISM. A part admitted by `divide_work` carries no ground of its own, so
+// its tree is cut off the PARENT WORKER's directory and its own copy is
+// `<session>/trees/<partID>` — the identical mismatch. Every node reaches its
+// worker through [Agent.workTaskNode] and [TaskNode.instructionOn], so both
+// depths are bound by this one map.
+type taskCopy struct {
+	// ground is the folder the work is ABOUT and dir is the folder the work
+	// HAPPENS IN — [taskTree]'s own two fields under their own two names,
+	// carried here so that composing a brief needs to know nothing else about a
+	// tree.
+	ground, dir string
+}
+
+// newTaskCopy is the ONE PLACE A FOLDER IS SPELLED FOR THIS TYPE, and it exists
+// so that no reader of the two fields has to know the rule.
+//
+// A FOLDER IS STORED CLEANED, WITHOUT ITS TRAILING SEPARATOR. Everything below
+// reads the ground as a whole path — the byte behind an occurrence has to be
+// either the end of the address or the `/` that carries the rest of it — so a
+// ground stored as `/x/repo/` would match its own trailing slash and then find a
+// filename byte behind it, and bind nothing at all. Normalising once here is one
+// rule in one place; normalising at every use would be the same rule written
+// four times, which is the drift CLAUDE.md's one-source-of-truth law is about.
+// Production grounds already arrive through [canonicalPath], so this is a
+// property of the type rather than a repair of any caller.
+func newTaskCopy(ground, dir string) taskCopy {
+	return taskCopy{ground: cleanFolder(ground), dir: cleanFolder(dir)}
+}
+
+// cleanFolder is [filepath.Clean] with the empty path left empty, because
+// nothing resolved must stay nothing rather than become `.` — [taskCopy.real]
+// reads the empty string as "no copy" and a relative dot would be a folder.
+func cleanFolder(folder string) string {
+	if folder == "" {
+		return ""
+	}
+	return filepath.Clean(folder)
+}
+
+// real says whether there is a map to apply at all.
+//
+// A ground or a directory nobody resolved, and every mode whose ground IS its
+// directory, are all the identity — and the identity is spelled as "no copy"
+// here so that neither the binding below nor the section that explains it draws
+// anything at all for them (the emptiness law, applied to a document).
+//
+// AND A GROUND OF `/` IS NOT A COPY OF ANYTHING. That is a decision rather than
+// a consequence of the boundary rule below: the whole machine is not a folder
+// this work is about, and binding it would rewrite EVERY absolute address in a
+// contract into the worker's own directory — the exact opposite of the law this
+// type exists to keep, which is that an address outside the copy stays outside.
+func (c taskCopy) real() bool {
+	return c.ground != "" && c.ground != "/" && c.dir != "" && c.ground != c.dir
+}
+
+// bind rewrites every occurrence of the ground that STANDS AS A WHOLE PATH — at
+// a boundary, or with a `/` and the rest of the address behind it — to the same
+// address inside the copy, suffix and all.
+//
+// A PATH THAT IS NOT AT OR BELOW THE GROUND IS LEFT EXACTLY AS WRITTEN. That is
+// the law that keeps the guard honest rather than an omission: nothing outside
+// the copy may be turned into something writable by a rewrite, so a contract
+// that really does name another repository still earns [taskGroundGuard]'s
+// refusal and the worker still says in its report what needs doing out there.
+//
+// THE BYTE IN FRONT IS GUARDED TOO, and it is not pedantry: a ground of
+// `/x/repo` must not match inside `/x/repo-old`, which is a different
+// repository, nor inside `/y/x/repo`, which is a different folder that happens
+// to end with the same name.
+func (c taskCopy) bind(text string) string {
+	if !c.real() || !strings.Contains(text, c.ground) {
+		return text
+	}
+	var out strings.Builder
+	for rest := text; ; {
+		at := indexWholePath(rest, c.ground)
+		if at < 0 {
+			out.WriteString(rest)
+			return out.String()
+		}
+		out.WriteString(rest[:at])
+		out.WriteString(c.dir)
+		rest = rest[at+len(c.ground):]
+	}
+}
+
+// note is the mapping said outright, for the one case a rewrite cannot cover:
+// the person's own sentence, which is quoted and never edited. It says the two
+// folders in the two roles they actually hold, and then what that makes true of
+// every address under them.
+func (c taskCopy) note() string {
+	return "The work is about " + c.ground + ".\n" +
+		"Your own copy of it is " + c.dir + ", and that is where you are standing.\n\n" +
+		"Every address below is written as its address in your copy. The person's own message is quoted as they typed it, so a path in it that begins " + c.ground +
+		" means the same path under " + c.dir + ". A path that is not under " + c.ground + " is somewhere else on the machine and stands as written."
+}
+
+// namesGround answers whether the folder is spelled AS A WHOLE PATH anywhere in
+// what is about to be composed. It reads the sections AS HANDED OVER, which is
+// the only moment the question has an answer: binding is what removes the ground
+// from four of them.
+//
+// IT ASKS EXACTLY THE QUESTION [taskCopy.bind] ANSWERS, through the same
+// [indexWholePath], and that identity is the point rather than a convenience. A
+// plainer substring test says yes to a contract naming `/x/repo-old` under a
+// ground of `/x/repo` — where bind rightly rewrites nothing — and the worker is
+// then handed a section telling it that addresses were mapped when none were.
+func namesGround(ground string, sections ...string) bool {
+	for _, section := range sections {
+		if indexWholePath(section, ground) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// indexWholePath is THE ONE READING OF "THIS OCCURRENCE IS A WHOLE PATH", and
+// both the rewrite and the section that explains it go through it so the rule
+// cannot be stated twice and drift. It answers where the folder first stands as
+// an address of its own, or -1.
+//
+// In front of an occurrence there must be nothing a name could be made of;
+// behind it there must be either the end of the text, a `/` carrying the rest of
+// the address, or a byte no name continues through — a quote, a comma, a space,
+// a newline. An occurrence that fails either half is a longer name that merely
+// contains the folder's spelling, and the scan steps past it to the next one.
+func indexWholePath(text, folder string) int {
+	for from := 0; from <= len(text)-len(folder); {
+		at := strings.Index(text[from:], folder)
+		if at < 0 {
+			return -1
+		}
+		at += from
+		end := at + len(folder)
+		if (at == 0 || !pathByte(text[at-1])) && (end == len(text) || text[end] == '/' || !pathByte(text[end])) {
+			return at
+		}
+		from = at + 1
+	}
+	return -1
+}
+
+// pathByte says whether a byte can be part of a file or directory name.
+//
+// IT IS DELIBERATELY GENEROUS, because generosity here is the safe direction: a
+// byte this calls part of a name only ever makes [taskCopy.bind] LEAVE
+// something alone, and a path left alone is a path the guard still judges on
+// its merits. A continuation byte of somebody's own alphabet counts too — a
+// multi-byte rune cannot be read one byte at a time, and a name in Greek is
+// still a name.
+func pathByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9', b >= 0x80:
+		return true
+	}
+	return strings.IndexByte("/.-_~+", b) >= 0
+}
+
+// briefAskText is the person's request exactly as [composeBrief] prints it.
+// The bound belongs to that printed account, so every reader of the seam sees
+// the same words rather than clipping a second way.
+func briefAskText(request string) string {
+	return clip(strings.TrimSpace(request), briefAskLimit)
+}
+
+// briefWorkText is the work's own account exactly as [composeBrief] prints it.
+// THE SAME ACCOUNT IS PRINTED ONCE: a person-authored task has no paraphrase,
+// so work equal to the bounded ask is absent rather than repeated under a
+// second heading.
+func briefWorkText(ask, work string) string {
+	work = strings.TrimSpace(work)
+	if work == ask {
+		return ""
+	}
+	return work
 }
 
 // originPointer is the fold-marker idiom applied to one line: the tools that

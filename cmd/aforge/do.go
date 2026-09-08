@@ -5,23 +5,27 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
@@ -71,32 +75,14 @@ const (
 	defaultResidentWait = 60 * time.Second
 )
 
-// exitStatus ends the process with a particular code and nothing more said. The
-// command has already written its result to the right stream; an "error:" line
-// after an honest partial answer would only be noise.
-type exitStatus int
-
-func (e exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
-
-const (
-	exitFailed exitStatus = 1
-	// exitPartial is the third answer and the one the table always described:
-	// something usable is above, and it is not the whole of what was asked for.
-	// The wall is one way to get here and was for a long time the only one — the
-	// other is a delivery that did not land whole, either because the delivery
-	// gate stood by a rejection of it or because parts of the job failed. Both of
-	// those printed their own shortfall to stdout under exit 0, which is the one
-	// thing a harness reads: "Not all of this landed: 1 of 2 parts finished", and
-	// $? = 0 under it.
-	exitPartial exitStatus = 2
-)
-
-// headlessOutcome is what one errand came to, in the shape --json prints.
+// headlessOutcome is what one errand came to. It is `aforge do`'s own shape,
+// and it is turned into the one machine contract every headless verb returns by
+// [errandEnvelope] on the way out (envelope.go) — nothing marshals this struct.
 //
 // Settled means the errand is over — nothing this process is waiting for can
 // still move — and it is deliberately not a verdict on the work. The verdict is
 // the exit code, and the two disagree in exactly one honest way: an errand
-// stopped by a question is over (settled) and did nothing (exit 1). BlockedOn
+// stopped by a question is over (settled) and did nothing (exit 4). BlockedOn
 // is what tells a machine caller which of those it is holding, and it is why
 // the question never goes in Deliverable: a caller that read the deliverable
 // field recorded an interactive charter card as the answer to a bank
@@ -125,6 +111,20 @@ type headlessOutcome struct {
 	Nodes   int     `json:"nodes"`
 	Seconds float64 `json:"seconds"`
 	Settled bool    `json:"settled"`
+	// Run, Calls and Rounds are what a person went to `calls.jsonl` to
+	// reconstruct: which run this was, how many model calls it made, and how
+	// many times it bought more work after looking at what it had. They are
+	// unexported spellings of the envelope's own keys — the receipt reaches a
+	// caller through [errandEnvelope] and nowhere else.
+	run    string
+	calls  int
+	rounds int
+	// tokensIn and tokensOut are the token half of the bill, summed out of the
+	// same journal read that priced the run. They are unexported because they
+	// reach a caller only through the envelope's `tokens` field, which is the
+	// one spelling all three headless verbs share.
+	tokensIn  int
+	tokensOut int
 	// BlockedOn is the question this run could not answer, verbatim. It is
 	// empty on every run that was not stopped by one, and non-empty only
 	// alongside a non-zero exit code and an empty deliverable.
@@ -156,6 +156,17 @@ type headlessOutcome struct {
 	// binary — and a graph written by one of those may still name a worker this
 	// build does not have.
 	Subharness string `json:"subharness"`
+	// Unjudged is why NOTHING CHECKED THIS DELIVERY, in the gate's own words off
+	// the journal, on the runs where nothing did. Empty on every run whose gate
+	// answered, which is almost all of them.
+	//
+	// It is a field rather than a sentence folded into the deliverable because
+	// the caller it is for is a machine. A rig comparing runs has to put an
+	// unchecked delivery in its own column, and reef-145 shipped two of them
+	// into a column of judged passes because the only trace was a line in the
+	// log (#514). `stop` says "unchecked"; this says why, and the two travel
+	// together.
+	Unjudged string `json:"unjudged,omitempty"`
 	// Error is the sentence a run that never reached an outcome left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
@@ -168,39 +179,68 @@ type headlessOutcome struct {
 	// process looks like from the other side of a pipe.
 	Error string `json:"error,omitempty"`
 
-	// status is what the process leaves with. It is decided where the outcome
-	// is produced, because only there is the difference visible between a job
-	// that failed, a price that was refused, and a wall that arrived first —
-	// all three of which are "not a success" and none of which are each other.
-	status exitStatus
+	// stop is WHY THIS RUN ENDED, and it is the only thing this file decides
+	// about the ending. It is set where the outcome is produced, because only
+	// there is the difference visible between a job that failed, a price that
+	// was refused, a question nobody could answer and a wall that arrived first
+	// — four things that are all "not a success" and none of which are each
+	// other. What the process leaves with is not decided here at all: the one
+	// ladder in envelope.go turns this word into a number.
+	stop stopReason
 }
 
+// resolvedStop is this outcome's ending with the one absent case filled in.
+//
+// EVERY ENDING THAT IS NOT A CLEAN ONE NAMES ITSELF — compose defaults to
+// stopDone and each of the four other paths writes its own word — so an outcome
+// that names nothing is a run in which nothing said it had gone wrong. The one
+// exception is an outcome built by hand somewhere that only filled in Error,
+// which is a run that never started.
+//
+// It is one function because the exit code and the envelope's `ok` must be the
+// same fact, and they were read from two places in the shape this replaced.
+func (o headlessOutcome) resolvedStop() stopReason {
+	if o.stop != "" {
+		return o.stop
+	}
+	if strings.TrimSpace(o.Error) != "" {
+		return stopError
+	}
+	return stopDone
+}
+
+// status is what the process leaves with, read off the one exit ladder. There
+// is no second reading of it anywhere in this binary.
+func (o headlessOutcome) status() exitStatus { return exitFor(o.resolvedStop()) }
+
 func runDo(args []string) error {
-	flags := flag.NewFlagSet("do", flag.ContinueOnError)
+	flags := commandFlags("do")
 	database := flags.String("db", "", "work in this durable store instead of a private one")
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
-	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
+	workspace := flags.String("dir", "", "the directory to work in, edited in place (default: the current directory)")
+	shorthandFlag(flags, "w", "dir")
 	wall := wallFlag{wall: defaultDoWall}
 	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds, kept for one release)")
-	asJSON := flags.Bool("json", false,
-		"print one machine-readable object instead of the deliverable; settled says the errand is over, "+
-			"the exit code says whether it worked, blocked_on carries a question nobody was here to answer, "+
-			"and error carries the sentence when the run could not start at all")
-	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
+	asJSON := flags.Bool("json", false, jsonFlagHelp)
+	yesSpend := flags.Bool("yes-spend", false, yesSpendFlagHelp)
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
+	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS. These two said
+	// "…; sets AFORGE_CONTEXT_FILL_PCT for this run", which is the
+	// implementation, and hard-coded their defaults in prose while their own
+	// DefValue was 0 — two spellings of one number, and one of them would drift.
+	// The figures are interpolated from the constants that own them now.
 	contextFill := flags.Int("context-fill", 0,
-		"how full a model's context window may get before it is compacted, in percent (default 60, clamped 10-90); "+
-			"sets AFORGE_CONTEXT_FILL_PCT for this run")
+		"how full a model's context window may get before it is compacted, in percent "+
+			"(default "+strconv.Itoa(ctxbudget.DefaultFillPercent)+", clamped 10-90)")
 	completionReserve := flags.Int("completion-reserve", 0,
-		"tokens every call keeps free for its answer and its reasoning (default 65536); "+
-			"sets AFORGE_COMPLETION_RESERVE for this run")
-	debug := flags.Bool("debug", false,
-		"keep the full record of this errand — call bodies, tool calls and the choices made — "+
-			"in a folder of its own under the state root (env AFORGE_DEBUG)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+		"tokens every call keeps free for its answer and its reasoning "+
+			"(default "+strconv.Itoa(ctxbudget.DefaultCompletionReserveTokens)+")")
+	debug := flags.Bool("debug", false, debugFlagHelp())
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
 	// can make a call, so that every record this errand leaves names the same
 	// run. The folder is announced on the way out and only when something was
@@ -211,12 +251,17 @@ func runDo(args []string) error {
 	}
 	ctx := openDebugRecord("do", *model, *workspace)
 	defer trace.Announce(ctx, os.Stderr)
-	task, err := readText(flags.Args())
+	// The id the door just minted is carried rather than re-read: it is what
+	// the `--json` envelope publishes and what every row this run writes into
+	// the model-call log carries, and a second reading could name a different
+	// run in a process that had opened two.
+	run := trace.RunFrom(ctx)
+	task, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		return err
 	}
 	return doErrand(doRequest{
-		task: task, database: *database, keep: *keep, workspace: *workspace,
+		task: task, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
 		contextFill: *contextFill, completionReserve: *completionReserve,
@@ -227,7 +272,11 @@ func runDo(args []string) error {
 // doRequest is one invocation, with its streams named so a test drives the
 // whole command rather than a piece of it.
 type doRequest struct {
-	task      string
+	task string
+	// run is the id this invocation minted at the door ([trace.Begin]). It goes
+	// out on the `--json` envelope, where it is the join to the model-call log
+	// and to the debug record's folder, both of which are named by it.
+	run       string
 	database  string
 	keep      bool
 	workspace string
@@ -317,6 +366,14 @@ func doErrand(request doRequest) error {
 		outcome = failedErrand(err, started)
 	}
 	outcome.seated(seats)
+	// THE RUN NAMES ITSELF ON EVERY PATH, including the one where nothing
+	// worked: the id is what joins this object to the rows the model-call log
+	// wrote and to the debug record's folder, and a run that fell over after
+	// making four calls is exactly the run somebody goes to that log about.
+	// Both are read HERE, once, for the same reason the seats are — beside
+	// every return is where one of them gets forgotten.
+	outcome.run = request.run
+	outcome.calls = calllog.CallsFor(request.run)
 	return reportErrand(request, outcome)
 }
 
@@ -329,8 +386,12 @@ func failedErrand(err error, started time.Time) headlessOutcome {
 	return headlessOutcome{
 		Artifacts: []string{},
 		Seconds:   time.Since(started).Seconds(),
-		Error:     err.Error(),
-		status:    exitFailed,
+		// The same sentence a person would have read on stderr, held to the
+		// same rule: the cause and what to do about it, and no wrapped Go
+		// chain (plainwords.go). A caller reading --json and a caller reading
+		// the error stream must not be told two different things.
+		Error: plainWords(err.Error()),
+		stop:  stopError,
 	}
 }
 
@@ -349,7 +410,7 @@ func (o *headlessOutcome) seated(seats config.Seats) {
 // what came of it. It reports nothing and decides no exit code — both belong to
 // doErrand, so that a failure anywhere in here reaches the caller through the
 // same door as an answer.
-func errandRun(request doRequest, seats config.Seats, started time.Time) (headlessOutcome, error) {
+func errandRun(request doRequest, seats config.Seats, started time.Time) (outcome headlessOutcome, err error) {
 	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
 		return headlessOutcome{}, err
 	}
@@ -357,11 +418,34 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	if err != nil {
 		return headlessOutcome{}, err
 	}
-	if ephemeral && !request.keep {
-		defer func() { _ = os.RemoveAll(home) }()
-	}
-	if ephemeral && request.keep {
-		fmt.Fprintf(request.stderr, "store kept at %s\n", home)
+	// Whether the private home outlives this run is decided at the END of it,
+	// where the answer is known, rather than here where it is not — see
+	// keepPrivateStore. The sentence naming the place is deferred with it for
+	// the same reason: a home that is about to be deleted has no location worth
+	// printing, and one that survives is only worth naming once there is a
+	// reason it did.
+	debugging := trace.Enabled()
+	// AND A RECORD IS ANNOUNCED ONLY FOR A RUN THAT WAS ADMITTED — one whose ask
+	// reached the journal. `record kept at <path>` used to print for runs that
+	// never started at all: it stood directly above `permission denied` and
+	// above the missing-key sentence, pointing somebody at an empty folder on
+	// the exact line where they were already looking for the cause. A run that
+	// got no further than its own door has nothing to keep, so the folder goes
+	// and the line does not print — unless the person asked for it by name with
+	// --keep or --debug, where an empty store is still the thing they asked for.
+	admitted := false
+	if ephemeral {
+		defer func() {
+			if !keepPrivateStore(request.keep, debugging, errandSucceeded(outcome, err)) {
+				_ = os.RemoveAll(home)
+				return
+			}
+			if !admitted && !request.keep && !debugging {
+				_ = os.RemoveAll(home)
+				return
+			}
+			fmt.Fprintf(request.stderr, "record kept at %s\n", home)
+		}()
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return headlessOutcome{}, fmt.Errorf("create the store directory: %w", err)
@@ -399,7 +483,6 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	if err != nil {
 		return headlessOutcome{}, err
 	}
-
 	// A refused price is recorded rather than returned, because the desk is
 	// consulted deep inside a worker goroutine and the answer has to reach the
 	// watcher above it.
@@ -424,6 +507,12 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	// THE RUN IS ADMITTED HERE and not a line earlier. Everything above is the
+	// door — the store, the journal row, the key — and a run that fell over at
+	// the door left a folder with nothing in it. From here something is
+	// actually working, so whatever happens next is worth keeping and worth
+	// naming.
+	admitted = true
 	if deferredTo != nil {
 		if err := awaitResidentPickup(graph, command.Seq, deferredTo, path,
 			request.residentWaitOrDefault(), request.stderr); err != nil {
@@ -443,12 +532,28 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 		settle = brain.stop
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), request.timeout)
+	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT — the same law `aforge run`
+	// keeps, and it is the keep-on-failure rule that made a headless errand need
+	// it too. A Go process dies on Ctrl+C and on SIGTERM with nothing written,
+	// which is indistinguishable from a crash; now that the store survives such
+	// an ending, dying silently would leave a folder on disk that nothing ever
+	// told the person about. Routed through the context, the watcher returns the
+	// partial it returns for the wall, the workers are settled, and the closing
+	// lines — the receipt and `record kept at` — still print.
+	//
+	// The handler is released the moment the wait is over, so a second signal
+	// during the unwind kills the process the way it always did. SIGKILL is
+	// outside all of this and stays correct by accident: no defer runs, so
+	// nothing deletes the store either.
+	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()
 	watcher := &settlementWatch{
 		graph: graph, session: session, commandSeq: command.Seq,
 		refused: refused, progress: request.stderr, started: started,
 		produced: produced,
+		stopped:  func() bool { return signalled.Err() != nil },
 	}
 	if brain != nil {
 		// A GATE ALWAYS PRECEDES THE WALL, and this is the half of that law
@@ -460,7 +565,8 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 		// clock alone. See settlementWatch.forceJudgement.
 		watcher.closeOut = brain.runner.CloseOut
 	}
-	outcome, err := watcher.wait(ctx)
+	outcome, err = watcher.wait(ctx)
+	stopSignals()
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -490,6 +596,41 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 	outcome.Spend = spend.Cost()
 	outcome.SpendWork = spend.Work.Cost
 	outcome.SpendOverhead = spend.Spine.Cost
+	// AND THE TOKENS OFF THE SAME READ. A caller comparing two runs divides by
+	// these, and taking them from a second query would be a second bill.
+	outcome.tokensIn = spend.Work.PromptTokens + spend.Spine.PromptTokens
+	outcome.tokensOut = spend.Work.CompletionTokens + spend.Spine.CompletionTokens
+	// AND THE ROUNDS OFF THE SAME JOURNAL. How many times this run bought more
+	// work is read from what was written down, for the reason the bill is: a
+	// counter in this process could not see a round a resident spliced.
+	outcome.rounds = errandRounds(graph, session)
+}
+
+// errandRounds is how many times this errand bought MORE WORK: every growth
+// decision journaled against one of its jobs (store.JobGrowthRounds).
+//
+// It asks per job root rather than across the store because the journal keys
+// growth by the job it grew, and a run sharing a durable store with another
+// session must not count that session's rounds as its own — the same rule the
+// bill is read under one function up. A read that fails leaves the count at
+// zero rather than at a guess.
+func errandRounds(graph *store.Store, session string) int {
+	nodes, err := graph.SessionMemberNodes(session)
+	if err != nil {
+		return 0
+	}
+	rounds := 0
+	for _, node := range nodes {
+		if node.Parent != store.RootID {
+			continue
+		}
+		grown, err := graph.JobGrowthRounds(node.ID)
+		if err != nil {
+			continue
+		}
+		rounds += len(grown)
+	}
+	return rounds
 }
 
 // headlessBrain builds and returns the brain this process will run, or nothing
@@ -654,10 +795,44 @@ func errandWorkspace(named string) (string, error) {
 	return here, nil
 }
 
+// keepPrivateStore decides whether the private home a headless run made
+// outlives the run that made it.
+//
+// A FAILURE KEEPS ITS OWN EVIDENCE WITHOUT BEING ASKED. A person discovers they
+// wanted the record only after the run went wrong, and under the older rule —
+// deleted on the way out, worked or not — that was always after it was gone;
+// the only cure was to have passed --keep before knowing there would be
+// anything to look at. So the home is deleted on a clean run and on nothing
+// else: asked for on purpose, kept while the debug switch is on, and kept after
+// any exit that was not a success.
+func keepPrivateStore(asked, debugging, succeeded bool) bool {
+	return asked || debugging || !succeeded
+}
+
+// errandSucceeded is the one reading of "this run worked": it reached an
+// outcome of its own, and that outcome leaves with the status a script reads as
+// nothing to say. A partial is not a success — something did not land, and why
+// it did not is exactly what a person comes back for.
+func errandSucceeded(outcome headlessOutcome, err error) bool {
+	return err == nil && outcome.status() == exitDone
+}
+
 // headlessStore decides where this errand lives. The default is a private home
-// that is deleted on the way out, because isolation is the point of a one-shot:
+// that is deleted on a clean run, because isolation is the point of a one-shot:
 // a task run this way must not inherit half a conversation's assumptions, and a
-// store that survives it is what `aforge chat` already is.
+// store that survives it is what `aforge chat` already is. What survives a run
+// that did NOT go cleanly is keepPrivateStore's answer, not this one's.
+//
+// It is made under the state root's `runs/` and NOT in the operating system's
+// temporary directory. Both were private and both were deleted on a clean run,
+// so for as long as every run's home died with it the difference was invisible.
+// It stops being invisible the moment a failed run keeps its own: a record in
+// /tmp is a record the system's own reaper is entitled to delete out from under
+// the person who was told where to find it, and on a machine that clears /tmp at
+// boot the answer to "where is yesterday's failure" is nowhere. THE RECORD STAYS
+// UNDER THE STATE ROOT, which is the one directory aforge owns and nothing else
+// prunes. AFORGE_HOME moves it with everything else, so a disposable run is
+// still disposable in one word.
 func headlessStore(database string) (path, home string, ephemeral bool, err error) {
 	if database = strings.TrimSpace(database); database != "" {
 		path, err = expandHome(database)
@@ -666,7 +841,14 @@ func headlessStore(database string) (path, home string, ephemeral bool, err erro
 		}
 		return path, filepath.Dir(path), false, nil
 	}
-	home, err = os.MkdirTemp("", "aforge-do-")
+	runs := homepkg.Join("runs")
+	// 0700 for the reason every directory under the state root is: what a run
+	// keeps is the person's own prompts, replies and deliverables, and a record
+	// kept for their benefit must not become one the rest of the machine can read.
+	if err = os.MkdirAll(runs, 0o700); err != nil {
+		return "", "", false, fmt.Errorf("create a private store: %w", err)
+	}
+	home, err = os.MkdirTemp(runs, "aforge-do-")
 	if err != nil {
 		return "", "", false, fmt.Errorf("create a private store: %w", err)
 	}
@@ -703,6 +885,12 @@ type settlementWatch struct {
 	// empty, is the deferred run — the work happened in the resident's process
 	// — and compose reads the workers' prose instead.
 	produced *errandRegistry
+
+	// stopped reports whether a signal ended this run rather than its wall. It
+	// is a function rather than a bool because the answer is only true at the
+	// end, and nil is the ordinary case in every test that builds a watcher by
+	// hand — see stoppedByHand.
+	stopped func() bool
 
 	watermark int64
 	// saidStanding remembers that the closing reservation has been printed. The
@@ -849,7 +1037,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if err != nil {
 				return headlessOutcome{}, err
 			}
-			outcome.Settled, outcome.status = false, exitFailed
+			outcome.Settled, outcome.stop = false, stopPrice
 			outcome.Deliverable = "The plan for this task crosses the spending threshold, so nothing was started."
 			return outcome, nil
 		case <-ctx.Done():
@@ -859,7 +1047,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if err != nil {
 				return headlessOutcome{}, err
 			}
-			outcome.Settled, outcome.status = false, exitPartial
+			outcome.Settled, outcome.stop = false, stopDeadline
 			// A wall a question was standing behind is not a slow run. Saying
 			// which of the two it was costs one read and is the difference
 			// between a diagnosable timeout and fifteen minutes of nothing.
@@ -868,8 +1056,16 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 				return headlessOutcome{}, questionErr
 			}
 			outcome.BlockedOn = asked
+			// AND A WALL WITH A QUESTION STANDING BEHIND IT IS THE QUESTION'S
+			// ENDING, not the clock's. The clock is what it ran into while
+			// waiting for an answer nobody was here to give, and "raise the
+			// timeout" is the wrong remedy to hand somebody whose run needs a
+			// sentence from them.
+			if asked != "" {
+				outcome.stop = stopQuestion
+			}
 			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
-				outcome.Deliverable = wallWords(outcome.Artifacts)
+				outcome.Deliverable = wallWords(outcome.Artifacts, w.stoppedByHand())
 			}
 			// AND THE WALL SAYS WHAT THE GOVERNOR KNEW. A run that reaches its
 			// deadline having already been told it stopped making progress must
@@ -946,7 +1142,7 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 		if err != nil {
 			return headlessOutcome{}, false, err
 		}
-		outcome.Settled, outcome.status = true, exitFailed
+		outcome.Settled, outcome.stop = true, stopIncomplete
 		words := w.refusalWords(command)
 		// A refusal that is a question is not a deliverable, and putting it
 		// there is what made a three-second do-nothing run indistinguishable
@@ -961,6 +1157,9 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 			words = asked
 		}
 		if asked != "" || rejectedForAnAnswer(command) {
+			// A refusal that is a QUESTION is its own rung: the run needs an
+			// answer and nobody was there to give one.
+			outcome.stop = stopQuestion
 			outcome.BlockedOn, outcome.Deliverable = words, ""
 		} else {
 			// A refusal usually means nothing ran, and then this changes
@@ -993,6 +1192,10 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 // refusalWords is what a rejected command has to say for itself. The receipt
 // the reconciler posted is the real answer — a compiler question, a charter
 // awaiting ratification — and the command's own result is the summary of it.
+//
+// Whatever it is, it goes through [plainWords] on the way out. A refusal that
+// happened deep in the stack arrives here as everything that wrapped it, and
+// this is the last door before a person reads it (plainwords.go).
 func (w *settlementWatch) refusalWords(command store.Command) string {
 	words := strings.TrimSpace(command.Result)
 	messages, err := w.graph.Messages(w.session, 0, 50)
@@ -1000,14 +1203,14 @@ func (w *settlementWatch) refusalWords(command store.Command) string {
 		for index := len(messages) - 1; index >= 0; index-- {
 			message := messages[index]
 			if message.CommandSeq == command.Seq && strings.TrimSpace(message.Body) != "" {
-				return strings.TrimSpace(message.Body)
+				return plainWords(strings.TrimSpace(message.Body))
 			}
 		}
 	}
 	if words == "" {
 		words = "the request was not turned into work"
 	}
-	return words
+	return plainWords(words)
 }
 
 // blockingQuestion is the card this errand is standing behind, if any.
@@ -1432,8 +1635,41 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		if json.Unmarshal(event.Payload, &gate) != nil {
 			return false
 		}
+		// A GATE NOBODY REACHED REFUSED NOTHING, so the stream does not say
+		// "gate: refused" of it — that word is the RUN declining to buy a
+		// judgement, and this is the judgement declining to arrive. gateWords
+		// speaks for a gate that ANSWERED, and this row is the one where none
+		// did.
+		//
+		// THIS LINE REPORTS THE EVENT, AND IT IS NOT THE RUN'S VERDICT. What is
+		// true at this moment is that the gate gave up on this node; what the
+		// run ends up handing over is not settled here and may still change —
+		// another round, another node, a wall. So it says the event in the
+		// stream's own register and takes NO closing flag: the sentence about
+		// what was delivered belongs to sayStanding, at the end, where the
+		// answer is, and FAILSAFE clause 3 says that is the line that may not be
+		// missing. A person's last visible line is never a bare ✓ over
+		// something the run believes nothing checked.
+		if gate.Unjudged {
+			w.note(unreachedStreamWords(gate), "")
+			return true
+		}
 		verdict, detail := gateWords(gate)
 		w.note("gate: "+verdict, detail)
+		// AND A DELIVERY THAT ENDED BECAUSE WHAT WAS ASKED FOR IS IN HAND SAYS
+		// SO, under the mark this stream already uses for work that finished.
+		//
+		// It is the one positive line the gate can write and it is the whole
+		// repair of a silence that was being read as its opposite: a run that
+		// had the answer at two minutes and then spent eleven more on rounds
+		// ended on the word `partial`, and nothing anywhere said that the thing
+		// the person asked for had been done. The receipt says which of the two
+		// endings this was — the request met as stated, or the work's own checks
+		// green over coverage nobody could measure — in the words the record
+		// keeps. See revision.RequestMetWords and revision.CheckedNotMeasured.
+		if receipt := strings.TrimSpace(gate.Receipt); receipt != "" {
+			w.say("✓", nodeDisplay(node), receipt)
+		}
 		// The coverage finding gets its own line, because it is a different
 		// fact from the verdict and it is the one the acceptance line above
 		// promised. A FAIL-SAFE PROPAGATES TO THE VERDICT THE PERSON READS
@@ -1673,6 +1909,17 @@ func gateStanding(gate store.DeliveryGate) (finding, reason string, ok bool) {
 		// measurement itself, and that sentence is the finding.
 		return firstLine(strings.TrimSpace(gate.Unmeasured)), "", true
 	}
+	// A GATE THAT WAS DECLINED RATHER THAN HELD NAMES NO GAP, AND ITS SENTENCE
+	// IS THE FINDING. The harness stops asking for a judgement once nothing is
+	// changing and journals the refusal in its place, unclosed; reading that row
+	// for a gap it does not have returned "nothing standing", so the one line at
+	// the end of a run that was never judged said nothing at all. There is no
+	// second clause to add — the refusal already says why nothing further ran.
+	if finding == "" && gate.Unclosed {
+		if refused := firstLine(strings.TrimSpace(gate.Refused)); refused != "" {
+			return refused, "", true
+		}
+	}
 	if finding == "" {
 		return "", "", false
 	}
@@ -1887,6 +2134,10 @@ func (w *settlementWatch) survey() (headlessOutcome, error) {
 func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 	outcome := headlessOutcome{
 		Nodes: len(nodes), Artifacts: []string{},
+		// DONE UNTIL SOMETHING BELOW SAYS OTHERWISE. Every ending this function
+		// can reach that is not a clean one names itself, so the default is the
+		// one it cannot name: the work settled and the deliverable stands.
+		stop: stopDone,
 		// The generalist until a row says otherwise, which is what an empty
 		// column has meant everywhere else since the day it was added.
 		Subharness: exec.LinearSubharness,
@@ -1929,7 +2180,7 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 		switch {
 		case final.Status == store.Failed || final.Status == store.Cancelled:
-			outcome.status = exitFailed
+			outcome.stop = stopIncomplete
 			outcome.Deliverable = strings.TrimSpace(final.Error)
 			if outcome.Deliverable == "" {
 				outcome.Deliverable = "It did not finish, and no reason was recorded."
@@ -1949,7 +2200,18 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			// reads the code — which is the contract, and the only thing a
 			// pipeline reads — recorded them as work that stands.
 			if !w.deliveredWhole(*final) {
-				outcome.status = exitPartial
+				outcome.stop = stopIncomplete
+				// AND A DELIVERY NOTHING JUDGED IS NEITHER A PASS NOR A FAIL,
+				// SO IT IS NOT SAID AS EITHER. The work ships — the gate is
+				// fail-open and stays so — and what changes is that nobody can
+				// read the ending as a check that held. The number is the same
+				// 2 a run that fell short leaves with, because how much is
+				// wrong is the same; the WORD is its own, because a script
+				// branching on `stop` is entitled to tell "it was checked and
+				// came up short" from "nobody checked it".
+				if reason := w.unjudgedReason(*final); reason != "" {
+					outcome.stop, outcome.Unjudged = stopUnchecked, reason
+				}
 				w.sayStanding(*final)
 			}
 		}
@@ -2048,6 +2310,66 @@ func (w *settlementWatch) deliveredWhole(node store.Node) bool {
 	return true
 }
 
+// unjudgedReason is why nothing checked this delivery, read off the gate's own
+// row, and empty where something did.
+//
+// It asks the row rather than the judgement because the judgement is gone by the
+// time the settlement runs — the gate was made in another process's turn loop,
+// and the journal is the only thing that crosses that seam. An unreadable store
+// answers empty, on the same terms deliveredWhole reads one: this decides how a
+// run is described, and a failed read is not evidence about the run.
+func (w *settlementWatch) unjudgedReason(node store.Node) string {
+	gate, ok, err := w.graph.DeliveryGateFor(node.ID)
+	if err != nil || !ok || !gate.Unjudged {
+		return ""
+	}
+	return firstLine(strings.TrimSpace(gate.Refused))
+}
+
+// unjudgedWords is the last line a person reads when the delivery went out and
+// nothing read it.
+//
+// IT IS NOT partialWords, AND THAT IS THE POINT OF IT. "partial — gate: …" says
+// a gate found something and nothing closed it, which is a sentence about the
+// work; this run's gate found nothing, because it was never reached. The finding
+// is that there is no finding, and a person who reads "delivered without a
+// check" knows both that the answer above is theirs to keep and that nothing has
+// vouched for it. The reason follows the colon in the gate's own words
+// (revision.GateUnreached), and a row that somehow carries none says the four
+// words alone rather than a dangling colon.
+func unjudgedWords(gate store.DeliveryGate) string {
+	said := "delivered without a check"
+	if reason := firstLine(strings.TrimSpace(gate.Refused)); reason != "" {
+		said += ": " + reason
+	}
+	return said
+}
+
+// unreachedStreamWords is the same event as it happens, in the register the rest
+// of this stream reports gate rows in.
+//
+// It is a different line from unjudgedWords above because the two answer
+// different questions at different moments. This one says WHAT JUST HAPPENED —
+// the gate gave up on this node — while the run is still going and nothing about
+// what will be handed over is settled. unjudgedWords says WHAT WAS DELIVERED,
+// once there is a delivery to say it about.
+//
+// The record's note opens with the gate as its subject, because the closing line
+// needs a whole sentence to stand on its own; this line's subject is already
+// `gate:`, so the same words are folded into it rather than said twice. The
+// reason clauses after the ` · ` — how it was asked, the provider's own sentence
+// — are kept whole: they are the whole of what a person watching can act on.
+func unreachedStreamWords(gate store.DeliveryGate) string {
+	reason := firstLine(strings.TrimSpace(gate.Refused))
+	if rest := strings.TrimPrefix(reason, revision.GateUnreached); rest != reason {
+		return "gate: could not be reached" + rest
+	}
+	// The other note a gate can leave with no verdict behind it — it answered
+	// and named no gap — keeps its own words, with the subject folded out the
+	// same way so that the line does not name the gate twice.
+	return "gate: " + strings.TrimPrefix(reason, "the gate ")
+}
+
 // sayStanding writes the one line that tells a person watching WHY the run is
 // short, at the end, where the answer is.
 //
@@ -2081,6 +2403,27 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 	if err != nil || !ok {
 		return
 	}
+	// A DELIVERY NOTHING JUDGED HAS ITS OWN SENTENCE, AHEAD OF EVERY VERDICT
+	// WORD, because there is no verdict to word. Reading this row through
+	// gateStanding would print "partial — the gate could not be reached", which
+	// tells a person the gate said something; it said nothing, and what they
+	// need to know is that the answer above them is unchecked.
+	//
+	// AND THIS IS THE ONE PLACE IT IS SAID, because this is the only one of the
+	// two that may be the last thing a person reads. The stream reported the
+	// event as it happened, in its own register (unreachedStreamWords), and a
+	// run that ended after it would otherwise close on a ✓ over a delivery
+	// nothing checked — five headless runs of ninety minutes ended exactly that
+	// way, with what the run believed it had not done sitting in the journal
+	// (FAILSAFE clause 3). The exit code is the contract every pipeline reads
+	// and it is the one thing a person at a terminal cannot see, so the
+	// reservation is stated here, last, whether or not the stream said anything
+	// earlier.
+	if gate.Unjudged {
+		w.saidStanding = true
+		w.note(unjudgedWords(gate), "")
+		return
+	}
 	finding, reason, standing := gateStanding(gate)
 	if !standing {
 		return
@@ -2097,6 +2440,13 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 // deliverable at a wall — the run was killed mid-round, so nothing composed a
 // final node — and the fact worth saying belongs to whichever job stopped
 // moving.
+// stoppedByHand says whether the person ended this run. A watcher nobody told
+// how to answer says no, which is the reading every caller had before signals
+// were routed through the context at all.
+func (w *settlementWatch) stoppedByHand() bool {
+	return w.stopped != nil && w.stopped()
+}
+
 func (w *settlementWatch) sayWallStanding() {
 	if w.saidStanding || w.progress == nil {
 		return
@@ -2183,11 +2533,20 @@ func midFlightWords(artifacts []string) string {
 
 // wallWords is the same honesty at the wall: "before anything finished" is a
 // claim about the record, and it may only be made when the record agrees.
-func wallWords(artifacts []string) string {
-	if len(artifacts) == 0 {
-		return "The time limit was reached before anything finished."
+// A RUN'S OWN ACCOUNT OF ITSELF MAY NOT CONTRADICT WHAT ENDED IT. The two
+// endings that reach here look identical from inside the watcher — the context
+// is done either way — and they are not the same news: one is a clock the
+// person set, the other is the person themselves, and telling somebody who
+// pressed Ctrl+C that they ran out of time is a sentence they know to be false.
+func wallWords(artifacts []string, stopped bool) string {
+	reason := "The time limit was reached"
+	if stopped {
+		reason = "The run was stopped"
 	}
-	return "The time limit was reached before the work was summarised. " + producedWords(artifacts)
+	if len(artifacts) == 0 {
+		return reason + " before anything finished."
+	}
+	return reason + " before the work was summarised. " + producedWords(artifacts)
 }
 
 // errandRegistry is this errand's own record of what its workers wrote.
@@ -2330,7 +2689,7 @@ func withoutSummaryFileList(deliverable string, artifacts []string) string {
 func reportErrand(request doRequest, outcome headlessOutcome) error {
 	sayBlocked(request.stderr, outcome)
 	if request.asJSON {
-		encoded, err := json.MarshalIndent(outcome, "", "  ")
+		encoded, err := json.MarshalIndent(errandEnvelope(outcome), "", "  ")
 		if err != nil {
 			return err
 		}
@@ -2340,7 +2699,13 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 	if body := strings.TrimSpace(outcome.Deliverable); body != "" {
 		fmt.Fprintln(request.stdout, body)
 	}
-	fmt.Fprintln(request.stdout)
+	footer := errandFooter(outcome)
+	// The blank line is a SEPARATOR, and a separator with nothing under it is
+	// one more thing the emptiness law does not allow: a run that spent nothing,
+	// touched no files and learned nothing ends at its last real line.
+	if len(outcome.Artifacts) > 0 || len(outcome.Learned) > 0 || footer != "" {
+		fmt.Fprintln(request.stdout)
+	}
 	if len(outcome.Artifacts) > 0 {
 		fmt.Fprintln(request.stdout, "files:")
 		for _, path := range outcome.Artifacts {
@@ -2353,10 +2718,57 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 			fmt.Fprintln(request.stdout, "  "+line)
 		}
 	}
-	fmt.Fprintf(request.stdout, "%s · %s · $%.4f\n",
-		time.Duration(outcome.Seconds*float64(time.Second)).Round(time.Second),
-		plural(outcome.Nodes, "node"), outcome.Spend)
+	if footer != "" {
+		fmt.Fprintln(request.stdout, footer)
+	}
 	return errandStatus(outcome)
+}
+
+// errandEnvelope turns what `aforge do` knows into the one machine contract
+// every headless verb returns (envelope.go). It is the ONLY mapping between
+// this file's private shape and what a caller reads, which is what keeps `do`,
+// `exec` and `run` from publishing three different objects again.
+func errandEnvelope(outcome headlessOutcome) resultEnvelope {
+	return buildResultEnvelope(runResult{
+		Stop:      outcome.resolvedStop(),
+		Answer:    outcome.Deliverable,
+		Files:     outcome.Artifacts,
+		Error:     outcome.Error,
+		SpendUSD:  outcome.Spend,
+		TokensIn:  outcome.tokensIn,
+		TokensOut: outcome.tokensOut,
+		Seconds:   outcome.Seconds,
+		Model:     outcome.Model,
+		Steps:     outcome.Nodes,
+		Run:       outcome.run,
+		Calls:     outcome.calls,
+		Rounds:    outcome.rounds,
+		Extra:     legacyErrandFields(outcome),
+	})
+}
+
+// errandFooter is the last line of a headless run, and it draws only what is
+// true.
+//
+// THE EMPTINESS LAW. A run that never got started ended `0s · 0 nodes ·
+// $0.0000` — three claims nobody earned, on the one line a person reads to find
+// out what happened, directly under the sentence saying it did not run. Zero
+// time, zero nodes and zero spend are each simply absent, and a run that really
+// was that cheap draws the parts of it that are true. The spend is written by
+// the one helper that owns how a spend is written ([config.SpentFigure]), which
+// is also where the law for a zero one lives.
+func errandFooter(outcome headlessOutcome) string {
+	var parts []string
+	if elapsed := time.Duration(outcome.Seconds * float64(time.Second)).Round(time.Second); elapsed > 0 {
+		parts = append(parts, elapsed.String())
+	}
+	if outcome.Nodes > 0 {
+		parts = append(parts, plural(outcome.Nodes, "node"))
+	}
+	if spent := config.SpentFigure(outcome.Spend); spent != "" {
+		parts = append(parts, spent)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // sayBlocked is the loud half. A run that ended on a question wrote nothing to
@@ -2379,13 +2791,14 @@ func sayBlocked(stderr io.Writer, outcome headlessOutcome) {
 		"say the answer in the ask itself and run it again, or bring it to `aforge` where it can be answered.")
 }
 
-// errandStatus is the contract a script reads: nothing to say means it worked,
-// 1 means the work failed or was refused, 2 means what is above is a partial —
-// the wall came first, the delivery gate rejected it, or parts of it did not
-// land.
+// errandStatus is the contract a script reads, and it reads it off the one exit
+// ladder in envelope.go — 0 done, 1 it could not be run at all, 2 it ran and
+// part of it does not stand, 3 a limit you set stopped it, 4 it needed an
+// answer and nobody was there. Which of the five it is was decided when the
+// outcome was composed, and this only spends it.
 func errandStatus(outcome headlessOutcome) error {
-	if outcome.status == 0 {
+	if outcome.status() == exitDone {
 		return nil
 	}
-	return outcome.status
+	return outcome.status()
 }

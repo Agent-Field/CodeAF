@@ -177,7 +177,7 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing."},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing. IF THIS REPLACES A FAILED TASK, carry that task's useful report findings here; the new worker inherits neither its transcript nor its report."},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
 	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own. Left out, it is resolved from what this conversation read and edited"},` +
@@ -460,9 +460,12 @@ func (a *Agent) taskTools() []bare.Tool {
 // The graph is what the orchestrate run's workers and the auditor are NOT handed
 // (task_run.go's newTaskAgent), which is how they end up without the verb
 // without anybody writing a second rule about them.
-func (a *Agent) mayProposeTask() bool {
-	return !a.config.InTask || a.config.mayFanOut()
-}
+// It is [Config.mayProposeTask] asked of a live agent (beltfacts.go), and it is
+// written that way round rather than repeated here because the render step asks
+// the CONFIG the same question before there is an agent to ask: the page's
+// `tasks` sentences are composed from it, so a floor node is never told to call
+// a verb this line has just kept off its belt.
+func (a *Agent) mayProposeTask() bool { return a.config.mayProposeTask() }
 
 // mayFanOut is the same question asked of a CONFIG, before there is an agent to
 // ask: [renderSystem] decides whether to tell this worker how to split its work
@@ -483,15 +486,12 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	if problem != "" {
 		return problem, true, nil
 	}
-	// THE DEPENDENCIES ARE CHECKED AT THE DOOR, not on the frontier. A number
-	// that names no task — a job id, an adaptive run, a step count the model
-	// mistook for one — used to sail through here, be shown to the person,
-	// admitted, and then failed on the very next frontier turn as a wait that
-	// could never resolve. A refusal now costs nothing and names the fix; the
-	// frontier's own check stays, as the backstop for a prerequisite that
-	// fails after admission.
-	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
-		return dependencyRefusal(missing, failed), true, nil
+	// THE DOOR REFUSALS, before a card or a slot. A trivial ask and a
+	// depends_on that can never resolve are both "do not start this"; they
+	// live in one helper so this road does not grow another ending
+	// (complexity_test.go's ratchet on this function).
+	if refusal := a.refuseProposedTask(spec); refusal != "" {
+		return refusal, true, nil
 	}
 	// WHICH HANDS THE WORK LEAVES ON, settled before anybody is asked anything
 	// (taskmodel.go). A word that names no model this install has is a refusal
@@ -617,9 +617,11 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		on = " on " + spec.model
 	}
 	if state == TaskQueued {
-		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
+		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
+		return withElsewhere(withReport(result, stand.redirect), elsewhere), false, nil
 	}
-	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
+	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
+	return withElsewhere(withReport(result, stand.redirect), elsewhere), false, nil
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
@@ -889,7 +891,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 			Summary:    spec.summary,
 			Brief:      spec.brief,
 			Acceptance: spec.acceptance,
-			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where),
+			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where, spec.mode),
 			Ground:     spec.ground,
 			Mode:       spec.mode,
 			DependsOn:  spec.dependsOn,
@@ -1004,8 +1006,18 @@ func (a *Agent) taskClockTimer(after time.Duration) (<-chan time.Time, func()) {
 	return timer.C, func() { timer.Stop() }
 }
 
-func taskWhereNotice(place Place, workspace string, id uint64, where string) string {
+func taskWhereNotice(place Place, workspace string, id uint64, where string, mode TaskMode) string {
 	where = strings.TrimSpace(where)
+	redirectedInPlace := false
+	if strings.EqualFold(where, "in place") {
+		_, redirectedInPlace = whereInsideRepository(where, workspace)
+	}
+	if where != "" && (mode == TaskModeWorktree || strings.EqualFold(where, "in place") && redirectedInPlace) {
+		if trees := place.Trees(); trees != "" {
+			return filepath.Join(trees, strconv.FormatUint(id, 10))
+		}
+		return "task folder"
+	}
 	if strings.EqualFold(where, "in place") {
 		return workspace
 	}

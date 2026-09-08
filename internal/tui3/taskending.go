@@ -19,13 +19,14 @@ import "github.com/Agent-Field/aforge-v2/internal/session"
 // loop, another task's copy, a worker that would not write down what it was
 // doing: nothing is known to be wrong and the work can go on from its branch, so
 // it wears the ! that asks for a steer rather than the cross that reports a
-// fault. IT WAS REFUSED, OR BROKE: the cross, and the report says
-// what was found.
+// fault. IT WAS REFUSED: the run is incomplete, with the report saying what the
+// check still needs. IT BROKE: the cross, and the report says what went wrong.
 
 // The words under a row for each ending, in a person's vocabulary and never
 // the engine's ("wire", "circling", "refused" are field values, not sentences).
 const (
 	endingWordWire     = "lost the connection"
+	endingWordUpstream = "the model provider refused it"
 	endingWordCircling = "went in circles"
 	endingWordBlocked  = "blocked by another task"
 	endingWordSteps    = "out of steps"
@@ -44,6 +45,8 @@ func endingWord(ending session.TaskEnding) string {
 		return taskStoppedWord
 	case session.TaskEndingWire:
 		return endingWordWire
+	case session.TaskEndingUpstream:
+		return endingWordUpstream
 	case session.TaskEndingCircling:
 		return endingWordCircling
 	case session.TaskEndingBlocked:
@@ -80,8 +83,8 @@ func endingKept(ending session.TaskEnding) string {
 // would not follow.
 func halted(ending session.TaskEnding) bool {
 	switch ending {
-	case session.TaskEndingWire, session.TaskEndingCircling, session.TaskEndingBlocked,
-		session.TaskEndingSteps, session.TaskEndingNotes:
+	case session.TaskEndingWire, session.TaskEndingUpstream, session.TaskEndingCircling,
+		session.TaskEndingBlocked, session.TaskEndingSteps, session.TaskEndingNotes:
 		return true
 	}
 	return false
@@ -95,6 +98,24 @@ func halted(ending session.TaskEnding) bool {
 // The same cell in both glyph tiers, because ! is already a character a screen
 // with no Unicode has.
 const glyphHalted = "!"
+
+// refused says the task reached a check and the check did not accept its claim.
+// The engine still settles that node as failed so dependencies and delivery do
+// not advance; the surface calls the person's state incomplete because the
+// report names work still to do rather than a runtime fault.
+func refused(ending session.TaskEnding) bool {
+	return ending == session.TaskEndingRefused
+}
+
+// incompleteGlyph is the steer mark for refused work. It is deliberately the
+// same mark as halted work: both leave a branch and a concrete next move, and
+// neither should wear the cross reserved for a fault.
+func (a *app) incompleteGlyph(node *taskNode) (string, bool) {
+	if node == nil || node.state != session.TaskFailed || !refused(node.ending) {
+		return "", false
+	}
+	return glyphHalted, true
+}
 
 // haltedGlyph is one node's cell when it was halted, and false for every other
 // node. Like [app.stoppedGlyph] it answers only for work that has landed, and a

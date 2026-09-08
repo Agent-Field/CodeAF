@@ -111,12 +111,19 @@ type SubharnessCard struct {
 // keeps beside each bundle. A build with no seam wired draws no note at all,
 // which is exactly what a subharness nobody has run yet should draw — the
 // emptiness law, and never "0 runs".
-func (a *Agent) SubharnessList() []SubharnessRow {
-	registry := a.config.Subharnesses
+func (a *Agent) SubharnessList() []SubharnessRow { return a.config.subharnessRows() }
+
+// subharnessRows is that same list asked of a CONFIG, before there is an agent
+// to ask, and it is where the body lives because everything it reads is a
+// config field. [Config.mayProposeSubharness] is built on it, so the render
+// step can answer the propose gate's third question — is there anything on the
+// registry — with the very list the belt counts (beltfacts.go).
+func (c Config) subharnessRows() []SubharnessRow {
+	registry := c.Subharnesses
 	if registry == nil {
 		return nil
 	}
-	history := a.config.SubharnessLastRun
+	history := c.SubharnessLastRun
 	manifests := registry.Manifests()
 	rows := make([]SubharnessRow, 0, len(manifests))
 	for _, manifest := range manifests {

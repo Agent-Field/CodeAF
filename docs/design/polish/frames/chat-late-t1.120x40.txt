@@ -1,0 +1,40 @@
+                                                                                          │ + /task
+› the frame jumps sideways every time the card opens                                      │
+                                                                                          │ standing
+The card is measured before the list is folded, so the list is laid out twice at two      │ ◦ the morning sweep
+widths. Measuring the fold first settles it.                                              │ ? CI on master
+                                                                                          │ ◦ the public API
+› show me where that measurement happens                                                  │ + /standing
+                                                                                          │
+internal/tui3/home.go, in the body pass — the card's width is asked for before the fold   │
+has decided how many rows it is hiding.                                                   │
+  · 3 standing orders here — /standing                                                    │
+                                                                                          │
+› reply with exactly: hello there friend                                                  │
+  ··· all lanes slow · still waiting · 10s                                                │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │ Σ $0.83 · 42.2k tok
+                                                                                          │ ctrl+. earlier
+                                                                                          │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+Why the Frame Jumps · deepseek-v4-flash-latest · all lanes slow · still waiting · 10s        5.4k/1.3M · ⠼ working · 19s

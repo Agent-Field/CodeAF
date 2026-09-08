@@ -1,0 +1,45 @@
+  - [ ] Multiple accepted tokens and token rotation retain their current behavior.                            │ tasks
+  - [ ] `/healthz` remains reachable without credentials.                                                     │ ? ◇ bearer case insensit… #1
+  - [ ] Focused tests cover canonical, lowercase, uppercase, and mixed-case schemes.                          │   finished — look it over
+                                                                                                              │ + /task
+  ### Non-goals                                                                                               │
+                                                                                                              │ + /standing
+  - Adding JWT decoding, OAuth introspection, scopes, or a new authentication dependency.                     │
+  - Accepting bearer tokens from query parameters, cookies, or request bodies.                                │
+  - Changing whitespace rules or normalizing the credential value.                                            │
+  - Changing the current 401 response body or adding a `WWW-Authenticate` policy; that can be considered      │
+  independently.                                                                                              │
+                                                                                                              │
+  ### Submission checks                                                                                       │
+                                                                                                              │
+  - [x] I searched open and closed issues and pull requests and did not find the same bug.                    │
+  - [x] I reduced the report to a minimal reproduction.                                                       │
+  - [x] This report contains no credentials, tokens, private data, or sensitive prompts.                      │
+                                                                                                              │
+  Work in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete│
+  tests to make them pass.                                                                                    │
+                                                                                                              │
+  ```"                                                                                                        │
+  The task completed its work in a branch. Let me check the current state in the actual workspace and verify  │
+  everything end-to-end.                                                                                      │
+                                                                                                              │
+  ├─▶ read /tmp/claude-1001/-home-santosh-src-aforge-v2/…1/cells/e13be0103b/work/reef/service/auth.py 73 lines│
+  ╰─▶ bash cat /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchpad/p…│
+                                                                                                              │
+  ⠿ thought for 1s · 80 tok · ctrl+e                                                                          │
+  Both files are in place. Let me verify the new test passes and the broader relevant test suite is clean.    │
+                                                                                                              │
+  ├─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 0.3s│
+  ╰─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/scratchp… 5.5s│
+                                                                                                              │
+  ⠿ thought for 1s · 94 tok · ctrl+e                                                                          │
+  All 108 existing tests plus the new test pass. Let me also run the broader `reef_service` test directory to │
+  confirm no breakage anywhere:                                                                               │ Σ $0.09 · 1.7M tok
+                                                                                                              │ 1 needs you
+  ╰─▶ bash cd /tmp/claude-1001/-home-santosh-src-aforge-v2/412d8fd6-5bce-4741-8ab5-302df9de9a52/sc… ⠋ 8s / 30s│ ❯ hide
+
+─ main* ─────────────────────────────────────────────────────────────────────────────────────────────── ctrl+g backgrounds · esc interrupt ─
+
+                                                                                                                                      ⠿ high
+ ›
+bearer auth case-insensitive fix · deepseek-v4-flash · running bash · 8s        $0.09 · 30.6k/1M · 3% · 55 tok/s · YOLO · ⠋ working · 3m 46s

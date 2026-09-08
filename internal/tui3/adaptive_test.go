@@ -552,13 +552,11 @@ func TestABackgroundReplyDropsEveryCachedRow(t *testing.T) {
 	// node journal are separate lists drawn by the same renderers (room.go,
 	// roomorch.go), so a repaint that reached only [app.entries] would leave
 	// yesterday's colours on whichever page somebody had open.
-	a.room = &taskRoom{
-		id: 7, live: -1, think: -1,
-		unfolded: map[int]bool{}, workOpen: map[int]bool{},
-		entries: []entry{{kind: entryAssistant, text: "what the node said", built: true}},
-		orch: &orchRun{
-			journal: []entry{{kind: entryAssistant, text: "what a node in the run said", built: true}},
-		},
+	a.room = a.newRoom(7, "")
+	a.room.workOpen = map[int]bool{}
+	a.room.entries = []entry{{kind: entryAssistant, text: "what the node said", built: true}}
+	a.room.orch = &orchRun{
+		journal: []entry{{kind: entryAssistant, text: "what a node in the run said", built: true}},
 	}
 
 	a.Update(replyOf(t, "#FFFFFF"))

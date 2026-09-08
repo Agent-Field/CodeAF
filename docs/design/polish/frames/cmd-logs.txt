@@ -1,0 +1,4 @@
+/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/logs/calls.jsonl
+23:18:43  deepseek/deepseek-v4-flash-0731  CoreWeave→DeepInfra  → 200  2.1s  first token 0.4s  deadline 30.0s  stop  210 in  125 out (111 thinking)  $0.0000
+23:18:44  reflex  mistralai/mistral-nemo  Parasail→DeepInfra  max 200  → 200  1.7s  first token 0.6s  deadline 30.0s  stop  819 in  101 out  $0.0000
+23:18:49  reflex  mistralai/mistral-nemo  Parasail→DeepInfra  max 200  → 200  4.2s  first token 3.1s  deadline 30.0s  stop  653 in  69 out  $0.0000

@@ -1,0 +1,24 @@
+[38;5;243m  [38;5;116mctrl+.[38;5;243m         every task this project has run · [38;5;146m[48;5;237m/history[38;5;243m[49m · type to filter[39m
+[38;5;243m  [38;5;116mctrl+g[38;5;243m         close the roster's column, or bring it back · remembered[39m
+[38;5;243m  [38;5;116mctrl+l[38;5;243m         back to the latest · the chip above the box says so too[39m
+[38;5;243m  [38;5;116mctrl+k[38;5;243m         switch conversations · tap it like alt+tab · esc goes back[39m
+                [38;5;243m → reaches every other one on this machine · ctrl+w closes one[39m
+[38;5;243m  [38;5;116m→ ←[38;5;243m            over an empty box: into a running task, and back out[39m
+[38;5;243m  [38;5;116m← ←[38;5;243m            out of a task room · the conversation, at the live edge[39m
+[38;5;243m  [38;5;116mspace space[38;5;243m    over an empty box: home · [4m[38;5;146m[48;5;237m]8;;file:///home\/home[0m[38;5;243m]8;;\ · esc comes back[39m
+[38;5;243m  [38;5;116mctrl+w[38;5;243m         delete the word behind the caret · ctrl+u the line[39m
+[38;5;243m  [38;5;116mctrl+,[38;5;243m         settings[39m
+[38;5;243m  [38;5;116md[39m              [38;5;243min /permissions: drop the line under the cursor · press it[39m
+[38;5;243m  twice[39m
+[38;5;243m  [38;5;116mp s n[38;5;243m          in /standing: pause one · stop it · not here[39m
+[38;5;243m  [38;5;116mctrl+r ctrl+y[38;5;243m  in /files: reveal the folder it is in · copy it somewhere[39m
+[38;5;243m  session · [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\/tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-[0m]8;;\
+[38;5;243m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-]8;;\
+[0m[38;5;243m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-[0m]8;;\
+[38;5;243m  [4m]8;;file:///tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/help-empty/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-help-empty-proj/770391df4a5f1343/transcript.jsonl\proj/770391df4a5f1343/transcript.jsonl[0m]8;;\
+
+[38;5;243m─ master ─────────────────────────────────────── [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home · [38;5;116m/[38;5;243m commands ─
+
+[39m                                                                          [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243maforge · deepseek-v4-flash-latest[39m       [38;5;243mcrew balanced · $0.00 · 5.4k/1.3M · idle

@@ -20,9 +20,17 @@ import (
 // stream would be the thing standing in the way when it does.
 
 // wrapper accumulates pieces and emits finished rows through emit.
+//
+// IT HAS TWO WIDTHS AND THEY ANSWER DIFFERENT QUESTIONS. width is the READING
+// MEASURE — how long a sentence may be before the eye loses the return sweep
+// ([Options.Measure]) — and ceiling is the COLUMN the rows are actually drawn
+// in ([Options.Width]). Every row of prose is wrapped to the measure; the one
+// thing allowed past it is a token that cannot be broken without being
+// falsified, which may take the whole column before it is cut.
 type wrapper struct {
-	width int
-	emit  func([]piece)
+	width   int
+	ceiling int
+	emit    func([]piece)
 
 	line  []piece
 	lineW int
@@ -30,11 +38,14 @@ type wrapper struct {
 	wordW int
 }
 
-func newWrapper(width int, emit func([]piece)) *wrapper {
+func newWrapper(width, ceiling int, emit func([]piece)) *wrapper {
 	if width < 1 {
 		width = 1
 	}
-	return &wrapper{width: width, emit: emit}
+	if ceiling < width {
+		ceiling = width
+	}
+	return &wrapper{width: width, ceiling: ceiling, emit: emit}
 }
 
 // push adds a run of text in one style. Spaces inside the run are word
@@ -90,11 +101,26 @@ func (w *wrapper) commit() {
 	if w.lineW > 0 {
 		w.flushLine()
 	}
-	// A word longer than the whole measure — a URL, a hash, a path — is broken
-	// where the row ends rather than allowed to overflow. Nothing else in this
-	// package may exceed the width, and a word is not an exception to a ceiling.
-	for ww > w.width {
-		head, tail := cut(word, w.width)
+	// A WORD TOO LONG FOR THE MEASURE IS GIVEN THE WHOLE COLUMN BEFORE IT IS
+	// BROKEN, and the word this is about is a URL or a path.
+	//
+	// THE DEFECT: the measure is a length SENTENCES are read at, and a bare link
+	// is not a sentence — nobody reads along it, they copy it. Breaking it at the
+	// measure did two wrong things at once. It broke a token that must not be
+	// broken, and it broke it EARLY: at 160 columns the answer column is 130
+	// cells wide, the measure is 88, and a link that would have fitted whole
+	// came out as `…&st` / `ream=true…` with forty columns of the frame standing
+	// empty beside it. A link cut in half is a link that does not work, and the
+	// reader has no way to tell whether the break was the renderer's or the
+	// model's.
+	//
+	// THE CEILING IS STILL A CEILING. A token longer than the column is broken at
+	// the column, exactly as before — no row this package returns has ever been
+	// wider than [Options.Width] and none is now. What moved is only where the
+	// break falls when there is room to spare, and that a token which fits the
+	// column is left whole on a row of its own.
+	for ww > w.ceiling {
+		head, tail := cut(word, w.ceiling)
 		w.emit(head)
 		word = tail
 		ww = 0

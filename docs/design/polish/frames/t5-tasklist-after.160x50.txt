@@ -1,0 +1,50 @@
+ aforge                                                                                                                               $0.13 / $500 · thu 3:13am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+work aforge ran on its own. 16 pieces of work, $3.32 between them.                                                     shift+← aug 21 – sep 3 →  shift+↑ coarser
+
+needs your look
+› ▸ ? Measure the frame budget in every package that draws a…                                    holds 3 more · now · $0.21 · Sweeping the Frame Budget · 1 file
+
+parked
+    ○ Write the change entry and open the pull request agains…                                                                         Sweeping the Frame Budget
+    ○ Fold the settled work on the task page                                                                                           Sweeping the Frame Budget
+
+done today
+    ✓ Port the picker onto the new list                                                                  1h · $0.31 · Porting the Picker · 2 files · saved shape
+  ▸ ✓ Count the tabs the bar draws                                                                    holds 3 more · 2h · $0.42 · The Tab Bar's Counts · 3 files
+
+earlier
+    · Rotate the wildcard certificate                                                                                      incomplete · The Certificate Rotation
+    ✓ Write the morning sweep down              5h · $0.14 · Standing Up the Watches · 1 file · The sweep is a standing order now, with a cap of a dollar a day.
+    ✓ Put the annual toggle on the pricing page  5h · $0.27 · The Annual Toggle · 2 files · Annual is the default and the monthly price stays visible beside it.
+    ✓ Take the backup window down to twenty minutes                                                                     2d · $0.55 · The Backup Window · 2 files
+    ✕ Rebuild the frame budget report                                                                                  8d · $0.18 · Why the Frame Jumps · failed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ 4 needs your look · 2 parked · 5 done today · 5 earlier
+ › say what you want done                                                                                                                      here ~/aforge-v2
+ enter open its room · → what ran under it · type to filter · tab next place

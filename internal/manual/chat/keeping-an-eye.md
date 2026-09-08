@@ -348,10 +348,10 @@ whatever it already did stands with it.
 banked already names many separate items — "every night, bring the eleven
 adapters up to the new interface" — the firing starts as one worker that is
 allowed to hand the parts out under itself, exactly as a task you typed can (the
-tasks page, *a task that splits itself*). The same two tests apply and neither is
-skipped because nobody is watching: the parts must be genuinely many, and there
-has to be a lane free for them. A brief that names nothing to count never gets
-the option, and a run that is refused simply carries on as one worker — unless the reading
+tasks page, *a task that splits itself*). The same tests apply and none is
+skipped because nobody is watching: there has to be a lane free for the parts,
+and any width floor you turned on still counts. A brief that names nothing to
+count never gets the option, and a run that is refused simply carries on as one worker — unless the reading
 finds that what is left is work only a person can do, which stops it and leaves the firing
 needing your look in the morning (the tasks page, *a task that landed needing your look
 without doing anything*). The firing
@@ -536,6 +536,36 @@ not a system service. And
 on any host that is neither macOS nor Linux there is no timer to install, so
 things are checked only while a window is open and the settings row is not there
 at all.
+
+## Do the background checks run before I set an API key — the walk happens, the judgment does not
+
+**Yes, the pass still walks.** On a machine that has never been given a key, the
+5-minute pass behaves exactly as it would with one: whichever window or timer takes the
+lock first goes through every reminder, watch and routine you have, and any other that
+wakes at the same moment finds the lock held and leaves without doing anything. What
+changed is that leaving quietly, and walking at all, no longer need a key first — a pass
+that will do nothing costs nothing and needs nothing.
+
+**A reminder at a time still fires.** "Remind me at 6 to leave" is a question about the
+clock and not about the world, so nothing has to be judged: at 6 the line is delivered
+to the window you are sitting in, or waits for you on home.
+
+**A watch that has to judge something stops on its own row.** "Tell me when the build
+goes red" runs its command first — that part costs nothing and needs nobody — and then
+needs a model to say whether what came back means yes. With no key, that item's `last
+look` reads
+
+```
+could not check: no API key: this session has not been given one yet
+```
+
+the walk carries straight on to the next item, and nothing fires, because a firing
+needs a yes and nobody was able to say one. The item still records that it looked, so
+the count of what was examined is honest and the record of the pass carries one error.
+
+Set the key — `/settings` → **openrouter key**, or say "set up my api key" — and the
+next pass judges normally. Nothing has to be re-made and nothing was lost while there
+was no key.
 
 ## Turn background checks off
 

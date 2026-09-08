@@ -600,6 +600,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// AND `?` OVER AN EMPTY BOX IS THE KEY SHEET (commands.go's [app.helpAsk]).
+	// It is read here for the offer letter's reason exactly: it is a CHARACTER,
+	// so its guard is that the box is empty, and every overlay, list and card
+	// that could want it has already been asked above this line. With anything
+	// typed it falls through to the switch below and lands in the sentence, which
+	// is the whole of what keeps this key from being worse than no key at all.
+	if cmd, taken := a.helpAsk(msg); taken {
+		return cmd
+	}
+
 	switch msg.String() {
 	case "esc":
 		// esc during a recall is the recall's: it puts the person's own draft
@@ -1107,7 +1117,11 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// An empty draft with a call selected is a reader, not a typist: enter
 	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
 	// sentence wins.
-	if line == "" && !held && a.sel >= 0 {
+	if line == "" && !held && a.sel != -1 {
+		if key, ok := selectedCaption(a.sel); ok {
+			a.toggleCap(key)
+			return nil
+		}
 		a.openTool(a.sel)
 		return nil
 	}
@@ -1409,7 +1423,15 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		maxRows = 1
 	}
 	if len(e.value) == 0 && hint != "" {
-		return []string{lead + pal.dim(prompt) + pal.dim(fit(hint, room))}, head, 0
+		// AND THE PLACEHOLDER DROPS WHOLE CLAUSES. Every one of these is a key
+		// sheet in the surface's own idiom — `filter · ↑↓ · enter connect · esc
+		// close` — drawn in the one row an overlay has instead of a legend, and a
+		// character ruler ended it `· esc cl…` at sixty columns: a box that named
+		// the way out and then ate it. [hintFit] drops the clause nearest the way
+		// out and keeps the way out itself, which is the same ladder the foot of
+		// every place is fitted by; on a hint with nothing to drop it is exactly
+		// [fit], so the boxes whose placeholder is a plain phrase lose nothing.
+		return []string{lead + pal.dim(prompt) + pal.dim(hintFit(hint, room))}, head, 0
 	}
 
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the

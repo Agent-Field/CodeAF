@@ -1,0 +1,50 @@
+
+                                                                                                                                                          ⠿ high
+ › /
+› /model                                                                                                     pick a model · or press its name in the status line
+  /model <slug>                                                                                                                                 switch the model
+  /image <path>                                                                                                        attach a picture · tab completes the path
+  /settings                                                                                                 open the settings panel · ctrl+, · also /set /config
+  /connect                                                                                         your connected accounts · connect another · also /connections
+  /new                                                                                    start another conversation in this project · also /clear /clean /reset
+  /resume                                                                                                          open an earlier conversation · also /sessions
+  /compact                                                                                                                        summarize the conversation now
+  /workspace <path>                                                                                                        anchor this conversation to a project
+  /folder                                                                                  choose a folder to work in · type a path to browse · also /place /dir
+  /folder <path>                                                                                                           …open it already pointed at that path
+  /land                                                                                     put the changes for another folder into it · says what changed first
+  /land <folder>                                                                                                     …that folder, when more than one is waiting
+  /home                                                                                                           every project and conversation on this machine
+  /search                                                                                                                everything said on this machine · alt+6
+  /spend                                                                                                          what this machine has cost, by the day · alt+5
+  /rewind                                                                           go back to an earlier point · esc esc takes back the last · also /undo /back
+  /permissions                                                                                          what runs without asking · drop one with d · also /perms
+  /standing <words>                                                                                                keep this true · a card, never work done once
+  /standing                                                                      …or what stands over this conversation · stop, pause or not here · also /orders
+  /harness                                                                        the shapes of work you have saved · a space picks one to run · also /harnesses
+  /subharness                                                                       the programs you can run · type to filter · enter opens its card · also /sub
+  /subharness <name>                                                                                                                …straight to that one's card
+  /memory                                                                                                                  inspect and change what is remembered
+  /memory <query>                                                                                                        print only the memories matching a word
+  /memories                                                                                                                   print what is remembered about you
+  /memories <query>                                                                                                               …only the ones matching a word
+  /remember <text>                                                                                                           keep one thing across conversations
+  /forget <query>                                                                                                        drop what is remembered about something
+  /crew                                                                                the five models aforge uses on its own behalf, beside the one you talk to
+  /crew <preset>                                                                                         …set the five to frugal, balanced or max · /model stays
+  /task <brief>                                                                                                                start work you can walk away from
+  /task solo <brief>                                                                                              …with one worker, and no sizing call before it
+  /history                                                                                                              every task this project has run · ctrl+.
+  /status                                                                              everything the status line knows, one fact per line · also /info /context
+  /cost                                                                     what this conversation has spent · /spend is the whole machine · also /usage /tokens
+  /budget                                                                                          what aforge may spend · every limit on one tab · also /limits
+  /budget <amount>                                                                                                        …set the day's limit · none removes it
+  /budget <row> <amount>                                                                                     …set one by name: day, conversation, plan, practice
+  /cache                                                                                                             the shared build cache — how big, and where
+  /cache clean                                                                                         …delete it to free disk · asks before anything is removed
+  /copy                                                                                                     read the conversation back and copy from it · ctrl+b
+  /select                                                                                                                drag to select with your mouse · ctrl+s
+  /export                                                                                                         write this conversation to a file · also /save
+  /export <path>                                                                                                    …and write it there · tab completes the path
+  ▸ 9 more
+aforge · deepseek-v4-flash-latest                                                                                       crew balanced · $0.00 · 5.4k/1.3M · idle

@@ -1,0 +1,49 @@
+=== NO KEY: aforge do "say hello"
+models: work ~deepseek/deepseek-v4-flash-latest (default) · plan follows the work model (default)
+aforge needs a model to work with.
+export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+-- exit 1
+
+=== NO KEY: aforge exec "print ok"
+aforge needs a model to work with.
+export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+-- exit 1
+
+=== NO KEY: aforge plan "build a thing"
+aforge needs a model to work with.
+export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+-- exit 1
+
+=== NO KEY: aforge models
+aforge needs a model to work with.
+export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+-- exit 1
+
+=== NO KEY: aforge doctor
+brain            /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/nokeyhome2/.aforge/graph.db · not created
+resident         this terminal while open
+standing watch   not installed · last wake not yet
+spend            rail $500.00
+-- exit 0
+
+=== NO KEY: aforge do --json (stdout only)
+{
+  "deliverable": "",
+  "artifacts": [],
+  "spend": 0,
+  "spend_work": 0,
+  "spend_overhead": 0,
+  "nodes": 0,
+  "seconds": 0.038870552,
+  "settled": false,
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "plan_model": "",
+  "model_source": "default",
+  "plan_model_source": "default",
+  "subharness": "",
+  "error": "OPENROUTER_API_KEY (or OPENAI_API_KEY) is required"
+}
+-- exit 1
+
+=== what runs/ holds after the runs that never started
+0

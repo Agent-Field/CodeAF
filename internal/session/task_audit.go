@@ -175,6 +175,44 @@ const (
 	// instead ([auditReadingDeadline], [auditDoor.window]).
 	auditDeadline = 5 * time.Minute
 
+	// auditCallShare is how many equal shares a checking window is cut into, one
+	// of which is the most a single call may hold.
+	//
+	// THE WINDOW BOUNDS THE CHECKING AND NOT ONE PROVIDER STREAM. That was the
+	// measured failure: a checker opened its five minutes, its first stream hung,
+	// and 183 seconds later the window was gone — no refusal, no error, no second
+	// attempt, and a landing that said nobody could check the work in five minutes
+	// when nobody had in fact been asked twice (#513). A window spent on one hung
+	// call is a window that bought nothing.
+	//
+	// TWO, BECAUSE THE LADDER ASKS TWICE ([Agent.auditNode]: one attempt, then
+	// one fresh checker). A share per attempt is the tightest bound that still
+	// lets the two of them spend the whole window between them, so a window that
+	// closes has genuinely been spent on checking and [checkerRanOut]'s figure
+	// stays a true sentence.
+	//
+	// AND IT IS NOT TIGHTER THAN THAT ON PURPOSE. The window is five minutes
+	// because a real check is slow — a full test run on a real repository plus the
+	// reading around it — and a share so small that an honest slow check is cut
+	// would turn every real verdict into a non-answer, which is a worse defect
+	// than the one this fixes. Half is the most one call can hold without
+	// leaving the second attempt nothing to be asked with.
+	auditCallShare = 2
+
+	// auditCallFloorShare is the LEAST a call may be given, as the number of
+	// shares of the window that is, and below it no call is made at all.
+	//
+	// A BOUND SMALL ENOUGH TO GUARANTEE A NON-ANSWER IS NOT A BOUND, IT IS A LIE.
+	// What is left of the window when the second attempt starts is whatever the
+	// first one did not spend, less the time it took to close one checker and
+	// build another — so a first call that ran nearly to its share can leave the
+	// retry a few hundred milliseconds, which it will certainly not answer in and
+	// which would then be written down as a call that STALLED
+	// ([checkerStalled]). A tenth of the window is the line under which asking is
+	// not worth the sentence it produces: below it the retry is not made, and the
+	// landing says the window closed, which is what actually happened.
+	auditCallFloorShare = 10
+
 	// auditEvidenceLines is how much evidence rides the report: what was run,
 	// what was seen, and at most one line more. The verdict is read off a card
 	// and off a dependent's brief, and an auditor writing paragraphs into both
@@ -356,6 +394,32 @@ const (
 	// report carrying three sets of evidence reads as three attempts rather than
 	// as one auditor repeating itself.
 	repairedAgainLead = "still incomplete after another go — "
+	// keptWhereItIsLead opens the node that was taken as done and could not be
+	// brought home because the TREE would not have it (task_land_unsaved.go's
+	// [treeRefused]). It says the two things that are true and nothing else: the
+	// decision stands, and the work is still where the sentence after it names.
+	//
+	// IT IS NOT [needsLookLead]. That lead asks somebody a question, and the
+	// whole of this landing is that the question has been answered and asking it
+	// again would get the same refusal from the same disk (#513).
+	keptWhereItIsLead = "taken as it stands, and it could not be brought home, so the work stays where it is — "
+	// takenAsItStandsLead and takenAsItStandsTail are what an UNATTENDED run's
+	// landing says when nobody could check the work
+	// (task_run.go's workTaskNode). Between them goes the checker's own account
+	// of what became of it — [checkerRanOut]'s sentence, most often — so the
+	// whole reads "taken as it stands: nobody could check it in 5m0s, and the run
+	// is unattended".
+	//
+	// THE TAIL IS THE HALF THAT MATTERS. A person coming back to this landing has
+	// to be able to tell it from work somebody looked at, and the reason it was
+	// taken rather than asked about is that there was nobody to ask.
+	takenAsItStandsLead = "taken as it stands: "
+	takenAsItStandsTail = ", and the run is unattended"
+	// checkedOnTheSecondTry rides a verdict the FIRST call did not produce
+	// ([auditVerdict.onTheSecondTry]). One call stalling and being abandoned
+	// inside the window is not news a person needs a card about, and it is news
+	// they should be able to find on the landing they are reading.
+	checkedOnTheSecondTry = "checked on the second try"
 	// taskCutMidCheck opens the node whose CHECK was cut off from outside — a
 	// settle-kill, a quit, a deadline on the session. It is the one landing in
 	// this file that is not a reading of the work at all, so it says only what is
@@ -528,6 +592,26 @@ func (v auditVerdict) lookOutcome() string {
 	return needsLookLead + strings.Join(lines, "\n")
 }
 
+// takenAsItStands is [auditVerdict.lookOutcome]'s counterpart for a run with
+// NOBODY WATCHING: the same non-answer, said as a decision rather than as a
+// question (task_run.go's workTaskNode).
+//
+// THE CHECKER'S OWN FIRST LINE IS THE MIDDLE OF THE SENTENCE, which is what keeps
+// the figure honest: "nobody could check it in 5m0s" is [checkerRanOut]'s own
+// words, written where the window actually closed, and quoting them here rather
+// than re-deriving a duration is what stops the landing and the journal drifting
+// apart. Everything the checker said after that first line stands under it, as it
+// does on every other landing.
+func takenAsItStands(v auditVerdict) string {
+	lines := plainLines(v.evidence)
+	if len(lines) == 0 {
+		// A non-answer with nothing behind it says what is true and invents no
+		// reason for it — the emptiness law, on the one field there is.
+		return takenAsItStandsLead + "nobody could check it" + takenAsItStandsTail
+	}
+	return withReport(takenAsItStandsLead+lines[0]+takenAsItStandsTail, strings.Join(lines[1:], "\n"))
+}
+
 // auditVerdict is one audit's answer: the word, and what it is standing on.
 //
 // THERE ARE THREE OUTCOMES AND TWO BOOLS, and the split is the point. `answered`
@@ -578,8 +662,110 @@ func (v auditVerdict) report() string {
 // that says UNANSWERED (pending.go states the law), so this says who could not
 // answer and how long they had, and stops there. Whether the work is accepted is
 // still entirely open, and still entirely the person's.
+//
+// AND IT IS SAID ONLY WHERE IT IS TRUE: no call stalled and the window ran out
+// on its own — a window too small to bound a call in, or a pair of attempts that
+// answered without hanging and left nothing behind them. A call that WAS asked
+// and held its whole bound is said to have stalled, with the window's closing as
+// a clause on the end of it ([checkerStalled], [auditVerdict.andTheWindowClosed]).
 func checkerRanOut(window time.Duration) string {
 	return "nobody could check it in " + window.String()
+}
+
+// checkerStalled is what a person reads when ONE call was abandoned and the
+// check asked again inside the same window ([auditPace]).
+//
+// It is a fact about a call and never about the work, in the register
+// [checkerRanOut] is held to, and it is usually the sentence NOBODY EVER SEES:
+// the retry that follows it answers, and the verdict it reaches is what lands.
+// What keeps it here is the run where the retry does not answer either, where
+// this is the only account there is of where five minutes went.
+func checkerStalled(bound time.Duration) string {
+	return "one call ran " + bound.String() + " without answering and was abandoned"
+}
+
+// checkerWindowClosed is what a person reads BESIDE A CALL'S OWN ACCOUNT when
+// the window closed on it — on the call that was cut by the window itself, and
+// on a first attempt there was no time left to ask again after.
+//
+// It is a second clause rather than a second sentence, and it is never a
+// replacement: the landing has to say both what was asked and why it was not
+// asked again, and a line that only said the window closed would be the harness
+// claiming nobody was asked when somebody was ([Agent.auditNode]).
+const checkerWindowClosed = "the window closed before a second"
+
+// checkerWindowClosedTail is how it joins the account it goes beside, in the
+// separator every other run of evidence on a card already uses.
+const checkerWindowClosedTail = " · " + checkerWindowClosed
+
+// ── the checking window, and one call inside it ─────────────────────────────
+
+// auditPace is ONE node's checking window and the bound on one call inside it.
+//
+// IT IS COMPUTED ONCE PER NODE AND SHARED BY EVERY ATTEMPT, which is the half of
+// this that is not about hung streams. Each attempt used to open a window of its
+// own, so the ladder's two attempts were bounded at ten minutes and the sentence
+// a person read afterwards named five ([checkerRanOut]). One window, cut into
+// shares, is what makes "nobody could check it in 5m0s" a true sentence.
+//
+// AND IT IS A CLOCK READING RATHER THAN A CONTEXT because [Agent.auditOnce]'s
+// other question — was this node KILLED — is answered off the caller's own ctx,
+// and a second context in the same variable would make the two indistinguishable.
+type auditPace struct {
+	// window is the whole of what this node's checking gets, and it is the figure
+	// every sentence about running out quotes.
+	window time.Duration
+	// call is the bound on one attempt inside it ([auditCallShare]).
+	call time.Duration
+	// floor is the least a call may be given before it is not worth making at
+	// all ([auditCallFloorShare]).
+	floor time.Duration
+	// until is when the window closes, read off the clock at the moment the
+	// checking began.
+	until time.Time
+}
+
+// newAuditPace opens one node's window.
+func newAuditPace(window time.Duration, now time.Time) auditPace {
+	return auditPace{
+		window: window,
+		call:   window / auditCallShare,
+		floor:  window / auditCallFloorShare,
+		until:  now.Add(window),
+	}
+}
+
+// left is how much of the window is still there, and it goes negative once the
+// window has closed.
+func (p auditPace) left(now time.Time) time.Duration { return p.until.Sub(now) }
+
+// bound is how long the NEXT call may take, READ AT THE MOMENT IT STARTS: its
+// own share, or whatever is left of the window when that is less.
+//
+// The second answer says whether it is worth making at all. What is left when a
+// retry begins has already had the first call, the first checker's close and the
+// second one's build taken out of it, so this is asked with the clock in hand
+// rather than from the share alone — and a call that would get less than
+// [auditPace.floor] is not made, because it could only produce a stall it never
+// had the time to avoid.
+func (p auditPace) bound(now time.Time) (time.Duration, bool) {
+	left := p.left(now)
+	if left < p.floor {
+		return 0, false
+	}
+	bound := p.call
+	if left < bound {
+		bound = left
+	}
+	// AND A BOUND OF NOTHING IS NOT A CALL. A window small enough for the shares
+	// to divide down to zero — a test's window, a door that answered in
+	// nanoseconds — would otherwise pass the floor above and submit a request on
+	// a context that has already expired, and the person would then read that a
+	// call stalled when no call was ever made.
+	if bound <= 0 {
+		return 0, false
+	}
+	return bound, true
 }
 
 // noVerdict is the answer to everything that went wrong before a verdict could
@@ -604,6 +790,40 @@ func noVerdict(why, said string) auditVerdict {
 		verdict.evidence = append(verdict.evidence, strings.Split(said, "\n")...)
 	}
 	return verdict
+}
+
+// onTheSecondTry marks a verdict the FIRST call did not produce.
+//
+// THE LINE GOES UNDER THE EVIDENCE AND NEVER OVER IT. What leads a landing's
+// report is what the work found and what it was checked on (task_ledger.go's
+// [Agent.landFinished]); which try answered is a fact about the harness's
+// evening and belongs last, where somebody looking for it can find it and
+// nobody else has to read past it.
+//
+// AND IT SAYS IT ONCE. The ladder asks at most twice ([Agent.auditNode]), so
+// this is reached at most once per node, and the copy is what keeps a verdict
+// somebody else is holding from growing a line under them.
+// andTheWindowClosed keeps what one attempt found and says that there was no
+// time for another.
+//
+// IT GOES ON THE FIRST LINE rather than under it, which is what [onTheSecondTry]
+// does and the difference between the two is who reads them. Which try answered
+// is a fact about the harness's evening and belongs last; why the checking
+// stopped where it did is part of the reason the work is being taken as it
+// stands, and the one line that reason quotes is the first ([takenAsItStands]).
+func (v auditVerdict) andTheWindowClosed() auditVerdict {
+	if len(v.evidence) == 0 {
+		return noVerdict(checkerWindowClosed, "")
+	}
+	evidence := append([]string{}, v.evidence...)
+	evidence[0] += checkerWindowClosedTail
+	v.evidence = evidence
+	return v
+}
+
+func (v auditVerdict) onTheSecondTry() auditVerdict {
+	v.evidence = append(append([]string{}, v.evidence...), checkedOnTheSecondTry)
+	return v
 }
 
 // twice re-tells a non-verdict as the SECOND one it is. A person reading "the
@@ -709,16 +929,20 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
 	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
+	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
+	// Both attempts below spend the same one ([auditPace]), so the figure a
+	// landing quotes is the figure the checking actually had.
+	pace := newAuditPace(a.auditWindowFor(door), time.Now())
 	if len(door.checks) == 0 {
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
-			door.window())
+			pace.window)
 	}
 
 	// A CHECK THAT CAME BACK HOLDING STILL OWES THE CLAIMS NOBODY SETTLED. That is
 	// the other half of the law: a claim is a finding, or it holds, or it is said
 	// out loud — never silently passed ([withOpenClaims]).
 	open := checklist.open()
-	verdict, again := a.auditOnce(ctx, node, tree, ground, door, files, claim, open, log)
+	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)
 	switch {
 	case verdict.answered, !again:
 		return withOpenClaims(verdict, open)
@@ -727,10 +951,23 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		// nothing to ask about; the caller reads ctx itself and tells that story.
 		return verdict
 	}
+	// AND A SECOND CALL THAT CANNOT BE MADE DOES NOT ERASE THE FIRST. What is
+	// left of the window is asked HERE, before a fresh checker is built, because
+	// what the first attempt found is the only account there is of where the time
+	// went: a retry that answered `nobody could check it` in its place would tell
+	// a person nobody was asked, when somebody was asked and abandoned.
+	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
+		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
+		return withOpenClaims(verdict.andTheWindowClosed(), open)
+	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, door, files, claim, open, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)
 	if retried.answered {
-		return withOpenClaims(retried, open)
+		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
+		// not produce is the same verdict — nothing about the work is different —
+		// but a person reading a card wants to know that the first call was
+		// abandoned rather than skipped ([checkedOnTheSecondTry]).
+		return withOpenClaims(retried.onTheSecondTry(), open)
 	}
 	return retried.twice()
 }
@@ -740,11 +977,16 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 //
 // The second return says whether ASKING AGAIN COULD HELP. A reply with no
 // verdict in it and a provider that errored are both worth one more call — the
-// first is a model that wandered, the second is a network — while an audit that
-// burned its whole deadline is not: the auditor already had every minute it was
-// going to get, and a second window buys a second timeout while the node holds
-// its worktree.
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
+// first is a model that wandered, the second is a network — while an audit whose
+// WINDOW has closed is not: the checking already had every minute it was going to
+// get, and there is nothing left to ask with.
+//
+// AND A CALL THAT HUNG IS WORTH ONE MORE TOO, which is the rung that did not
+// exist. A stalled stream is abandoned at its own share of the window
+// ([auditPace]) and the check is asked again inside what is left — where before
+// it, one hung call spent the whole five minutes and the node landed on a
+// sentence claiming nobody could check it (#513).
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(ground.dir, node, door)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
@@ -762,12 +1004,22 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// on the verdict rather than a second life for a task that has already been
 	// stopped.
 	//
-	// AND THE WINDOW IS THE DOOR'S. An audit with a check to run gets the time a
-	// check takes; an audit whose only remaining move is a refused command gets
-	// the time reading takes, because it is never going to run anything and
-	// waiting out the rest is the measured failure ([auditDoor.window]).
-	window := a.auditWindowFor(door)
-	auditCtx, done := context.WithTimeout(ctx, window)
+	// AND THE BOUND IS THIS CALL'S SHARE OF THE NODE'S WINDOW, never the window
+	// itself ([auditPace]). The window's own length is the door's — a check with
+	// something to run gets the time a run takes, one whose only remaining move is
+	// a refused command gets the time reading takes ([auditDoor.window]) — and
+	// what is decided here is only how much of it one call may hold.
+	//
+	// A WINDOW WITH TOO LITTLE LEFT IN IT ASKS NOBODY ANYTHING. It is read HERE,
+	// with the first checker closed and this one already built, so the bound is
+	// measured against the time this call actually has; a retry that would get
+	// less than the floor is not made at all, and what the landing then says is
+	// that the window closed rather than that a call it never made stalled.
+	bound, worthAsking := pace.bound(time.Now())
+	if !worthAsking {
+		return noVerdict(checkerRanOut(pace.window), ""), false
+	}
+	auditCtx, done := context.WithTimeout(ctx, bound)
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
@@ -794,7 +1046,26 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// it reads ctx itself. What is this function's story is the audit that ran
 	// out of its own window with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		return noVerdict(checkerRanOut(window), said), false
+		// AND THE TWO CLOCKS ARE TOLD APART, because they decide different things.
+		// A call cut while the window still has room leaves something to ask
+		// with, and the check is asked again inside what is left; a window that
+		// has closed is the whole of this node's checking over.
+		//
+		// WHAT NEITHER OF THEM CHANGES IS THE SENTENCE. A CALL THAT STALLED IS
+		// SAID TO HAVE STALLED, whichever clock ran out second: this one was
+		// asked, held the stream for its whole bound and answered nothing, and
+		// "nobody could check it in 5m0s" over the top of that is the harness
+		// telling a person nobody was asked. So the window's closing is a clause
+		// on the end of the call's own account, exactly as it is one rung up
+		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
+		// the case it is true of: no call stalled, and the window simply ran out.
+		stalled := noVerdict(checkerStalled(bound), said)
+		if pace.left(time.Now()) > 0 {
+			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
+			return stalled, true
+		}
+		fmt.Fprintf(log, "audit: %s%s\n", checkerStalled(bound), checkerWindowClosedTail)
+		return stalled.andTheWindowClosed(), false
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
@@ -821,9 +1092,11 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 
 // nudgeAudit asks the SAME auditor, once, for the word it did not say.
 //
-// It runs inside the audit's own five minutes rather than opening a window of
-// its own: the auditor has already done the reading, and a nudge that could
-// outlive the deadline would be a second audit wearing a cheap name.
+// It runs inside the CALL'S own bound rather than opening a window of its own:
+// the auditor has already done the reading, and a nudge that could outlive the
+// deadline would be a second audit wearing a cheap name. That bound is a share
+// of the node's window ([auditPace]) rather than the whole of it, which is what
+// leaves the fresh checker after it something to be asked with.
 //
 // EVERY FAILURE KEEPS THE ORIGINAL NON-ANSWER. A nudge that errors, that is cut
 // off, or that comes back without the word again has taught us nothing new about
@@ -1061,7 +1334,12 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 // it is.)
 func repairInstruction(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) string {
 	var out strings.Builder
-	out.WriteString(node.instruction())
+	// BOUND TO THE COPY, like the opening request was. A repair round is the
+	// second and last moment a worker is spoken to, and a worker handed the
+	// parent's addresses on round two would be sent back out at the person's
+	// own checkout after round one had it right (task_run.go's
+	// [TaskNode.instructionOn]).
+	out.WriteString(node.instructionOn(tree))
 	if ground := repairGround(tree, changed); ground != "" {
 		out.WriteString("\n\n" + repairSawHeading + "\n" + ground)
 	}
@@ -1493,7 +1771,7 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -1566,7 +1844,7 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	// for a reason that has nothing to do with the work (task_run.go's
 	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
 	// job log instead.
-	if problem := stageTaskWork(dir, wrote); problem != "" {
+	if problem, _ := stageTaskWork(dir, wrote); problem != "" {
 		remove()
 		return auditGround{}, "the work could not be staged in a clean copy: " + problem
 	}
@@ -2053,13 +2331,25 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// divider that landed unverified and is accepted in the morning must lay the
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
-	changed, merge, detail := landHome(node, tree, changed)
+	changed, merge, detail, refusal := landHome(node, tree, changed)
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
 	// however sure the person was about the work. The node stays where it was —
 	// needing a look — with the conflicting files named, because what is being
 	// asked of them has changed: they said the work was good, and it is; what is
 	// left is two versions of the same file (task_run.go's [Agent.landConflicted]).
 	if !cameHome(merge) {
+		// AND A TREE THAT WOULD NOT TAKE THE WORK IS NOT ASKED AGAIN
+		// (task_land_unsaved.go's [landingRefusal]). Somebody has looked at this work
+		// and said it holds; what failed is the disk, and re-offering the same
+		// question buys the same refusal. So it settles as it stands, with the
+		// work where the sentence under it says it is, and the next resolution on
+		// this node is answered as already decided ([settledAlready]).
+		if refusal == refusedByTheTree {
+			node.finish(withReport(keptWhereItIsLead+detail, withReport(acceptedLine(why), report)),
+				changed, tree.branch, merge)
+			node.graph.resettle(node, TaskDone)
+			return nil
+		}
 		node.finish(withReport(needsLookLead+detail, withReport(acceptedLine(why), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
@@ -2196,13 +2486,23 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		changed, merged, detail := landHome(node, tree, changed)
+		changed, merged, detail, refusal := landHome(node, tree, changed)
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files
 		// named (task_run.go's [Agent.landConflicted] makes the same call on the
 		// gate's own road).
 		if !cameHome(merged) {
+			// A TREE THAT WOULD NOT TAKE THE WORK IS NOT ASKED AGAIN HERE EITHER,
+			// for [Agent.acceptTask]'s reason and by the same reading: a late
+			// verdict saying the work holds, over a disk that cannot take it, is
+			// the same pair of facts a person's accept produces.
+			if refusal == refusedByTheTree {
+				node.finish(withReport(keptWhereItIsLead+detail, withReport(claim, verdict.doneOutcome())),
+					changed, tree.branch, merged)
+				node.graph.resettle(node, TaskDone)
+				return
+			}
 			node.finish(withReport(needsLookLead+detail, withReport(claim, verdict.doneOutcome())),
 				changed, tree.branch, merged)
 			node.graph.resettle(node, TaskUnverified)
@@ -2351,6 +2651,12 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	auditor.mu.Lock()
 	auditor.tools = tools
 	auditor.definitions = definitions
+	// AN AUDITOR DOES NOT NAME ANYTHING. Its journal is machinery, and a
+	// session namer running after the first verdict would be a cheap-looking
+	// errand whose floor is THIS agent — the high tier — so a fall-through
+	// is a naming call billed on the model that exists to judge work, not to
+	// label it (F38). The attempt is marked used so maybeTitle is a no-op.
+	auditor.titleTried = true
 	auditor.mu.Unlock()
 	return auditor, nil
 }
@@ -2463,7 +2769,22 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 		if err := decodeToolArguments(args, &fields); err != nil {
 			return "Invalid arguments: " + err.Error(), true, nil
 		}
-		if refusal, ok := refuseOutsideDoor(fields.Command, door, voice); !ok {
+		command := fields.Command
+		if voice == auditShell {
+			// PRE-VALIDATE ONLY THE AUDITOR'S OWN BELT SO THE CONTRACT NEVER
+			// REFUSES ITS OWN COMMAND. The shared gate also serves fork hands,
+			// whose read-only door must continue to refuse every composition.
+			command = preparedAuditCommand(fields.Command)
+			if command != fields.Command {
+				fields.Command = command
+				rewritten, err := json.Marshal(fields)
+				if err != nil {
+					return "Invalid arguments: " + err.Error(), true, nil
+				}
+				args = rewritten
+			}
+		}
+		if refusal, ok := refuseOutsideDoor(command, door, voice); !ok {
 			return refusal, true, nil
 		}
 		return inner(ctx, args)

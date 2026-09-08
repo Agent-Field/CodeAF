@@ -1,0 +1,40 @@
+ aforge                                                                      1 want you · $1.85 / $500.00 · wed 11:05pm
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+12 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones
+
+aforge-v2
+? tell me when CI goes red on master                 asks: May I re-run the typecheck job to see whether it is flaky? 7m
+○ Porting the Picker                                                               another window · enter brings it here
+○ The Tab Bar's Counts                                                                                               47m
+○ Why the Frame Jumps                                                                                                 3h
+○ Standing Up the Watches                                                                                             5h
+
+infra
+○ The Certificate Rotation                                                                                           27m
+
+pricing-site
+○ Pricing Research                                                                                                    3h
+○ The Annual Toggle                                                                                                   5h
+▸ 5 more, quiet since sep 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                              here ~/aforge-v2
+ open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)

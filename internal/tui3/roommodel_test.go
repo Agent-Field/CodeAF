@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -363,4 +364,71 @@ func TestTheDecksTaskChipOpensTheSheetAndNotThePicker(t *testing.T) {
 func (a *app) statusSheetLines() []string {
 	lines, _, _, _ := a.deckSheetFrame(a.width, a.height)
 	return lines
+}
+
+// ── THE CLUSTER IS A ROW, AND A ROW GIVES UP ITS FACTS BEFORE ITS NAME ──────
+//
+// The two laws below hold each other up, and each one on its own is a bug this
+// wave shipped and then fixed.
+//
+// The FIRST is [rowfit.go]'s: the name is whole until the line cannot hold it.
+// It was broken by a fixed cap on the cluster ([roomChipCap], eighteen cells),
+// which spent the identity's price at every width — `Ship the parser fix` came
+// out `Ship the parser f…` on a row with sixty cells going spare.
+//
+// The SECOND is what that cap was reaching for and got backwards: a name the row
+// genuinely cannot hold must be cut, because the ladder above the cluster
+// (render.go's [app.statusLayout]) can only give up SEGMENTS, and a cluster that
+// overruns the whole row leaves it nothing to drop but the cluster — at which
+// point a hundred-and-twenty-column status line came out as the single word
+// `idle`.
+
+// roomStatusLine is the status row at one width, as a reader sees it.
+func roomStatusLine(t *testing.T, a *app, width int) string {
+	t.Helper()
+	a.width = width
+	a.touch()
+	return statusText(a)
+}
+
+// A NAME WITH ROOM TO SPARE IS DRAWN WHOLE, however far past a cap it runs.
+func TestTheStatusLinesRoomChipKeepsAWholeNameWhileTheRowHoldsIt(t *testing.T) {
+	a, _ := roomModelApp(t, "z-ai/glm-5.2")
+	// Nineteen cells — four cells past the cap that used to cut it, and nothing
+	// like the width of the row it is drawn on.
+	if line := roomStatusLine(t, a, 180); !strings.Contains(line, "Ship the parser fix") {
+		t.Fatalf("a name the row can afford was cut anyway:\n%q", line)
+	}
+	if line := roomStatusLine(t, a, 180); !strings.Contains(line, roomModelLead+"glm-5.2") {
+		t.Fatalf("the model gave way on a row with cells to spare:\n%q", line)
+	}
+}
+
+// AND A NAME THE ROW CANNOT HOLD COSTS THE ROW ITS FACTS AND THEN ITS OWN TAIL —
+// never the whole line. A hundred and one cells at a hundred and twenty columns
+// is the exact frame the `idle` collapse happened at.
+func TestALongRoomNameNeverCollapsesTheStatusLine(t *testing.T) {
+	long := "Ship the parser fix and the loader flake and the nil-map guard and the key table rewrite as well"
+	a, _ := roomModelApp(t, "z-ai/glm-5.2")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, long, session.TaskRunning,
+		session.TaskNotice{Model: "z-ai/glm-5.2"})})
+	a.room.title = long
+
+	for _, width := range []int{160, 120, 100, 80} {
+		line := roomStatusLine(t, a, width)
+		for _, row := range strings.Split(line, "\n") {
+			if got := ansi.StringWidth(row); got > width {
+				t.Fatalf("at %d columns the status row is %d wide:\n%q", width, got, row)
+			}
+		}
+		// THE ROW STILL SAYS WHERE YOU ARE. The name is cut, and what is left of
+		// it is enough to recognise the work by — never nothing at all, which is
+		// what the line collapsed to before the cluster was fitted.
+		if !strings.Contains(line, "Ship the") {
+			t.Fatalf("at %d columns the status line stopped naming the room:\n%q", width, line)
+		}
+		if strings.TrimSpace(plain(line)) == "idle" {
+			t.Fatalf("at %d columns the whole status line collapsed:\n%q", width, line)
+		}
+	}
 }

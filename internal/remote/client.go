@@ -1218,17 +1218,19 @@ func (a *Agent) Cancel(id string) (string, error) {
 	return stopped.Line, nil
 }
 
-// StartTask commissions the work on the engine machine and returns its receipt.
-func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, error) {
+// StartTask commissions the work on the engine machine and returns its receipt:
+// id, title, and the fallback note the engine's shaper asked the surface to
+// carry on the started row (empty whenever nothing was cut).
+func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, string, error) {
 	payload, err := a.c.callWithin(ctx, MethodTaskStart, TaskStartArgs{Brief: brief}, taskCallDeadline)
 	if err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	var started TaskStarted
 	if err := json.Unmarshal(payload, &started); err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
-	return started.ID, started.Title, nil
+	return started.ID, started.Title, started.Note, nil
 }
 
 // StartPlannerRun opens the adaptive form on the engine machine.

@@ -1,0 +1,50 @@
+ aforge                                                                                                                                1 want you · thu 12:17am
+  home   tasks   standing   memory   spend   search   settings
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+18 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones    Aforge-v2 Tui Porting
+? tell me when CI goes red on master       aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 1h    …/aforge-v2 · open in another window
+○ Aforge-v2 Tui Porting                                                  aforge-v2 another window · enter brings it here    enter again moves it here
+○ Wrapping Torture                                                                                          aforge-v2 1h    its reply finishes first
+○ About Something You Remember: Deploys on Fridays                                                          aforge-v2 1h    its tasks come here
+○ Notakey                                                                                                   aforge-v2 1h
+○ Why the Frame Jumps                                                                                       aforge-v2 1h
+○ The Certificate Rotation                                                                                      infra 1h    spent $0.01 · 42.2k tokens
+○ The Tab Bar's Counts                                                                                      aforge-v2 1h    last active 58m · thinking high
+○ Emoji Widths                                                                                              aforge-v2 1h
+○ Porting the Picker                                                                                        aforge-v2 1h
+○ Long Question                                                                                             aforge-v2 1h    → verbs: put it away, new chat here,
+○ Pricing Research                                                                                       pricing-site 4h             open folder, copy path
+○ Standing Up the Watches                                                                                   aforge-v2 6h
+○ The Annual Toggle                                                                                      pricing-site 6h
+○ Reading the Ledger                                                                                        aforge-v2 1d
+○ What the Discount Means                                                                                pricing-site 1d
+○ The Backup Window                                                                                             infra 2d
+○ Rotating the Deploy Key                                                                                       infra 4d
+○ D7e4f8d8b77eec2e                                                                                        aforge-v2 here
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ › say what you want done                                                                                                                      here ~/aforge-v2
+ open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)

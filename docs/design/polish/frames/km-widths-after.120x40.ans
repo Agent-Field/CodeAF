@@ -1,0 +1,40 @@
+[38;5;252mThe column was counting runes where it should count cells, so every full-width character[39m  [38;5;243m│ + /task[39m
+[38;5;252mwas costing one instead of two. Counting cells fixes the wrap and the ellipsis together.[39m  [38;5;243m│ [39m
+                                                                                          [38;5;243m│ + /standing[39m
+[38;5;146m› [38;5;110mand the emoji in the header? 🌏[39m                                                         [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;252mSame fault, same fix — it is two cells wide and was budgeted as one.[39m                      [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;146m› [38;5;110mAAAA plain ascii control line for the rail[39m                                              [38;5;243m│ [39m
+  [38;5;110mBBBB 👩‍👩‍👧‍👦 one zwj family sequence[39m                                                       [38;5;243m│ [39m
+  [38;5;110mCCCC ❤️[39m [38;5;110m ❤️[39m [38;5;110m two hearts with vs16[39m                                                       [38;5;243m│ [39m
+  [38;5;110mDDDD 🇯🇵🇯🇵 two regional-indicator flags[39m                                                  [38;5;243m│ [39m
+  [38;5;110mEEEE 日本語日本語 full-width cells[39m                                                      [38;5;243m│ [39m
+  [38;5;110mFFFF café naïve combining marks[39m                                                         [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;252mEvery one of those is a grapheme cluster whose cell count and rune count disagree, which[39m  [38;5;243m│ [39m
+[38;5;252mis the whole point of the line above it.[39m                                                  [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;146m› [38;5;110mthe pricing table and the plan cards do not agree about the annual discount whenever[39m    [38;5;243m│ [39m
+  [38;5;110mthe currency is not the dollar, and I would like you to find out which of the two reads[39m [38;5;243m│ [39m
+  [38;5;110mthe wrong field before either of us touches the copy[39m                                    [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;252mThe cards read the discount off the plan and the table recomputes it from the two[39m         [38;5;243m│ [39m
+[38;5;252mprices, so a rounded conversion moves one and not the other.[39m                              [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;146m› [38;5;110mwhere are the streaming docs, and where is the journal?[39m                                 [38;5;243m│ [39m
+                                                                                          [38;5;243m│ [39m
+[38;5;252mThe call is[39m                                                                               [38;5;243m│ [39m
+[4m[38;5;252mhttps://openrouter.ai/docs/api-reference/streaming?model=deepseek/deepseek-v4-flash-latest[0m[38;5;243m│ [39m
+[4m[38;5;252m&stream=true[0m[38;5;252m and the journal for this one is[39m                                              [38;5;243m│ [39m
+[38;5;252m/home/dev/.aforge/v3/projects/-home-dev-work-aforge-v2-checkout/e918879eb00988c5/transcrip[38;5;243m│ [39m
+[38;5;252mt.jsonl — both of those are one token to a reader.[39m                                        [38;5;243m│ [39m
+                                                                                          [38;5;243m│ Σ $0.39 · 19.7k tok[39m
+  [38;5;243m· resumed · 国際化とレイアウト幅 🌏 the café pricing page[39m                               [38;5;243m│ [38;5;116mctrl+.[38;5;243m earlier[39m
+  [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m                                      [38;5;243m│ [38;5;252m❯[39m [38;5;116mctrl+g[38;5;243m hide[39m
+
+[38;5;243m──────────────────────────────────────────────────────────────────────────────────────────────── [38;5;116m/[38;5;243m shows every command ─
+
+[39m                                                                                                                  [38;5;243m⠿ high
+[39m [38;5;243m› [39m
+[38;5;243m国際化とレイアウト幅 🌏 the café pricing page · deepseek-v4-flash-latest[39m     [38;5;243mcrew balanced · [39m   [38;5;243m$0.39 · 5.6k/1.3M · idle

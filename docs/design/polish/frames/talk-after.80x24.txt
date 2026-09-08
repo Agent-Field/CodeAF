@@ -1,0 +1,24 @@
+
+› what are the jobs doing?
+
+  The dev server was still up when this window last closed, the tui3 suite came
+  back clean, and `make check` stopped on a vet error in tasksplace.go — its log
+  has the line.
+
+  · 3 standing orders here — /standing
+  · resumed · Sweeping the Frame Budget
+  · esc interrupts · ctrl+c twice quits
+
+✓ ◇ Measure the frame budget in every package … · done · 4m00s · 1 file · merged
+  "Eleven packages measured. Four are over the cap; the plan t…" · ctrl+o output
+? □ Cut every list on the task su… · needs your look · 12m00s · 4 files · merged
+  "The four lists are on the fitter and the frames read right …" · ctrl+o output
+  finished, but nobody has checked it — your call
+  [a] accept · [l] look again · [n] not right · [d] decide these for me
+
+─ master* ────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                          ⠿ high
+ ›
+Sweeping the Frame Budget · deepseek-v4-flash-latest
+                crew balanced · ◦ keeping an eye on 3 · $1.07 · 5.5k/1.3M · idle

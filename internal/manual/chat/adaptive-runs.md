@@ -85,6 +85,55 @@ way into it from here. For a shape of work that recurs, the thing to reach for i
 **sub-harness** — built once, saved, offered again (*Saved shapes of work*) — and for one
 job that leaves the conversation, a **task**.
 
+## The plan said "not settled" — what do I do
+
+For every oversized work node the planner could not divide, `aforge plan` writes this line
+to the error stream:
+
+```
+not settled: <title> — <reason>
+```
+
+The graph was still written, but the command exits with code **2**. The reason means the
+planner could not divide a node that is too large for one worker. Rephrase the request and
+name the parts you want, or run it anyway with `aforge do`, which plans again.
+
+One of the reasons is measured rather than judged: **its named material exceeds what one
+worker holds**. When the run has a folder (`-w`), the planner weighs the material a node
+names against how much one worker can hold at once, and a node that names more than that
+may not be called small enough to just do.
+
+**What is weighed is the material the node will read, not the file its words mention.** A
+node whose source names a file bare — `register.txt` — is weighed the whole file. A node
+whose source scopes it — `register.txt: North block heading, 1,160 North records`, or
+`HANDBOOK.md — all 30 heading lines` — is weighed only that share, read out of the file
+itself: a line range, a count of records or lines, or a heading or block the file really
+has. A scope written in words no arithmetic reaches is not weighed at all, and the node
+is left to the planner's own judgment. So lanes that each own one block of one big file
+are not refused for the size of the file.
+
+## Why it broke my job into stages, or planned it in full instead of just doing it
+
+The same measurement that can refuse a node is also stated to the planner before it draws
+anything. When the run has a folder (`-w`), the files the **goal itself** names by name are
+weighed against how much one worker holds at once, and the figure goes into the planner's
+brief as a fact — `MEASURED — the material this goal names by name is 2 files, 165.4 KB in
+all. One worker holds 32.0 KB of material at a time, so what is named is 5.2 times what one
+worker can hold.` Context pressure is the one reason for a stage the planner is no longer
+asked to guess at: told that sentence, it must lay the work out so each stage's worker
+carries its own share; not told it, it may not invent a size for anything.
+
+Two shortcuts are bound by the same reading. A goal that names more than one worker holds is
+never handed whole to a single worker — the plan that says "one stage, just do it" is set
+aside while any plan with stages is on the table, and a short chain of one-sitting steps is
+not folded back into one. When work is picked up again after a worker ran out of room, the
+replan is **planned in full** rather than handed straight back to one fresh worker, which is
+the same exhaustion bought twice.
+
+None of this happens without a folder to weigh in. A run with no `-w`, or a goal that names
+no file that exists, is not treated as small — it is treated as unmeasured, and every one of
+these passes behaves exactly as it did before any of it was read.
+
 ## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
 
 ```
@@ -117,6 +166,11 @@ mid-flight — and last one footer line:
 ```
 4m12s · 6 nodes · $0.0731
 ```
+
+**A part of that line that is zero is left out.** A run that spent nothing ends without a
+figure, a run with no nodes says nothing about nodes, and a run that never got started has
+no footer at all — `0s · 0 nodes · $0.0000` would be three claims nobody earned, printed
+directly under the sentence saying it did not run.
 
 **Everything else goes to the error stream**: the `models:` line it opens with, a row per
 piece of work as it starts and as it lands, and, when half a minute passes with nothing to
@@ -155,27 +209,46 @@ With no prompt written out, it reads the prompt from whatever is piped in.
 
 | flag | what it does |
 | --- | --- |
-| `-w <dir>` | the directory it works in |
+| `--dir <dir>` | the directory it works in (`-w` is the shorthand, and keeps working) |
 | `--system <text>` | the working method for the worker |
-| `--turns <n>` | a runaway backstop on how many times it goes round its loop |
-| `--budget <n>` | the token budget for the whole run |
-| `--timeout <seconds>` | a hard wall in seconds; unset, it is scaled from the token budget |
+| `--max-turns <n>` | a runaway backstop on how many times it goes round its loop |
+| `--token-budget <n>` | the token budget for the whole run |
+| `--timeout <duration>` | a hard wall, `15m` or `2h` or a bare number of seconds; unset, it is scaled from the token budget |
 | `--json` | print a machine-readable result instead of the plain text |
-| `-o <file>` | write that same result to a file as well |
+| `--out <file>` | write that same result to a file as well (`-o` is the shorthand) |
 | `--model <slug>` | the work model |
-| `--plan-model <slug>` | taken and ignored |
+| `--plan-model <slug>` | taken, and it says on stderr that `exec` does not plan |
+
+`--turns` and `--budget` are the old spellings of `--max-turns` and `--token-budget`. They
+still work for one release and each says so once on stderr: *budget* is a word about money
+everywhere else in this product, so a token count wearing it read as dollars.
 
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
 when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
-and the machine-readable result says which — it carries the worker's text, the reason it
-stopped, what it used, and the files it made.
+and the machine-readable result says which — it carries the worker's `answer`, the reason
+it stopped, what it used, and the files it made. **A run that failed also carries
+`error`**: the reason in the same words a person would read on the error stream, so a
+script reading only standard output can learn why and not just that.
 
-`--plan-model` is accepted only so that every command you can run without the screen takes
-the same flags. `exec` plans nothing, so naming it changes nothing.
+**Its exit code is the one ladder every headless command leaves on**, and it is written in
+`aforge --help` beside the command: `0` done · `1` it could not be run at all · `2` it ran
+and did not finish · `3` a limit you set stopped it · `4` it needed an answer and nobody
+was there. Which limit stopped it is in `stop`. **`1` means nothing ran at all** — a
+missing key, or a model id the provider rejected before the first call — so a run that
+started, spent money and then fell over leaves with `2`, not `1`.
+
+`aforge exec` used to leave on six rungs of its own — `2` the token budget, `3` the turn
+cap, `4` the wall, `5` an error, `6` nothing to say — and never returned `1`. Setting
+`AFORGE_EXIT_CODES=legacy` puts those old numbers back for one release and changes nothing
+else.
+
+`--plan-model` is still taken so that a command line written before it went away keeps
+working. `exec` plans nothing, so naming it changes nothing, and it says so once on the
+error stream.
 
 Without `--json`, standard output is the worker's own text and nothing else. It opens on the
-error stream with one seat rather than two — `models: work <model> (crew frugal)` — because
-only one of them runs anything.
+error stream naming one model rather than two — `models: work <model> (crew frugal)` —
+because only one of them runs anything.
 
 ## What one costs and what happens when the money runs out
 
@@ -495,7 +568,7 @@ begins `INCOMPLETE: the node's final reply was cut off at the output limit after
 continuation attempts.` The planner reads that warning with the fragment, so it can treat
 the node as unfinished rather than mistaking the prose for a completed deliverable.
 
-## When a run's worker says it wrote a file and did not
+## When a run's worker says it wrote a file and did not — the run said it wrote a file but there is nothing there
 
 A node that was given a write scope and **changed no file** does not land as done, however
 its last sentence reads. Models end turns on lines like "Now I have both files. Let me
@@ -516,6 +589,39 @@ A node with **no** write scope is read-only work — its brief says `THIS IS REA
 find out, do not change anything` — and writing nothing is the whole of what it was asked
 for. It is never held to this.
 
+## "I said change no files" — rules you state are laws of the run: do not touch anything, only write inside one folder
+
+A rule you state about what the run may or may not **do** — as distinct from what it must
+produce — is a law of the run, not a preference in the brief. Tell it to touch nothing
+(`Change no files.`) or to stay inside one folder (`Only touch docs/.`, `Don't write
+outside src/.`). aforge may only hold you to words you actually wrote: a rule it cannot
+quote back out of your request is dropped. **Three things then happen with it.**
+
+- **Every worker reads it first.** It sits above the working method in the brief of every
+  piece of the job — including the ones spliced later by a repair round or by work planned
+  to close a review's finding, which is where it used to be lost. A repair round is told
+  in as many words that your rule outranks the review's gap.
+- **The gate checks the files the run changed against it**, before any review is bought.
+  A run told to touch nothing is stopped by any file it left in your workspace — **or
+  deleted from it**; a run told to stay in one folder, by anything it wrote outside that
+  folder. aforge's own bookkeeping — its `.aforge/` logs and traces — is never counted, and
+  neither is a dependency tree something installed. A rule no such arithmetic can settle —
+  "don't use the network" — is put to the review as the standard beside your request
+  instead, and **a review that fails the work by quoting one of your rules ends it the same
+  way**: no round is bought for that either.
+- **A run that broke one ends failed, with the rule quoted and the files named**, and no
+  round is bought: nothing is repaired and nothing further is planned, because the work did
+  the one thing you said not to and more of it is not the answer. Headless, that is
+  **exit 2** and a last line like:
+
+```
+gate: fail — The work broke a rule the person set: "Change no files." (2 files).
+```
+
+A run told to change nothing that changed nothing has **kept** its rule, and nothing counts
+that against it: the "this round changed nothing on disk" reading that normally refuses a
+repair is off for such a job.
+
 ## When a review says something is missing — why it says partial, not finished
 
 Before a run's answer is handed over, one review reads it against your own request and
@@ -528,9 +634,15 @@ front of it — and, if the gap survives that, the work that closes it, planned 
 like any other piece. You see one line: `a review found this still missing: … — finishing
 that before delivering`.
 
-**Three things can stop that round being bought, and only one of them means the review was
-wrong.**
+**Four things can stop that round being bought, and two of them end the run finished.**
 
+- **The request is already satisfied.** Before any repair is started, the run asks one more
+  question with your request in front of it exactly as you wrote it: is this, as stated,
+  satisfied by what is in hand? A yes ends the job there, with `the request was met as
+  stated` on the record and on the last line. Nothing is redone and nothing is queued. It is
+  only ever asked about the review's own reading of your words — never about something
+  measured, such as a file that is not on disk, a check this work turned red, or a behaviour
+  nothing exercises. See "Why it kept going after it already had the answer" below.
 - **It is already there.** The file the review says is missing is on disk under the name
   you used. The review was checked against the world and lost, and the answer is handed
   over as finished: `a review raised this: … — I've delivered as it stands, because what
@@ -551,7 +663,7 @@ wrong.**
   this still missing: … I've taken it as far as repair takes it: there is not enough time
   left on the run to finish it.`
 
-**Only the first of those is a finished run.** The other two hand over something the run
+**Only the first two of those are a finished run.** The other two hand over something the run
 itself says is short, so the work lands as **partial** — headless, `aforge do` leaves with
 **exit 2: the run handed over less than it promised, and the finding it is short of is
 named on the last line.** That is the whole difference: a refusal that was checked against
@@ -604,6 +716,48 @@ there has never been one it says `nothing this job is about has changed`. A run 
 because its wall could not hold another round of work says `partial — no time left for
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
+
+## My headless run failed — where is its record, why is there a folder left behind after `aforge do`, how do I keep the run's files with `--keep`
+
+`aforge do` works in a private store of its own unless you point it somewhere durable with
+`--db`. What becomes of that store depends on how the run ended:
+
+- **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
+  which is the point of a one-shot.
+- **It fell over at the door** — no API key, a `-w` directory that cannot be made, a store
+  that will not open — and there is nothing to keep: the folder goes and no path is printed.
+  Nothing ever ran, so a `record kept at` line would only point you at an empty directory on
+  the one line where you are already looking for the cause. `--keep` and `--debug` still
+  keep it, because those asked for it by name.
+- **It did not** — exit 1, or the partial exit 2 above, or a run you stopped with Ctrl+C —
+  and the store is **kept**, with no flag and nothing decided in advance. The last thing the
+  run writes on the error stream is where it is:
+
+  ```
+  record kept at ~/.aforge/runs/aforge-do-3f81c2
+  ```
+
+Kept records live under `runs/` in aforge's own folder — `~/.aforge/runs/`, or wherever
+`AFORGE_HOME` points — and **not** in the machine's temporary directory, so nothing sweeps
+one away before you go looking for it. That directory holds `graph.db`: the journal every
+worker wrote to, the plan as it stood, the deliverables, the receipts and the spend. Hand it
+back with `aforge do --db <that path>/graph.db "…"` to work in it again, and it is an
+ordinary directory otherwise — read it, copy it, delete it when you are done with it.
+
+Stopping a run yourself keeps it too. Ctrl+C — or a `SIGTERM` from whatever launched it —
+lands the run rather than vanishing it: the work in flight is settled, what it produced is
+reported, and the `record kept at` line is printed on the way out. Press Ctrl+C a second time
+and the process dies immediately; the folder is still there, because nothing got as far as
+deleting it.
+
+Two ways to keep it whatever happened: `--keep` on the run, or the environment variable
+`AFORGE_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
+as long as it is set. Neither is needed to keep a failure any more. This used to be the
+other way round — every run's store was deleted on the way out, worked or not — so a person
+discovered they wanted the record after the failure, which was after it was gone.
+
+A run pointed at `--db` never had a private store to keep: that store is yours and is left
+exactly where you put it, whatever the run did.
 
 ## When aforge decides there is nothing left to do — and when it may not
 
@@ -664,6 +818,34 @@ buying anything.
 The wording you see on the work's own record when nothing in the review can buy a round is
 `everything still missing here has already had two rounds of work aimed straight at it, so
 this is handed over with it named rather than repaired`.
+
+## When a worker says it is done and never ran the check — a done that names nothing it ran
+
+A worker's account names the shell commands that worker issued itself, under
+`What the work ran itself:`, in the order it ran them. They are kept apart from the reading
+aforge takes of the finished tree: a command the worker ran is a fact about what it did,
+and its output was never read as proof that a check passed. The list is bounded, and where
+its beginning was left out it says how many earlier commands are in the run's own record.
+
+Where the work changed files and nothing was ever asked of the finished tree, the account
+says exactly `no check was run on the finished tree`, and the same words are the one clause
+the plan carries for that node. It does not leave the block out: a deliverable naming no
+check otherwise reads exactly like one whose checks had nothing to report, which is the
+same claim with the evidence taken out of it.
+
+That covers a project that declares no way of checking itself, and a wall too short to
+afford a reading worth taking: nothing was going to be read, and the account says so.
+
+Where a reading WAS taken and the finished tree could not be read, you get that reason
+instead — the check that could not be started a second time, the suite that failed to
+collect, the command killed at its ceiling before it named anything. Those are not the same
+fact and aforge does not spell them the same way: nobody looked is not everything passed,
+and a reading that broke is not a tree that went unchecked.
+
+A red that aforge's own reading finds on the finished tree does not stop there either when
+the worker had already been told to land and so was never asked to settle it. The finding
+is handed to whoever picks the work up, so the next worker starts from what the reading
+found rather than paying to discover it again.
 
 ## When a worker runs out of its tokens mid-work — ⏳, and the work is picked up again
 
@@ -878,6 +1060,23 @@ the run goes on to deliver, be reviewed, and land like any other — **with the 
 checklist it already read off your request**, so a job that fell back here is still held to
 the behaviours you stated rather than only to how its answer reads.
 
+## When the run says a brief could not be written — a plan already drawn is kept
+
+You only see that line when **no plan was drawn at all**. Planning is seven or eight model
+calls, some of them one per node, and a fault in a late one is not a reason to throw away
+the shape the earlier ones found. A plan that exists is run as drawn.
+
+The one that used to do this is the per-node instruction. Every piece of work is handed its
+own written instruction, and that is one model call per node; when one of those came back
+cut, a six-step plan was discarded and the whole job ran as a single worker. It no longer
+is. **A failed instruction is asked for once more, and if the second try fails too, that
+one node is given an instruction composed from what the plan already knows about it** — its
+title, what the plan said it is for, and the files it is expected to touch. The other nodes
+keep their written ones and the plan keeps its shape.
+
+Nothing is hidden: the composed instruction and the reason no model wrote it are both kept
+with the job, so a run can be read back afterwards and the composed ones picked out.
+
 ## What the review is allowed to hold you to — the request, the method, and what was promised
 
 A review may only ask for things that were promised **before the work started**: your own
@@ -934,7 +1133,10 @@ package's `__init__.py` is the only thing that says so. Only import lines are re
 whole names match, so `Log` is never `Logger` and `log` is never `dialog`. **Your request
 does not have to spell a path**: a name it uses that this repository has a file for — an
 `IntersectionObserver`, a `RichLog` — is resolved to that file, whole, and that is what
-decides which package is read. It resolves to **every** file of that name rather than the
+decides which package is read. **And a directory you name is the scope.** A request that
+says `go test ./internal/subharness/ -count=1`, or names `packages/happy-dom`, is read over
+that package and nothing else, as long as the workspace holds it — a place it does not hold
+is prose that happened to have a slash in it, and is dropped. It resolves to **every** file of that name rather than the
 first one found, so a repository that keeps a documented example beside the real widget does
 not send the reading to the example. And when your request writes a name both ways — `Log`
 and `RichLog` in one sentence — the short one counts as a name too, so a change to both is
@@ -995,18 +1197,31 @@ for the reading taken after the work as much as for the one before it — and wh
 ran but printed nothing a check could be read out of, the record says that, rather than the
 same words it would use for a project it could not read at all.
 
-**And a reading cut at its ceiling is taken again, smaller.** Every other reason there is no
-reading is a fact about your project or about the time available, and a later round inherits
-it rather than paying to learn it twice. A scoped reading that ran out of time is not one of
-those: it is a fact about a size aforge chose, and the run now knows how fast this project's
-checks go — so the next reading is the checks your change is in, rather than the same
-ceiling again.
+**And a reading cut at its ceiling is taken again, smaller — when there is a smaller one to
+take.** Every other reason there is no reading is a fact about your project or about the
+time available, and a later round inherits it rather than paying to learn it twice. A scoped
+reading that ran out of time is not one of those: it is a fact about a size aforge chose, and
+the run now knows how fast this project's checks go — so the next reading is the checks your
+change is in, rather than the same ceiling again. But **only when that next reading is
+strictly smaller**: a reading of the whole suite has nothing narrower to fall to, and a
+second identical attempt cannot finish where the first one did not, so it stands as it is
+rather than spending another eighth of the wall to be killed at the same place.
 
 **Repair rounds are measured against the tree the job started with.** The first reading
 belongs to the whole job, not to one attempt: a second or third round inherits it rather
 than photographing a tree its own earlier round has already changed. Without that, a check
 broken in round one is red in round two's baseline and is never reported again. It also
 means a repair round runs the suite once rather than twice.
+
+**And the second reading is taken only when the tree changed.** What counts as changed is
+the run's own record of the files it produced or altered, settled against the disk: each
+recorded file's size and write time, and a marker for a recorded file that is no longer
+there. A rewrite of a file already recorded, and a deletion — which never appears in a file
+list, because that list is what you are shown and a deleted file is not something you can
+open — both count. When the job has changed nothing since the reading before the work, that
+reading *is* the reading of the finished tree: it stands, the record says it was inherited,
+and no command runs. The same holds at the check at the end of the job, for the tree it
+already has a reading of.
 
 **A behaviour you asked for that no check covers keeps the run from ending clean.** The
 check at the end of a job maps every behaviour your request states against the checks that
@@ -1106,6 +1321,32 @@ once per job, so a repair round inherits it rather than paying again. In every o
 cases the behaviour is what it would have been without any of this, and nothing is claimed
 about checks nobody read.
 
+## Why did it run the whole test suite when I asked about one package — and why more than once
+
+It should not, and since #429 it does not. A reading covers **what your request names or
+what the work touched**, and it is taken again only when the tree actually changed.
+
+- **What your request names.** A package or directory you spell — `./internal/subharness/`,
+  `packages/happy-dom` — is the scope, when the workspace holds it. So is a file you name,
+  and so is a name this repository has a file for. Only a request that names nothing at all,
+  in a job that has changed nothing yet, is read over the whole project.
+- **Once per tree.** Every leaf of a job after the first inherits the reading the job
+  already took. It used to be that inheriting one *bought* a second reading of the finished
+  tree; now the finished tree is only read when the run's own record says a file moved.
+- **Never the same reading twice.** A reading killed at its budget is retaken only over a
+  strictly smaller selection. A whole-suite reading has none, so it stands.
+- **A deletion counts as a change.** What decides all of the above is the run's own record
+  of the tree, read off the disk — each recorded file's size and write time, and a marker
+  for a recorded file that is gone. So a round that rewrote a file it had already written,
+  and a leaf whose only change was to REMOVE a file, are both read again; a file list alone
+  could see neither. And where nothing watched the tree — a job no worker photographed —
+  the check at the end reads it rather than assuming an empty file list means an untouched
+  tree.
+
+What that was worth: one measured errand — run one package's tests and report the last line,
+change no files — read `go test -json ./...` over 4,587 tests nine times, each killed at its
+two-minute budget, 82% of an 11m40s run.
+
 ## What "acceptance" means — the checklist read off your request before the work starts
 
 Before anything runs, your request is read once for the **behaviours it states** — a rule
@@ -1131,13 +1372,19 @@ rather than lines because one line of yours often states several things at once,
 checklist that read "defaults are threshold = 5, cooldown = 30000, halfOpenMaxRequests = 1"
 as one behaviour had nothing fine enough to match a check to.
 
+Each point is also read as one of two kinds: a **behaviour** of the finished work — a rule
+it follows, a case it handles, an output it produces — or an **action** of the run, which is
+something done on the way rather than something the result is: a command run, a report
+made, a file read. Both stay on the list, because both are your words. Only behaviours are
+ever matched to a check.
+
 **When there is no list.** A request that states no checkable behaviour — a question, a
 lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
 exactly as it would have without any of this.
 
 ## When nothing checks what you asked for — "no check exercises …"
 
-At the end, the review asks one more question of every verdict it reaches — whether it was
+At the end, the review asks one more question of every answer it reaches — whether it was
 about to accept the work or has already found something else missing: for each behaviour on
 the checklist, **is there a check that would fail if this were absent or wrong?** Where the
 review has already named a gap, both gaps travel together, so the repair round is told about
@@ -1172,13 +1419,97 @@ when the review's own finding is refused**: a ruling about where a review got it
 nothing about a behaviour nothing exercises. If nothing closes it the run lands partial
 rather than finished.
 
-Watching a headless run, it is one line under the verdict — the first behaviour named, the
+**It is only ever raised where a check could exist**, and there are three ways it is not.
+A point of your request that names something the RUN does — a command to run, a report to
+make, a file to read — is written down as an action and is never matched to a check at all;
+nothing a repository can run would fail because a command that has already been run were
+not run. A run that **changed no code** is asked for no check either: there is nothing for
+one to be missing from, and the run says so on its record — "the work changed no code, so
+there is no check to ask for". And where the project's own checks **could not be read** —
+the suite was never run, was killed at its ceiling, or failed to collect — and the change
+itself declares none, the answer is that nothing measured it, not that nothing exercises
+it: "the project's checks could not be read and the work's own diff names none, so no
+behaviour could be matched to a check". No finding, and no round bought for it. A suite
+that ran and genuinely has no tests is a real measurement and still raises the finding.
+
+Watching a headless run, it is one line under the review's answer — the first behaviour named, the
 rest counted:
 
 ```
   gate: fail — The deliverable is a report about the work rather than the work.  14m39s
   no check exercises — A half-open probe holds its slot across internal retries — and 2 more  14m39s
 ```
+
+## Why it kept going after it already had the answer — it said partial but the tests were green
+
+At the moment the run would otherwise buy another round — a review has failed the work and
+a repair is about to be started — one more question is asked, with your request in front of
+it exactly as you wrote it: **is this request, as stated, satisfied by what is in hand?**
+
+A yes ends the job there. No repair, no extra work planned, no reservation on the delivery;
+the run finishes and says, under the same ✓ the rest of the stream uses:
+
+```
+  ✓ run it — the request was met as stated
+```
+
+That sentence — `the request was met as stated` — is the receipt, and it is on the run's
+own record as well as on the screen. A run that ends this way is finished, not partial.
+
+The question is asked at that one moment and nowhere else, so it costs one model call in
+place of the round it replaces, and nothing on the ordinary path. It is asked with the
+deliverable and the record of what changed, and it is told that form is not substance: an
+answer wrapped in a sentence, put in a code block, or given under a heading **is** the
+answer. It is also told not to add what a careful engineer would also do, and not to treat
+finished work that was not re-checked as something missing.
+
+When the answer is no, nothing changes: the repair round is bought exactly as before, and
+what the question found absent is kept on the record beside the review's own gap rather
+than mixed into it. If that repair round produces a new answer, the new answer gets its own
+question before any further work is planned — but one answer is never asked about twice.
+
+**It is never asked about something measured.** A file the plan promised that is not on
+disk, a check that passed before the work and fails after it, a name nothing in the tree
+binds, a behaviour no check exercises: those are facts gathered from your project, and no
+reading of your request can talk one away. The question is put only about what the review
+itself concluded from your words.
+
+There is a second receipt for a different ending. Where the project's own checks could not
+be read at all but the work's own checks ran and every one of them settled, the delivery
+carries `checked by tests, coverage not measured` — so a run whose tests are green is never
+called partial, and never quietly passed either. The receipt says which of the two it was.
+
+## "It failed but the tests were green" — the model dropped out after finishing
+
+A worker can write the change, run your project's own checks, find them green, and then have
+its very next call to the model never come back — the provider refuses it, or the connection
+dies. That used to end the run: exit 1, the provider's own sentence printed as the
+deliverable, and nothing anywhere had looked at the work sitting on disk.
+
+**A worker cut off on the wire is judged on the tree.** Where the last attempt ended because
+a CALL failed rather than because the WORK failed, and the worker left files behind, what is
+on disk is put to the same review a delivered worker faces: the reading of your project's own
+checks first, then the one question — *is this request, as stated, satisfied by what is in
+hand?* A yes ends the run finished, under the same ✓ every satisfied run gets:
+
+```
+  ✓ fix the pager tempfile mode — the request was met as stated
+```
+
+and in plain words on the run's own record:
+
+```
+the work landed and was checked on the tree; the last message from the model never arrived
+```
+
+**A no leaves the failure exactly where it was**, with both facts written down: `the last
+message from the model never arrived, and what is on the tree does not do what was asked
+— …`. Anything measured decides it before the question is even asked — a check this work
+turned red, a name nothing in the tree binds, a rule you stated and the work broke.
+
+**It widens nothing else.** A worker cut off having written no file still fails as it did;
+so does one whose own work errored, and one whose clock ran out; and where the review itself
+could not be reached, the failure stands rather than being passed.
 
 ## When a check names what you asked for and asserts nothing about it
 

@@ -122,7 +122,7 @@ func TestTheMemoDoesNotAnswerForACallThatActsInThePersonsName(t *testing.T) {
 // being taken away.
 func TestTheMemoStillAnswersAnOrdinaryCommand(t *testing.T) {
 	policy := &approval.Policy{Default: approval.ActionPrompt}
-	agent, runs := bashAgent(t, policy, "git status", "git status --short")
+	agent, runs := bashAgent(t, policy, "make build", "make test")
 
 	var asked int
 	drainAnswering(t, mustSubmit(t, agent, "check the tree"), func(request Event) {
@@ -145,7 +145,7 @@ func TestTheMemoStillAnswersAnOrdinaryCommand(t *testing.T) {
 // is keyed by tool name alone.
 func TestARuleScopedAnswerLeavesNoToolWideMemo(t *testing.T) {
 	policy := &approval.Policy{Default: approval.ActionPrompt}
-	agent, runs := bashAgent(t, policy, "git status", "curl example.com")
+	agent, runs := bashAgent(t, policy, "make build", "curl example.com")
 
 	var asked []Event
 	drainAnswering(t, mustSubmit(t, agent, "look around"), func(request Event) {
@@ -168,7 +168,7 @@ func TestARuleScopedAnswerLeavesNoToolWideMemo(t *testing.T) {
 // one: a typo must not widen anything, and it must not silence anything either.
 func TestAnUnknownScopeIsStillReadAsOnce(t *testing.T) {
 	policy := &approval.Policy{Default: approval.ActionPrompt}
-	agent, _ := bashAgent(t, policy, "git status", "git status")
+	agent, _ := bashAgent(t, policy, "make build", "make build")
 
 	var asked int
 	drainAnswering(t, mustSubmit(t, agent, "twice"), func(request Event) {
@@ -186,7 +186,7 @@ func TestAnUnknownScopeIsStillReadAsOnce(t *testing.T) {
 // under, and the card reads the command it is about to remember off that row.
 func TestAConsentRequestNamesTheCallItIsAbout(t *testing.T) {
 	policy := &approval.Policy{Default: approval.ActionPrompt}
-	agent, _ := bashAgent(t, policy, "git status")
+	agent, _ := bashAgent(t, policy, "make build")
 
 	var asked []Event
 	drainAnswering(t, mustSubmit(t, agent, "check it"), func(request Event) {

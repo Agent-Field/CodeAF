@@ -1,0 +1,40 @@
+▏ func (a *app) burnSegment() string {                                                    │ + /task
+▏     if a.state != stateWorking || a.turnBegan.IsZero() { return a.holdBurn("") }        │
+▏     return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Seconds()))) + "… │ standing
+▏ }                                                                                       │ ◦ the morning sweep
+                                                                                          │ ? CI on master
+Supercalifragilisticexpialidociousandthensomeextraletterstomakeitlongerthansixtycolumnsw  │ ◦ the public API
+ide.                                                                                      │ + /standing
+                                                                                          │
+Unicode: 日本語のテキストはここにあります、そして中文文本也在这里，很长很长。 And emoji:  │
+🎉 🚀 ✅ 🧪 — plus a flag 🇯🇵 and a family 👩‍👩‍👧‍👦.                                          │
+                                                                                          │
+│ A blockquote that runs on for a while so that it has to wrap at sixty columns and       │
+│ shows what the marker does on the second line.                                          │
+                                                                                          │
+1. first                                                                                  │
+2. second, with a much longer body so that it wraps and we can see whether the hanging    │
+   indent lines up under the text or under the number                                     │
+3. third                                                                                  │
+                                                                                          │
+· bullet                                                                                  │
+  · nested bullet with enough words to wrap at the narrow sizes we care about             │
+  · 3 standing orders here — /standing                                                    │
+  · resumed /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-                │
+  73decce3d3d5/scratchpad/demohome/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af- │
+  dev-2418657d-8173-4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-                    │
+  v2/ffff0000wrap0001/transcript.jsonl                                                    │
+  · esc interrupts · ctrl+c twice quits                                                   │
+                                                                                          │
+› first line of a draft that I am still writing                                           │
+  second line here                                                                        │
+  third line, which is quite a lot longer than the two above it so that it has to wrap    │
+                                                                                          │ Σ $0.12 · 12.7k tok
+  · remembered · first line of a draft that                                               │ ctrl+. earlier
+  ··· paced                                                                               │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                  ⠿ high
+ ›
+Wrapping Torture · deepseek-v4-flash-latest · paced           ◦ keeping an eye on 3 · $0.12 · 5.8k/1.3M · ⠏ working · 4s

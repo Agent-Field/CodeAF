@@ -1,0 +1,45 @@
+    has_default: str = "default"                                                                              │ tasks
+                                                                                                              │ ✓ ◇ paste 1               #1
+                                                                                                              │ + /task
+@attrs.define()                                                                                               │
+class Subclass(Base):                                                                                         │ + /standing
+    other: bool                                                                                               │
+                                                                                                              │
+                                                                                                              │
+x = Subclass(dag_id="foo", other=False)                                                                       │
+                                                                                                              │
+print(repr(x))                                                                                                │
+print(attrs.__version__)                                                                                      │
+```                                                                                                           │
+                                                                                                              │
+Work in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete  │
+tests to make them pass.                                                                                      │
+                                                                                                              │
+```"                                                                                                          │
+Fix confirmed by comprehensive test run: 1332 passed, 7 skipped, 1 xfailed (all                               │
+pre-existing — the mypy test format mismatch and platform-specific skips).                                    │
+                                                                                                              │
+Root cause: In _transform_attrs, the field_transformer return value was assigned                              │
+directly to attrs. When the transformer is a generator (common pattern — users yield                          │
+items), attrs becomes a one-shot iterator. The subsequent code iterates over it three                         │
+times (mandatory-order check, alias resolution, AttrsClass construction), so the second                       │
+and third passes get nothing — effectively losing all fields except whatever the first                        │
+pass consumed.                                                                                                │
+                                                                                                              │
+For the subclass case, this meant __attrs_attrs__ on Base was empty (the generator was                        │
+already exhausted during Base's own construction), so _collect_base_attrs found no base                       │
+fields, and Subclass's __init__ didn't accept dag_id.                                                         │
+                                                                                                              │
+Fix: One word — attrs = list(field_transformer(cls, attrs)) at _make.py:453.                                  │
+                                                                                                              │
+▏     if field_transformer is not None:                                                                       │
+▏ -        attrs = field_transformer(cls, attrs)                                                              │
+▏ +        attrs = list(field_transformer(cls, attrs))                                                        │ Σ $0.06 · 1.4M tok · 1 done
+  · ⟲ 28.7k cached · saved $0.0019                                                                            │ ctrl+. earlier
+                                                                                      · 17:05 · 3.7s · $0.03 ·│ ❯ ctrl+g hide
+
+─ main* ──────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+subclass field_transformer kw_only bug · deepseek-v4-flash · via baidu · 1.5s                         $0.06 · 36.3k/1M · 3% ▁▁ · YOLO · idle

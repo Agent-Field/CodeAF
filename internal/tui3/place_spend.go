@@ -202,6 +202,7 @@ func (a *app) readSpendLines(now time.Time) {
 	} else {
 		lines, _ = a.spend.cache.Read(time.Time{})
 	}
+
 	a.spend.lines, a.spend.read = lines, now
 	// AND THE WORLD WITH THE LINES, on the same beat and for the same reason the
 	// bands and the world are read together on home: a ledger line minted by work
@@ -224,12 +225,42 @@ func (a *app) readSpendLines(now time.Time) {
 	a.rebuildSpend()
 }
 
+// usageSince is THE DOOR ONTO THE MACHINE'S SPENDING for a reader that is not
+// standing on this page — the pulse at the top of every place
+// ([app.machineSpentToday]) — and it goes through the same two answers
+// [app.readSpendLines] goes through, in the same order.
+//
+// THE SEAM COMES FIRST BECAUSE THE LEDGER MAY NOT BE ON THIS DISK. Over a
+// connection the money belongs to the far machine and arrives through a cache the
+// link keeps warm (tui3.go's [Options.Ledger]); a reader that opened
+// [app.usageLedger] there would be drawing THIS laptop's bill on a screen about
+// somebody else's machine, and PERF.md's law that a frame over a connection asks
+// the far machine nothing is why it is that cache and never the wire.
+//
+// THE BOOL IS "IS THIS AN ANSWER" AND NOT "IS THERE ANY MONEY". A far machine
+// that has not replied yet, and a ledger this process cannot open, have both said
+// NOTHING — and the emptiness law draws an unknown as an absent segment rather
+// than as a zero. A machine that has genuinely spent nothing answers no lines and
+// true.
+func (a *app) usageSince(from time.Time) ([]session.UsageLine, bool) {
+	if a.ledger != nil {
+		lines, _, known := a.ledger(from)
+		return lines, known
+	}
+	lines, err := session.ReadUsage(a.usageLedger, from)
+	if err != nil {
+		return nil, false
+	}
+	return lines, true
+}
+
 // rebuildSpend is the pure half: the window applied to the held lines, then the
 // titles joined onto the ids the ledger carries.
 func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
-		railed(a.machineAllowance()).lost(session.UsageDrops())
+		railed(a.machineAllowance()).lost(session.UsageDrops()).
+		todayed(spendDayTotal(p.lines, p.read))
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -439,7 +470,7 @@ func (a *app) spendWindowKey(key string) bool {
 	// no window at all, and one with room for the arrows but not for
 	// `shift+↑ coarser` beside them has no zoom.
 	width, _ := a.size()
-	arrows, grain := placeWindowFits(width, spendHeadWords(a.spend.reading.totals), a.spend.win)
+	arrows, grain := placeWindowFits(width, a.spend.reading.headWords(width), a.spend.win)
 	if !arrows {
 		return false
 	}
@@ -498,9 +529,22 @@ func (placeSpend) tick(a *app, now time.Time) bool {
 // cannot work is absent rather than broken (CLAUDE.md), and a page that draws
 // the furniture of a feature it does not have looks like a bug rather than like
 // a plan. Every sentence here is true today.
+// AND THE LAST SENTENCE SAYS WHAT IS TRUE OF THIS MACHINE RIGHT NOW, in a verb,
+// the way the tasks place ends its own teaching with `no tasks yet — /task
+// <brief> starts one` ([tasksTeach]). Three sentences about what a ledger is,
+// drawn over a ledger that is empty, leave a person unable to tell "nothing has
+// been spent" from "the ledger could not be read" — and the emptiness law, which
+// is why no `$0.00` appears anywhere above, is exactly what makes those two
+// silences look identical. So the page says which one it is.
 const spendTeach = "What this machine has cost, by the day, by the model, and by what it was for. " +
 	"Every model call writes a line, so the figures here are the bill and not an estimate. " +
-	"There is nothing to set here — the allowance is edited on the status line that shows it."
+	"There is nothing to set here — the allowance is edited on the status line that shows it. " +
+	spendTeachEmptyWord
+
+// spendTeachEmptyWord is that last sentence, named because it is the one clause
+// of [spendTeach] a test asserts by itself and the one a person is actually
+// looking for.
+const spendTeachEmptyWord = "nothing spent yet — the first model call writes a line here."
 
 // body is the ledger, or — on a machine that has spent nothing inside the window
 // it is showing — the three sentences saying what this place is for.
@@ -598,6 +642,51 @@ func (placeSpend) verbs(a *app) []verb {
 	return []verb{{key: 'b', word: "the limits", do: func() tea.Cmd {
 		return a.openSpending(spendTodayKey)
 	}}}
+}
+
+// The clauses this place's foot is built from. They are constants because the
+// manual quotes them and because two of them are the two keys a person standing
+// on a row of this page would actually press.
+//
+// THE ROUTER'S DEFAULT USED TO SAY THIS PLACE'S FOOT FOR IT, and it named none
+// of the four key classes here: `enter` on a row, `→` with one verb on it,
+// the `▸ 14 more` fold and the shift-arrow window. What it said instead was
+// `enter talk about it · alt+enter send it off as a task`, so the one key that
+// WAS written down meant something else (pages.go says why [placeBase] no
+// longer carries a `hint` at all).
+const (
+	spendEnterWord  = "enter opens what spent it"
+	spendVerbLead   = "→ "
+	spendWindowWord = "shift+←→ move the days"
+)
+
+// hint is the foot, assembled from the clauses that are TRUE of the row under
+// the cursor and of the window this frame is drawing.
+//
+// The shift arrows are named only where they are BOUND: the window control
+// draws its own arrows on the head row and stands down on a frame too narrow to
+// hold them ([app.spendWindowKey] asks [placeWindowFits] the same question), and
+// a foot promising them under a head that is not drawing them would be this
+// surface advertising a key that does nothing.
+func (placeSpend) hint(a *app) string {
+	var parts []string
+	if a.spendStopAt(a.spend.cursor).ok {
+		parts = append(parts, spendEnterWord)
+		for _, v := range (placeSpend{}).verbs(a) {
+			parts = append(parts, spendVerbLead+v.word)
+		}
+	}
+	width, _ := a.size()
+	if arrows, _ := placeWindowFits(width, a.spend.reading.headWords(width), a.spend.win); arrows {
+		parts = append(parts, spendWindowWord)
+	}
+	if len(parts) == 0 {
+		// A PAGE WITH NOTHING ON IT STILL HAS A WAY OUT, and that is all it has.
+		// [placeTailed] adds `tab next place`, so this is `esc` alone rather than
+		// a foot naming three keys over an empty ledger.
+		return "esc"
+	}
+	return strings.Join(parts, railSep) + railSep + "esc"
 }
 
 func (placeSpend) press(a *app, y int) bool {

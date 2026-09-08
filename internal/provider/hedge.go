@@ -80,6 +80,12 @@ const heldEvents = 512
 // fires before the first token replaces nothing and says nothing.
 const hedgeNotice = "that lane went quiet — this answer is coming from another one"
 
+// firstPromptNotice is the missing half of that silence. A first prompt has
+// nothing on the screen yet, so [hedgeNotice] never fires, and a stall sat
+// through the ninety-second first-token cut with no door named (F42). `/model`
+// is the switch a person would otherwise have to discover.
+const firstPromptNotice = "still no answer — trying another lane · /model switches"
+
 // waitNow is the clock the waiting controller runs on, and it is deliberately
 // NOT the client's seamed [Client.clock].
 //
@@ -92,6 +98,26 @@ const hedgeNotice = "that lane went quiet — this answer is coming from another
 // [logNow] makes about the model-call log, and the two are deliberately the
 // same shape.
 func waitNow() time.Time { return time.Now() }
+
+type firstPromptContextKey struct{}
+
+// WithFirstPrompt marks this call as a profile's first prompt: nobody has
+// chosen a talk model yet, so a stall must name `/model` instead of sitting
+// silent. Set by the session when [config.FirstPrompt] is true.
+func WithFirstPrompt(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, firstPromptContextKey{}, true)
+}
+
+func firstPromptFrom(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	marked, _ := ctx.Value(firstPromptContextKey{}).(bool)
+	return marked
+}
 
 // ── THE RACE ────────────────────────────────────────────────────────────────
 
@@ -166,6 +192,10 @@ type hedgeRace struct {
 	// empty on all but the handful that decide something with nobody watching.
 	note    string
 	decided chan struct{}
+	// firstPromptTold is whether this race has already named the first-prompt
+	// switch path. One notice per question: a second line about the same stall
+	// is nagging.
+	firstPromptTold bool
 }
 
 // raceFor builds the watched call, which is every call.
@@ -243,6 +273,19 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 			}
 		case result := <-r.results:
 			seen[result.index] = result
+			if result.err == nil {
+				// FINISHING IS NOT ALWAYS COMMITTING. A rescued or hedged
+				// stream can close cleanly and still be mojibake (F20): the
+				// bytes arrived, finish_reason was set, and the garbage was
+				// persisted as the assistant turn. Sanity is applied here,
+				// before the race names a winner, so a corrupt arm is a
+				// failed arm — walk, or say so — and never the transcript.
+				if err := r.refuseCorrupt(result); err != nil {
+					result.err = err
+					result.response = nil
+					seen[result.index] = result
+				}
+			}
 			if result.err != nil {
 				// THE VOICE MOVES OFF A DEAD ARM. An arm that has failed will
 				// never speak again, and leaving it as the speaker holds every
@@ -254,10 +297,7 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				// machine behind this model is a cheaper answer than relaxing
 				// the request or changing the model would be.
 				r.walk(result.index, result.err)
-			}
-			if result.err == nil {
-				// FINISHING IS COMMITTING. An arm that reached the end of its
-				// stream has the whole answer, whatever its token count said.
+			} else {
 				r.commit(result.index)
 			}
 			if won := r.won(); won >= 0 {
@@ -476,12 +516,22 @@ func (r *hedgeRace) act(from int, act control.Act) {
 	case control.Ask:
 		r.ask(from, act)
 	case control.Report:
-		// THE CONTROLLER DECIDES AND THE WIRE OBEYS. A report is a report: that
-		// a wait reaching the ceiling with an affordable alternative in hand is
-		// a rescue rather than a report is `internal/lane/control`'s ruling and
-		// is taken there, so the act that arrives here is the act that happened.
-		// Rewriting a verdict at this layer would put a request on the wire that
-		// the row still called a report.
+		// A REPORT IS "THE PURSE WILL NOT BET ON SLOWNESS", NOT "SIT UNTIL
+		// THE LANE DIES". Walk only runs after a terminal error. A stall that
+		// keeps the stream open — a late first token, keepalives — never
+		// reaches it, which is how a turn sat at "all lanes slow" for 129s
+		// with arms:None (F33). The ceiling still owes one rescue; if that
+		// arm can start, the wait is being answered and is not said as a
+		// report. Only a stall with nowhere left to go is told out loud.
+		if r.rescueOnStall(from, act) {
+			return
+		}
+		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
+		// start. Saying nothing here is the 90s hang: the stream guard is
+		// the next thing that acts, and `/model` is never named.
+		if r.tellFirstPrompt("", quietWords(act.Silence)) {
+			return
+		}
 		r.tellTheWait(act)
 	case control.Escalate:
 		// THE CONTROLLER NEVER CHANGES A MODEL. Rung four of the ladder is
@@ -528,8 +578,117 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	// AND THE CLOCK SAYS SO IN THE SAME BREATH. "stalled 9s · switching to
 	// parasail" is one sentence: the first half is why, and a person shown only
 	// the second half would not know what it was about (phase.go).
-	r.phase.switching(strings.ToLower(alt), primary.watch.quietFor(waitNow()))
+	quiet := primary.watch.quietFor(waitNow())
+	r.phase.switching(strings.ToLower(alt), quiet)
+	r.tellFirstPrompt(alt, quiet)
 	r.start(index, alt)
+}
+
+// rescueOnStall starts the second arm a stall is owed, without waiting for
+// the primary to die.
+//
+// THE PURSE STILL GATES THIS. A wait at the ceiling is the role's bound, but
+// answering it with another request is spending and follows the same law as
+// every other hedge. claim is asked `past` so an earlier refusal may be
+// reconsidered if the rolling budget has since opened; [lanes.Budget.Allow]
+// makes the decision again at the moment the rescue would start.
+func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
+	if r == nil || r.base == nil || r.base.Err() != nil {
+		return false
+	}
+	alt := r.claim(act.Lane, true)
+	if alt == "" && !r.openStallRescue() {
+		return false
+	}
+	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
+		r.mu.Lock()
+		r.refused = true
+		if alt != "" {
+			delete(r.tried, strings.ToLower(alt))
+		}
+		r.mu.Unlock()
+		return false
+	}
+	r.mu.Lock()
+	if r.winner >= 0 || len(r.arms) >= maxArms {
+		r.mu.Unlock()
+		return false
+	}
+	index := len(r.arms)
+	primary := r.armAt(from)
+	r.mu.Unlock()
+	quiet := ""
+	fault := false
+	if primary != nil && primary.watch != nil {
+		fault = primary.watch.fault
+		quiet = primary.watch.quietFor(waitNow())
+	}
+	r.report.note(func(report *HedgeReport) {
+		report.hedged, report.reason = true, act.Reason
+		report.fault = fault
+		if report.action == "" {
+			report.action, report.silence = actionWord(control.Hedge), act.Silence
+		}
+	})
+	if alt != "" {
+		r.report.started(RescueNews{Alt: alt, Reason: RescueSlow})
+		r.phase.switching(strings.ToLower(alt), quiet)
+	} else {
+		r.report.started(RescueNews{Reason: RescueSlow})
+	}
+	r.tellFirstPrompt(alt, quiet)
+	r.start(index, alt)
+	return true
+}
+
+// tellFirstPrompt is the visible half of a first-prompt stall. [hedgeNotice]
+// waits for text already on the screen; a first prompt has none, so the
+// rescue has to say itself — and name `/model` — or the person sits through
+// the first-token cut discovering nothing (F42).
+//
+// IT IS ONCE PER QUESTION. A stall that re-announces on every beat is nagging.
+func (r *hedgeRace) tellFirstPrompt(alt, quiet string) bool {
+	if r == nil || !firstPromptFrom(r.base) {
+		return false
+	}
+	r.mu.Lock()
+	already := r.firstPromptTold
+	r.firstPromptTold = true
+	session := r.session
+	r.mu.Unlock()
+	if already {
+		return true
+	}
+	then := strings.TrimSpace(alt)
+	if then == "" {
+		then = "/model"
+	}
+	// A named alt already moved the phase in the caller. An empty one is
+	// the cold first-run rescue: nowhere named, so the door itself is Then.
+	if strings.TrimSpace(alt) == "" {
+		r.phase.switching(then, quiet)
+	}
+	if r.observer != nil {
+		r.observer(StreamEvent{Kind: StreamNotice, Delta: firstPromptNotice, Session: session})
+	}
+	return true
+}
+
+// openStallRescue reports whether a stall with nowhere named may still put
+// a second unpinned request on the wire.
+//
+// A choice that named one machine and no alternative is a real
+// nowhere-to-go and stays a report. An empty plan is a cold router: the
+// chooser named nothing (one belief is not a ranking), and a second
+// unpinned arm is what lets the router pick another machine rather than
+// sit until a terminal error.
+func (r *hedgeRace) openStallRescue() bool {
+	if r.client == nil || !r.client.carriesPreferences() || r.client.routing() == RoutingOff {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.plan.Lane == "" && len(r.plan.Alts) == 0 && !r.plan.Pinned && len(r.arms) == 1 && r.winner < 0
 }
 
 // claim reserves the machine a rescue would go to, and answers empty when there
@@ -545,10 +704,11 @@ func (r *hedgeRace) claim(preferred string, past bool) string {
 	if r.winner >= 0 || len(r.arms) >= maxArms {
 		return ""
 	}
-	// past is the walk, and only the walk: a lane that FAILED must not be left
-	// unanswered because a lane that was merely SLOW had its rescue refused a
-	// moment earlier. Every other caller stops at a refusal, which is what
-	// keeps one refusal from becoming a poll.
+	// past is the walk and the stall rescue: a lane that FAILED, or one that
+	// has sat past the ceiling without dying, must not be left unanswered
+	// because a slowness hedge was refused a moment earlier. Every other
+	// caller stops at a refusal, which is what keeps one refusal from
+	// becoming a poll.
 	if r.refused && !past {
 		return ""
 	}
@@ -831,6 +991,20 @@ func (r *hedgeRace) passVoice(seen map[int]armResult) {
 	}
 }
 
+// refuseCorrupt is the last gate before a finished arm becomes the turn.
+//
+// Ordinary one-arm calls are left alone: their finish is the answer they
+// always were. A rescue (any arm after the primary) or a hedged race
+// (more than one request on the wire) is the F20 shape — the stream that
+// "won" after another lane died — and those are read before they are
+// kept. Failure here is a failed arm, not a winner.
+func (r *hedgeRace) refuseCorrupt(result armResult) error {
+	if result.index == 0 && r.count() < 2 {
+		return nil
+	}
+	return rescuedStreamError(result.response)
+}
+
 // commit hands the answer to one arm and cancels the others. It is idempotent:
 // the first caller wins and every later one is a no-op.
 //
@@ -941,18 +1115,29 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 	r.observer(event)
 }
 
-// hasUntriedLane reports whether the frontier still holds a gate-passing lane
-// this request has not been sent to, and there is room to send one.
-func (r *hedgeRace) hasUntriedLane() bool {
+// canWalk reports whether the walk's next claim will start another request.
+//
+// IT READS THE SAME LANE THE WALK WILL CLAIM. A name in the frontier is not a
+// walk when the wire has since struck that lane, the arm cap is full, or the
+// purse will refuse its estimated cost. Affordable is only a reading here;
+// [hedgeRace.walk] still reserves the spend through [lanes.Budget.Allow] at the
+// moment it starts the arm.
+//
+// THE WALK DELIBERATELY IGNORES r.refused. A refusal to fund a hedge against
+// slowness does not deny the rescue owed after a lane actually fails, which is
+// the same `past=true` rule [hedgeRace.claim] applies.
+func (r *hedgeRace) canWalk() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.winner >= 0 || len(r.arms) >= maxArms {
 		return false
 	}
 	for _, alt := range r.plan.Alts {
-		if lane := strings.TrimSpace(alt.Lane); lane != "" && !r.tried[strings.ToLower(lane)] {
-			return true
+		lane := strings.TrimSpace(alt.Lane)
+		if lane == "" || r.tried[strings.ToLower(lane)] || !lanes.Serves(r.model, lane) {
+			continue
 		}
+		return r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected))
 	}
 	return false
 }
@@ -1195,7 +1380,12 @@ func hedgeLaneFrom(ctx context.Context) string {
 // request is that it goes somewhere else; a router free to fall back could
 // answer it from the lane that is already stalling, and the race would be two
 // requests to the same machine. `only` is the field that says so, and the
-// preference is otherwise left exactly as the encoder built it.
+// preference otherwise keeps the encoder's remaining filters.
+//
+// A DEMAND CARRIES NO PRICE CEILING. The chooser already priced this machine
+// through the frontier's own gate, and a second cap can only contradict that
+// decision — refusing the demanded lane for a price it already passed, then
+// teaching the serving ledger that the innocent lane cannot serve the model.
 func hedgePreference(prefs *providerPrefs, knobs callKnobs) *providerPrefs {
 	if knobs.hedgeLane == "" {
 		return prefs
@@ -1208,5 +1398,6 @@ func hedgePreference(prefs *providerPrefs, knobs callKnobs) *providerPrefs {
 	hedged.Only = []string{knobs.hedgeLane}
 	hedged.Order = nil
 	hedged.AllowFallbacks = &no
+	hedged.MaxPrice = nil
 	return &hedged
 }

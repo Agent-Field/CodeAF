@@ -12,15 +12,24 @@ the frame:
 3. **the limits** — one screen with three rows on it: `per day`, `per plan`, `per
    conversation`
 
-`enter` accepts each step's default and goes on. On the OpenRouter step it starts the
-browser connection; `esc` says not now. When it is done, or skipped, the ordinary empty
+`enter` accepts each step's default and goes on. Every step's foot names `esc` the same
+way — `esc skips setup` — because that is what it does on any of them: the flow is marked
+seen and it does not open again. When it is done, or skipped, the ordinary empty
 conversation appears — the wordmark box and the prompt. The crew and limit questions
-never come back. If OpenRouter is still not connected, its one-step screen returns on the
+never come back, so a skip leaves one dim line naming the doors onto the ones it walked
+past: `still yours to set · /crew picks the five models aforge works with · /budget sets
+what it may spend`. If OpenRouter is still not connected, its one-step screen returns on the
 next local interactive launch because the model cannot work without it.
 
 The line over the question reads `setting up · 1 of 3`; with only one thing missing it
 reads `setting up`. The foot says what `enter` does right now — `enter takes balanced`,
 `enter keeps $500`, `enter connects in browser` — and what `esc` does now.
+
+**On a window too short for the whole block the explanation is what goes**, a line at a
+time from the bottom of the prose up, and the wordmark with it if it comes to that. The
+question, the `›` box you type into and the foot naming `enter` and `esc` are the last
+three rows to be given up, so a twelve-row split pane still shows a screen you can answer
+and leave.
 
 ## Set up my api key — the openrouter key step, and what happens with no key
 
@@ -35,6 +44,26 @@ no model is called during the connection.
 The address is also written on the waiting screen. If the browser cannot be opened, select
 or click that address yourself. `esc` while waiting cancels the return listener and leaves
 you on the OpenRouter step; another `enter` tries again.
+
+## What the setup screen says when something goes wrong
+
+Every refusal on this screen is a sentence about what happened and what to do — never a
+programmer's error text. There are four of them, and the settings row's own words for
+anything you typed:
+
+| What failed | What the line under the box says |
+| --- | --- |
+| the browser sign-in never started | `could not reach openrouter to start the sign-in — check the network, or paste a key instead` |
+| your browser would not open | `could not open your browser · open the link above` |
+| the sign-in started and never came back | `the browser sign-in did not finish — enter tries again, or paste a key instead` |
+| the answer could not be written down | `could not save that — the folder aforge keeps your settings in is not writable` |
+
+Anything you typed that a setting refuses keeps that setting's own wording — `that's not a
+dollar amount — a number, or none for no limit` on the rails step, or
+`not the shape of an openrouter key — they start with sk-or-` on the key step — because
+those are written for you to read. What is never shown is the operating system's version of
+a failure: a path inside aforge's own storage with an errno after it tells you nothing you
+can act on.
 
 ## Paste an existing OpenRouter API key instead of connecting in the browser
 
@@ -54,7 +83,7 @@ conversation takes it at once — the next message rides it, no restart.
 
 ## Skip OpenRouter, retry later, and keep the message I typed
 
-`esc` on the idle step says not now. The conversation then says one dim line:
+`esc` on the idle step skips setup. The conversation then says one dim line:
 `openrouter is not connected · enter on your message connects in a browser, or export
 OPENROUTER_API_KEY`. Your draft is not sacrificed to a provider error: type it normally and
 press `enter`, and the one-step connection opens over the conversation before the draft is
@@ -178,6 +207,21 @@ A credential changed in the settings row reaches the running conversation at onc
 exactly as the setup's does. The crew and the budget are read live too: the next call
 aforge makes on its own behalf uses the new crew, and the rail is checked against the
 new ceiling.
+
+## The first prompt hung — still waiting, /model switches
+
+The model you talk to is not chosen on the setup screen. A first run opens on this
+build's default, and `/model` is the door that moves it. If that first prompt's lane
+goes quiet before a word arrives, aforge does not sit silent until the ninety-second
+cut: it tries another lane and says so, naming the door —
+
+```
+still no answer — trying another lane · /model switches
+```
+
+The line is a rescue of this answer, not a choice you made. Your model is untouched
+until you run `/model`. The status row says `switching` while the second request is
+out. If the default keeps stalling, `/model` is how you move for good.
 
 ## Set your terminal up for aforge — the font, and Option on macOS
 

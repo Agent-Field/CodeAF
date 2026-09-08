@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +74,40 @@ var shapedAnswer = `{"title":"` + shapedTitle +
 	`question, no three-item lists, no sentence that would be true of any launch.",` +
 	`"acceptance":"` + shapedAcceptance + `"}`
 
+// C2: a /task shape that asks to work in place inside a repository is given the
+// same branch isolation as a model proposal, and its start note says so once.
+func TestC2APersonsShapedTaskCannotBePutInARepositoryCheckoutByTheShaper(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	answer := `{"title":"isolated note","brief":"write isolated.txt","acceptance":"isolated.txt exists","where":"in place"}`
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+		config.RolesSource = shaperSettings()
+	})
+	world, release := heldTaskWorld(t, agent, "isolated.txt", "only in the task copy\n")
+	id, _, note, err := agent.StartTask(t.Context(), "write the isolated note")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := <-world
+	want := whereRedirectSentence("in place", canonicalPath(repo))
+	if strings.Count(note, want) != 1 {
+		t.Fatalf("start note does not carry the redirect once: %q", note)
+	}
+	if tree.root != canonicalPath(repo) || !withinDir(place.Trees(), tree.dir) || !strings.HasPrefix(tree.branch, "task/") {
+		t.Fatalf("tree = %+v, want a task branch under the session trees", tree)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "isolated.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the repository checkout was written: %v", err)
+	}
+	release()
+	waitDoneNode(t, agent.graph().node(id))
+}
+
 // THE NODE IS ADMITTED WITH THE SHAPED BRIEF AND THE SHAPED NAME, and the two
 // things a person reads underneath are still their own words: the summary under
 // the row, and the request the worker is told outranks anything a model wrote.
@@ -81,7 +117,7 @@ func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 	}}}
 	agent, ran := shapeAgent(t, client)
 
-	id, title, err := agent.StartTask(t.Context(), shapedAsk)
+	id, title, _, err := agent.StartTask(t.Context(), shapedAsk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +169,7 @@ func TestTheShaperCarriesThePlaceNamedInTheRequest(t *testing.T) {
 		return textResponse(answer), nil
 	}}}
 	agent, ran := shapeAgent(t, client)
-	id, _, err := agent.StartTask(t.Context(), request)
+	id, _, _, err := agent.StartTask(t.Context(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +187,7 @@ func TestShapingIsBilledAsAnAuxiliaryCall(t *testing.T) {
 	}}}
 	agent, ran := shapeAgent(t, client)
 
-	if _, _, err := agent.StartTask(t.Context(), shapedAsk); err != nil {
+	if _, _, _, err := agent.StartTask(t.Context(), shapedAsk); err != nil {
 		t.Fatal(err)
 	}
 	settled(t, ran)
@@ -203,7 +239,7 @@ func TestAShaperThatCannotAnswerLetsThePersonsWordsThrough(t *testing.T) {
 			if tc.ctx != nil {
 				ctx = tc.ctx(t)
 			}
-			id, title, err := agent.StartTask(ctx, shapedAsk)
+			id, title, _, err := agent.StartTask(ctx, shapedAsk)
 			if err != nil {
 				t.Fatalf("a failed shaper refused the task: %v", err)
 			}
@@ -424,4 +460,90 @@ func TestTheShaperReportsItsReasoningApartFromItsAnswer(t *testing.T) {
 	if strings.Contains(seen[2].answer, "who is this for") {
 		t.Fatalf("THE REASONING WAS SPLICED INTO THE ANSWER: %q", seen[2].answer)
 	}
+}
+
+// THE CUT IS SAID, AND ONLY WHEN A SHAPER ACTUALLY RAN (path (a) of issue
+// #133). "No shaper configured" is the documented silent pass-through and
+// stays silent; but a shaper that was genuinely invoked and came back cut —
+// the deadline among the reasons — keeps the person's words AS the brief and
+// carries one dim line to the surface: brief kept as you wrote it.
+func TestAWindowCutShaperKeepsTheBriefAndSaysSo(t *testing.T) {
+	// The deadline's path, without waiting out TaskShapeWindow: what a stall
+	// reaches this code as is a context that ended, and a call that ends is a
+	// call that failed.
+	stalled := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	client := &scriptedCompleter{steps: []step{stalled}}
+	agent, ran := shapeAgent(t, client)
+
+	// A context that has already ended is the shape a window cut arrives in.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	id, title, note, err := agent.StartTask(ctx, shapedAsk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled(t, ran)
+
+	if note != TaskShapeFallbackNote {
+		t.Fatalf("fallback note = %q, want %q", note, TaskShapeFallbackNote)
+	}
+	// DISPLAY-ONLY: the brief delivered is still the person's own words.
+	node := agent.graph().node(id)
+	if node == nil {
+		t.Fatal("a cut shaper lost the task")
+	}
+	if node.spec.brief != shapedAsk || node.spec.request != shapedAsk {
+		t.Fatalf("brief = %q, request = %q, want the person's sentence untouched",
+			node.spec.brief, node.spec.request)
+	}
+	if title != shapedAsk {
+		t.Fatalf("title = %q, want the person's words", title)
+	}
+	if shapeCalls(client) != 1 {
+		t.Fatalf("%d shaping requests, want 1: the cut call was made", shapeCalls(client))
+	}
+}
+
+// AND THE SILENT PATHS STAY SILENT. No shaper configured is the documented
+// pass-through; a shaper that answered whole and merely failed to parse is
+// not a cut. Neither one carries the line.
+func TestTheFallbackNoteStaysSilentWhenNoShaperRan(t *testing.T) {
+	// NO SHAPER CONFIGURED: the pass-through, and the note with it.
+	agent, ran := shapeAgentNoShaper(t, &scriptedCompleter{})
+	if _, _, note, err := agent.StartTask(t.Context(), shapedAsk); err != nil {
+		t.Fatal(err)
+	} else if note != "" {
+		t.Fatalf("no-shaper note = %q, want silence", note)
+	}
+	settled(t, ran)
+
+	// A WHOLE ANSWER THAT FAILED TO PARSE: a real response came back, so this
+	// is not a cut and the line is not said.
+	garbage := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("Sure! Here is a brief for you:"), nil
+	}}}
+	agent, ran = shapeAgent(t, garbage)
+	if _, _, note, err := agent.StartTask(t.Context(), shapedAsk); err != nil {
+		t.Fatal(err)
+	} else if note != "" {
+		t.Fatalf("parse-failure note = %q, want silence", note)
+	}
+	settled(t, ran)
+}
+
+// shapeAgentNoShaper is [shapeAgent] without anything on the careful tier, so
+// no model is ever resolved for the shaper and the request passes through
+// untouched — the documented absence of the capability.
+func shapeAgentNoShaper(t *testing.T, client Completer) (*Agent, <-chan uint64) {
+	t.Helper()
+	agent, _ := newTestAgent(t, client, nil)
+	ran := make(chan uint64, 4)
+	stubbedGraph(agent, func(node *TaskNode) {
+		node.graph.complete(node, TaskDone)
+		ran <- node.id
+	})
+	return agent, ran
 }

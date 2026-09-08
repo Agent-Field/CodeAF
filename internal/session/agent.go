@@ -172,6 +172,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// (jobrow.go). It is set here rather than passed to the constructor because
 	// it closes over the agent the constructor is building.
 	agent.jobs.announce = agent.announceJobRow
+	// And the registry gets the RELEASE lane, for the same reason and by the same
+	// route: a command this agent started in the foreground and had taken over
+	// into a job is one the work is still waiting for, so the registry says when
+	// that ending has been handed over and whoever is parked on it goes and reads
+	// it (task_job_park.go). A conversation arms no park and this is never called
+	// with anybody waiting.
+	agent.jobs.paid = agent.releaseParkedOnJob
 	// And the accounts seam before the belt for the belt's own reason: the two
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
@@ -379,18 +386,24 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 // who is fetching, and when, is a question with an answer in the session's own
 // code rather than in a package nobody thought was running.
 //
-// THREE SESSIONS RUN NO BEAT, and each refusal is a different fact.
+// TWO SESSIONS RUN NO BEAT, and each refusal is a different fact.
 //
 //   - ROUTING OFF is a person saying they do not want their endpoints chosen
 //     for them (internal/provider's velocity.go). With the row off, every lane
 //     the belief holds is inert — nothing reads it, nothing is sent from it —
 //     and a background fetch would be work nobody asked for on somebody who
 //     asked for the opposite.
-//   - A BASE THAT IS NOT A ROUTER has no sheet to publish, whatever the model
-//     is spelled. The gate is the provider's own, so that the wire point and
-//     this one cannot drift apart (provider.LaneSheetAvailable).
 //   - AND A SESSION WITH NO MODEL SLOT FILLED has nothing to fetch a sheet
 //     about, which is the constructor's own guard reaching this far.
+//
+// THE BASE URL IS NOT A REFUSAL. This seam used to read the hostname and run
+// no beat unless it said `openrouter.ai`, which left every session pointed at
+// a proxy, a mirror or a router reached by its IP with no sheet at all (issue
+// #373). Whether a base publishes an endpoints page is the base's own to say:
+// the sheet asks it once, on the first refresh, and a base that says there is
+// none is left alone until that answer is stale ([lanes.ErrNoSheetHere]). So
+// the beat runs whenever routing is on, and on a base with no page it is one
+// quiet request every five minutes rather than a feature that is absent.
 //
 // It is called once, from the constructor, before the agent is reachable —
 // which is what lets the field it writes be read afterwards without a lock,
@@ -402,9 +415,6 @@ func (a *Agent) startLaneBeat() {
 	// buy a measurement. It is cancelled once, by Close.
 	a.laneCtx, a.laneStop = context.WithCancel(context.Background())
 	if a.config.Routing == provider.RoutingOff {
-		return
-	}
-	if !provider.LaneSheetAvailable(a.config.BaseURL) {
 		return
 	}
 	models := laneBeatModels(a.config)
@@ -1014,6 +1024,20 @@ type userMessage struct {
 	// wrote every other note on here, and it did not write this one.
 	steered bool
 
+	// ending marks A BACKGROUND JOB'S ENDING — an exit, a person's stop, a
+	// render's last word — and it is read for exactly one thing: releasing a task
+	// worker parked on a command it started (task_job_park.go).
+	//
+	// IT IS THE OTHER NEWS A PARKED WORKER WAITS FOR, and it is marked for
+	// `steered`'s reason and released in the same locked step, so there is no
+	// instant in which the ending is queued and the waiter has not been woken for
+	// it ([Agent.enqueueNote]). Every ending carries it, including ones nobody is
+	// parked on: a park woken by news it was not waiting for re-reads, finds
+	// itself still owed and parks again on a fresh generation, which costs one
+	// pass of a loop — while an ending that failed to wake the one worker waiting
+	// for it costs that worker its whole allowance.
+	ending bool
+
 	// steer is THE PERSON'S WORDS TYPED INTO THIS TURN (steer.go's
 	// [Agent.Steer]): a correction to the question already being worked on,
 	// riding this queue for the reason everything else on it does — a step
@@ -1030,6 +1054,27 @@ type userMessage struct {
 	// Nil on every message that is not one, which is every message this queue
 	// carried before it existed.
 	steer *turnSteer
+
+	// crossed is what the record keeps about a line the person sent ACROSS to
+	// this agent from the room they were standing in (task_room.go's
+	// [Agent.SteerTask]) — the instant they sent it, and the engine's own one-fact
+	// account of what the sending did.
+	//
+	// IT IS THE HALF OF `steered` THE FILE NEEDS. `steered` is read while the line
+	// is on the queue, to keep a runner from closing on top of it; this is read
+	// once, where the line is written down, so that a page reopened tomorrow
+	// draws a correction as a correction instead of as a second brief — which is
+	// what it did, because a delivered line was journaled as a plain user message
+	// and nothing on it said otherwise.
+	//
+	// It carries `Consumed: true` on every line, and that is the promise
+	// [Agent.SteerTask] actually makes: the words were DELIVERED to an agent that
+	// was listening. What the node then does with them is the node's turn to
+	// take, and the record does not pretend to know it.
+	//
+	// Nil on every message that is not one, which is every message but a steer
+	// into a node.
+	crossed *SteerMark
 
 	// batchKey names repeated ambient updates that collapse to their count and
 	// newest fact at a boundary. Today only watches set it: their complete tick
@@ -1064,8 +1109,31 @@ func wakeNote(text string) userMessage {
 // needs. The complete output remains in the job's ring and log, addressable
 // through `jobs output`; repeating that tail in every later request would turn
 // a notification into a second copy of the log.
-func jobNote(text string) userMessage {
-	return wakeNote(firstLine(strings.TrimSpace(text)))
+//
+// AND AN OWED ENDING TRAVELS WHOLE. A WAIT IS ONLY WORTH TAKING IF WHAT IT
+// WAKES WITH IS WORTH READING: a command the work is still standing over stops
+// that work from asking anything at all (task_job_park.go), and it stops it so
+// that the command's own ending can be the next thing the work reads. Trimmed
+// to its first line, that ending would say no more than the row at the foot of
+// every tool result already showed — which is the reading the wait was taken
+// INSTEAD of. So an owed ending arrives with its last lines and the path to the
+// whole log, exactly as it was composed ([jobRegistry.settleExit]).
+//
+// The flag is an argument rather than a second envelope because there is one
+// envelope for a job's ending and this is one fact about it. It also has an end
+// in sight: the general trim is a defect of its own (issue #573), and when it
+// goes the argument goes with it rather than a whole road.
+func jobNote(text string, whole bool) userMessage {
+	text = strings.TrimSpace(text)
+	note := wakeNote(text)
+	if !whole {
+		note = wakeNote(firstLine(text))
+	}
+	// AND EVERY ENDING IS MARKED AS ONE. It is what releases a worker parked on
+	// the command this note is about, in the same locked step as the append
+	// ([userMessage.ending]).
+	note.ending = true
+	return note
 }
 
 // watchNoteMessage is one ambient watch TICK reduced to the newest fact. The
@@ -1120,8 +1188,74 @@ func briefNote(text string) userMessage {
 // steerNote is a line the PERSON said into a running node. It owes an answer
 // like every wake note does, and it is not the session's own words, which is the
 // whole of the difference (see [userMessage.steered]).
-func steerNote(text string) userMessage {
-	return userMessage{message: textMessage("user", text), wake: true, steered: true}
+//
+// THE INSTANT IS TAKEN HERE because here is the closest this package stands to
+// the keypress: the line is on the queue from this moment and the boundary that
+// reads it may be a minute away, and the file's own timestamp is when the line
+// was WRITTEN, which is the right answer to a different question
+// ([journalSteer] makes the same distinction for the other door).
+//
+// waiting is the engine's own second answer about the node this is going to
+// ([Agent.SteerTask]): it had handed its work out and parked on the reports, so
+// this line is what wakes it.
+func steerNote(text string, waiting bool) userMessage {
+	return userMessage{
+		message: textMessage("user", text), wake: true, steered: true,
+		crossed: &SteerMark{At: time.Now(), Consumed: true, Landing: SteerDelivered(waiting)},
+	}
+}
+
+// SteerDelivered is the ONE FACT about what sending a line to a node did, and it
+// is authored HERE — by the engine that did the sending — rather than by
+// whichever surface happens to be drawing the page.
+//
+// THE SURFACE DRAWS IT VERBATIM AND NEVER ITS OWN WORD FOR IT, which is why this
+// is exported: the room draws the clause the instant [Agent.SteerTask] answers,
+// and the record keeps the same sentence for whoever opens the page tomorrow. A
+// surface with its own spelling would be a second author of one fact, and the
+// live page and the replayed page would quietly stop agreeing.
+//
+// waiting is [Agent.SteerTask]'s own second answer: the node had handed its work
+// out and parked on the reports, so this line is what wakes it.
+func SteerDelivered(waiting bool) string {
+	if waiting {
+		return steerWokeWord
+	}
+	return steerDeliveredWord
+}
+
+// The two sentences a delivery can carry, and there is no third.
+const (
+	// steerDeliveredWord is the ordinary case, and it says the one thing the
+	// person cannot see for themselves: the words crossed to another agent and
+	// did not vanish on the way. It is a word and not a sentence because that is
+	// the whole of the news.
+	steerDeliveredWord = "delivered"
+	// steerWokeWord is the truer fact when the node had said everything it had to
+	// say and parked on the pieces it handed out (task_run.go's [TaskGraph.park]):
+	// the line does not land in a step the node was about to take, it starts one.
+	// Without it the page goes quiet for a moment after the person presses enter,
+	// which is exactly the page they would see if the words had gone nowhere.
+	steerWokeWord = "it was waiting on its pieces — your line wakes it"
+)
+
+// steerRecord is what the JOURNAL keeps about this line when it is a correction
+// the person typed into work that was already moving — spliced into this turn
+// (steer.go's [Agent.Steer]) or carried across to a node (task_room.go's
+// [Agent.SteerTask]) — and nil for every other message, which is nearly all of
+// them.
+//
+// THE TWO DOORS PRODUCE ONE MARK BECAUSE THE PERSON DID ONE THING. What differs
+// between them is what was promised and that is inside the mark, not around it:
+// a splice says the turn in flight carried the words, a delivery says another
+// agent was handed them. Reading one shape here is what lets the record — and
+// every page built on it — treat a correction as a correction wherever it was
+// typed.
+func (u userMessage) steerRecord() *SteerMark {
+	if u.steer != nil {
+		return &SteerMark{At: u.steer.note.At, Consumed: true, Landing: u.steer.note.Landing}
+	}
+	return u.crossed
 }
 
 // empty reports whether there is nothing here to record. It is the shape a
@@ -1209,6 +1343,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.empty() {
 		a.recordUserLocked(user)
 	}
+	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
+	// here for the sentence that follows Esc, and that sentence is the one
+	// decision the leftover handlers and this turn's opening share.
+	a.interrupt.note(user.text())
 	// THE TURN'S WORK BEGINS HERE, and the floor says so for [Agent.AttachReplay]:
 	// everything recorded at or past this index while the turn runs is work the
 	// hub's backlog can replay, so a replay-then-attach surface must not be
@@ -1273,6 +1411,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			a.liftSteersLocked(hub)
 			_, unanswered := a.drainSteeringLocked(hub)
 			a.running = false
+			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
+			// as they always have; an interrupted turn that never received
+			// new words leaves the generation standing (interrupt_fan.go).
+			a.interrupt.finishTurn()
 			// And the presence stops claiming a turn is in flight, for the
 			// reason it started claiming one (taskpresence.go).
 			a.nudgePresence()
@@ -1439,6 +1581,10 @@ func (a *Agent) dropFollowUpsLocked() {
 // and that drain starts nothing, so it cannot resurrect anything. Both queues
 // are empty once the interrupted turn has finished.
 func (a *Agent) Interrupt() {
+	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
+	// leftover handler that has not yet entered callRole shares the same
+	// "what changed" decision as the redirect that follows (interrupt_fan.go).
+	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
 	jobs := a.jobs
@@ -1563,15 +1709,17 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 	return chain.FallbackModels(model)
 }
 
-// Close ends the session: an in-flight turn is cancelled and waited for,
-// background jobs are terminated, then the session file is flushed and closed.
+// Close ends the session: an in-flight turn is cancelled and waited for, the
+// running nodes of this session's graph are cut and waited for, background jobs
+// are terminated, then the session file is flushed and closed.
 //
-// The three steps are sequential, not concurrent. The turn's wait is first
-// because a running turn is what still owes the journal messages; the jobs come
-// after because a turn cancelled mid-tool-call may still be the thing that
-// started the job being killed; the file closes last because both of the above
-// can still write to it. Nothing here races the existing grace — the job round
-// EXTENDS it, adding at most one more jobShutdownGrace to a quit.
+// The steps are sequential, not concurrent. The turn's wait is first because a
+// running turn is what still owes the journal messages; the graph's nodes and
+// then the jobs come after, because a turn cancelled mid-tool-call may still be
+// the thing that started the work being ended; the file closes last because
+// every one of those can still write to it. Each round EXTENDS the quit rather
+// than racing it: at most one jobShutdownGrace for the graph and one for the
+// jobs, and both are graces a straggler spends alone.
 //
 // The wait is the point. A turn cancelled at Close still has messages to
 // journal — the partial reply it kept, the steering it drained — and closing
@@ -1582,10 +1730,36 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 func (a *Agent) Close() error {
 	a.mu.Lock()
 	if a.closed {
+		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP
+		// OF IT. `closed` is set below before anything is cut, so returning here
+		// on the strength of it used to tell a second caller that the session
+		// had closed while its turn, its nodes and its jobs were all still
+		// running — the same false sentence, one layer up, that this quit exists
+		// to make true.
+		//
+		// The wait needs no bound of its own: the caller it is waiting for is
+		// itself bounded, by the turn's grace and then one [jobShutdownGrace]
+		// each for the graph and the jobs. A nil channel means a session that
+		// was closed before this field existed in it — impossible now that both
+		// are written under this lock, and answered by returning rather than by
+		// blocking forever.
+		waitOn := a.closeDone
 		a.mu.Unlock()
+		if waitOn != nil {
+			<-waitOn
+		}
 		return nil
 	}
 	a.closed = true
+	if a.closeDone == nil {
+		a.closeDone = make(chan struct{})
+	}
+	// AS THE LAST ACT, past every round below and past the file's own close: a
+	// deferred close runs after `return file.Close()` has evaluated, so a caller
+	// released by it is released by a session that has finished leaving. Every
+	// road out of this function goes through it, which is the reason it is a
+	// defer and not a line at the end.
+	defer close(a.closeDone)
 	// No memory pass outlives the session. The cancel is what stops one waiting
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).
@@ -1610,8 +1784,11 @@ func (a *Agent) Close() error {
 	a.wakeLanes = nil
 	// And an adaptive run: it holds a context of its own precisely because its
 	// turn ended, so this is the only thing that can reach it (orchestrate.go).
-	// A harness being designed needs nothing here — it is a task now, and the
-	// job round below cuts it with every other node (harness_task.go).
+	// A harness being designed is a task now, so what ends it is the graph's own
+	// stop below, beside every other node (harness_task.go) — for years the line
+	// here said the job round would cut it, and that sentence was the false
+	// belief issue #381 was made of: the round walks a registry a node only
+	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
@@ -1638,6 +1815,19 @@ func (a *Agent) Close() error {
 		case <-timer.C:
 		}
 		timer.Stop()
+	}
+
+	// THE GRAPH STOPS BEFORE THE JOBS ROUND, and it is a stop of its own because
+	// a node is not reachable as a job until its goroutine has put it in the
+	// registry: it cancels every node this session is running and waits, bounded
+	// by the same grace, for their goroutines to return (task_run.go's
+	// [TaskGraph.stopAll]). It shares that grace rather than adding a number,
+	// and it is deliberately NOT [Agent.Abandon], which is one turn's bounded
+	// stop at a person's escape and never touches a node. Only the session that
+	// OWNS the graph does this — `tasks` was read above precisely so that a
+	// worker's close cannot reach into its parent's.
+	if tasks != nil {
+		tasks.stopAll(jobShutdownGrace)
 	}
 
 	// A background job's lifetime is the session's: cancelling the turn above
@@ -1736,14 +1926,14 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		a.file.appendNote(user.message, user.replyTags)
 		return
 	}
-	if user.steer != nil {
-		// A SPLICED SENTENCE IS MARKED AS ONE. The transcript keeps it an ordinary
-		// user message, which is what the model has to read it as; the journal
-		// keeps the one bit that says it did not open the turn it sits in, plus
-		// the instant and landing account, so a resume can draw it as the person's
-		// own line with the same muted clause rather than as a new question
-		// (steer.go, sessionfile.go's [sessionEntry.Steer]).
-		a.file.appendSteer(kept, user.steer.note)
+	if mark := user.steerRecord(); mark != nil {
+		// A CORRECTION IS MARKED AS ONE, whichever door carried it. The transcript
+		// keeps it an ordinary user message, which is what the model has to read it
+		// as; the journal keeps the one bit that says it did not open the turn it
+		// sits in, plus the instant and the landing account, so a page reopened
+		// tomorrow draws it as the person's own correction rather than as a new
+		// question (steer.go, task_room.go, sessionfile.go's [sessionEntry.Steer]).
+		a.file.appendSteer(kept, *mark)
 		a.stampUserLocked(messageContentText(kept))
 		return
 	}
@@ -2197,8 +2387,13 @@ func (a *Agent) enqueueSteering(text string) {
 
 // enqueueJobNote is the registry's owed lane. The headline enters the boundary
 // batch; the complete output remains available through `jobs output`.
-func (a *Agent) enqueueJobNote(text string) {
-	a.enqueueNote(jobNote(text))
+//
+// `whole` is the one ending that is not reduced to its headline — a command the
+// work is still WAITING for, whose ending is the reading that wait was taken for
+// ([jobNote] states the law). Every other caller passes false and travels
+// exactly as it always did.
+func (a *Agent) enqueueJobNote(text string, whole bool) {
+	a.enqueueNote(jobNote(text, whole))
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
@@ -2274,8 +2469,8 @@ func (a *Agent) enqueueAmbient(note userMessage) bool {
 // be dropped outright if none ever did. This is the same release a report makes
 // ([Agent.postTaskNews]) without the report — the runner wakes, finds a line on
 // the queue and re-enters the model with it.
-func (a *Agent) enqueueSteeredLine(text string) bool {
-	return a.enqueueNote(steerNote(text))
+func (a *Agent) enqueueSteeredLine(text string, waiting bool) bool {
+	return a.enqueueNote(steerNote(text, waiting))
 }
 
 // steeringHeld reports whether a line the PERSON typed is on this agent's queue
@@ -2314,11 +2509,20 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		return false
 	}
 	a.steering = append(a.steering, note)
-	if note.steered {
+	if note.steered || note.ending {
 		// A NODE'S RUNNER IS WAITING TO BE TOLD, and this is the same release a
 		// report makes without being a report ([Agent.postTaskNews]). It is done
 		// under the lock the append is done under so there is no instant in
 		// which the line is queued and the waiter has not been woken for it.
+		//
+		// A JOB'S ENDING RIDES WITH ITS OWN APPEND FOR THAT EXACT REASON. A worker
+		// parked on a command it started (task_job_park.go) is waiting for this
+		// note and nothing else, and every shape of release that fired somewhere
+		// NEAR the append instead of with it had an interleaving that let the
+		// worker wake to an empty queue: the reaper releasing from inside a
+		// person's kill before that person's line was written, and a job exiting
+		// on its own in the instant a person pressed stop. Both close here,
+		// where the queue and the wake are one step ([userMessage.ending]).
 		a.releaseTaskWaitLocked()
 	}
 	if note.wake {
@@ -3061,6 +3265,30 @@ type DisplayEntry struct {
 	Tool string // set when the entry is one call in a batch
 	Hint string // the call's gloss, as the tool cluster rendered it
 
+	// CallID is the provider's own identity for a tool entry's call, exactly as
+	// the record holds it, and "" for every entry that is not a call.
+	//
+	// IT IS THE ONLY THING A LIVE END CAN PAIR ON. A page opened on work already
+	// running draws its rows out of the record and then keeps listening; the end
+	// that arrives a second later has to land on the row that is already there,
+	// or the same call is drawn twice — once running forever, once finished. The
+	// id is what the two halves have in common, so it is carried rather than
+	// dropped at the shaping.
+	CallID string
+
+	// Answered is whether the record already holds the RESULT of this call.
+	//
+	// IT IS DERIVED FROM AN ABSENCE, and the absence is load-bearing: the
+	// assistant message is journaled BEFORE its batch runs (loop.go), so a
+	// session read while a call is in flight names the asking and nothing else. A
+	// surface that drew every recorded call as finished would tell a person the
+	// work is further along than it is.
+	//
+	// It is a field of its own rather than `Output != ""` because a call that
+	// returned nothing and a call that has not returned are different facts and a
+	// page speaks about them differently.
+	Answered bool
+
 	// Args and Output are a TOOL entry's payload, in exactly the two shapes a
 	// live surface already holds them in ([Event.Args] and [Event.Output]): the
 	// arguments the model sent, compacted onto one line and capped, and the text
@@ -3262,16 +3490,19 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			Steer: journal.steerMark(msg),
 		})
 		for _, call := range msg.ToolCalls {
+			result, answered := results[call.ID]
 			entries = append(entries, DisplayEntry{
-				Role: "tool",
-				Tool: call.Function.Name,
-				Hint: gloss(call),
+				Role:   "tool",
+				Tool:   call.Function.Name,
+				CallID: call.ID,
+				Hint:   gloss(call),
 				// The same two renderings a live row is drawn from (loop.go),
 				// applied to the same fields the journal kept: a replayed row and
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
-				Args:   argsText(call),
-				Output: capOutput(results[call.ID]),
+				Args:     argsText(call),
+				Output:   capOutput(result),
+				Answered: answered,
 			})
 		}
 	}

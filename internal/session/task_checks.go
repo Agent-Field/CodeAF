@@ -12,7 +12,8 @@ package session
 //	(a) THE CHECK THE WORK DECLARES — every command the node's own document
 //	    names, read out of the brief and the frozen acceptance the node was
 //	    finished against, and kept only if the checker could really run it where
-//	    it is standing ([declaredChecks], [runnableHere]).
+//	    it is standing ([declaredChecks], [runnableHere]). A prompt line is read
+//	    from the work's own account and never from the person's pasted words.
 //	(b) THE CHECK THE WORK RAN — every command the last worker itself ran as one
 //	    command, read off its own tool receipts ([ranChecks]).
 //	(c) THE ALWAYS-SAFE READING COMMANDS — the ones that print and cannot change
@@ -271,8 +272,19 @@ func plainDoor(allowed []string) auditDoor {
 func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
 	var checks []string
 	if node != nil {
-		checks = appendChecks(checks, declaredChecks(node.instruction(), place.ground))
+		var declared []string
+		for _, source := range node.checkTexts() {
+			declared = append(declared, declaredChecks(source.text, place.ground, source.from)...)
+		}
+		checks = appendChecks(checks, declared)
 		checks = appendChecks(checks, ranChecks(node.lastReceipts(), place.ran))
+		// AND SOURCE (c): THE CHECKS THIS NODE OWNS FOR THE FAMILY IT HANDED OUT
+		// ([TaskNode.Family]). They were taken off its parts because a check that
+		// proves the whole proves nothing about a part, and they were given to
+		// this node because it is the only one that can honestly make them — so
+		// its own door has to open on them, or the node would be told to run a
+		// check its bash refuses.
+		checks = appendChecks(checks, node.familyChecks())
 	}
 	allowed := make([]string, 0, len(checks)+len(auditReadCommands))
 	allowed = append(allowed, checks...)
@@ -474,6 +486,29 @@ func appendChecks(checks, more []string) []string {
 	return checks
 }
 
+// checkSource states whose account named a candidate check. A check belongs to
+// the work, never to a shell transcript in the person's pasted words.
+//
+// THE ZERO VALUE IS THE RESTRICTIVE ONE, AND THAT ORDER IS THE POINT. Both
+// callers name the account explicitly today, but a third one written later
+// that forgets to will be handed the person's reading rather than the work's —
+// so a forgotten field costs a run one check it could have made, which is
+// recoverable, instead of costing the gate itself, which is how
+// `chmod 000 tox.ini` came out of a pasted reproduction and ran.
+type checkSource int
+
+const (
+	checksFromAsk checkSource = iota
+	checksFromWork
+)
+
+// checkText keeps one part of a node's document beside whose account supplied
+// it, because that provenance decides whether a shell prompt names a check.
+type checkText struct {
+	text string
+	from checkSource
+}
+
 // declaredChecks is source (a): every command the work's OWN DOCUMENT names.
 //
 // IT READS THE TWO CONVENTIONS PROSE HAS FOR NAMING A COMMAND and no others: a
@@ -482,6 +517,14 @@ func appendChecks(checks, more []string) []string {
 // every language there is, which is exactly why they are the ones read here — a
 // rule that looked for a build system's name would be the constant this file
 // replaced, wearing a regexp.
+//
+// WHOSE ACCOUNT THE TEXT CAME FROM DECIDES WHETHER A PROMPT LINE IS A PROMISE.
+// A prompt in the work's own brief or acceptance names a check; a prompt in the
+// person's pasted words is a transcript and names none. A measured tox run read
+// `chmod 000 tox.ini` out of a pasted reproduction and tried it against the
+// deliverable tree, where success would have made the project's configuration
+// unreadable without tripping the tree-moved guard. Backticks keep their old
+// meaning in both accounts because that is how a person commonly names a check.
 //
 // TWO FILTERS STAND BETWEEN A BACKTICK AND A DOOR, and they ask different
 // questions. [commandLike] asks whether the span has the SHAPE of one command —
@@ -494,7 +537,7 @@ func appendChecks(checks, more []string) []string {
 // THE GROUND IS THE DIRECTORY THE CHECKER WILL BE PUT IN, threaded down from the
 // caller that already knows it. A span resolved against any other directory
 // would be admitted or refused on the strength of a tree nobody is standing in.
-func declaredChecks(text, ground string) []string {
+func declaredChecks(text, ground string, from checkSource) []string {
 	var out []string
 	// The odd-numbered pieces of a split on the backtick are what was BETWEEN a
 	// pair of them. A fenced block splits into empty pieces around its own
@@ -506,17 +549,111 @@ func declaredChecks(text, ground string) []string {
 			out = append(out, command)
 		}
 	}
-	for _, raw := range strings.Split(text, "\n") {
-		line := strings.TrimSpace(raw)
-		if !strings.HasPrefix(line, "$ ") {
-			continue
-		}
-		command, ok := commandLike(strings.TrimPrefix(line, "$ "))
-		if ok && runnableHere(ground, command) {
-			out = append(out, command)
+	if from == checksFromWork {
+		for _, raw := range strings.Split(text, "\n") {
+			line := strings.TrimSpace(raw)
+			if !strings.HasPrefix(line, "$ ") {
+				continue
+			}
+			command, ok := commandLike(strings.TrimPrefix(line, "$ "))
+			if ok && runnableHere(ground, command) {
+				out = append(out, command)
+			}
 		}
 	}
 	return out
+}
+
+// checkCommand answers HOW A DECLARED CHECK IS INVOKED where the checker is
+// going to stand, or "" when it cannot be invoked at all.
+//
+// A CHECK IS A COMMAND AND NEVER A PATH, which is the law this function is. The
+// door a node's own auditor gets already knows the difference: it reads the file
+// itself ([fileFacts]) and writes down which spellings START it, so a model is
+// told `<the interpreter> <the file>` rather than left guessing
+// ([auditDoor.spelling]). Whoever runs a check under a shell needs the same fact
+// and used to be given only the span the prose held — so a session that harvested
+// a bare `src/version.py` out of its own acceptance ran `bash -c src/version.py`,
+// collected exit 126 from a file with no executable bit, and reported "does not
+// pass" about it on every round of a whole evening (#468).
+//
+// THE TREE IS ASKED BEFORE THE PATH, and that order is a law rather than a
+// preference: A FILE THE TREE HOLDS OUTRANKS A PROGRAM OF THE SAME NAME ON PATH.
+// A repository that carries its own `check`, `build` or `test` beside the work
+// means THAT file, and a lookup that answered first would silently run somebody
+// else's program of the same name against somebody else's assumptions — the exact
+// shape of wrongness this whole reading exists to remove.
+//
+// THREE ANSWERS, AND EVERY ONE OF THEM IS A FACT RATHER THAN A LIST:
+//
+//   - THE SPAN NAMES A FILE AND THE WORK NAMED THE PROGRAM TOO — two words, a
+//     launcher and its file — so the program stands exactly as the work wrote it
+//     and the file behind it is resolved and quoted like any other. The work is
+//     the one citizen entitled to say WHICH program runs its check; it is not the
+//     authority on how a shell splits a word, and `sh run'"'"'tests.sh` handed back
+//     as written is an unterminated quote rather than a check.
+//   - THE SPAN IS THE FILE ALONE: it is opened the way the file itself says it
+//     opens, by its executable bit or by the interpreter its first line names, and
+//     the RESOLVED path is what goes into the command, because a bare word with no
+//     directory in it would send the shell looking down PATH for a file sitting in
+//     the tree.
+//   - THE TREE HOLDS NOTHING BY THAT NAME AND THE FIRST WORD IS A PROGRAM THE
+//     SHELL WOULD FIND ([onThePath]): the span is already a command and stands
+//     exactly as the work wrote it.
+//
+// AND A FILE THAT SAYS NEITHER IS NOT A CHECK. It is data the prose happened to
+// backtick, there is no way to run it, and "does not pass" is a sentence about a
+// check that RAN — so this answers "" and the caller drops it rather than
+// carrying a permanent failure for the life of the session. It answers "" EVEN
+// WHEN A PROGRAM OF THAT NAME IS ON THE PATH, because the tree said which file
+// was meant and running a different one would be worse than running nothing.
+func checkCommand(ground, check string) string {
+	fields := strings.Fields(check)
+	if len(fields) == 0 {
+		return ""
+	}
+	if files := fileChecksIn(ground, check); len(files) > 0 {
+		if len(fields) > 1 {
+			// The second word is the one [fileChecksIn] resolved, so the file it
+			// found is the file this command is about — and a wildcard the work
+			// wrote takes its first match, for the reason stated just below.
+			return fields[0] + " " + shellQuoted(files[0].path)
+		}
+		// A WILDCARD THE WORK WROTE RESOLVES TO WHATEVER IT MATCHES, and the
+		// first match that can be started is the check. The alternative —
+		// running every match — would turn one declared check into eight
+		// processes nobody declared.
+		for _, file := range files {
+			switch {
+			case file.runnable:
+				return shellQuoted(file.path)
+			case file.interpreter != "":
+				return file.interpreter + " " + shellQuoted(file.path)
+			}
+		}
+		return ""
+	}
+	if onThePath(fields[0]) {
+		return check
+	}
+	return ""
+}
+
+// shellQuoted wraps one path so that a shell reads it as ONE WORD, whatever is
+// in it.
+//
+// EVERY PATH THIS FILE HANDS TO A SHELL GOES THROUGH IT, unconditionally. A rule
+// that quoted only the paths that "needed" it would be a second reading of what a
+// shell does with a character, drifting from the first the day somebody meets a
+// bracket — and the measured shape is ordinary: a checkout under a directory with
+// a space in its name split into two words, and the check ran against neither of
+// them.
+//
+// SINGLE QUOTES, WITH THE ONE ESCAPE THEY HAVE. Inside single quotes a shell
+// expands nothing at all, so the only character that has to be handled is the
+// quote itself — closed, escaped, and reopened.
+func shellQuoted(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
 
 // runnableHere is the question the third measured failure at the top of this
@@ -567,6 +704,82 @@ func onThePath(word string) bool {
 	_, err := exec.LookPath(word)
 	return err == nil
 }
+
+// normalizedCheckCommand is this package's ONE reading of "are these two
+// spellings the same check", and it exists because nothing else here answers
+// that question: [appendChecks] dedupes on the exact bytes, [commandLike] asks
+// about SHAPE, and [runnableHere] asks whether a span could run at all.
+//
+// NORMALIZATION DROPS WHAT DOES NOT CHANGE WHAT IS MEASURED, AND KEEPS
+// EVERYTHING THAT NARROWS WHAT RUNS. That is the whole rule, and it is stated
+// once, here, because a second reading of it somewhere else would be a second
+// rule the day the two disagreed (design-law §ONE SOURCE OF TRUTH).
+//
+// DROPPED: the whitespace a model happened to type, which is typing and not
+// measurement; a trailing path separator on a word that is already a path,
+// because a shell reads `./pkg/` and `./pkg` as one directory; and a word that
+// only defeats a result cache (`-count=1`), because it changes whether an answer
+// is REUSED and never which answer is asked for.
+//
+// KEPT: every other word — a filter, a package path, a flag — because each of
+// them narrows what actually runs, and folding two narrowed checks together
+// would quietly drop one somebody asked for. `./internal/tui3` and
+// `./internal/tui3/...` are DELIBERATELY TWO COMMANDS: one measures a package
+// and the other measures a subtree, and the day they read as one is the day a
+// division could hoist away a check nobody else was going to make.
+//
+// AND TWO LIMITS, STATED RATHER THAN FIXED, because both of them cost a MISS and
+// the repairs for them would cost a REFUSAL — which is the wrong way round for a
+// reading that stands in front of a road:
+//
+//   - WHITESPACE INSIDE A QUOTED ARGUMENT IS COLLAPSED WITH ALL OTHER
+//     WHITESPACE, so `printf 'a b'` and `printf 'a   b'` read as one command
+//     here. That is inherited from this package's own reading of a command
+//     ([refuseOutsideDoor] normalises a command's whitespace the same way), and
+//     it is kept the same ON PURPOSE: one reading of what a command is, not two.
+//   - `-count=1` AND `-count 1` ARE THE SAME CHECK AND DO NOT FOLD, because
+//     folding them means parsing a flag's VALUE — knowing which flags take one
+//     and which do not — and a guess at a flag's shape that came out wrong would
+//     fold two different checks into one and refuse a division over it. The miss
+//     costs a repeated run; the guess would cost a road.
+func normalizedCheckCommand(command string) string {
+	words := strings.Fields(command)
+	kept := make([]string, 0, len(words))
+	for _, word := range words {
+		if word == cacheDefeatingWord {
+			continue
+		}
+		if pathLikeWord(word) {
+			word = strings.TrimSuffix(word, "/")
+		}
+		kept = append(kept, word)
+	}
+	return strings.Join(kept, " ")
+}
+
+// pathLikeWord says whether a trailing `/` on this word is a SEPARATOR — a word
+// that names a directory either way — rather than a character somebody meant.
+//
+// THE SEPARATOR HAS TO HAVE SEPARATED SOMETHING, which is the whole rule. A word
+// still holding a `/` once its last character is off is a path and `./pkg/` is
+// `./pkg`; a word whose ONLY slash is the last one has not separated anything,
+// and `-run TestHTTP/` is a FILTER whose subtests are a different check from
+// `-run TestHTTP`'s. Cutting it there would fold two filters into one and refuse
+// a division over it, which is the exact failure this normalisation promises not
+// to cause. A word that opens with `-` is a flag and is never a path, and a bare
+// `/` is a directory in its own right and not a spelling of anything.
+func pathLikeWord(word string) bool {
+	if strings.HasPrefix(word, "-") {
+		return false
+	}
+	return strings.Contains(strings.TrimSuffix(word, "/"), "/")
+}
+
+// cacheDefeatingWord is the one word this package knows changes nothing about
+// WHICH work a check does. It is a constant rather than a list because there is
+// exactly one of it: a list would be the beginning of a grammar over flags, and
+// every flag that is not this one narrows what runs and is kept.
+const cacheDefeatingWord = "-count=1"
 
 // ranChecks is source (b): what the last worker ITSELF ran, read off the
 // receipts the node already carries for the auditor's packet (task_audit.go's
@@ -652,6 +865,29 @@ func dropStandingIn(line, ran string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(rest), true
+}
+
+// preparedAuditCommand is the command the gate will actually run: the first
+// stage of what the model typed, with trailing pipes and redirections taken
+// off. THE MODEL OFTEN ADDS THOSE ITSELF — `python3 -m pytest … 2>&1`,
+// `go test ./... > /tmp/out` — and the gate used to refuse the whole line
+// because '>' is composition, then the auditor retried the same shape on
+// the dear tier (F40). What the line RUNS is its first stage; that is
+// already the law for receipts ([firstStage]), and it is the law here so
+// the auditor never emits a command its own contract then rejects.
+//
+// A LINE THAT IS NOT A PIPELINE IS LEFT ALONE. `go test ./... && rm -rf .`
+// is still two commands, still refused, and a shorter reading of it would
+// be a wider door.
+func preparedAuditCommand(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return command
+	}
+	if stage, ok := firstStage(command); ok {
+		return strings.TrimSpace(stage)
+	}
+	return command
 }
 
 // firstStage keeps the command a line RUNS and drops what only reads its output:
@@ -746,12 +982,21 @@ func fileChecksIn(ground, check string) []fileCheck {
 // a spelling of a check and the program the file names is, without this package
 // ever learning a launcher's name.
 //
-// THE LINE IS READ BY SHAPE. A hash and a bang, then words; options are skipped,
-// and THE LAST BARE WORD IS THE PROGRAM — a launcher that goes and finds another
-// program puts that program's name after its own, and a launcher that is itself
-// the interpreter is alone on the line, so the last bare word is the right answer
-// to both without either being named. What comes back is its base name, because a
-// program is the same program down every path that reaches it.
+// THE LINE IS READ BY SHAPE, AND THE PROGRAM IS THE FIRST WORD ON IT. That is
+// what the operating system itself does with the line: everything after the first
+// word is an ARGUMENT handed to that program, not another program. Reading the
+// last word instead made `#!/usr/bin/python3 isolated` answer `isolated` — a mode
+// flag promoted to a launcher, and a door that would then admit `isolated <the
+// check>` and refuse the interpreter that really starts it.
+//
+// THE ONE EXCEPTION IS THE LAUNCHER WHOSE JOB IS TO FIND ANOTHER PROGRAM, and it
+// is recognised by its own name rather than by a list of launchers: a first word
+// whose base name is `env` is a program that runs the next one it is given, so the
+// interpreter is the next word that is not an option — which is what makes both
+// `#!/usr/bin/env python3` and `#!/usr/bin/env -S python3 -u` answer `python3`.
+//
+// What comes back is a base name, because a program is the same program down
+// every path that reaches it.
 //
 // THE EXECUTABLE BIT IS THE SECOND FACT, and it answers a different question: a
 // file with it set states that running it is a thing that happens, which is what
@@ -783,12 +1028,20 @@ func fileFacts(path string) (interpreter string, runnable bool) {
 	if !strings.HasPrefix(line, "#!") {
 		return "", runnable
 	}
-	var named string
-	for _, field := range strings.Fields(line[2:]) {
-		if strings.HasPrefix(field, "-") {
-			continue
+	fields := strings.Fields(line[2:])
+	if len(fields) == 0 {
+		return "", runnable
+	}
+	named := fields[0]
+	if filepath.Base(named) == "env" {
+		named = ""
+		for _, field := range fields[1:] {
+			if strings.HasPrefix(field, "-") {
+				continue
+			}
+			named = field
+			break
 		}
-		named = field
 	}
 	if named == "" {
 		return "", runnable

@@ -1,0 +1,30 @@
+ aforge                                          thu 1:22am
+  home  tasks  standing  memory  spend  search  settings
+────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending  …
+────────────────────────────────────────────────────────────
+
+› per day                                               $500
+    what aforge may spend on your work in a day. When the
+    day's calls reach it, new work waits for midnight or
+    for you to raise it here. none removes the limit.
+  per conversation                                  no limit
+  per plan                             asks first above $100
+  per task                               no limit of its own
+  per standing run $5 a firing · each order may name its own
+  practice                                    $50 of the day
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ saved to your profile
+ › say what you want done                       here aforge
+ ↑↓ move · ←→ tabs · tab next place · esc close
