@@ -798,7 +798,10 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	// folders` is a sentence, and pressing a sentence means nothing on this
 	// surface. [app.dropPlaceChip] refuses it by the same bound.
 	if len(places) > 0 {
-		if at := chipAt(places, column); at >= 0 {
+		// The counting cell is BEYOND THE BOUND and is not answered for: `+2 more
+		// folders` is a sentence, and a cell that brightened under the pointer and
+		// then did nothing would be claiming to be something you can press.
+		if at := chipAt(places, column); at >= 0 && at < placeTrayCap {
 			return trayPlaceChip - at, true
 		}
 		column -= placeTrayWidth(places)

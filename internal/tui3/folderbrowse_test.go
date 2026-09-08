@@ -778,6 +778,15 @@ func TestTheTrayCountsTheFoldersItCannotName(t *testing.T) {
 	if _, ok := a.dropPlaceChip(placeTrayCap); ok {
 		t.Fatal("the counting cell took a press")
 	}
+	// AND IT DOES NOT LIGHT EITHER, which is the same law read the other way:
+	// what brightens under the pointer is what a press acts on.
+	_, height := a.size()
+	rows, _, _, _ := a.chrome(a.width)
+	row := height - len(rows) + len(rows) - 1 - a.overlayHeight() - a.inputHeight()
+	over := len(inputPad) + placeTrayWidth(cells[:placeTrayCap])
+	if at, ok := a.chipTrayTarget(over, row); ok && at <= trayPlaceChip {
+		t.Fatalf("the counting cell answered as folder %d", trayPlaceChip-at)
+	}
 }
 
 // ── the frame ───────────────────────────────────────────────────────────────
