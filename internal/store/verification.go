@@ -213,6 +213,28 @@ func (s *Store) VerificationsFor(nodeID string) ([]VerificationReading, error) {
 	return readings, nil
 }
 
+// LatestFinishedVerification returns a node's last finished-tree observation
+// with its journal sequence. Node status can change after a reading, so only
+// this sequence can order observations made by different workers.
+func (s *Store) LatestFinishedVerification(nodeID string) (VerificationReading, int64, error) {
+	var seq int64
+	var payload string
+	err := s.db.QueryRow(`SELECT seq, payload FROM events
+        WHERE node_id = ? AND kind = ? AND json_extract(payload, '$.when') = ?
+        ORDER BY seq DESC LIMIT 1`, nodeID, EventVerification, VerificationWhenFinished).Scan(&seq, &payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VerificationReading{}, 0, nil
+	}
+	if err != nil {
+		return VerificationReading{}, 0, fmt.Errorf("read last finished verification %q: %w", nodeID, err)
+	}
+	var reading VerificationReading
+	if err := json.Unmarshal([]byte(payload), &reading); err != nil {
+		return VerificationReading{}, 0, fmt.Errorf("decode last finished verification %q: %w", nodeID, err)
+	}
+	return reading, seq, nil
+}
+
 // EventSurface is the symbol-level half of the photograph, journaled beside the
 // check-level one.
 //

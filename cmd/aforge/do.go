@@ -2354,31 +2354,22 @@ func (w *settlementWatch) unjudgedReason(node store.Node) string {
 //
 // A SECOND READING REPLACES THE FIRST; IT DOES NOT ADD TO IT. A finding the
 // first reading raised and the second does not must stop being a finding, and
-// across a run the node that moved last has the last word. It asks the rows
+// across a run the reading with the latest journal sequence has the last word.
+// A node's later status update cannot reorder observations of the tree. It asks the rows
 // because the readings were taken in another process's turn loop, and the
 // journal is the only thing that crosses that seam. An unreadable store answers
 // empty, on the same terms unjudgedReason does: this decides how a run is
 // described, and a failed read is not evidence about the run.
 func (w *settlementWatch) uncollectedReason(nodes []store.Node) string {
-	ordered := append([]store.Node(nil), nodes...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return ordered[i].UpdatedSeq < ordered[j].UpdatedSeq
-	})
 	var last store.VerificationReading
-	found := false
-	for _, node := range ordered {
-		readings, err := w.graph.VerificationsFor(node.ID)
-		if err != nil {
-			continue
-		}
-		for index := len(readings) - 1; index >= 0; index-- {
-			if readings[index].When == store.VerificationWhenFinished {
-				last, found = readings[index], true
-				break
-			}
+	var lastSeq int64
+	for _, node := range nodes {
+		reading, seq, err := w.graph.LatestFinishedVerification(node.ID)
+		if err == nil && seq > lastSeq {
+			last, lastSeq = reading, seq
 		}
 	}
-	if found && last.Uncollected {
+	if lastSeq > 0 && last.Uncollected {
 		return strings.TrimSpace(last.Why)
 	}
 	return ""

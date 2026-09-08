@@ -224,3 +224,36 @@ func TestAFailedNodeDoesNotPublishAGoErrorAsItsAnswer(t *testing.T) {
 		t.Fatalf("the failed run swallowed its cause: %q", outcome.Deliverable)
 	}
 }
+
+// Node status updates are not verification timestamps. A slow final status
+// update must not resurrect a failed reading after another node checked the repair.
+func TestTheLastTreeReadingWinsRegardlessOfNodeStatusOrder(t *testing.T) {
+	graph, watcher, first := finishedErrand(t, "")
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{ID: "task-2", Brief: "check the repair", Stage: 1}}}, first.Provenance); err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := graph.Node("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const finding = "the finished tree failed to collect"
+	bad := store.VerificationReading{When: store.VerificationWhenFinished, Command: "go test ./...", Uncollected: true, Why: finding}
+	good := store.VerificationReading{When: store.VerificationWhenFinished, Command: "go test ./...", Read: true, Named: 1}
+	if err := graph.RecordVerification(first.ID, bad); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordVerification(second.ID, good); err != nil {
+		t.Fatal(err)
+	}
+	first.UpdatedSeq = second.UpdatedSeq + 100
+	nodes := []store.Node{first, second}
+	if got := watcher.uncollectedReason(nodes); got != "" {
+		t.Fatalf("an older failure overrode the newer clean reading: %q", got)
+	}
+	if err := graph.RecordVerification(second.ID, bad); err != nil {
+		t.Fatal(err)
+	}
+	if got := watcher.uncollectedReason(nodes); got != finding {
+		t.Fatalf("the latest failed reading was lost: %q", got)
+	}
+}

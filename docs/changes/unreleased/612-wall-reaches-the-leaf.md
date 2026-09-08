@@ -29,3 +29,7 @@ turns away. The deadline's is now as un-takeable, by being measured from the mom
 it is ordered rather than from what is left of a clock somebody else was spending.
 
 Review correction: the landing clock uses the earlier of its reserve and the caller's wall. A later caller deadline must not widen a one-second reserve into an hour.
+
+A second review regression orders finished-tree observations by their journal
+sequence rather than node status updates. A late status update can no longer
+resurrect a failure after another worker has checked the repaired tree.
