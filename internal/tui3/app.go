@@ -5999,6 +5999,17 @@ func (a *app) slash(line string) tea.Cmd {
 		// rather than a panel: a person who asked a question about their session
 		// wants it where they can scroll back to it, not on a fullscreen sheet they
 		// have to leave before they can act on it (statusnote.go).
+		//
+		// --json is the same list as one wire-ready object. The whole object is
+		// the payload, so it lands through [app.note] and not [app.noteFacts] —
+		// there is no third column to lift, and re-highlighting inside a
+		// serialized object would corrupt the JSON. Any other words after the
+		// name fall through to the bare form, the route this command has always
+		// answered on.
+		if rest == "--json" {
+			a.note(a.statusJSON())
+			return nil
+		}
 		text := a.statusText()
 		a.noteFacts(text, a.statusFacts(text)...)
 		return nil
