@@ -261,11 +261,12 @@ type CheckRun struct {
 
 // Remains is the end of a turn as a principal is shown it.
 //
-// Reader is the mark reader's one line about what is left, and EMPTY MEANS IT
-// READ THE ASK AS MET — the contract [Agent.readRemains] has always had. The
-// three fields under it are what a person would have looked at before agreeing:
-// the acceptance for the whole ask, how the units of work landed, and what the
-// session's own declared checks say about the tree right now.
+// Reader is the mark reader's one line about what is left. An empty line may be
+// the reader saying the ask is met, nobody being there to ask, or a call that did
+// not come back; the fields below keep apart the facts that the prose cannot.
+// The three readings under it are what a person would have looked at before
+// agreeing: the acceptance for the whole ask, how the units of work landed, and
+// what the session's own declared checks say about the tree right now.
 type Remains struct {
 	Said       string
 	Reader     string
@@ -309,6 +310,19 @@ type Remains struct {
 	// evidence about themselves: what makes inline work count as finished work is
 	// somebody who is not the writer looking at the session and saying so.
 	ReaderSaysDone bool
+
+	// ReaderUnreachable says the mark reader was asked and the call did not come
+	// back — a transport fault, an expired window or a nil response. It is not set
+	// when there was nobody to ask, when there was no digest worth asking about,
+	// or when a reader answered with something that was not prose.
+	//
+	// A READER NOBODY COULD REACH IS NOT A READER WHO DISAGREED. In the measured
+	// Human-Agent-Society-reef-145-chat cell the reader timed out, the finished
+	// green inline fix was moved to a task, and that task did the work again for
+	// nine and a half minutes (#582). This field lets the declared checks stand in
+	// for that missing second opinion without weakening the witness law anywhere
+	// a reader was absent or actually named a gap.
+	ReaderUnreachable bool
 
 	// Running names the units of work that are IN FLIGHT — started, or queued
 	// behind something that is — in the words a person reads them by.
@@ -389,23 +403,68 @@ type Remains struct {
 // finishedSomething answers the first question [Remains.unmet] asks: has this
 // session finished ANYTHING at all?
 //
-// TWO ROADS, AND THE SECOND ONE NEEDS A WITNESS. A unit of work that came home
-// through a task is finished work on its own account — something ran it,
+// THREE ROADS, AND THE TWO INLINE ROADS NEED A WITNESS. A unit of work that came
+// home through a task is finished work on its own account — something ran it,
 // something checked it, and the graph says so. Work this session did with its
 // own hands is finished work only with the mark reader agreeing that nothing is
-// left: the session grading its own inline edits is the one reading this whole
-// file exists to stop relying on, and the reader is the only party to the
-// question that did not write the files.
+// left, or with declared checks that actually ran over the tree standing in
+// when that reader could not be reached. The session grading its own inline
+// edits is the one reading this whole file exists to stop relying on; both
+// witnesses are readings the writer did not merely assert.
 func (r Remains) finishedSomething() bool {
-	return r.Landed || (r.Made && r.ReaderSaysDone)
+	return r.Landed || (r.Made && (r.ReaderSaysDone || r.stoodInForTheReader()))
 }
+
+// checksRan reports that at least one of the session's declared checks STARTED
+// AND FINISHED over the tree. Passed is deliberately not consulted: a red check
+// is still a reading, while a command that never started taught nobody anything
+// and cannot witness the work merely by appearing in the acceptance.
+func (r Remains) checksRan() bool {
+	for _, check := range r.Checks {
+		if check.Ran {
+			return true
+		}
+	}
+	return false
+}
+
+// stoodInForTheReader reports that the session's declared checks were read as
+// the witness [Remains.Made] needs, because the mark reader could not be reached.
+// A red reading still stands in — what it found is then named by [Remains.unmet]
+// instead of being collapsed into the false claim that nothing was finished.
+func (r Remains) stoodInForTheReader() bool {
+	return r.Made && !r.ReaderSaysDone && r.ReaderUnreachable && r.checksRan()
+}
+
+// witnessIsTheOnlyGap reports that the ONLY thing between this reading and a
+// finished ask is a witness the reader could not supply. That is the one road
+// on which the declared checks are worth reading before the goal owner is asked:
+// a failed landing, moving work, a stash or a reader's named gap would remain
+// whatever the checks said, so none of them buys this reading.
+func (r Remains) witnessIsTheOnlyGap() bool {
+	if !r.Made || !r.ReaderUnreachable || r.ReaderSaysDone || r.Landed {
+		return false
+	}
+	unmet := r.unmet()
+	return len(unmet) == 1 && unmet[0] == nothingFinishedYet
+}
+
+// nothingFinishedYet is the one sentence every reading uses when it has no
+// finished work to point at.
+const nothingFinishedYet = "nothing has been finished yet"
+
+// checksStoodInForTheReader is what an ending says when the mark reader could
+// not be reached and the session's declared checks were the second opinion
+// instead. It is spelled once so the stopped-turn and handover roads cannot
+// give different accounts of the same ending.
+const checksStoodInForTheReader = "the reader could not be reached, so the checks stood in for it"
 
 // unmet lists, in a person's words, what stands between this and finished. An
 // empty answer is the only thing that may become [DecideDone].
 func (r Remains) unmet() []string {
 	var out []string
 	if !r.finishedSomething() {
-		out = append(out, "nothing has been finished yet")
+		out = append(out, nothingFinishedYet)
 	}
 	for _, title := range r.Running {
 		out = append(out, title+" is still running")
@@ -626,7 +685,7 @@ type Decision struct {
 func carryOn(brief string, observed ...string) Decision {
 	return Decision{Verb: DecideCarryOn, Brief: brief, Observed: observed}
 }
-func done() Decision              { return Decision{Verb: DecideDone} }
+func done(brief string) Decision  { return Decision{Verb: DecideDone, Brief: brief} }
 func stop(reason string) Decision { return Decision{Verb: DecideStop, Reason: reason} }
 
 // stopSpent is the budget's own stop, and it is spelled apart from [stop]
@@ -685,7 +744,7 @@ func (p *Person) Decide(r Remains) Decision {
 		// on this road quote what was seen rather than assert a conclusion.
 		return carryOn(line, line)
 	}
-	return done()
+	return done("")
 }
 
 // hear records the person's own words, and the LAST of them stands.
@@ -978,7 +1037,11 @@ func (s *Steward) Decide(r Remains) Decision {
 		// same gap again is meeting it for the first time since — and a floor
 		// that remembered across the finish would stop it on its first carry-on.
 		s.forget()
-		return done()
+		brief := ""
+		if r.stoodInForTheReader() {
+			brief = checksStoodInForTheReader
+		}
+		return done(brief)
 	}
 	brief := strings.TrimSpace(r.Reader)
 	if brief == "" {
@@ -1078,8 +1141,12 @@ func stewardBrief(r Remains, unmet []string) string {
 	return withWhatIsKnownAboutTheChecks(out.String(), r)
 }
 
-// withWhatIsKnownAboutTheChecks appends the two sentences a brief owes about the
+// withWhatIsKnownAboutTheChecks appends the sentences a brief owes about the
 // declared checks, and it is ONE function because both briefs owe them.
+//
+// WHEN THE CHECKS STOOD IN FOR AN UNREACHED READER, THE BRIEF SAYS SO. A worker
+// handed a red check without that account would know what failed and not why
+// this reading was allowed to replace the missing witness.
 //
 // A BRIEF WRITTEN BEFORE THE BASELINE LANDED SAYS SO. A worker told nothing about
 // the checks reads the silence as "they pass"; told that nobody has finished
@@ -1089,6 +1156,9 @@ func stewardBrief(r Remains, unmet []string) string {
 // worker handed a brief that does not mention red it can plainly see will go and
 // fix it, which is the whole failure in its other form.
 func withWhatIsKnownAboutTheChecks(brief string, r Remains) string {
+	if r.stoodInForTheReader() {
+		brief += "\n\n" + checksStoodInForTheReader
+	}
 	if !r.BaselineRead && len(r.Checks) > 0 {
 		return brief + "\n\n" + baselineStillReading
 	}

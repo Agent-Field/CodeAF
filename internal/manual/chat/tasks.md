@@ -781,10 +781,12 @@ crews and what things cost* for what the error line says now.
 with no thinking-tier model configured has none — and rather than call, fail in two
 milliseconds and write a failed reading into the session file on every round, aforge does not
 ask, and notes the absence once. A reader that faults or takes too long is different: the call
-was made and it came back with nothing, and the reply then ends as it would have ended before
-any of this existed. In an unattended run with a budget the decision carries on without a
-reader either way, on what came home and what the checks said — see *Leaving it running on its
-own* in *starting aforge*.
+was made and it came back with nothing. In a session you are watching, the reply still ends as
+it would have ended before any of this existed. On an unattended run, if the session made work
+inline and that missing answer is the only gap, aforge actually runs the declared checks over
+the tree; a green check can stand in for the reader, while a red one is carried on by command.
+Having no configured reader is an absence, not a failed call, and never runs checks on its
+own — see *Leaving it running on its own* in *starting aforge*.
 
 ## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
 

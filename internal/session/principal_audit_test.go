@@ -455,6 +455,24 @@ func TestAPersonsStoppedTurnTakesNoSecondReading(t *testing.T) {
 	}
 }
 
+// TestAnUnreachedReaderOnAWatchedSessionChangesNothing proves C12: a session
+// somebody is sitting in front of does not buy or run a declared check because
+// the mark reader's call could not be reached.
+func TestAnUnreachedReaderOnAWatchedSessionChangesNothing(t *testing.T) {
+	tree := t.TempDir()
+	marker := filepath.Join(tree, "the-check-ran")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = tree })
+	agent.hearAsk("write the parser; check it with `touch " + marker + "`")
+
+	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "all done")
+	if got.Verb != DecideDone {
+		t.Fatalf("an unreached reader changed a watched session's ending: %+v", got)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a watched session ran a check on the strength of an unreached reader")
+	}
+}
+
 // AND A SESSION THAT DID THE WHOLE JOB INLINE REACHES THE CHECK AT ALL.
 //
 // The reef cell wrote the fix and its tests itself and never started a task, so
@@ -489,6 +507,138 @@ func TestInlineWorkWithNoTasksReachesTheTerminalCheck(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("the terminal check never ran over the work the session made: %v", err)
+	}
+}
+
+// TestAnUnreachedReaderIsAnsweredByTheChecks proves C1, C2 and C6: when the
+// failed reader call is the only missing witness for inline work, a declared
+// check is really run over the tree and a green reading ends done with its
+// reason carried in the brief.
+func TestAnUnreachedReaderIsAnsweredByTheChecks(t *testing.T) {
+	tree := t.TempDir()
+	made := filepath.Join(tree, "test_auth.py")
+	if err := os.WriteFile(made, []byte("def test_scheme():\n    assert True\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(tree, "the-check-ran")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("fix the bearer scheme; check it with `touch " + marker + "`")
+	steward.setAcceptance("the scheme is case-insensitive and `touch " + marker + "` passes")
+	agent.rememberCreated(fileChange{path: made, shown: "test_auth.py", created: true})
+
+	got := agent.decideRemains(context.Background(), readerLine{unreachable: true},
+		"The scheme parsing is fixed and the tests pass.")
+
+	if got.Verb != DecideDone {
+		t.Fatalf("green checked inline work was carried on after the reader could not be reached: %+v", got)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the stand-in check never ran over the tree: %v", err)
+	}
+	if !strings.Contains(got.Brief, checksStoodInForTheReader) {
+		t.Fatalf("the done brief does not say why the checks were used:\n%s", got.Brief)
+	}
+}
+
+// TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed proves C7: a red
+// stand-in reading carries on with the command it actually ran and never claims
+// that the inline work finished nothing.
+func TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed(t *testing.T) {
+	tree := t.TempDir()
+	made := filepath.Join(tree, "parser.go")
+	if err := os.WriteFile(made, []byte("package parser\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("port the parser; check it with `false`")
+	steward.setAcceptance("the parser builds and `false` passes")
+	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
+
+	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "That completes the port.")
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("a red stand-in check did not carry on: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "false does not pass") {
+		t.Fatalf("the brief does not name the red command:\n%s", got.Brief)
+	}
+	if strings.Contains(got.Brief, nothingFinishedYet) {
+		t.Fatalf("the brief says no work finished instead of naming the red check:\n%s", got.Brief)
+	}
+	if !strings.Contains(got.Brief, checksStoodInForTheReader) {
+		t.Fatalf("the carry-on brief does not say why the checks were used:\n%s", got.Brief)
+	}
+}
+
+// TestAnUnreachedReaderIsAnsweredByTheChecksAtAHandoverToo proves C8: the
+// handover ending takes the same real stand-in reading and carries the same
+// reason as a stopped turn.
+func TestAnUnreachedReaderIsAnsweredByTheChecksAtAHandoverToo(t *testing.T) {
+	tree := t.TempDir()
+	made := filepath.Join(tree, "parser.go")
+	if err := os.WriteFile(made, []byte("package parser\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(tree, "the-check-ran")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("port the parser; check it with `touch " + marker + "`")
+	steward.setAcceptance("the parser builds and `touch " + marker + "` passes")
+	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
+
+	got := agent.decideHandover(context.Background(), readerLine{unreachable: true}, "That completes the port.")
+	if got.Verb != DecideDone {
+		t.Fatalf("the handover did not finish over its green stand-in check: %+v", got)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the handover's stand-in check never ran: %v", err)
+	}
+	if !strings.Contains(got.Brief, checksStoodInForTheReader) {
+		t.Fatalf("the handover's done brief does not carry the stand-in reason:\n%s", got.Brief)
+	}
+}
+
+// TestAnEndingAsksTheGoalOwnerOnce proves C11: an unreachable reader over
+// inline work with no declared check carries on without showing the standstill
+// floor the same unmet set twice inside one ending.
+func TestAnEndingAsksTheGoalOwnerOnce(t *testing.T) {
+	tree := t.TempDir()
+	made := filepath.Join(tree, "parser.go")
+	if err := os.WriteFile(made, []byte("package parser\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("port the parser")
+	steward.setAcceptance("the parser accepts every fixture")
+	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
+
+	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "That completes the port.")
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("one ending stopped after asking the goal owner more than once: %+v", got)
+	}
+	steward.mu.Lock()
+	stopped := steward.stopped
+	steward.mu.Unlock()
+	if stopped != "" {
+		t.Fatalf("one ending latched the standstill floor: %q", stopped)
 	}
 }
 

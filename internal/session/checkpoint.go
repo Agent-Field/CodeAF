@@ -2698,13 +2698,21 @@ const checkpointStoppedNote = "stopping here · "
 // run, nothing is spent, and a [Person] never gets past this line: their answer
 // is the reader's line and silence, exactly as it always was.
 //
-// THE SECOND DECIDE IS WHERE THE TREE IS LOOKED AT. A principal that says the
-// ask is MET has said the one thing this build never had any way to check, so
-// it is checked: the session's declared checks are re-run from clean and the
-// same principal is asked again with their results in front of it
-// (principal_audit.go). An acceptance is what says a principal is in a position
-// to be asked that — a person holds their own and is shown nothing — so the
-// second reading belongs to a session that has one and to no other.
+// THE TREE IS LOOKED AT WHERE ITS ANSWER CAN CHANGE THE ENDING. Ordinarily a
+// principal that says the ask is MET has said the one thing this build never had
+// any way to check, so the session's declared checks are re-run from clean and
+// the same principal is asked again with their results in front of it
+// (principal_audit.go). When an unreachable reader is the only missing witness
+// for inline work, that reading comes FIRST: the checks are the only second
+// opinion still available, so the goal owner must see them on its first look.
+// An acceptance is what says a principal is in a position to be asked that — a
+// person holds their own and is shown nothing — so this reading belongs to a
+// session that has one and to no other.
+//
+// A GOAL OWNER IS ASKED EXACTLY ONCE PER ENDING ON THE STAND-IN ROAD. Asking it
+// first without the checks and then again with them would show
+// [Steward.standstill] the same unmet set twice without a turn between, stopping
+// a run on the first reader timeout instead of letting it carry on (#582).
 //
 // AND THE SWEEP RIDES WITH IT, which is why the audit is not skipped when the
 // second answer turns out to be "carry on": what a session left lying beside
@@ -2715,8 +2723,13 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
 	a.journalAbsorbed(remains)
-	decision := principal.Decide(remains)
-	if decision.Verb == DecideDone && remains.Acceptance != "" {
+	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
+	var decision Decision
+	if !readChecks {
+		decision = principal.Decide(remains)
+		readChecks = decision.Verb == DecideDone && remains.Acceptance != ""
+	}
+	if readChecks {
 		var found reconciliation
 		decision, found = a.decideOverTheChecks(ctx, remains)
 		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
@@ -2752,14 +2765,15 @@ func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said strin
 // AND EACH IS SAID ONCE. The reading is taken at the end of every reply and the
 // answer does not change, so a row per turn would be one fact written thirty
 // times. What is already written down is remembered for the life of the session.
-// decideOverTheChecks is the SECOND READING a done has to survive: the session's
-// declared checks are run from clean over the tree as it stands, what was
-// already red before the work is folded in beside them, and the principal is
-// asked again with the results in front of it. Both roads that can end a run on
-// a done — the stopped turn ([Agent.decideRemains]) and the handover
-// ([Agent.decideHandover]) — take it, so neither can finish on a done nobody
-// checked. It also returns what the audit's sweep found, for the caller that
-// tidies.
+// decideOverTheChecks is the TERMINAL READING a done has to survive: the
+// session's declared checks are run from clean over the tree as it stands, what
+// was already red before the work is folded in beside them, and the principal
+// is asked with their results in front of it. Ordinarily it is the second look;
+// when those checks stand in for an unreachable reader, it is the first and only
+// one. Both roads that can end a run on a done — the stopped turn
+// ([Agent.decideRemains]) and the handover ([Agent.decideHandover]) — take it,
+// so neither can finish on a done nobody checked. It also returns what the
+// audit's sweep found, for the caller that tidies.
 //
 // THE BASELINE IS RE-READ WITH THE CHECKS. The reading handed in was assembled
 // before the checks ran, when the before-reading may not have landed;
@@ -2898,10 +2912,12 @@ func turnBroke(response *ai.Response) bool {
 // are read by completely different code — a sketch is parsed for width, and this
 // is handed back to the running model as prose.
 //
-// AN EMPTY ANSWER MEANS THE ASK IS MET, and every failure produces one: no
-// mastermind, a fault, a window that ran out, a reply that is not prose, and the
-// remains contract answered with its own token. Reading silence as "there is more
-// to do" would re-open turns on every install without a crew.
+// AN EMPTY ANSWER STILL ENDS THE READER'S PART OF THE TURN, but its cause is
+// carried separately now. No mastermind and no digest remain silence; a reply
+// that is not prose was reached; the remains token is agreement; and only a call
+// that failed to come back is unreachable. Reading all of those as "there is
+// more to do" would re-open turns on every install without a crew, while reading
+// a failed call as disagreement would send finished inline work round again.
 //
 // AND IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
 // side-call to a different model that the person did not ask for.
@@ -2924,7 +2940,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
 		ai.WithMaxTokens(checkpointSketchTokens))
 	if err != nil || response == nil {
-		return readerLine{}
+		return readerLine{unreachable: true}
 	}
 	a.addAuxiliaryUsage(response, reader, 1)
 	said := strings.TrimSpace(response.Text())
@@ -2946,7 +2962,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	return readerLine{said: clip(firstLine(said), checkpointSketchBytes), answered: true}
 }
 
-// readerLine is what the mark reader answered about what is left, in the three
+// readerLine is what the mark reader answered about what is left, in the four
 // states it actually has.
 //
 // THE EMPTY STRING USED TO MEAN ALL THREE. "Nobody was asked", "the call failed"
@@ -2957,14 +2973,25 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 // is, and collapsing it into silence is what left one measured run reading
 // "nothing has been finished yet" over a green tree it had just written
 // ([Remains.finishedSomething], #513).
+//
+// THE FOURTH STATE KEEPS THE FAILED CALL APART. A reader nobody could reach is
+// not a reader who disagreed: in Human-Agent-Society-reef-145-chat the reader
+// timed out and a green inline fix was handed to a task that did it again for
+// nine and a half minutes (#582).
 type readerLine struct {
 	// said is what is still left, in the reader's own words, and "" when it said
-	// nothing is left or was never asked.
+	// nothing is left, was never asked, could not be reached or answered without
+	// prose. The flags below say which of those facts the silence carries.
 	said string
 	// answered says a reader was asked and replied at all.
 	answered bool
 	// nothingLeft says the reply was that nothing is left.
 	nothingLeft bool
+	// unreachable says the reader WAS asked and the call did not come back — a
+	// transport fault, a window that ran out, or a nil response. It is false for
+	// an absent reader and for every response that was reached, including one
+	// whose answer was empty or not prose.
+	unreachable bool
 }
 
 // endsAskingThePerson reports that a turn's last words put a question to whoever
@@ -3716,11 +3743,13 @@ const stopLeftItMovingTail = " · work was still going and was left where it was
 // the goal owner has not changed its mind, and says so again at the next ending.
 func heldForMovingWork(decision Decision, moving []string) Decision {
 	brief := decision.Brief
-	if strings.TrimSpace(brief) == "" {
-		// A HELD DONE HAS NO BRIEF OF ITS OWN — nothing was left — so the
-		// continuation says the one true thing rather than falling back to the
-		// person's bare ask and starting the work over: what is left is the work
-		// still moving, by name.
+	if decision.Verb == DecideDone || strings.TrimSpace(brief) == "" {
+		// A HELD DONE'S BRIEF IS ALWAYS THE MOVING WORK. A done can now carry the
+		// account of checks standing in for an unreachable reader, but that is why
+		// it was answered, not what remains after the seal finds live work. The
+		// continuation says the one true thing rather than starting the finished
+		// work over: what is left is the work still moving, by name. The empty-brief
+		// road remains for the stops that already reached it.
 		brief = heldDoneBrief + strings.Join(moving, ", ")
 	}
 	return Decision{
@@ -3775,12 +3804,15 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // decideHandover puts a handover to the principal, and it is
 // [Agent.decideRemains] with ONE THING MOVED.
 //
-// THE SECOND READING IS TAKEN HERE TOO. Done is an ending on this road now
+// THE TERMINAL READING IS TAKEN HERE TOO. Done is an ending on this road now
 // ([Agent.endTurnUnderSteward]), so a done that had not been answered by
 // re-running the session's declared checks from clean would be a run finishing
 // on a done nobody checked — the one thing the stopped-turn road exists to
-// prevent. It used to be left out because done did not end a handover, and the
-// checks would have been a process each bought to change nothing.
+// prevent. Where an unreachable reader is the only gap, the checks are read
+// before the first decision here just as they are at a stopped turn. THE GOAL
+// OWNER IS ASKED EXACTLY ONCE PER ENDING ON THAT ROAD; giving the standstill
+// floor the same unmet set before and after the checks would stop a run on its
+// first timeout (#582).
 //
 // WHAT IS MOVED IS THE DONE'S TIDY. On the stopped-turn road the sweep rides
 // with the second reading; here a done can still be HELD over work that is
@@ -3797,8 +3829,13 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said string) Decision {
 	remains := a.remainsFor(said, reader)
 	a.journalAbsorbed(remains)
-	decision := a.who().Decide(remains)
-	if decision.Verb == DecideDone && remains.Acceptance != "" {
+	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
+	var decision Decision
+	if !readChecks {
+		decision = a.who().Decide(remains)
+		readChecks = decision.Verb == DecideDone && remains.Acceptance != ""
+	}
+	if readChecks {
 		decision, _ = a.decideOverTheChecks(ctx, remains)
 	}
 	if decision.Verb == DecideStop {
