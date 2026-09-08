@@ -4532,14 +4532,14 @@ nothing else. Over an engine-backed door, quitting aforge detaches instead: the 
 outlives the window and is still going when you come back to it. An in-process
 (`--no-host`) conversation does not keep working after its terminal exits.
 
-**Stop work reaches this conversation’s known work.** It interrupts the reply and
-cancels the queued/running task nodes and background jobs already reported to this
-window, including a chat held in the background. Other conversations are untouched.
-The card says `the reply, tasks and jobs stop; nothing is deleted` when it knows
-about tasks or jobs. Work that has not yet reached the window’s event roster is
-not covered by this snapshot; a stop is not a promise to disable future standing work.
-Stopping a job also queues its completion note, which can wake another reply.
-
+**Stop work ends this conversation’s work.** The engine first blocks new work,
+then cancels the reply, pending questions, queued/running task nodes, adaptive
+runs and background jobs, including a chat held in the background. Other
+conversations are untouched. The card says `the reply, tasks and jobs stop;
+nothing is deleted` when it knows about tasks or jobs. Cancellation news cannot
+wake another reply. Only a fresh user message resumes work once cancellation
+finishes; reopening the tab does not. Stopping does not delete standing orders
+or change what quitting the whole app means.
 
 ## Accepting a saved task after its Git registration was released
 

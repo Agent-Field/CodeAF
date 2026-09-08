@@ -1060,6 +1060,7 @@ func (a *Agent) graph() *TaskGraph {
 	}
 	if a.tasks == nil {
 		graph := newTaskGraph()
+		graph.quitting = a.closed || a.workStopped
 		graph.home = a
 		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
@@ -1179,6 +1180,11 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	if g.nodes == nil {
 		g.nodes = make(map[uint64]*TaskNode, 1)
 	}
+	refused := g.quitting
+	if refused {
+		node.state, node.stopped, node.report = TaskFailed, true, taskStoppedQueuedWord
+		close(node.done)
+	}
 	g.nodes[id] = node
 	g.order = append(g.order, id)
 	// The node counts itself from here, so the slot its proposal was holding
@@ -1190,6 +1196,10 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// rather than after: a process killed between these two lines still resumes
 	// with the node the person approved, queued.
 	g.checkpoint()
+	if refused {
+		g.announce(node)
+		return TaskFailed
+	}
 	g.runFrontier()
 	// AND THE WORK IS NAMED, on a goroutine of its own, after it has started
 	// (taskname.go). This is the one door every task in this package comes

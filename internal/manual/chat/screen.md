@@ -251,8 +251,13 @@ answer the cursor is on will actually do:
 | Answer | What it does |
 | --- | --- |
 | `keep running` | The tab goes; the conversation does not. It keeps writing, its tasks keep running, and you find it again under `Chats`, on Home, or with `ctrl+shift+t`. Reopening it shows everything it did while it was out of sight — the same conversation, not a second run of it |
-| `stop work` | Ends the turn and cancels its known queued/running tasks and jobs, then closes the tab. Nothing in any other chat is touched, and nothing is deleted |
+| `stop work` | Ends the turn and cancels this conversation’s queued/running tasks, adaptive runs and jobs, then closes the tab. Nothing in any other chat is touched, and nothing is deleted |
 | `cancel` | Nothing happens. The tab stays, the work stays, your draft stays |
+
+Cancellation news cannot start another reply after `stop work`. A fresh message
+starts work again once cancellation finishes. If work is still stopping, the message
+is refused with “this conversation is stopping; wait for its work to finish stopping before sending a new message”.
+Keeping or reopening a tab does not restart stopped work.
 
 Chats marks a hidden reply or background job `working` even when it has no tasks. A reply that
 finishes while held there says `it finished while you were away`.

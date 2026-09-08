@@ -296,6 +296,7 @@ const (
 	MethodSubmitFiles     = "SubmitFiles"            // SubmitFilesArgs → StreamRef, then "event" frames
 	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
 	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
+	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
 	MethodInterrupt       = "Interrupt"              // nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
 	MethodClose           = "Close"                  // nothing → nothing

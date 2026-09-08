@@ -1920,6 +1920,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodDepositFile:
 		return s.depositFile(call)
 
+	case MethodStopWork:
+		door, ok := agent.(interface{ StopWork() error })
+		if !ok {
+			return nil, fmt.Errorf("this engine cannot stop all conversation work")
+		}
+		return nil, door.StopWork()
+
 	case MethodInterrupt:
 		agent.Interrupt()
 		return nil, nil

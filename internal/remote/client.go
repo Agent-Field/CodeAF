@@ -1512,6 +1512,12 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 // exactly what a dead connection does to the turn as well.
 func (a *Agent) Interrupt() { _, _ = a.c.call(nil, MethodInterrupt, nil) }
 
+// StopWork asks the engine to end all work in this conversation and suppress wakes.
+func (a *Agent) StopWork() error {
+	_, err := a.c.call(nil, MethodStopWork, nil)
+	return err
+}
+
 // Compact runs a compaction pass on the far side.
 func (a *Agent) Compact(ctx context.Context) error {
 	_, err := a.c.call(ctx, MethodCompact, nil)

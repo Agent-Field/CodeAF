@@ -2315,7 +2315,10 @@ type Agent struct {
 	// mid-turn moves the floor with the rebuild ([Agent.foldLocked]); a rewind
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
-	cancel    context.CancelFunc
+	// Explicit conversation stops suppress autonomous wakes until fresh input.
+	workStopped  bool
+	workStopping bool
+	cancel       context.CancelFunc
 	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
 	// It sits outside mu and holds its own lock: Interrupt is the one call that
 	// must always be answerable, and the handlers it serializes must never need

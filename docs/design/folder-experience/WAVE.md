@@ -124,3 +124,12 @@ then run make build in an owned Spark worktree. Neither READY nor QUALITY_READY
 is terminal success until acceptance and the authorized merge are verified. Do
 not update dev, main, staging, releases, installed binaries or the Mac checkout.
 Record Mac fetch/update/make build steps for its next local session.
+
+## Stop lifecycle — steering 08
+
+Stop work must close conversation-local admission before ending the current turn,
+pending questions, queued/running tasks, adaptive runs and background jobs. Late
+creation and cancellation news must not restart execution. Only a fresh explicit
+user submission may resume work after cancellation settles. Validate this through
+the ordinary local engine and real terminal while another conversation continues.
+Keep finishui ownership of picker/preview/attachment files intact.

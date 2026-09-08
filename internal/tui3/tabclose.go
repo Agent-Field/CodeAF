@@ -155,7 +155,10 @@ func (a *app) tabCloseTake(at int) tea.Cmd {
 	case tabCloseCancelAt:
 		return nil
 	case tabCloseStopAt:
-		a.stopConversation(tab)
+		if err := a.stopConversation(tab); err != nil {
+			a.note("could not stop work: " + err.Error())
+			return nil
+		}
 	}
 	return a.tabDismissNow(tab)
 }
@@ -163,16 +166,30 @@ func (a *app) tabCloseTake(at int) tea.Cmd {
 // stopConversation ends the work in ONE conversation and touches nothing else in
 // the window.
 //
-// THE FRONT CONVERSATION GOES THROUGH THE KEY IT ALREADY HAS. [app.interrupt] is
-// `esc`, and everything a stop owes the screen is paid there — the spinners
-// still, the questions come down, the parked messages are dropped. Its NODES go
-// through the one door onto ending work ([stopAgent], stop.go), which is what an
-// interrupt does not reach: a node runs in its own worktree under its own agent,
-// so the turn's cancellation goes nowhere near it.
-//
-// A held conversation supplies its own replayed roster. IDs from the project
-// index are never cancellation authority because they repeat across conversations.
-func (a *app) stopConversation(tab chatTab) {
+// The engine operation closes admission as well as cancelling work. The older
+// in-process adapter fallback uses only this conversation's replayed roster;
+// project-index IDs are never cancellation authority because they repeat.
+func (a *app) stopConversation(tab chatTab) error {
+	// The engine owns admission as well as cancellation. A surface roster can
+	// miss a job created while this card is open, so prefer the complete door.
+	var agent any = a.agent
+	if tab.key != a.frontTabKey() {
+		if held := a.behind[tab.key]; held != nil {
+			agent = held.conv.Agent
+		} else {
+			agent = nil
+		}
+	}
+	if door, ok := agent.(interface{ StopWork() error }); ok {
+		if err := door.StopWork(); err != nil {
+			return err
+		}
+		if tab.key == a.frontTabKey() {
+			a.interrupt()
+		}
+		return nil
+	}
+
 	if tab.key == a.frontTabKey() {
 		a.interrupt()
 		a.stopFrontNodes()
@@ -183,7 +200,7 @@ func (a *app) stopConversation(tab chatTab) {
 				}
 			}
 		}
-		return
+		return nil
 	}
 	if held := a.behind[tab.key]; held != nil && held.conv.Agent != nil {
 		held.conv.Agent.Interrupt()
@@ -194,6 +211,7 @@ func (a *app) stopConversation(tab chatTab) {
 			}
 		}
 	}
+	return nil
 }
 
 // stopFrontNodes asks this conversation to end each node in its own roster that

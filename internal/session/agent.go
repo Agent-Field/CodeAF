@@ -850,6 +850,10 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		a.mu.Unlock()
 		return nil, errors.New("session: agent is closed")
 	}
+	if err := a.resumeWorkLocked(); err != nil {
+		a.mu.Unlock()
+		return nil, err
+	}
 	if a.running {
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
@@ -1673,6 +1677,9 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 	defer a.mu.Unlock()
 	if a.closed {
 		return nil, errors.New("session: agent is closed")
+	}
+	if a.workStopped {
+		return nil, errWorkStopping
 	}
 	stream := newEventStream()
 	if a.running {
@@ -2971,7 +2978,7 @@ func (a *Agent) wakeLocked() bool {
 	// Steward's own wall and clock without asking its spend closure while this
 	// function holds a.mu.
 	wallGone := wallIsUp(a.steward())
-	if a.running || a.closed || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
+	if a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
 		return false
 	}
 	if err := a.railBlockLocked(); err != nil {

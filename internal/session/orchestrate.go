@@ -132,7 +132,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		return "", errors.New("an adaptive run needs a goal")
 	}
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || a.workStopped {
 		a.mu.Unlock()
 		return "", errAgentClosed
 	}
@@ -248,7 +248,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 
 	live := &orchestration{run: run, cancel: cancel, family: family, born: time.Now()}
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || a.workStopped {
 		a.mu.Unlock()
 		cancel()
 		return "", errAgentClosed
