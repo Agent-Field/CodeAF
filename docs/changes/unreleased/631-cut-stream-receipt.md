@@ -4,6 +4,7 @@ title: a cut stream's bill is asked for from the provider's own receipt, and a p
 pr: 631
 surface: [engine, chat]
 invalidates:
+  - "A spend window containing only missing-price markers took the no-spending teaching path. The page now treats those markers as a real reading and displays their count even when no priced call exists."
   - "Review found that missing prices lived only in a process counter and never reached /cost. They now persist as attributed unbilled markers without invented money; /cost reads this conversation and its task descendants, and /spend reads its selected time window after restart."
   - "The first receipt permanently started four workers for every transient client. Workers now retire when their queue drains, with admission and retirement serialized so a later receipt restarts them safely."
   - "A streamed call that ended without a usage block — cut by its wall, cut by silence, torn, interrupted, or a hedge's losing arm — reached neither the conversation's meter nor `~/.aforge/v3/usage.jsonl`, and no surface said so. The provider's generation id is asked for that generation's own receipt in the background now, and the receipt's exact cost and token counts are written down late; the ledger still invents nothing, but the gap is no longer silent."

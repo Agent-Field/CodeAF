@@ -238,4 +238,13 @@ func TestCostReadsDurableUnbilledMarkersForItsOwnConversation(t *testing.T) {
 	if reading.unbilled != 3 {
 		t.Fatalf("machine reading lost durable markers: %+v", reading)
 	}
+	a.spend.reading = reading
+	var page strings.Builder
+	for _, row := range (placeSpend{}).body(a, 200, 12) {
+		page.WriteString(plain(row.text))
+		page.WriteByte('\n')
+	}
+	if !strings.Contains(page.String(), "3 "+spendUnbilledSaid) || strings.Contains(page.String(), spendTeachEmptyWord) {
+		t.Fatalf("a page with only missing prices claimed no spending: %s", page.String())
+	}
 }

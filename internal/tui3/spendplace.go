@@ -310,8 +310,14 @@ func (r spendReading) rows(width int, pal palette) []string {
 // map written by anything other than the draw is a hit map that resolves a
 // keypress against a row the draw did not put there — the law every hit map on
 // this surface is held to (home's own says it first).
+// empty distinguishes an untouched ledger from calls whose price is missing.
+// Both page selection and row rendering must preserve a shortfall-only reading.
+func (r spendReading) empty() bool {
+	return r.totals.USD <= 0 && r.unbilled <= 0 && r.unwritten <= 0
+}
+
 func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
-	if width < 1 || r.totals.USD <= 0 {
+	if width < 1 || r.empty() {
 		return nil, nil
 	}
 	var out []string
