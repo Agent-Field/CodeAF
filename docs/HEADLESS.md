@@ -369,7 +369,7 @@ harness passes anything with newlines in it.
 | `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
 | `--system text` | empty | The working method, passed as the task's contract. |
 | `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
-| `--token-budget N` | `150000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the one turn that was already in flight. Hitting it exits `3`. |
+| `--token-budget N` | `150000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the overshoot of the turn crossing the budget and of the final landing turn. Hitting it exits `3`. |
 | `--timeout D` | scaled from `--token-budget` | Hard wall, as a duration: `15m`, `2h`, `90s`. A bare number is read as seconds, so `--timeout 900` keeps working. Unset, it is 15 minutes, or one minute per 50k tokens of budget when that is longer. Hitting it exits `3`. |
 | `--model slug` | the ladder in section 1 | The work model. `exec` opens with the same `models:` line on stderr, naming its one seat and the rung that chose it. |
 | `--context-fill N` | `60` | How full the context window may get before it is compacted, in percent. |
@@ -518,8 +518,8 @@ again.
 - **No daily spending limit and no `--yes-spend`.** `AFORGE_DAILY_BUDGET` is not
   consulted here; `--token-budget` is the only ceiling, and it is counted in
   tokens. Its landing stops after a few final calls or a fifth of the budget,
-  whichever runs out first; the effective ceiling also includes the turn already
-  in flight. A campaign driving `exec` is responsible for its own spend.
+  whichever runs out first; the effective ceiling also includes overshoot from both the budget-crossing
+  turn and the final landing turn. A campaign driving `exec` is responsible for its own spend.
 - **No resident lease.** It never waits for another aforge and never hands work
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing

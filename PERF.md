@@ -1706,10 +1706,10 @@ could be checked.
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
 
 The effective ceiling a caller gets is therefore the grant, plus
-`landingTokenShare` of that grant, plus the one turn already in flight when the
-ceiling is crossed. It cannot be exactly the grant because the loop learns a
-turn's bill only after the turn is complete, and that last turn is what keeps a
-mid-edit workspace whole. The token half exists because four leaves in the
+`landingTokenShare` of that grant, plus the overshoot of the turn that crosses
+the grant and the overshoot of the turn that crosses the landing allowance.
+Both crossings are measured after a complete turn, so there can be two separate
+overshoots. The complete landing turn keeps a mid-edit workspace whole. The token half exists because four leaves in the
 2026-09-03 worker trial reached 1.18×, 1.28×, 1.74× and 2.04× their grants; one
 reserve alone billed 122,392 tokens against a 150,000-token grant.
 

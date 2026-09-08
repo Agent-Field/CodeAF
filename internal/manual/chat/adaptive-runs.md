@@ -856,7 +856,9 @@ Then it stops.
 
 **That landing is bounded twice: by a few final calls and by a slice of the budget,
 whichever runs out first, so a spent budget cannot quietly buy another one. A worker always
-gets at least one whole landing call.** Watching a headless run, that reads:
+gets at least one whole landing call.** The bill is known only after each call, so
+both the call crossing the budget and the last landing call can overshoot their
+respective limits. Watching a headless run, that reads:
 
 ```
   ⏳ runner.go edits          — it was still working when it ran out of its token budget — 9 turns in (cost: 199131 of 176834 tokens of billed work)
