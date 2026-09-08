@@ -342,12 +342,14 @@ var blockingCommands = []string{
 	"waitSteerLane",
 	"waitStir",
 	"waitTask",
+	"waitTitle",
 	"waitWake",
 	"watchDesigns",
 	"watchDriving",
 	"watchFollowing",
 	"watchRuns",
 	"watchTasks",
+	"watchTitles",
 	"watchWakes",
 }
 
