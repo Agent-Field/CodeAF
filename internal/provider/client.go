@@ -1605,11 +1605,12 @@ func (c *Client) completeWithMessagesStreaming(
 				// AND THE SAME PROGRESS IS ONE READING FOR THE CONTROLLER.
 				//
 				// THE TWO COUNTS ARE NOT INTERCHANGEABLE. A token of answer is
-				// text on the screen and is the only thing that resets the
-				// deadline; a token of thought — or a fragment of a call being
-				// assembled — is billed, streamed work that shows nothing, so
-				// it keeps the stream alive and moves the phase without
-				// counting as progress a person could watch disappear. A
+				// text on the screen and is the only thing that can reset the
+				// deadline while its measured rate keeps up; a token of thought
+				// — or a fragment of a call being assembled — is billed,
+				// streamed work that shows nothing, so it keeps the stream alive
+				// and moves the phase without counting as progress a person
+				// could watch disappear. A
 				// reasoning delta reported as a first token is what let a stall
 				// sixty seconds into a run of thought wait on a transport bound
 				// two and a half minutes away.

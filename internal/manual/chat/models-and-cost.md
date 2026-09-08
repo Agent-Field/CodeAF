@@ -2387,9 +2387,10 @@ aforge logs --path          print the file and nothing else
 One line per call, and it reads like this:
 
 ```
-21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  1204 in  466 out  1024 cached  $0.0003  acted hedge  2 arms  hedged  waste $0.0012
+21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  1204 in  466 out  1024 cached  $0.0003  acted hedge  drift  2 arms  hedged  waste $0.0012
 21:12:41  compile  z-ai/glm-5.3-flash  deepinfra  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
 21:13:04  leaf  #build  z-ai/glm-5.3  novita  high  max 65536  deadline 30.0s  ⋯ in flight 3m12s
+21:14:06  leaf  #build  z-ai/glm-5.3  novita  high  max 65536  → 200  1m2s  acted hedge  rate collapsed  no rescue: budget
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
@@ -2406,10 +2407,15 @@ aforge about that model.
 
 **`auto→coreweave` is the router overriding a choice** — the endpoint asked for on the
 left, the one that answered on the right. When they are the same you see one name, and a
-call to something that is not a router shows none. **`acted hedge · 2 arms · hedged ·
-waste $0.0012`** is a call that went quiet, had a second request fired at another endpoint
-to rescue it, and what the arm that lost cost. Almost every line has none of that, because
-almost nothing has to be done.
+call to something that is not a router shows none. **`acted hedge · drift · 2 arms ·
+hedged · waste $0.0012`** is a call that went quiet, had a second request fired at another
+endpoint to rescue it, names the controller's reason, and says what the arm that lost cost.
+That reason can be `first token late`, `drift`, `long think`, `ceiling`, `no heartbeat`, or
+`rate collapsed`. **`acted hedge · rate collapsed · no rescue: budget`** means the visible
+answer had slowed to a crawl and the controller called for a hedge, but the spending limit
+kept the second request off the wire. The other refusal words are `no alt` when no untried
+machine remained and `no room` when the arm limit had already been reached. Almost every
+line has none of that, because almost nothing has to be done or refused.
 
 **`pinned high` after the thinking level is a level that did not travel** — the seat's class
 value asked for it and something else decided this one call. The word on the left is what the
