@@ -852,7 +852,13 @@ found rather than paying to discover it again.
 A worker is given a token budget. When it crosses it, aforge does not kill it: it is told
 the budget is spent and given a few final calls to make what it was changing consistent
 again, run the quickest check that would catch breakage, and fix only what that reveals.
-Then it stops. Watching a headless run, that reads:
+Then it stops.
+
+**That landing is bounded twice: by a few final calls and by a slice of the budget,
+whichever runs out first, so a spent budget cannot quietly buy another one. A worker always
+gets at least one whole landing call.** The bill is known only after each call, so
+both the call crossing the budget and the last landing call can overshoot their
+respective limits. Watching a headless run, that reads:
 
 ```
   ⏳ runner.go edits          — it was still working when it ran out of its token budget — 9 turns in (cost: 199131 of 176834 tokens of billed work)
