@@ -176,9 +176,7 @@ func stashTop(root string) string {
 // for a checkout with no user.name, which is every hermetic HOME, and without
 // these two flags a clean merge came back as a conflict that never existed.
 func mergeTaskBranch(root, branch string) (string, error) {
-	return git(root,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"merge", "--no-edit", branch)
+	return git(root, append(aforgeGitIdentity(), "merge", "--no-edit", branch)...)
 }
 
 // groundStashMessage is what the person reads in `git stash list` if anything

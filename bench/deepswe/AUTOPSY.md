@@ -1427,3 +1427,101 @@ leaf nodes whose findings never propagated to a judged node.
 **New fields not yet journalled on these binaries** (expected — both predate 338957b0): `replaced` is `None` on
 every reading in every s14 run, and `JobGrowth.Finding` is `None` on every growth event. No third-round refusal,
 no close-out or forced-judgement events; both multi-gate runs ended on `cause: rounds` at round 4.
+
+# s15 — dev b3922479, both doors (2026-09-04): the chat surface measured beside do for the first time
+
+**Question asked:** "quick bench on chat mode and do mode for current dev with 5–8 DeepSWE — we should be good now on cost, walltime and quality?"
+
+**Answer:** Not yet, on either door. No task reached reward 1 on either door (0/16 cells). On the five tasks with s13/s14 history, today's `do` is better on two (ofetch 43/47 — the best any sweep has reached; igel 6/24 where every sweep before scored 0), level on one (happy-dom 12/14 vs 13/14), and worse on two (ink 13/25 vs 17/25; textual 9/20 vs 19/20 at 8.7× the cost). Cost went the wrong way: the five baseline tasks cost $2.74 on `do` today against $1.52 in s13, with textual ($1.14 vs $0.13) and happy-dom ($0.47 vs $0.06) carrying most of it. `chat` beats `do` on hidden-test count on five of eight tasks (ofetch 46/47, textual 16/20, igel 9/24, happy-dom 13/14, aiomonitor 45/53) and is nearly level on macro average (54.2% vs 55.5%), but at about twice the money (median $0.75 vs $0.32 per cell) and one and a half times the wall (median 3856 s vs 2494 s), and one bad cell (cattrs 3/69 for $1.37) pulls its micro average down to 41.8% against `do`'s 50.4%. Every `do` cell ended `partial` (exit 2); six `chat` cells ended on their own seal and two on the stall detector.
+
+Setup: rig `bench/deepswe/` with the new `DOOR=chat` (PR #634), one linux/amd64 build of dev `b3922479` copied into each task's own amd64 container (Rosetta on an M-series host, 12 CPU / 40 GB Docker VM), model pinned to `deepseek/deepseek-v4-flash` on every seat, 5400 s agent wall on both doors (task.toml v1.1 now says 10800; pinned to match s1–s14), `chat` with `--yolo --one-model --max-hours 1.4833 --max-cost 3`, `do` with `-yes-spend -json -timeout 5400`. Eight tasks: the five of PICKS.md plus cattrs, aiomonitor, ts-pattern; all eight gold-grade to 1 on this rig. Eight lanes ran concurrently, first door then second (order alternated per task), one Codex operator watching each cell. One intervention in sixteen cells: on cattrs/chat a permission card — `bash call with no readable command` — appeared DESPITE `--yolo` and held the run for 3m21s until the operator pressed `a` (16:46:06 UTC); no other cell ever showed a card a person could answer (see "needs you" below). Cells: `results/<task>-deepseek-deepseek-v4-flash-<door>/`; per-task reports by the lanes: `reports/<task>.md`; the lead's running notes: `FINDINGS-NOTES.md`; what changed mid-run and why: `DECISIONS.md`. Total spend on the key: about $10.2 including the smokes and the three restarted cells.
+
+## The table — both doors, per task (dev b3922479, deepseek/deepseek-v4-flash, 5400 s wall)
+
+| task | door | reward | hidden f2p | p2p | cost | wall | calls | nodes/turns | gates | ended | GC |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| ofetch | do | 0 | 43/47 | 12/13 | $0.49 | 3329s | 419 | 12 | 3 | partial | 100 |
+| ofetch | chat | 0 | 46/47 | 12/13 | $0.41 | 2694s | 319 | 4 |  | self | 100 |
+| ink | do | 0 | 13/25 | 49/49 | $0.39 | 3296s | 287 | 7 | 3 | partial | 100 |
+| ink | chat | 0 | 9/25 | 49/49 | $0.96 | 4306s | 369 | 3 |  | self | off |
+| textual | do | 0 | 9/20 | 4/6 | $1.14 | 5152s | 1250 | 44 | 0 | partial | off |
+| textual | chat | 0 | 16/20 | 6/6 | $0.72 | 3794s | 656 | 4 |  | stall | 100 |
+| igel | do | 0 | 6/24 | 2/2 | $0.25 | 1693s | 373 | 13 | 3 | partial | 100 |
+| igel | chat | 0 | 9/24 | 2/2 | $0.33 | 1754s | 141 | 2 |  | self | off |
+| happy-dom | do | 0 | 12/14 | 9/9 | $0.47 | 1342s | 400 | 15 | 2 | partial | off |
+| happy-dom | chat | 0 | 13/14 | 9/9 | $0.43 | 4336s | 595 | 3 |  | self | 100 |
+| cattrs | do | 0 | 44/69 | 7/7 | $0.22 | 5089s | 322 | 17 | 2 | partial | 100 |
+| cattrs | chat | 0 | 3/69 | 7/7 | $1.37 | 3672s | 387 | 3 |  | self | 100 |
+| aiomonitor | do | 0 | 43/53 | 8/8 | $0.04 | 536s | 46 | 3 | 1 | partial | off |
+| aiomonitor | chat | 0 | 45/53 | 8/8 | $1.13 | 3919s | 471 | 2 |  | stall | 100 |
+| ts-pattern | do | 0 | 0/85 | 6/6 | $0.17 | 1341s | 262 | 13 | 3 | partial | 100 |
+| ts-pattern | chat | 0 | 0/85 | 6/6 | $0.79 | 5147s | 601 | 6 |  | self | off |
+
+- **do**: reward-1 0/8 graded · total cost $3.16 · total wall 21778s
+- **chat**: reward-1 0/8 graded · total cost $6.12 · total wall 29622s
+- **do** hidden-test micro pass: 170/337 = 50.4%
+- **chat** hidden-test micro pass: 141/337 = 41.8%
+
+## Against s13 and s14 (s13 40940bed · s14 419d6dc9/58fffb5f)
+
+| task | s13 do | s14 do | today do | today chat |
+|---|---|---|---|---|
+| ofetch | 29/47 · $0.56 · 5407s | 40/47 · $0.24 · 1865s | 43/47 · $0.49 · 3329s | 46/47 · $0.41 · 2694s |
+| ink | 17/25 · $0.46 · 4945s | pending in the autopsy | 13/25 · $0.39 · 3296s | 9/25 · $0.96 · 4306s |
+| textual | 19/20 · $0.13 · 2862s | grade-failed (verifier timeout; 19/22 of the tests that ran) · $0.22 · 3761s | 9/20 · $1.14 · 5152s | 16/20 · $0.72 · 3794s |
+| igel | 0/24 · $0.23 · 3660s | 0/24 · $0.24 · 2854s | 6/24 · $0.25 · 1693s | 9/24 · $0.33 · 1754s |
+| happy-dom | 9/14 · $0.14 · 2663s | 13/14 · $0.06 · 1801s | 12/14 · $0.47 · 1342s | 13/14 · $0.43 · 4336s |
+| cattrs | — | — | 44/69 · $0.22 · 5089s | 3/69 · $1.37 · 3672s |
+| aiomonitor | — | — | 43/53 · $0.04 · 536s | 45/53 · $1.13 · 3919s |
+| ts-pattern | — | — | 0/85 · $0.17 · 1341s | 0/85 · $0.79 · 5147s |
+
+## Per-door aggregates (8 tasks each)
+
+| door | reward 1 | hidden-test micro | hidden-test macro | tasks where this door had more hidden passes | regressions (cells with p2p loss) | total cost | median cost | median wall | ended |
+|---|---|---|---|---|---|---|---|---|---|
+| do | 0/8 | 170/337 = 50.4% | 55.5% | 2 | 2 | $3.16 | $0.32 | 2494s | partial 8 |
+| chat | 0/8 | 141/337 = 41.8% | 54.2% | 5 | 1 | $6.12 | $0.75 | 3856s | self 6, stall 2 |
+
+`GC` is the emulation guard: `off` is the rig's `GOGC=off`/`GOMEMLIMIT` qemu guard, which under Rosetta only pinned 6 GiB per process and forced a mid-run switch (DECISIONS.md); `100` is the ordinary collector. It does not change what the product does or how it is graded.
+
+## What the sixteen cells say about the product
+
+**Neither door finishes a task.** Sixteen cells, zero reward-1. The three near misses — ofetch/chat 46/47, ofetch/do 43/47, happy-dom/chat 13/14 — each miss on one behaviour the run never named (ofetch: a p2p test both doors break, `only treats configured failureStatusCodes as status-based failures`; happy-dom: `Detects threshold crossings in subsequent async delivery cycles`, the same test both doors fail and no gate mentioned).
+
+**ts-pattern is a zero on both doors for one reason, and it is the model's contract, not the rig.** The hidden `tests/match-each.test.ts` fails ts-jest type-checking against either patch at the same `.tap((val) => tapped.push(val))` lines — chat typed the callback for `string` where the tests hand `string[]`, do typed it `unknown` and left an unused `@ts-expect-error` — so the suite never runs and all 85 f2p read "test did not run" (p2p 6/6 is `helpers.test.ts`, untouched). One type error takes the whole file down; a TypeScript task is graded on its types.
+
+**`do` on dev b3922479:**
+- Every run ends `partial` (exit 2), none `done`. The endings are the gate refusing (ofetch, ink, igel, happy-dom, ts-pattern, cattrs), the no-progress rule (happy-dom at 1342 s), a run stopping with 90% of its wall unused after the gate refused a rule that WAS satisfied (aiomonitor: "work in a new branch from main" — the work was on branch `snapshots`, which is the branch the rig graded), and a 47-minute hard stall (cattrs: `still waiting: 3 tasks pending, none running` from 17:27 to 18:14 with the last model call ageing past 46 minutes, two "Write tests" parts pending with nothing to run them, no error and no retry; it then recovered on its own, ran out of wall, and ended `partial` on a gate refusal — the better cattrs patch, 44/69, came out of it all the same).
+- The deliverable contradicts the gate on three runs: happy-dom opens "No changes were needed — the names were never removed" under a gate that caught exactly that removal; igel says "Everything is already done… all 19 tests pass" under `feature_schema.joblib … nothing of that name is among what was left behind`; ts-pattern argues the gate's five gaps are covered by tests the agent wrote itself, which the verifier resets.
+- Cost is in the tree: textual grew to 44 nodes / 1250 calls / $1.14 with at least five token-budget exhaustions and two nodes dying on unreadable replies, and landed at 9/20 where s13 got 19/20 from 7 nodes for $0.13; happy-dom 15 nodes / 400 calls / $0.47 for the same 12–13/14 s14 got from 4 nodes for $0.06. Token-budget overruns (`203161 of 173682 tokens of billed work`, `178745 of 150000`) and transcript resumptions (happy-dom 8, ofetch 6, textual ≥5) recur on every long run. ofetch's last 35 minutes were one node restarted 3 times and resumed 6, ending `did not finish — All providers have been ignored` (the router had vetoed every machine behind the model).
+- `gate: the answer was not readable — asked again` appears on ofetch (2 of 3 rounds), igel (4, two escalating to "giving up"), ink (2), ts-pattern (2).
+
+**`chat` on dev b3922479:**
+- The sidebar counts "N needs you" (up to 3) on ofetch, ink, aiomonitor, happy-dom, ts-pattern, textual and cattrs, and on none of them did a `needs your look` line or an `[a] accept` card ever appear for it — so the rig's ask grace never fired, a person watching would have had nothing to answer, and the count outlived the run. Every lane reported it independently.
+- `--yolo` did not keep the gate shut: cattrs/chat put up a permission card, `bash call with no readable command`, and paused for 3m21s until the operator accepted it — the one intervention of the campaign. A run left overnight under `--yolo` would have sat there.
+- The status line reads `idle` for 25–40 minutes at a stretch while a task works underneath it (igel ~25 of 29 min; ink ~40 min with 160 calls and $0.65 going through; happy-dom ~24 min; the cost counter is the only progress signal).
+- Tasks end "lost the connection — branch kept" (aiomonitor, textual ×2) or "not accepted — branch kept" (happy-dom ×2: `RootMargin parser`, `Threshold normalizer`) and their branches never reach the scored patch, while the closing summary claims the suite green ("Tests: 45/45 passing", "60/60 local tests").
+- Two cells ended `stall` (textual at 3794 s with the rail claiming 7 running; aiomonitor at 3919 s after ~40 min and $0.49 of read-only git exploration, "14 tool calls without visible assistant text") — ten minutes of a silent call log under a screen that says working.
+- Self-inflicted setbacks on ts-pattern: a `git stash` of its own uncommitted work ("the task loop is failing because of my uncommitted work") and a git call that died with `unable to start editor 'editor'` because the container has no EDITOR.
+- Where it wins, it wins on the same money `do` spends: ofetch 46/47 for $0.41 (do 43/47 for $0.49), happy-dom 13/14 for $0.43 (do 12/14 for $0.47), textual 16/20 clean for $0.72 (do 9/20 with two regressions for $1.14). Where it loses it loses expensively: cattrs 3/69 for $1.37 (do 44/69 for $0.22), ink 9/25 for $0.96 (do 13/25 for $0.39), aiomonitor 45/53 for $1.13 (do 43/53 for $0.04).
+
+## Against the do sweeps (five tasks with history)
+
+| task | best do before today | today do | today chat | read |
+|---|---|---|---|---|
+| ofetch | 40/47 · 13/13 · $0.24 · 1865 s (s14) | 43/47 · 12/13 · $0.49 · 3329 s | 46/47 · 12/13 · $0.41 · 2694 s | more tests, one regression, 2× cost |
+| ink | 17/25 · 49/49 · $0.46 · 4945 s (s13) | 13/25 · 49/49 · $0.39 · 3296 s | 9/25 · 49/49 · $0.96 · 4306 s | fewer tests, cheaper, faster |
+| textual | 19/20 · 4/6 · $0.13 · 2862 s (s13) | 9/20 · 4/6 · $1.14 · 5152 s | 16/20 · 6/6 · $0.72 · 3794 s | do regressed hard on tests, cost and wall; chat clean p2p |
+| igel | 0/24 (s13, s14; 5/24 s1) | 6/24 (lower bound — wrong branch graded, rig) · $0.25 · 1693 s | 9/24 · $0.33 · 1754 s | first non-zero since s1 on both doors |
+| happy-dom | 13/14 · $0.06 · 1801 s (s14) | 12/14 · $0.47 · 1342 s | 13/14 · $0.43 · 4336 s | level on tests, 7–8× cost |
+
+## Rig faults this campaign found and fixed (all on PR #634 or in DECISIONS.md)
+
+1. **A cell started from a Codex tool call dies when the call returns** (process-group kill). Every first cell died that way at 15:23; relaunched detached via `launch.sh` (setsid). Cost: ~15 min, nothing spent.
+2. **The qemu emulation guard under Rosetta**: `GOGC=off` pinned every aforge process at its 6 GiB `GOMEMLIMIT`; seven cells held 32 GB of a 40 GB VM. Proved unnecessary under Rosetta (gold reward 1 with normal GC), switched for cells starting after 15:45, three young cells restarted (ofetch/do, cattrs/chat, aiomonitor/chat), a launch gate added. Rows carry the regime in the `GC` column.
+3. **Binary hunks counted as source in the candidate pick**: igel/do was graded from a branch made "richest" by a committed 502 KB `model.joblib`, missing `igel/configs.py` and every fixture; its 6/24 is a lower bound and cannot be regraded (candidates lived only in the removed container). Fixed: git's binary markers and a list of binary extensions go to the generated side, and `/bench/candidates` is copied out beside every result.
+4. **Bookkeeping**: `cost.json`'s `calls` (store usage rows) and `calllog_calls` differ on every `do` cell (e.g. 329 vs 400) while the dollars agree; textual/do's store cost ($1.144) and call-log cost ($1.082) differ by 6%; chat's `cost.json` carries no token counts. The lead's operator restart at 15:59 (a mistaken duplicate cleanup) interleaved two operators' `monitor.md` on igel/do and lost the chat operator's final message on igel; no cell was affected.
+
+## Where the campaign lives
+
+`~/aforge-benchmarks/deepswe-dev-flash-20260904-b3922479/` on the box that ran it: `results/<task>-deepseek-deepseek-v4-flash-<door>/` per cell (meta, cost, reward, the graded patch, every candidate patch for cells after 16:35 UTC, the run's home with the key scrubbed, and for chat the screen it ended on and the status line every five seconds), `reports/<task>.md` written by the lane that ran the task, `REPORT.md`, `DECISIONS.md`, `FINDINGS-NOTES.md`, `render-report.py` for the tables. The rig is this directory at PR #634 plus `DOOR=chat`; `cell.sh` there pins `AGENT_SECONDS=5400`, `CHAT_CAP=3`, `EMU_GOGC=100`.
