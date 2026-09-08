@@ -186,6 +186,52 @@ func TestProgressGuardMutationResetsStagnant(t *testing.T) {
 	}
 }
 
+func TestProgressGuardReconCountResetsOnAMutation(t *testing.T) {
+	g := newProgressGuard()
+	observeRead := func(index, before, after int) progressVerdict {
+		return g.observe(
+			[]ai.ToolCall{call(fmt.Sprintf("read-%d", index), "sh", fmt.Sprintf(`{"cmd":"printf %d"}`, index))},
+			[]Result{{Content: fmt.Sprintf("result-%d", index)}}, before, after,
+		)
+	}
+
+	for index := 0; index < noProgressReconTurns-1; index++ {
+		if got := observeRead(index, 0, 0); got != progressContinue {
+			t.Fatalf("before mutation, turn %d = %d, want continue", index+1, got)
+		}
+	}
+	writeCall := call("write", "write", `{"path":"result.txt","text":"result"}`)
+	if got := g.observe([]ai.ToolCall{writeCall}, []Result{{Content: "wrote result.txt"}}, 0, 1); got != progressContinue {
+		t.Fatalf("mutation verdict = %d, want continue", got)
+	}
+	for index := 0; index < noProgressReconTurns-1; index++ {
+		if got := observeRead(noProgressReconTurns+index, 1, 1); got != progressContinue {
+			t.Fatalf("after mutation, turn %d = %d, want continue", index+1, got)
+		}
+	}
+	if got := observeRead(2*noProgressReconTurns, 1, 1); got != progressPace {
+		t.Fatalf("complete post-mutation recon span = %d, want pace", got)
+	}
+}
+
+func TestProgressGuardReconCountNeverConcludes(t *testing.T) {
+	g := newProgressGuard()
+	for index := 1; index <= 5*noProgressReconTurns; index++ {
+		toolCall := call(fmt.Sprintf("read-%d", index), "sh", fmt.Sprintf(`{"cmd":"printf %d"}`, index))
+		got := g.observe([]ai.ToolCall{toolCall}, []Result{{Content: fmt.Sprintf("result-%d", index)}}, 0, 0)
+		want := progressContinue
+		if index%noProgressReconTurns == 0 {
+			want = progressPace
+		}
+		if got == progressConclude || got == progressTerminate {
+			t.Fatalf("mutation-free recon turn %d returned terminating verdict %d", index, got)
+		}
+		if got != want {
+			t.Fatalf("mutation-free recon turn %d = %d, want %d", index, got, want)
+		}
+	}
+}
+
 // Test the turn-floor signal: it fires on a fidgeting leaf and leaves a
 // working one alone.
 func TestProgressGuardTurnFloor(t *testing.T) {
