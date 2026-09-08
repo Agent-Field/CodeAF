@@ -12,8 +12,9 @@ package session
 //	(a) THE CHECK THE WORK DECLARES — every command the node's own document
 //	    names, read out of the brief and the frozen acceptance the node was
 //	    finished against, and kept only if the checker could really run it where
-//	    it is standing ([declaredChecks], [runnableHere]). A prompt line is read
-//	    from the work's own account and never from the person's pasted words.
+//	    it is standing ([declaredChecks], [runnableHere]). A check of either
+//	    spelling is read from the work's own account and never from the person's
+//	    pasted words.
 //	(b) THE CHECK THE WORK RAN — every command the last worker itself ran as one
 //	    command, read off its own tool receipts ([ranChecks]).
 //	(c) THE ALWAYS-SAFE READING COMMANDS — the ones that print and cannot change
@@ -503,7 +504,7 @@ const (
 )
 
 // checkText keeps one part of a node's document beside whose account supplied
-// it, because that provenance decides whether a shell prompt names a check.
+// it, because that provenance decides whether the text names a check at all.
 type checkText struct {
 	text string
 	from checkSource
@@ -518,13 +519,14 @@ type checkText struct {
 // rule that looked for a build system's name would be the constant this file
 // replaced, wearing a regexp.
 //
-// WHOSE ACCOUNT THE TEXT CAME FROM DECIDES WHETHER A PROMPT LINE IS A PROMISE.
-// A prompt in the work's own brief or acceptance names a check; a prompt in the
-// person's pasted words is a transcript and names none. A measured tox run read
+// WHOSE ACCOUNT THE TEXT CAME FROM DECIDES WHETHER IT NAMES A CHECK AT ALL.
+// Either convention in the work's own brief or acceptance names a check; either
+// one in the person's pasted words names none. A measured tox run read
 // `chmod 000 tox.ini` out of a pasted reproduction and tried it against the
 // deliverable tree, where success would have made the project's configuration
-// unreadable without tripping the tree-moved guard. Backticks keep their old
-// meaning in both accounts because that is how a person commonly names a check.
+// unreadable without tripping the tree-moved guard. Nearly every bug report
+// backticks its reproduction, so exempting backticks was the same hole wearing
+// different punctuation.
 //
 // TWO FILTERS STAND BETWEEN A BACKTICK AND A DOOR, and they ask different
 // questions. [commandLike] asks whether the span has the SHAPE of one command —
@@ -538,6 +540,14 @@ type checkText struct {
 // caller that already knows it. A span resolved against any other directory
 // would be admitted or refused on the strength of a tree nobody is standing in.
 func declaredChecks(text, ground string, from checkSource) []string {
+	// ONLY THE WORK'S ACCOUNT NAMES A CHECK, IN EITHER SPELLING. Every value
+	// not explicitly identified as the work stays restrictive, so a new source
+	// added later cannot read the person's words merely because its caller
+	// forgot to classify it.
+	if from != checksFromWork {
+		return nil
+	}
+
 	var out []string
 	// The odd-numbered pieces of a split on the backtick are what was BETWEEN a
 	// pair of them. A fenced block splits into empty pieces around its own
@@ -549,16 +559,14 @@ func declaredChecks(text, ground string, from checkSource) []string {
 			out = append(out, command)
 		}
 	}
-	if from == checksFromWork {
-		for _, raw := range strings.Split(text, "\n") {
-			line := strings.TrimSpace(raw)
-			if !strings.HasPrefix(line, "$ ") {
-				continue
-			}
-			command, ok := commandLike(strings.TrimPrefix(line, "$ "))
-			if ok && runnableHere(ground, command) {
-				out = append(out, command)
-			}
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		if !strings.HasPrefix(line, "$ ") {
+			continue
+		}
+		command, ok := commandLike(strings.TrimPrefix(line, "$ "))
+		if ok && runnableHere(ground, command) {
+			out = append(out, command)
 		}
 	}
 	return out

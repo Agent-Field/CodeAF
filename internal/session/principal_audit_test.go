@@ -130,13 +130,14 @@ func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
 	}
 }
 
-// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO PROMPT STEP INTO
-// THE SESSION'S CHECKS.
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO CHECK INTO THE
+// SESSION'S CHECKS, IN EITHER SPELLING.
 //
 // When no one could write a done-condition, the person's words arrive behind
 // [routeAskAcceptance]. The measured tox reproduction must still remain a
-// story about seeing the bug rather than become `chmod 000 tox.ini` run against
-// the deliverable tree.
+// story about seeing the bug rather than become a command run against the
+// deliverable tree. A second session keeps the control honest: the same words
+// in a done-condition somebody wrote still name checks.
 func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
 	tree := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
@@ -154,11 +155,31 @@ func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
 		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
 
 	checks := agent.sessionChecks()
-	if containsWord(checks, "chmod 000 tox.ini") {
-		t.Fatalf("a step out of the ask-fallback done-condition became a session check: %v", checks)
+	backticked := checkCommand(tree, "run_tests.sh")
+	if backticked == "" {
+		t.Fatal("the tree's run_tests.sh is not invocable, so the source boundary cannot be exercised")
 	}
-	if want := checkCommand(tree, "run_tests.sh"); want == "" || !containsWord(checks, want) {
-		t.Fatalf("a backticked command in the same ask-fallback was not a session check: want %q in %v", want, checks)
+	for _, command := range []string{backticked, "chmod 000 tox.ini"} {
+		if containsWord(checks, command) {
+			t.Errorf("%q out of the ask-fallback done-condition became a session check: %v", command, checks)
+		}
+	}
+
+	// THE ACCEPTANCE IS IMMUTABLE FOR THE SESSION, so the work's side of the
+	// law is read off a second session whose written done-condition names both
+	// commands in the same spellings.
+	written, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	written.steward().setAcceptance(
+		"check it with `run_tests.sh`\nthe done-condition also requires:\n$ chmod 000 tox.ini")
+	writtenChecks := written.sessionChecks()
+	for _, command := range []string{backticked, "chmod 000 tox.ini"} {
+		if !containsWord(writtenChecks, command) {
+			t.Errorf("the written done-condition did not keep %q as a session check: %v", command, writtenChecks)
+		}
 	}
 }
 
