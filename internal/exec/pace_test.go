@@ -358,11 +358,13 @@ func TestThePacingIsInTheRunsOwnRecord(t *testing.T) {
 
 	t.Run("wall clock", func(t *testing.T) {
 		space := workspace(t)
+		// Leave setup room between halfway and the landing reserve while other
+		// packages share the machine; the assertion still reads the real trace.
 		client := &scriptedCompleter{
 			turns:  [][]ai.ToolCall{{call("read", "sh", `{"cmd":"printf result"}`)}},
-			delays: []time.Duration{1100 * time.Millisecond},
+			delays: []time.Duration{5100 * time.Millisecond},
 		}
-		linear := NewLinear(client, space, nil, 10, 1_000_000, 2*time.Second)
+		linear := NewLinear(client, space, nil, 10, 1_000_000, 10*time.Second)
 		if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "research"}); err != nil {
 			t.Fatal(err)
 		}

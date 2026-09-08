@@ -25,3 +25,7 @@ The stalled-check regression now leaves ten seconds for its real repository and
 second-check setup. Its earlier 200-millisecond fixture window could expire before
 the immediate second answer under concurrent package tests; production limits and
 the assertions that the first call times out and the second succeeds are unchanged.
+
+The wall-clock trace regression likewise leaves room between halfway and the
+landing reserve under concurrent package tests, while still checking the actual
+clock sentence against the persisted run record.
