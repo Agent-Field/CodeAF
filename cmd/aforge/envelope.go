@@ -266,11 +266,12 @@ type resultEnvelope struct {
 	// either and get the same answer.
 	//
 	// IT IS NOT `do`'s OLD `settled` FIELD UNDER A NEW NAME, whatever the
-	// rename in COMMANDS.md says. `settled` means "nothing this process is
-	// waiting for can still move", which is true of a run that asked a question
-	// and did nothing — settled: true under exit 1. A caller that read the new
-	// name with the old meaning would record every refusal as a success. So
-	// `settled` keeps its own meaning, in its own field, unchanged.
+	// rename in COMMANDS.md says. `settled` means "nothing this run is waiting
+	// for can still move", which is true of a run that asked a question and did
+	// nothing — settled: true under exit 4 — and false when the run hands back a
+	// tree its own checks could not collect. A caller that read the new name with
+	// the old meaning would record every refusal as a success. So `settled` keeps
+	// its own meaning in its own field.
 	OK bool `json:"ok"`
 	// Stop names why it ended, in the one vocabulary above.
 	Stop stopReason `json:"stop"`

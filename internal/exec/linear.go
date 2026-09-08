@@ -617,10 +617,22 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// the log now agrees with the artifact bucket and the flight recorder.
 	ctx = provider.WithCallTag(ctx, "leaf")
 	ctx = provider.WithCallNode(ctx, task.leafKey())
+	// Keep the context this leaf was HANDED before its own lease is put around
+	// it. An ordered landing must survive that lease expiring, while the caller's
+	// cancel and the errand's own wall must still reach it; deriving the landing
+	// from this context preserves exactly those two properties.
+	granted := ctx
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
+	turnCtx := ctx
+	var stopDeadlineLanding context.CancelFunc
+	defer func() {
+		if stopDeadlineLanding != nil {
+			stopDeadlineLanding()
+		}
+	}()
 
 	tools := newToolbox(l.workspace, task.leafKey(), l.web, l.history, l.media, l.contextTokens)
 	tools.share = task.Share
@@ -750,6 +762,29 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// per kind, and the gate is the floor under whatever is still red the
 	// second time. See selfclose.go.
 	closer := NewSelfCloser(l.history, task)
+	// startDeadlineLanding grants the protected reserve exactly once, whether it
+	// was ordered between turns or after the lease arrived inside a model call.
+	// Switching the turn context on the same line as the landing state is what
+	// makes the reserve executable: every later model and tool call runs on a
+	// clock the ordinary work could not spend.
+	startDeadlineLanding := func() {
+		landing = landingTurns
+		landingStop = StopDeadline
+		turnCtx, stopDeadlineLanding = landingClock(granted, landingReserve)
+		// Recorded the moment the landing is ordered rather than when it
+		// fails. The landing usually succeeds — that is what it is for — and
+		// on that path Stop stays StopDone, so this is the only record that
+		// the leaf was still working when the clock took it.
+		outcome.Exhausted = StopDeadline
+		outcome.Meter = Meter{Name: MeterDeadline, Unit: "seconds",
+			Reached: int(time.Since(started).Seconds()), Allowed: int(l.deadline.Seconds())}
+		trace.note("deadline close — landing reserve started")
+		messages = append(messages, ai.Message{Role: "user", Content: text(
+			"The wall-clock deadline for this task is close. Use the remaining time only to " +
+				"land the work safely. In order: make whatever you were changing consistent " +
+				"again; run the single quickest check that would catch breakage; fix only what " +
+				"it reveals. Do not start anything new. Then give your final answer.")})
+	}
 
 	// The observation window is sized from what the model can hold in one
 	// request, and from nothing else.
@@ -797,21 +832,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			}
 		}
 		if landing == 0 && time.Until(deadline) <= landingReserve {
-			landing = landingTurns
-			landingStop = StopDeadline
-			// Recorded the moment the landing is ordered rather than when it
-			// fails. The landing usually succeeds — that is what it is for — and
-			// on that path Stop stays StopDone, so this is the only record that
-			// the leaf was still working when the clock took it.
-			outcome.Exhausted = StopDeadline
-			outcome.Meter = Meter{Name: MeterDeadline, Unit: "seconds",
-				Reached: int(time.Since(started).Seconds()), Allowed: int(l.deadline.Seconds())}
-			trace.note("deadline close — landing reserve started")
-			messages = append(messages, ai.Message{Role: "user", Content: text(
-				"The wall-clock deadline for this task is close. Use the remaining time only to " +
-					"land the work safely. In order: make whatever you were changing consistent " +
-					"again; run the single quickest check that would catch breakage; fix only what " +
-					"it reveals. Do not start anything new. Then give your final answer.")})
+			startDeadlineLanding()
 		}
 		outcome.Steered += readSteering(task, &messages, trace)
 		// Called every turn, but mutating on few of them: decay only fires once
@@ -842,12 +863,29 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// can weigh what the turn cost against what remained rather than against
 		// the budget it started with.
 		remaining := l.maxTokens - spent(outcome)
-		response, err := l.complete(ctx, messages, definitions())
+		response, err := l.complete(turnCtx, messages, definitions())
 		if err != nil {
+			// A lease that runs out inside one turn is the reserve arriving late,
+			// not the leaf ending. The landing clock still owes this leaf its
+			// reserve, so the cut turn is discarded and the landing is ordered on
+			// the clock the work could not spend. The landing guard makes this arm
+			// a one-time handoff rather than a retry loop.
+			if landing == 0 && ctx.Err() != nil {
+				startDeadlineLanding()
+				continue
+			}
 			outcome.Stop = StopError
 			outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-			if ctx.Err() != nil {
+			if turnCtx.Err() != nil || ctx.Err() != nil {
 				outcome.Stop = StopDeadline
+				outcome.Exhausted = StopDeadline
+				if !outcome.Meter.Named() {
+					outcome.Meter = Meter{Name: MeterDeadline, Unit: "seconds",
+						Reached: int(time.Since(started).Seconds()), Allowed: int(l.deadline.Seconds())}
+				}
+				// A lease spent during the landing did not finish. The error remains
+				// non-nil because calling a guillotined landing clean would be a worse
+				// lie than the missing meter this arm used to leave behind.
 			}
 			return l.land(ctx, task, outcome, started, opening), fmt.Errorf("node %s: %w", task.leafKey(), err)
 		}
@@ -1095,8 +1133,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				// that takes minutes writes nothing to the journal while it
 				// runs, and the claim reaper has nothing else to read. See
 				// Working.
-				defer Working(ctx)()
-				results[index] = tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+				defer Working(turnCtx)()
+				results[index] = tools.Execute(turnCtx, call.Function.Name, call.Function.Arguments)
 			}(index, call)
 		}
 		group.Wait()
@@ -1159,7 +1197,6 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				"That was the one round of tool calls this step has. Your next reply is the " +
 					"result: state it in full, in the body of the message.")})
 		}
-
 		// The budget ends work in two stages, and the staging is what protects
 		// the workspace. A hard stop at the limit truncated runs mid-edit —
 		// twice it left files syntactically broken with the model's final,
@@ -1673,12 +1710,34 @@ const wrapUpAt = 0.7
 // and "workspace left broken mid-edit".
 const landingTurns = 4
 
-// deadlineLandingReserve leaves enough of a node's own deadline for a bounded
-// landing without taking more than two minutes away from long-running work.
+// landingClock is the time an ordered landing actually gets, and THE WORK
+// CANNOT SPEND IT.
+//
+// A leaf was granted a ninety-second landing reserve, the turn in flight left
+// sixty-one seconds of it, and the landing's own model call was then cancelled
+// by the very lease that ordered the landing. The leaf ended mid-edit holding a
+// tree that did not build. An ordered landing therefore gets its whole reserve,
+// measured from the moment it was ordered, rather than the remainder of a clock
+// ordinary work was allowed to consume.
+//
+// The landing can end at most one reserve past the leaf's lease, and
+// deadlineLandingReserve is capped at watchdogPad. The node watchdog already
+// sits that pad above the lease because it is the room the landing needs. This
+// is one bound in two parts, and neither half moves alone. A deadline on granted
+// is the errand's own wall and still cuts the landing there, because the
+// person's number outranks the leaf's pad.
+func landingClock(granted context.Context, reserve time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(granted, reserve)
+}
+
+// deadlineLandingReserve is what a deadline-stopped leaf is granted to land.
+// Its cap is watchdogPad because the pad is where the node watchdog sits so the
+// landing fits underneath it. The two are one bound in two parts, and neither
+// half moves alone.
 func deadlineLandingReserve(deadline time.Duration) time.Duration {
 	reserve := deadline / 10
-	if reserve > 2*time.Minute {
-		return 2 * time.Minute
+	if reserve > watchdogPad {
+		return watchdogPad
 	}
 	return reserve
 }
