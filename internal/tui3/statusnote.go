@@ -285,6 +285,9 @@ func (a *app) costText() string {
 	if u.EmptyReflex > 0 {
 		add("empty reflex answers", itoa(u.EmptyReflex))
 	}
+	if a.tree.Unbilled > 0 {
+		add(spendUnbilledWord, itoa(a.tree.Unbilled)+" "+spendUnbilledSaid)
+	}
 	add("time", tookWord(u.Duration))
 
 	if len(items) == 0 {

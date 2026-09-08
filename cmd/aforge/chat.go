@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -2699,6 +2700,20 @@ func (b *leafBanker) bank(billed provider.Billed) {
 	b.total.Cost += billed.Cost
 }
 
+// reconciled is the leaf's late half of [leafBanker.bank]. A found provider
+// receipt is the same real call money and belongs on the node immediately; an
+// absent receipt has no figure this graph can honestly record.
+func (b *leafBanker) reconciled(receipt provider.Reconciled) {
+	if b == nil {
+		return
+	}
+	if !receipt.Found {
+		session.RecordUnbilledCall(session.UsageLedgerPath(), session.UsageLine{Task: b.nodeID, Model: receipt.Model})
+		return
+	}
+	b.bank(receipt.Billed)
+}
+
 // banked is what this leaf's calls have already put on disk, which is what the
 // landing roll-up subtracts so the same money is not journaled twice.
 func (b *leafBanker) banked() exec.Usage {
@@ -2719,7 +2734,9 @@ func armBilling(ctx context.Context, banker *leafBanker) context.Context {
 	if banker == nil {
 		return ctx
 	}
-	return provider.WithBilling(provider.WithCallNode(ctx, banker.nodeID), banker.bank)
+	ctx = provider.WithCallNode(ctx, banker.nodeID)
+	ctx = provider.WithBilling(ctx, banker.bank)
+	return provider.WithReconcile(ctx, banker.reconciled)
 }
 
 // leafShape accumulates one attempt's per-turn ledger onto whatever earlier
