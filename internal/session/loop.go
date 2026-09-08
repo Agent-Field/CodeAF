@@ -1315,6 +1315,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 				return nil, model, waitErr
 			}
 		}
+		// THE PAGE DISCARDS THE SAME ATTEMPT AS THE JOURNAL. The next loop
+		// resets partial, reasoning and forming before requesting a replacement;
+		// a phase-clock update alone cannot remove the old streamed answer.
+		// Say this only after the wait succeeds and another attempt exists: a
+		// stop during backoff or an exhausted ladder keeps its partial reply.
+		if attempt+1 < attempts && hub != nil {
+			hub.send(Event{Kind: EventRetrying, Text: "the request failed — asking again"})
+		}
 	}
 	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
 }

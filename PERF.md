@@ -21,6 +21,22 @@ caps are allowed to move — a feature is sometimes worth its bytes, a fix
 sometimes pays a residual off — but moving one is a decision somebody signs for
 in a diff, never a drift nobody saw.
 
+## Live interrupt probe safety window
+
+`TestLiveInterruptFanoutSpendsAtMostOnePlannerAndTitle` counts at most one
+planner call and one title call after a stop and redirect. Its redirected live
+provider request has a **45-second cancellation context**, matching the live
+compact-history probe. The former ten-second fixture collector cut off a
+correct `ok` answer that completed in 11.76 seconds during concurrent provider
+trials on 2026-09-08. This is a network safety bound, not a response-latency
+claim: the test now also requires turn completion, no error, and a
+nonempty answer. Discarded attempts are replaced on `EventRetrying`, as on
+the actual chat surface. Exact provider wording is assessed separately: a
+live trial returned `okok` consistently in the provider response, event
+stream, and saved assistant message; the raw wire response was not inspected.
+The deterministic collector and the interrupted turn's ten-second cancellation
+guard are unchanged, as are both exact fanout limits.
+
 ## The size ratchet
 
 `SIZE-BUDGET` holds one number: the bytes the stripped binary may weigh. `make

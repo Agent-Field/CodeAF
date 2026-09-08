@@ -787,3 +787,61 @@ scripts/JSON receipts, and `captures/panel-*`. The earlier production criteria
 remain open, notably hosted independent-conversation lifetime, hard-crash and
 uncertain-effect recovery, full owned-process-tree stop, broader substantial-work
 quality evaluation and input-to-paint/acknowledgement latency measurement.
+
+## September 8 reading and navigation follow-up
+
+The header remains at the top. Compact tabs replace vertical fences with quiet
+spacing and a filled active state; no-color terminals keep explicit brackets.
+Breadcrumbs use the actual conversation title and emphasize the current task.
+The switcher now responds to pointer motion without changing keyboard selection,
+including an explicit hover mark with color disabled. An outside click closes the
+picker and is consumed before any control behind it can act. Existing close,
+Chats and New chat actions keep their ownership rules.
+
+Conversation and task text now has a two-cell left gutter where the terminal has
+room. Wrapping happens inside that width, and link, table, proposal, standing-order
+and task-action targets move with their displayed words. Repeated cached frames
+cannot accumulate the offset. Copy mode retains its original layout width through
+a resize and removes presentation padding without removing content indentation.
+
+Unnamed chats show Untitled until the existing asynchronous title event arrives
+after the first completed reply. Newly opened task pages immediately show a known
+instruction and reported activity while records arrive; missing readers and failed
+reads no longer claim a read is still in flight. Breadcrumb navigation now returns
+the command which starts the transcript reader. Typed task instructions wait for
+the task's event rather than expiring on an arbitrary timer, and remain scoped to
+the conversation which started them.
+
+Actual Claude Code Opus workers implemented and reviewed the independent UI
+areas, with parent integration and a separate execution-validation subagent.
+Native terminal QA used the canonical binary, private seeded profiles and actual
+mouse/key sequences at 160×50, 80×32 and 60×28, including no-color hover, outside
+click, tab dismissal/reopen, draft preservation and ancestor/fold navigation.
+These captures are ANSI terminal-cell recordings rendered as images; they are
+not live developer-task qualification. Evidence is in
+`/private/tmp/af-hover-20260908/`, with capture and navigation receipts.
+
+The first full check exposed stale layout/name assertions and a live-provider
+probe using a fixture's ten-second collector. Layout tests now measure the
+rendered content width and click the drawn controls while preserving their
+ownership, exact prose and styling assertions. The live interrupt probe now
+cancels its redirected provider request after 45 seconds and requires completion,
+no error and a nonempty answer, while retaining the stop deadline and both fanout
+limits. PERF.md records the change; no known-red entry was added.
+
+A targeted live diagnostic returned `okok` for a request for `ok`; the provider
+client's response, public stream and stored assistant message agreed. This does
+not establish whether the upstream model or adapter caused the wording, because
+the raw wire was not inspected. It remains an answer-quality finding, separate
+from the fanout gate. A read-only Opus review also identified a transport-retry
+path that failed to tell the UI to discard the dead attempt; a deterministic
+reproduction showed the live answer concatenating two attempts while the journal
+kept only the completed one. The retry correction and its final validation are
+recorded with this PR's current validation evidence.
+
+The production criteria above remain open where explicitly marked: independent
+hosted conversation lifetime, remote other-conversation navigation, crash and
+uncertain-effect recovery, complete process-tree stop, delivery under narration
+failure, broader substantial developer-task evaluation and end-to-end latency
+measurement. Small live interruption probes do not close those criteria, and
+this UI wave does not establish production readiness or cost effectiveness.

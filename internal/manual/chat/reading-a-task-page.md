@@ -484,6 +484,11 @@ that model and finishes on another, `the reply kept losing its thread —
 finishing this one on <model>`. Before this, a task's page kept the dead
 half-answer above the live one with nothing to explain it.
 
+A failed connection or retryable request also replaces its partial answer before
+trying again, with `the request failed — asking again`. The failed attempt does
+not stay above the replacement. Stopping during the retry wait still keeps the
+partial reply you saw; a retry that never starts discards nothing.
+
 **The dim `· ` lines between calls** are the page saying what its own machinery
 did. Three of them reach a task now:
 

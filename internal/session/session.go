@@ -375,8 +375,9 @@ const (
 	//
 	// It fires when the stream guard cut a request (internal/provider's
 	// streamguard.go): the endpoint went quiet, or the reply stopped being
-	// language. The turn loop has already thrown away that attempt's partial
-	// text, its early reads and its half-arrived calls, so A SURFACE MUST THROW
+	// language. It also fires when a transport failure is about to be retried.
+	// The turn loop discards that attempt's partial text, its early reads and
+	// its half-arrived calls before the next request, so A SURFACE MUST THROW
 	// AWAY WHAT IT DREW FOR THEM TOO — everything after the last thing the person
 	// typed belongs to a response that will never exist, and leaving it on screen
 	// would show half a dead answer above the live one.
