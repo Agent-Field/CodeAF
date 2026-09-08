@@ -183,6 +183,9 @@ type taskRecord struct {
 	// additive: an older record without it still gets the detached and protected
 	// checks at landing, and simply cannot detect that the checkout moved.
 	Home string `json:"home,omitempty"`
+	// HomeSha is the commit Home named when the branch was cut. It is additive
+	// beside Home so older records take the same name-only landing road as before.
+	HomeSha string `json:"homeSha,omitempty"`
 
 	// Rung, Seal, Base and Universe are WHICH COPY OF THE GROUND the work
 	// actually happened in (session/groundladder.go): which rung of the ground
@@ -201,6 +204,8 @@ type taskRecord struct {
 	Seal     string     `json:"groundSeal,omitempty"`
 	Base     string     `json:"groundBase,omitempty"`
 	Universe string     `json:"groundUniverse,omitempty"`
+	// CheckBase preserves the before-reading when the worker commits or resumes.
+	CheckBase string `json:"checkBase,omitempty"`
 
 	// Frozen is the world every part of THIS node starts from, written when it
 	// divided ([TaskNode.Frozen]). It is here for the reason the four above are —
@@ -697,9 +702,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Ground:        n.Ground,
 		Mode:          n.Mode,
 		Home:          n.Home,
+		HomeSha:       n.HomeSha,
 		Rung:          n.Rung,
 		Seal:          n.Seal,
 		Base:          n.Base,
+		CheckBase:     n.CheckBase,
 		Universe:      n.Universe,
 		Frozen:        n.Frozen,
 		Family:        n.Family,
@@ -1188,9 +1195,11 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Ground:      record.Ground,
 		Mode:        record.Mode,
 		Home:        record.Home,
+		HomeSha:     record.HomeSha,
 		Rung:        record.Rung,
 		Seal:        record.Seal,
 		Base:        record.Base,
+		CheckBase:   record.CheckBase,
 		Universe:    record.Universe,
 		Frozen:      record.Frozen,
 		Family:      record.Family,

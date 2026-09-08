@@ -180,8 +180,8 @@ func TestAResumedNodeStillOwnsWhatItWroteBeforeTheProcessDied(t *testing.T) {
 // half-finished merge, and the branch kept with the conflicting file named in
 // the words a person reads.
 func TestAConflictedMergeLeavesHomeCleanAndNamesTheFile(t *testing.T) {
-	repo := newTestRepo(t)
-	tree, err := prepareTaskTree(Place{}, repo, "dddd4444dddd4444", 1, "edit the shared file")
+	place, repo := newOwnedPlace(t)
+	tree, err := prepareTaskTree(place, repo, "dddd4444dddd4444", 1, "edit the shared file")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
@@ -493,7 +493,7 @@ func TestTheAuditorIsShownWhatTheWorkAlreadyRan(t *testing.T) {
 		result: "score: 41/60 — 19 cases failed",
 	}})
 
-	question := auditQuestion(node, taskTree{}, auditGround{dir: "/restore", restored: true}, auditDoor{}, landingFiles{own: []string{"parser.go"}}, "it passes", nil)
+	question := auditQuestion(node, taskTree{}, auditGround{dir: "/restore", restored: true}, auditDoor{}, checkGround{}, landingFiles{own: []string{"parser.go"}}, "it passes", nil)
 	if !strings.Contains(question, "WHAT THE WORK ALREADY RAN") {
 		t.Fatalf("the auditor was shown nothing of what happened:\n%s", question)
 	}
@@ -510,7 +510,7 @@ func TestTheAuditorIsShownWhatTheWorkAlreadyRan(t *testing.T) {
 		t.Errorf("the packet does not say where its evidence came from:\n%s", question)
 	}
 	// Standing in the work's own copy the warning is the opposite one.
-	inPlace := auditQuestion(node, taskTree{}, auditGround{dir: "/work"}, auditDoor{}, landingFiles{own: []string{"parser.go"}}, "it passes", nil)
+	inPlace := auditQuestion(node, taskTree{}, auditGround{dir: "/work"}, auditDoor{}, checkGround{}, landingFiles{own: []string{"parser.go"}}, "it passes", nil)
 	if !strings.Contains(inPlace, "They came from this same copy.") {
 		t.Errorf("the packet misstates its own provenance:\n%s", inPlace)
 	}

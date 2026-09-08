@@ -157,7 +157,11 @@ work was done about a run with nothing to show — so it was not preserved.
    non-zero exit. A caller that read the new name with the old meaning would record
    every refusal as a success. So `ok` is a new field meaning "the work stands" (true on
    exactly the runs that exit 0), and `settled` keeps its own meaning in its own field,
-   unchanged and not deprecated.
+   unchanged and not deprecated. One ending now answers that sentence `false`: a run
+   that hands back a tree its own finished-tree check could not collect. The tree does
+   not build, so repairing the code is still work waiting to move; `settled: false` is
+   the field's existing meaning applied honestly, not a second verdict on whether the
+   work stands. That run is also `ok: false`, `stop: "incomplete"`, and exit 2.
 
 2. **`error` is now always present.** COMMANDS.md's envelope shows `"error": ""` and its
    guarantee is "`error` non-empty means the run did not start", which requires the key

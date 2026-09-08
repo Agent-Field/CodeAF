@@ -123,6 +123,14 @@ type Client struct {
 	// poll: production sleeps, tests record what would have been slept and
 	// return, so how long a retry waits is assertable without waiting.
 	wait func(context.Context, time.Duration) error
+	// receipts is the bounded hand-off for calls whose stream ended without a
+	// usage block. It is drained by a small pool started lazily for this client,
+	// so a client nobody arms for reconciliation pays no goroutine for it.
+	receipts chan receiptWork
+	// receiptMu protects worker admission and retirement so an idle client
+	// retains no goroutine, and later receipts can start workers again.
+	receiptMu      sync.Mutex
+	receiptRunning int
 	// velocity is what this process has measured about the endpoints serving
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
@@ -201,6 +209,7 @@ func NewClient(config Config) (*Client, error) {
 		http:     httpClient,
 		stream:   streamClient,
 		wait:     waitContext,
+		receipts: make(chan receiptWork, receiptQueueDepth),
 		velocity: sharedVelocity,
 		pins:     sharedPins,
 		now:      time.Now,
@@ -520,15 +529,18 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// ([velocityLedger.keepTheSetServable]), so the second request for this
 	// model is shaped right rather than paying the same instant refusal again.
 	//
-	// AND ONLY WHEN A VETO OF OURS WAS IN PLAY. The router says this same
-	// sentence when the ignored providers on somebody's ACCOUNT empty the set,
-	// and a refusal we had no hand in teaches us nothing about our own list. The
-	// ledger is asked rather than the object rebuilt, because rebuilding it here
-	// would expire cooldowns and redraw a sampled choice on the way back
-	// ([velocityLedger.holdsVetoes]).
-	if c.velocity != nil && ignoredEverything(peek) && c.velocity.holdsVetoes(model) {
+	// Only a veto actually carried on this request can teach us about our
+	// contribution. Concurrent calls and expiring cooldowns may have changed
+	// the shared ledger by the time the refusal returns.
+	sent := refusedWirePreferences(response)
+	if c.velocity != nil && ignoredEverything(peek) && sent != nil && len(sent.Ignore) > 0 {
 		c.velocity.refuseCoveringIgnore(model)
+		// A demand defines its own set and says nothing about other machines.
+		if len(sent.Only) == 0 {
+			c.velocity.learnUnreachable(model, sent.Ignore)
+		}
 	}
+
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
 	// once, and the person is told in a sentence that stays.
@@ -1467,6 +1479,7 @@ func (c *Client) completeWithMessagesStreaming(
 		// An endpoint producing soup has failed this lineage as surely as one
 		// that went quiet, so the pin moves too.
 		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
 		return nil, false, cut
 	}
 	for {
@@ -1508,6 +1521,7 @@ func (c *Client) completeWithMessagesStreaming(
 					ctx: ctx, request: request, knobs: knobs, stream: true,
 					began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
 				})
+				c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
 				return nil, false, cut
 			}
 			// A stream that broke off for any reason but a cut — the caller
@@ -1518,6 +1532,7 @@ func (c *Client) completeWithMessagesStreaming(
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: decodeErr,
 			})
+			c.settle(ctx, c.modelFor(request), response, receiptTornReason, content.Len())
 			return nil, false, decodeErr
 		}
 		if response.ID == "" {
@@ -1566,6 +1581,7 @@ func (c *Client) completeWithMessagesStreaming(
 			})
 			c.refuseUpstream(request, knobs, refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
+			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
 			return nil, false, refusal
 		}
 		if chunk.Usage != nil {
@@ -1605,11 +1621,12 @@ func (c *Client) completeWithMessagesStreaming(
 				// AND THE SAME PROGRESS IS ONE READING FOR THE CONTROLLER.
 				//
 				// THE TWO COUNTS ARE NOT INTERCHANGEABLE. A token of answer is
-				// text on the screen and is the only thing that resets the
-				// deadline; a token of thought — or a fragment of a call being
-				// assembled — is billed, streamed work that shows nothing, so
-				// it keeps the stream alive and moves the phase without
-				// counting as progress a person could watch disappear. A
+				// text on the screen and is the only thing that can reset the
+				// deadline while its measured rate keeps up; a token of thought
+				// — or a fragment of a call being assembled — is billed,
+				// streamed work that shows nothing, so it keeps the stream alive
+				// and moves the phase without counting as progress a person
+				// could watch disappear. A
 				// reasoning delta reported as a first token is what let a stall
 				// sixty seconds into a run of thought wait on a transport bound
 				// two and a half minutes away.
@@ -2281,4 +2298,25 @@ func clipRaw(raw json.RawMessage) string {
 		text = strings.TrimSpace(text[:maxRawClip]) + "…"
 	}
 	return text
+}
+
+// refusedWirePreferences reads the object that actually left. Cooldowns can
+// expire while a refusal travels back, so rebuilding this from the live ledger
+// would turn our own transmitted veto into an account exclusion.
+func refusedWirePreferences(response *http.Response) *providerPrefs {
+	if response == nil || response.Request == nil || response.Request.GetBody == nil {
+		return nil
+	}
+	body, err := response.Request.GetBody()
+	if err != nil {
+		return nil
+	}
+	defer body.Close()
+	var sent struct {
+		Provider *providerPrefs `json:"provider"`
+	}
+	if json.NewDecoder(body).Decode(&sent) != nil {
+		return nil
+	}
+	return sent.Provider
 }

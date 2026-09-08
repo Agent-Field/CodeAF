@@ -219,3 +219,32 @@ func appendLedger(t *testing.T, path string, lines []session.UsageLine) {
 		}
 	}
 }
+
+// A fresh surface reads missing-price markers from disk and attributes them
+// to this conversation and its tasks, even when this process never made the calls.
+func TestCostReadsDurableUnbilledMarkersForItsOwnConversation(t *testing.T) {
+	now := time.Now()
+	lines := []session.UsageLine{
+		{At: now, Session: treeConversation, Unbilled: true},
+		{At: now, Session: "child", Root: treeConversation, Unbilled: true},
+		{At: now, Session: "somebody-else", Unbilled: true},
+	}
+	a := spendTreeLab(t, 0, lines)
+	text := a.costText()
+	if !strings.Contains(text, "2 "+spendUnbilledSaid) || strings.Contains(text, "$0.00") {
+		t.Fatalf("the fresh conversation did not recover its own missing prices: %s", text)
+	}
+	reading := readSpend(lines, session.LastDays(now, spendWindowDays), now)
+	if reading.unbilled != 3 {
+		t.Fatalf("machine reading lost durable markers: %+v", reading)
+	}
+	a.spend.reading = reading
+	var page strings.Builder
+	for _, row := range (placeSpend{}).body(a, 200, 12) {
+		page.WriteString(plain(row.text))
+		page.WriteByte('\n')
+	}
+	if !strings.Contains(page.String(), "3 "+spendUnbilledSaid) || strings.Contains(page.String(), spendTeachEmptyWord) {
+		t.Fatalf("a page with only missing prices claimed no spending: %s", page.String())
+	}
+}

@@ -26,7 +26,7 @@ func TestTheChecksEvidenceIncludesUntrackedFiles(t *testing.T) {
 	node.spec.acceptance = "the top bar draws"
 	node.graph.mu.Unlock()
 
-	question := auditQuestion(node, taskTree{root: repo}, auditGround{dir: repo}, auditDoor{},
+	question := auditQuestion(node, taskTree{root: repo}, auditGround{dir: repo}, auditDoor{}, checkGround{},
 		landingFiles{own: []string{"shared.txt"}}, "it draws", nil)
 
 	if !strings.Contains(question, groundManifestHeading) {
@@ -66,7 +66,7 @@ func TestAGroundThatIsNotARepositoryDrawsNoManifest(t *testing.T) {
 		t.Fatalf("a plain directory was given a manifest: %q", got)
 	}
 	node := loneTestNode(t, "write the notes")
-	question := auditQuestion(node, taskTree{}, auditGround{dir: plain}, auditDoor{}, landingFiles{}, "", nil)
+	question := auditQuestion(node, taskTree{}, auditGround{dir: plain}, auditDoor{}, checkGround{}, landingFiles{}, "", nil)
 	if strings.Contains(question, groundManifestHeading) {
 		t.Fatalf("the packet carries a manifest of a directory git knows nothing about:\n%s", question)
 	}

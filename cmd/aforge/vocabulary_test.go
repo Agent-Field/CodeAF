@@ -765,6 +765,11 @@ func TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas(t *testing.T) {
 	if !strings.Contains(document, "`judged_by`") {
 		t.Error("docs/HEADLESS.md never names the `judged_by` field of `do --json`")
 	}
+	// `checklist` is another do-only extra field, so the envelope-field sweep
+	// above cannot name it from the shared contract.
+	if !strings.Contains(document, "`checklist`") {
+		t.Error("docs/HEADLESS.md never names the `checklist` field of `do --json`")
+	}
 
 	// The one ladder, and the hatch back to exec's old numbers.
 	for _, promise := range []string{

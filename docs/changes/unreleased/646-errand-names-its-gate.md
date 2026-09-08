@@ -26,3 +26,7 @@ rediscovered.
 Review correction: the receipt and manual distinguish an answered gate attempt from
 a successful check. An unreadable answer still names the gate, while missing root
 rows (including split jobs) can omit both optional keys.
+
+The current-dev integration preserves both the checklist and reader fields,
+including the latest finished-verification journal ordering and its incomplete
+tree ending. The independent records coexist in the same JSON response.

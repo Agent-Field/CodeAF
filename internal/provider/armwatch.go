@@ -77,10 +77,11 @@ func streamWatchFrom(ctx context.Context) *streamWatch {
 //
 // ONE READING PER EVENT, AND THE THREE COUNTS ARE NOT INTERCHANGEABLE.
 // [control.Reading.Visible] is text on the screen and is the only thing that
-// resets the deadline; Hidden is the endpoint writing where nobody can read;
-// Beat is the router's own comment line, which proves the path is alive and
-// never that the model has started. A clock a beat reset would be a clock a
-// router could hold open forever by saying nothing in a well-formed way.
+// can reset the deadline while its measured rate keeps up; Hidden is the
+// endpoint writing where nobody can read; Beat is the router's own comment
+// line, which proves the path is alive and never that the model has started. A
+// clock a beat reset would be a clock a router could hold open forever by
+// saying nothing in a well-formed way.
 func (w *streamWatch) note(reading control.Reading) {
 	if w == nil {
 		return

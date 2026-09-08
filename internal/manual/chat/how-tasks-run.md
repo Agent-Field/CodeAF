@@ -68,8 +68,9 @@ the same one-keypress question rung 2 asks, in the two names you already know.
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets a working copy of its own, on a branch cut **from that
 repository**. It merges back into an ordinary branch, or stays on its task branch when
-your checkout is on a protected branch, and what that copy holds is your folder **as it stands** —
-uncommitted edits and untracked files included. A repository
+your checkout is protected, detached, on another branch, or on a commit you moved after
+the cut, and what that copy holds is your folder **as it stands** — uncommitted edits and
+untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
 folder, and the files the task wrote — its parts' files included — are laid back over it by
@@ -257,8 +258,9 @@ what your `.gitignore` covers is the one thing it does not have. Two reasons:
 
 Everything else is the same either way: your uncommitted edits and your untracked files
 travel on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as
-a merge into your branch — unless that branch is one aforge will not write, in which case
-the branch is kept and named for you instead.
+a merge into your branch — unless the checkout is protected, detached, on another branch,
+or on a commit you moved after the cut, in which case the branch is kept and named for you
+instead. Commits from aforge's own landings do not count as you moving it.
 
 **To see which one a task got,** open its page: the first line of its log says what world
 it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
@@ -421,7 +423,11 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — it did not merge, my checkout is on main or dev, aforge never writes to a protected branch, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
+## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, aforge never writes to a protected branch, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
+
+A tag with the same name as a branch does not change which branch is protected
+or which commit the landing compares. Git signature-display settings also do
+not change whether a forward commit belongs to aforge.
 
 A finished task never writes a protected branch. The protected names are `main`, `master`,
 `dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
@@ -433,14 +439,17 @@ You will see one exact reason:
 - `its branch task/x was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
 - `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
 - `its branch task/x was kept: your checkout is not on a branch — check one out and merge it`
+- `its branch task/x was kept: feat/x has moved on since the work was cut — merge it where you want it`
 
 Take it with `git merge task/x` on the branch where you want the work. `git branch --list
 'task/*'` lists finished work waiting this way. Or check out a feature branch before
-starting tasks; when it is still checked out at landing, finished work comes home by
-itself. A checkout that is on a different branch than when the task started, or detached before
-it landed, is kept by the same rule so aforge never guesses where you meant the work to go.
-The test is which branch you are on, not what is on it: commit or rebase all you like on the
-branch you started on and the work still comes home to it.
+starting tasks; when it is still checked out at landing and any commits since the cut came
+from aforge's own landings, finished work comes home by itself. A checkout that is on a
+different branch than when the task started, or detached before it landed, is kept by the
+same rule so aforge never guesses where you meant the work to go. The test is both the
+branch and the commit it was cut from: work you commit, amend, rebase or reset on that
+branch yourself keeps the task's branch instead of merging into it. Another task landing
+through aforge does not count as you moving it.
 
 ## My task's branch would not merge — what happens then
 
@@ -456,6 +465,10 @@ files that changed on both sides:
 The landing note the model reads does **not** say the work finished or that the branch
 merged. It names the kept branch. A merge that did not fasten the branch to yours is not
 a landing, even if the task's own report said the work arrived.
+
+A clash with work you **committed** on your own branch is kept before a merge is tried.
+The conflict road above is for your uncommitted work and for repositories aforge owns,
+where a committed clash can still reach the merge itself.
 
 **A landing never ends in a sentence that names nothing.** There is one shape of refusal
 where git will not start the merge at all — you have uncommitted changes in the very files
@@ -768,9 +781,10 @@ project on GitHub, GitLab or another host:
 
 **So how does the work get to you?** Every path the task passed to `write` or `edit` is
 staged by name and merged home onto your branch when the task lands — that is the road, and
-it is the only one, with the one stop on it being a checkout aforge will not write, where
-the branch is kept and named instead. If the work should become a pull request, the task says so in its
-report and you or the conversation opens it.
+it is the only one. A protected or detached checkout, a different branch, or a branch you
+moved to another commit after the cut stops before that merge; the task branch is kept and
+named instead. If the work should become a pull request, the task says so in its report and
+you or the conversation opens it.
 
 ## Does a task have my credentials — can a task read your GitHub token, gh auth token is refused inside a task, my task said gh auth token is not yours to run
 
@@ -826,7 +840,7 @@ refused before they run, and the task reads the refusal and keeps working:
 
 | Refused | Because |
 | --- | --- |
-| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
+| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref`, `symbolic-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
 | `pull`, `fetch`, `clone`, `remote`, `submodule` | they bring in work the task did not do, and a task reports what it writes as its own |
 | `push` | a task's work comes home through its landing, not over a remote (the section above) |
 | `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
@@ -844,15 +858,23 @@ command aimed at another directory is answered by the path law above instead —
 copy" — because "this is your own copy" is false about a repository the task is not standing
 in, and a refusal a model can see through is a refusal it goes around.
 
-**None of this applies to you.** In your own conversation, in your own checkout, aforge
-runs whatever git you ask for. The rule exists because a task reports work as *its own*,
-and one that fast-forwarded onto `main` really did report somebody else's fixes as the
-thing it had just built.
+**In a session you are sitting in front of, none of this applies to you.** In your own
+conversation, in your own checkout, aforge runs whatever git you ask for. A session you
+left running on its own with a budget answers to this same list, because it decides on its
+own word that the work is done; *The git an unattended run left on its own will not run*
+in *What aforge is, and how you start it* says exactly what that session reads. The rule
+exists because a task reports work as *its own*, and one that fast-forwarded onto `main`
+really did report somebody else's fixes as the thing it had just built.
 
 ## How a task reports back to you
 
-When a task lands, its **report** is its final assistant message, cut to the first **3
-non-empty lines**, each clipped to **300 characters**.
+When a task lands, its **report** begins with the first **3 non-empty lines** of its final
+assistant message, each clipped to **300 characters**. If those lines open a fenced code
+block, the report can carry up to **8 extra non-empty lines** beyond that ordinary room to
+include its contents and closing fence. A report never ends on a bare opening fence. When
+any non-empty line is left out — or when the report had to close a block the task left open,
+because that closing line is the report's and not the task's — it ends with `…` on a line of
+its own; a report that carries the whole message unaltered has no such mark.
 
 A task is told to make those lines the **substance** of the work — what it found or made,
 the key findings, the decisions it took, with every file named by its full path — and not
@@ -875,6 +897,7 @@ where the branch went:
 - `its branch task/… was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
 - `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
 - `its branch task/… was kept: your checkout is not on a branch — check one out and merge it`
+- `its branch task/… was kept: feat/x has moved on since the work was cut — merge it where you want it`
 - `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`
 - `it was stopped; what it made is committed on its branch task/…, which was kept — merge that branch to take the work`
 - `it was stopped; its branch task/… was kept` (when it made nothing)
@@ -892,8 +915,10 @@ When a task's work does come home, the paths it wrote are staged by name — nev
 `git add -A`, and never `.aforge-v3` — then committed on its own branch as
 `task: <first line of title, at most 72 chars>` with the identity
 `aforge <aforge@localhost>`, then merged into an ordinary branch with `git merge --no-edit`.
-A checkout on a protected branch, on a different branch than when the work was cut, or
-detached, is left alone and the task branch is kept instead.
+A checkout on a protected branch, on a different branch than when the work was cut, on the
+same branch at a commit the person moved after the cut, or detached, is left alone and the
+task branch is kept instead. Commits written by aforge's own landings do not count as the
+person moving it.
 Otherwise the merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
 the branch is kept, the working copy is given back, and the task needs your look. A commit
@@ -901,6 +926,22 @@ that could not be made at all stops the landing before the merge — nothing is 
 nothing is given back, and the task needs your look (*My task could not save what it wrote*
 above). Two tasks finishing at
 once are serialized, so a merge is never lost.
+
+## My task's report is cut off or ends at a code block — where the rest of the report went
+
+If a **report is cut off**, it ends with `…` on a line of its own. When one of its first **3
+non-empty lines** opens a fenced code block, the report carries up to **8 extra non-empty
+lines** beyond its ordinary room to keep the quoted content and its closing fence; it never
+ends in a bare opening fence. If that block cannot close within the extra room — or the task
+itself never closed it — the report closes it and then marks the cut, because that closing
+line is the report's own. This is why a current report does not end in three backticks with
+the code block missing from the report.
+
+The missing lines were not discarded. The task's journal keeps the whole final message,
+and its page shows that message under `what it said at the end`. Open the task from
+`/history` or `ctrl+.`, then press `enter` on its row. That is where the rest of the report
+went; the short report on the landing card, and the one the task's row keeps for later,
+stay bounded.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
 
@@ -970,8 +1011,11 @@ longer evidence that anybody is looking at *that* conversation.
 Two clocks, and neither is a hard stop.
 
 **One hour per checkpoint.** The run, every correction round and every check inside it
-share a 60-minute interval — but when it fires, a second look decides what
-happens next. That look stands in the task's own working copy and has to open it: an answer
+share a 60-minute interval — unless the task starts under `--max-hours` with less of the
+run's wall left, in which case its interval is what remains. The setup-and-check allowance
+is the floor, so a task is never handed a shorter interval than it needs to open and be
+checked. When the interval fires, a second look decides what happens next. That look stands
+in the task's own working copy and has to open it: an answer
 given without reading anything is sent back once, told so, and the second answer is the one
 that counts. Working toward the brief: the task gets another hour, up to five in all
 (5 hours is the hard backstop, and a healthy task never meets it). Circling: it is told to
@@ -1412,6 +1456,40 @@ How the restore is built depends on your workspace:
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
 
+## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
+
+A worker committing its own edits does not move this baseline. A restored task
+whose older record has no captured base supplies no before-reading; the current
+branch tip is never substituted for the missing history.
+
+Before a task's work is checked, aforge runs the task's named checks on the **base commit
+its copy was cut from**. That is the before-reading: it says which checks were already red
+before the task began. The check of what would ship is then compared with it. A check that
+was already failing and is still failing is not this task's to answer for; an acceptance
+that says the suite passes is met when everything this task could have broken is green and
+the rest is exactly as it was found. A check that was passing before the task and is red
+after it **is** this task's.
+
+The checker is told that distinction before it reads which commands it may run. If the base
+was clean, it is told every check was passing before the work began, so any red it finds is
+the task's. If a command could not start, changed the tree while it ran, or lay beyond the
+five-minute reading window, it counts neither way and is not named: aforge does not guess
+whose failure it is. A reading nobody could take produces no claim about earlier failures
+at all.
+
+The base reading is taken once per commit and shared by every task part cut from that same
+commit. The second reading is needed only when the base had red to subtract. This happens
+whether you are watching the session or left it running. Where a task works over a plain
+folder rather than a repository, there is no base commit to read, so nothing is subtracted
+and nothing about earlier red is claimed.
+
+When old red remains under work that finishes, its report keeps the checker's own evidence
+first and then says exactly:
+
+```
+1 check was already failing before this work and is not counted: go test ./...
+```
+
 ## What the checker is shown of what the task already ran
 
 The checker is also handed the **last few tool results of the task's own worker** — up to
@@ -1688,9 +1766,9 @@ a call that hung and was cut, a checker that would not start, a reply that said 
 work.
 
 The task then reads `finished` and its branch merges like any other. This happens only on a
-run with a budget — a `--yolo` run without one, a headless `--once`, and a task inside
-another task in a session you are watching all keep the old road, where the landing goes to
-whoever holds the decision and they settle it.
+run with a budget — a `--yolo` run without one, a headless `--once` with no ceiling, and a
+task inside another task in a session you are watching all keep the old road, where the
+landing goes to whoever holds the decision and they settle it.
 
 ## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
 
@@ -1857,7 +1935,8 @@ without exception:
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
-- a finished task on a protected branch, or whose checkout moved or became detached,
+- a finished task on a protected branch, whose branch or commit moved after the cut, or
+  whose checkout became detached,
   stays **done** and keeps its branch for you to merge where you choose;
 - a task on a plain folder that would have written over an edit of your own lays **nothing**,
   keeps its whole copy of the folder, lands as **needs your look** and names the files that

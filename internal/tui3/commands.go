@@ -296,6 +296,7 @@ var commands = []command{
 	// lines it prints: somebody who wanted the money and typed the general word
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
+	{name: "status", args: "--json", desc: "…everything the status line knows, as one JSON object"},
 	// THE ROW NAMES WHOSE BILL IT IS, because the other one is now a command of
 	// its own two rows up: /cost is THIS CONVERSATION and /spend is the machine.
 	// The word `spend` used to be an alias here and pointed the one guess a
