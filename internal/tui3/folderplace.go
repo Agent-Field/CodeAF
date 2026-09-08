@@ -97,7 +97,7 @@ func (a *app) referPlace(chosen chosenPlace) {
 	path = ref.Path
 	a.placeChosen = path
 	a.keepFolderPick(path)
-	shown := shortPath(path, a.tilde, 0)
+	shown := tildePath(path, a.tilde)
 	// THE PATH IS THE WHOLE OF THIS LINE (payload.go). `folder ·` is a label a
 	// person already knows they asked for; the path is the one thing here they
 	// cannot see anywhere else at this moment, so it steps to ink and the label
@@ -110,7 +110,7 @@ func (a *app) referPlace(chosen chosenPlace) {
 	// they actually picked.
 	line := folderChoseWord + shown
 	if chose != path {
-		line += folderInsideWord + shortPath(chose, a.tilde, 0)
+		line += folderInsideWord + tildePath(chose, a.tilde)
 	}
 	a.noteFacts(line, shown)
 	a.touch()
@@ -241,7 +241,7 @@ func (a *app) addFolderUnderCursor() {
 	// passing its own staleness downstream. A keystroke may wait for one
 	// stat; nothing else here waits for anything.
 	if info, err := os.Stat(path); err != nil || !info.IsDir() {
-		a.note(folderGoneWord + shortPath(path, a.tilde, 0))
+		a.note(folderGoneWord + tildePath(path, a.tilde))
 		a.touch()
 		return
 	}
@@ -393,7 +393,7 @@ func (a *app) folderCandidates() []folderCand {
 			seen[path] = true
 			out = append(out, folderCand{
 				path:  path,
-				show:  shortPath(path, a.tilde, 0),
+				show:  tildePath(path, a.tilde),
 				layer: layer,
 				rank:  len(out),
 				freq:  folderFrecency(a.folderStore.Picks[path], a.now()),

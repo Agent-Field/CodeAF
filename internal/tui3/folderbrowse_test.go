@@ -160,8 +160,14 @@ func TestASearchResultOpensForBrowsingWithoutBeingRetyped(t *testing.T) {
 	if !a.folder.browsing || a.folder.cols.dir != filepath.Join(root, "sibling") {
 		t.Fatalf("→ left the browser on %q (browsing=%v)", a.folder.cols.dir, a.folder.browsing)
 	}
-	if want := shortPath(filepath.Join(root, "sibling"), a.tilde, 0) + "/"; a.folder.filter.String() != want {
+	// THE BOX HOLDS A PATH THAT RESOLVES, whole, with only `~` abbreviated —
+	// anything else and the next keystroke would look up a directory that is not
+	// there ([folderPick.writeBack]).
+	if want := tildePath(filepath.Join(root, "sibling"), a.tilde) + "/"; a.folder.filter.String() != want {
 		t.Fatalf("the box says %q, want %q — a path nobody had to type", a.folder.filter.String(), want)
+	}
+	if a.resolvePath(strings.TrimSuffix(a.folder.filter.String(), "/")) != filepath.Join(root, "sibling") {
+		t.Fatalf("what the box holds does not resolve back: %q", a.folder.filter.String())
 	}
 
 	// And a click on a list row does the same thing.

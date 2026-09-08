@@ -90,9 +90,17 @@ const (
 type folderCand struct {
 	// path is absolute and cleaned, and is what the add action hands over.
 	path string
-	// show is the path as a person reads it — `~` for the home directory —
-	// and is BOTH what is drawn and what the filter scores against, because a
-	// person typing "code/ag" is typing what they can see.
+	// show is the path as a person reads it — `~` for the home directory and
+	// EVERY OTHER SEGMENT LEFT ALONE ([tildePath]) — and is BOTH what is drawn
+	// and what the filter scores against, because a person typing "code/ag" is
+	// typing what they can see.
+	//
+	// IT USED TO BE [shortPath], WHICH IS THE LEGEND SPELLING and spends the
+	// ancestors down to initials: `~/code/aforge-v2/internal` drew as
+	// `~/c/a/internal`, so the rows were unreadable AND unsearchable — a filter
+	// on "code" matched nothing, because the letters it was scoring against were
+	// not there. The same call in [folderPick.writeBack] put `/t/b/t/alpha/`
+	// into the box after a walk, which is not a path any resolve can find.
 	show  string
 	layer folderLayer
 	// rank is the position this candidate held in its own source's order, kept
@@ -648,9 +656,16 @@ func (f *folderPick) openAt(dir, keep string) {
 
 // writeBack puts the directory the columns are now on back into the filter box,
 // so what is typed and what is shown are never two different claims about where
-// a person is. It keeps the `~` spelling, because that is what they typed.
+// a person is.
+//
+// IT IS [tildePath] AND IT HAS TO BE. What goes in the box is read back by
+// [app.resolvePath] on the very next keystroke, so it must be a path that
+// resolves: `~` is the one abbreviation that survives that, and every other
+// segment is left exactly as it is. Written with the legend's spelling it put
+// `/t/b/t/alpha/` in the box after a walk — which drew as a claim about where
+// you were standing and named nowhere at all.
 func (f *folderPick) writeBack() {
-	f.filter.setText(shortPath(f.cols.dir, f.tilde, 0) + "/")
+	f.filter.setText(tildePath(f.cols.dir, f.tilde) + "/")
 	f.browsing = true
 }
 
@@ -661,7 +676,7 @@ func (f *folderPick) complete() bool {
 	if !f.browsing || f.cols.cursor < 0 || f.cols.cursor >= len(f.cols.here.names) {
 		return false
 	}
-	f.filter.setText(shortPath(filepath.Join(f.cols.dir, f.cols.here.names[f.cols.cursor]), f.tilde, 0) + "/")
+	f.filter.setText(tildePath(filepath.Join(f.cols.dir, f.cols.here.names[f.cols.cursor]), f.tilde) + "/")
 	return true
 }
 
@@ -1059,7 +1074,7 @@ func (f *folderPick) actionRow(width int, pal palette, hover int) string {
 	if !ok {
 		return pal.dim(folderPad + fit(f.hint(), room))
 	}
-	shown := shortPath(path, f.tilde, 0)
+	shown := tildePath(path, f.tilde)
 	// The facts ride the right end of the same row, and are dropped WHOLE rather
 	// than cut: half a branch name is a branch nobody has.
 	facts := strings.Join(f.factsFor(path), " · ")

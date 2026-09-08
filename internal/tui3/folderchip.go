@@ -178,7 +178,7 @@ type placeDroppedMsg struct {
 // changing under a click is a change to what the next request will be told, and
 // this surface says those out loud.
 func (a *app) tookPlaceDropped(msg placeDroppedMsg) {
-	shown := shortPath(msg.path, a.tilde, 0)
+	shown := tildePath(msg.path, a.tilde)
 	if msg.err != nil {
 		a.noteFacts(msg.err.Error())
 		a.touch()
