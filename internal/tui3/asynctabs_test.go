@@ -99,7 +99,7 @@ func asyncApp(t *testing.T) (*app, *asyncDoor, *asyncAgent) {
 	})
 	a.width, a.height = 120, 30
 	a.file = "/tmp/lab/first.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	emptyMachine(a)
 	return a, door, first
 }
