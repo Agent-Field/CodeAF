@@ -30,8 +30,8 @@ package tui3
 //
 //	aforge      → the leaf name, spelled out          folderTierName
 //	afo         → the leaf name starts with it        folderTierNameLead
-//	internal    → a segment above the leaf            folderTierSegment
 //	~/code      → the path itself starts with it      folderTierPathLead
+//	internal    → a segment above the leaf            folderTierSegment
 //	forge       → inside the leaf name                folderTierNameIn
 //	ait         → the initials, in order              folderTierShort
 //	de/af       → somewhere else in the path          folderTierPathIn
@@ -61,11 +61,11 @@ const (
 	folderTierName folderTier = iota
 	// folderTierNameLead is the leaf name started.
 	folderTierNameLead
+	// folderTierPathLead is the shown path's own beginning — `~/code`.
+	folderTierPathLead
 	// folderTierSegment is a segment above the leaf, or a run of them spelled
 	// from a boundary — `internal`, `internal/tui3`.
 	folderTierSegment
-	// folderTierPathLead is the shown path's own beginning — `~/code`.
-	folderTierPathLead
 	// folderTierNameIn is inside the leaf name but not at its front.
 	folderTierNameIn
 	// folderTierShort is the initials: every letter on a word start, or

@@ -310,8 +310,8 @@ func TestEveryRungIsReachable(t *testing.T) {
 	}{
 		{"tui3", "~/code/tui3", folderTierName},
 		{"tui", "~/code/tui3", folderTierNameLead},
-		{"code", "~/code/tui3", folderTierSegment},
 		{"~/co", "~/code/tui3", folderTierPathLead},
+		{"code", "~/code/tui3", folderTierSegment},
 		{"ui3", "~/code/tui3", folderTierNameIn},
 		{"av2", "~/code/aforge-v2", folderTierShort},
 		{"ode/t", "~/code/tui3", folderTierPathIn},
