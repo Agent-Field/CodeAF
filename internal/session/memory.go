@@ -986,6 +986,11 @@ func (a *Agent) memoryTools() []bare.Tool {
 // every refresh renders base + current blocks instead of stacking one turn's
 // memories on top of the last one's.
 //
+// THE ATTACHED FOLDERS ARE THE THIRD BLOCK and they are here for the standing
+// orders' reason exactly: a folder somebody attached holds for the life of the
+// conversation until they remove it, so it moves once per deliberate act and
+// otherwise renders byte for byte (placescontext.go).
+//
 // WHAT LIVES HERE IS WHAT HOLDS FOR THE LIFE OF THE CONVERSATION, and that is
 // the whole rule. message[0] sits in front of every message there is, so one
 // changed byte in it re-prices the entire transcript at the uncached rate — five
@@ -1017,7 +1022,7 @@ func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	a.messages[0] = textMessage("system", a.system+a.standingText+a.memoryText)
+	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+a.memoryText)
 }
 
 // refreshCardLocked holds the state card's new text for the note that carries

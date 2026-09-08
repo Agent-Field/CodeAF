@@ -88,7 +88,17 @@ take a beat to say whether it is dirty — the keys never wait for it.
 folder · ~/code/agentfield
 ```
 
-and two things are then true.
+and three things are then true.
+
+**I am told about it, by its exact path, on the very next thing you say.** The folder is
+written into my own instructions under `Attached folders`: the absolute path, whether it is
+a repository, and — if it has an `AGENTS.md` or a `CLAUDE.md` of its own — that file's rules
+quoted under a heading naming that folder and saying they hold there and nowhere else. So I
+never go hunting for a folder you chose, never ask you which one you meant, and never blend
+two attached projects' house rules together. What I am **not** given is the folder's
+contents: attaching is a reference, not a copy, and I look inside with `ls`, `grep` and
+`read` on the path you chose, the same as anywhere else. A folder that is no longer on disk
+when you attach it is described that way rather than silently.
 
 **The conversation is about that folder, and it remembers.** The choice is written into the
 conversation's own record, so closing the terminal does not lose it, and the next task you
@@ -251,6 +261,19 @@ which it could always do.
 
 Sixteen folders is as many as one conversation keeps. Past that the oldest one it worked
 out for itself is dropped; a folder you named yourself is the last thing to go.
+
+**Taking one off again.** A folder you attached can be removed, and removing it is
+complete: it comes off the conversation's record, off the rows `/folder` opens with, and
+out of my instructions, so the next thing you say reaches me with no mention of it. A
+folder that has since been deleted from your disk can still be removed — the record
+outlives the directory on purpose, so that a folder that went away is not stuck on the
+conversation forever. Asking to remove a folder this conversation was never about is
+refused in those words: `this conversation is not about <path>`. Removing a folder does
+**not** touch the folder itself, and it does not throw away changes waiting for `/land`.
+
+A folder I worked out for myself — the project a task turned out to stand in, rather than
+one you chose — is not called attached and is never quoted to me as instructions you gave;
+it is only where work went.
 
 ## Attach a folder — /attach with a directory after it
 

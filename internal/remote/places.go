@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE ENGINE HALF OF THE THREE LATE PLACES, AND THE SURFACE HALF ──────────
@@ -65,6 +67,51 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 		payload, err := json.Marshal(engine.Ledger(args.Since))
 		return payload, true, err
 
+	case MethodPlacesRefer:
+		args, err := arg[ReferArgs](call)
+		if err != nil {
+			return nil, true, err
+		}
+		door, ok := sess.current().(placeKeeper)
+		if !ok {
+			return nil, true, errors.New(engineOffWord + foldersOffWord)
+		}
+		arrival := args.Arrival
+		if arrival == "" {
+			// A CALLER WHO NAMED NO ROAD NAMED THE PERSON'S. Every surface that
+			// reaches this door does so because somebody chose a folder, and the
+			// other road — a ground the work resolved — is written from inside the
+			// engine and never crosses a wire.
+			arrival = session.PlaceSaid
+		}
+		ref, err := door.ReferPlace(args.Path, arrival)
+		if err != nil {
+			return nil, true, err
+		}
+		// AND EVERY SURFACE IS TOLD, not only the one that chose. The set rides
+		// the fact push (wire_places.go says why it is not a reading of its own),
+		// so this is what puts the new folder in front of the other window on this
+		// conversation — and in front of THIS one, over the top of whatever it
+		// assumed while the call was in flight.
+		s.session.announce()
+		payload, err := json.Marshal(ref)
+		return payload, true, err
+
+	case MethodPlacesRemove:
+		path, err := arg[string](call)
+		if err != nil {
+			return nil, true, err
+		}
+		door, ok := sess.current().(placeKeeper)
+		if !ok {
+			return nil, true, errors.New(engineOffWord + foldersOffWord)
+		}
+		if err := door.RemovePlace(path); err != nil {
+			return nil, true, err
+		}
+		s.session.announce()
+		return nil, true, nil
+
 	case MethodPlacesSearch:
 		args, err := arg[SearchArgs](call)
 		if err != nil {
@@ -96,6 +143,26 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 	return nil, false, nil
 }
 
+// placeKeeper is the slice of an engine's agent that remembers which folders a
+// conversation is about (internal/session's places.go).
+//
+// IT IS ASSERTED RATHER THAN REQUIRED OF [WrappedAgent], on tasklane.go's terms:
+// a scripted engine in a test and any shape of agent that keeps no places
+// honestly lack it, and a method on the interface would make each of them a
+// compile error for a capability they have no answer to. *session.Agent
+// satisfies it, which is the case that matters — cmd/aforge's engine.go pins
+// that by construction.
+type placeKeeper interface {
+	ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error)
+	Places() []session.PlaceRef
+	RemovePlace(path string) error
+}
+
+// foldersOffWord is an engine that cannot hold a folder at all. It is the third
+// refusal in this file and it is said in the machine's own terms for
+// [engineOffWord]'s reason.
+const foldersOffWord = "this engine cannot keep the folders a conversation is about"
+
 // memoryOffWord is the far machine's memory row, off. It is spelled here and
 // matched on the surface ([Client.MemoryOff]) because the surface has to turn it
 // into a sentence of its own — `memory is off on that machine` — rather than
@@ -114,6 +181,56 @@ const memoryOffWord = "memory is off on this machine"
 func MemoryOff(err error) bool {
 	return err != nil && len(err.Error()) >= len(memoryOffWord) &&
 		err.Error()[len(err.Error())-len(memoryOffWord):] == memoryOffWord
+}
+
+// ── THE SURFACE HALF OF THE FOLDERS ─────────────────────────────────────────
+//
+// These three are what internal/tui3 type-asserts for when somebody picks a
+// folder, and they are on [Agent] rather than on [Client] because that is the
+// handle the surface holds: the local door and the ssh door hand the same
+// *remote.Agent to the same picker, and a capability that lived on the client
+// would be one the picker could not reach.
+
+// ReferPlace attaches one folder to the conversation on the ENGINE machine.
+//
+// IT IS A ROUND TRIP AND IT HAS TO BE. The engine is what stats the path, snaps
+// it to its repository root, writes it onto the conversation's meta.json and
+// puts it in front of the model — none of which this end can do or check, and
+// all of which is the difference between a folder attached and a line drawn.
+// The [session.PlaceRef] that comes back is THE ENGINE'S ANSWER, root-snapped and
+// canonical, so a caller reporting what was attached reports what landed rather
+// than what it asked for.
+func (a *Agent) ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error) {
+	payload, err := a.c.call(nil, MethodPlacesRefer, ReferArgs{Path: path, Arrival: arrival})
+	if err != nil {
+		return session.PlaceRef{}, err
+	}
+	var ref session.PlaceRef
+	if err := json.Unmarshal(payload, &ref); err != nil {
+		return session.PlaceRef{}, err
+	}
+	a.c.facts.referPlace(ref)
+	return ref, nil
+}
+
+// Places is the folders this conversation is about, newest first — A MEMORY READ
+// THAT NEVER TOUCHES THE WIRE.
+//
+// The set rides the fact push for replica.go's stated reason: the folder
+// indicator is drawn on a frame, and a frame is not allowed to wait on a
+// network. What is answered is what the engine last said, which for a connection
+// that has dropped is the last true picture rather than a list that emptied
+// itself because a pipe closed.
+func (a *Agent) Places() []session.PlaceRef { return a.c.facts.read().Places }
+
+// RemovePlace takes one folder back off the conversation on the engine machine,
+// and carries the engine's own refusal back for a folder it is not about.
+func (a *Agent) RemovePlace(path string) error {
+	if _, err := a.c.call(nil, MethodPlacesRemove, path); err != nil {
+		return err
+	}
+	a.c.facts.removePlace(path)
+	return nil
 }
 
 // memoryCall is the seven doors, dispatched. It is split out of [placesCall] so

@@ -147,6 +147,65 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 	return ref, nil
 }
 
+// RemovePlace takes one folder back off the conversation: off the set, off
+// meta.json, and out of what the next request tells the model
+// (placescontext.go).
+//
+// IT IS THE OTHER HALF OF [Agent.ReferPlace] AND THE SURFACE'S ONE DOOR OUT.
+// A folder indicator a person can see and cannot dismiss is a mistake they have
+// to open a new conversation to correct, and a conversation still carrying a
+// folder somebody removed from their screen would be the surface and the model
+// disagreeing about what this is about.
+//
+// IT WORKS ON A FOLDER THAT IS NO LONGER THERE. The set is a history and keeps a
+// record whose directory has been deleted (see [loadPlaces]), so a remove that
+// insisted on stat'ing first would leave exactly those records unremovable — the
+// path is read the ordinary way when the disk can answer, and taken as written
+// when it cannot.
+//
+// A FOLDER THIS CONVERSATION IS NOT ABOUT IS REFUSED RATHER THAN IGNORED, which
+// is [Agent.SetPlaceMode]'s reading: a caller told "done" about a path that was
+// never on the set has been told something false about which folders are
+// attached.
+func (a *Agent) RemovePlace(path string) error {
+	want := strings.TrimSpace(path)
+	if want == "" {
+		return fmt.Errorf("a place is a folder · this one has no path")
+	}
+	if dir, err := a.placePath(want); err == nil {
+		if root, ok := repositoryRoot(dir); ok {
+			dir = root
+		}
+		want = dir
+	} else if filepath.IsAbs(want) {
+		want = canonicalPath(filepath.Clean(want))
+	} else {
+		// A relative path this process cannot resolve names nothing at all, and
+		// the refusal [Agent.placePath] already wrote is the true one.
+		return err
+	}
+	// THE SET IS REPLACED AND NEVER EDITED IN PLACE, for [Agent.SetPlaceMode]'s
+	// stated reason: a stamp hands the live slice to the marshaller.
+	a.mu.Lock()
+	kept := make([]PlaceRef, 0, len(a.places))
+	for _, place := range a.places {
+		if place.Path != want {
+			kept = append(kept, place)
+		}
+	}
+	found := len(kept) != len(a.places)
+	if found {
+		a.places = kept
+	}
+	a.mu.Unlock()
+	if !found {
+		return fmt.Errorf("this conversation is not about %s", want)
+	}
+	a.stampPlaces()
+	a.keepAttached()
+	return nil
+}
+
 // SetPlaceMode records the person's own word about how work happens in one
 // place — "here", "directly", "in place", which all mean the same thing: the
 // work happens in that folder itself rather than in a copy of it.
@@ -320,6 +379,12 @@ func (a *Agent) refer(ref PlaceRef) {
 	a.places = trimPlaces(append([]PlaceRef{ref}, kept...))
 	a.mu.Unlock()
 	a.stampPlaces()
+	// AND THE MODEL IS TOLD, which is the whole difference between a folder this
+	// process remembers and a folder this conversation is about. The block is
+	// composed from the SAID rows alone and compares itself before it writes, so
+	// a ground the ladder resolved reaches this line and changes nothing
+	// (placescontext.go).
+	a.keepAttached()
 }
 
 // knownPlace is what the set already holds about one path, and whether it is
