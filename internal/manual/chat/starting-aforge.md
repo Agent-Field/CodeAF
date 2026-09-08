@@ -243,27 +243,34 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
-## It says nothing has been finished yet after editing or creating a file · inline work · emptied file · blank file · zero bytes
+## Inline work is finished with a witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
 
-**And work aforge did itself counts as finished work.** The question is not only "did a
-task come home": a session that made the change and wrote the tests **inline**, with no
-task at all, has finished something — as long as the second reader agrees nothing is left.
-That includes a fix that is one edit to a file the project already had, which is the
-commonest fix there is: it used to count only files the session created, so a one-line change
-to an existing file read as nothing finished until the run stopped itself over green work.
-Before this, a run that did the whole job in the conversation read `nothing has been
-finished yet` at the end of every reply over a tree it had just written, said the same
-thing twice, and stopped itself for going round in circles one second after tidying up. If
-that reader names a gap instead, the run carries on into it, and being finished is settled
-by running your checks over the tree either way.
+**Work aforge did itself counts as finished work with a second opinion.** A session that
+made the change and wrote the tests **inline**, with no task at all, has finished something
+when the second reader agrees nothing is left. That includes one edit to an existing file;
+older runs counted only new files and could stop themselves over a green fix while saying
+`nothing has been finished yet`. If the reader names a gap, the run carries on into that gap
+whatever the checks say.
 
-**And a file is your work only while its content still differs from what it was before the
+**If the second reader could not be reached, silence is not treated as a gap.** On an
+unattended run aforge actually runs your declared checks over the tree and lets a green
+reading stand in, saying `the reader could not be reached, so the checks stood in for it`.
+A red check carries the run on with that command named. At least one declared check must
+start and finish: with no check declared, or none that ran, nothing can stand in and the run
+carries on exactly as before. An install with no reader is different from a failed call;
+that absence runs no check on its own.
+
+## A changed file counts only while its content differs · a reverted or stashed edit is not finished work
+
+**A file is your work only while its content still differs from what it was before the
 edit.** A change put back the way it was, a revert, or a fix pushed onto `git stash` and
 never popped leaves the path written and nothing in the tree, so none of them counts as
 finished work. A stash the run took itself and never popped is said out loud as well —
 `1 stash entry holds work that is not in the tree` — and the run carries on rather than
 finishing over it; a stash you already had before the run started is yours and is never
 counted, and neither is the one a landing takes to set your uncommitted work aside.
+
+## An emptied, blank or zero-byte created file does not count as finished work
 
 **A file the run created counts as its work only while there is something in it.** A
 rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell

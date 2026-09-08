@@ -508,6 +508,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it move my work to a task after five minutes", "starting-aforge"},
 		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
 		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
+		{"the reader timed out and then it did the whole fix twice", "starting-aforge"},
 		// The headless door of the same unattended posture (#535), asked as the
 		// budget, the missing start and the screenless carry-on somebody meets.
 		{"can I leave a headless run going with a budget", "starting-aforge"},

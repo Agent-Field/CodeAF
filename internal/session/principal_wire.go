@@ -404,10 +404,9 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// the graph and nothing else — stays false over a tree it has just written, and
 	// "nothing has been finished yet" was the first line of both briefs the
 	// standstill then compared (#513). What it made is read from the session's two
-	// ledgers against the deliverable tree as it stands now, and it counts only
-	// WITH the reader agreeing — a session's own files are not a second opinion
-	// about themselves
-	// ([Remains.finishedSomething]).
+	// ledgers against the deliverable tree as it stands now. It counts only WITH
+	// A WITNESS: the reader agreeing, or declared checks that actually run when
+	// that reader could not be reached ([Remains.finishedSomething]).
 	//
 	// IT IS NON-EMPTY REGULAR FILES THIS SESSION CREATED, OR FILES IT CHANGED,
 	// under the tree. The two are kept in separate ledgers because only the
@@ -423,6 +422,7 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// digest taken before the write ([Agent.changedInDeliverable]).
 	remains.Made = a.createdInDeliverable() || a.changedInDeliverable()
 	remains.ReaderSaysDone = reader.nothingLeft
+	remains.ReaderUnreachable = reader.unreachable
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
 	// decision — rather than beside the checks themselves: the checks are run
 	// once, after a principal has said the ask is met, and a baseline attached at
