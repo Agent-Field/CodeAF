@@ -2155,6 +2155,13 @@ type Agent struct {
 	// is days old on a resumed conversation, and a budget measured from it would
 	// stop a resumed session before its first turn.
 	startedAt time.Time
+	// wallStop ends the one reader that waits independently for this session's
+	// wall, and is nil when the session has no unattended wall (wallclock.go).
+	// wallEndingTaken is the once-only mark on the ending that reader writes.
+	// Both are guarded by mu because Close and the reader meet on them from
+	// different goroutines.
+	wallStop        chan struct{}
+	wallEndingTaken bool
 	// readerAbsentNoted says the journal already carries this session's one line
 	// about having no second model to read a mark with (checkpoint.go's
 	// [Agent.noteReaderAbsent]). It is a bit rather than a count because the fact
