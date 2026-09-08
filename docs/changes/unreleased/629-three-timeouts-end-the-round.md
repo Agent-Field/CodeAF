@@ -16,3 +16,5 @@ The threshold is one constant, `toolTimeoutRepeatCap`, interpolated into the
 sentence a person reads — `the same command timed out 3 times, so it was stopped
 rather than run again: <command>` — and quoted in `internal/manual/chat/adaptive-runs.md`
 beside the repeat guard, the other rule that ends repetition.
+
+`PERF.md` records the three-timeout cap beside the other leaf bounds.
