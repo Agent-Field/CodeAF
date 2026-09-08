@@ -1173,7 +1173,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// path to find. Naming them in the error text is enough — the error
 			// is what a failed node records, and a downstream step now reads
 			// paths out of it the same way it reads them out of a summary.
-			failure := humanFailure(node, err, absolute, withheld)
+			account := checklistAccount(graph, node.ID, absolute)
+			failure := humanFailure(node, err, absolute, withheld, account)
 			// A sibling's failure is the board note nobody should have to
 			// remember to write: the workers still running are about to lean on
 			// a result that is not coming, and the reason it died is the fact
@@ -3779,8 +3780,9 @@ func leafCause(node store.Node, err error) string {
 // unedited, where the record page shows it in full and no clipping reaches.
 //
 // The partial files ride below too, for the retry and for the person who wants
-// them, not for the notification.
-func humanFailure(node store.Node, err error, artifacts []string, withheld string) error {
+// them, not for the notification. The checklist follows them so a run that
+// never reached its delivery gate still accounts for every thing it was asked.
+func humanFailure(node store.Node, err error, artifacts []string, withheld, checklist string) error {
 	if err == nil {
 		return nil
 	}
@@ -3799,7 +3801,31 @@ func humanFailure(node store.Node, err error, artifacts []string, withheld strin
 	if withheld = strings.TrimSpace(withheld); withheld != "" {
 		body += "\n\n" + withheld
 	}
+	if checklist = strings.TrimSpace(checklist); checklist != "" {
+		body += "\n\n" + checklist
+	}
 	return errors.New(body)
+}
+
+// checklistAccount is best-effort on the failure path because losing a journal
+// read must never replace the work and error the node already has to hand over.
+func checklistAccount(graph *store.Store, nodeID string, wrote []string) string {
+	if graph == nil {
+		return ""
+	}
+	acceptance, found, err := graph.AcceptanceFor(nodeID)
+	if err != nil || !found {
+		return ""
+	}
+	// A GATE NOBODY COULD READ IS NOT A GATE THAT ANSWERED, and it is not a
+	// reason to drop the person's own list. The list is still accounted for,
+	// with nothing claimed answered — which is the conservative side, and the
+	// same direction every other unreadable row is read in here.
+	gate, gateRead, err := graph.DeliveryGateFor(nodeID)
+	if err != nil {
+		gate, gateRead = store.DeliveryGate{}, false
+	}
+	return revision.ChecklistAccount(revision.AnswerChecklist(acceptance.Points, gate, gateRead, wrote))
 }
 
 // failureCauseBytes bounds the cause line. A provider that answers a refusal
