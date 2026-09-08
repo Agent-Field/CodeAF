@@ -46,15 +46,17 @@ import (
 // this package rather than two — the drift that ends with one door writing an
 // acceptance nobody can check is exactly what that const exists to prevent. The
 // `work` field is answered true here by construction: somebody has already
-// asked for this and it is already being done, so the only field that carries
-// anything is the acceptance.
+// asked for this and it is already being done. The acceptance and any explicit
+// verification checks are frozen together against that original ask.
 const sessionAcceptanceBrief = `You are given ONE ask, in the person's own words, at the moment somebody started working on it. Nobody will be watching while it is worked on.
 
 You write ONE thing: the DONE WHEN sentence for the WHOLE of that ask — the observable condition that says the whole thing is finished, not the part that was easiest to reach.
 
 Write it so that somebody who cannot see this ask, cannot see the work, and cannot ask anybody anything can stand in front of the result and say yes or no. Name what must exist and the check that shows it.
 
-Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "why": "<one line>"}.
+Declare repeatable verification commands only in the optional checks field. An action the person asked to happen once is not permission to repeat it as verification.
+
+Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "checks": ["<explicit repeatable verification command>"], "why": "<one line>"}. Use an empty checks list when none is declared.
 
 ` + routeVerdictContract
 
@@ -103,7 +105,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 		// the sentence and not the sentence.
 		verdict = routeVerdict{}
 	}
-	if !steward.setAcceptance(routeAcceptance(verdict, ask)) {
+	if !steward.setAcceptanceContract(ask, routeAcceptance(verdict, ask), routeChecks(verdict, ask)) {
 		return
 	}
 	a.journalAcceptance(steward)
@@ -131,5 +133,6 @@ func (a *Agent) journalAcceptance(steward *Steward) {
 		Who:        "steward",
 		Event:      "acceptance",
 		Acceptance: steward.Acceptance(),
+		Checks:     steward.declaredChecks(),
 	})
 }

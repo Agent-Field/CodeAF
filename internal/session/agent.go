@@ -1890,7 +1890,7 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // the thing that started the work being ended; the file closes last because
 // every one of those can still write to it. Each round EXTENDS the quit rather
 // than racing it: at most one jobShutdownGrace for the graph and one for the
-// jobs, and both are graces a straggler spends alone.
+// jobs, plus one for adaptive runs; each is a grace stragglers share.
 //
 // The wait is the point. A turn cancelled at Close still has messages to
 // journal — the partial reply it kept, the steering it drained — and closing
@@ -1916,8 +1916,8 @@ func (a *Agent) Close() error {
 		//
 		// The wait needs no bound of its own: the caller it is waiting for is
 		// itself bounded, by the turn's grace and then one [jobShutdownGrace]
-		// each for the graph and the jobs. A nil channel means a session that
-		// was closed before this field existed in it — impossible now that both
+		// each for adaptive runs, the graph and the jobs. A nil channel means a
+		// session closed before this field existed in it — impossible now that both
 		// are written under this lock, and answered by returning rather than by
 		// blocking forever.
 		waitOn := a.closeDone
@@ -2003,6 +2003,14 @@ func (a *Agent) Close() error {
 		}
 		timer.Stop()
 	}
+
+	// Adaptive runs own worker journals outside the ordinary task graph. Their
+	// cancellations were cut above; join their accepted lifetimes before any
+	// store is closed. Setup may have created the graph since the first snapshot.
+	a.waitOrchestrations()
+	a.mu.Lock()
+	tasks = a.tasks
+	a.mu.Unlock()
 
 	// THE GRAPH STOPS BEFORE THE JOBS ROUND, and it is a stop of its own because
 	// a node is not reachable as a job until its goroutine has put it in the

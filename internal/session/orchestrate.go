@@ -136,6 +136,13 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		a.mu.Unlock()
 		return "", errAgentClosed
 	}
+	// Admission belongs to the close boundary even before the family has a
+	// registry entry: constructing that family already writes its first row.
+	a.orchestrateWorkers.Add(1)
+	if a.orchestrateContext == nil {
+		a.orchestrateContext, a.orchestrateStop = context.WithCancel(context.Background())
+	}
+	lifetime := a.orchestrateContext
 	a.orchestrateSeq++
 	seq := a.orchestrateSeq
 	named := strings.TrimSpace(model)
@@ -154,6 +161,12 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// them. It reaches the planner above the goal and every node above its own
 	// (task_brief.go). A run nobody typed anything for simply has none, and the
 	// heading is absent rather than empty.
+	launched := false
+	defer func() {
+		if !launched {
+			a.orchestrateWorkers.Done()
+		}
+	}()
 	request := a.taskRequest()
 
 	// The id is the run's number written out. Both spellings name one run: the
@@ -164,7 +177,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// THE CONTEXT IS NOT THE TURN'S. The turn that asked for this is over by
 	// the time the first node runs; a run cancelled by the request for it would
 	// never produce anything.
-	runCtx, cancel := context.WithTimeout(context.Background(), orchestrateWindow)
+	runCtx, cancel := context.WithTimeout(lifetime, orchestrateWindow)
 
 	// THE RUN IS TWO KINDS OF CALL AND THEY ARE NOT THE SAME PURCHASE. The
 	// planner is made once per completion and decides what everything else
@@ -184,12 +197,6 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
 	family := a.newOrchestrateFamily(goal, plannerModel, id)
-	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
-	// (taskname.go). It is asked for HERE, at the door, and not inside the
-	// constructor: the row is published under the goal first, so the roster shows
-	// the run from the moment somebody asked for it, and the name replaces the
-	// sentence when it lands a few seconds later.
-	family.nameRun(goal)
 	// AND THE NODES' MODEL GOES WITH IT, settled here for the run's whole life
 	// the way a task's is settled at admission: every row this family publishes
 	// says which model is doing the work, and the answer must not be able to move
@@ -231,7 +238,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		// adds the node, which is the name arriving on a call somebody is already
 		// paying for; this is what happens when it does not, and it is deliberately
 		// not a second namer (taskname.go's [orchestrateFamily.nameWorker]).
-		Name: family.nameWorker,
+		// Names may finish after the run, but never belong to a session that
+		// has left. The scheduler tracks their completion beside its workers.
+		Name: func(_ context.Context, node orchestrate.Node) string {
+			return family.nameWorker(lifetime, node)
+		},
 	})
 	planner.orch = run
 
@@ -248,8 +259,15 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	a.orchestrations[id] = live
 	a.mu.Unlock()
 
+	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
+	// (taskname.go). It is asked for HERE, at the door, and not inside the
+	// constructor: the row is published under the goal first, so the roster shows
+	// the run from the moment somebody asked for it, and the name replaces the
+	// sentence when it lands a few seconds later.
+	namedRun := family.nameRun(lifetime, goal)
+	launched = true
 	go func() {
-		defer a.settleOrchestrate(id)
+		defer a.orchestrateWorkers.Done()
 		snap, err := run.Run(runCtx)
 		// The family settles before the write-up is announced: the roster is where
 		// somebody looks when the note lands, and a root still saying "running"
@@ -257,6 +275,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		// the conversation.
 		family.settle(snap, err)
 		a.landOrchestrate(seq, goal, snap, err)
+		// Run deliberately returns promptly on cancellation. Its callbacks and
+		// child journals still belong to this session until they have returned.
+		a.settleOrchestrate(id)
+		run.Wait()
+		<-namedRun
 	}()
 	return id, nil
 }
@@ -489,10 +512,32 @@ func (a *Agent) settleOrchestrate(id string) {
 // ended: a run holds its own context precisely because its turn is gone, so
 // nothing else would ever reach it.
 func (a *Agent) cancelOrchestrationsLocked() {
+	if a.orchestrateStop != nil {
+		a.orchestrateStop()
+	}
 	for _, live := range a.orchestrations {
 		live.cancel()
 	}
 	a.orchestrations = nil
+}
+
+// waitOrchestrations gives every accepted run one shared shutdown grace. Close
+// has already refused admission under mu; waiting here holds no engine lock,
+// so a finishing callback can still record its last row. A noncooperative
+// provider can exceed the grace, just as a graph worker can.
+func (a *Agent) waitOrchestrations() {
+	a.mu.Lock()
+	tracked := a.orchestrateContext != nil
+	a.mu.Unlock()
+	if !tracked {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		a.orchestrateWorkers.Wait()
+		close(done)
+	}()
+	waitDone(done, jobShutdownGrace)
 }
 
 // landOrchestrate says what a finished run came to, in the two places it
@@ -892,6 +937,11 @@ func (e *orchestrateExec) model() string {
 // a node that failed is a fact on the next view, and what to do about it is
 // the one judgement this whole design reserves for the planner.
 func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps []orchestrate.NodeStatus) (string, float64, error) {
+	// A node queued immediately before Close must not open a fresh journal
+	// after its cancellation has already arrived.
+	if err := ctx.Err(); err != nil {
+		return "", 0, err
+	}
 	dir, shared := e.workspace(node)
 	child, err := e.newChild(dir, node)
 	if err != nil {

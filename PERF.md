@@ -122,6 +122,22 @@ all four, each with its own furrow artifact staged:
 The budget is 54,600,000, two percent above darwin/amd64, the same headroom
 every figure in this section was given, now over a smaller binary.
 
+## Adaptive run shutdown grace
+
+`Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
+run lifetimes **one shared 2-second grace** (`jobShutdownGrace`) before closing
+the task graph and journals. The join includes setup before registration, root
+settlement, workers, planner callbacks and names. It holds no engine lock.
+
+This adds at most **2 seconds of deliberate waiting** to the existing sequential
+shutdown rounds; it does not change the foreground turn, graph, job or ledger
+limits. Cooperative calls normally finish immediately on cancellation. A provider
+or callback that ignores cancellation can outlive the grace; Close returns and
+this join cannot promise that arbitrary external work has stopped. `Run` itself
+still returns promptly on context cancellation; its owner separately joins calls
+after Run has stopped launching them. The regressions check ownership and order,
+not a response-time performance target.
+
 ## The flush ceiling
 
 `FlushUsage` waits at most **2 seconds** (`usageFlushLimit`, `internal/session/usage_ledger.go`)

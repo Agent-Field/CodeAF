@@ -2590,6 +2590,11 @@ type Agent struct {
 	// A run outlives the turn that asked for it, so the gate it raises when the
 	// fuel runs out has no hub to arrive on — and [Agent.Close] is the only
 	// thing that can tell a run in flight that the session has left.
+	// Admission and Close share mu: no accepted run can appear after the quit
+	// starts waiting. The count covers setup, settlement and every child call.
+	orchestrateWorkers  sync.WaitGroup
+	orchestrateContext  context.Context
+	orchestrateStop     context.CancelFunc
 	orchestrateSeq      uint64
 	orchestrations      map[string]*orchestration
 	orchestrateWatchers []*eventStream

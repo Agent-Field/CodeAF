@@ -409,7 +409,7 @@ func TestATagCannotDisguiseAProtectedLandingBranch(t *testing.T) {
 	before := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/dev"))
 	writeFile(t, filepath.Join(tree.dir, "node.txt"), "the task's work\n")
 	merge, detail, _ := tree.comeHome("write a note", []string{"node.txt"})
-	if merge != mergeKept || !strings.Contains(detail, "on dev, which aforge never writes to") {
+	if merge != mergeKept || !strings.Contains(detail, "on dev, which tasks do not merge into automatically") {
 		t.Fatalf("tag disguised the protected branch: %q, %q", merge, detail)
 	}
 	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/dev")); after != before {

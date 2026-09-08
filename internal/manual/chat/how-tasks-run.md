@@ -2817,9 +2817,9 @@ rest of the task.
 
 ## Which checks can the main conversation repeat?
 
-The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. Without declared task checks, the completion reader assesses the work and existing evidence; it does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
+The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. An unattended session can also freeze explicit `checks` with its initial whole-request acceptance. These use the same command validation as a task and stay tied to that original ask; later model output cannot replace them. Without either declaration, the completion reader assesses existing evidence and does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
 
-Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed.
+Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed. Session acceptance receipts record the declared checks, but reopening still creates a fresh goal owner: historical receipts do not grant a new ask permission to execute old commands.
 
 ## A background command finishes after we changed the subject
 
@@ -2859,3 +2859,11 @@ Opening another task changes the task you are viewing. It does not cancel either
 task or its commands. Escape returns to the main conversation without stopping
 work. Updates from the previous view cannot replace the newly opened task. Use
 the task's stop action when you intend to stop execution.
+
+## Closing a session with delegated work still running
+
+Closing the session cancels its delegated runs and waits for their workers and
+pending names before closing its records. Those calls share up to two seconds
+of shutdown time, in addition to the existing waits for the current turn, task
+graph and background jobs. A provider that ignores cancellation can outlast
+that grace; this is a bounded wait, not a guarantee about every external process.

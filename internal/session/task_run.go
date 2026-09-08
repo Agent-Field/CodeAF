@@ -4706,7 +4706,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// still the node's leavings.
 		changed = mergePaths(changed, wrote)
 		said := lastSaid(child)
-		report = firstLines(said, taskReportLines)
+		report = composeTaskReport(said)
 		// And the answer itself, whole, before the card is cut out of it. It is
 		// kept here because this is the last moment the worker's transcript is
 		// open — `retire` closes it — and because everything downstream that needs

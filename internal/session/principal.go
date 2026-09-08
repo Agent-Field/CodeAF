@@ -792,6 +792,7 @@ type Steward struct {
 	mu         sync.Mutex
 	ask        string
 	acceptance string
+	checks     []string
 
 	// wall and money are the CEILINGS; started and spent are how the figures
 	// against them are read. spent is a closure onto the session's own
@@ -891,17 +892,38 @@ func (s *Steward) Acceptance() string {
 // was built to stop relying on. It reports whether the write landed, so the
 // caller journals a fact rather than an intention.
 func (s *Steward) setAcceptance(text string) bool {
+	return s.setAcceptanceContract(s.Ask(), text, nil)
+}
+
+// setAcceptanceContract freezes the declared verifier beside the acceptance,
+// under the same lock and for the same ask. Prose supplies no commands; an
+// invalid declaration supplies none either. A late answer for another ask or
+// a second contract cannot replace the first one's execution authority.
+func (s *Steward) setAcceptanceContract(ask, text string, declared []string) bool {
+	checks, _ := declaredCheckList(declared)
+	if strings.TrimSpace(ask) == "" {
+		checks = nil
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.acceptance != "" {
+	if s.acceptance != "" || strings.TrimSpace(ask) != s.ask {
 		return false
 	}
 	s.acceptance = text
+	s.checks = checks
 	return true
+}
+
+// declaredChecks returns a copy because a caller assembling a checker door
+// cannot be allowed to edit the frozen contract through its backing slice.
+func (s *Steward) declaredChecks() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.checks...)
 }
 
 func (s *Steward) Budget() Budget {

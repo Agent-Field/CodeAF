@@ -74,30 +74,31 @@ const (
 	sessionCheckTail = 1200
 )
 
-// sessionChecks uses the same explicit verification contract as a task checker.
-// Acceptance text and action receipts remain evidence; neither grants permission
-// to execute a command again. A session without declared task checks is assessed
-// from its existing evidence rather than assigned an inferred shell command.
+// sessionChecks uses explicit verification contracts only: the unattended
+// session's frozen declaration and current declarations on settled tasks.
+// Acceptance prose and action receipts remain evidence, never permission to
+// execute again. A missing graph must not hide the session's own verifier.
 func (a *Agent) sessionChecks() []string {
 	tree := a.deliverableTree()
-	graph := a.tasker()
-	if graph == nil {
-		return nil
-	}
-	// Accessors below take the graph lock, so take the node list and release it
-	// before asking each node for its current verification snapshot.
-	graph.mu.Lock()
-	nodes := make([]*TaskNode, 0, len(graph.order))
-	for _, id := range graph.order {
-		if node := graph.nodes[id]; node != nil {
-			nodes = append(nodes, node)
-		}
-	}
-	graph.mu.Unlock()
 	var declared []string
-	for _, node := range nodes {
-		if node.stateNow().settled() {
-			declared = appendChecks(declared, auditDoorFor(node, tree).checks)
+	if steward := a.steward(); steward != nil {
+		declared = appendChecks(declared, runnableChecks(steward.declaredChecks(), tree))
+	}
+	if graph := a.tasker(); graph != nil {
+		// Accessors below take the graph lock, so release the list snapshot
+		// before asking each node for its current verification contract.
+		graph.mu.Lock()
+		nodes := make([]*TaskNode, 0, len(graph.order))
+		for _, id := range graph.order {
+			if node := graph.nodes[id]; node != nil {
+				nodes = append(nodes, node)
+			}
+		}
+		graph.mu.Unlock()
+		for _, node := range nodes {
+			if node.stateNow().settled() {
+				declared = appendChecks(declared, auditDoorFor(node, tree).checks)
+			}
 		}
 	}
 	return trimChecks(invocableChecks(tree, declared))

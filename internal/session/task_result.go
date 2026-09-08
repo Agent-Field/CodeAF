@@ -90,14 +90,15 @@ type taskResult struct {
 
 // TaskReportAccount removes only the exact answer suffix the runner composed
 // into a report. Expanded readers already show that answer in full; retaining
-// its three-line preview would repeat it above the answer in diagnostic ink.
+// its bounded preview would repeat it above the answer in diagnostic ink.
+// Older records used a plain three-line preview, which remains recognizable.
 // Unmatched reports remain intact, including accounts rewritten after landing.
 func TaskReportAccount(report, result string) string {
 	report, result = strings.TrimSpace(report), strings.TrimSpace(result)
 	if result == "" {
 		return report
 	}
-	for _, answer := range []string{result, firstLines(result, taskReportLines)} {
+	for _, answer := range []string{result, composeTaskReport(result), firstLines(result, taskReportLines)} {
 		if report == answer {
 			return ""
 		}

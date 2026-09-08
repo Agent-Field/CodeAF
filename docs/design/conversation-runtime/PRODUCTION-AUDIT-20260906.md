@@ -817,8 +817,10 @@ areas, with parent integration and a separate execution-validation subagent.
 Native terminal QA used the canonical binary, private seeded profiles and actual
 mouse/key sequences at 160×50, 80×32 and 60×28, including no-color hover, outside
 click, tab dismissal/reopen, draft preservation and ancestor/fold navigation.
-These captures are ANSI terminal-cell recordings rendered as images; they are
-not live developer-task qualification. Evidence is in
+A separate native right-rail click opened the intended nested task, displayed its
+saved prompt and review state, and preserved the main draft on return. These
+captures are ANSI terminal-cell recordings rendered as images; they are not live
+developer-task qualification. Evidence is in
 `/private/tmp/af-hover-20260908/`, with capture and navigation receipts.
 
 The first full check exposed stale layout/name assertions and a live-provider
@@ -845,3 +847,23 @@ uncertain-effect recovery, complete process-tree stop, delivery under narration
 failure, broader substantial developer-task evaluation and end-to-end latency
 measurement. Small live interruption probes do not close those criteria, and
 this UI wave does not establish production readiness or cost effectiveness.
+
+Integrating `dev` through `65f060d33` exposed additional runtime seams. The
+combined full UI suite passed (566.277s), while session and execution tests found
+issues needing correction. Whole-request verification now freezes its explicit
+checks alongside the original acceptance; commands are not recovered from prose,
+and old receipts do not authorize commands for a newly opened goal. The worker
+result path now uses the bounded fenced-report formatter, and expanded readers
+remove both current and legacy exact previews before showing the full result.
+Focused acceptance tests passed (16.095s), including three race repetitions
+(2.519s); report/checkpoint/protected-branch regressions passed (1.407s).
+
+Shutdown review found adaptive workers and namers could still write after the
+owning session closed. Their accepted lifetimes now include setup, callbacks and
+final settlement, with a join under the existing shutdown grace; this does not
+prove termination of a noncooperative provider or every external descendant.
+The execution timing fixture also scheduled a response longer than its landing
+reserve near the deadline. Its script now crosses the pacing point, lets a subsequent call reach the
+work deadline, and answers the landing immediately, retaining the runtime's wall
+and pace-before-landing assertions. Final combined
+validation is recorded in the PR rather than inferred from these focused passes.

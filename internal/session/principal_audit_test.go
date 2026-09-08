@@ -494,7 +494,7 @@ func TestAnUnreachedReaderIsAnsweredByTheChecks(t *testing.T) {
 	})
 	steward := agent.steward()
 	steward.hear("fix the bearer scheme; check it with `touch " + marker + "`")
-	steward.setAcceptance("the scheme is case-insensitive and `touch " + marker + "` passes")
+	steward.setAcceptanceContract(steward.Ask(), "the scheme is case-insensitive and `touch "+marker+"` passes", []string{"touch " + marker})
 	agent.rememberCreated(fileChange{path: made, shown: "test_auth.py", created: true})
 
 	got := agent.decideRemains(context.Background(), readerLine{unreachable: true},
@@ -527,7 +527,7 @@ func TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed(t *testing.T) {
 	})
 	steward := agent.steward()
 	steward.hear("port the parser; check it with `false`")
-	steward.setAcceptance("the parser builds and `false` passes")
+	steward.setAcceptanceContract(steward.Ask(), "the parser builds and `false` passes", []string{"false"})
 	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
 
 	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "That completes the port.")
@@ -562,7 +562,7 @@ func TestAnUnreachedReaderIsAnsweredByTheChecksAtAHandoverToo(t *testing.T) {
 	})
 	steward := agent.steward()
 	steward.hear("port the parser; check it with `touch " + marker + "`")
-	steward.setAcceptance("the parser builds and `touch " + marker + "` passes")
+	steward.setAcceptanceContract(steward.Ask(), "the parser builds and `touch "+marker+"` passes", []string{"touch " + marker})
 	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
 
 	got := agent.decideHandover(context.Background(), readerLine{unreachable: true}, "That completes the port.")
