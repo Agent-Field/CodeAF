@@ -211,6 +211,11 @@ func TestALiveTurnKeepsPastCaptionsShutAndTheFrontierOpen(t *testing.T) {
 	a.entries = es
 	a.turn = 1
 	a.state = stateWorking
+	// INSIDE THE OPENED WORK, which is where a running turn's outline lives now:
+	// the conversation draws three compact step lines until somebody asks for the
+	// machinery (livesteps.go), and this law is about what they are shown once
+	// they have — the past steps shut, the step still running open.
+	showLiveWork(t, a)
 	page := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(page, "reading 2 files") {
 		t.Fatalf("past caption missing:\n%s", page)

@@ -2044,3 +2044,18 @@ The full answer stays in the task journal.
 `TestAReportWillNotHangAnOpeningFence` and
 `TestACheckpointRowKeepsTheReportsFencedTail` pin the ordinary bound, the fenced
 exception and the durable report the task surface reads.
+
+## Compact live conversation steps
+
+The main conversation budgets `liveStepRows` (3) wrapped rows for recent step
+captions. It admits whole captions newest first; if the newest caption alone
+exceeds that budget on a narrow frame, it is kept whole. This is a presentation
+budget, not a limit on saved work, tool results or the answer. Questions,
+corrections, answers, notices and failed steps can separate compact blocks.
+
+The window reuses the caption list already derived for the layout. Its entry
+and caption walks advance through the ordered lists; it does not rescan every
+caption for each separated block. Opening a block traverses its caption spans
+rather than searching the whole caption list for every entry. Motion uses the
+existing frame clock, shimmer and fade palette, adding no timer, goroutine,
+filesystem access or network request. The screen-reader tier stays static.

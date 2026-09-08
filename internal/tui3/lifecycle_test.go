@@ -67,6 +67,7 @@ func TestAToolWalksFromQueuedThroughConsentToDone(t *testing.T) {
 	}}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "clean the build")
+	showLiveWork(t, a)
 
 	at := firstTool(t, a)
 	if got := a.entries[at].status; got != toolQueued {
@@ -327,6 +328,7 @@ func TestTheEditPreviewAppearsOnAnnouncementAndCollapsesIntoTheStat(t *testing.T
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "bump the limit")
+	showLiveWork(t, a)
 
 	body := strings.Join(plainRows(a), "\n")
 	for _, want := range []string{"│ pending", "│ -const argsLimit = 400", "│ +const argsLimit = 8192"} {
@@ -386,6 +388,7 @@ func TestAWritePreviewsItsContentUnderTheRail(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "write it")
+	showLiveWork(t, a)
 
 	var preview []string
 	for _, line := range plainRows(a) {

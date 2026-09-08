@@ -1338,8 +1338,9 @@ Because that part was never the answer. It was aforge saying what it was about t
 
 A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
 work start under it in the same turn is narration** — "let me check the config first" —
-and the moment the next tool call opens, that paragraph visibly steps back: it moves into
-the same two-column gutter the tool rows use, and drops one shade below the body text.
+and the moment the next tool call opens, that paragraph becomes work. In the compact
+conversation it supplies a step description; inside the opened outline it uses the same
+two-column gutter as the tool rows and drops one shade below the body text.
 
 **The answer is the last thing the turn says, and it is the only flush-left, full-ink
 block in it.** So: scan down the left edge. Text that starts at the margin was said to
@@ -1701,6 +1702,38 @@ shows the same words the closed table showed.
 The header is painted secondary, the hairline tertiary and the body primary — the prose
 renderer's own ramp. The foot is aforge's own chrome and wears its dim.
 
+## The three live steps under my question — compact progress, opening the work
+
+While the main conversation works, recent step descriptions occupy a compact
+window below your question. Older steps are fainter; the newest step shimmers
+while its calls run. Thinking, raw tool calls, arguments and call counts stay
+behind this view. The window changes when a new step arrives; a quiet interval
+creates no extra steps. Before the first step, the existing activity line below
+the conversation remains the sign that work is running.
+
+Click a step, or press `ctrl+e` with an empty message box, to open the full
+outline. Each caption then opens its own calls. The live caption keeps its
+existing open default. Click `▾ working · ctrl+e`, or press `ctrl+e` again, to
+return to the compact view. `ctrl+o` can still show all calls.
+
+The window budgets **3 wrapped rows**, admitting whole captions newest first.
+On a narrow screen, a caption that needs two rows leaves room for fewer steps.
+If the newest caption alone needs more than three rows, it stays whole rather
+than losing words. The screen-reader tier draws the descriptions without motion.
+
+Your messages, corrections, answers, approval questions and notices remain
+outside the compact work. A failed step keeps its ordinary outline and controls.
+A correction can separate two compact blocks, preserving where you said it.
+Task pages and individual node transcripts retain their existing detailed view.
+
+## The live work collapses when the answer finishes
+
+When the turn finishes, its work collapses even if you opened it while it ran.
+Your question and the answer remain visible. Open the finished `▸ worked` chip
+to inspect the steps again. Reopening the conversation also starts with completed
+work folded, including long turns whose older history loads as you scroll.
+`ui.work = open` remains the explicit preference for expanded work.
+
 ## Tool cards: a running call against a finished one
 
 A turn's tool calls are one object on screen: a rail down the left, one row per call,
@@ -1738,7 +1771,7 @@ ever — a column of ticks is a column you must read to learn nothing. In the
 screen-reader tier the marks are `o` queued, `*` running, `x` failed, `.` idle; `?` is
 already ASCII.
 
-Calls in one step fold under a short **caption** — one sentence of about 5 to
+Inside the opened work, calls in one step fold under a short **caption** — one sentence of about 5 to
 10 words saying what that step is doing and where, with the honest call count
 at the right. On a narrow window the caption wraps onto the next line; it is
 never cut with an ellipsis mid-sentence. Press `ctrl+o` on the live caption or
@@ -3267,10 +3300,12 @@ about the same conversation.
 
 ## The dim thought row above a reply — and models that think between their words
 
-Some models put their working on the wire. While it streams you see a dim three-line
-window under a `thinking · N tok` header; the moment the first word of the reply lands it
-collapses to one row — `thought for 6s · 148 tok · ctrl+e` — and `ctrl+e` or a click
-reopens it. The count of tokens on the row is how much working the model wrote, and the
+Some models put their working on the wire. The compact conversation hides this behind
+the work disclosure. Open the work with `ctrl+e` to inspect it, then click the thought
+block to expand or collapse that block. Inside the opened work, or on a task page,
+streaming thinking uses a dim three-line window under a `thinking · N tok` header; the moment the first word of the reply lands it
+collapses to one row — `thought for 6s · 148 tok · ctrl+e`. Clicking the row
+reopens it; `ctrl+e` prioritizes the whole work disclosure when one is available. The count of tokens on the row is how much working the model wrote, and the
 seconds are how long it spent.
 
 Some models keep thinking in between the words of their own answer, a few tokens at a

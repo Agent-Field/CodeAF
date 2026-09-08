@@ -494,6 +494,23 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 
 func (a *app) toggleLatestWorkfold() bool {
 	d := a.bodyDeck()
+	// THE RUNNING TURN'S WINDOW IS THE NEWEST CHIP THERE IS (livesteps.go), and it
+	// is asked first because it is the one a person watching work is looking at.
+	//
+	// IT CLOSES THE WHOLE OF WHAT IS SHOWING, WHICH IS TWO FACTS AND NOT ONE.
+	// `ctrl+o` over a running turn puts every call of every step on the page
+	// ([app.unfold], read by [deriveLiveWork]); the work chip's own state is the
+	// other. A key that dropped only its own would leave the machinery standing
+	// and read as a dead key, so the raw-call override goes with it — and the same
+	// press from the compact state opens the outline, as it always did.
+	if key, ok := a.liveWorkOf(d); ok {
+		showing := d.workOpen[key] || d.unfolded[key]
+		if showing && d.unfolded != nil {
+			delete(d.unfolded, key)
+		}
+		a.setWorkOpen(d, key, !showing)
+		return true
+	}
 	latest, found := 0, false
 	for _, f := range a.deckFolds(d) {
 		if !found || f.key > latest {

@@ -852,6 +852,7 @@ func TestLinearModeRendersPlain(t *testing.T) {
 	a.welcome = welcome{spent: true}
 	a.touch()
 	typeLine(t, a, "run it")
+	showLiveWork(t, a)
 
 	body := strings.Join(plainRows(a), "\n")
 	for _, glyph := range []string{railMid, railLast, railCont, glyphYou, glyphTool} {
@@ -1170,6 +1171,7 @@ func TestARunningCallCountsUpAndStopsWhenItFinishes(t *testing.T) {
 	base := time.Now()
 	a.clock = func() time.Time { return base }
 	typeLine(t, a, "run the tests")
+	showLiveWork(t, a)
 
 	at := firstTool(t, a)
 	if a.entries[at].began != base {

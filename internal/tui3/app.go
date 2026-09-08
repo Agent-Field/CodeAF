@@ -836,7 +836,7 @@ type app struct {
 	historyGen     int
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
-	// workOpen is the ephemeral expansion state of completed-turn workfolds.
+	// workOpen is the ephemeral expansion state of live and completed work.
 	workOpen map[int]bool
 	// capOpen is the second expansion under the outline, keyed by the caption's
 	// start in this page's own entry list.
@@ -4801,6 +4801,11 @@ func (a *app) settle() tea.Cmd {
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
 	a.collapseThought()
+	// AND COMPLETION ALWAYS COLLAPSES THE WORK, whatever the reader chose while it
+	// ran (livesteps.go). It is written here, beside the thought, because it is the
+	// same act about the same turn: the machinery a person opened to watch is
+	// machinery again the moment there is an answer under it.
+	a.collapseLiveWork(a.turn)
 	// AND WHAT WAS NOT A FILE MAY HAVE BECOME ONE. The path memo is emptied at
 	// the turn boundary rather than never or every frame (pathlink.go): a name
 	// the model wrote in its first sentence and only created in its last tool

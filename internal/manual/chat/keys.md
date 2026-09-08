@@ -589,7 +589,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept; shared engine connections use normal session-switch semantics |
 | `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
-| `ctrl+e` | Empty box: open or close the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
+| `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
@@ -608,7 +608,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
 | any printing key | Types the character |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
@@ -2673,7 +2673,9 @@ nothing to hand over.
 
 ## Thinking is shown but never saved
 
-Models that stream their working get a dim italic block above the answer, headed
+The compact conversation keeps thinking behind its work disclosure. Open that with
+`ctrl+e`, then click the thought block to inspect it. Inside the opened work, or on
+a task page, models that stream their working get a dim italic block headed
 `⠿ thinking · N tok · ctrl+e`.
 
 While it streams, only the **last 3 wrapped lines** show, each painted a step further
@@ -2681,10 +2683,10 @@ along a fade so the newest reads brightest. The moment the turn says anything th
 not reasoning, the block collapses to one row reading
 `thought for Ns · N tok · ctrl+e`.
 
-Open it with `ctrl+e` over an empty message box — which opens the most recent block —
-or by clicking anywhere on the block. Opening **latches** your choice, so the
-automatic collapse can never close a block you opened. An opened live block shows the
-whole buffer, not the 3-line window.
+Click anywhere on the thought block to open it. `ctrl+e` over an empty message box
+opens the most recent thought only when no whole-work disclosure takes priority.
+Opening **latches** your choice during streaming. An opened live block shows the
+whole buffer, not the 3-line window. Completion still folds the whole turn’s work.
 
 An expanded block is capped at **200 rows**, and says how much is held back. The token
 count is an estimate at 4 bytes per token.
@@ -2806,9 +2808,13 @@ that is the point of the wording. aforge's own lines about the stop (`· stopped
 what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
-no transcript cursor, so the key chooses the latest completed turn's work in the
-conversation. Opening restores the existing bounded views: thinking remains its
-own chip and only the latest 3 tool calls show until those are opened separately.
+no transcript cursor, so the key first chooses the running conversation’s compact
+steps, then the latest completed turn’s work. The running view shows up to three
+wrapped rows of recent captions, with the newest live step shimmering. Opening
+shows the existing outline: click a caption to inspect its calls, or click the
+whole-work door to return to the compact steps. Completion collapses work opened
+during the turn. The newest caption may exceed three rows on a narrow frame so
+its words remain intact.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
 answer are never hidden — nor is a second message you sent into a running turn, which
 ends the chip above it and starts a new one. Fold state belongs to this window; resumed

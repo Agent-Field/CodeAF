@@ -1164,6 +1164,7 @@ func TestAnOpenCallSaysItIsRunning(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "run the tests")
+	showLiveWork(t, a)
 
 	call := len(a.entries) - 1
 	a.openTool(call)

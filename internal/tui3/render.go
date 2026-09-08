@@ -368,6 +368,11 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			wasCluster, wasBlock = false, false
 		}
 	}
+	// THE RUNNING TURN'S OWN WINDOWS (livesteps.go). They are derived here, beside
+	// the folds and off the same captions, because they are the same object one
+	// tense earlier: the machinery of one turn, standing behind one door keyed by
+	// that turn. A page that is not the conversation derives none.
+	lives := deriveLiveWork(d)
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
@@ -421,6 +426,79 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// that says how long ago that was. Both are drawn HERE — at the seam
 			// between two turns — because that is where a person reads them.
 			clock(i)
+		}
+
+		// THE RUNNING TURN'S MACHINERY IS THREE LINES UNTIL SOMEBODY OPENS IT
+		// (livesteps.go). It is read after the clock and before the cluster for the
+		// chip's reason: the block stands exactly where the work stands, so it takes
+		// the blank the work's first block would have taken.
+		if w, ok := lives[i]; ok {
+			if !a.workFoldOpen(d, w.turn) {
+				// A WINDOW WITH NOTHING TO SAY YET DRAWS NOTHING, and a block that
+				// draws nothing buys no gap and closes nothing — the rows are built
+				// before the blank above them is asked for, because a blank spent on
+				// an empty block is a blank nobody can see the reason for.
+				rows := a.liveStepBlock(w, width)
+				if len(rows) > 0 {
+					if wasUser || wasBlock {
+						gap()
+					}
+					out = append(out, rows...)
+					wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				}
+				i = w.end - 1
+				continue
+			}
+			if wasUser || wasBlock {
+				gap()
+			}
+			// OPEN IS THE OUTLINE, and it is the outline an open chip draws, one
+			// tense earlier: every step as a caption row with its own door onto its
+			// own calls. The reasoning blocks inside the window are drawn where they
+			// happened — a person who opened the work asked for the machinery, and
+			// the model's working is machinery this surface has always shown.
+			out = append(out, a.liveWorkDoor(w))
+			// THE STEPS ARE WALKED WITH A CURSOR AND THE SPANS ARE STEPPED OVER.
+			// The window already knows its own steps in order ([liveWork.steps]),
+			// so a block between two of them is one that belongs to no step and is
+			// drawn as itself; asking every row which step holds it would be the
+			// same page at the cost of rows times steps.
+			step := 0
+			for at := w.start; at < w.end; at++ {
+				if step >= len(w.steps) || at != w.steps[step].start {
+					for _, text := range a.entryRows(d, at, width) {
+						out = append(out, row{text: text, entry: at})
+					}
+					continue
+				}
+				c := w.steps[step]
+				step++
+				// The rest of the step's own span — its narration and its calls —
+				// is the caption's to draw, so the walk resumes past it.
+				at = c.end - 1
+				capOpen := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width)...)
+				if !capOpen {
+					continue
+				}
+				out = append(out, a.captionBody(d, c, width)...)
+				toolsFrom, toolsTo := captionTools(c, es)
+				// AND AN OPEN STEP KEEPS THE CALL WINDOW IT ALREADY HAD. This is
+				// the same batch the cluster below draws with the same budget
+				// ([app.foldWindow] — the running call and the two it followed);
+				// opening the work asks to see the steps, not to be handed a turn's
+				// whole call log, and a second answer here would make one batch two
+				// lengths depending on which door reached it.
+				if window := a.foldWindow(d); toolsTo-toolsFrom > window && !d.unfolded[w.turn] {
+					toolsFrom = toolsTo - window
+				}
+				for call := toolsFrom; call < toolsTo; call++ {
+					out = append(out, a.toolRows(d, call, call == toolsTo-1, width)...)
+				}
+			}
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			i = w.end - 1
+			continue
 		}
 
 		// A run of tool entries from one turn is a cluster, and a cluster is
