@@ -167,12 +167,10 @@ type headlessOutcome struct {
 	// log (#514). `stop` says "unchecked"; this says why, and the two travel
 	// together.
 	Unjudged string `json:"unjudged,omitempty"`
-	// JudgedBy is the name of the thing that read this delivery, on the runs
-	// where something did. Empty on every run nothing judged, and the key is
-	// dropped there — so its presence is the whole answer to "was this
-	// checked?", the way `unjudged`'s presence is the whole answer to "why was
-	// it not?". The two are the same question from opposite sides and never
-	// appear on one object.
+	// JudgedBy names the settled root's answered gate attempt, including an
+	// unreadable answer. It does not prove the check passed. Missing root rows
+	// omit it, so split jobs and runs that reached no gate can omit both it and
+	// Unjudged; callers read stop and ok for the outcome.
 	//
 	// It exists because THE ERRAND ROAD'S OWN POSTURE WAS UNDISCOVERABLE FROM
 	// OUTSIDE IT. `task.audit` is the row that governs a task the conversation

@@ -155,9 +155,10 @@ An `aforge do` errand's delivery is read at the end by the **delivery gate**. It
 reading of the project's own checks before the work and another at the end, maps what you
 asked for onto the checks that exercise it, and answers whether the delivery holds.
 
-With `--json`, `judged_by` names that reader. The key is on exactly the runs something
-judged. A run nothing judged has no `judged_by` and carries `unjudged` with the reason
-instead, so a script reads for the key rather than parsing a sentence.
+With `--json`, `judged_by` names that reader when the settled root has a gate row that
+is not marked unreachable. An unreadable response still names the reader; read `ok` and
+`stop` to learn the outcome. `unjudged` instead names an unreachable gate's reason. A run
+with no gate row can omit both keys, so absence alone does not prove a check happened.
 
 `task.audit` is a different road's row and does not reach `aforge do`. It governs work the
 conversation hands out with `/task`: a separate, fresh, read-only checker is put in a clean
@@ -193,9 +194,9 @@ record every refusal as a success.
 Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
 be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. It also carries `judged_by` on the runs something judged and `unjudged` on
-the runs nothing checked — the two sides of one question, never both on one object — so a
-script may read either key's presence as the answer. `aforge run` carries `output`, which is
+`subharness`. It also carries `judged_by` when the settled root records an answered gate
+attempt and `unjudged` when that gate could not be reached. Both keys can be absent when
+no root gate row is available; neither key replaces `ok` and `stop`. `aforge run` carries `output`, which is
 the typed answer whole, and `report`.
 
 `incomplete` is on `aforge run` and `aforge exec` both, and it is why it did not finish, in

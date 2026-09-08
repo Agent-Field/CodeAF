@@ -22,3 +22,7 @@ Nothing here spends anything: `judged_by` is a read of a row the run had already
 written. What cost something was the silence around the one line that decides the
 other road's posture, and that is now a law rather than a thing to be
 rediscovered.
+
+Review correction: the receipt and manual distinguish an answered gate attempt from
+a successful check. An unreadable answer still names the gate, while missing root
+rows (including split jobs) can omit both optional keys.
