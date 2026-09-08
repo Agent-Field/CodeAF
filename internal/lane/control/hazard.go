@@ -111,6 +111,34 @@ import (
 // A plan with no belief is bounded by its ceiling and by nothing else, which is
 // exactly what it was before.
 
+// ── A TOKEN IS PROGRESS ONLY WHILE THE STREAM IS KEEPING UP ────────────────
+//
+// The per-gap tail test above cannot recognize a uniformly slow stream. A run
+// of gaps that are each ordinary enough on their own can together say that the
+// visible rate has collapsed, and raising the one-gap threshold enough to hear
+// that run would also condemn healthy jitter. So each VISIBLE-to-visible gap g
+// contributes its standard-normal deviate under the lane's gap belief:
+//
+//	zi = (ln g - Gap.Mu) / Gap.Sigma
+//
+// After n gaps, sum(zi) / sqrt(n) is standard normal under that belief and can
+// be compared with the SAME derived z above. At one gap it is exactly the test
+// already made by [hazard.abnormal], so this adds no second threshold.
+//
+// The sum and its weight both decay by exp(-g / Ceiling) before the new gap is
+// added. THE COLLAPSE MUST BE CURRENT: evidence from a bad patch is forgotten
+// on the same horizon as the bound it can stop resetting, and repeated looks
+// do not accumulate forever. This pair gates only whether a visible token is
+// credited as progress; it raises no act and enters no payoff arithmetic. Once
+// the aggregate says the stream is not keeping up, the existing absolute
+// ceiling gets the same honest silence it gets from a stream that stopped.
+//
+// This clock deliberately reads the PAGE while the drift clock in [hazard.assess]
+// reads the WIRE. [Plan.Gap] is the measured interval between visible tokens,
+// and a model that interleaves long thoughts between single words really is
+// delivering visible text too slowly for the person waiting. Past a ceiling of
+// that rate it is rescued; the think-duration clock has already had its say.
+
 // falseActBudget is the share of HEALTHY requests that may carry an act raised
 // by the arithmetic rather than by the ceiling.
 //
@@ -139,13 +167,20 @@ type hazard struct {
 	// now is the latest moment anybody has told it about, and it is the only
 	// reason this type ever compares two times.
 	now time.Time
-	// progress is the last VISIBLE progress — the request going out counts as
-	// the first — and it is what both W and the ceiling measure from. delta is
-	// the last sign of the endpoint WRITING, visible or not, which is the
-	// liveness clock's own origin. think is when the run of thought began.
+	// progress is the last CREDITED visible progress — the request going out
+	// counts as the first — and it is what both W and the ceiling measure from.
+	// wrote is the last visible token whether or not it earned that credit;
+	// delta is the last sign of the endpoint WRITING, visible or not, which is
+	// the liveness clock's own origin. think is when the run of thought began.
 	progress time.Time
+	wrote    time.Time
 	delta    time.Time
 	think    time.Time
+	// drift and weight are the decayed sum of visible-gap deviates and its
+	// effective count. They decide only whether a visible token still counts as
+	// progress; the existing ladder remains the only thing that raises an act.
+	drift  float64
+	weight float64
 	// visible is the text already on the screen, in tokens. It is what a
 	// rescue would have to write again, and hidden tokens are deliberately not
 	// in it: a run of thought is money already spent and nothing a person would
@@ -229,17 +264,33 @@ func deviate(tail float64) float64 {
 // Note folds in one moment of the stream and says what to do about it.
 //
 // THE THREE COUNTS ARE NOT INTERCHANGEABLE and this is the only place that
-// matters. Visible text is progress and resets the clock. A hidden delta is the
-// endpoint writing where nobody can read, so it moves the PHASE and the
-// liveness clock and leaves the silence exactly where it was. A heartbeat moves
-// neither.
+// matters. Visible text is measured against the visible-gap belief and resets
+// the clock only while it is keeping up. A hidden delta is the endpoint writing
+// where nobody can read, so it moves the PHASE and the liveness clock and
+// leaves both visible clocks exactly where they were. A heartbeat moves neither.
 func (h *hazard) Note(reading Reading) Act {
 	h.advance(reading.At)
 	switch {
 	case reading.Visible > 0:
 		h.visible += reading.Visible
 		h.phase = PhaseWriting
-		h.progress, h.delta = h.now, h.now
+		if !h.wrote.IsZero() {
+			gap := h.now.Sub(h.wrote)
+			if gap > 0 && h.plan.Gap.Known() {
+				decay := math.Exp(-gap.Seconds() / h.plan.Ceiling.Seconds())
+				// The belief is per token, while one event may contain a whole
+				// batch. Normalize its interval so healthy batching keeps credit.
+				perToken := gap.Seconds() / float64(reading.Visible)
+				surprise := (math.Log(perToken) - h.plan.Gap.Mu) / h.plan.Gap.Sigma
+				h.drift = h.drift*decay + surprise
+				h.weight = h.weight*decay + 1
+			}
+		}
+		h.wrote = h.now
+		if h.keepingUp() {
+			h.progress = h.now
+		}
+		h.delta = h.now
 	case reading.Hidden > 0:
 		if h.phase == PhaseSilent {
 			h.phase, h.think = PhaseThinking, h.now
@@ -247,6 +298,13 @@ func (h *hazard) Note(reading Reading) Act {
 		h.delta = h.now
 	}
 	return h.verdict()
+}
+
+// keepingUp reports whether the measured visible rate still earns progress.
+// An unknown gap belief decides nothing, and the first visible token has no
+// preceding visible gap — its interval belongs to the first-token clock.
+func (h *hazard) keepingUp() bool {
+	return !h.plan.Gap.Known() || h.weight < 1 || h.drift/math.Sqrt(h.weight) <= h.z
 }
 
 // Quiet says nothing has arrived by now, and asks the same question.
@@ -384,8 +442,20 @@ func (h *hazard) verdict() Act {
 		out.Reason = word
 		return h.act(out, false)
 	case silence >= h.plan.Ceiling:
-		out.Reason = CeilingReason
-		return h.act(out, true)
+		rate := h.visible > 0 && !h.keepingUp()
+		if rate {
+			out.Reason = RateReason
+		} else {
+			out.Reason = CeilingReason
+		}
+		out = h.act(out, true)
+		if rate {
+			// THE CEILING BOUNDS TIME TO ACTION, so asking the ladder begins a
+			// fresh interval whether or not it has another act left. A spent
+			// ladder is the strongest case for not asking again on the next reading.
+			h.progress = h.now
+		}
+		return out
 	default:
 		return h.hold(out)
 	}

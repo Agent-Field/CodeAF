@@ -38,8 +38,9 @@ type HedgeReport struct {
 	// cancelled — both empty when no stream named one.
 	winner string
 	loser  string
-	// reason is the controller's own machine word ("first token late", "no
-	// heartbeat", "drift", "gap"). It is for the log and never for a person.
+	// reason is the controller's own machine word ("first token late", "drift",
+	// "long think", "ceiling", "no heartbeat", "rate collapsed"). It is for
+	// the log and never for a person.
 	reason string
 	// waste is what the arms that did not answer are estimated to have cost. It
 	// is an ESTIMATE and says so: a cancelled stream delivers no usage frame,
@@ -263,10 +264,11 @@ type waitFacts struct {
 	deadline time.Duration
 	ttft     time.Duration
 	// silence is how long the wait had run when something was done about it,
-	// action what was done, and wait and cost the two numbers the inequality
-	// was decided on.
+	// action what was done, reason why the controller did it, and wait and cost
+	// the two numbers the inequality was decided on.
 	silence time.Duration
 	action  string
+	reason  string
 	wait    float64
 	cost    float64
 	// arms is how many requests this one question became, hedged whether that
@@ -276,7 +278,8 @@ type waitFacts struct {
 	waste  float64
 	// note is one sentence about something this call decided that no other
 	// field can say. It is empty on almost every row.
-	note string
+	note    string
+	refused string
 }
 
 // facts is what this arm's row carries about its wait.
@@ -297,6 +300,7 @@ func (w *streamWatch) facts() (waitFacts, bool) {
 		deadline: w.armed,
 		silence:  w.silence,
 		action:   actionWord(w.acted.Kind),
+		reason:   w.acted.Reason,
 		wait:     w.acted.Wait,
 		cost:     w.acted.Cost,
 	}
@@ -304,7 +308,7 @@ func (w *streamWatch) facts() (waitFacts, bool) {
 		facts.ttft = w.first.Sub(w.began)
 	}
 	w.mu.Unlock()
-	facts.arms, facts.waste, facts.note = w.race.spend(w.arm)
+	facts.arms, facts.waste, facts.note, facts.refused = w.race.spend(w.arm)
 	facts.hedged = facts.arms > 1
 	return facts, true
 }

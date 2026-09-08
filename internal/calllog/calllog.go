@@ -219,6 +219,12 @@ type Record struct {
 	// "commit", in the controller's own words. Absent on a call that was never
 	// acted on.
 	Action string `json:"action,omitempty"`
+	// Reason is the controller's own machine word for what it decided on. It is
+	// absent when nothing was acted on.
+	Reason string `json:"reason,omitempty"`
+	// Refused is why a hedge the controller called for never reached the wire:
+	// "budget", "no alt" or "no room". It is absent when nothing was refused.
+	Refused string `json:"refused,omitempty"`
 	// Arms is how many requests this one question put on the wire, counting the
 	// original. One is the ordinary case and is left off the row.
 	Arms int `json:"arms,omitempty"`

@@ -398,9 +398,10 @@ func (w *Watch) sign(t time.Time) {
 // Token records that n tokens have now arrived — of which visible are tokens a
 // person can read — and says whether the stream should be acted on.
 //
-// THE TWO COUNTS ARE NOT INTERCHANGEABLE. Visible text is progress and starts
-// the wait again. A hidden delta is the endpoint writing where nobody can read,
-// so it moves the phase and leaves the silence exactly where it was.
+// THE TWO COUNTS ARE NOT INTERCHANGEABLE. Visible text starts the wait again
+// only while its measured rate keeps up. A hidden delta is the endpoint writing
+// where nobody can read, so it moves the phase and leaves the silence exactly
+// where it was.
 func (w *Watch) Token(n, visible int, t time.Time) Verdict {
 	reading := control.Reading{At: t, Visible: visible - w.visible, Hidden: (n - w.tokens) - (visible - w.visible)}
 	w.tokens, w.visible = n, visible

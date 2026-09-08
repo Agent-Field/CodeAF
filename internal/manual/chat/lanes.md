@@ -168,6 +168,28 @@ that model's thinking, and only the ceiling on silence can end a hung one. That
 is why a model you have been using feels quicker to rescue than one you have
 just picked.
 
+## Why is it writing one word at a time — it never stopped, it just crawled
+
+A stream does not have to stop completely to need rescuing. Once aforge has
+measured how quickly a lane normally puts visible words on the page, it watches
+the gaps between those words together. A long run at a small fraction of that
+usual rate stops counting as progress toward the patience limit. If the crawl
+continues for that kind of work's full ceiling, aforge acts just as it does on a
+stream that went silent: it tries another lane, asks before leaving a pin, or
+says the wait is real when there is nowhere to go.
+
+One slow gap is still only one slow gap. The judgment comes from the run of
+visible gaps, fades over the same time as the ceiling, and clears when the
+stream recovers. A batch containing several visible tokens is counted at its
+per-token rate, so ordinary batching does not look like a crawl.
+Hidden thinking does not count as a visible word; a model that
+interleaves long thoughts between single words can therefore be rescued after
+a ceiling of text arriving too slowly.
+
+If aforge has never measured a visible rate for that lane, it invents none and
+cannot judge a crawl this way. Only a period with no visible progress long
+enough to reach the ordinary ceiling can then trigger action.
+
 ## When every lane is slow
 
 Sometimes there is nowhere better to go — everything serving that model is
@@ -193,7 +215,7 @@ it is asking you to sit through.
 | what you see | what happened |
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
-| `slow · trying parasail…` | a machine was late; a second request is out and the first to answer wins |
+| `slow · trying parasail…` | a machine was late or its visible answer had slowed to a crawl; a second request is out and the first to answer wins |
 | `refused · trying parasail…` | a machine said it will not serve this model; the answer has already moved |
 | `parasail refused` | the machine that second request went to said no as well |
 | `via parasail · rescued` | it worked, for this answer only |
@@ -204,8 +226,9 @@ it is asking you to sit through.
 ## When a machine refuses to serve the model
 
 `slow` and `refused` are two different facts and the row says which. **Slow** is
-a wait: the machine is answering and taking its time. **Refused** is a machine
-saying it will not serve this model at all — the router answers
+a wait: the machine is answering and taking its time, or its visible words have
+slowed far below the rate aforge measured for it. **Refused** is a machine saying
+it will not serve this model at all — the router answers
 `No allowed providers are available for the selected model. Providers serving
 <model>: digitalocean, deepinfra, … but your request's provider.only preference
 permits only: coreweave`, which means the machine aforge asked for is not in the
