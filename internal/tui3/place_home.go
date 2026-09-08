@@ -531,7 +531,7 @@ const homeCardTasks = 3
 // IT IS ASSEMBLED BY [homeBands] LIKE EVERY OTHER CARD ON THIS SCREEN, so a
 // short frame drops whole bands from the bottom and the title never goes at all.
 func (a *app) homeSwitchCard(line homeLine, width, room int, pal palette) []string {
-	row := line.row
+	row := a.homeTrue(line.row)
 	ctx := bandContext{
 		subject: bandSubject{kind: bandKindSession, row: row, project: line.project,
 			dir: strings.TrimSpace(row.ProjectDir), world: a.home.world},

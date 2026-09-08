@@ -4,6 +4,7 @@ title: every chat tab holds its own engine connection, so opening one stops none
 pr: 657
 surface: [chat, engine, remote]
 invalidates:
+  - "Hidden jobs previously appeared idle and Stop work left hidden task nodes and all jobs running. The keeper now retains conversation-local replayed task/job IDs; Stop work cancels that known roster, and hidden jobs publish working/completion state. Work not yet reported remains a final acceptance limitation."
   - "A tool permission card swallowed tab navigation, and the remote agent could not report hidden attention. Ctrl+W, Ctrl+K and Ctrl+T now leave its question unanswered while navigating, and pushed conversation facts carry needs-you state before the event that wakes its hidden reader."
   - "The remote client lacked Attach and AttachReplay, so hidden tabs lost turn status and reopening could not recover live output. Independent connection-local observations now carry the engine’s atomic transcript/backlog split without submitting again; a broken link ends these observations and reopening refreshes them."
   - "Chats previously counted only running task nodes when describing held work, so a streaming reply without tasks said nothing new. It now reads the existing turn watcher and says working; completed-turn news remains available until the conversation is reopened."
@@ -52,8 +53,7 @@ answers name three different acts, the cursor opens on the one that loses nothin
 card does not dismiss itself when the work finishes underneath it, so an answer arriving a
 moment before your press cannot turn `stop work` into a press that lands on nothing.
 
-`stop work` reaches what this window is driving: in the conversation in front of you, its
-turn and its running task nodes; in a held one, its turn only. The project's task index is
-shared and its ids restart per conversation, so cancelling from it would ask one
-conversation to end what another calls task 7. The card says which case it is in rather
-than saying one comfortable thing in both.
+`stop work` interrupts the selected conversation’s reply and cancels its known
+queued/running tasks and jobs. Hidden cancellation uses the conversation’s replayed
+roster, never the project index whose IDs repeat across sessions. The snapshot does
+not yet establish cancellation of work created concurrently with that stop.

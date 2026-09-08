@@ -170,29 +170,29 @@ func (a *app) tabCloseTake(at int) tea.Cmd {
 // interrupt does not reach: a node runs in its own worktree under its own agent,
 // so the turn's cancellation goes nowhere near it.
 //
-// AND A CONVERSATION IN THE KEEPER HAS ITS TURN STOPPED AND ITS NODES LEFT,
-// because this window cannot name that conversation's nodes safely. The roster
-// below is THIS conversation's own ([app.tasks], grown from its task lane); the
-// only other list is [session.Agent.TaskIndex], which is the PROJECT's index —
-// every conversation in the directory, with ids that restart in each of them
-// (session's task_index.go says so in as many words). Cancelling by a number off
-// that list would ask one conversation to end what another conversation calls
-// task 7, which is the exact confusion [app.stopHere] refuses to make on a task
-// page opened through another conversation. So the card says what it will do
-// rather than doing more than it can ([app.tabCloseSays]).
-//
-// A BACKGROUND JOB IS DELIBERATELY LEFT RUNNING, and the card says so: a job is a
-// command somebody asked to be left going ([session.Agent.Interrupt] keeps it on
-// purpose), and there is no door on the engine that lists them anyway
-// (keeper.go's [app.behindTasks] states the same limit).
+// A held conversation supplies its own replayed roster. IDs from the project
+// index are never cancellation authority because they repeat across conversations.
 func (a *app) stopConversation(tab chatTab) {
 	if tab.key == a.frontTabKey() {
 		a.interrupt()
 		a.stopFrontNodes()
+		if doors, ok := a.stopDoors(); ok {
+			for _, job := range a.jobs {
+				if !job.Over() {
+					_, _ = doors.Cancel(session.CancelJob + ":" + itoa(job.ID))
+				}
+			}
+		}
 		return
 	}
 	if held := a.behind[tab.key]; held != nil && held.conv.Agent != nil {
 		held.conv.Agent.Interrupt()
+		if doors, ok := held.conv.Agent.(stopAgent); ok {
+			tasks, jobs := held.watch.workIDs()
+			for _, id := range append(tasks, jobs...) {
+				_, _ = doors.Cancel(id)
+			}
+		}
 	}
 }
 
@@ -250,11 +250,8 @@ func (a *app) tabCloseWork(tab chatTab, here bool) quitWorkCount {
 		return count
 	}
 	if held := a.behind[tab.key]; held != nil && held.conv.Agent != nil {
-		// A HELD CONVERSATION'S JOBS ARE NOT COUNTED, and the omission is the
-		// same one keeper.go's [app.behindTasks] already states: there is no door
-		// on the engine that answers what background jobs a conversation is
-		// running, so the card is short of a fact rather than wrong about one.
-		count.tasks = runningTasks(held.conv.Agent)
+		tasks, jobs := held.watch.workIDs()
+		count.tasks, count.jobs = len(tasks), len(jobs)
 	}
 	return count
 }
@@ -272,12 +269,6 @@ func tabCloseClauses(count quitWorkCount) string {
 // ACTUALLY DO. It is pickrow.go's convention — walking the row is a way of
 // reading the question — and every sentence in it is built from what this
 // conversation has rather than written once and left to go stale.
-//
-// THE STOP SENTENCE DIFFERS BY WHICH TAB IT IS ABOUT, and that is not an
-// inconsistency to tidy away: this window can end the nodes of the conversation
-// IN FRONT and cannot safely name another one's ([app.stopConversation] holds the
-// whole of why), so the line says the true thing in each case rather than one
-// comfortable thing in both.
 func (a *app) tabCloseSays(card *tabCloseCard) string {
 	switch card.pick {
 	case tabCloseKeepAt:
@@ -286,21 +277,8 @@ func (a *app) tabCloseSays(card *tabCloseCard) string {
 		return tabCloseCancelSays
 	}
 	said := "the reply stops where it is; nothing is deleted"
-	switch {
-	case card.here && card.tasks > 0:
-		said = "the reply and " + quitCountWord(card.tasks, "task") + " stop; nothing is deleted"
-	case !card.here && card.tasks > 0:
-		said = "the reply stops; " + quitCountWord(card.tasks, "task") +
-			" keeps running — open it to stop that"
-		if card.tasks > 1 {
-			said = "the reply stops; " + quitCountWord(card.tasks, "task") +
-				" keep running — open it to stop those"
-		}
-	}
-	if card.jobs > 0 {
-		// A JOB IS LEFT RUNNING ON PURPOSE and the person is told, here, where
-		// they would otherwise find out by watching it go on ([app.stopConversation]).
-		said += " — " + quitCountWord(card.jobs, "job") + " keeps going"
+	if card.tasks > 0 || card.jobs > 0 {
+		said = "the reply, tasks and jobs stop; nothing is deleted"
 	}
 	return said
 }

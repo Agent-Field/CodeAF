@@ -115,7 +115,7 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 	switch {
 	case held.watch.waits.Load():
 		return tabNeedsPerson
-	case held.watch.turning.Load(), held.watch.tasking.Load():
+	case held.watch.turning.Load(), held.watch.tasking.Load(), held.watch.jobbing.Load():
 		// A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
 		// reason this is two loads rather than one: the watcher's turn flag goes
 		// false the moment the conversation's own stream ends, and the nodes it
@@ -140,7 +140,7 @@ func (a *app) frontSignal() tabSignal {
 	if a.asking() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
-	if a.state == stateWorking || a.tasksInFlight() {
+	if a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0 {
 		return tabWorking
 	}
 	return tabIdle

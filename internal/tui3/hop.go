@@ -558,7 +558,7 @@ func hopRestNote(row switcherRow) string {
 func (a *app) hopKept(held *kept, now time.Time) hopRow {
 	agent := held.conv.Agent
 	running := runningTasks(agent)
-	turning := held.watch != nil && held.watch.turning.Load()
+	turning := held.watch != nil && (held.watch.turning.Load() || held.watch.jobbing.Load())
 	row := hopRow{
 		file:    held.conv.SessionFile,
 		title:   hopTitle(agent, held.side),

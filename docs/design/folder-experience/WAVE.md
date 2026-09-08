@@ -4,7 +4,7 @@
 
 The owner asked for a proper, spacious terminal folder modal with Finder-like successive columns, clickable navigation and strong search, and for an added folder to actually reach the chat's context immediately. This is the live v3 surface in internal/tui3 and internal/session.
 
-The owner's latest instruction explicitly overrides the repository's default dev workflow FOR THIS WAVE: base all work on their CURRENT codex/conversation-execution, captured at d2d86f02a08ecb58ab5714b93a2af5373d5be715. Integrate worker branches into codex/folder-experience. The PR targets codex/conversation-execution on origin, never dev. Do not merge that final PR or update the target branch: the owner will merge the integrated branch into their Codex branch later. No promotion or release. No force pushes.
+The owner's latest instruction explicitly overrides the repository's default dev workflow FOR THIS WAVE: base all work on their CURRENT codex/conversation-execution, captured at d2d86f02a08ecb58ab5714b93a2af5373d5be715. Integrate worker branches into codex/folder-experience. The PR targets codex/conversation-execution on origin, never dev. After completing and validating the full contract, merge PR #657 into origin/codex/conversation-execution with expected tested-head protection. The owner explicitly authorized this in steering 07. Preserve concurrent target commits and verify the merge on origin. No promotion or release. No force pushes.
 
 This seed includes two commits that were ahead of origin/codex/conversation-execution when captured. Preserve them. The owner explicitly chose the exact local branch. Do not rewrite or drop its history, or silently change the base to dev. Explain baseline differences in the PR while the target catches up.
 
@@ -46,7 +46,7 @@ Exercise the real binary in an isolated profile / fixture through a local engine
 
 Build ONLY via make build into each worktree's bin/aforge. Never install Linux artifacts onto the Mac or replace a shared running binary. Keep the integrated remote worktree and local review worktree for the owner. Clean only disposable worker worktrees after their commits are pushed and integrated, if it does not destroy useful evidence.
 
-Final shared SUMMARY.md must name base/head hashes, branch/PR link, merged lane commits, exact tests and limitations, remaining blockers and Mac fetch/merge/build steps. A clean build alone is not completion. Never claim completion if context attachment, clicks, search or persistence is missing. Keep the PR draft while unfinished or mismatched, and leave final merge into codex/conversation-execution to the owner.
+Final shared SUMMARY.md must name base/head hashes, branch/PR link, merged lane commits, exact tests and limitations, remaining blockers and Mac fetch/merge/build steps. A clean build alone is not completion. Never claim completion if context attachment, clicks, search or persistence is missing. Keep the PR draft while unfinished or mismatched, and perform the authorized final merge only after full acceptance and required checks pass.
 
 
 ## Owner steering 02 — files, previews and visual quality
@@ -79,8 +79,7 @@ and realistic concurrent-turn evidence before merging async with history.
 READY, QUALITY_READY and PR readiness require the async lane to be integrated and
 combined real local-engine acceptance to pass, including simultaneous work,
 isolated events/context/cancellation and tab switching without closing earlier
-work. Keep the target codex/conversation-execution and leave the final merge to
-the owner. Preserve all active worker worktrees.
+work. Keep the target codex/conversation-execution; steering 07 authorizes the final merge after complete acceptance. Preserve all active worker worktrees.
 
 ## Owner steering 05 — closing a tab preserves work
 
@@ -113,3 +112,15 @@ completion timing, reconnect and held-task stopping. Preserve the active lane;
 merge only after its runner exits and scoped committed work is reviewed. Full
 combined suites and product acceptance follow integration. Existing valid
 evidence is retained; unchanged baselines are not repeated each supervisor pass.
+
+## Merge authority — steering 07
+
+The coordinator is authorized and expected to merge completed tested work into
+origin/codex/conversation-execution. This supersedes every earlier owner-only
+merge restriction. Fetch current target, preserve other sessions’ commits, push
+the exact tested head, ready PR #657, inspect required checks and merge through
+GitHub with expected-head protection. Verify merged status and target ancestry,
+then run make build in an owned Spark worktree. Neither READY nor QUALITY_READY
+is terminal success until acceptance and the authorized merge are verified. Do
+not update dev, main, staging, releases, installed binaries or the Mac checkout.
+Record Mac fetch/update/make build steps for its next local session.
