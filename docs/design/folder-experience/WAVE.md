@@ -60,3 +60,24 @@ Code previews use existing Chroma syntax highlighting with language detection, s
 Capture and visually inspect real wide/narrow terminal screens for dense folders, code, text, images and fallback, mixed selection, no matches and permission errors. Verify mouse, wheel, keyboard and pane controls agree. End-to-end local-engine evidence must show preview without attachment, deliberate confirmation, correct chips and the actual next request carrying exact folder scope or existing file/media attachments; verify removal/reopen and draft preservation. Spark evidence cannot prove Mac-specific graphics.
 
 PR #657 stays draft until this expanded contract is supported. Shared `reports/QUALITY_READY` is required alongside `reports/READY`; neither is earned by unit tests or a clean build alone. Full owner steering and screenshot remain in the shared wave directory as `STEERING-02.md` and `reference-yazi.png`.
+
+## Owner steering 04 — concurrent conversations through the local engine
+
+The same wave and PR #657 also fix ordinary local-engine conversations closing
+with "a connection holds one conversation at a time" when another tab opens.
+Multiple conversations must run concurrently, with independent event, context and
+cancellation routing. Opening or switching tabs must preserve earlier active work.
+Removing the warning alone does not satisfy this contract.
+
+The async worker owns engine/remote/conversation lifecycle changes, tests and
+manual corrections in sibling async, branch codex/folder-async-20260908, based on
+integration df53007eb81b398834792ef7061176a5a44d0001. It is the fifth host lane;
+the preview lane remains responsible for new contextpreview helpers. Coordinator
+owns existing browser UI integration and must inspect runner exit, scoped commits
+and realistic concurrent-turn evidence before merging async with history.
+
+READY, QUALITY_READY and PR readiness require the async lane to be integrated and
+combined real local-engine acceptance to pass, including simultaneous work,
+isolated events/context/cancellation and tab switching without closing earlier
+work. Keep the target codex/conversation-execution and leave the final merge to
+the owner. Preserve all active worker worktrees.

@@ -52,6 +52,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -220,17 +221,33 @@ func attachedInstructions(attached []PlaceRef) string {
 // for. The set is taken as a copy first, so what is composed is one photograph of
 // it rather than a slice moving under the reader.
 func (a *Agent) keepAttached() {
-	text := attachedBlock(a.referredPlaces(), strings.TrimSpace(a.config.Workspace))
+	for {
+		places := a.referredPlaces()
+		text := attachedBlock(places, strings.TrimSpace(a.config.Workspace))
+		if a.publishAttached(places, text) {
+			return
+		}
+	}
+}
+
+// publishAttached rejects a disk reading whose folder set changed while it was
+// being composed. A slower attachment must never resurrect a completed removal;
+// the caller retries against the current set, including changes to place modes.
+func (a *Agent) publishAttached(places []PlaceRef, text string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if !slices.Equal(places, a.places) {
+		return false
+	}
 	if a.placesText == text {
 		// NOTHING MOVED, SO message[0] IS NOT TOUCHED. A ground resolved onto a
 		// folder the ladder already knew changes the set without changing what the
 		// model is told, and rewriting the same bytes would still cost the compare
 		// — but a caller that wrote them anyway would make it far too easy for a
 		// later road to re-price a conversation for nothing.
-		return
+		return true
 	}
 	a.placesText = text
 	a.refreshSystemLocked()
+	return true
 }

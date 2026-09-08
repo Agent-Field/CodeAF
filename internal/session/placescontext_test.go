@@ -456,3 +456,22 @@ func TestAttachedInstructionsRespectTheRemainingAggregateBudget(t *testing.T) {
 		t.Fatal("the partial-budget cut split a Unicode character")
 	}
 }
+
+// A disk read that began before removal may finish after it. Exercise that
+// ordering explicitly so this regression does not depend on scheduler timing.
+func TestAStaleAttachedReadingCannotResurrectARemovedFolder(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
+	folder := t.TempDir()
+	if _, err := agent.ReferPlace(folder, PlaceSaid); err != nil {
+		t.Fatal(err)
+	}
+	before := agent.referredPlaces()
+	stale := attachedBlock(before, workspace)
+	if err := agent.RemovePlace(folder); err != nil {
+		t.Fatal(err)
+	}
+	agent.publishAttached(before, stale)
+	if seen := modelSees(t, agent); strings.Contains(seen, attachedHeading) || strings.Contains(seen, folder) {
+		t.Fatalf("a completed removal was overwritten by an older disk reading: %s", seen)
+	}
+}
