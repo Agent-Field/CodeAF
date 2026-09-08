@@ -201,7 +201,6 @@ func TestTheBeliefsOrderIsWhatGoesOnTheWire(t *testing.T) {
 	// rather than a second ranking computed somewhere else.
 	choice := lanes.Default().Chooser().Choose(lanes.Request{
 		Model:       model,
-		Visible:     talkTokens,
 		QualityNeed: talkQuality,
 		ValueOfTime: lanes.AttentionValue,
 		Horizon:     defaultHorizon,
@@ -328,7 +327,7 @@ func TestTheRequestTheChooserSeesIsTheRequestBeingSent(t *testing.T) {
 	}
 
 	talk := client.laneRequest(model, callKnobs{intent: IntentInteractive}, request, lanes.AttentionValue)
-	if talk.Visible != talkTokens || talk.Hidden != 0 {
+	if talk.Visible != 0 || talk.Hidden != 0 {
 		t.Fatalf("a turn somebody is watching was shaped as %d visible and %d hidden", talk.Visible, talk.Hidden)
 	}
 	if talk.QualityNeed != talkQuality || !talk.Tools || talk.MaxTokens != ceiling {
@@ -338,7 +337,7 @@ func TestTheRequestTheChooserSeesIsTheRequestBeingSent(t *testing.T) {
 		t.Fatalf("the prompt was estimated at %d tokens", talk.PromptTokens)
 	}
 	work := client.laneRequest(model, callKnobs{intent: IntentBackground}, request, 0)
-	if work.Visible != 0 || work.Hidden != workTokens || work.QualityNeed != workQuality {
+	if work.Visible != 0 || work.Hidden != 0 || work.QualityNeed != workQuality {
 		t.Fatalf("a call nobody is waiting on was shaped as %+v", work)
 	}
 }

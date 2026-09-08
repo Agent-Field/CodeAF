@@ -1912,6 +1912,21 @@ of five ceilings stopped a leaf is FAILSAFE.md's fourth clause exactly — an
 absence that means five things at once. Pinned by
 `internal/exec/inks9_test.go`.
 
+## Learned routing work stays bounded
+
+`internal/lane/workload.go` retains at most **256** model/request-class forecasts
+(`workloadLimit`), evicting the oldest class. Receipt weight decays with the
+existing routing `HalfLife`; less than half an observation of remaining evidence
+defers to conversation history. The existing shared journal persists observations,
+so this adds no provider lookup or network operation to the send path. A class is
+model, tool availability, foreground/background intent and resolved reasoning
+setting. Forecasts are bounded by the request's actual wire output ceiling.
+
+Readable stream progress uses a single accumulated byte counter and the existing
+`charsPerToken` estimate, independent of frame size. It retains no text and adds
+no per-frame allocation. Token bills remain receipt-based. Session routing headers
+respect the protocol's **256-character** maximum by hashing longer identities.
+
 ## The generalist leaves a record
 
 `exec.TranscriptFrom` had **one reader in the tree**, and it was not the leaf

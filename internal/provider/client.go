@@ -921,6 +921,9 @@ func (c *Client) completionInOnePiece(
 	// lane demoted for one bad stretch walks back up on the answers it gets
 	// right, without waiting for a clock (lanes.go's noteLaneOutcome).
 	c.noteLaneOutcome(c.modelFor(request), served, reasonWord, servedWell)
+	if servedWell {
+		c.noteWorkload(request, knobs, &response, reasoningTokens)
+	}
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it. The caller decides whether to ask again.
 	relearned := c.learnFromAnswer(c.modelFor(request), request, &response)
@@ -1261,7 +1264,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// below, byte for byte as it was: that is the legal empty state
 	// `internal/lane`'s seam documents, and each arm of a race reaches this
 	// same line on a child context and passes it for the same reason.
-	if race, watched := c.raceFor(ctx, observer, lanes.Controller()); watched {
+	if race, watched := c.raceFor(ctx, observer, lanes.Controller(), c.modelFor(request)); watched {
 		return race.run(ctx, messages, options...)
 	}
 	began := c.clock()
@@ -1382,6 +1385,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// would price a warm endpoint behind a long prompt as a slow one.
 	var served string
 	var firstToken time.Time
+	var visibleProgress progressTokens
 	// What the thinking pass cost, off the same terminal usage frame the token
 	// counts come from. Zero until one arrives, which is "the provider did not
 	// break its output down" and never "it did not think".
@@ -1600,7 +1604,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// billed, streamed, and the thing the person is waiting through —
 			// and a reasoning model that thinks for a minute before its first
 			// word of answer is not an endpoint that took a minute to respond.
-			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking()) {
+			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking() || len(choice.Delta.ToolCalls) > 0) {
 				firstToken = c.clock()
 			}
 			// THE MODEL WRITING IS THE ONLY THING THAT COUNTS AS PROGRESS. A
@@ -1636,7 +1640,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// working; this decides waiting.
 				visible, hidden := 0, 1
 				if answerText != "" {
-					visible, hidden = 1, 0
+					visible, hidden = visibleProgress.add(answerText), 0
 				}
 				watch.note(control.Reading{At: waitNow(), Visible: visible, Hidden: hidden})
 				// AND THE SAME PROGRESS MOVES THE PHASE CLOCK, which is the
@@ -1855,6 +1859,9 @@ func (c *Client) completeWithMessagesStreaming(
 	// standing belongs to the endpoint and not to the transport that carried it.
 	servedReason, servedWell := answerOutcome(response)
 	c.noteLaneOutcome(c.modelFor(request), served, servedReason, servedWell)
+	if servedWell {
+		c.noteWorkload(request, knobs, response, reasoningTokens)
+	}
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it — the same reading [Client.completionInOnePiece] makes about the
 	// same fact.
@@ -2034,6 +2041,10 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 	// unharmed by an extra one.
 	if key := CacheKeyFrom(ctx); key != "" {
 		httpRequest.Header.Set("X-Session-Affinity", key)
+		// OpenRouter's documented session key makes a successful cold call
+		// sticky too; prompt_cache_key alone waits for an observed cache hit.
+		// The old header remains for gateways that already consume it.
+		httpRequest.Header.Set("X-Session-Id", routingSessionID(key))
 	}
 	return httpRequest, nil
 }

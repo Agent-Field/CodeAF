@@ -218,7 +218,7 @@ type hedgeRace struct {
 // every model somebody picks after launch — produced no routing opinion AND no
 // clock. Routing and waiting are two questions: this call still has a ceiling,
 // still reports, and still writes down what it did.
-func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build control.Factory) (*hedgeRace, bool) {
+func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build control.Factory, model string) (*hedgeRace, bool) {
 	if build == nil || streamWatchFrom(ctx) != nil {
 		return nil, false
 	}
@@ -227,7 +227,7 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		client:   c,
 		build:    build,
 		choice:   choice,
-		model:    strings.TrimSpace(c.config.Model),
+		model:    strings.TrimSpace(model),
 		expected: expectedAnswerFrom(ctx),
 		session:  streamSessionFrom(ctx),
 		observer: observer,
@@ -918,6 +918,12 @@ func (r *hedgeRace) walk(from int, cause error) {
 	// lane rather than re-deriving a `provider.only` it wrote itself.
 	dead := r.armLane(from)
 	refusal := r.client.laneRefusalFor(r.model, dead, cause)
+	// A transient fault does not withdraw a person's strict preference. A
+	// router refusal that the pairing cannot serve is the existing retirement
+	// exception; an explicitly accepted rescue may also continue its own walk.
+	if r.plan.Pinned && from == 0 && refusal.Kind != refusalRouting {
+		return
+	}
 	// AND THE CLAIM WE MADE ABOUT IT IS WITHDRAWN FIRST. `trying coreweave…` is
 	// a promise about the present tense; nothing retracted it when coreweave
 	// died, so it sat on the status line until a ten-minute window aged it out,
