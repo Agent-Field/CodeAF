@@ -25,3 +25,14 @@ by its own stated law — so a restore and the tree after the merge cannot diges
 even holding identical content. Content-addressing across those two roots would be a
 hit that never fires wearing the clothes of a fix. That road wants a content digest
 `internal/verify` does not have, and it is its own change.
+
+Review follow-up: a cancelled or unstarted check no longer enters the memory of
+answers or execution times. Before this correction, a cancelled reading poisoned
+the next live reading of the unchanged tree with its cached non-answer. A
+deterministic cancelled-context regression reproduces that failure.
+
+This change still does not share a task checker's result across its restored
+worktree and the final deliverable tree. That part of issue #609 needs a content
+identity and a shared execution receipt; the current metadata photograph cannot
+prove equality across those roots. The task audit also retains its existing
+reading-time floor when the session wall has less time remaining.

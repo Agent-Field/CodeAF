@@ -291,7 +291,7 @@ nothing is checked or decided on your behalf.
 ## It ran the same tests three times · it ran out of time running the tests · why did it say unchecked at the end
 
 A declared check runs once for one state of the tree. When a later reader looks at the same
-unchanged tree, it gets the answer already taken instead of starting the command again. If
+unchanged tree, it gets the answer already taken instead of starting the command again. A cancelled check or one that never started supplies no reusable answer. If
 the tree has moved underneath that answer, aforge runs the check again, because the old
 answer describes a tree that no longer exists.
 

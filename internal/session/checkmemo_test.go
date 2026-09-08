@@ -139,7 +139,7 @@ func TestACheckThatCannotFitTheWallIsNotStarted(t *testing.T) {
 		agent, tree := checkMemoryAgent(t, Budget{Wall: 10 * time.Minute})
 		command, counter := countedCheck(t)
 		state := treeStateNow(tree)
-		agent.sessionCheckMemories().remember(tree, command, state, CheckRun{Command: command}, 2*time.Minute, true)
+		agent.sessionCheckMemories().remember(tree, command, state, CheckRun{Command: command, Ran: true}, 2*time.Minute, true)
 		steward := agent.steward()
 		steward.now = func() time.Time { return steward.started.Add(8*time.Minute + 30*time.Second) }
 
@@ -302,4 +302,24 @@ func checkExecutions(t *testing.T, counter string) int {
 		t.Fatalf("reading the check counter: %v", err)
 	}
 	return strings.Count(string(content), "\n")
+}
+
+// Cancellation is not an answer about the tree and must not poison a later
+// reading of the same command after the caller has a live context again.
+func TestACancelledCheckDoesNotPoisonTheNextReading(t *testing.T) {
+	agent, tree := checkMemoryAgent(t, Budget{})
+	command, counter := countedCheck(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	first, _ := agent.checkNow(ctx, tree, command)
+	if first.Ran {
+		t.Fatalf("cancelled check was read: %+v", first)
+	}
+	second, _ := agent.checkNow(context.Background(), tree, command)
+	if !second.Ran || !second.Passed {
+		t.Fatalf("a fresh reading reused cancellation: %+v", second)
+	}
+	if count := checkExecutions(t, counter); count != 1 {
+		t.Fatalf("executions = %d, want one fresh run", count)
+	}
 }

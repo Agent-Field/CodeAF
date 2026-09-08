@@ -65,7 +65,9 @@ func (m *checkMemories) paceFor(tree, command string) (time.Duration, bool) {
 }
 
 func (m *checkMemories) remember(tree, command, state string, run CheckRun, took time.Duration, moved bool) {
-	if m == nil {
+	// A cancelled or unstarted process supplied neither an answer nor its full
+	// execution time. Remembering it would poison a later live reading.
+	if m == nil || !run.Ran {
 		return
 	}
 	key := checkMemoryKey(tree, command)
