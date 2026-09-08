@@ -1701,6 +1701,7 @@ could be checked.
 | `spent()` vs the grant | uncached prompt + cached at `cachedTokenWeightPercent` (10, the provider's own discount) + completion — **what the job pays** | **yes** |
 | `maxTurnBackstop` (400) | iterations | **yes** |
 | the no-progress guard | repeated calls, a stagnant window, `noProgressTurnFloor` (60) | **yes** |
+| `toolTimeoutRepeatCap` (3) | timeouts of one exact tool call (tool name and argument text), counted across a leaf round | **yes**, unless a budget or deadline landing already owns the ending |
 | `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
 

@@ -748,6 +748,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// finish; zero means no landing has begun yet.
 	landing := 0
 	landingStop := StopReason("")
+	// A repeated timeout is counted separately from no progress because a timed
+	// out command is an error and errors are deliberately progress there. This
+	// limit reads the runner's timeout fact instead. See tooltimeout.go.
+	toolTimeouts := newToolTimeoutGuard()
 	// The no-progress guard catches a leaf that is spending turns without
 	// advancing: repeating the same tool call, going many turns without
 	// writing anything or learning anything new, or simply running past any
@@ -1270,6 +1274,26 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					"Stop exploring; nothing you have already confirmed needs another look.")})
 		}
 
+		// A leaf already landing keeps the reason that granted its reserve. The
+		// repeated timeout is checked only while no legitimate ending has spoken,
+		// so it cannot rewrite a budget or deadline as a different finding.
+		if landing == 0 {
+			if reason, count, stop := toolTimeouts.observe(calls, results); stop {
+				outcome.Stop = StopToolTimeouts
+				outcome.Exhausted = StopToolTimeouts
+				// This meter is the durable structured account of the bound. This
+				// ending is not out of room, so no person-facing meter renders it.
+				outcome.Meter = Meter{
+					Name: MeterToolTimeouts, Reached: count, Allowed: toolTimeoutRepeatCap,
+					Unit: "timeouts of one command",
+				}
+				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
+				trace.note(reason)
+				journalToolTimeout(l.history, task, outcome, reason)
+				return l.land(ctx, task, outcome, started, opening), nil
+			}
+		}
+
 		// The no-progress guard, checked AFTER the legitimate bounds. A leaf
 		// that exhausted its budget, hit the pressure ceiling, was handed back
 		// by the straggler, or is already landing must not be stopped for "no
@@ -1447,6 +1471,11 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 		// as a budget stop — the same finding the ruler recalibrates from —
 		// because the mechanism is a tail-risk bound on a runaway, not a
 		// judgment that the work was wrong.
+		return provider.VerdictBudgetStop
+	case StopToolTimeouts:
+		// The leaf had money, turns and clock left and spent them re-running a
+		// command it had already learned does not return. Graded as a budget stop
+		// because that failure to converge is exactly what a rating measures.
 		return provider.VerdictBudgetStop
 	case StopError, StopDeadline:
 		return provider.VerdictProviderFailure
