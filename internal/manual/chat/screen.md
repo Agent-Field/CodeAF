@@ -272,6 +272,13 @@ is too narrow for all three the row is cut at the right and the keys still answe
 under four columns the card draws nothing.
 
 
+Reopening a running chat through this machine’s engine restores the reply so far
+and follows its live output without sending your message again. Background
+status and the open reply each have their own reader. If the connection drops,
+that live view ends; reopen the chat after reconnecting to recover its current
+record and live output. This does not promise that a hidden tab’s status stays
+live across a broken connection.
+
 ## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
 
 **`ctrl+t` or `+` at the tab strip opens a start page. It does not create anything.** No session, no

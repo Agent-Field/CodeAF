@@ -135,9 +135,11 @@ type Client struct {
 	seq atomic.Uint64
 
 	// calls is every call waiting for its result, and streams every open turn.
-	// Both are guarded by mu.
-	calls   map[uint64]chan result
-	streams map[uint64]*stream
+	// Both are guarded by mu. Observers are independent view subscriptions;
+	// their ids belong to this connection and never enter turn replay cursors.
+	calls     map[uint64]chan result
+	streams   map[uint64]*stream
+	observers map[uint64]*stream
 
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
@@ -737,6 +739,8 @@ func (c *Client) read() {
 			return
 		}
 		switch frame.Kind {
+		case "observed", "observerClosed":
+			c.observerFrame(frame)
 		case "result":
 			c.deliver(frame)
 		case "event":
@@ -832,6 +836,7 @@ func (c *Client) streamLocked(id uint64) *stream {
 // a channel left open would leave the surface spinning on a turn nobody is
 // running.
 func (c *Client) bury(cause error) {
+	c.closeObservers()
 	c.mu.Lock()
 	if c.dead != nil {
 		c.mu.Unlock()

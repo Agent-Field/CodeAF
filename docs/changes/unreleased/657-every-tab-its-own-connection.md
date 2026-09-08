@@ -4,6 +4,7 @@ title: every chat tab holds its own engine connection, so opening one stops none
 pr: 657
 surface: [chat, engine, remote]
 invalidates:
+  - "The remote client lacked Attach and AttachReplay, so hidden tabs lost turn status and reopening could not recover live output. Independent connection-local observations now carry the engine’s atomic transcript/backlog split without submitting again; a broken link ends these observations and reopening refreshes them."
   - "Chats previously counted only running task nodes when describing held work, so a streaming reply without tasks said nothing new. It now reads the existing turn watcher and says working; completed-turn news remains available until the conversation is reopened."
   - "Home could call a conversation held by this window open in another window; it now uses the keeper identity and says open here. The close-tab card clipped its right-hand answers at narrow widths; it now shortens complete labels while retaining visible click targets and a k shortcut for keep running."
   - "Opening or switching to a second conversation over an engine-backed door — the ordinary socket onto this machine's engine, `--host`, `--at` — ENDED the first one. The surface said so, out loud, with `closed · <name> — a connection holds one conversation at a time`. It does not any more: each conversation dials a connection of its own and every one of them keeps running while you are somewhere else. The wording still exists for a door that has no way to dial again, and no shipped door is in that state."
