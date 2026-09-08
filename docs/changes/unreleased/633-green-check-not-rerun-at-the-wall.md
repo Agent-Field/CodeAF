@@ -36,3 +36,7 @@ worktree and the final deliverable tree. That part of issue #609 needs a content
 identity and a shared execution receipt; the current metadata photograph cannot
 prove equality across those roots. The task audit also retains its existing
 reading-time floor when the session wall has less time remaining.
+
+The process helper also keeps its original three-argument task-baseline call
+contract, so #611 can share it when the branches land together. Session callers
+still pass the explicit window sized by their remaining wall.

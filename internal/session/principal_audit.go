@@ -283,7 +283,13 @@ func (a *Agent) wallBoundedWindow(window time.Duration) time.Duration {
 	return min(window, left)
 }
 
-func runOneCheck(ctx context.Context, tree, check string, window time.Duration) CheckRun {
+// runOneCheck also serves task-baseline callers, whose context already carries
+// their checking deadline. Session callers supply the smaller wall-sized window.
+func runOneCheck(ctx context.Context, tree, check string, windows ...time.Duration) CheckRun {
+	window := sessionCheckWindow
+	if len(windows) > 0 {
+		window = windows[0]
+	}
 	ctx, done := context.WithTimeout(ctx, window)
 	defer done()
 	command := exec.CommandContext(ctx, "bash", "-c", check)
