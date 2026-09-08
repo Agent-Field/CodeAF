@@ -137,7 +137,7 @@ func (a *app) frontSignal() tabSignal {
 	if run := a.orchOf(); run != nil && run.gate != nil {
 		return tabNeedsPerson
 	}
-	if a.asking() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
+	if a.asking() || a.asksConnect() || a.asksHarness() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
 	if a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0 {

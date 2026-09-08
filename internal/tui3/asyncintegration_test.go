@@ -76,3 +76,13 @@ func TestTypedConnectionInputAllowsSafeTabCloseAndCancel(t *testing.T) {
 		t.Fatal("cancel changed the pending input")
 	}
 }
+
+// Home can cover the last tab without starting a keeper; its attention is local.
+func TestAccountInputKeepsItsAttentionWhenHomeCoversTheLastTab(t *testing.T) {
+	a, _, first := asyncApp(t)
+	turning(a, first)
+	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "typed", Service: "stripe", NeedsKey: true})
+	if a.frontSignal() != tabNeedsPerson {
+		t.Fatal("account input was labelled working instead of needing a person")
+	}
+}
