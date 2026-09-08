@@ -124,3 +124,27 @@ func TestALeafNeverOutlivesTheWatchdogAboveItsLease(t *testing.T) {
 		t.Fatalf("the leaf returned after %s, past the %s watchdog above its lease", elapsed, WatchdogAbove(lease))
 	}
 }
+
+// A later parent wall must not widen the protected landing reserve. A landing
+// gets the smaller of its own allowance and the caller's remaining time.
+func TestTheLandingClockNeverWidensItsReserveToTheParentWall(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	const reserve = time.Second
+	started := time.Now()
+	landing, stop := landingClock(parent, reserve)
+	defer stop()
+	deadline, ok := landing.Deadline()
+	if !ok || deadline.After(started.Add(reserve+100*time.Millisecond)) {
+		t.Fatalf("landing deadline %s exceeds its %s reserve", deadline, reserve)
+	}
+	short, cancelShort := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancelShort()
+	shortDeadline, _ := short.Deadline()
+	landingShort, stopShort := landingClock(short, reserve)
+	defer stopShort()
+	got, _ := landingShort.Deadline()
+	if !got.Equal(shortDeadline) {
+		t.Fatalf("landing deadline %s differs from earlier caller deadline %s", got, shortDeadline)
+	}
+}

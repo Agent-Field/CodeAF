@@ -27,3 +27,5 @@ already said so twenty lines above, in the comment on the budget's own staging:
 that one is counted in turns precisely because nothing outside the loop can take
 turns away. The deadline's is now as un-takeable, by being measured from the moment
 it is ordered rather than from what is left of a clock somebody else was spending.
+
+Review correction: the landing clock uses the earlier of its reserve and the caller's wall. A later caller deadline must not widen a one-second reserve into an hour.

@@ -1721,11 +1721,7 @@ const landingTurns = 4
 // is the errand's own wall and still cuts the landing there, because the
 // person's number outranks the leaf's pad.
 func landingClock(granted context.Context, reserve time.Duration) (context.Context, context.CancelFunc) {
-	at := time.Now().Add(reserve)
-	if leased, ok := granted.Deadline(); ok && leased.After(at) {
-		at = leased
-	}
-	return context.WithDeadline(granted, at)
+	return context.WithTimeout(granted, reserve)
 }
 
 // deadlineLandingReserve is what a deadline-stopped leaf is granted to land.
