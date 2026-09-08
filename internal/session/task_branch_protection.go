@@ -1,9 +1,23 @@
 package session
 
 import (
+	"errors"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+const (
+	aforgeGitName  = "aforge"
+	aforgeGitEmail = "aforge@localhost"
+)
+
+// aforgeGitIdentity is THE ONE SPELLING of the identity every commit and merge
+// the harness writes carries. The moved-tip guard compares against the same
+// email, so a writer and the policy that recognizes its work cannot drift.
+func aforgeGitIdentity() []string {
+	return []string{"-c", "user.name=" + aforgeGitName, "-c", "user.email=" + aforgeGitEmail}
+}
 
 // protectedBranchNames is THE ONE LIST of branch names aforge never writes to.
 // The manual names every entry and a structural test holds that page against
@@ -28,6 +42,21 @@ var protectedBranchNames = [...]string{
 // safely move, and git's quiet symbolic-ref is the direct reading of that fact.
 func currentBranch(root string) string {
 	out, err := git(root, "symbolic-ref", "--short", "-q", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// branchCommit reads the world a named branch points at. Empty is ordinary:
+// a detached checkout has no name to read, and a failed observation must not
+// turn into a landing refusal later.
+func branchCommit(root, branch string) string {
+	branch = strings.TrimSpace(branch)
+	if strings.TrimSpace(root) == "" || branch == "" {
+		return ""
+	}
+	out, err := git(root, "rev-parse", "--verify", "--quiet", branch+"^{commit}")
 	if err != nil {
 		return ""
 	}
@@ -129,6 +158,45 @@ func (t taskTree) keptLandingSentence() string {
 		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — merge it where you want it"
 	case protectedBranch(t.root, current):
 		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which aforge never writes to — merge it when you are ready"
+	case branchMovedByPerson(t.root, current, t.homeSha):
+		return "its branch " + t.branch + " was kept: " + current + " has moved on since the work was cut — merge it where you want it"
 	}
 	return ""
+}
+
+// branchMovedByPerson reports that the named branch no longer points at the
+// recorded world and that the movement was not made solely by aforge's own
+// landings. A rewrite is always the person's movement; a forward move is theirs
+// when any commit in the new range carries a different committer identity.
+//
+// A failed git read answers false because an observation failure is not grounds
+// to keep finished work away from the branch it was meant for. Exit status one
+// from merge-base is its documented "not an ancestor" answer rather than a
+// failed read, and is the rewrite case this policy must catch.
+func branchMovedByPerson(root, branch, recorded string) bool {
+	branch, recorded = strings.TrimSpace(branch), strings.TrimSpace(recorded)
+	if strings.TrimSpace(root) == "" || branch == "" || recorded == "" {
+		return false
+	}
+	tip := branchCommit(root, branch)
+	if tip == "" || tip == recorded {
+		return false
+	}
+	if _, err := git(root, "merge-base", "--is-ancestor", recorded, branch); err != nil {
+		var exited *exec.ExitError
+		if errors.As(err, &exited) && exited.ExitCode() == 1 {
+			return true
+		}
+		return false
+	}
+	committers, err := git(root, "log", "--format=%ce", recorded+".."+branch)
+	if err != nil {
+		return false
+	}
+	for _, email := range strings.Fields(committers) {
+		if email != aforgeGitEmail {
+			return true
+		}
+	}
+	return false
 }

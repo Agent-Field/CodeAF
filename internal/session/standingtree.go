@@ -102,6 +102,9 @@ type StandingTree struct {
 	// Home is the root checkout's branch when this conversation cut its branch,
 	// so a later /land cannot follow a checkout that moved underneath it.
 	Home string `json:"home,omitempty"`
+	// HomeSha is the commit Home named at that cut, so /land can tell the same
+	// branch moving to a different world from the branch staying where it was.
+	HomeSha string `json:"homeSha,omitempty"`
 	// Cut is when the copy was made, which is the moment everything in the
 	// folder was still true.
 	Cut time.Time `json:"cut,omitempty"`
@@ -399,7 +402,7 @@ func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
 		if err != nil {
 			return StandingTree{}, err
 		}
-		tree.Dir, tree.Mode, tree.Branch, tree.Root, tree.Home = cut.dir, TaskModeWorktree, branch, root, cut.home
+		tree.Dir, tree.Mode, tree.Branch, tree.Root, tree.Home, tree.HomeSha = cut.dir, TaskModeWorktree, branch, root, cut.home, cut.homeSha
 	} else {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return StandingTree{}, err
@@ -556,13 +559,14 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	// StandingTree is the record, and taskTree is the shape [taskTree.comeHome]
 	// reads. Keeping one of each would be the two drifting.
 	work := taskTree{
-		dir:    tree.Dir,
-		root:   tree.Root,
-		branch: tree.Branch,
-		home:   tree.Home,
-		place:  a.config.Place,
-		ground: tree.Folder,
-		mode:   tree.Mode,
+		dir:     tree.Dir,
+		root:    tree.Root,
+		branch:  tree.Branch,
+		home:    tree.Home,
+		homeSha: tree.HomeSha,
+		place:   a.config.Place,
+		ground:  tree.Folder,
+		mode:    tree.Mode,
 	}
 	if tree.Mode != TaskModeWorktree {
 		// A copy has no branch to merge, and [taskTree.comeHome] reads that from

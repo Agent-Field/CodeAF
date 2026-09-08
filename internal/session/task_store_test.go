@@ -167,13 +167,13 @@ func TestCheckpointIsWrittenAfterEveryTransition(t *testing.T) {
 	}
 }
 
-// C12: the branch a task was cut from survives its checkpoint, while a record
-// written before that field existed still restores with an ordinary empty home.
+// C12: the branch and commit a task was cut from survive its checkpoint, while
+// a record written before either field existed still restores with both empty.
 func TestC12CheckpointRoundTripsHomeAndAcceptsItsAbsence(t *testing.T) {
 	graph := newTaskGraph()
 	node := &TaskNode{
 		graph: graph, id: 1, done: make(chan struct{}), state: TaskDone,
-		spec: taskSpec{title: "Remember the cut branch"}, Home: "work",
+		spec: taskSpec{title: "Remember the cut branch"}, Home: "work", HomeSha: "abc123",
 	}
 	graph.mu.Lock()
 	record := node.recordLocked()
@@ -185,8 +185,14 @@ func TestC12CheckpointRoundTripsHomeAndAcceptsItsAbsence(t *testing.T) {
 	if !strings.Contains(string(encoded), `"home":"work"`) {
 		t.Fatalf("checkpoint record omitted home: %s", encoded)
 	}
+	if !strings.Contains(string(encoded), `"homeSha":"abc123"`) {
+		t.Fatalf("checkpoint record omitted home commit: %s", encoded)
+	}
 	if got := restoreNode(graph, record).Home; got != "work" {
 		t.Fatalf("restored home = %q, want work", got)
+	}
+	if got := restoreNode(graph, record).HomeSha; got != "abc123" {
+		t.Fatalf("restored home commit = %q, want abc123", got)
 	}
 
 	var old taskRecord
@@ -195,6 +201,16 @@ func TestC12CheckpointRoundTripsHomeAndAcceptsItsAbsence(t *testing.T) {
 	}
 	if got := restoreNode(graph, old).Home; got != "" {
 		t.Fatalf("old record restored home %q, want empty", got)
+	}
+	if got := restoreNode(graph, old).HomeSha; got != "" {
+		t.Fatalf("old record restored home commit %q, want empty", got)
+	}
+	encodedOld, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedOld), "homeSha") {
+		t.Fatalf("an old record grew an empty home commit: %s", encodedOld)
 	}
 }
 
