@@ -20,3 +20,7 @@ promise with the promised lines cut away and nothing saying so.
 `orchestrateDigest` cuts an adaptive run's node digest with `firstLines` and has
 the same shape of bug against a different budget. It is deliberately untouched
 here and wants an issue of its own.
+
+Review follow-up: `PERF.md` now records the report's ordinary byte and line
+bounds and its new eight-line fenced exception, so the increased report room
+is reviewable beside the other performance limits.
