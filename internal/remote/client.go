@@ -356,6 +356,12 @@ func (c *Client) helloNow() Hello {
 	if strings.TrimSpace(open) != "" {
 		hello.Session = open
 		hello.Back = true
+		// AND A LINK COMING BACK NEVER MINTS A SECOND CONVERSATION. [Hello.New]
+		// is an intention a surface has exactly once — when it opened this tab —
+		// and a redial that repeated it would answer a dropped wifi with another
+		// empty conversation on the engine's disk while the one this window is
+		// drawing went on running without a reader.
+		hello.New = false
 	}
 	if cursors := c.cursors(); len(cursors) > 0 {
 		hello.Resume = cursors

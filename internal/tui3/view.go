@@ -126,6 +126,11 @@ const (
 	// own slot, so the two share a kind's worth of the frame and never a moment
 	// of it.
 	chromeStop
+	// chromeTabClose is one row of the close-a-tab confirmation (tabclose.go);
+	// index is its position within the card, and the answers are on index 1. It
+	// shares the guard's slot with [chromeStop] for the reason those two share
+	// it: they are the same shape of thing and can never be up together.
+	chromeTabClose
 	// chromeParked is one row of a message waiting for the answer to finish
 	// (park.go); index is which parked message that row belongs to, so a press
 	// pulls that one back into the box to be edited. The dim line under the block

@@ -267,6 +267,36 @@ type Conversation struct {
 	SaveApproval     func(tool string) error
 	SaveBashApproval func(command string) error
 	ApplyApprovals   func() error
+
+	// TaskRoom and TaskIndex are [Options.TaskRoom] and [Options.TaskIndex] ABOUT
+	// THIS CONVERSATION, and they are here for the reason the approval trio above
+	// is: they were wired once, at boot, around the conversation the door opened
+	// before the surface existed. That was harmless while an engine door held one
+	// conversation at a time and is wrong the moment it holds several — a window
+	// with three chats open would read every task page and every roster out of the
+	// FIRST one, under the second one's name.
+	//
+	// Nil leaves whatever the surface was already holding, which is what the local
+	// door passes: there both readings are of this process's own disk and neither
+	// needs a per-conversation door.
+	TaskRoom  func(id uint64, tail int) (session.TaskRecord, error)
+	TaskIndex func() ([]session.TaskIndexEntry, bool)
+
+	// Link is [Options.Link] ABOUT THIS CONVERSATION, and it is here because on a
+	// door where each conversation has its own connection every one of those seven
+	// facts is a fact about that connection: the sentence a dropped link says, the
+	// measured round trip, the one-off news a redial found, WHICH QUESTIONS ARE
+	// WAITING, who holds the keyboard, and the turns another window started.
+	//
+	// THE WAITING QUESTIONS ARE WHY THIS IS CORRECTNESS AND NOT TIDINESS. The
+	// engine holds a session's unanswered cards WITH THAT SESSION
+	// (internal/remote's held.go), the surface asks for them again on every switch
+	// (detach.go's [app.attachConversation]), and a surface that asked the wrong
+	// connection would replay one conversation's consent card into another one.
+	//
+	// Nil leaves whatever the surface holds, which is every local door — there is
+	// no link — and every door whose conversations share one connection.
+	Link *LinkSeam
 }
 
 // TaskOwnerAsk names the conversation a task page wants to look into.

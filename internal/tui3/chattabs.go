@@ -1067,7 +1067,29 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 // Local held conversations remain alive. Shared connections retain their normal
 // single-conversation switching contract: the engine performs the swap, and this
 // surface must never close the handle afterward because it now names the target.
+// A TAB WITH SOMETHING IN FLIGHT IS ASKED ABOUT FIRST (tabclose.go). The card
+// offers the three acts this gesture can be — keep the work and drop the tab,
+// stop the work and drop the tab, or change your mind — and its default is the
+// one this function has always performed. A conversation at rest is not asked
+// about at all: there is nothing to decide, and a question with one useful answer
+// is friction.
 func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
+	if a.closingTab() {
+		// The card is up about a tab already; a second press on a ✕ is not a
+		// second question. The keyboard is the card's and so is the pointer.
+		return nil
+	}
+	if a.tabCloseAsks(tab) {
+		a.tabReveal()
+		a.askTabClose(tab)
+		return nil
+	}
+	return a.tabDismissNow(tab)
+}
+
+// tabDismissNow is the act itself, with the question already answered or never
+// worth asking. Every road to a tab leaving the row ends here.
+func (a *app) tabDismissNow(tab chatTab) (cmd tea.Cmd) {
 	a.tabReveal()
 	if tab.start {
 		return a.cancelChatStart()

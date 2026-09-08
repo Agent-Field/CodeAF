@@ -1461,6 +1461,10 @@ type app struct {
 	// rung: both are the surface holding a keystroke back until it is told
 	// whether to act on it, and neither can be raised while the other is up.
 	stop *stopCard
+	// tabClose is the raised question about taking a tab that is still doing
+	// something off the row (tabclose.go). It shares the stop card's slot and
+	// can never be up beside it.
+	tabClose *tabCloseCard
 	// roomStop is where the ✕ was drawn on the room's pinned header, in columns,
 	// or the empty span when there is nothing there to stop. Written by
 	// [app.roomHead] at layout and read by [app.stopMarkPress], which is the
@@ -2797,6 +2801,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (stop.go). It is a question about ENDING the work the roster and the
 		// room are pages onto, so a key that reached either of them would be a
 		// key aimed at the very thing being stopped.
+		// THE CLOSE-A-TAB CARD IS READ WHERE THE STOP CARD IS READ, and above it:
+		// they share one slot and one keyboard, and this one is up only when the
+		// other cannot be (tabclose.go).
+		if cmd, took := a.tabCloseKey(msg); took {
+			return a, cmd
+		}
 		if cmd, took := a.stopKey(msg); took {
 			return a, tea.Batch(flushed, cmd)
 		}
@@ -3360,6 +3370,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// tall on a phone — which overlaps the strip and the top of the body,
 			// deliberately, because a finger that misses this one either ends work
 			// nobody meant to end or leaves a person with no way to end it at all.
+			// AND THE CLOSE-A-TAB CARD'S ANSWERS SIT IN THE SAME PLACE, read on
+			// the same terms and just above (tabclose.go).
+			var answered tea.Cmd
+			if a.tabClosePress(msg.Mouse().X, msg.Mouse().Y, &answered) {
+				return a, answered
+			}
 			if a.stopPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -6463,6 +6479,23 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	a.applyApprovals = conv.ApplyApprovals
 	if conv.RecentSessions != nil {
 		a.recentSessions = conv.RecentSessions
+	}
+	// AND THE TWO FAR READINGS ABOUT THIS CONVERSATION, rebound for the approval
+	// trio's own reason (tui3.go's [Conversation.TaskRoom]). Nil keeps what the
+	// surface holds, because a door whose readings are of one disk answers for
+	// every conversation on it.
+	if conv.TaskRoom != nil {
+		a.farRoomRecord = conv.TaskRoom
+	}
+	if conv.TaskIndex != nil {
+		a.farTasks = conv.TaskIndex
+	}
+	// AND THE CONNECTION THIS CONVERSATION IS ON, for the same reason and one more
+	// (tui3.go's [Conversation.Link]): the questions a session left waiting are
+	// held with that session, and [app.attachConversation] asks for them again the
+	// moment this returns.
+	if conv.Link != nil {
+		a.link = *conv.Link
 	}
 }
 

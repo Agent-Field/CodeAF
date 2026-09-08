@@ -158,7 +158,10 @@ func openChatV3At(launch atLaunch) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tunnel.Close() }()
+	closeLink := func() {
+		_ = tunnel.Close()
+	}
+	defer func() { closeLink() }()
 
 	client, err := remote.Dial(tunnel, name, remote.Hello{
 		Workspace: workspace,
@@ -169,18 +172,57 @@ func openChatV3At(launch atLaunch) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	bootTunnel := tunnel
+	shutBoot := func() error {
+		err := client.Close()
+		if shutErr := bootTunnel.Close(); err == nil {
+			err = shutErr
+		}
+		return err
+	}
+	closeLink = func() { _ = shutBoot() }
 
 	agent := client.Agent()
-	welcome := client.Welcome()
 	if launch.once != "" {
 		return runHostOnce(agent, launch.once)
 	}
+	// ANOTHER CONVERSATION IS ANOTHER TUNNEL THROUGH THE SAME RELAY, and it never
+	// asks for a pairing code: this device is already paired by the time the
+	// first one is open, so the second reach is the same reach with nobody to
+	// question (a prompt raised behind a running surface would be a question on a
+	// terminal the surface owns).
+	quiet := reach
+	quiet.AskCode = nil
+	fleet := newEngineFleet(name, client, shutBoot, func(ask engineAsk) (*engineConn, error) {
+		next, err := quiet.Open(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		beside, err := remote.Dial(next, name, remote.Hello{
+			Workspace: ask.workspace,
+			Session:   ask.session,
+			New:       ask.mint,
+			Model:     launch.model,
+			Level:     launch.level,
+		})
+		if err != nil {
+			_ = next.Close()
+			return nil, err
+		}
+		return &engineConn{client: beside, shut: func() error {
+			err := beside.Close()
+			if shutErr := next.Close(); err == nil {
+				err = shutErr
+			}
+			return err
+		}}, nil
+	})
+	closeLink = fleet.closeAll
 	// THE SAME SURFACE THE ssh DOOR OPENS, assembled by the same function. What
 	// belongs to the far machine comes off the welcome and what belongs to this
 	// one is resolved here; the only thing that differs between the two doors is
 	// the pipe, so anything that differed in the surface would be a bug.
-	options := hostOptions(client, agent, name, welcome, launch.pick)
+	options := hostOptions(fleet, client.Welcome(), launch.pick)
 	return runSurface(context.Background(), options)
 }
 

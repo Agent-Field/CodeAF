@@ -116,7 +116,11 @@ type Host struct {
 
 	mu       sync.Mutex
 	sessions map[string]*remote.Session
-	live     int
+	// minted counts the conversations opened by a hello that asked for one of
+	// its own ([remote.Hello.New]) and could not be filed under their own
+	// transcript. It is bookkeeping and never an identity: see [Host.freeKeyLocked].
+	minted int
+	live   int
 	// probes is how many of those live connections turned out to be the version
 	// exchange rather than a surface (whois.go). THE QUESTION MUST NOT COUNT AS
 	// THE WORK: a connection asking "are you busy" is not what busy means, and
@@ -281,11 +285,31 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	if hello.Join {
 		return h.joinedLocked(hello.Session)
 	}
+	// AND A MINT TAKES NOTHING THAT IS ALREADY HERE. [remote.Hello.New] is a
+	// window opening ANOTHER conversation beside the ones it has, so the lookup
+	// below — which is what makes two surfaces saying nothing land in one
+	// conversation — is exactly what it must not do. It boots, and it is keyed by
+	// the transcript the engine chose rather than by the empty string the hello
+	// carried, so a later window naming that file finds this conversation instead
+	// of opening a second agent onto the same journal.
+	if hello.New {
+		return h.mintedLocked(hello)
+	}
 	if existing := h.sessions[key]; existing != nil && !existing.Ended() {
 		// THE WHOLE PRODUCT IS THIS LINE: the conversation was already running,
 		// possibly mid-turn, and the surface is joining it rather than starting
 		// anything.
 		return existing, nil
+	}
+	// AND A HELLO THAT NAMES A TRANSCRIPT THIS HOST IS ALREADY HOLDING IS THE
+	// SAME LINE SAID ABOUT A DIFFERENT KEY. A conversation minted by the branch
+	// above, or by an older hello that named no session, is keyed by something
+	// this hello has no way to guess — so without this a person reopening that
+	// chat by its own path would boot a second agent onto a journal the first one
+	// holds the lock on, and be told their conversation was open in another
+	// window by the process they were talking to.
+	if open, found := h.openLocked(key); found {
+		return open, nil
 	}
 	engine, err := h.opts.Boot(hello)
 	if err != nil {
@@ -298,6 +322,71 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	h.sessions[key] = sess
 	h.quiet = time.Time{}
 	return sess, nil
+}
+
+// mintedLocked opens a conversation of this host's own choosing and files it
+// under the transcript it opened.
+//
+// THE KEY IS THE ENGINE'S ANSWER AND NOT THE HELLO'S QUESTION, which is the one
+// thing that makes this different from the ordinary road. A minting hello names
+// no session on purpose — where a new conversation lands is a question about
+// this machine's disk — so keying it by what the hello said would file every
+// minted conversation under the empty string and have the second one replace the
+// first.
+//
+// IT IS ALWAYS FILED, even when the transcript it wants is somehow taken and
+// even when the engine answered no file at all. The map is not only the door a
+// second window comes back through: it is what the sweep retires conversations
+// out of and what [Host.idleLocked] counts, so a session left out of it would be
+// a conversation this host holds, keeps alive and can never let go of.
+func (h *Host) mintedLocked(hello remote.Hello) (*remote.Session, error) {
+	engine, err := h.opts.Boot(hello)
+	if err != nil {
+		return nil, err
+	}
+	if engine == nil || engine.Agent == nil {
+		return nil, errors.New("engine host: the workspace opened no conversation")
+	}
+	sess := remote.NewSession(engine, true)
+	h.sessions[h.freeKeyLocked(engine.SessionFile)] = sess
+	h.quiet = time.Time{}
+	return sess, nil
+}
+
+// freeKeyLocked is where a minted conversation is filed: its own transcript when
+// nothing live is under that name, and otherwise a key nothing can collide with.
+// The fallback is not reachable by name and is not meant to be — it exists so
+// that the bookkeeping above can never drop a conversation on the floor.
+func (h *Host) freeKeyLocked(file string) string {
+	key := strings.TrimSpace(file)
+	if key != "" {
+		if held := h.sessions[key]; held == nil || held.Ended() {
+			return key
+		}
+	}
+	h.minted++
+	return fmt.Sprintf("\x00minted-%d", h.minted)
+}
+
+// openLocked is the live conversation writing one transcript, found by that
+// transcript rather than by the key it was filed under. It is [Host.joinedLocked]
+// without the refusal: a caller here has somewhere else to go when the answer is
+// no, which is the boot.
+func (h *Host) openLocked(file string) (*remote.Session, bool) {
+	want := strings.TrimSpace(file)
+	if want == "" {
+		return nil, false
+	}
+	want = filepath.Clean(want)
+	for _, sess := range h.sessions {
+		if sess == nil || sess.Ended() {
+			continue
+		}
+		if open := strings.TrimSpace(sess.File()); open != "" && filepath.Clean(open) == want {
+			return sess, true
+		}
+	}
+	return nil, false
 }
 
 // joinedLocked is the live conversation writing one transcript, and an error
@@ -317,16 +406,10 @@ func (h *Host) joinedLocked(file string) (*remote.Session, error) {
 	if want == "" {
 		return nil, errors.New("engine host: a join has to name a conversation")
 	}
-	want = filepath.Clean(want)
-	for _, sess := range h.sessions {
-		if sess == nil || sess.Ended() {
-			continue
-		}
-		if open := strings.TrimSpace(sess.File()); open != "" && filepath.Clean(open) == want {
-			return sess, nil
-		}
+	if sess, found := h.openLocked(want); found {
+		return sess, nil
 	}
-	return nil, fmt.Errorf("engine host: that conversation is not open here: %s", want)
+	return nil, fmt.Errorf("engine host: that conversation is not open here: %s", filepath.Clean(want))
 }
 
 // whois is the host answering what it is and what it will do about a request to
