@@ -70,6 +70,13 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				// Walking backwards and retaining the match merges consecutive
 				// prose heads into the earliest head over this one batch.
 				head = i
+				continue
+			}
+			// Reasoning may sit between this step's narration and its calls.
+			// Once its narration is found, an intervening block separates it
+			// from an older phase; borrowing that older head loses this one.
+			if head >= 0 {
+				break
 			}
 		}
 

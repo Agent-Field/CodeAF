@@ -311,7 +311,7 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 		if !a.toggleLatestWorkfold() {
 			t.Fatal("ctrl+e found no chip to open")
 		}
-		openFirstCaption(t, a)
+		openVisiblePhaseCaption(t, a)
 		if page := roomText(a); !strings.Contains(page, "generate_image") {
 			t.Fatalf("ctrl+e did not open the newest chip:\n%s", page)
 		}
@@ -319,7 +319,7 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 		b := openRunningWorked(t)
 		b.room.offset, b.room.stick = 0, false
 		b.roomScroll(-1)
-		openFirstCaption(t, b)
+		openVisiblePhaseCaption(t, b)
 		if page := roomText(b); !strings.Contains(page, "index.html") {
 			t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
 		}
@@ -339,7 +339,7 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 		if page := roomText(a); !strings.Contains(page, "Reading the site first") {
 			t.Fatalf("ctrl+e did not open the finished work onto its outline:\n%s", page)
 		}
-		openFirstCaption(t, a)
+		openVisiblePhaseCaption(t, a)
 		if page := roomText(a); !strings.Contains(page, "index.html") {
 			t.Fatalf("the outline does not open onto its calls:\n%s", page)
 		}
@@ -347,7 +347,7 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 		b := openWorked(t)
 		b.room.offset, b.room.stick = 0, false
 		b.roomScroll(-1)
-		openFirstCaption(t, b)
+		openVisiblePhaseCaption(t, b)
 		if page := roomText(b); !strings.Contains(page, "index.html") {
 			t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
 		}

@@ -3045,6 +3045,13 @@ opens:
   this fallback and its line reads `· ctrl+o`; a task's page keeps as many as the window
   is tall — see "Reading a task's page".)
 
+## Why a task’s progress paragraph changes to a step caption
+
+A paragraph followed by more work in the same stretch becomes progress narration,
+even if it previously ended a settled phase. It uses the quieter work styling and
+can supply the next step’s caption. The trailing reply keeps answer styling; a
+message or correction from you preserves the reply before that boundary.
+
 ## The long brief at the top of a task's page — `▸ …N more lines`, view more, expanding and collapsing the instruction, a task description that fills the whole screen
 
 **A long task description no longer takes over the page. It shows its first three lines,
