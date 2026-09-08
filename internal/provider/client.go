@@ -119,8 +119,10 @@ type Client struct {
 	// usage block. It is drained by a small pool started lazily for this client,
 	// so a client nobody arms for reconciliation pays no goroutine for it.
 	receipts chan receiptWork
-	// receiptOnce starts that fixed pool once when several streams end together.
-	receiptOnce sync.Once
+	// receiptMu protects worker admission and retirement so an idle client
+	// retains no goroutine, and later receipts can start workers again.
+	receiptMu      sync.Mutex
+	receiptRunning int
 	// velocity is what this process has measured about the endpoints serving
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.

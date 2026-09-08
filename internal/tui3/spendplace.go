@@ -233,21 +233,26 @@ func spendSubjectKey(subject session.SubjectSpend) string {
 // unknown price become a measured free call on screen.
 func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time) spendReading {
 	win = win.Normalized()
+	var unbilled int64
 	priced := make([]session.UsageLine, 0, len(lines))
 	for _, line := range lines {
+		if line.Unbilled && win.Holds(session.UsageLineDay(line)) {
+			unbilled++
+		}
 		if line.USD > 0 && win.Holds(session.UsageLineDay(line)) {
 			priced = append(priced, line)
 		}
 	}
 	if len(priced) == 0 {
-		return spendReading{window: win, now: now}
+		return spendReading{window: win, now: now, unbilled: unbilled}
 	}
 	r := spendReading{
-		window: win,
-		now:    now,
-		totals: session.UsageTotals(priced),
-		days:   session.UsageByDay(priced, win),
-		models: session.UsageByModel(priced),
+		unbilled: unbilled,
+		window:   win,
+		now:      now,
+		totals:   session.UsageTotals(priced),
+		days:     session.UsageByDay(priced, win),
+		models:   session.UsageByModel(priced),
 	}
 	// A subject exists only when the ledger names one of its addresses. The
 	// grouping reader's default conversation bucket is useful arithmetic, but

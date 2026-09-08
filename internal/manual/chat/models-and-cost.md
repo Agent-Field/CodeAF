@@ -972,10 +972,12 @@ figures came from the receipt rather than the cut stream. A losing rescue arm is
 hedged waste from its own receipt too; it is real provider money, but it is not added twice.
 
 When no generation id arrived, the base has no receipt route, or the receipt still cannot be
-had after the short retry schedule, aforge invents no figure and writes no zero-cost line.
-Instead it increases the `unbilled` count. Settings→Spending and the `/cost` spend place say,
-for example, `2 calls the provider charged for and could not be priced`. When that count is
-zero, neither surface says anything about it.
+had after the short retry schedule, aforge writes an `unbilled` marker with no invented
+price or token count. The marker survives a restart. `/cost` counts missing prices for this
+conversation and its tasks; `/spend` counts the markers in its selected time window. Both
+say, for example, `2 calls the provider charged for and could not be priced`. At zero they
+say nothing. Settings→Spending also shows missing receipts learned during this process.
+Receipt workers exit when their queue is empty and start again when another receipt arrives.
 
 ## A reply that never finished — the turn ran for half an hour, aforge looked frozen, nothing happened for ages, the model kept writing and never stopped
 
@@ -1461,7 +1463,7 @@ Five things are worth knowing about it:
 - **A call the provider charged for and the stream never priced is asked about late.** A
   cut stream that named its generation is matched to the provider's own receipt in the
   background. A found receipt writes its exact cost and token counts on a row marked
-  `reconciled`; when no receipt can be had, no figure is invented and the `unbilled` count is
+  `reconciled`; when no receipt can be had, no figure is invented and a durable `unbilled` marker is
   said instead. The reply never waits for this accounting.
 - **A record that could not be written is counted and said.** Writing this file never makes a
   reply wait: if the disk stops answering, the row is dropped rather than the turn. When that

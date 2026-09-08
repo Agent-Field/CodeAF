@@ -112,9 +112,9 @@ func TestAReconciledCallWritesTheReceiptsFigureToTheLedger(t *testing.T) {
 	}
 }
 
-// TestAReceiptThatCannotBeHadWritesNoRowAndIsCounted is C2: absence changes
-// only the process-wide gap count, never the meter or a made-up zero row.
-func TestAReceiptThatCannotBeHadWritesNoRowAndIsCounted(t *testing.T) {
+// A missing receipt persists as an explicit marker and changes the gap count,
+// never the measured meter or a made-up zero price.
+func TestAReceiptThatCannotBeHadWritesAnUnbilledMarkerAndIsCounted(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.usageLedger = ledger
@@ -126,8 +126,8 @@ func TestAReceiptThatCannotBeHadWritesNoRowAndIsCounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 0 {
-		t.Fatalf("a missing receipt wrote %d rows: %+v", len(lines), lines)
+	if len(lines) != 1 || !lines[0].Unbilled || lines[0].USD != 0 || lines[0].Calls != 0 {
+		t.Fatalf("a missing receipt must write one unpriced marker: %+v", lines)
 	}
 	if got := UnbilledCalls() - before; got != 1 {
 		t.Fatalf("the unbilled count moved by %d, want one", got)

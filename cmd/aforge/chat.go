@@ -2692,7 +2692,7 @@ func (b *leafBanker) reconciled(receipt provider.Reconciled) {
 		return
 	}
 	if !receipt.Found {
-		session.CountUnbilledCall()
+		session.RecordUnbilledCall(session.UsageLedgerPath(), session.UsageLine{Task: b.nodeID, Model: receipt.Model})
 		return
 	}
 	b.bank(receipt.Billed)

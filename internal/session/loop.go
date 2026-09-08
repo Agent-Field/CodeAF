@@ -2583,7 +2583,7 @@ func (a *Agent) bank(call bankedCall) {
 // so the session meter and the machine ledger cannot diverge.
 func (a *Agent) reconciled(receipt provider.Reconciled) {
 	if !receipt.Found || receipt.Billed.Empty() {
-		countUnbilledCall()
+		a.recordUnbilledReceipt(receipt.Model)
 		return
 	}
 	used := Usage{

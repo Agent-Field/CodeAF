@@ -363,9 +363,9 @@ func TestReconcilingNeverWaitsOnTheTurn(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	client := receiptTestClient(t, server)
-	// Mark the lazy pool as already started without starting it, so the queue
-	// remains deterministically full for this turn-path assertion.
-	client.receiptOnce.Do(func() {})
+	// Reserve all worker slots without starting them, so the queue remains
+	// deterministically full for this turn-path assertion.
+	client.receiptRunning = receiptWorkerCount
 	for range receiptQueueDepth {
 		client.receipts <- receiptWork{}
 	}
@@ -488,5 +488,39 @@ func TestAPricedStreamIsBilledOnceAndAsksForNoReceipt(t *testing.T) {
 	}
 	if receiptRequests.Load() != 0 {
 		t.Fatalf("a priced stream asked for %d receipts, want none", receiptRequests.Load())
+	}
+}
+
+// A role client may be short lived. Its final receipt must release its worker
+// rather than keep the client, transport and account credentials alive forever.
+func TestReceiptWorkersRetireAfterTheirQueueDrains(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"data":{"total_cost":0.01}}`)
+	}))
+	defer server.Close()
+	client := receiptTestClient(t, server)
+	for round := range 2 {
+		results := make(chan Reconciled, 1)
+		client.receiptRunning = 1
+		client.receipts <- receiptWork{result: Reconciled{Ref: fmt.Sprint(round)}, sink: func(r Reconciled) { results <- r }}
+		done := make(chan struct{})
+		go func() { client.runReceipts(); close(done) }()
+		if result := receiptResult(t, results); !result.Found {
+			t.Fatal("receipt was lost")
+		}
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the empty receipt queue retained its worker")
+		}
+		if client.receiptRunning != 0 {
+			t.Fatalf("%d workers still registered", client.receiptRunning)
+		}
+	}
+	results := make(chan Reconciled, 1)
+	client.settle(WithReconcile(t.Context(), func(r Reconciled) { results <- r }),
+		"sim/model", &ai.Response{ID: "after-retirement"}, "torn", 0)
+	if result := receiptResult(t, results); !result.Found {
+		t.Fatal("a receipt arriving after retirement never restarted its worker")
 	}
 }

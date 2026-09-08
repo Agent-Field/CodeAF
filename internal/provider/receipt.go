@@ -142,27 +142,54 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		return
 	}
 	work := receiptWork{result: result, sink: sink}
-	c.receiptOnce.Do(func() {
-		for range receiptWorkerCount {
-			guard.Go("provider.receipts", c.runReceipts)
-		}
-	})
-	select {
-	case c.receipts <- work:
-	default:
-		// THE TURN NEVER WAITS FOR ACCOUNTING. Once the bounded queue is full,
-		// this call is reported unpriced on the spot instead of blocking behind
-		// a provider or a connection that may not answer.
+	if !c.queueReceipt(work) {
+		// A full queue reports the missing price without holding up the turn.
 		sink(result)
 	}
+
 }
 
 // runReceipts is one member of the small fixed pool draining this client's
 // bounded queue. A pool keeps one slow receipt from holding every later call,
 // while its fixed size keeps late bookkeeping from bursting at the provider.
 func (c *Client) runReceipts() {
-	for work := range c.receipts {
+	for {
+		work, ok := c.nextReceipt()
+		if !ok {
+			return
+		}
 		c.reconcile(work)
+	}
+}
+
+// queueReceipt starts only enough workers for the queued work. Admission and
+// retirement share a lock, so work cannot arrive behind the last retiring worker.
+func (c *Client) queueReceipt(work receiptWork) bool {
+	c.receiptMu.Lock()
+	defer c.receiptMu.Unlock()
+	select {
+	case c.receipts <- work:
+		if c.receiptRunning < receiptWorkerCount {
+			c.receiptRunning++
+			guard.Go("provider.receipts", c.runReceipts)
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+// nextReceipt retires an idle worker immediately. No client close hook is
+// needed, and a transient role client can be collected after its receipts finish.
+func (c *Client) nextReceipt() (receiptWork, bool) {
+	c.receiptMu.Lock()
+	defer c.receiptMu.Unlock()
+	select {
+	case work := <-c.receipts:
+		return work, true
+	default:
+		c.receiptRunning--
+		return receiptWork{}, false
 	}
 }
 

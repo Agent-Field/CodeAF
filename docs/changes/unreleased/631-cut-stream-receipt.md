@@ -4,6 +4,8 @@ title: a cut stream's bill is asked for from the provider's own receipt, and a p
 pr: 631
 surface: [engine, chat]
 invalidates:
+  - "Review found that missing prices lived only in a process counter and never reached /cost. They now persist as attributed unbilled markers without invented money; /cost reads this conversation and its task descendants, and /spend reads its selected time window after restart."
+  - "The first receipt permanently started four workers for every transient client. Workers now retire when their queue drains, with admission and retirement serialized so a later receipt restarts them safely."
   - "A streamed call that ended without a usage block — cut by its wall, cut by silence, torn, interrupted, or a hedge's losing arm — reached neither the conversation's meter nor `~/.aforge/v3/usage.jsonl`, and no surface said so. The provider's generation id is asked for that generation's own receipt in the background now, and the receipt's exact cost and token counts are written down late; the ledger still invents nothing, but the gap is no longer silent."
   - "`internal/provider/billing.go` had one door, `WithBilling`, and a response with no usage block was simply dropped there. There is a second door beside it, `WithReconcile`, told only what became of a call the wire never priced — the two are mutually exclusive, so one call can never be banked through both."
   - "A row in the usage ledger was always the provider's usage block off the wire. A row may now carry `reconciled: true`, which says its figures came from the provider's generation receipt after the stream ended; every row without the field means what it always did."

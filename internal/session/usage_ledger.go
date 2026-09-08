@@ -57,13 +57,15 @@ package session
 //     how many records went missing rather than quietly under-reporting.
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
 //     file: a call whose usage block or later receipt carries no cost and no
-//     tokens leaves no row — so a day with no line in it is a day nothing was
+//     tokens leaves no priced row — an explicit unbilled marker records a
+//     missing receipt separately, so a day with no line is a day nothing was
 //     measured as spent, rather than a day whose rows all say zero.
 //   - A CALL THE WIRE NEVER PRICED IS ASKED ABOUT LATE, NEVER GUESSED. A cut
 //     stream that named its generation can be matched to the provider's own
 //     receipt after the turn has already moved on. A found receipt enters
 //     through [Agent.bank] and marks its row reconciled; no id, no route, or no
-//     receipt leaves no invented row and moves [UnbilledCalls] instead. The
+//     receipt leaves an unbilled marker without invented money and moves
+//     [UnbilledCalls] as well. The
 //     fetch is background work in internal/provider, so neither the request nor
 //     this ledger may make a reply wait.
 //   - IT IS READ THROUGH A CACHE THAT READS THE TAIL. Home's clock beats every
@@ -164,6 +166,8 @@ type UsageLine struct {
 	// after the stream ended without a usage block. It is additive and omitted
 	// from every ordinary row and every row written before this field existed.
 	Reconciled bool `json:"reconciled,omitempty"`
+	// Unbilled marks a missing provider receipt, never a measured zero price.
+	Unbilled bool `json:"unbilled,omitempty"`
 	// Empty marks a paid request that returned no answer at its output ceiling.
 	// The role beside it names the reflex, so the row remains useful even to a
 	// reader that does not know this build's aggregate counters.
@@ -671,7 +675,7 @@ func RecordUsage(path string, line UsageLine) {
 	if strings.TrimSpace(path) == "" {
 		return
 	}
-	if line.Input == 0 && line.Output == 0 && line.USD == 0 {
+	if !line.Unbilled && line.Input == 0 && line.Output == 0 && line.USD == 0 {
 		return
 	}
 	if line.At.IsZero() {
@@ -1019,4 +1023,27 @@ func (c *UsageCache) since(floor time.Time) []UsageLine {
 		return nil
 	}
 	return kept
+}
+
+// RecordUnbilledCall keeps the missing receipt on disk with its owner. The
+// marker carries no invented money or token count and survives process restart.
+func RecordUnbilledCall(path string, line UsageLine) {
+	countUnbilledCall()
+	line.Unbilled = true
+	RecordUsage(path, line)
+}
+
+// recordUnbilledReceipt uses the same ownership fields as an ordinary usage row.
+func (a *Agent) recordUnbilledReceipt(model string) {
+	path := strings.TrimSpace(a.config.usageLedger)
+	if path == "" {
+		path = UsageLedgerPath()
+	}
+	a.mu.Lock()
+	owner := a.sessionID()
+	a.mu.Unlock()
+	RecordUnbilledCall(path, UsageLine{
+		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
+		Root: a.config.rootSession, Standing: a.config.standingItemID, Workspace: a.config.Workspace,
+	})
 }
