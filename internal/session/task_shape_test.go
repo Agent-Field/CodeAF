@@ -161,6 +161,65 @@ func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 	}
 }
 
+// A PASTED ISSUE'S BACKTICKED REPRODUCTION NEVER REACHES THE DOOR IT STARTED
+// THROUGH.
+//
+// The measured ask named `chmod 000 tox.ini` in the punctuation nearly every
+// bug report uses, and the door once treated it as the work's check. Driving
+// the ask through StartTask proves the admitted node keeps the account boundary;
+// reading that node's real door and the file's mode proves the command was
+// neither offered nor run, while the check the shaper authored still arrives.
+func TestAPastedIssuesBacktickedCommandNeverReachesTheDoorItStartedThrough(t *testing.T) {
+	tree := t.TempDir()
+	tox := writeCheckFile(t, tree, "tox.ini", "[tox]\n", 0o644)
+	writeCheckFile(t, tree, "check.sh", "#!/bin/sh\nexit 0\n", 0o755)
+	ask := "Pasted issue body. Repro: `chmod 000 tox.ini`, then watch the suite fail."
+	answer := "{\"title\":\"repair tox\",\"brief\":\"Repair the tox configuration and check it with `check.sh`.\",\"acceptance\":\"`check.sh` passes.\"}"
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(config *Config) {
+		config.Workspace = tree
+		config.TaskAudit = true
+		config.RolesSource = shaperSettings()
+	})
+	ran := make(chan uint64, 1)
+	stubbedGraph(agent, func(node *TaskNode) {
+		node.graph.complete(node, TaskDone)
+		ran <- node.id
+	})
+
+	id, _, _, err := agent.StartTask(t.Context(), ask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled(t, ran)
+	node := agent.graph().node(id)
+	if node == nil {
+		t.Fatal("the pasted issue did not produce an admitted node")
+	}
+	door := auditDoorFor(node, auditPlace{ground: tree, ran: tree})
+	if len(door.checks) != 1 || door.checks[0] != "check.sh" {
+		t.Fatalf("the admitted node's checks are %q, want only the tree's own check.sh", door.checks)
+	}
+	if containsWord(door.allowed, "chmod 000 tox.ini") {
+		t.Fatalf("the pasted reproduction entered the admitted node's door: %q", door.allowed)
+	}
+	if strings.Contains(door.offer(), "chmod 000 tox.ini") {
+		t.Fatalf("the admitted node offered the pasted reproduction:\n%s", door.offer())
+	}
+	if _, ok := auditRefusal("chmod 000 tox.ini", door.allowed); ok {
+		t.Fatal("the admitted node's gate allowed the pasted reproduction")
+	}
+	info, err := os.Stat(tox)
+	if err != nil {
+		t.Fatalf("stat tox.ini after the task started: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o644 {
+		t.Fatalf("tox.ini mode after the task started = %04o, want 0644", mode)
+	}
+}
+
 func TestTheShaperCarriesThePlaceNamedInTheRequest(t *testing.T) {
 	named := t.TempDir()
 	request := "make the change in " + named

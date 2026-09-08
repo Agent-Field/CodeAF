@@ -632,7 +632,7 @@ func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	reply := fmt.Sprintf("Daily rail raised by $%.2f to $%.2f -- continuing.", amount, updated.Ceiling)
+	reply := fmt.Sprintf("Daily rail raised by %s to %s -- continuing.", moneyUSD(amount), moneyUSD(updated.Ceiling))
 	return true, h.postAgent(user.SessionID, reply, 0)
 }
 

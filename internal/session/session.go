@@ -2184,8 +2184,14 @@ type Agent struct {
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a
 	// session that has never opened an episode.
-	writes  *writeMeter
-	running bool
+	writes *writeMeter
+	// handWrites is every landed write call a hand has brought home since the
+	// write seam last took them. Hands can outlive the turn that forked them, so
+	// these groups belong to the session until whichever turn next reaches the
+	// seam drains them into its own meter. Each group is one call, because calls
+	// as well as distinct paths spend the allowance (writeseam.go).
+	handWrites [][]string
+	running    bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
