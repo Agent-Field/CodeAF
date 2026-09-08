@@ -996,14 +996,18 @@ The work is still handed over: it was done, and it is yours. What it carries is 
 reservation naming what is missing, which is the check and not the work:
 
 ```
-I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for.
+I'm handing this over unchecked: the review of it could not be read (gate request: the model did not answer in the shape this asked for (finish_reason=stop completion_tokens=40 reply="I could not evaluate this delivery.")), so nothing has confirmed this is what you asked for.
 ```
 
 Watching a headless run you see it as the review's own line:
 
 ```
-gate: fail — the review could not be read, so this delivery was never checked
+gate: fail — the review could not be read, so this delivery was never checked — gate request: the model did not answer in the shape this asked for (finish_reason=length completion_tokens=8192)
 ```
+
+The reason at the tail names why the review could not be read. It keeps the model's own
+reply when the answer was prose, or says it was cut off when that is what happened. Two
+unchecked runs that failed for different reasons therefore end with different lines.
 
 **The run lands partial.** `aforge do` leaves with exit **2**, not 0. This used to be exit
 0 with the work reported as done — the review was treated as having no opinion rather than
