@@ -293,7 +293,16 @@ type entry struct {
 	// belongs to. It stays on the call because captions are derived from the
 	// entry list on every page, and the list is the one fact both pages share.
 	caption string
-	open    bool // this call's expansion is showing inline
+	// captionCat is the FAMILY the narrator named for that same step
+	// (session's actioncategory.go), and it travels with [entry.caption] for
+	// the same reason and on the same terms: one event carries both, so the
+	// sentence and the mark beside it can never be one repaint out of step.
+	//
+	// It is empty on every call the narrator never spoke about — which is most
+	// of them, and every call in a conversation reopened from a file — and the
+	// gutter derives the family from the tool names instead ([stepCategory]).
+	captionCat session.ActionCategory
+	open       bool // this call's expansion is showing inline
 	// full lifts the expansion's per-tool cap: it is set by a click on the
 	// "… N more lines" foot, which is the person saying they want the rest.
 	//

@@ -746,6 +746,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"one tool call is taking up four rows", "screen"},
 		{"how do I see the whole command of a tool call", "screen"},
 		{"why is the colour from go test output missing", "screen"},
+		// The action marks in the compact working block, asked in the words
+		// somebody actually reaches for. Nobody knows the word "family" or
+		// "category" for this — they say "icon", "symbol", "little mark", or
+		// they describe the character they are looking at.
+		{"what are the little icons next to the steps while it works", "screen"},
+		{"what does the symbol in front of a step mean", "screen"},
+		{"what is the pencil next to the progress line", "screen"},
+		{"do I need a nerd font for the icons", "screen"},
+		{"can the icon beside a step be wrong", "screen"},
 		{"how do I copy text out", "keys"},
 		// The pointer gestures themselves: the one everybody already owns, and
 		// the complaint they arrive with when the sweep took more than they

@@ -443,7 +443,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			if !a.workFoldOpen(d, w.turn) {
 				// The block owns its activity door before the first caption,
 				// and spends the ordinary gap only when it actually draws.
-				rows := a.liveStepBlock(w, width)
+				rows := a.liveStepBlock(w, width, d.entries)
 				if len(rows) > 0 {
 					if wasUser || wasBlock {
 						gap()

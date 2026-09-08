@@ -1725,6 +1725,79 @@ outside the compact work. A failed step keeps its ordinary outline and controls.
 A correction can separate two compact blocks, preserving where you said it.
 Task pages and individual node transcripts retain their existing detailed view.
 
+## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
+
+Each of the three compact step lines carries **one small mark** in front of it,
+in a gutter two columns wide. The mark says what **kind** of work that step is —
+searching, editing, running a command — so you can tell at a glance what is
+happening before you have read which file it is happening to.
+
+| mark | plain terminal | what the step is |
+| --- | --- | --- |
+| `⌕` | `?` | **search** — looking for something whose location is not known yet |
+| `▤` | `<` | **read** — opening or listing something already located |
+| `✎` | `*` | **edit** — changing something that exists |
+| `+` | `+` | **create** — writing something new, or generating a picture, sound or video |
+| `$` | `$` | **run** — running a command and waiting for what it prints |
+| `◎` | `!` | **test** — checking work that has been done |
+| `↗` | `^` | **browse** — going out to a page or a connected service |
+| `⇄` | `&` | **transfer** — moving files or state from one place to another |
+| `»` | `@` | **communicate** — sending a message, a mail, or speaking |
+| `⇉` | `\|` | **coordinate** — work handed out to tasks, or forked to run beside this one |
+| `≡` | `#` | **plan** — keeping the record of the work rather than doing it |
+| `◷` | `,` | **wait** — standing by for something outside this turn |
+| `▪` | `.` | **work** — anything else, including a tool a connected account brought |
+
+## The step marks never move and never say whether a step passed — no tick, no cross, still icons
+
+**The marks never move.** The newest step's *words* shimmer while its calls run;
+its mark holds still. Liveness is already said by that shimmer and by the
+activity line under the conversation, and a second moving thing in three rows
+would be two answers to the same question.
+
+**They never say how a step went.** There is no tick, no cross and no warning
+mark here. A step that failed is not folded into this block at all — it keeps its
+ordinary rows — so a mark here could only ever mean "nothing has gone wrong yet",
+which is not worth a column. `test` draws a target, not a checkmark, because the
+mark names the *act* of checking and not its result.
+
+**The gutter is a fixed two columns.** Every step spends the same width whatever
+its kind, and a description that wraps onto a second line leaves those two
+columns blank, so all three sentences start in one column and the block does not
+shift as steps arrive.
+
+**The mark fades with its own line.** The oldest step is a faint mark and faint
+words; the newest is at ordinary reading strength. The gutter is never brighter
+than the sentence it belongs to.
+
+**Every mark draws in an ordinary monospace font.** Nothing is installed and no
+patched or "Nerd Font" is needed. On a screen-reader terminal, and anywhere the
+plain tier is in force, the ASCII column above is drawn instead — the same one
+column, so nothing shifts.
+
+## Where the marks come from — can the model choose the wrong icon
+
+The kind is named by the same cheap one-line narrator that writes the step
+description. It answers in the form `run | starting the local server`: one word
+from the list above, then the sentence. **It costs no extra call** — the word
+rides the sentence that was already being written, on the same budget of at most
+three narrations per turn.
+
+**A mark is drawn before any narration arrives**, and it is derived from the
+tools the step actually called — `grep` is a search, `edit` is an edit, `bash` is
+a run. When the narrator's answer lands it replaces the description and the mark
+together, in the same repaint, so the two are never out of step. If the narrator
+says nothing, says a word that is not on the list, or the answer arrives after
+the step has finished, the tool-derived mark stands and nothing is retried.
+
+A tool that came from a **connected account** has a name aforge has never seen,
+so its steps draw the generic `▪` work mark rather than a guess.
+
+Because the fallback is the tools, **a reopened conversation draws the same marks
+it drew live**, and a conversation saved before this existed draws the marks its
+calls always implied. Scrolling a finished turn back into view never changes a
+mark.
+
 ## The live work collapses when the answer finishes
 
 When the turn finishes, its work collapses even if you opened it while it ran.

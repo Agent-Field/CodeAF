@@ -294,7 +294,15 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 				break
 			}
 			if e.kind == entryTool {
+				// BOTH HALVES OR NEITHER. The sentence and the family arrive in
+				// one event and are written in one assignment, so no frame can
+				// draw the new words beside the old mark. An event with no
+				// family clears the field rather than leaving a previous one
+				// standing: the mark then comes off the tools, which is right
+				// about this batch, where a stale family would be right about
+				// the last one.
 				e.caption = strings.TrimSpace(ev.Text)
+				e.captionCat = ev.Category
 				f.touch()
 				break
 			}

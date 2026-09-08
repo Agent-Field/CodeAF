@@ -520,6 +520,11 @@ const (
 	// A SURFACE THAT IGNORES THIS KIND IS UNCHANGED: the deterministic
 	// composite already stands in the caption slot, and this event only
 	// replaces that floor when a cheap model had something better to say.
+	//
+	// [Event.Category] rides with it and is the same news about the same step:
+	// which FAMILY of work the sentence is about (actioncategory.go). It is
+	// empty whenever the narrator did not name one, and a surface reads that
+	// emptiness as "ask the tools", never as "draw nothing".
 	EventCaption
 )
 
@@ -564,6 +569,23 @@ type Event struct {
 	Err           error
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
+
+	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
+	// word from the closed list in actioncategory.go — and it is zero on every
+	// other kind.
+	//
+	// EMPTY IS THE NORMAL MISSING CASE AND NOT AN ERROR. The narrator is a cheap
+	// model asked for a prefix it may ignore, and a surface that receives none
+	// derives the family from the batch's own tool names
+	// ([ActionCategoryForTools]), which is deterministic and cannot be wrong
+	// about which hands were used. So this field REFINES a mark that is already
+	// correct; it never supplies one that would otherwise be missing.
+	//
+	// It rides the wire behind a json tag of its own so a peer built before it
+	// existed simply does not see it (internal/remote's [EventWire] embeds this
+	// struct whole), and a caption saved by an older build replays with an empty
+	// one and derives the same mark it always drew.
+	Category ActionCategory `json:"Category,omitempty"`
 
 	// Args is the tool call's arguments rendered for display: the JSON the
 	// model sent, compacted to one line and capped. It is set on

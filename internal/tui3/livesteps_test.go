@@ -654,7 +654,7 @@ func TestPendingActivityKeepsWaitDetailsAcrossFullFrameTransitions(t *testing.T)
 func TestPendingActivityTakesPriorityOverAnOversizedFinishedCaption(t *testing.T) {
 	a := liveStepsApp(t)
 	w := liveWork{turn: 1, pending: true, steps: []caption{{text: "reading the complete configuration and checking every startup setting", ended: liveStepsBase}}}
-	out := a.liveStepBlock(w, 20)
+	out := a.liveStepBlock(w, 20, a.entries)
 	if len(out) > liveStepRows || !hasCompactActivity(out) {
 		t.Fatalf("pending window lost its budget or current state: %#v", out)
 	}

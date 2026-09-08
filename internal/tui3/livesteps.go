@@ -1,6 +1,9 @@
 package tui3
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/charmbracelet/x/ansi"
+)
 
 // ── WHILE A TURN RUNS, THE CONVERSATION SHOWS THREE LINES OF WHAT IT IS DOING ─
 //
@@ -305,7 +308,7 @@ func (a *app) collapseLiveWork(turn int) {
 // a finished caption too tall to fit beside it remains behind the disclosure. A step title is five to ten words that
 // somebody has to be able to read; an ellipsis in the middle of one would be the
 // surface saving a row at the cost of the only thing the row was for.
-func (a *app) liveStepBlock(w liveWork, width int) []row {
+func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 	// Hidden reasoning needs a visible door even before a call has supplied a
 	// caption. The label claims only that the turn is working; no step is invented.
 	if len(w.steps) == 0 {
@@ -319,15 +322,16 @@ func (a *app) liveStepBlock(w liveWork, width int) []row {
 		return []row{{text: a.pal.dim(a.linearMark("▸ ", "> ")) + word + a.pal.dim(" · ctrl+e"),
 			entry: -1, hit: hitWorkFold, turn: w.turn, activity: w.pending}}
 	}
-	room := width - workIndentCols(width)
+	room := width - workIndentCols(width) - actionGutter
 	if room < 8 {
 		room = 8
 	}
 	// Newest first, one whole step at a time, until the budget is spent.
 	type step struct {
-		lines   []string
-		live    bool
-		pending bool
+		lines    []string
+		live     bool
+		pending  bool
+		category session.ActionCategory
 	}
 	picked := make([]step, 0, liveStepRows)
 	used := 0
@@ -340,7 +344,7 @@ func (a *app) liveStepBlock(w liveWork, width int) []row {
 			text = ansi.Strip(a.activityLine(text))
 		}
 		lines := wrap(text, room)
-		picked = append(picked, step{lines: lines, live: true, pending: true})
+		picked = append(picked, step{lines: lines, live: true, pending: true, category: session.ActionWork})
 		used += len(lines)
 	}
 	for at := len(w.steps) - 1; at >= 0; at-- {
@@ -351,7 +355,7 @@ func (a *app) liveStepBlock(w liveWork, width int) []row {
 		if len(picked) > 0 && used+len(lines) > liveStepRows {
 			break
 		}
-		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero()})
+		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero(), category: stepCategory(w.steps[at], es)})
 		used += len(lines)
 		if used >= liveStepRows {
 			break
@@ -383,7 +387,14 @@ func (a *app) liveStepBlock(w liveWork, width int) []row {
 					}
 				}
 			}
-			out = append(out, row{text: painted, entry: -1, hit: hitWorkFold, turn: w.turn, activity: s.live && at == 0})
+			// The action icon remains still while its caption carries the sweep.
+			lead := a.actionLead(s.category, i == 0)
+			if s.live && at == 0 {
+				lead = a.pal.narr(lead)
+			} else {
+				lead = a.pal.fade(lead, stop)
+			}
+			out = append(out, row{text: lead + painted, entry: -1, hit: hitWorkFold, turn: w.turn, activity: s.live && at == 0})
 		}
 	}
 	return out

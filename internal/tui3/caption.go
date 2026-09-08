@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // caption is the title of one discrete step of a turn's work.
@@ -24,6 +26,12 @@ type caption struct {
 	calls            int
 	began, ended     time.Time
 	told             string
+	// category is the family of work this step belongs to as the NARRATOR named
+	// it, and it is empty whenever the narrator named none. [stepCategory] is
+	// the door that answers the question completely, falling to the batch's own
+	// tool names — this field is only the model's half, kept beside [told] the
+	// way [told] is kept beside [text].
+	category session.ActionCategory
 }
 
 // captionSource records which rung supplied the words.
@@ -104,7 +112,11 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				c.ended = e.ended
 			}
 			if e.caption != "" {
+				// The newest narration in the batch wins, and its family comes
+				// with it — the two were written together and are read together,
+				// so a step never wears the mark of a sentence it is not showing.
 				c.told = e.caption
+				c.category = e.captionCat
 			}
 		}
 		if live {

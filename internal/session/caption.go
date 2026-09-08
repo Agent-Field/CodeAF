@@ -27,13 +27,25 @@ func init() { roles.Register(roles.RoleCaption, roles.TierLow) }
 // message as the thing to do, so [captionPrompt] goes there and goes last.
 const captionSystem = "You write one short status sentence a person can glance at while work runs."
 
-// captionPrompt asks for a single short checklist sentence: what and where.
-const captionPrompt = "Write one short status sentence for a person watching this work. " +
-	"A single sentence, 5 to 10 words, present tense, lowercase, no first person. " +
+// captionPrompt asks for a single short checklist sentence: what and where —
+// and, in front of it, ONE WORD saying which family of work that is
+// (actioncategory.go), which is what the surface draws its one still mark from.
+//
+// THE WORD IS A PREFIX ON THE SAME ANSWER AND NOT A SECOND QUESTION. It costs no
+// extra call, no extra round trip and no JSON: `run | starting the local server`
+// is one line a cheap model writes as easily as the sentence alone, and a model
+// that ignores the prefix entirely still produces a caption that is exactly as
+// good as it was before — [SplitActionLine] hands the whole line back and the
+// tools name the family.
+var captionPrompt = "Write one short status sentence for a person watching this work. " +
+	"Begin with one word from this list, then a space, a vertical bar, a space, then the sentence: " +
+	ActionCategoryWords() + ". " +
+	"The sentence is a single sentence, 5 to 10 words, present tense, lowercase, no first person. " +
 	"Say what is happening and where (path, repo, host, or topic) when you know it. " +
 	"Not reasoning, not tool names, not two sentences. " +
-	"Examples: listing open github issues · reading the caption renderer · ranking bugs by quality. " +
-	"Answer with the sentence only."
+	"Examples: run | starting the local server · search | listing open github issues · " +
+	"read | reading the caption renderer. " +
+	"Answer with the word, the bar and the sentence only."
 
 const (
 	// captionDwell is short on purpose: long enough that an instant batch pays
@@ -107,8 +119,25 @@ func (a *Agent) maybeCaption(ctx context.Context, hub *eventHub, calls []ai.Tool
 		return
 	}
 	a.addAuxiliaryUsageAs(response, named, 1, auxRoleCaption)
-	if line := cleanCaption(response.Text()); line != "" && ctx.Err() == nil {
-		hub.send(Event{Kind: EventCaption, Text: line})
+	// THE FAMILY COMES OFF FIRST AND THE SENTENCE IS CLEANED AFTER, because
+	// [cleanCaption]'s own budget is about the SENTENCE — ten words, one clause,
+	// no dangling glue — and a label counted against it would cost the caption a
+	// word. A line the parser could not read comes back whole and is cleaned
+	// exactly as it always was.
+	category, sentence := SplitActionLine(response.Text())
+	line := cleanCaption(sentence)
+	// AND A CAPTION THAT IS ONLY THE LABEL IS NO CAPTION. A cheap model asked for
+	// a vocabulary sometimes answers with the vocabulary; "run" alone is an echo
+	// of the instruction, not a sentence about the work, and the deterministic
+	// composite standing in the slot is better than it.
+	if _, echo := ParseActionCategory(line); echo {
+		return
+	}
+	// THE STALENESS RULE IS THE ONE THIS FILE ALREADY HAD, unchanged: the dwell
+	// goroutine's context is cancelled when the batch ends, so a late answer —
+	// with or without a family on it — never rewrites a settled title.
+	if line != "" && ctx.Err() == nil {
+		hub.send(Event{Kind: EventCaption, Text: line, Category: category})
 	}
 }
 
