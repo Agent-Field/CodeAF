@@ -180,6 +180,33 @@ func TestAdapterSendsPlanReasoningEffortAndOmitsItForWorkers(t *testing.T) {
 	}
 }
 
+// TestAPinnedSeatCarriesItsEffortOnEveryCall is C1: the level belongs to the
+// seat, so a run-wide economy on the context cannot displace it on any request.
+func TestAPinnedSeatCarriesItsEffortOnEveryCall(t *testing.T) {
+	client, recorded := newTestClient(t, Config{
+		Model:  "vendor/model",
+		Effort: EffortHigh,
+		SupportsParameter: func(string, string) (bool, bool) {
+			return true, true
+		},
+	})
+	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
+	for range 3 {
+		if _, err := client.CompleteWithMessages(ctx, userMessages("plan this")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index := range 3 {
+		reasoning, _ := recorded.body(index)["reasoning"].(map[string]any)
+		if effort, _ := reasoning["effort"].(string); effort != "high" {
+			t.Fatalf("call %d request = %#v, want the seat's high effort", index, recorded.body(index))
+		}
+		if _, present := reasoning["max_tokens"]; present {
+			t.Fatalf("call %d gave a word pin a thinking budget: %#v", index, recorded.body(index))
+		}
+	}
+}
+
 func TestInnerEffortNoneEscapesAnOuterRunWideEconomy(t *testing.T) {
 	client, recorded := newTestClient(t, Config{
 		SupportsParameter: func(string, string) (bool, bool) { return true, true },
@@ -215,6 +242,80 @@ func TestAdapterNeverSendsReasoningToAModelThatWouldRejectIt(t *testing.T) {
 	}
 	if _, present := recorded.body(0)["reasoning"]; present {
 		t.Fatalf("request = %#v, want the knob omitted for a model that does not support it", recorded.body(0))
+	}
+}
+
+// AND THE CATALOG'S NO IS THE ONE ANSWER A SEAT'S PIN DOES NOT ARGUE WITH.
+//
+// A pin is an operator's own choice and travels where a harness default would
+// not (the explicit rung in [Client.requestedEffort]), which is exactly why it
+// needs saying that a row stating the model takes no reasoning knob at all
+// still ends the question. The alternative is a pinned seat that 400s every
+// call it makes, and a knob that breaks the run is worse than a knob that did
+// not travel — the log names the pin instead ([Client.recordedEffortPin]).
+func TestAPinIsStillRefusedByAModelThatTakesNoReasoningKnob(t *testing.T) {
+	read := loggingTo(t)
+	client, recorded := newTestClient(t, Config{
+		Effort:            EffortHigh,
+		SupportsParameter: func(string, string) (bool, bool) { return false, true },
+	})
+	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
+	if _, err := client.CompleteWithMessages(ctx, userMessages("route this")); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := recorded.body(0)["reasoning"]; present {
+		t.Fatalf("request = %#v, want the pin dropped for a model that does not support it", recorded.body(0))
+	}
+	done := ended(read())
+	if len(done) != 1 || done[0].Effort != "" || done[0].EffortPin != "high" {
+		t.Fatalf("the row should carry no effort and name the pin that did not travel: %+v", done)
+	}
+}
+
+// TestAnUnpinnedClientKeepsEveryRequestShapeAndRowUnchanged is C6: a client
+// with no level of its own preserves each caller's wire bytes and never invents
+// a displaced-pin reading in the model-call log.
+func TestAnUnpinnedClientKeepsEveryRequestShapeAndRowUnchanged(t *testing.T) {
+	read := loggingTo(t)
+	client, recorded := newTestClient(t, Config{
+		SupportsParameter: func(string, string) (bool, bool) { return true, true },
+	})
+	requests := []struct {
+		name string
+		ctx  context.Context
+		want string
+	}{
+		{
+			name: "no request", ctx: context.Background(),
+			want: `{"model":"sim/model","stream":true,"usage":{"include":true},"messages":[{"role":"user","content":"unchanged"}]}`,
+		},
+		{
+			name: "phase default", ctx: WithReasoningEffort(context.Background(), EffortLow),
+			want: `{"model":"sim/model","stream":true,"usage":{"include":true},"messages":[{"role":"user","content":"unchanged"}],"reasoning":{"effort":"low"}}`,
+		},
+		{
+			name: "run-wide economy", ctx: WithConfiguredReasoningEffort(context.Background(), EffortOff),
+			want: `{"model":"sim/model","stream":true,"usage":{"include":true},"messages":[{"role":"user","content":"unchanged"}],"reasoning":{"enabled":false}}`,
+		},
+		{
+			name: "required answer bound", ctx: WithRequiredReasoningEffort(context.Background(), EffortHigh),
+			want: `{"model":"sim/model","stream":true,"usage":{"include":true},"messages":[{"role":"user","content":"unchanged"}],"reasoning":{"effort":"high"}}`,
+		},
+	}
+	for _, request := range requests {
+		if _, err := client.CompleteWithMessages(request.ctx, userMessages("unchanged")); err != nil {
+			t.Fatalf("%s: %v", request.name, err)
+		}
+	}
+	for index, request := range requests {
+		if got := string(recorded.raw[index]); got != request.want {
+			t.Errorf("%s wire bytes changed:\ngot  %s\nwant %s", request.name, got, request.want)
+		}
+	}
+	for _, row := range read() {
+		if row.EffortPin != "" {
+			t.Errorf("an unpinned call logged a displaced pin: %+v", row)
+		}
 	}
 }
 

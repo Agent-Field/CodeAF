@@ -140,6 +140,10 @@ type Record struct {
 	// and not what the caller wanted, because the two differ on every model
 	// whose endpoint refuses a disable.
 	Effort string `json:"effort,omitempty"`
+	// EffortPin is the client's pinned reasoning word when this call carried
+	// something else. Empty means there was no pin or the pin itself travelled,
+	// so an ordinary row gains no placeholder under the emptiness law.
+	EffortPin string `json:"effort_pin,omitempty"`
 	// MaxTokens is the ceiling that TRAVELLED — the caller's answer plus the
 	// room the thinking pass in front of it is allocated (the provider's
 	// ceilingFor) — and not the figure the caller started from. The gap between

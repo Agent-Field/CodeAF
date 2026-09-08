@@ -30,9 +30,17 @@ import (
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
 type Config struct {
-	APIKey    string
-	BaseURL   string
-	Model     string
+	APIKey  string
+	BaseURL string
+	Model   string
+	// Effort is the operator's own pin carried by the model value this client
+	// was built from, such as `vendor/model:high`. It belongs to this client
+	// rather than a context because one run holds several differently pinned
+	// seats, and it outranks the run-wide economy; only an effort required for
+	// one call's correctness wins over it. A router copies the pin to every
+	// fallback model because the seat keeps doing the same job after a fallback.
+	// Zero is the ordinary unpinned case, and the level is NEVER part of Model.
+	Effort    Effort
 	MaxTokens int
 	Timeout   time.Duration
 

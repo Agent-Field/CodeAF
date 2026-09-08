@@ -385,6 +385,9 @@ func callLogLine(record calllog.Record, answered bool, now time.Time) string {
 		fields = append(fields, "#"+record.Node)
 	}
 	fields = append(fields, record.Effort)
+	if record.EffortPin != "" {
+		fields = append(fields, "pinned "+record.EffortPin)
+	}
 	if record.MaxTokens > 0 {
 		fields = append(fields, fmt.Sprintf("max %d", record.MaxTokens))
 	}

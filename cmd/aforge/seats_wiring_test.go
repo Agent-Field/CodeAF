@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ONE LADDER, EVERY HEADLESS DOOR, AND NO SECOND COPY OF IT.
@@ -220,7 +225,7 @@ func TestAFlaggedSeatOutranksTheCrewAndTheReceiptSaysWhich(t *testing.T) {
 // a flag carrying one does: whole, into the seat and into the plan role's
 // binding, where the ladder splits it into a model and an effort at the point of
 // the call. The balanced crew's mastermind is exactly that value, so this is the
-// road's own check that a headless run on `balanced` plans at `low` — which is
+// road's own check that a headless run on `balanced` plans at `high` — which is
 // what the same crew does in the conversation.
 func TestACrewsThinkingLevelReachesTheRunWhole(t *testing.T) {
 	script := newScriptedBrain(t)
@@ -298,6 +303,84 @@ func TestACrewsThinkingLevelReachesTheRunWhole(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "plan "+written+" (crew balanced)") {
 		t.Fatalf("the receipt did not print the value as the sheet holds it:\n%s", stderr.String())
+	}
+}
+
+// TestACrewsThinkingLevelReachesTheHeadlessWire is C2: the plan seat resolved
+// from an unoverridden balanced profile keeps its level through applySeats and
+// ClientFor on both contexts a headless run uses, while the model id stays bare.
+func TestACrewsThinkingLevelReachesTheHeadlessWire(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.ModelEnv, "")
+	t.Setenv(config.PlanModelEnv, "")
+	if err := config.ApplyCrew(dir, config.CrewBalanced); err != nil {
+		t.Fatal(err)
+	}
+
+	type requestShape struct {
+		Model     string `json:"model"`
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+	}
+	var received []requestShape
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		raw, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			http.Error(writer, `{"error":"unreadable"}`, http.StatusBadRequest)
+			return
+		}
+		var body requestShape
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Errorf("decode request: %v", err)
+			http.Error(writer, `{"error":"invalid"}`, http.StatusBadRequest)
+			return
+		}
+		received = append(received, body)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"model":"stub","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
+	}))
+	defer server.Close()
+
+	settings := config.Config{
+		APIKey:        "test-key",
+		BaseURL:       server.URL,
+		MaxTokens:     100,
+		Timeout:       config.DefaultTimeout,
+		Reasoning:     config.DefaultReasoning,
+		ExecReasoning: config.DefaultExecReasoning,
+		ProfileDir:    dir,
+	}
+	seats := config.ResolveSeats(dir, "", "")
+	applySeats(&settings, seats)
+	client, err := settings.ClientFor(settings.PlanModelResolved())
+	if err != nil {
+		t.Fatal(err)
+	}
+	contexts := []context.Context{
+		settings.Context(context.Background(), "plan this"),
+		settings.ExecContext(settings.Context(context.Background(), "do this")),
+	}
+	for _, ctx := range contexts {
+		if _, err := client.CompleteWithMessages(ctx,
+			[]ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "hello"}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wantModel, wantEffort := roles.SplitEffort(config.DefaultMastermindModel)
+	if seats.Plan.Model != config.DefaultMastermindModel {
+		t.Fatalf("balanced plan seat = %q, want %q", seats.Plan.Model, config.DefaultMastermindModel)
+	}
+	if len(received) != len(contexts) {
+		t.Fatalf("provider received %d requests, want %d", len(received), len(contexts))
+	}
+	for index, body := range received {
+		if body.Model != wantModel || body.Reasoning.Effort != wantEffort {
+			t.Errorf("call %d carried model %q and effort %q, want bare %q and %q",
+				index, body.Model, body.Reasoning.Effort, wantModel, wantEffort)
+		}
 	}
 }
 

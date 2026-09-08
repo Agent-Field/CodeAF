@@ -207,10 +207,10 @@ func TestTheReceiptNamesBothSeatsAndTheirRungs(t *testing.T) {
 // THE LEVEL COMES OFF AT THE WIRE AND NOWHERE EARLIER.
 //
 // `moonshotai/kimi-k3:low` is how a tier row, a flag and a variable all say
-// "that model, thinking a little". The level is applied per call by the role
-// ladder, so the value travels whole; what a provider is asked for is the model
-// alone, because the slug with a level on it is one no provider publishes. Sent
-// whole it is a 404 on every call the seat makes — which is what the flag path
+// "that model, thinking a little". The value travels whole to the client seam,
+// which keeps the level beside the adapter while asking the provider for the
+// model alone. A slug with the level on it is one no provider publishes; sent
+// whole it is a 404 on every call the seat makes, which is what the flag path
 // did before this seam knew the difference.
 func TestTheThinkingLevelNeverReachesTheProviderAsPartOfTheSlug(t *testing.T) {
 	var asked string
