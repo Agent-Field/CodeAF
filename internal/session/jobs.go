@@ -26,14 +26,15 @@ package session
 //     superseded and was never the point: the tool takes an absolute path, and
 //     the job card prints one.
 //
-//   - THE OWED LANE, not a tool and not an event. When a job ends, its headline
-//     joins the session's boundary batch (agent.go), drained at the next step.
-//     The complete output remains here behind `jobs output` and on disk. A
-//     completion is news, not an answer to a question, and the alternative —
-//     the model polling `jobs` on a hunch — costs a round trip per hunch and
-//     still misses the exit it did not think to check for.
+//   - THE OWED LANE, not a tool and not an event. When a bash job ends, its
+//     ending joins the session's boundary batch (agent.go), drained at the next
+//     step. The ending carries its output tail and names the whole log; anything
+//     older remains here behind `jobs output` and on disk. A completion is news,
+//     not an answer to a question, and the alternative — the model polling
+//     `jobs` on a hunch — costs a round trip per hunch and still misses the exit
+//     it did not think to check for.
 //
-//   - NO PUSH MID-BATCH. The headline lands at a step boundary and never inside
+//   - NO PUSH MID-BATCH. The ending lands at a step boundary and never inside
 //     one, for the same reason user steering does: the transcript's tail
 //     mid-batch sits between an assistant's tool_calls and their results, and
 //     a user message spliced in there is a shape every provider rejects. A job
@@ -443,12 +444,10 @@ type jobRegistry struct {
 	// has no idea what a turn is — it reports, and the lane decides whether
 	// anybody has to answer.
 	//
-	// THE BOOL IS WHETHER THE ENDING TRAVELS WHOLE, and it is true for exactly the
-	// jobs somebody is still waiting on ([job.owed]): the wait was taken so that
-	// this ending could be the next thing the work read, so it arrives with the
-	// lines and the log path it was composed with rather than as a headline
+	// THE NOTE IS THE ENDING AS THIS FILE COMPOSED IT. The lane decides only
+	// whether anybody has to answer; it does not reshape the news first
 	// ([jobNote] states the law).
-	notify func(string, bool)
+	notify func(string)
 	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
 	// IS: false for a periodic tick, true for the tick that ENDED the watch —
 	// `until` matched, the output went quiet, the command failed its way out
@@ -521,7 +520,7 @@ type jobRegistry struct {
 	hands int
 }
 
-func newJobRegistry(workspace string, place Place, notify func(string, bool), watch ...func(string, string, bool)) *jobRegistry {
+func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
 	registry := &jobRegistry{workspace: workspace, place: place, notify: notify}
 	if len(watch) > 0 {
 		registry.notifyWatch = watch[0]
@@ -942,7 +941,8 @@ func (r *jobRegistry) stopHands() {
 //
 // It is [jobRegistry.reap] for the kinds that have nothing to wait on: the same
 // two rules hold, which are that a death this session ASKED for says nothing —
-// the caller already knows — and that the note is a sentence, not the output.
+// the caller already knows — and that this kind's note is a sentence, not bash
+// output.
 func (r *jobRegistry) finish(done *job, code int, note string) {
 	if requested := r.settled(done, code); requested {
 		return
@@ -950,9 +950,9 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	if note == "" || r.notify == nil {
 		return
 	}
-	// A goroutine's ending is one sentence its caller wrote and nobody is parked
-	// on it, so it travels the way every headline always has.
-	r.notify(note, false)
+	// A goroutine's ending is one sentence its caller wrote, so that sentence is
+	// already the whole ending this file composed for it.
+	r.notify(note)
 }
 
 // adoption is what the road taking a running command over knows about it. Both
@@ -1061,8 +1061,8 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	// which would read itself still owed, and park again on a generation nothing
 	// will ever close.
 	//
-	// The answer is kept because the note's SHAPE depends on it: an owed ending
-	// travels whole ([jobNote]).
+	// The answer is kept because a registry with no notify lane still has to
+	// release the park itself below.
 	owed := watched.payOwed()
 	if r.notify != nil {
 		note := fmt.Sprintf("job %d exited %d", watched.id, code)
@@ -1079,7 +1079,7 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 					strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
 			}
 		}
-		r.notify(note, owed)
+		r.notify(note)
 		return
 	}
 	// A REGISTRY WITH NO LANE TO REPORT INTO HAS NO NOTE FOR THE RELEASE TO RIDE

@@ -434,7 +434,7 @@ func TestWatchDeltasWaitForOneBatchAfterAFiveRoundTurn(t *testing.T) {
 }
 
 // An owed job ending is different from a periodic watch tick: it enters the
-// very next step once, while its full output remains behind the jobs tool.
+// very next step once, carrying the complete ending the registry composed.
 func TestOwedJobExitLandsAtTheNextStepBoundaryOnce(t *testing.T) {
 	first := newHeldTurn()
 	second := make(chan []ai.Message, 1)
@@ -461,15 +461,15 @@ func TestOwedJobExitLandsAtTheNextStepBoundaryOnce(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	first.wait(t)
-	agent.jobs.notify("job 6 exited 0: BUILD OK\n\nall of the long output", false)
+	agent.jobs.notify("job 6 exited 0: BUILD OK\n\nall of the long output")
 	close(first.release)
 	collect(t, events)
 
 	next := <-second
 	if text := userTextIn(next); strings.Count(text, "while you worked:") != 1 ||
 		!strings.Contains(text, "job 6 exited 0: BUILD OK") ||
-		strings.Contains(text, "all of the long output") {
-		t.Fatalf("the next step did not receive one compact owed note:\n%s", text)
+		!strings.Contains(text, "all of the long output") {
+		t.Fatalf("the next step did not receive one whole owed note:\n%s", text)
 	}
 	after := <-third
 	if text := userTextIn(after); strings.Count(text, "job 6 exited 0") != 1 {
@@ -628,9 +628,9 @@ func TestTwoJobNotesInOneWindowAreOneWake(t *testing.T) {
 	// The registry's own reporting seam (jobs.go's reap calls exactly this), so
 	// the two notes land in a known order rather than at the mercy of two
 	// processes exiting.
-	agent.jobs.notify("job 1 exited 1: connection refused", false)
+	agent.jobs.notify("job 1 exited 1: connection refused")
 	<-inFlight
-	agent.jobs.notify("job 2 exited 1: connection refused", false)
+	agent.jobs.notify("job 2 exited 1: connection refused")
 	close(release)
 
 	select {
