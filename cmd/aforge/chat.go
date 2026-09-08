@@ -1027,25 +1027,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if planNode != nil {
 			plans.recordOutcome(planPrefix, planGraph, planNode, outcome, err)
 		}
-		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
-			// A cancel is news for the plan above this leaf, and it is the one
-			// ending that never told it anything. A pause is not: the work is
-			// coming back, and nothing about the remainder has changed. The
-			// sentinel is asked before the early return because this is the last
-			// moment the partial is in hand — after this the claim goes back and
-			// the node settles cancelled somewhere else entirely.
-			if outcome.Stop == exec.StopCancelled && !isReflex && planGraph != nil {
-				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
-					outcome.Text, store.UserCancelReason, workerModel)
-			}
-			// A pause is work coming back and a cancel is work nobody wants
-			// any more; neither is a leaf that ran out, and the ending is
-			// carried verbatim so the scheduler reads the true one.
-			result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, true)
-			result.Summary = outcome.Text
-			result.ServiceRequests = outcome.ServiceRequests
-			return result, nil
-		}
 		// The workspace-relative paths become absolute once, here, because three
 		// readers need the same list: the summary the user opens files from, the
 		// revision sentinel, and the overrun replan. It used to be built below
@@ -1065,6 +1046,26 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if opts.produced != nil && len(absolute) > 0 {
 			opts.produced.add(absolute...)
 		}
+		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
+			// A cancel is news for the plan above this leaf, and it is the one
+			// ending that never told it anything. A pause is not: the work is
+			// coming back, and nothing about the remainder has changed. The
+			// sentinel is asked before the early return because this is the last
+			// moment the partial is in hand — after this the claim goes back and
+			// the node settles cancelled somewhere else entirely.
+			if outcome.Stop == exec.StopCancelled && !isReflex && planGraph != nil {
+				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
+					outcome.Text, store.UserCancelReason, workerModel)
+			}
+			// A pause is work coming back and a cancel is work nobody wants
+			// any more; neither is a leaf that ran out, and the ending is
+			// carried verbatim so the scheduler reads the true one.
+			result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, true)
+			result.Summary = outcome.Text
+			result.ServiceRequests = outcome.ServiceRequests
+			return result, nil
+		}
+
 		// Work that is finished and is NOT in the workspace is the one thing a
 		// person cannot find for themselves: there is no file to open, the
 		// artifact list is correctly empty, and the checkout it is in is under

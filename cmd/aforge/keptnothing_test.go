@@ -302,3 +302,42 @@ func TestTheClosingTreeAccountIncludesFilesRegisteredDuringShutdown(t *testing.T
 		t.Fatalf("closing answer contradicts the late file: %q", outcome.Deliverable)
 	}
 }
+
+// This drives the actual timeout door: the worker writes before stalling, and
+// its artifact reaches the registry only while the cancelled leaf lands.
+func TestATimeoutAfterWritingKeepsTheFileInTheJSONEnding(t *testing.T) {
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	script := newScriptedBrain(t)
+	script.writeFile = true
+	script.stallAfterWriting = true
+	defer script.close()
+	workspace := t.TempDir()
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{task: "write the release note and include migration steps", workspace: workspace,
+		asJSON: true, timeout: 4 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client})
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitLimit {
+		t.Fatalf("timeout exit = %v, stderr %s", err, stderr.String())
+	}
+	path := filepath.Join(workspace, artifactName)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Files  []string `json:"files"`
+		Answer string   `json:"answer"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || result.Files[0] != path || strings.Contains(result.Answer, keptNothingOpening(t)) {
+		t.Fatalf("timeout lost its real file: %s", stdout.String())
+	}
+}
+
+func TestAPriceRefusalDoesNotClaimTheRunEditedAWorkspace(t *testing.T) {
+	outcome := headlessOutcome{Nodes: 1, workspace: t.TempDir(), stop: stopPrice, Deliverable: "Nothing was started."}
+	if got := groundedInTheTree(outcome); got != outcome.Deliverable {
+		t.Fatalf("a price refusal claims it worked in the directory: %q", got)
+	}
+}

@@ -129,7 +129,8 @@ type headlessOutcome struct {
 	// errandWorkspace resolved it. It is the answer to "where did the work
 	// go?", and it is on the outcome rather than read again at the end
 	// because it is decided once, at the door, and a second resolution is a
-	// second answer. Empty only on a run that never got as far as opening one.
+	// second answer. Empty when this invocation never opened one or handed the
+	// work to a resident whose actual directory it cannot establish.
 	workspace string
 	// BlockedOn is the question this run could not answer, verbatim. It is
 	// empty on every run that was not stopped by one, and non-empty only
@@ -585,7 +586,6 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		return headlessOutcome{}, err
 	}
 	outcome.Seconds = time.Since(started).Seconds()
-	outcome.workspace = workspaceRoot
 	// The wall is the case that made this necessary. A leaf cancelled by the
 	// timeout journals its usage row on the way down, which is after the
 	// watcher has returned and — until this line moved the shutdown ahead of
@@ -596,6 +596,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// last files. Read that record after shutdown, then describe what it holds.
 	// A resident owns a different registry and cannot be spoken for here.
 	if deferredTo == nil {
+		outcome.workspace = workspaceRoot
 		outcome = groundedAfterShutdown(outcome, produced)
 	}
 	priceErrand(graph, session, openedAt, &outcome)
@@ -2574,7 +2575,7 @@ func groundedAfterShutdown(outcome headlessOutcome, produced *errandRegistry) he
 // purpose (see sayBlocked and headlessOutcome.BlockedOn); and a run with no
 // nodes never did anything a tree could show.
 func groundedInTheTree(outcome headlessOutcome) string {
-	if outcome.resolvedStop() == stopDone || len(outcome.Artifacts) > 0 ||
+	if outcome.resolvedStop() == stopDone || outcome.resolvedStop() == stopPrice || len(outcome.Artifacts) > 0 ||
 		strings.TrimSpace(outcome.BlockedOn) != "" || outcome.Nodes == 0 ||
 		strings.TrimSpace(outcome.workspace) == "" {
 		return outcome.Deliverable

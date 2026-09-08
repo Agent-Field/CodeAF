@@ -1191,6 +1191,8 @@ type scriptedBrain struct {
 
 	// stall makes every leaf call hang, so a wall can be proved.
 	stall bool
+	// stallAfterWriting leaves the artifact on disk until the wall forces landing.
+	stallAfterWriting bool
 	// leafFails makes every leaf call fail at the provider, so a leaf that
 	// cannot do the work can be followed all the way to what the run says
 	// about it.
@@ -1328,7 +1330,7 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	body := string(raw)
-	if s.stall && strings.Contains(body, "You complete one piece of work, alone, using tools") {
+	if (s.stall || s.stallAfterWriting && s.count("wrote") > 0) && strings.Contains(body, "You complete one piece of work, alone, using tools") {
 		s.tally("stalled")
 		// Wedged, but not wedged past the test: the client's own context ends
 		// this the moment the wall arrives, and the handler lets go with it so

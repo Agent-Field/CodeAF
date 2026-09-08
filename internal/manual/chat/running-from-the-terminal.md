@@ -303,7 +303,8 @@ The run's own record is separate. On a run that does not finish cleanly, the
 `record kept at <path>` line on stderr names the private store holding its traces and job
 logs. The empty file record concerns the project directory. It does not prove the directory is
 unchanged: deletions and files outside the bounded workspace scan may be absent. Under
-`aforge do --json`, `workspace` carries the same absolute project directory.
+`aforge do --json`, `workspace` carries the same absolute project directory. It is empty
+when an existing resident did the work and this invocation cannot establish its directory.
 
 ## Where is the record of my headless run — reading a kept one-shot's store
 

@@ -21,3 +21,9 @@ Review correction: the file record is refreshed after worker shutdown, so a late
 registered artifact reaches the ending. An empty bounded record now says
 `No created or changed files were recorded` rather than claiming no file reached
 disk; deleted paths and files outside the scan cannot support that stronger claim.
+
+Claude Fable review independently confirmed the shutdown ordering defect and found
+two adjacent cases. Cancelled and paused leaves now register their files before
+returning; a price refusal makes no workspace-work claim; a deferred resident run
+leaves `workspace` empty rather than publishing this invocation's unproven directory.
+The real write-then-stall timeout path is covered with a scripted provider.

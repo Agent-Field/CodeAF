@@ -271,7 +271,7 @@ the work cost against what it cost to decide what the work should be —
 | `blocked_on` | The question it could not answer, verbatim. Non-empty **only** alongside a non-zero exit and an empty `answer`. |
 | `learned` | The job's blackboard: discoveries, pitfalls, a sibling's failure and why. On an ephemeral store this is the only piece of what the run understood that would otherwise die with it — capture it if you care about the run's reasoning. |
 | `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `AFORGE_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
-| `workspace` | The directory the run worked in, absolute, edited in place. Always present; empty only on a run that never got as far as opening one. |
+| `workspace` | The directory the run worked in, absolute, edited in place. Always present; empty on a run that never opened one or was handed to an existing resident whose workspace this invocation cannot establish. |
 
 ### Stream discipline
 
