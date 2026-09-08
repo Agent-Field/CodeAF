@@ -86,7 +86,7 @@ there.
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
 
-## Leaving it running on its own · unattended · overnight · nobody watching
+## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
 `--yolo` on its own only changes what it asks you about. It still stops when the
 model stops talking — which is right when you are sitting there, because you are
@@ -97,6 +97,13 @@ Give it a budget as well and it carries its own work on:
     aforge chat --yolo --max-hours 6
     aforge chat --yolo --max-cost 20
     aforge chat --yolo --max-hours 6 --max-cost 20
+    aforge chat --once "fix the failing test" --yolo --max-hours 6
+
+That posture is the same without a screen. The `--once` form above carries its
+own work on exactly as the conversation does, moves a long reply's work onto a
+task at the same points, and has every ending read the same way. The only
+difference is how the decision is shown: there is no screen to draw its line on,
+so the line is kept in the transcript instead.
 
 Either number alone is enough; both together means whichever runs out first. You
 can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
