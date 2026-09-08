@@ -123,18 +123,23 @@ On a narrower frame it drops the `▾`, then the count, and keeps the word `Chat
 word is what says it is a door. Where the switcher cannot open at all, the count is drawn
 alone (`+3`) and does nothing, because it is still true.
 
-## What stays alive when switching tabs — saved drafts, compact headers, and Home
+## What stays alive when switching tabs — running two or three chats at the same time, saved drafts, and Home
 
-**A tab does not claim the conversation is running.** It says this window has been there
-and one press goes back. Over an engine-backed connection (`--host`, `--at`, and the
-ordinary socket onto this machine's engine) only one conversation is open at a time and
-switching closes the previous one — the surface says `closed · <name> — a connection holds
-one conversation at a time` when it does. With `aforge chat --no-host` the ones you left
-keep running.
+**Switching tabs stops nothing.** Every conversation this window holds keeps running
+while you are somewhere else — its turn finishes, its tasks go on, its output accumulates
+and is all there when you come back. That is true over the ordinary socket onto this
+machine's engine, over `--host`, over `--at` and with `aforge chat --no-host`: each tab
+holds its own connection and its own conversation, so nothing you do to one reaches
+another. Going Home stops nothing either, and neither does opening a fourth chat.
+
+The one door that cannot do this is one that has no way to dial a second connection. There
+the surface says `closed · <name> — a connection holds one conversation at a time` as it
+switches, so you are never told work continued when it did not. No door shipped today is
+in that state.
 
 **Your unsent words and caret are kept either way.** A half-written message goes down under
-the conversation it was written for and comes back when you return to it, including over a
-shared connection where the conversation itself was closed.
+the conversation it was written for and comes back when you return to it, including on a
+door that had to close the conversation to leave it.
 
 **It stands down on a small frame** — under 12 columns wide, or on a terminal too short
 for a blank row above the message box — for the same reason the room header does. The
@@ -207,15 +212,59 @@ Unsent drafts, carets and attachments stay with their conversation. Reopen a
 closed tab from Chats, Home or `ctrl+shift+t` to retrieve them. The keyboard
 shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
 
-**Locally held conversations keep running.** Hosted connections follow their
-existing one-conversation switching behavior: selecting the next tab replaces
-the active session on that connection. The UI does not send a second stop or
-close to the newly selected chat. Closing the last tab to Home leaves its
-connection in place.
+**A closed tab's conversation keeps running unless you asked for it to stop**, over
+every door — the ordinary socket, `--host`, `--at` and `--no-host` alike. Selecting the
+next tab replaces nothing: that chat has its own connection and carries on. Closing the
+last tab to Home leaves its connection in place.
+
+**Quitting is a different act from closing a tab.** `ctrl+w` and `×` take a view off the
+row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
+program, ask
+their own question about work in flight, and act on every conversation this window holds
+at once. Closing a tab never quits aforge, and quitting is not what any of the card's
+three answers does.
 
 On the switcher card, `ctrl+w` closes the selected row. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.
+
+## Keep running, stop work or cancel — closing a tab on a chat that is still working
+
+**Closing a tab with work in it asks first.** A card appears above the message box
+naming that conversation and what it is doing — `Close this tab? the tree walk is
+working · 2 tasks running` — with three answers under it and a dim line saying what the
+answer the cursor is on will actually do:
+
+```
+  ? Close this tab? the tree walk is working · 2 tasks running
+    ▌[keep running]   [stop work]   [cancel]
+    it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+```
+
+| Answer | What it does |
+| --- | --- |
+| `keep running` | The tab goes; the conversation does not. It keeps writing, its tasks keep running, and you find it again under `Chats`, on Home, or with `ctrl+shift+t`. Reopening it shows everything it did while it was out of sight — the same conversation, not a second run of it |
+| `stop work` | Ends the turn in **that** conversation, and then closes the tab. Nothing in any other chat is touched, and nothing is deleted |
+| `cancel` | Nothing happens. The tab stays, the work stays, your draft stays |
+
+The cursor opens on **keep running**, so `enter` is the safe answer. `←` and `→` walk the
+three and stop at the ends rather than wrapping; `esc` is `cancel`, `s` is `stop work`,
+and clicking an answer takes it. `ctrl+c` puts the card away and goes on to do what it
+normally does — leaving is never something you get stuck inside.
+
+**The difference between `keep running` and `stop work` is only whether that chat is
+still working afterwards** — both take the tab off the row, and neither deletes anything.
+`stop work` is how you stop the work in one chat and leave every other chat alone.
+
+**An idle tab closes with no card**, because there is nothing to decide; the card is
+raised only for a chat writing a reply, running tasks or holding a question. It does not
+go away when that finishes underneath it, so an answer arriving a moment before your press
+cannot turn `stop work` into a press that lands on nothing.
+
+The selected answer is marked `▌` — `>` where there are no box characters. Where the frame
+is too narrow for all three the row is cut at the right and the keys still answer it;
+under four columns the card draws nothing.
+
 
 ## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
 
@@ -263,9 +312,9 @@ door onto new conversations at all — nothing is sent into the chat you came fr
 chat is still running behind the page.
 
 **What happens to the chat you were in.** It goes on running and keeps its tab, its draft
-and its work. An unused chat with no draft may be replaced; a conversation with unsent words retains its own draft. If the old conversation has no saved identity yet, first send refuses with `finish or clear the draft in the current chat before starting another`; Escape restores that draft. Over an engine-backed connection (`--host`, `--at`, the
-ordinary socket) the connection holds one conversation at a time, so sending the first
-message ends the previous one and says so. Opening and cancelling the page never does.
+and its work. An unused chat with no draft may be replaced; a conversation with unsent words retains its own draft. If the old conversation has no saved identity yet, first send refuses with `finish or clear the draft in the current chat before starting another`; Escape restores that draft. Sending the first message opens the new conversation on a
+connection of its own, over every door, so the chat you came from is still running and
+still on the tab row. Opening and cancelling the page never touches it either.
 
 **On a window too small for the page** — under 40 columns or 12 rows — the box stays at the
 foot of the frame where it always is and one row reads `new chat · esc keeps the chat you
@@ -296,8 +345,11 @@ Internal waiting, a tool checking something, a dependency, a provider being retr
 those are work.
 
 **Nothing is a mark of its own.** An idle conversation gets no dot and no badge, and a
-conversation this window only remembers — one closed, or one an engine-backed connection
-ended when you switched — claims nothing at all rather than guessing that it is still live.
+conversation this window only remembers rather than holds claims nothing at all rather
+than guessing that it is still live. A conversation you left with `keep running` is held
+rather than merely remembered: its tab is off the row, but it is still on the switcher and
+on Home with `working` or `needs you` against it, and taking it back puts its tab up with
+everything it wrote while it was out of sight.
 The marks change when something actually happens; there is no clock behind them and nothing
 on the strip animates.
 

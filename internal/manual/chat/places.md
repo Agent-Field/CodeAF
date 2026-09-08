@@ -691,8 +691,8 @@ at all: a machine name is worth a word only when there is more than one machine 
 
 `space` `space` over `--host` opens the home of the machine your session runs on: its
 projects, its conversations, and what each of those ran. `enter` on a row opens that
-conversation — the engine swaps to it and this window keeps drawing, the same door
-`aforge resume` uses locally.
+conversation beside the one you are in — the engine gives it a connection of its own and
+the chat you came from keeps running, the same door `aforge resume` uses locally.
 
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects

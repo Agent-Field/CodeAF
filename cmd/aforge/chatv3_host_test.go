@@ -255,7 +255,7 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	// recovered nil dereferences per run that the guard swallowed
 	// (chatv3_host_duty_test.go pins the seam that now refuses them).
 	client := hostedClient(t)
-	options := hostOptions(client, nil, "devbox", welcome, false)
+	options := hostOptions(onePipeFleet("devbox", client), welcome, false)
 	if options.Build != welcome.Build {
 		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
 	}
@@ -465,7 +465,7 @@ func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
 		t.Fatal("a seam that is not filled is a seam nobody can wire")
 	}
 
-	options := hostOptions(client, nil, "devbox", remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	options := hostOptions(onePipeFleet("devbox", client), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if options.Link.Note == nil || options.Link.Ping == nil || options.Link.Notice == nil || options.Link.Held == nil {
 		t.Fatalf("the surface was handed %+v — a seam left nil is a fact nobody is told", options.Link)
 	}

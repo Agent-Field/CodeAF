@@ -2056,6 +2056,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which commands need no api key", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
 		{"why does aforge show --help print a file error", "running-from-the-terminal"},
+
+		// THE WAVE THAT GAVE EVERY TAB ITS OWN CONNECTION. Until it landed, a
+		// second conversation on an engine-backed door ENDED the first one, and
+		// the corpus said so on four pages. The words below are the ones somebody
+		// brings to the new behaviour — the worry before they try it, and the
+		// card they are looking at with their finger over ctrl+w.
+		{"can I run two chats at the same time", "screen"},
+		{"does opening another chat stop the one I am in", "screen"},
+		{"will switching tabs cancel my reply", "screen"},
+		{"what happens to a running chat when I close its tab", "screen"},
+		{"what does keep running do", "screen"},
+		{"what is the difference between keep running and stop work", "screen"},
+		{"where did my chat go after I closed its tab", "screen"},
+		{"how do I stop just this chat without touching the others", "screen"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

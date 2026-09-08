@@ -597,6 +597,32 @@ type Hello struct {
 	// for a conversation, so it is the one a join is answered on.
 	Join bool `json:"join,omitempty"`
 
+	// New says this hello MINTS A CONVERSATION OF ITS OWN and will not be given
+	// one that is already open. It is the exact opposite of [Join], and the two
+	// are separate flags for the same reason Join is separate from an ordinary
+	// hello: "open or create" is the wrong verb for both intentions.
+	//
+	// IT IS WHAT MAKES A SECOND TAB A SECOND CONVERSATION. An ordinary hello
+	// naming no session means "this workspace's latest-or-new", so two surfaces
+	// that both say nothing are asking for the SAME conversation — which is the
+	// whole of "sit down somewhere else and be in it" and exactly wrong for a
+	// window opening another chat beside the one it already has. Without this
+	// flag the only way to mint one was [MethodSessionNew], which SWAPS the
+	// conversation on the connection that asked and ends the one it replaced
+	// (internal/remote's Session.swap): one connection, one conversation, and the
+	// sentence a person read on screen.
+	//
+	// THE ENGINE CHOOSES THE FILE. This hello carries no session, because the
+	// transcript a new conversation lands on is a question about the engine's own
+	// disk; the welcome names what it opened, and a host keys the conversation by
+	// that answer so a later window can name it and join.
+	//
+	// A REDIAL NEVER SAYS IT TWICE. [Client.helloNow] clears it once a welcome is
+	// in hand, alongside the session and [Back] it already rewrites — a link that
+	// dropped is coming back to the conversation it minted, not asking for
+	// another one.
+	New bool `json:"new,omitempty"`
+
 	// Watch says this surface is HERE TO READ and must never be given the
 	// keyboard — not on arrival, not when the driver leaves, not ever.
 	//

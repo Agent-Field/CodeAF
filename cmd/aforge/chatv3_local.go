@@ -133,7 +133,8 @@ func openChatV3Local(launch localLaunch) error {
 		// the fallback so a stale host's own sentence is still read.
 		return &hostUnreachable{reason: err.Error()}
 	}
-	defer func() { _ = client.Close() }()
+	closeClient := func() { _ = client.Close() }
+	defer func() { closeClient() }()
 
 	agent := client.Agent()
 	welcome := client.Welcome()
@@ -150,7 +151,35 @@ func openChatV3Local(launch localLaunch) error {
 	if launch.once != "" {
 		return runHostOnce(agent, launch.once)
 	}
-	options := hostOptions(client, agent, "", welcome, launch.pick)
+	// ANOTHER CONVERSATION IS ANOTHER CONNECTION TO THE SAME HOST, on the same
+	// socket, and the host has always held a map of them rather than one
+	// (internal/enginehost). A conversation of this window's own says so in the
+	// hello ([remote.Hello.New]); one that names a transcript the host is already
+	// running is attached to rather than reopened.
+	//
+	// THE LAUNCH SHAPE IS NOT REPEATED. --yolo and its neighbours are the posture
+	// this terminal asked for when it opened its FIRST conversation; a second one
+	// joins whatever the host is running under, exactly as a second terminal
+	// would, and [hostShapeTaken] is the refusal that already covers the
+	// disagreement.
+	fleet := newEngineFleet("", client, nil, func(ask engineAsk) (*engineConn, error) {
+		beside := &localLink{workspace: ask.workspace}
+		next, err := remote.Roam("", remote.Hello{
+			Workspace: ask.workspace,
+			Session:   ask.session,
+			New:       ask.mint,
+			Model:     launch.model,
+			Level:     launch.level,
+		}, remote.Roaming{Dial: beside.dial})
+		if err != nil {
+			return nil, err
+		}
+		return &engineConn{client: next}, nil
+	})
+	// The fleet owns every connection now, the boot one included, so the door's
+	// own defer hands the job over rather than closing the client twice.
+	closeClient = fleet.closeAll
+	options := hostOptions(fleet, welcome, launch.pick)
 	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
 	// here rather than inside [hostOptions] because it is a second DIAL of this
 	// road and not a use of this client's connection, and this is the door that
