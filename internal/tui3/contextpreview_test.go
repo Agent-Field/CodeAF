@@ -515,6 +515,10 @@ func TestAFileRewrittenUnderTheReadIsShownAndThenReadAgain(t *testing.T) {
 	if again == nil {
 		t.Fatalf("the rewritten file was served from the cache: %q", held.Lines)
 	}
+	fresh, ok := pump.took(again().(previewLoadedMsg))
+	if !ok || len(fresh.Lines) != 1 || fresh.Lines[0] != "after, and rather longer than before" {
+		t.Fatalf("the identity check reused stale content: %+v", fresh)
+	}
 }
 
 func TestAnAnswerAboutAnotherFileEntirelyIsDropped(t *testing.T) {
@@ -557,8 +561,15 @@ func TestTheSecondLookAtAFileCostsNoRead(t *testing.T) {
 		t.Fatal("the answer to the current question was refused")
 	}
 	held, again := pump.show(previewRequest{Path: path})
-	if again != nil {
-		t.Fatal("a held preview was read from the disk a second time")
+	if again == nil || !held.empty() {
+		t.Fatal("a cache hit bypassed its asynchronous identity check")
+	}
+	held, ok := pump.took(again().(previewLoadedMsg))
+	if !ok {
+		t.Fatal("the cache identity check was refused")
+	}
+	if &held.Lines[0] != &msg.preview.Lines[0] {
+		t.Fatal("the cached content was read again")
 	}
 	if held.Key != msg.preview.Key {
 		t.Fatalf("held = %+v, want %+v", held.Key, msg.preview.Key)
@@ -612,5 +623,52 @@ func TestNoMoreThanTheStatedNumberOfPreviewsAreHeld(t *testing.T) {
 	}
 	if _, held := cache.get(previewKey{Path: "/tmp/f0", Bytes: 1, Mod: 2}, ""); held {
 		t.Fatal("the oldest preview was not given up")
+	}
+}
+
+// Paths are identities, including spaces a person deliberately put at either end.
+func TestPreviewKeepsAnAbsoluteFilenameWithTrailingSpaces(t *testing.T) {
+	path := writeFixture(t, t.TempDir(), "notes.txt ", "the chosen file\n")
+	var pump previewPump
+	_, cmd := pump.show(previewRequest{Path: path})
+	pv, ok := pump.took(cmd().(previewLoadedMsg))
+	if !ok || pv.Key.Path != path || len(pv.Lines) != 1 || pv.Lines[0] != "the chosen file" {
+		t.Fatalf("preview changed the chosen identity: %+v", pv)
+	}
+}
+
+// Scheduling cannot consume even metadata before the command runs. Removing the
+// file after scheduling must therefore produce a refusal, including on a cache hit.
+func TestPreviewCacheChecksExistenceOnlyWhenItsCommandRuns(t *testing.T) {
+	path := writeFixture(t, t.TempDir(), "notes.txt", "hello\n")
+	var pump previewPump
+	_, first := pump.show(previewRequest{Path: path})
+	pump.took(first().(previewLoadedMsg))
+	immediate, next := pump.show(previewRequest{Path: path})
+	if !immediate.empty() || next == nil {
+		t.Fatal("cache lookup performed IO on the UI loop")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	pv, ok := pump.took(next().(previewLoadedMsg))
+	if !ok || pv.Note != previewMissingWord {
+		t.Fatalf("removed file reused cached contents: %+v", pv)
+	}
+}
+
+func TestPreviewCancelledCacheCheckDoesNotPublish(t *testing.T) {
+	path := writeFixture(t, t.TempDir(), "notes.txt", "hello\n")
+	var pump previewPump
+	_, first := pump.show(previewRequest{Path: path})
+	pump.took(first().(previewLoadedMsg))
+	_, next := pump.show(previewRequest{Path: path})
+	pump.close()
+	msg := next().(previewLoadedMsg)
+	if !msg.preview.empty() {
+		t.Fatal("cancelled cache check returned content")
+	}
+	if _, ok := pump.took(msg); ok {
+		t.Fatal("closed pane accepted a cache check")
 	}
 }

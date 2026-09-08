@@ -320,8 +320,15 @@ var previewGate = make(chan struct{}, previewWorkers)
 // any surface at all. It never returns an error — a file that could not be read
 // is a preview that says why.
 func loadPreview(ctx context.Context, req previewRequest) filePreview {
-	path := strings.TrimSpace(req.Path)
-	if path == "" {
+	return loadPreviewCached(ctx, req, nil)
+}
+
+// loadPreviewCached checks identity under the same worker bound as content reads.
+// Its candidates are an immutable snapshot: the UI may replace its cache while
+// this command waits on a slow filesystem without racing the reader.
+func loadPreviewCached(ctx context.Context, req previewRequest, candidates []filePreview) filePreview {
+	path := req.Path
+	if strings.TrimSpace(path) == "" {
 		return filePreview{}
 	}
 	path = filepath.Clean(path)
@@ -352,6 +359,14 @@ func loadPreview(ctx context.Context, req previewRequest) filePreview {
 		}
 	}
 	key := previewKey{Path: path, Bytes: info.Size(), Mod: info.ModTime().UnixNano()}
+	if ctx.Err() != nil {
+		return filePreview{}
+	}
+	for _, held := range candidates {
+		if held.Key == key {
+			return held
+		}
+	}
 	if info.IsDir() {
 		return loadFolderPreview(ctx, key, req.Hidden)
 	}
@@ -904,22 +919,17 @@ type previewPump struct {
 	flags string
 }
 
-// show is what a cursor landing on a row asks for: the preview if it is already
-// held, and otherwise the command that will read it.
-//
-// The generation goes up on EVERY call, and the previous read is cancelled
-// before this one is started — including on a cache hit, because a hit means
-// the pane no longer wants whatever was in flight.
-//
-// A cache hit answers with `held, nil`; a miss answers with the zero preview and
-// a command. The pane draws whatever it has and gets the rest when it arrives.
+// show schedules an identity check for the selected path without touching disk.
+// Even a cache hit is confirmed off the UI loop: stat can wait indefinitely on
+// a disconnected mount. The caller keeps the pane empty until took accepts the
+// answer, so an old cache entry is never painted as a current reading.
 func (p *previewPump) show(req previewRequest) (filePreview, tea.Cmd) {
 	p.stop()
 	p.gen++
 	p.flags = req.flags()
 	req.Gen = p.gen
-	raw := strings.TrimSpace(req.Path)
-	if raw == "" {
+	raw := req.Path
+	if strings.TrimSpace(raw) == "" {
 		p.key = previewKey{}
 		return filePreview{}, nil
 	}
@@ -931,19 +941,25 @@ func (p *previewPump) show(req previewRequest) (filePreview, tea.Cmd) {
 		p.key = previewKey{Path: path}
 		return filePreview{Key: p.key, Kind: previewRefused, Note: previewUnreadWord}, nil
 	}
-	// The identity is taken here, on the loop, because a stat is microseconds
-	// and it is what lets a hit skip the goroutine entirely. A stat that fails
-	// is not answered here: the reader says why, in its own words.
 	p.key = previewKey{Path: path}
-	if info, err := os.Stat(path); err == nil {
-		p.key = previewKey{Path: path, Bytes: info.Size(), Mod: info.ModTime().UnixNano()}
-		if held, ok := p.cache.get(p.key, p.flags); ok {
-			return held, nil
+	req.Path = path
+	// Copy only the matching entries, never the mutable cache map itself. The
+	// preview values and their content slices are immutable after publication.
+	var candidates []filePreview
+	for cacheKey, held := range p.cache.by {
+		if held.Key.Path == path && cacheKey == previewCacheKey(held.Key, p.flags) {
+			candidates = append(candidates, held)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
-	return filePreview{}, previewCmd(ctx, req)
+	return filePreview{}, func() tea.Msg {
+		return previewLoadedMsg{
+			preview: loadPreviewCached(ctx, req, candidates),
+			gen:     req.Gen,
+			flags:   req.flags(),
+		}
+	}
 }
 
 // took decides whether an answer may be drawn, and holds it if so.
@@ -955,15 +971,9 @@ func (p *previewPump) show(req previewRequest) (filePreview, tea.Cmd) {
 // answer is dropped whole; it is not wrong, it is about a moment that has
 // passed.
 //
-// AND ONE WAY AN ANSWER IS TAKEN THAT LOOKS LIKE A FOURTH REFUSAL. A file that
-// was rewritten between this pump's stat and the reader's own comes back with an
-// identity the pump was not expecting. It is still a fresh read of the file the
-// person is looking at, so it is drawn — and its OWN identity is adopted, which
-// is what makes the next look miss the cache and read again. Refusing it instead
-// would leave the pane blank until the cursor moved, which is a worse answer
-// than bytes that were on the disk a moment ago. The cache cannot go stale
-// either way: it is keyed by the identity the answer carries, never by the one
-// that was asked for.
+// The reader supplies the identity it actually observed. The UI never stats
+// the path to second-guess that answer: doing so would block on slow mounts. A
+// later look validates the identity again before reusing these contents.
 func (p *previewPump) took(msg previewLoadedMsg) (filePreview, bool) {
 	if msg.gen != p.gen || msg.flags != p.flags || msg.preview.empty() {
 		return filePreview{}, false

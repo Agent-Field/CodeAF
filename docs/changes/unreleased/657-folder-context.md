@@ -4,6 +4,7 @@ title: attached folders reach the next model request and can be removed
 pr: 657
 surface: [chat, engine, remote]
 invalidates:
+  - "Preview cache hits previously called stat on the UI loop. Identity checks now run inside the bounded asynchronous reader, retain cached content only after validation, and preserve trailing spaces in absolute filenames. Preview helpers are still awaiting browser integration."
   - "Selecting two subfolders in one repository used to replace the first attachment, and removal targeted the root. Selected scopes now stay independent in context, persistence and removal while sharing one working ground."
   - "Attached repository subfolders previously loaded only root instructions. Applicable AGENTS.md and CLAUDE.md files now load along the selected ancestry, with explicit directory scopes and the same total budget."
   - "Choosing a folder used to update the conversation record without telling the next model request. Explicitly attached folders now appear in its instructions with scoped project rules, and removal takes them out again."
