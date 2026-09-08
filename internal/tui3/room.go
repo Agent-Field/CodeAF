@@ -64,9 +64,10 @@ import (
 // turn's machinery collapses to "▸ worked · 10 tool calls · ctrl+e"; in here
 // the same chip is spent per SETTLED PHASE instead of per turn, because a
 // node's life is one long turn and folding by turn swallowed the whole page the
-// instant it stopped running. The live frontier never folds and keeps a whole
-// screenful of calls. workfold.go states the law where the chips are derived,
-// with the reversal it went through boxed beside it.
+// instant it stopped running. Current work uses the conversation's compact
+// step display; opening it restores its calls and reasoning. Expanded calls
+// retain the room's screenful budget. workfold.go owns settled phase folding,
+// while livesteps.go owns the running work's disclosure.
 //
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
@@ -369,13 +370,16 @@ type farRoomTickMsg struct{ gen int }
 // through it.
 func (r *taskRoom) deck() deck {
 	running := 0
-	if r.lane != nil && !r.done {
+	// Hosted and guest pages read bounded journals without a local event lane.
+	// The task's reported state owns activity; a failed or lost reader cannot
+	// claim that its retained transcript is still making progress.
+	if !r.done && !r.readFailed && (r.guest == nil || !r.guest.lost) {
 		running = r.turn
 	}
 	// THE LENS IS THE WHOLE OF WHAT MAKES THIS PAGE A ROOM (lens.go): settled
 	// phases fold to chips, the numbers gather in the header rather than under
 	// each turn, the session's clock does not run over a node's turns, and a
-	// folded cluster keeps a screenful of calls instead of three.
+	// expanded cluster keeps a screenful of calls instead of three.
 	return deck{
 		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, capOpen: r.capOpen,
 		lens: r.readingLens(), runningTurn: running,

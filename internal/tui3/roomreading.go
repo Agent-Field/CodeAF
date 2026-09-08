@@ -24,6 +24,7 @@ type roomReadingEntry struct {
 
 type roomReadingFlags struct {
 	open, full, unfolded, work, caption, hasCaption bool
+	live                                            bool
 }
 
 type roomReading struct {
@@ -81,6 +82,9 @@ func (a *app) rememberRoomReading() {
 	keys := readingEntries(r.entries)
 	d := r.deck()
 	folds := a.deckFolds(d)
+	stampHierarchy(d.entries, folds)
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	lives := liveWorkRuns(d)
 	saved := roomReading{workStyle: d.lens.foldPast, follow: r.stick, flags: map[roomReadingEntry]roomReadingFlags{}}
 	for i := len(r.entries) - 1; i >= 0; i-- {
 		e := r.entries[i]
@@ -89,7 +93,12 @@ func (a *app) rememberRoomReading() {
 		// Persist the start block so a shifted journal can derive its new key.
 		fold, startsFold := folds[i]
 		work := startsFold && r.workOpen[fold.key]
-		flags := roomReadingFlags{e.open, e.full, r.unfolded[e.turn], work, caption, hasCaption}
+		live, startsLive := lives[i]
+		flags := roomReadingFlags{
+			open: e.open, full: e.full, unfolded: r.unfolded[e.turn],
+			work: work, caption: caption, hasCaption: hasCaption,
+			live: startsLive && r.workOpen[live.key],
+		}
 		if flags == (roomReadingFlags{}) {
 			continue
 		}
@@ -153,6 +162,9 @@ func (a *app) restoreRoomReading() *roomReading {
 	}
 	d := r.deck()
 	folds := a.deckFolds(d)
+	stampHierarchy(d.entries, folds)
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	lives := liveWorkRuns(d)
 	for i, k := range readingEntries(r.entries) {
 		flags, found := saved.flags[k]
 		if !found {
@@ -167,6 +179,14 @@ func (a *app) restoreRoomReading() *roomReading {
 		if flags.work && saved.workStyle == d.lens.foldPast {
 			if fold, startsFold := folds[i]; startsFold {
 				r.workOpen[fold.key] = true
+			}
+		}
+		// The live door shares no phase key. Restore it only while the same
+		// source block still starts live work; settled history must not open
+		// whatever new step now happens to use the reserved live key.
+		if flags.live && saved.workStyle == d.lens.foldPast {
+			if live, startsLive := lives[i]; startsLive {
+				r.workOpen[live.key] = true
 			}
 		}
 		if flags.hasCaption {

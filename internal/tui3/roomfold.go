@@ -2,7 +2,7 @@ package tui3
 
 // readingLens keeps the room's receipts, clock and tool tail while using the
 // conversation's completed-turn fold once work ends. Running rooms still fold
-// settled phases and keep their live frontier visible. The shared turn fold
+// settled phases and compact their live frontier separately. The shared turn fold
 // preserves person corrections and replies, and leaves unfinished work visible.
 func (r *taskRoom) readingLens() lens {
 	l := overseerLens

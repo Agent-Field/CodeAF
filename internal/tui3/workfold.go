@@ -95,12 +95,10 @@ func (a *app) deckFolds(d deck) map[int]workfold {
 // its calls. The latest paragraph stays visible; if another step follows it,
 // that paragraph becomes working narration and folds with that next step.
 //
-// THE LIVE FRONTIER NEVER FOLDS. Everything after the last settled paragraph is
-// what the node is doing NOW, and the person watching now is the one reader for
-// whom the machinery is the content — so it is left whole, at the room's own
-// whole-screenful tool tail (lens.go's [lens.toolTail]). It falls out of the
-// walk rather than being tested for: a run with no settled paragraph after it
-// never closes, so no chip is ever minted over it.
+// THE LIVE FRONTIER NEVER BECOMES A SETTLED PHASE. A run with no settled
+// paragraph after it never closes, so this walk mints no chip over it. The
+// independent live policy can compact that unowned frontier (livesteps.go);
+// opening it retains the room's whole-screenful tool tail.
 //
 // WHAT NEVER FOLDS, AND WHY EACH ONE. A run carrying any of these keeps every
 // row it has, exactly as the conversation's `blocked` runs do:
@@ -509,9 +507,9 @@ func (a *app) toggleLatestWorkfold() bool {
 	// and read as a dead key, so the raw-call override goes with it — and the same
 	// press from the compact state opens the outline, as it always did.
 	if key, ok := a.liveWorkOf(d); ok {
-		showing := d.workOpen[key] || d.unfolded[key]
+		showing := d.workOpen[key] || d.unfolded[d.runningTurn]
 		if showing && d.unfolded != nil {
-			delete(d.unfolded, key)
+			delete(d.unfolded, d.runningTurn)
 		}
 		a.setWorkOpen(d, key, !showing)
 		return true
@@ -533,7 +531,12 @@ func (a *app) toggleLatestWorkfold() bool {
 // keyboard's own gesture resolves to.
 func (a *app) toggleWorkfold(key int) {
 	d := a.bodyDeck()
-	a.setWorkOpen(d, key, !d.workOpen[key])
+	showing := d.workOpen[key]
+	if live, ok := a.liveWorkOf(d); ok && key == live {
+		showing = showing || d.unfolded[d.runningTurn]
+		delete(d.unfolded, d.runningTurn)
+	}
+	a.setWorkOpen(d, key, !showing)
 }
 
 // workFoldOpen reports whether one chip is SHOWING ITS WORK: because the reader

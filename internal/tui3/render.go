@@ -377,8 +377,8 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	}
 	// THE RUNNING TURN'S OWN WINDOWS (livesteps.go). They are derived here, beside
 	// the folds and off the same captions, because they are the same object one
-	// tense earlier: the machinery of one turn, standing behind one door keyed by
-	// that turn. A page that is not the conversation derives none.
+	// tense earlier. The lens chooses live compactness independently of its
+	// settled fold policy, and each page owns its disclosure key.
 	lives := deriveLiveWork(d)
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
@@ -440,10 +440,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// chip's reason: the block stands exactly where the work stands, so it takes
 		// the blank the work's first block would have taken.
 		if w, ok := lives[i]; ok {
-			if !a.workFoldOpen(d, w.turn) {
+			if !a.workFoldOpen(d, w.key) {
 				// The block owns its activity door before the first caption,
 				// and spends the ordinary gap only when it actually draws.
-				rows := a.liveStepBlock(w, width, d.entries)
+				rows := a.liveStepBlock(w, width, d)
 				if len(rows) > 0 {
 					if wasUser || wasBlock {
 						gap()

@@ -44,8 +44,8 @@ import (
 // a frame the running turn was already asking for (app.go's frame clock).
 //
 // ONE KEY, ONE CLICK, AND THE SAME KEY BACK. The block is the running turn's
-// chip before the turn has finished, so it is opened by the gesture that opens
-// the finished one and it is keyed the same way — by the turn ([workfold.key]).
+// chip before the turn has finished, opened by the same gestures. Conversation
+// windows use the turn key; rooms reserve zero beside positive phase keys.
 // A click anywhere on it, or `ctrl+e`, opens the outline: every step as a caption
 // row with its own door onto its own calls ([app.captionCallsOpen] keeps the
 // running step's calls open and the past ones shut, exactly as it does under a
@@ -64,11 +64,9 @@ import (
 // notice this surface wrote, a seam, an answer. A window that swallowed one of
 // those would be hiding the one row on the frame that needed a person.
 //
-// THE CONVERSATION AND NOWHERE ELSE. A task's page is the page somebody opened
-// BECAUSE they want to watch the machinery (lens.go's [overseerLens]), and a
-// node's transcript inside a run's page is two gestures deeper into the same
-// request. Both keep every row they have; the gate is the lens's own fold style
-// and not a page name.
+// THE LENS OPTS INTO LIVE COMPACTNESS separately from its past folds. A task
+// room keeps its settled phase chips and compacts only the unowned live edge.
+// A node's transcript inside a run's page stays detailed.
 
 // liveStepRows is THE COMPACT READING BUDGET, and it is ROWS rather than steps.
 //
@@ -96,11 +94,9 @@ const liveWorkWord = "working"
 // so the run ends there and a new one opens under it — which leaves their
 // sentence standing between two compact blocks, where they said it.
 type liveWork struct {
-	// turn is THE KEY, and it is the turn for [workfold.key]'s reason: out in
-	// the conversation one turn holds one chip, and this block is that chip
-	// before the turn ended. It is deliberately the key the finished chip will
-	// take, so that opening the work and watching it settle is one control and
-	// not two.
+	// key is the disclosure control; turn remains the transcript identity.
+	key int
+	// turn owns tool windows and Ctrl+O; room phase disclosure keys do not.
 	turn int
 	// start and end are the entries this block stands in place of.
 	start, end int
@@ -111,8 +107,7 @@ type liveWork struct {
 	pending bool
 }
 
-// deriveLiveWork is the windows one page draws, and it answers nothing at all on
-// a page that is not the conversation.
+// deriveLiveWork is the windows drawn by a page whose lens opts in.
 //
 // It reads [deck.captions], which [app.deckRows] has already derived over the
 // same list — a second derivation would be a second answer to "what are the
@@ -136,11 +131,9 @@ func deriveLiveWork(d deck) map[int]liveWork {
 // liveWorkRuns is the runs themselves, without the drawing gate above: whether
 // this page HAS running work that a compact window covers.
 func liveWorkRuns(d deck) map[int]liveWork {
-	// ZERO MEANS NO RUNNING TURN (workfold.go says why replay can number a real
-	// turn zero), and the fold style is the whole of the page test: the
-	// conversation folds turns, a room folds phases, a node's transcript folds
-	// nothing (lens.go).
-	if d.runningTurn == 0 || d.lens.foldPast != foldTurns {
+	// Zero means no running turn. Live compactness is independent of whether
+	// the same page folds its settled work by turn, phase, or not at all.
+	if d.runningTurn == 0 || !d.lens.compactLive {
 		return nil
 	}
 	es := d.entries
@@ -167,7 +160,7 @@ func liveWorkRuns(d deck) map[int]liveWork {
 		for step < len(d.captions) && d.captions[step].start < hi {
 			step++
 		}
-		w := liveWork{turn: d.runningTurn, start: lo, end: hi, steps: d.captions[from:step], pending: hi == len(es)}
+		w := liveWork{key: liveWorkKey(d), turn: d.runningTurn, start: lo, end: hi, steps: d.captions[from:step], pending: hi == len(es)}
 		for _, c := range w.steps {
 			if c.ended.IsZero() {
 				w.pending = false
@@ -196,6 +189,16 @@ func liveWorkKeeps(d deck) []bool {
 	keeps := make([]bool, len(es))
 	for i := range es {
 		keeps[i] = liveWorkKeepsRow(&es[i])
+	}
+	// Past folds own their entries even when expanded. Exclude their complete
+	// spans before segmenting live work, so neither renderer can swallow or
+	// paint the other's caption, calls or reasoning.
+	if fold, ok := folders[d.lens.foldPast]; ok {
+		for _, f := range fold(d) {
+			for i := f.start; i < f.answer && i < len(es); i++ {
+				keeps[i] = true
+			}
+		}
 	}
 	for _, c := range d.captions {
 		held := false
@@ -257,6 +260,15 @@ func liveWorkKeepsRow(e *entry) bool {
 	return true
 }
 
+// Phase keys are positive ordinals, so zero is reserved for their live
+// disclosure. Conversation folds keep using the real turn as their key.
+func liveWorkKey(d deck) int {
+	if d.lens.foldPast == foldPhases {
+		return 0
+	}
+	return d.runningTurn
+}
+
 // liveWorkOf is THE ONE WINDOW a gesture acts on: whether this page has a
 // running turn with a compact block on it at all, and the key that opens it.
 //
@@ -270,7 +282,7 @@ func liveWorkKeepsRow(e *entry) bool {
 // disclosure with no way back — the state a reader is most likely to want out of
 // is the one with the most on screen.
 func (a *app) liveWorkOf(d deck) (int, bool) {
-	if d.runningTurn == 0 || d.lens.foldPast != foldTurns {
+	if d.runningTurn == 0 || !d.lens.compactLive {
 		return 0, false
 	}
 	folds := a.deckFolds(d)
@@ -279,7 +291,7 @@ func (a *app) liveWorkOf(d deck) (int, bool) {
 	if len(liveWorkRuns(d)) == 0 {
 		return 0, false
 	}
-	return d.runningTurn, true
+	return liveWorkKey(d), true
 }
 
 // collapseLiveWork is COMPLETION ALWAYS COLLAPSES THE WORK, and it is called
@@ -308,7 +320,7 @@ func (a *app) collapseLiveWork(turn int) {
 // a finished caption too tall to fit beside it remains behind the disclosure. A step title is five to ten words that
 // somebody has to be able to read; an ellipsis in the middle of one would be the
 // surface saving a row at the cost of the only thing the row was for.
-func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
+func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	room := width - workIndentCols(width) - actionGutter
 	if room < 1 {
 		room = 1
@@ -319,7 +331,7 @@ func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 		text := "Work"
 		if w.pending {
 			text = "Working"
-			if a.ellipsisShowing() {
+			if d.lens.clock && a.ellipsisShowing() {
 				text = ansi.Strip(a.activityLine(text))
 			}
 		}
@@ -335,7 +347,7 @@ func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 					painted = a.shimmer(line[:n]) + a.pal.dim(line[n:])
 				}
 			}
-			out = append(out, row{text: a.pal.dim(lead) + painted, entry: -1, hit: hitWorkFold, turn: w.turn, activity: w.pending})
+			out = append(out, row{text: a.pal.dim(lead) + painted, entry: -1, hit: hitWorkFold, turn: w.key, activity: w.pending})
 		}
 		return out
 	}
@@ -353,7 +365,7 @@ func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 		// The compact state inherits the footer's useful wait information only
 		// while the footer would own it. During streaming reasoning the status
 		// line keeps the phase instead, so no frame says the same fact twice.
-		if a.ellipsisShowing() {
+		if d.lens.clock && a.ellipsisShowing() {
 			text = ansi.Strip(a.activityLine(text))
 		}
 		lines := wrap(text, room)
@@ -368,7 +380,7 @@ func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 		if len(picked) > 0 && used+len(lines) > liveStepRows {
 			break
 		}
-		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero(), category: stepCategory(w.steps[at], es)})
+		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero(), category: stepCategory(w.steps[at], d.entries)})
 		used += len(lines)
 		if used >= liveStepRows {
 			break
@@ -407,7 +419,7 @@ func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 			} else {
 				lead = a.pal.fade(lead, stop)
 			}
-			out = append(out, row{text: lead + painted, entry: -1, hit: hitWorkFold, turn: w.turn, activity: s.live && at == 0})
+			out = append(out, row{text: lead + painted, entry: -1, hit: hitWorkFold, turn: w.key, activity: s.live && at == 0})
 		}
 	}
 	return out
@@ -424,6 +436,6 @@ func (a *app) liveWorkDoor(w liveWork) row {
 	mark := a.linearMark("▾ ", "v ")
 	return row{
 		text:  a.pal.dim(mark + liveWorkWord + " · ctrl+e"),
-		entry: -1, hit: hitWorkFold, turn: w.turn,
+		entry: -1, hit: hitWorkFold, turn: w.key,
 	}
 }

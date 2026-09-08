@@ -288,9 +288,8 @@ func TestAFailedCallAtTheTailIsStillOnALandedPage(t *testing.T) {
 	}
 }
 
-// A ROOM THAT IS STILL WORKING READS EXACTLY AS IT DID. The reading posture is
-// what a LANDING buys; a page whose node is running is unchanged, phase chips
-// and live frontier and all.
+// A running room retains phase folding independently of compact live work.
+// The live call remains available through its own disclosure.
 func TestARunningRoomStillReadsByPhaseAndKeepsItsFrontier(t *testing.T) {
 	a := openRoomOn(t, landedJournal(t))
 	if got := a.room.readingLens().foldPast; got != foldPhases {
@@ -308,10 +307,18 @@ func TestARunningRoomStillReadsByPhaseAndKeepsItsFrontier(t *testing.T) {
 	if n := strings.Count(page, "▸ worked"); n != 2 {
 		t.Fatalf("want a chip per settled phase behind the frontier, got %d:\n%s", n, page)
 	}
+	if !strings.Contains(page, "Still working.") || strings.Contains(page, "bash") {
+		t.Fatalf("compact frontier lost prose or exposed the call:\n%s", page)
+	}
+	openRoomCompactWork(t, a)
+	page = readingPage(a)
 	for _, want := range []string{"Still working.", "bash"} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("the live frontier lost %q:\n%s", want, page)
+			t.Fatalf("opened frontier lost %q:\n%s", want, page)
 		}
+	}
+	if n := strings.Count(page, "▸ worked"); n != 2 {
+		t.Fatalf("opening live work changed settled phases:\n%s", page)
 	}
 }
 

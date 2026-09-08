@@ -1,6 +1,6 @@
 package tui3
 
-// ── THE ROOM FOLDS THE PAST AND KEEPS THE PRESENT WIDE ──────────────────────
+// ── THE ROOM FOLDS THE PAST AND COMPACTS THE PRESENT ──────────────────────
 //
 // These tests used to hold the opposite law shut — A ROOM FOLDS NOTHING — and
 // they were right about the defect they were written for and wrong about the
@@ -131,10 +131,9 @@ func TestTheFinalReportNeverFolds(t *testing.T) {
 	}
 }
 
-// A RUNNING ROOM FOLDS WHAT IS BEHIND THE FRONTIER AND LEAVES THE FRONTIER WIDE.
-// The person watching NOW is the one reader for whom the machinery is the
-// content, so everything after the last settled paragraph keeps every row.
-func TestARunningRoomFoldsThePastAndKeepsTheFrontierWide(t *testing.T) {
+// A running room keeps settled phases independent and the frontier compact.
+// Opening the current activity reveals its calls without opening the past.
+func TestARunningRoomFoldsThePastAndOffersCompactFrontier(t *testing.T) {
 	a, fake, _ := roomApp(t)
 	fake.journal = workedJournal(t)
 	a.workMode = config.WorkFold
@@ -154,10 +153,12 @@ func TestARunningRoomFoldsThePastAndKeepsTheFrontierWide(t *testing.T) {
 	if !strings.Contains(page, "Still working.") {
 		t.Fatalf("the room lost its live edge:\n%s", page)
 	}
-	// THE LIVE CALL IS ON THE PAGE. It arrived after the last settled paragraph,
-	// so no chip may cover it.
-	if !strings.Contains(page, "bash") {
-		t.Fatalf("the frontier's own call was folded away:\n%s", page)
+	if strings.Contains(page, "bash") {
+		t.Fatalf("live call escaped compact activity:\n%s", page)
+	}
+	openRoomCompactWork(t, a)
+	if page := roomText(a); !strings.Contains(page, "bash") {
+		t.Fatalf("opening the frontier lost its call:\n%s", page)
 	}
 }
 
