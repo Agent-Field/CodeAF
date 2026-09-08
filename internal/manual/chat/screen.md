@@ -1751,9 +1751,8 @@ happening before you have read which file it is happening to.
 ## The step marks never move and never say whether a step passed — no tick, no cross, still icons
 
 **The marks never move.** The newest step's *words* shimmer while its calls run;
-its mark holds still. Liveness is already said by that shimmer and by the
-activity line under the conversation, and a second moving thing in three rows
-would be two answers to the same question.
+its mark holds still. Between tool calls, a short `Working` line keeps that
+sign of activity in the compact block. There is only one animated line.
 
 **They never say how a step went.** There is no tick, no cross and no warning
 mark here. A step that failed is not folded into this block at all — it keeps its
