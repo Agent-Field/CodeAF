@@ -279,21 +279,40 @@ func (l *engineLink) swap(process *exec.Cmd, tail *tailWriter) (previous *exec.C
 
 // dialEngine starts the engine on the far machine, completes the handshake, and
 // leaves the connection able to redial itself.
-func dialEngine(dest, workspace string, launch hostLaunch) (*engineLink, error) {
+//
+// THE HELLO IS THE CALLER'S because this door is now dialled more than once per
+// window: the launch's own hello opens the conversation this terminal came for,
+// and one naming [remote.Hello.New] opens another beside it (chatv3_beside.go).
+// The workspace is still a separate argument because it is also an argument to
+// ssh — it goes on the remote command line so the engine starts in the right
+// place even if the handshake never happens.
+func dialEngine(dest, workspace string, hello remote.Hello) (*engineLink, error) {
 	link := &engineLink{dest: dest, workspace: workspace}
-	client, err := remote.Roam(dest, remote.Hello{
-		Workspace: workspace,
-		Session:   launch.session,
-		// --model and --reasoning ride the frame that BUILDS the session, so the
-		// engine opens on them rather than being switched afterwards.
-		Model: launch.model,
-		Level: launch.level,
-	}, remote.Roaming{Dial: link.spawn})
+	hello.Workspace = workspace
+	client, err := remote.Roam(dest, hello, remote.Roaming{Dial: link.spawn})
 	if err != nil {
 		return nil, link.diagnose(dest, err)
 	}
 	link.client = client
 	return link, nil
+}
+
+// launchHello is the first hello a terminal door says: the conversation the
+// person named, on the model and the reasoning level they asked for.
+//
+// --model AND --reasoning RIDE THE FRAME THAT BUILDS THE SESSION, so the engine
+// opens on them rather than being switched a millisecond afterwards — the
+// journal's first line then names the model the session was born on.
+func launchHello(session, model, level string) remote.Hello {
+	return remote.Hello{Session: session, Model: model, Level: level}
+}
+
+// besideHello is the hello for a conversation opened BESIDE the one a window
+// already has. It carries the launch's model and level for the same reason the
+// launch's own does — a conversation opened an hour later is the same launch —
+// and it carries the ask's own intention (chatv3_beside.go's [engineAsk]).
+func besideHello(ask engineAsk, model, level string) remote.Hello {
+	return remote.Hello{Session: ask.session, New: ask.mint, Model: model, Level: level}
 }
 
 // diagnose turns a failed handshake into the truest sentence available.
@@ -463,11 +482,10 @@ func openChatV3Host(launch hostLaunch) error {
 	if launch.pick && launch.once != "" {
 		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --host %s --once "text"`, dest)
 	}
-	link, err := dialEngine(dest, workspace, launch)
+	link, err := dialEngine(dest, workspace, launchHello(launch.session, launch.model, launch.level))
 	if err != nil {
 		return err
 	}
-	defer func() { _ = link.close() }()
 
 	client := link.client
 	agent := client.Agent()
@@ -475,9 +493,22 @@ func openChatV3Host(launch hostLaunch) error {
 	correctHostChoices(agent, launch, welcome)
 
 	if launch.once != "" {
+		defer func() { _ = link.close() }()
 		return runHostOnce(agent, launch.once)
 	}
-	options := hostOptions(client, agent, dest, welcome, launch.pick)
+	// ANOTHER CONVERSATION IS ANOTHER ssh, and it is the same one as far as the
+	// network is concerned: the transport args ask OpenSSH to multiplex
+	// (`ControlMaster=auto`, [sshTransportArgs]), so the second link rides the
+	// connection the first one opened rather than authenticating again.
+	fleet := newEngineFleet(dest, client, link.close, func(ask engineAsk) (*engineConn, error) {
+		beside, err := dialEngine(dest, ask.workspace, besideHello(ask, launch.model, launch.level))
+		if err != nil {
+			return nil, err
+		}
+		return &engineConn{client: beside.client, shut: beside.close}, nil
+	})
+	defer fleet.closeAll()
+	options := hostOptions(fleet, welcome, launch.pick)
 	// THE SAME WAY THE SURFACE IS RUN AT EVERY OTHER DOOR (chatv3_surface.go):
 	// the byte meter and the logger redirect are the terminal's business rather
 	// than this connection's, and a door does not state them for itself.
@@ -540,7 +571,13 @@ func correctHostChoices(agent *remote.Agent, launch hostLaunch, welcome remote.W
 // `Elsewhere` for the engine's machine — and that is a lane of its own with a
 // version bump in it. Until it lands, the honest claim is the one the manual
 // makes: reading another conversation's task works where the engine is local.
-func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcome remote.Welcome, pick bool) tui3.Options {
+// IT IS ASSEMBLED AROUND A FLEET AND NOT AROUND A CONNECTION, which is the one
+// thing that changed when this door learned to hold more than one conversation.
+// The boot connection is still where every reading about the MACHINE goes; what
+// the fleet adds is the pair of seams that open a conversation BESIDE this one,
+// each on a connection of its own (chatv3_beside.go).
+func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Options {
+	client, agent, dest := fleet.client(), fleet.agent(), fleet.dest
 	// THE PICKER'S LIST IS RESOLVED WITHOUT CREDENTIALS. The catalog is opened
 	// with whatever this machine happens to have — usually nothing, because the
 	// key lives on the engine's machine — and that is fine: a catalog with no key
@@ -610,46 +647,9 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		ArtifactsIndex: artifactsIndexPath(),
 		ProfileDir:     profileDir,
 		PickSession:    pick,
-		// AND THE SURFACE IS TOLD THAT THE TWO SEAMS BELOW SELECT IN PLACE. It is
-		// the contract [tui3.Options.SharedAgent] states and the fact the pair has
-		// always had: one connection has one open conversation, and this agent is a
-		// handle on whichever one that is. Without the flag the surface treated the
-		// handle it got back as a SECOND conversation — it put the same pointer in
-		// its keeper under the outgoing session's name, so the switcher listed the
-		// conversation just opened twice and one of those rows opened the wrong
-		// body, and its close-what-you-left landed on the session just opened.
-		SharedAgent: true,
 		// The conversations the ENGINE's disk holds, and the door back into one of
 		// them. Both go over the wire; neither reads a session file here.
 		RecentSessions: func() []tui3.Session { return hostSessions(client) },
-		Resume: func(file string) (tui3.Agent, error) {
-			if _, err := client.OpenSession(file); err != nil {
-				return nil, err
-			}
-			// THE SAME AGENT, and that is not a shortcut. This handle is a door
-			// onto whichever session the engine currently has open, and the engine
-			// has just swapped which one that is.
-			//
-			// SO THIS SEAM SELECTS AND NEVER ADDS, which is what SharedAgent above
-			// tells the surface. The engine ends the conversation being left as
-			// part of the swap — it interrupts and closes the previous agent
-			// (internal/remote's Session.swap) — so by the time this returns there
-			// is exactly one live conversation on this connection and the surface
-			// has a handle on it. Nothing here is left for the surface to close,
-			// and a close it made anyway would land on THIS session: the engine
-			// answers [remote.MethodClose] about whatever it currently has open.
-			return agent, nil
-		},
-		// /new, and the same handle for the same reason the resume above states:
-		// the engine mints the conversation, closes the one it replaced, and this
-		// agent now names the new one.
-		Fresh: func() (tui3.Agent, string, error) {
-			next, err := client.NewSession()
-			if err != nil {
-				return nil, "", err
-			}
-			return agent, next.SessionFile, nil
-		},
 		// ── THE PLACES, AS THE ENGINE MACHINE HOLDS THEM ────────────────────
 		//
 		// The seven places are a listing of one machine's disk, and until this
@@ -669,19 +669,9 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// (internal/tui3's [app.readTaskTail]), so the wire's own deadline is the
 		// only clock it needs.
 		TaskRecord: client.TaskRecord,
-		TaskRoom:   client.Agent().TaskRoom,
-		TaskIndex: func() ([]session.TaskIndexEntry, bool) {
-			far, known := world.world()
-			if !known {
-				return nil, false
-			}
-			for _, row := range far.Sessions() {
-				if filepath.Clean(row.Transcript) == filepath.Clean(welcome.SessionFile) {
-					return append([]session.TaskIndexEntry(nil), row.Tasks.Rows...), true
-				}
-			}
-			return nil, true
-		},
+		TaskRoom:   agent.TaskRoom,
+		// TaskIndex is filled below, from the same shared walk, once this
+		// conversation's transcript is the only thing left to key it by.
 		Ledger:  ledger.read,
 		Memory:  memory,
 		Search:  client,
@@ -729,16 +719,13 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// Each lands somewhere different on the screen and internal/tui3's
 		// hostlink.go says where; what this door owes is the answer, and the
 		// client answers all four.
-		Link: tui3.LinkSeam{
-			Note:           seams.Link,
-			Ping:           seams.Ping,
-			Notice:         seams.Notice,
-			Held:           hostHeld(seams),
-			Driving:        hostDriving(seams),
-			DrivingChanged: seams.DrivingChanged,
-			Take:           seams.Take,
-			Follow:         hostFollow(seams),
-		},
+		//
+		// AND IT IS ASSEMBLED THROUGH ONE FUNCTION, because every conversation
+		// beside this one has a connection and therefore a seam of its own
+		// (chatv3_beside.go's [hostLink]). Two spellings of these seven fields is
+		// how the conversation on screen and the conversation behind it would come
+		// to disagree about which questions are waiting.
+		Link: hostLink(seams),
 		// ── WHAT IS DELIBERATELY NOT WIRED ──────────────────────────────────
 		//
 		// Connections: the accounts panel signs in through a browser HERE and
@@ -789,6 +776,55 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		options.History = store
 		options.DraftFile = tui3.DraftFile(dir, dest+":"+welcome.Workspace)
 	}
+	// ── AND THE DOORS ONTO ANOTHER CONVERSATION ─────────────────────────────
+	//
+	// The four readings a conversation opened beside borrows are handed to the
+	// fleet HERE rather than resolved again per conversation: every one of them
+	// is about this window or about the engine's disk, all four are already
+	// cached behind the surface, and a second copy per tab would be a second walk
+	// of the far machine's places on every switch.
+	fleet.machine = machineReadings{
+		recent: options.RecentSessions,
+		world:  options.World,
+		window: func(model string) int { return v3Window(models, model) },
+		draft:  options.DraftFile,
+	}
+	// THIS CONVERSATION'S OWN ROWS, out of the same shared walk every conversation
+	// beside it reads its own out of (chatv3_beside.go's [farTaskRows]). It
+	// replaces a closure that named this session file and was left bound to it
+	// through every switch.
+	options.TaskIndex = farTaskRows(options.World, welcome.SessionFile)
+	if !fleet.canBeside() {
+		// A DOOR THAT CANNOT DIAL AGAIN REALLY DOES HOLD ONE CONVERSATION AT A
+		// TIME, and says so ([tui3.Options.SharedAgent]) rather than letting
+		// somebody discover it. The two seams below select in place on the one
+		// connection: the engine mints or opens the conversation and ENDS the one
+		// it replaced (internal/remote's Session.swap), so this handle names
+		// whichever conversation is now open and there is nothing left for the
+		// surface to close.
+		options.SharedAgent = true
+		options.Resume = func(file string) (tui3.Agent, error) {
+			if _, err := client.OpenSession(file); err != nil {
+				return nil, err
+			}
+			return agent, nil
+		}
+		options.Fresh = func() (tui3.Agent, string, error) {
+			next, err := client.NewSession()
+			if err != nil {
+				return nil, "", err
+			}
+			return agent, next.SessionFile, nil
+		}
+		return options
+	}
+	// AND A DOOR THAT CAN GETS THE WHOLE SEAM AND NOT THE OLDER HALF OF IT.
+	// [tui3.Options.Start] and [tui3.Options.Open] hand back a conversation with
+	// its own agent, its own connection, its own transcript and its own waiting
+	// room; [Options.Fresh] and [Options.Resume] are deliberately left unset, so
+	// there is exactly one door and no road on which a swap can still happen.
+	options.Start = fleet.start
+	options.Open = fleet.open
 	return options
 }
 

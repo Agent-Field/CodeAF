@@ -962,6 +962,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
+		// Whether this engine can hold a folder at all, asked of the agent it has
+		// open — for [Welcome.Folders]'s stated reason: the surface's own type
+		// assertion cannot see across the wire.
+		Folders: keepsFolders(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -1020,15 +1024,19 @@ func (sess *Session) announce() {
 
 // factsMoved says whether one event of a turn changes something a frame reads.
 //
-// IT IS A SHORT LIST ON PURPOSE, and every entry earns its place: a turn ending
-// settles the spending and the weight, an error ends a turn the same way, a
-// name being chosen is the one time a session's title ever changes, and a
-// compaction is the one thing that makes a conversation weigh LESS. Every other
-// kind moves text on a screen and no fact behind it — and a list that announced
-// on all of them would put a transcript walk between every delta and the next.
+// State transitions publish spending, identity and attention. Question and
+// settlement events must publish before a hidden reader wakes, while ordinary
+// text and reasoning deltas carry no changed frame facts.
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
-	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted:
+	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
+		session.EventConnectAsk, session.EventConnectDone,
+		session.EventTaskProposal, session.EventTaskUpdate,
+		session.EventStandingProposal, session.EventStandingUpdate,
+		session.EventHarnessOffer, session.EventHarnessRun, session.EventHarnessDesignDone,
+		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
+		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
 		return true
 	}
 	return false
@@ -1320,6 +1328,9 @@ type server struct {
 	// speak. It is one slot rather than a queue because one reader makes one
 	// call at a time.
 	pending *pending
+	// Observers leave with the view, independently of the durable turn pump.
+	observersMu sync.Mutex
+	observers   map[uint64]*taskFeed
 
 	// leaving records how this connection ends, and it is the whole of version
 	// 2's three-roads-out. detached is [MethodDetach] — the surface is going and
@@ -1341,6 +1352,7 @@ func (s *server) serve(in io.Reader) (err error) {
 			err = guard.Note("remote/engine", recovered)
 			s.fatal(err.Error())
 		}
+		s.stopObservers()
 		s.leave()
 	}()
 
@@ -1914,6 +1926,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodDepositFile:
 		return s.depositFile(call)
 
+	case MethodStopWork:
+		door, ok := agent.(interface{ StopWork() error })
+		if !ok {
+			return nil, fmt.Errorf("this engine cannot stop all conversation work")
+		}
+		return nil, door.StopWork()
+
 	case MethodInterrupt:
 		agent.Interrupt()
 		return nil, nil
@@ -2055,6 +2074,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 
 	case MethodContextTokens:
 		return json.Marshal(agent.ContextTokens())
+
+	case MethodObserve:
+		return s.observe(agent, call)
+	case MethodUnobserve:
+		args, err := arg[observeArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		s.dropObserver(args.ID)
+		return json.Marshal(struct{}{})
 
 	case MethodTranscript:
 		return json.Marshal(agent.Transcript())
@@ -2251,6 +2280,9 @@ func (s *server) stream(method, said string, events <-chan session.Event, err er
 
 // pending is a stream that has been named and not yet started.
 type pending struct {
+	// A view subscription starts after its result without announcing a turn.
+	start func()
+
 	id         uint64
 	generation uint64
 	method     string
@@ -2271,6 +2303,10 @@ func (s *server) release() {
 	waiting := s.pending
 	s.pending = nil
 	if waiting == nil {
+		return
+	}
+	if waiting.start != nil {
+		waiting.start()
 		return
 	}
 	sess := s.session

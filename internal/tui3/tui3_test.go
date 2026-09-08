@@ -122,7 +122,62 @@ type fakeAgent struct {
 	steered  []string
 	steerErr error
 	steerCh  chan session.Event
+	// places is what this conversation is about, newest first — the scripted
+	// half of internal/session's accrual door. It is HERE and not on a wrapper
+	// because the real local agent has that door, so a fake without one would
+	// make every folder test run against a session shape that does not ship;
+	// [doorlessAgent] is how a test asks for the other case on purpose.
+	places []session.PlaceRef
+	// placeAs is what ReferPlace answers with instead of the path it was given,
+	// which is how the repository snap — a directory inside a repository coming
+	// back as the repository — is stated without a repository on disk.
+	placeAs  string
+	placeErr error
 }
+
+// Places, ReferPlace and RemovePlace are the folder door the surface asserts
+// (folderplace.go's [placeReferrer] and [placeRemover]).
+func (f *fakeAgent) Places() []session.PlaceRef { return f.places }
+
+func (f *fakeAgent) ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error) {
+	if f.placeErr != nil {
+		return session.PlaceRef{}, f.placeErr
+	}
+	if f.placeAs != "" {
+		path = f.placeAs
+	}
+	ref := session.PlaceRef{Path: path, Arrival: arrival, Referred: time.Now()}
+	kept := []session.PlaceRef{ref}
+	for _, already := range f.places {
+		if already.Path != path {
+			kept = append(kept, already)
+		}
+	}
+	f.places = kept
+	return ref, nil
+}
+
+func (f *fakeAgent) RemovePlace(path string) error {
+	kept := f.places[:0]
+	for _, already := range f.places {
+		if already.Path != path {
+			kept = append(kept, already)
+		}
+	}
+	if len(kept) == len(f.places) {
+		return fmt.Errorf("this conversation is not about %s", path)
+	}
+	f.places = kept
+	return nil
+}
+
+// doorlessAgent is a session with NO folder door at all — the shape a local
+// engine reached down the wire had before it learned to remember a place, and
+// the one the surface has to refuse rather than lie to.
+//
+// It embeds the INTERFACE and not the fake, so exactly the methods [Agent]
+// declares are promoted and ReferPlace and Places are not among them.
+type doorlessAgent struct{ Agent }
 
 func (f *fakeAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
 	f.sent = append(f.sent, text)

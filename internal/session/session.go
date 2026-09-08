@@ -2262,6 +2262,17 @@ type Agent struct {
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
 	standingText string
+	// placesText is the `# Attached folders` block message[0] currently carries
+	// (placescontext.go): the folders the PERSON attached to this conversation,
+	// named absolutely, with each one's own house rules scoped to it. It sits
+	// under mu beside the two blocks above and it is REBUILT ONLY WHEN THE SET
+	// MOVES — a person attaching or removing a folder, or a conversation being
+	// reopened onto the set its meta.json remembers — because message[0] sits in
+	// front of everything and what does not move must render byte for byte.
+	//
+	// Empty is the ordinary state and renders nothing at all, which is nearly
+	// every conversation: a person who has attached no folder is told about none.
+	placesText string
 	// elsewhereText is the <elsewhere> block (taskdelta.go): what the OTHER
 	// windows on this project landed and are running. It sits under mu beside
 	// cardText and rides where cardText rides, at the tail of the transcript —
@@ -2337,7 +2348,10 @@ type Agent struct {
 	// mid-turn moves the floor with the rebuild ([Agent.foldLocked]); a rewind
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
-	cancel    context.CancelFunc
+	// Explicit conversation stops suppress autonomous wakes until fresh input.
+	workStopped  bool
+	workStopping bool
+	cancel       context.CancelFunc
 	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
 	// It sits outside mu and holds its own lock: Interrupt is the one call that
 	// must always be answerable, and the handlers it serializes must never need

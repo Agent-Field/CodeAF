@@ -1584,6 +1584,9 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 // guardHeight is how many rows the question takes: the offer, and the engine's
 // reason under it when there is one.
 func (a *app) guardHeight() int {
+	if n := a.tabCloseHeight(); n > 0 {
+		return n
+	}
 	if n := a.stopHeight(); n > 0 {
 		return n
 	}
@@ -1600,6 +1603,9 @@ func (a *app) guardHeight() int {
 // answers to no press — it is three keys and nothing else — and the stop card's
 // answers are a row somebody can put a finger on.
 func (a *app) guardMark(at int) chromeRow {
+	if a.closingTab() {
+		return chromeRow{kind: chromeTabClose, index: at}
+	}
 	if a.stopping() {
 		return chromeRow{kind: chromeStop, index: at}
 	}
@@ -1610,6 +1616,9 @@ func (a *app) guardMark(at int) chromeRow {
 // same reason: this is the surface blocked on a keyboard, and the one thing on
 // screen that is blocked on you must not look like the things that are not.
 func (a *app) guardRows(width int) []string {
+	if rows := a.tabCloseRows(width); len(rows) > 0 {
+		return rows
+	}
 	if rows := a.stopRows(width); len(rows) > 0 {
 		return rows
 	}

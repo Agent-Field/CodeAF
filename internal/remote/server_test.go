@@ -1333,17 +1333,20 @@ func TestAStandingCardCrossesTheWireAndIsAnsweredBack(t *testing.T) {
 	}
 
 	l.ok(2, MethodStandingResolve, StandingArgs{ID: 7, Answer: session.StandingAnswer{Approved: true}})
-	agent.mu.Lock()
-	defer agent.mu.Unlock()
-	if len(agent.standings) != 1 {
-		t.Fatalf("the answer did not reach the engine's agent: %+v", agent.standings)
-	}
-	if !agent.standings[0].Approved {
-		t.Fatalf("the answer arrived as %+v", agent.standings[0])
-	}
-	if len(agent.consents) != 1 || agent.consents[0] != "standing:7:yes" {
-		t.Fatalf("the card the answer was for did not travel: %q", agent.consents)
-	}
+	// Release the fake before the next event asks the engine for fresh facts.
+	func() {
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		if len(agent.standings) != 1 {
+			t.Fatalf("the answer did not reach the engine's agent: %+v", agent.standings)
+		}
+		if !agent.standings[0].Approved {
+			t.Fatalf("the answer arrived as %+v", agent.standings[0])
+		}
+		if len(agent.consents) != 1 || agent.consents[0] != "standing:7:yes" {
+			t.Fatalf("the card the answer was for did not travel: %q", agent.consents)
+		}
+	}()
 	stream <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{Update: "stood", Text: "watching CI"}}
 	news := decode[EventWire](t, l.await(func(f Frame) bool {
 		return f.Kind == "event" && f.ID == ref.Stream

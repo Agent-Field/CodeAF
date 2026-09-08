@@ -130,6 +130,11 @@ func TestCtrlWOnTheLastTabGoesHomeWithTheWorkAlive(t *testing.T) {
 // IN A TASK ROOM IT IS THE SAME KEY DOING THE SAME THING. The room is drawn over
 // the conversation rather than instead of it, so the tab in front is still the
 // conversation's — and nothing running in the task is disturbed.
+//
+// IT NOW ASKS ON THE WAY, and that is the only thing about this that moved: a
+// conversation with a task running is one the close card is raised for
+// (tabclose.go), and `keep running` — the answer under `enter`, the one the
+// cursor opens on — is precisely the act this test has always described.
 func TestCtrlWInATaskRoomClosesTheTabAndLeavesTheTaskRunning(t *testing.T) {
 	a, fake, _ := roomApp(t)
 	a.width, a.height = 160, 40
@@ -141,6 +146,13 @@ func TestCtrlWInATaskRoomClosesTheTabAndLeavesTheTaskRunning(t *testing.T) {
 	_ = a.tabsRow(a.width)
 
 	drive(t, a, key(closeTabChord))
+	if !a.closingTab() {
+		t.Fatal("ctrl+w over a running task did not ask before closing the tab")
+	}
+	if a.tabClose.pick != tabCloseKeepAt {
+		t.Fatalf("the card opened on %q rather than on keep running", tabCloseAnswers[a.tabClose.pick])
+	}
+	drive(t, a, key("enter"))
 	if !a.at(pageHome) {
 		t.Fatal("ctrl+w in a room did not take the window off the conversation")
 	}

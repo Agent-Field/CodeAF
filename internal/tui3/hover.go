@@ -253,6 +253,10 @@ const (
 	// (stop.go). Two presses share that row, so it is a chip and not a row for
 	// [hoverSettle]'s reason.
 	hoverStopAnswer
+	// hoverTabCloseAnswer is one of the close-a-tab card's three answers; index
+	// is which (tabclose.go). It is the card next door's arrangement for the
+	// card next door's reason: three presses share one row.
+	hoverTabCloseAnswer
 	// hoverParked is one MESSAGE waiting for the answer to finish; index is its
 	// place in the queue (park.go). Every row that message wrapped over lights,
 	// because the press pulls the whole message back into the box — and the dim
@@ -585,6 +589,19 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 					return hoverAt{kind: hoverStopAnswer, index: at}
 				}
 			}
+		case chromeTabClose:
+			// THE SAME SHAPE ONE CARD OVER, and the same reason: three answers
+			// share one row, so which of them the pointer is on is a question
+			// about the column (tabclose.go). The question above them and the
+			// line under them are sentences and light not at all.
+			if a.tabClose == nil || mark.index != 1 {
+				return hoverAt{}
+			}
+			for at, span := range a.tabClose.spans {
+				if span.holds(x) {
+					return hoverAt{kind: hoverTabCloseAnswer, index: at}
+				}
+			}
 		case chromeParked:
 			// One waiting message, whichever of its rows the pointer is on. The dim
 			// line under the block carries no mark and answers to nothing, which is
@@ -595,6 +612,16 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverPaste, index: n}
 			}
 		case chromeOverlay:
+			// EVERY LIST DOWN HERE IS ROWS, AND THE FOLDER SHEET IS COLUMNS. Its
+			// three columns do three different things to a press — walk out, move
+			// the cursor, walk in — so a band across the row would offer to do one
+			// of them wherever the pointer happened to be, which is exactly the
+			// claim this file's law forbids. Which column is a question about x,
+			// and the answer rides the key field for the reason that field exists:
+			// a target named in its own alphabet (folderplace.go).
+			if key, ok := a.folderHoverColumn(x, mark.index); ok {
+				return hoverAt{kind: hoverOverlay, index: mark.index, key: key}
+			}
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:
 			if slot := a.welcomeSlotAt(mark.index); slot >= 0 {
@@ -733,6 +760,12 @@ func (a *app) hoveringRoomStop() bool { return a.hot.kind == hoverRoomStop }
 // card.
 func (a *app) hoveringStopAnswer(at int) bool {
 	return a.hot.kind == hoverStopAnswer && a.hot.index == at
+}
+
+// hoveringTabClose reports whether the pointer is on one answer of the
+// close-a-tab card.
+func (a *app) hoveringTabClose(at int) bool {
+	return a.hot.kind == hoverTabCloseAnswer && a.hot.index == at
 }
 
 // hoveringParked reports whether the pointer is on this waiting message.

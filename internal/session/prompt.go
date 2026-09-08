@@ -332,21 +332,30 @@ func readAgentsFile(workspace string) (content string, truncated bool) {
 }
 
 func readInstructionFile(workspace, name string) (content string, truncated bool) {
-	file, err := os.Open(filepath.Join(workspace, name))
+	return readInstructionFileWithin(workspace, name, agentsFileLimit)
+}
+
+// readInstructionFileWithin is the same read under a bound the caller names. It
+// exists because an ATTACHED folder's rules ride under a tighter one than the
+// workspace's own, and several of them can ride at once (placescontext.go) — and
+// two spellings of "read this file, cut it on a rune boundary, say that it was
+// cut" is one of them forgetting the boundary.
+func readInstructionFileWithin(dir, name string, limit int) (content string, truncated bool) {
+	file, err := os.Open(filepath.Join(dir, name))
 	if err != nil {
 		return "", false
 	}
 	defer file.Close()
 	// One byte past the limit tells truncation from an exactly-sized file.
-	buffer, err := io.ReadAll(io.LimitReader(file, agentsFileLimit+1))
+	buffer, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
 	if err != nil {
 		return "", false
 	}
-	if len(buffer) > agentsFileLimit {
+	if len(buffer) > limit {
 		// Back off to a rune boundary. A byte-exact cut can land inside a
 		// multi-byte rune, and the U+FFFD that replaces the fragment is a
 		// character the person never wrote arriving in the model's house rules.
-		cut := agentsFileLimit
+		cut := limit
 		for cut > 0 && !utf8RuneStart(buffer[cut]) {
 			cut--
 		}

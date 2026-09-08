@@ -257,8 +257,8 @@ Yes, and they show **the far machine's**.
 
 `space` `space` opens the home of the machine your session runs on: its projects, its
 conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
-that conversation — the engine swaps to it and this window keeps drawing, the same door
-`aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
+that conversation beside the one you are in — the engine gives it a connection of its own
+and the chat you came from keeps running, the same door `aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
 Three of the seven places still read the machine this window is running on, and each says so
@@ -739,3 +739,11 @@ machine answered. The session is closed when the turn ends.
 ```
 aforge resume opens the session picker; for one headless message use: aforge chat --host <dest> --once "text"
 ```
+
+## Reopening another tab through the local engine
+
+A new local-engine tab carries the window's launch settings, including that it
+is an interactive chat. Reopening that conversation by its session path uses
+those same settings and rejoins the engine's live work. It does not submit the
+message again or wait for its own pending question to finish in another window.
+Explicitly different launch flags still use the existing compatibility check.

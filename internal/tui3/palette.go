@@ -1879,7 +1879,7 @@ func (a *app) overlayRows(width, n int) []string {
 	case a.roster.open:
 		return a.roster.rows(width, n, a.pal, hover)
 	case a.folder.open:
-		return a.folder.rows(width, n, a.pal, hover)
+		return a.folder.rows(width, n, a.pal, a.styler(), hover, a.hot.key)
 	case a.shelf.open:
 		return a.shelf.rows(width, n, a.pal, hover)
 	case a.connPanel.open:

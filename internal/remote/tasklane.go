@@ -195,6 +195,10 @@ func (sess *Session) pumpTasks(s *server, generation uint64, lane <-chan session
 			quiet = true
 			continue
 		}
+		// Publish attention before the event wakes a hidden conversation reader.
+		if factsMoved(event.Kind) {
+			sess.announce()
+		}
 		if err := s.send(Frame{Kind: "task", Payload: payload}); err != nil {
 			quiet = true
 		}

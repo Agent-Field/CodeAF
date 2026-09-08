@@ -302,6 +302,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// only one road in and no launch flag names it; a session with no folder — a
 	// headless run, a task node, a test — reads nothing and accrues nothing.
 	agent.places = loadPlaces(config.Place.Dir)
+	// AND THE MODEL IS TOLD ABOUT THEM BEFORE THE FIRST REQUEST. This is what
+	// makes an attachment survive a restart in the only sense that matters: a
+	// conversation reopened tomorrow does not merely REMEMBER the folder, its
+	// next request names it (placescontext.go). It is composed here rather than
+	// at the top of the constructor because the set is only read on this line,
+	// and it is [Agent.keepAttached] rather than a field write so that the one
+	// composition rule lives in one place. The agent is not reachable yet, so the
+	// lock it takes is uncontended.
+	agent.keepAttached()
 	// AND THE WORK THAT HAS NOT LANDED YET. A conversation closed with changes
 	// waiting in its own copy of a folder comes back holding them, and the
 	// composer's chip says so again (standingtree.go). A record whose copy is no
@@ -844,6 +853,10 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	if a.closed {
 		a.mu.Unlock()
 		return nil, errors.New("session: agent is closed")
+	}
+	if err := a.resumeWorkLocked(); err != nil {
+		a.mu.Unlock()
+		return nil, err
 	}
 	if a.running {
 		// Steering. The message is queued rather than appended here because
@@ -1674,6 +1687,9 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 	defer a.mu.Unlock()
 	if a.closed {
 		return nil, errors.New("session: agent is closed")
+	}
+	if a.workStopped {
+		return nil, errWorkStopping
 	}
 	stream := newEventStream()
 	if a.running {
@@ -2996,7 +3012,7 @@ func (a *Agent) wakeLocked() bool {
 	// Steward's own wall and clock without asking its spend closure while this
 	// function holds a.mu.
 	wallGone := wallIsUp(a.steward())
-	if a.running || a.closed || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
+	if a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
 		return false
 	}
 	if err := a.railBlockLocked(); err != nil {

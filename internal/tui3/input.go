@@ -266,6 +266,22 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// Pending permission and account input hold their work, not navigation.
+	// These chords never answer either question or edit a partly typed key.
+	if (a.asking() && !a.shaping()) || a.asksConnect() {
+		switch msg.String() {
+		case closeTabChord:
+			cmd, _ := a.closeTabKey(msg)
+			return cmd
+		case "ctrl+k":
+			cmd, _ := a.hopKey(msg)
+			return cmd
+		case newChatChord:
+			cmd, _ := a.newChatKey(msg)
+			return cmd
+		}
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can

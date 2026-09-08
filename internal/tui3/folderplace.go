@@ -21,10 +21,8 @@ package tui3
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -62,43 +60,114 @@ type chosenPlace struct {
 }
 
 // referPlace is THE SEAM. See this file's header.
+//
+// IT REACHES THE CONVERSATION BEFORE IT SAYS ANYTHING, and that is the whole
+// change this wave made to it. It used to assert the door and, where the
+// assertion failed, say `folder · <path>` anyway — so a build whose engine could
+// not remember a place printed the same green sentence as one that could, and a
+// person who chose a folder, closed the terminal and came back found the
+// conversation had never heard of it (the session observed doing exactly that
+// had no `Places` on its meta at all). A capability that cannot work is ABSENT,
+// not broken: with no door the picker never opens ([app.canReferPlace]), and if
+// one is somehow reached anyway the refusal is what gets said.
 func (a *app) referPlace(chosen chosenPlace) {
 	path := strings.TrimSpace(chosen.Path)
 	if path == "" {
 		return
 	}
-	// The session is told first, because the session's answer is the fact the
-	// line below reports: ReferPlace snaps the path to its repository root and
-	// stamps the conversation's meta, so the next task about this folder finds
-	// it at the SAID rung and nobody is asked. A refusal here is rare — every
-	// door stats the directory before building a chosenPlace — but when it
-	// comes, the refusal IS the line, and no pick is kept for a place the
-	// conversation did not gain. The assertion is the surface's usual manner
-	// with an optional slice of the agent: a scripted test agent and a hosted
-	// connection honestly lack it, and for them the line alone is the whole
-	// act, exactly as it was before the session learned to remember.
-	if door, ok := a.agent.(placeReferrer); ok {
-		ref, err := door.ReferPlace(path, session.PlaceSaid)
-		if err != nil {
-			a.noteFacts(err.Error())
-			a.touch()
-			return
-		}
-		path = ref.Path
+	door, ok := a.placeDoor()
+	if !ok {
+		a.note(folderNoDoorWord)
+		a.touch()
+		return
 	}
+	// ReferPlace snaps the path to its repository root and stamps the
+	// conversation's meta, so the next task about this folder finds it at the
+	// SAID rung and nobody is asked. The refusal IS the line when it comes, and
+	// no pick is kept for a place the conversation did not gain.
+	ref, err := door.ReferPlace(path, session.PlaceSaid)
+	if err != nil {
+		a.noteFacts(err.Error())
+		a.touch()
+		return
+	}
+	chose := path
+	path = ref.Path
 	a.placeChosen = path
 	a.keepFolderPick(path)
-	shown := shortPath(path, a.tilde, 0)
+	shown := tildePath(path, a.tilde)
 	// THE PATH IS THE WHOLE OF THIS LINE (payload.go). `folder ·` is a label a
 	// person already knows they asked for; the path is the one thing here they
 	// cannot see anywhere else at this moment, so it steps to ink and the label
 	// stays dim — which is exactly how /workspace and /model say their answers.
-	a.noteFacts(folderChoseWord+shown, shown)
+	//
+	// AND WHERE THE TWO DIFFER, THE SENTENCE SAYS SO. A directory inside a
+	// repository comes back as the repository, because work is cut from a
+	// repository and not from a folder inside one — and a surface that quietly
+	// printed the root a person had not chosen would be misreporting the scope
+	// they actually picked.
+	// The engine's own word for what was pointed at is preferred over ours
+	// ([placeScope]); ours is what is left when it has nothing to say.
+	if scope := placeScope(ref); scope != "" {
+		chose = scope
+	}
+	line := folderChoseWord + shown
+	if chose != path {
+		line += folderInsideWord + tildePath(chose, a.tilde)
+	}
+	a.noteFacts(line, shown)
 	a.touch()
 }
 
 // folderChoseWord leads the one line a chosen folder says.
 const folderChoseWord = "folder · "
+
+// folderInsideWord is the clause added when the folder somebody picked sits
+// inside a repository and the repository is what the conversation gained.
+const folderInsideWord = " · the repository holding "
+
+// folderNoDoorWord is every road onto a folder, on a conversation that cannot
+// hold one. It says what would be missing rather than naming a method: the
+// point of choosing a folder is that the next request knows about it, and a
+// conversation that cannot remember one would gain nothing at all.
+const folderNoDoorWord = "this conversation cannot be given a folder · it has no way to remember one, so nothing would reach the next request"
+
+// placeDoor is the slice of the agent that remembers what the conversation is
+// about, and whether this build has one at all.
+func (a *app) placeDoor() (placeReferrer, bool) {
+	door, ok := a.agent.(placeReferrer)
+	return door, ok
+}
+
+// placeCapable is the engine's OWN STATEMENT about whether it can keep the
+// folders a conversation is about, made at the door and re-read after /new,
+// /resume and a reconnect (internal/remote's `Welcome.Folders`).
+//
+// IT EXISTS BECAUSE A TYPE ASSERTION CANNOT ANSWER THE QUESTION. The ordinary
+// local launch goes through the wire too, and `*remote.Agent` carries
+// ReferPlace, Places and RemovePlace whatever is on the far end of the pipe —
+// so [placeReferrer] is satisfied by every connection there has ever been,
+// including one whose engine has never heard of a folder. Asserting the methods
+// proves the CLIENT has them; only the far side can say whether they do
+// anything.
+type placeCapable interface{ KeepsFolders() bool }
+
+// canReferPlace is what every road onto a folder asks BEFORE it offers one: the
+// methods, and then — where anything is willing to say — the answer to whether
+// they will do anything.
+//
+// An agent that makes no such statement is believed, because that is what the
+// in-process session is: it has the methods and it is the engine, so there is
+// nobody else to ask.
+func (a *app) canReferPlace() bool {
+	if _, ok := a.placeDoor(); !ok {
+		return false
+	}
+	if says, ok := a.agent.(placeCapable); ok {
+		return says.KeepsFolders()
+	}
+	return true
+}
 
 // ── the command ─────────────────────────────────────────────────────────────
 
@@ -117,31 +186,86 @@ const folderRemoteWord = "choosing a folder is not available over --host yet —
 // answer and always was.
 const folderEmptyWord = "nothing to offer yet · type a path after /folder, or use the picker's box"
 
-// openFolderPick is /folder: the picker, opened FROM MEMORY. The only work on
-// this path is ranking candidates that were already known; the two things that
-// touch a disk — the picks and the index of repositories under `~`, and the
-// facts about the row the cursor lands on — are asked for as commands and
-// arrive later.
+// openFolderPick is /folder: the ONE context browser, opened with FOLDER
+// INTENT. openContextPick is the same sheet opened by a bare /attach, with file
+// intent. See [app.openContextPick] for what the intent does and does not
+// decide.
 func (a *app) openFolderPick(query string) tea.Cmd {
+	return a.openContextPick(query, true)
+}
+
+// openContextPick is the browser, opened FROM MEMORY. The only work on this path
+// is ranking candidates that were already known; everything that touches a disk
+// — the picks and the index of repositories under `~`, the facts about the row
+// the cursor lands on, the levels the columns draw and the preview beside them —
+// is asked for as a command and arrives later.
+//
+// ── WHAT THE INTENT DECIDES, AND WHAT IT DOES NOT ──────────────────────────
+//
+// ONE SHEET SHOWS BOTH KINDS WHICHEVER DOOR OPENED IT, which is the owner's
+// requirement in as many words: a person deciding what this conversation is
+// about is looking at a repository and a log inside it at the same time, and two
+// browsers would have made them choose the door before they had seen the thing.
+// So the intent decides exactly one thing — WHETHER A FOLDER DOOR IS REQUIRED
+// TO OPEN AT ALL:
+//
+//   - /folder is a request to give the conversation a directory, and a
+//     conversation that cannot hold one is told so instead of being handed a
+//     browser it cannot choose from ([app.canReferPlace]).
+//   - a bare /attach is a request to put a file on the next message, which
+//     needs no folder door whatever. The sheet opens; a folder row on it then
+//     refuses with the same sentence when it is confirmed (folderact.go).
+func (a *app) openContextPick(query string, folders bool) tea.Cmd {
 	if a.hosted() {
 		a.note(folderRemoteWord)
 		return nil
 	}
+	// AND THE CAPABILITY IS ASKED FOR BEFORE THE LIST IS BUILT. `--host` is not
+	// the only way to reach a conversation this program is not itself running:
+	// a LOCAL engine reached down the same wire has an empty far hostname, so
+	// [app.hosted] is false for it and the picker used to open, rank a hundred
+	// directories and print `folder · …` at a session that could not hold one.
+	// A browser you cannot choose from is not offered at all.
+	if folders && !a.canReferPlace() {
+		a.note(folderNoDoorWord)
+		return nil
+	}
+	// Home has its own composer. Reveal the conversation's browser without
+	// changing the unsent draft suspended underneath that page.
+	a.closeHome()
 	candidates := a.folderCandidates()
 	if len(candidates) == 0 && strings.TrimSpace(query) == "" {
+		// A BARE /attach STILL HAS SOMEWHERE TO START. Its business is the files
+		// under the directory this conversation is standing in, so it opens the
+		// columns there rather than refusing for want of a candidate list — which
+		// is a list of PLACES and has nothing to do with what it was asked for.
+		if !folders {
+			if root := a.pathRoot(); root != "" {
+				a.folder.start(nil, a.tilde)
+				a.markFolderHeld()
+				a.folder.openAt(root, "")
+				a.touch()
+				return tea.Batch(a.askFolderStore(), a.folderWork())
+			}
+		}
 		a.note(folderEmptyWord)
 		return nil
 	}
 	a.folder.start(candidates, a.tilde)
+	a.markFolderHeld()
 	if query = strings.TrimSpace(query); query != "" {
 		a.folder.filter.setText(query)
 		a.folder.rank()
 		if a.folder.browsing {
 			a.folder.browseSync(a.resolvePath)
 		}
+	} else if !folders {
+		if root := a.pathRoot(); root != "" {
+			a.folder.openAt(root, "")
+		}
 	}
 	a.touch()
-	return tea.Batch(a.askFolderStore(), a.askFolderFacts())
+	return tea.Batch(a.askFolderStore(), a.folderWork())
 }
 
 // folderKey routes one keypress while the picker owns the keyboard. The input
@@ -159,39 +283,305 @@ func (a *app) folderKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "enter":
-		path, ok := a.folder.here()
-		if !ok {
-			a.folder.close()
-			a.touch()
-			return nil
-		}
-		// THE ONE STAT ON THIS SURFACE, AND IT IS ON A KEYSTROKE. The candidate
-		// layers are built from what was said and remembered rather than from a
-		// walk, so a row can name a directory that has since been moved or
-		// deleted — and handing that path on as a place would be this surface
-		// passing its own staleness downstream. A keystroke may wait for one
-		// stat; nothing else here waits for anything.
-		if info, err := os.Stat(path); err != nil || !info.IsDir() {
-			a.note(folderGoneWord + shortPath(path, a.tilde, 0))
-			a.touch()
-			return nil
-		}
-		a.folder.close()
-		a.referPlace(chosenPlace{Path: path, Door: placeFromPicker})
-		return nil
+		return a.folderConfirm()
 
 	default:
 		browsed := a.folder.navigate(msg)
 		if a.folder.browsing && !browsed {
 			a.folder.browseSync(a.resolvePath)
 		}
+		// THE COMPONENT'S ONE SENTENCE IS SAID BY THE DOOR, for the reason
+		// [folderPick.say] gives: a conversation's lines belong to the
+		// conversation, and a modal list that wrote into it directly would be a
+		// second door onto the transcript.
+		if say := a.folder.say; say != "" {
+			a.folder.say = ""
+			a.note(say)
+		}
 		a.touch()
-		return a.askFolderFacts()
+		return a.folderWork()
 	}
 }
 
-// folderGoneWord is enter on a row whose directory is no longer there.
+// markFolderHeld tells the open sheet which of its rows the conversation is
+// already about, so the action row says the truth about the one under the
+// cursor. It is called where the answer can have changed — the open, and a
+// folder coming off — and nowhere in a paint.
+func (a *app) markFolderHeld() {
+	if !a.folder.open {
+		return
+	}
+	held := map[string]bool{}
+	for _, ref := range a.attachedPlaces() {
+		held[folderScopePath(ref)] = true
+	}
+	a.folder.held = held
+}
+
+// folderWork is everything the browser wants read after a gesture: the facts
+// about the row it has stopped on, the levels its columns are drawing, and the
+// PREVIEW of the thing under the cursor. All three go off the loop, and all
+// three come back through a cache keyed by path.
+func (a *app) folderWork() tea.Cmd {
+	return tea.Batch(a.askFolderFacts(), a.askFolderKids(), a.askFolderPreview())
+}
+
+// askFolderPreview is the preview pane's one call, and it is
+// contextpreview.go's own seam doing the work (reports/preview.md's recipe).
+//
+// EVERY MOVE ASKS, INCLUDING ONE THAT LANDS BACK ON A FILE ALREADY READ. The
+// pump cancels the read nobody wants any more, stamps this one with its own
+// generation, and validates the cached identity INSIDE the reader — so a cache
+// hit costs a goroutine and no disk wait on the loop, and a file rewritten under
+// the cursor is re-read rather than drawn from a stale entry. Nothing here stats
+// anything: a stat on a disconnected mount is exactly the wait this surface must
+// never take (coordinator pass 11).
+//
+// THE PANE IS EMPTIED THE MOMENT THE CURSOR MOVES. Holding the last file's
+// preview until the next one arrives would draw one file's source under another
+// file's name for a frame, which is the one thing a preview may not do.
+func (a *app) askFolderPreview() tea.Cmd {
+	if !a.folder.open || !a.folder.browsing {
+		a.folder.previews.stop()
+		a.folder.preview = filePreview{}
+		return nil
+	}
+	path, _, ok := a.folder.hereKind()
+	if !ok {
+		a.folder.previews.stop()
+		a.folder.preview = filePreview{}
+		return nil
+	}
+	// A HOSTED SESSION'S PATH IS RESOLVED THROUGH THE DOOR THAT ALREADY HAS THE
+	// MIRROR (imagepreview.go's [app.readPathFor]), so a preview reads the file
+	// this process can actually open. `/folder` refuses over --host today
+	// ([folderRemoteWord]) so this is the local answer in every reachable case,
+	// and it is written this way so the remote door does not have to find it.
+	read, ok := a.readPathFor(path, true)
+	if !ok {
+		a.folder.previews.stop()
+		a.folder.preview = filePreview{}
+		return nil
+	}
+	pv, cmd := a.folder.previews.show(previewRequest{
+		Path:     read,
+		Pictures: a.pal.paintsPictures(),
+		Hidden:   a.folder.hidden,
+	})
+	a.folder.preview = pv
+	return cmd
+}
+
+// tookFolderPreview files a preview, or drops it.
+//
+// `!ok` IS THE ORDINARY CASE AND NOT AN ERROR: the person moved on, the terminal
+// was re-measured, or the hidden key was pressed, and the answer is about a
+// moment that has passed (contextpreview.go's [previewPump.took]).
+func (a *app) tookFolderPreview(msg previewLoadedMsg) {
+	if !a.folder.open {
+		return
+	}
+	pv, ok := a.folder.previews.took(msg)
+	if !ok {
+		return
+	}
+	a.folder.preview = pv
+	a.touch()
+}
+
+// folderGoneWord is the add action on a row whose directory is no longer there.
 const folderGoneWord = "no such folder · "
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// folderPress resolves a click on the browser, and reports whether it took one.
+//
+// IT IS NOT MODAL TO THE POINTER, which is [app.harnessPickPress]'s own bargain
+// and it is kept for that reason: this sheet hangs over a draft somebody is
+// still writing, so a press anywhere else is a press on whatever is there rather
+// than a way of closing a list they did not ask to close.
+//
+// THE GESTURES ARE FINDER'S, and they are two and not one. A click on a NAME
+// walks — into the list row's folder, along the breadcrumb, out to the parent —
+// or moves the cursor onto it, because that is what clicking a name in a column
+// of names has meant for forty years. A click on the ACTION ROW is the only
+// thing on this sheet that commits, and a click on a MARK CELL takes that mark
+// off. Nothing here both moves and commits, and NOTHING HERE ATTACHES BY
+// ITSELF.
+//
+// A SECOND PRESS ON THE ROW YOU ARE ALREADY ON OPENS IT, when it is a folder.
+// That is how the pointer walks INTO a tree now that the old column of children
+// has become the preview pane: the first press selects and the second opens,
+// which is the gesture every file browser has taught, without this surface
+// having to measure the gap between two clicks.
+func (a *app) folderPress(x, y int) (tea.Cmd, bool) {
+	if !a.folder.open {
+		return nil, false
+	}
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeOverlay {
+		return nil, false
+	}
+	row, geom := mark.index, a.folder.geom
+	if row == geom.action {
+		return a.folderConfirm(), true
+	}
+	if row == geom.tray {
+		if a.folder.trayPress(x) {
+			a.touch()
+		}
+		return nil, true
+	}
+	if !a.folder.browsing {
+		// A LIST ROW OPENS FOR BROWSING, which is the whole answer to "the path
+		// I searched for is on the screen and I have to type it out again".
+		at := row
+		if row >= 0 && row < len(geom.owner) {
+			at = geom.owner[row]
+		}
+		if at < 0 || at >= len(a.folder.hits) {
+			return nil, true
+		}
+		a.folder.cursor = at
+		a.folder.openAt(a.folder.all[a.folder.hits[at]].path, "")
+		a.touch()
+		return a.folderWork(), true
+	}
+	if geom.head > 0 && row == 0 {
+		for _, crumb := range geom.crumbs {
+			if crumb.span.holds(x) {
+				a.folder.openAt(crumb.path, filepath.Base(a.folder.cols.dir))
+				a.touch()
+				return a.folderWork(), true
+			}
+		}
+		return nil, true
+	}
+	at := row - geom.head
+	if at < 0 || at >= geom.body {
+		return nil, true
+	}
+	switch {
+	case geom.up.holds(x):
+		// The ancestry column: the row pressed is counted from the one we are
+		// standing in, exactly as it was drawn ([folderPick.upText]). Only a
+		// DIRECTORY over there is somewhere to go — a file in the parent is drawn
+		// for context and pressing it would leave the columns nowhere.
+		want := at + a.folder.cols.top - a.folder.cols.cursor + a.folder.cols.upAt
+		up := a.folder.cols.up
+		if a.folder.cols.upAt < 0 || !up.isDir(want) {
+			return nil, true
+		}
+		a.folder.openAt(filepath.Dir(a.folder.cols.dir), up.rowName(want))
+		a.touch()
+		return a.folderWork(), true
+	case geom.pane.holds(x) && a.folder.pane != folderPaneOff:
+		// THE PREVIEW TAKES ITS OWN PRESSES AND DOES NOTHING WITH THEM. It is a
+		// read-only pane: there is nothing over there to select, and letting the
+		// press fall through to the middle column's arithmetic would move the
+		// cursor to whatever row happened to be beside the line somebody clicked.
+		return nil, true
+	}
+	// The middle column, and every column-less frame: the press moves the cursor,
+	// or — on the row the cursor is already on — walks into it (this function's
+	// header states that gesture).
+	want := at + a.folder.cols.top
+	if want < 0 || want >= a.folder.cols.here.rows() {
+		return nil, true
+	}
+	if want == a.folder.cols.cursor && a.folder.cols.here.isDir(want) {
+		a.folder.descend()
+		a.touch()
+		return a.folderWork(), true
+	}
+	a.folder.cols.cursor = want
+	a.folder.paneRest()
+	a.touch()
+	return a.folderWork(), true
+}
+
+// folderHoverColumn resolves a pointer on the sheet to WHICH COLUMN it is over,
+// and reports whether the sheet is drawing columns at all.
+//
+// It exists because what lights has to be what a press acts on (hover.go's law),
+// and on this sheet that is a question about x: the three columns walk out, move
+// the cursor and walk in. The action row and a candidate row are whole-row
+// targets and answer [folderColRow], which is the same answer every other list
+// down here gives.
+func (a *app) folderHoverColumn(x, row int) (string, bool) {
+	if !a.folder.open {
+		return "", false
+	}
+	geom := a.folder.geom
+	if row == geom.tray {
+		// WHICH CELL, and not merely which row: every cell up there takes a
+		// different thing off the confirm, so a band across the row would offer to
+		// unchoose the file beside the one a person is aiming at (hover.go's law,
+		// and attach.go's own tray keeps it the same way).
+		a.folder.trayHot = -1
+		for at, span := range geom.trayCells {
+			if span.holds(x) {
+				a.folder.trayHot = at
+				break
+			}
+		}
+		return folderColTray, true
+	}
+	a.folder.trayHot = -1
+	if !a.folder.browsing || row == geom.action {
+		return folderColRow, true
+	}
+	if geom.head > 0 && row == 0 {
+		return folderColCrumb, true
+	}
+	switch {
+	case geom.up.holds(x):
+		return folderColUp, true
+	case geom.pane.holds(x):
+		return folderColPane, true
+	}
+	return folderColHere, true
+}
+
+// The six things the pointer can be over on this sheet. They are the hover's
+// own alphabet and nothing else reads them.
+const (
+	folderColRow   = "row"
+	folderColCrumb = "crumb"
+	folderColUp    = "up"
+	folderColHere  = "here"
+	folderColPane  = "pane"
+	folderColTray  = "tray"
+)
+
+// folderWheel turns the wheel over the browser into a walk of whichever surface
+// is up, and reports whether it took the gesture. The window follows the cursor
+// here rather than an offset of its own, so scrolling and selecting are one act
+// — which is what the other cursor-followed lists on this surface do.
+// THE WHEEL FOLLOWS THE POINTER AND NOT A FOCUS [steering-02 §5: "Mouse hit
+// targets, wheel focus, keyboard navigation ... must agree"]. Turned over the
+// PREVIEW it scrolls the preview; turned over the names it walks the names.
+// That is the same rule the keyboard keeps — the pane the gesture acts on is the
+// pane the gesture is on — and it needs no state at all.
+func (a *app) folderWheel(y, delta int) (tea.Cmd, bool) {
+	if !a.folder.open || delta == 0 {
+		return nil, false
+	}
+	// OVER ITS OWN ROWS AND NOWHERE ELSE, for the reason the press keeps: the
+	// sheet is not modal to the pointer, and a wheel turned over the transcript
+	// belongs to the transcript.
+	if mark, ok := a.chromeAt(y); !ok || mark.kind != chromeOverlay {
+		return nil, false
+	}
+	if a.hot.key == folderColPane && a.folder.pane != folderPaneOff {
+		a.folder.paneStep(delta)
+		a.touch()
+		return nil, true
+	}
+	a.folder.move(delta)
+	a.touch()
+	return a.folderWork(), true
+}
 
 // ── the candidates, in layers ───────────────────────────────────────────────
 
@@ -214,7 +604,7 @@ func (a *app) folderCandidates() []folderCand {
 			seen[path] = true
 			out = append(out, folderCand{
 				path:  path,
-				show:  shortPath(path, a.tilde, 0),
+				show:  tildePath(path, a.tilde),
 				layer: layer,
 				rank:  len(out),
 				freq:  folderFrecency(a.folderStore.Picks[path], a.now()),
@@ -233,9 +623,27 @@ func (a *app) folderCandidates() []folderCand {
 // asserted rather than added to [Agent], because a scripted test agent and a
 // hosted connection honestly lack it, and a capability that cannot work is
 // absent, not broken.
+//
+// THIS IS THE INTERFACE THE WIRE HAS TO MEET, spelled here so there is one
+// place to read it: a connection that carries `ReferPlace` and `Places` with
+// these exact signatures gets the whole folder surface, and one that does not
+// gets [folderNoDoorWord] instead of a picker that lies.
 type placeReferrer interface {
 	ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error)
 	Places() []session.PlaceRef
+}
+
+// placeRemover is the OTHER half of the same door, asserted separately and
+// deliberately so.
+//
+// The two arrive on their own timetables — the local agent had the first long
+// before anything could take a folder back off — and a surface that demanded
+// both at once would have withdrawn a working picker to wait for a button. So
+// the indicator draws whatever the conversation is about either way, and offers
+// to take a folder off ONLY where there is something behind the offer
+// (folderchip.go).
+type placeRemover interface {
+	RemovePlace(path string) error
 }
 
 // referredPlaces are the directories this conversation is already ABOUT, most
@@ -243,7 +651,7 @@ type placeReferrer interface {
 // accrual door stamps. This is the one function on this side that reads it,
 // exactly as the hook promised when it answered nothing.
 func (a *app) referredPlaces() []string {
-	door, ok := a.agent.(placeReferrer)
+	door, ok := a.placeDoor()
 	if !ok {
 		return nil
 	}
@@ -253,7 +661,7 @@ func (a *app) referredPlaces() []string {
 	}
 	paths := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		paths = append(paths, ref.Path)
+		paths = append(paths, folderScopePath(ref))
 	}
 	return paths
 }
@@ -350,6 +758,65 @@ func (a *app) askFolderFacts() tea.Cmd {
 	}
 	a.folderAsking[path] = true
 	return func() tea.Msg { return folderFactsMsg{path: path, lines: folderFactsOf(path)} }
+}
+
+// ── the levels the columns draw ─────────────────────────────────────────────
+
+// folderKidsMsg is ONE directory's subdirectories, coming BACK.
+//
+// It carries the path it is about AND the opening that asked for it. The path
+// is what files it against the right level — several are in flight whenever a
+// cursor sweeps a column — and the generation is the cancellation this design
+// asks for: a readdir of a slow network mount answers long after somebody
+// pressed esc, and filing it into the picker they opened afterwards would put
+// one directory's names in another directory's column.
+type folderKidsMsg struct {
+	path string
+	read folderListing
+	gen  int
+}
+
+// tookFolderKids files that answer, or drops it.
+func (a *app) tookFolderKids(msg folderKidsMsg) tea.Cmd {
+	if msg.gen != a.folder.gen {
+		return nil
+	}
+	if !a.folder.took(msg.path, msg.read) {
+		return nil
+	}
+	a.touch()
+	// A LEVEL ARRIVING CAN MAKE THE NEXT ONE WORTH ASKING FOR — the parent of
+	// the level that just landed is not known until the level is, and neither is
+	// the row the cursor seats onto, which is what the preview is about. That is
+	// the whole of the read-ahead: one step, on an answer, and never a walk.
+	return tea.Batch(a.askFolderKids(), a.askFolderFacts(), a.askFolderPreview())
+}
+
+// askFolderKids reads the levels the columns want and have not got — at most
+// three, and never more than one command per directory at a time.
+//
+// EVERY READDIR ON THIS SURFACE GOES THROUGH HERE. A keystroke may not wait for
+// a disk: a home directory on a network mount, a folder with forty thousand
+// entries in it, an unresponsive automount are all things `os.ReadDir` can sit
+// on for seconds, and the browser has to keep drawing and keep taking keys
+// while it does.
+func (a *app) askFolderKids() tea.Cmd {
+	wanted := a.folder.wanted()
+	if len(wanted) == 0 {
+		return nil
+	}
+	if a.folder.asking == nil {
+		a.folder.asking = map[string]bool{}
+	}
+	gen, hidden := a.folder.gen, a.folder.hidden
+	cmds := make([]tea.Cmd, 0, len(wanted))
+	for _, dir := range wanted {
+		a.folder.asking[dir] = true
+		cmds = append(cmds, func() tea.Msg {
+			return folderKidsMsg{path: dir, read: folderEntries(dir, hidden), gen: gen}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 // The three facts, and the words they are said in. They are constants because
@@ -524,25 +991,60 @@ type folderStoreMsg struct{ store folderStore }
 // tookFolderStore files it, and re-ranks an open list against it — the picks
 // arriving are what turn "the order the sources handed these over" into "the
 // order you actually use them".
-func (a *app) tookFolderStore(msg folderStoreMsg) {
+func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	a.folderStore = msg.store
 	a.folderStoreRead = true
 	if !a.folder.open {
-		return
+		return nil
 	}
-	// THE FILTER AND THE CURSOR SURVIVE. Somebody who typed three characters
-	// while the store was in flight has not stopped typing, and a list that
-	// reset itself under them would be the background reaching into their hands.
+	// THE FILTER, THE CURSOR AND EVERYTHING ALREADY READ SURVIVE. Somebody who
+	// typed three characters while the store was in flight has not stopped
+	// typing, and a list that reset itself under them would be the background
+	// reaching into their hands. The caches survive for a sharper version of the
+	// same reason: they are answers about directories, and nothing about a
+	// directory changed because a file of pick counts arrived — re-asking for
+	// them would flush three columns a person is looking at and redraw them a
+	// frame later.
+	//
+	// AND SO DO THE MARKS AND THE PANE, which is this wave's own repair to this
+	// function. [folderPick.start] builds a FRESH sheet, so everything not named
+	// here is thrown away — and the things a person had CHOSEN, along with which
+	// state the preview pane was in and how far they had scrolled it, were being
+	// silently discarded by a file of pick counts landing a second after the
+	// sheet opened. The one thing that may not survive a re-`start` is the
+	// preview itself, because start cancels the read in flight; the ask is
+	// therefore returned as a command and made again.
 	filter, cursor := a.folder.filter, a.folder.cursor
-	facts := a.folder.facts
+	facts, kids, asking := a.folder.facts, a.folder.kids, a.folder.asking
+	hidden, gen, cols := a.folder.hidden, a.folder.gen, a.folder.cols
+	marks, pane := a.folder.marks, a.folder.pane
+	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
+	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
+	a.folder.marks, a.folder.pane = marks, pane
+	a.folder.paneTop, a.folder.paneLeft = paneTop, paneLeft
+	a.markFolderHeld()
+	// The COLUMNS are kept whole and not re-seated: which level they are on and
+	// which row of it the cursor is on are facts about where a person has walked
+	// to, and a store arriving is not news about either.
+	a.folder.cols = cols
+	// AND SO DOES THE GENERATION, because the reads still in flight were stamped
+	// with it: bumping it here would drop every column this picker had already
+	// asked for and leave the sheet blank until the next keystroke asked again.
+	a.folder.gen = gen
 	a.folder.rank()
 	a.folder.cursor = moveCursor(cursor, 0, len(a.folder.hits))
 	if a.folder.browsing {
 		a.folder.browseSync(a.resolvePath)
 	}
 	a.touch()
+	// THE PREVIEW IS ASKED FOR AGAIN, and this is the whole of the repair: the
+	// re-`start` above cancelled the read in flight, so a sheet whose store landed
+	// a second after it opened sat with an empty pane until the person happened to
+	// press a key. Caught in a real terminal capture, not in a unit test — which is
+	// why the sheet is photographed as well as asserted.
+	return a.askFolderPreview()
 }
 
 // askFolderStore reads the store and, when the index is stale, walks for
@@ -574,68 +1076,14 @@ func (a *app) askFolderStore() tea.Cmd {
 // directory aforge has actually been opened in the moment it is opened there.
 const folderScanTTL = 24 * time.Hour
 
-// The two bounds on the walk. It runs in the background and it still may not be
-// a crawl of somebody's whole disk: six levels reaches ~/code/work/client/repo
-// without reaching a node_modules nobody asked about, and two thousand roots is
-// more repositories than any list can rank usefully.
-const (
-	folderScanDepth = 6
-	folderScanCap   = 2000
-)
-
-// scanFolderRoots walks `~` for repositories, newest-modified first.
-//
-// A DIRECTORY WITH A `.git` IN IT IS A ROOT AND IS NOT DESCENDED INTO. That is
-// what keeps the walk small — a repository's own subdirectories are not other
-// repositories, and the ones that are (a submodule, a vendored checkout) are
-// reached by typing a path, which is what typing a path is for.
+// scanFolderRoots discovers both projects and ordinary folders within the
+// shared index bounds. All of this work runs in the background command.
 func scanFolderRoots() []string {
 	base, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	type found struct {
-		path string
-		at   time.Time
-	}
-	var roots []found
-	_ = filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || !entry.IsDir() {
-			// An unreadable directory is skipped, not fatal: an index that
-			// refused to exist because of one permission is worth less than an
-			// index with one directory missing from it (walkFiles' own law).
-			return nil
-		}
-		name := entry.Name()
-		if path != base && (skipDirs[name] || strings.HasPrefix(name, ".")) {
-			return fs.SkipDir
-		}
-		if len(roots) >= folderScanCap {
-			return fs.SkipAll
-		}
-		if depth(base, path) > folderScanDepth {
-			return fs.SkipDir
-		}
-		if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-			return nil
-		}
-		at := time.Time{}
-		if info, err := entry.Info(); err == nil {
-			at = info.ModTime()
-		}
-		roots = append(roots, found{path: path, at: at})
-		return fs.SkipDir
-	})
-	// NEWEST FIRST, because the order a source hands its candidates over in is
-	// what decides ties inside a layer, and "the repository I touched most
-	// recently" is a better guess than "the one alphabetically first" every
-	// single time.
-	sort.SliceStable(roots, func(i, j int) bool { return roots[i].at.After(roots[j].at) })
-	out := make([]string, 0, len(roots))
-	for _, root := range roots {
-		out = append(out, root.path)
-	}
-	return out
+	return folderIndexPaths(folderIndexWalk(context.Background(), folderIndexDefaults(base)))
 }
 
 // depth is how many levels below base a path sits.

@@ -4234,7 +4234,19 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// the whole list is what keeps a heading, a ledger line and a conversation on
 	// one grid.
 	if line.sw != nil {
-		return h.reading.paint(*line.sw, width, pal, switcherPaint{
+		sw := *line.sw
+		if sw.row != nil && sw.row.kind == switcherConversation {
+			row := *sw.row
+			row.session = a.homeTrue(row.session)
+			row.needs = row.session.NeedsPerson()
+			row.moving = !row.needs && (row.session.Tasks.Running > 0 || row.session.Live && row.session.Presence.State == session.PresenceWorking)
+			row.note = switcherConversationNote(row.session, h.seen)
+			if row.moving && row.note == "" {
+				row.note = tabSignalWord(tabWorking)
+			}
+			sw.row = &row
+		}
+		return h.reading.paint(sw, width, pal, switcherPaint{
 			sel: at == h.cursor, hover: at == h.hover,
 			// AND THE TWO THINGS THE READING CANNOT KNOW: which heading the cursor
 			// is standing under (homesection.go), and which single row this frame
@@ -4398,23 +4410,28 @@ func (a *app) homeMark(row session.SessionRow) rowMark {
 // Every other row is returned untouched, because the file is the only thing that
 // knows about another terminal.
 func (a *app) homeTrue(row session.SessionRow) session.SessionRow {
+	// Home can cover the last tab without moving its agent into the keeper.
+	if row.Transcript != "" && a.convKey(row.Transcript) == a.frontTabKey() {
+		row.Live, row.Open = true, true
+		switch a.frontSignal() {
+		case tabWorking:
+			row.Presence.State = session.PresenceWorking
+		case tabNeedsPerson:
+			row.Presence.State = session.PresenceWaiting
+		default:
+			row.Presence.State = session.PresenceIdle
+		}
+		return row
+	}
 	held := a.behind[a.convKey(row.Transcript)]
 	if held == nil || held.conv.Agent == nil {
 		return row
 	}
 	row.Live, row.Open = true, true
 	row.Presence.State = session.PresenceIdle
-	running := 0
-	if door, ok := held.conv.Agent.(interface {
-		TaskIndex() []session.TaskIndexEntry
-	}); ok {
-		for _, entry := range door.TaskIndex() {
-			if entry.Status == string(session.TaskRunning) {
-				running++
-			}
-		}
-	}
-	if running > 0 {
+	tasks, _ := held.watch.workIDs()
+	running := len(tasks)
+	if running > 0 || held.watch != nil && (held.watch.turning.Load() || held.watch.jobbing.Load()) {
 		row.Presence.State = session.PresenceWorking
 	}
 	if needsPerson(held.conv.Agent) {
@@ -5001,7 +5018,7 @@ func homeFacts(row session.SessionRow, now time.Time) string {
 func (a *app) homeHolding(row session.SessionRow) string {
 	word := ""
 	switch {
-	case row.Transcript == a.file:
+	case a.holding(row.Transcript):
 		word = "open here"
 	case row.Open || row.Live:
 		word = homeHeldWord

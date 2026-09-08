@@ -135,9 +135,11 @@ type Client struct {
 	seq atomic.Uint64
 
 	// calls is every call waiting for its result, and streams every open turn.
-	// Both are guarded by mu.
-	calls   map[uint64]chan result
-	streams map[uint64]*stream
+	// Both are guarded by mu. Observers are independent view subscriptions;
+	// their ids belong to this connection and never enter turn replay cursors.
+	calls     map[uint64]chan result
+	streams   map[uint64]*stream
+	observers map[uint64]*stream
 
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
@@ -362,6 +364,12 @@ func (c *Client) helloNow() Hello {
 	if strings.TrimSpace(open) != "" {
 		hello.Session = open
 		hello.Back = true
+		// AND A LINK COMING BACK NEVER MINTS A SECOND CONVERSATION. [Hello.New]
+		// is an intention a surface has exactly once — when it opened this tab —
+		// and a redial that repeated it would answer a dropped wifi with another
+		// empty conversation on the engine's disk while the one this window is
+		// drawing went on running without a reader.
+		hello.New = false
 	}
 	if cursors := c.cursors(); len(cursors) > 0 {
 		hello.Resume = cursors
@@ -737,6 +745,8 @@ func (c *Client) read() {
 			return
 		}
 		switch frame.Kind {
+		case "observed", "observerClosed":
+			c.observerFrame(frame)
 		case "result":
 			c.deliver(frame)
 		case "event":
@@ -832,6 +842,7 @@ func (c *Client) streamLocked(id uint64) *stream {
 // a channel left open would leave the surface spinning on a turn nobody is
 // running.
 func (c *Client) bury(cause error) {
+	c.closeObservers()
 	c.mu.Lock()
 	if c.dead != nil {
 		c.mu.Unlock()
@@ -1507,6 +1518,12 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 // exactly what a dead connection does to the turn as well.
 func (a *Agent) Interrupt() { _, _ = a.c.call(nil, MethodInterrupt, nil) }
 
+// StopWork asks the engine to end all work in this conversation and suppress wakes.
+func (a *Agent) StopWork() error {
+	_, err := a.c.call(nil, MethodStopWork, nil)
+	return err
+}
+
 // Compact runs a compaction pass on the far side.
 func (a *Agent) Compact(ctx context.Context) error {
 	_, err := a.c.call(ctx, MethodCompact, nil)
@@ -1969,3 +1986,6 @@ func loadImages(images []session.Image) ([]session.Image, error) {
 func oversizeImage(path string) error {
 	return fmt.Errorf("session: %s is over the %dMB image limit", filepath.ToSlash(path), maxImageBytes>>20)
 }
+
+// NeedsPerson reads the pushed conversation state without a round trip.
+func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }

@@ -586,7 +586,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work |
-| `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept; shared engine connections use normal session-switch semantics |
+| `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
@@ -755,12 +755,11 @@ Closing the active tab selects the most recently used remaining open tab. With
 none left, the window goes **Home** with the current session behind it.
 Closing an inactive tab does not switch the current conversation.
 
-With `aforge chat --no-host`, locally held conversations keep working when another
-tab is selected. The ordinary engine-backed chat, `--host` and `--at` hold one
-selected session per connection: selecting another tab uses the normal session
-switch, which ends the outgoing session on that connection. Closing the final tab
-only opens Home and leaves that session selected. No extra Stop or Close request
-is sent to the newly selected session.
+Conversations keep working when another tab is selected, over every door: the ordinary
+engine-backed chat, `--host` and `--at` each hold **one connection per conversation**, and
+`aforge chat --no-host` holds them in this process. Selecting another tab ends nothing and
+sends no Stop or Close to either side of the switch. Closing the final tab only opens Home
+and leaves that conversation behind it.
 
 **On the new chat page it closes that page**, exactly as `esc` does: the page
 comes down, the conversation you were in comes back with its draft and its work,
@@ -1503,9 +1502,8 @@ With **three or more** open, that slot says `ctrl+k switch` instead, and `ctrl+k
 card of all of them — see *Switch between open conversations*. `tab` still works and still
 goes to the last one.
 
-With `aforge chat --no-host`, it works while either local conversation is running:
-the one you leave keeps streaming into its own transcript. Shared engine connections
-hold one selected session instead; switching ends the previous session on that connection.
+It works while either conversation is running, over every door: the one you leave keeps
+streaming into its own transcript and is all there when you come back.
 
 **On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
 search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
@@ -1564,9 +1562,9 @@ open, of how many this machine has.
 **Everything else on the machine is behind the fold at the foot.** `→` reaches them and
 `←` puts them away again. A conversation below the fold is not open in this terminal;
 taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
-you are in keeps running when using `aforge chat --no-host`. Engine-backed connections
-currently select one conversation at a time and close the previous session; saved history
-remains available. Their picker shows the other saved chats immediately.
+you are in keeps running — over the ordinary engine socket, over `--host`, over `--at` and
+under `aforge chat --no-host` alike. Each conversation holds its own connection, so
+opening a second, third or fourth closes nothing and cancels nothing.
 
 It works from the **first** session: on a fresh launch you hold one conversation, the card
 has that one row, and the fold has the rest of the machine in it.
@@ -1590,7 +1588,7 @@ the tab you are in. See *Conversation tabs* and
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. Selecting a remaining tab follows normal local or shared connection behavior. See below |
+| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. If it is working you are asked once — `keep running`, `stop work` or `cancel` — and the conversation goes on running unless you chose to stop it. See *Closing a tab* on the screen page |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1609,8 +1607,8 @@ it. Everywhere else the legend reads `space space home · tab last · ctrl+k swi
 **There is no cap** on what one terminal holds at once: taking a row is never refused for
 having too many open. The card draws the first twelve rows and hands a digit to the first
 nine; past that the cursor is the way, and home is the page that shows every conversation
-you have. Independent local conversations remain alive until closed with `/quit`.
-Shared connections instead select one session; switching ends the outgoing session.
+you have. Conversations remain alive until you end one — `/quit`, or `stop work` on the
+card that a working tab's `ctrl+w` raises.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1679,10 +1677,9 @@ Its saved conversation and draft remain available; Enter reopens it.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
-`ctrl+w` in the conversation and the tab's `×`. Independent local work keeps running.
-On a shared engine connection, selecting another tab ends the outgoing session
-through the normal session switch. Closing the final tab opens Home without
-switching, leaving that session selected behind it.
+`ctrl+w` in the conversation and the tab's `×`, and it asks the same question where that
+conversation is working. The work keeps running over every door; selecting another tab
+ends nothing. Closing the final tab opens Home, leaving that conversation behind it.
 
 **`ctrl+w` on a row below the fold does nothing** and says
 `that one is not open here — enter opens it`. There is nothing here to put away: this
@@ -1691,9 +1688,8 @@ terminal is not holding it.
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
 the conversation in front — leaving aforge when it was the last one this terminal held.
 
-With `aforge chat --no-host`, nothing caps how many one terminal holds, so `ctrl+w` is
-never about making room. Engine-backed connections currently hold one selected chat;
-switching closes the previous session and retains its saved history.
+Nothing caps how many one terminal holds, over any door, so `ctrl+w` is never about
+making room — it is about what you want on the row.
 
 ## `tab` still goes straight to the last one
 
@@ -2858,10 +2854,10 @@ further back through the ones before it, newest first. It is the third key of th
 same grammar: `ctrl+t` opens a tab, `ctrl+w` shuts one, `ctrl+shift+t` undoes the
 shutting.
 
-A held local conversation returns with its unsent sentence, caret, attachments
-and reading state. A remembered conversation is resumed through the existing open
-door. On shared engine connections this performs the normal session switch, which
-ends the outgoing session on that connection. It does not create a new conversation.
+A held conversation returns with its unsent sentence, caret, attachments and reading
+state — including one you left with `keep running`, which comes back with everything it
+did while its tab was off the row. A remembered one is resumed on a connection of its own,
+which ends nothing that is already open. It never creates a new conversation.
 If reopening fails, the reason is shown and the entry stays first in line for retry.
 
 **It works from home**, which is where shutting your last tab leaves you — that is
@@ -2889,3 +2885,11 @@ keyboard configuration. A terminal that collapses it to `ctrl+t` sends that inst
 new chat** — the plain chord is never read as a reopen, because a key that opened a
 tab on one terminal and reopened another on the next is a key nobody could predict.
 There is nothing to turn on inside aforge, and the only test is pressing it.
+
+## Switching chats while an account asks for a key
+
+Ctrl+W offers Keep running, Stop work and Cancel while an account asks for typed
+input, just as it does during tool permission. Ctrl+K opens Chats and Ctrl+T
+opens another conversation without answering the question. Cancel leaves the
+pending input untouched. Stop work cancels this conversation's pending question;
+reopening it does not restart the work.

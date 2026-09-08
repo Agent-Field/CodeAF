@@ -60,7 +60,17 @@ on the tray above the message box, and it goes with the next thing you send.
 ```
 /attach server.log
 /upload ~/Downloads/sales-q3.csv
+/attach                     the browser, so you can find the file and look at it first
 ```
+
+**With nothing after it, `/attach` opens a browser.** It is the same sheet `/folder` opens,
+standing in the folder this conversation is about: the subdirectories and then the files
+with their sizes, and a preview of whatever the cursor is on — source with syntax colour, a
+picture drawn in the terminal's own cells, a PDF's text. Moving the cursor shows you a file;
+it does not attach it. `alt+m` chooses one, or several, and the last row of the sheet says
+`attach this file · <path>` — or `attach 2 files` once you have chosen more than one — and
+`enter` does exactly what it says. "Choosing a folder" is the full account of that sheet,
+its keys and its preview.
 
 Path rules are `/image`'s: `~` is your home directory, a bare name is under the directory
 this conversation is about, and an absolute path is left alone. Tab completes the path as
@@ -375,7 +385,6 @@ Pictures are counted separately and have their own ceiling of **10MB each** — 
 Exactly as they are written:
 
 ```
-/attach takes a path · try /attach server.log
 no such file: <what you typed>
 <name> is already attached
 <name> is 24MB and over the 16MB file limit
@@ -384,12 +393,16 @@ could not read <name>
 this connection cannot carry a file · the words were not sent
 ```
 
-The first is a bare `/attach` with nothing after it. The second is a path that is not
-there. The third means it is on the tray already; the same path twice is one chip. The
-fourth and fifth are the ceilings, and they only ever appear over `--host`. The sixth is a
-file that vanished or became unreadable between attaching and sending. The last means this
-connection was opened without a door for files; your words were **not** sent and your tray
-is still yours.
+The first is a path that is not there. The second means it is on the tray already; the same
+path twice is one chip. The third and fourth are the ceilings, and they only ever appear
+over `--host`. The fifth is a file that vanished or became unreadable between attaching and
+sending. The last means this connection was opened without a door for files; your words
+were **not** sent and your tray is still yours.
+
+**A bare `/attach` is not on this list any more.** It used to answer
+`/attach takes a path · try /attach server.log`; it now opens the context browser on the
+folder this conversation is standing in, so you can find the file rather than being told to
+know its path. See "Choosing a folder".
 
 **A folder is not on this list any more.** `/attach ~/code/thing` used to answer
 `<name> is a folder · attach a file`; it now goes to the folder door and says

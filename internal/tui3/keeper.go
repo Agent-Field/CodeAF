@@ -197,10 +197,13 @@ type behindWatch struct {
 	// it is the bookkeeping behind the atomic above — a count would be wrong,
 	// because a node publishes `running` many times and settles once.
 	//
-	// IT IS TOUCHED ONLY BY [behindWatch.run]'S OWN GOROUTINE, through
-	// [behindWatch.noteTask], and never read by the surface. That is why it needs
-	// no lock beside it: the one fact anybody else reads is the atomic.
+	// The watcher writes it through noteTask; workMu also protects the surface’s
+	// cancellation snapshot. Painting reads only the atomic working flag.
 	live map[uint64]struct{}
+	// The surface snapshots only this conversation’s replayed cancellation IDs.
+	workMu  sync.Mutex
+	jobs    map[int]struct{}
+	jobbing atomic.Bool
 }
 
 // noteTask folds one task notice into [behindWatch.tasking], and reports whether
@@ -221,6 +224,8 @@ func (w *behindWatch) noteTask(notice *session.TaskNotice) bool {
 	if notice == nil || notice.Kind == session.TaskKindJob {
 		return false
 	}
+	w.workMu.Lock()
+	defer w.workMu.Unlock()
 	switch notice.State {
 	case session.TaskRunning, session.TaskQueued:
 		if w.live == nil {
@@ -397,7 +402,7 @@ func (w *behindWatch) run() {
 			// Folding it costs a map write; the stir is raised only when the
 			// conversation as a whole starts or stops having work in flight, so a
 			// graph publishing a node a second does not wake the surface a second.
-			if w.noteTask(ev.Task) {
+			if w.noteTask(ev.Task) || w.noteJob(ev.Job) {
 				w.stir()
 			}
 		case _, ok := <-titles:

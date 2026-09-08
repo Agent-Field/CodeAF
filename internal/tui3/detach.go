@@ -215,6 +215,12 @@ func convKey(path string) string {
 // remembered bundle would then be nine zero fields where the surface is holding
 // nine live ones. What is true is what the surface has.
 func (a *app) front() Conversation {
+	// The connection and the two far readings are copied out the same way: what
+	// the surface is holding IS this conversation's, and it has to travel with it
+	// into the keeper so that coming back does not leave the previous
+	// conversation's connection answering for this one (tui3.go's
+	// [Conversation.Link]).
+	link := a.link
 	return Conversation{
 		Agent:            a.agent,
 		SessionFile:      a.file,
@@ -228,6 +234,9 @@ func (a *app) front() Conversation {
 		SaveApproval:     a.saveApproval,
 		SaveBashApproval: a.saveBashApproval,
 		ApplyApprovals:   a.applyApprovals,
+		TaskRoom:         a.farRoomRecord,
+		TaskIndex:        a.farTasks,
+		Link:             &link,
 	}
 }
 
@@ -450,6 +459,11 @@ func (a *app) closeForSwitch() {
 		a.closeRewindSheet(true)
 	}
 	a.closeTaskRecord()
+	// AND THE QUESTION ABOUT CLOSING A TAB, which is a question about a SCREEN
+	// that is being replaced (tabclose.go). It never crosses a switch: answering
+	// it afterwards would act on a tab the person is no longer looking at, and the
+	// gesture is one press away wherever they land.
+	a.dropTabClose()
 }
 
 // attachConversation points the surface at a conversation and hands back the
@@ -530,7 +544,15 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// outstanding questions with that session, and the list this surface was
 	// handed on the first frame belongs to the one it just left (hostlink.go's
 	// [app.askHeld]).
-	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.loadTasks(), a.askHeld()}
+	// AND THE TWO CONNECTION LANES ARE ARMED AGAIN FOR THE SAME REASON THE HELD
+	// QUESTIONS ARE ASKED AGAIN. On a door where each conversation has its own
+	// connection, who holds the keyboard and which turns another window started
+	// are facts about THIS conversation's connection; the waits the previous one
+	// armed are parked on the previous one's channels and discard themselves by
+	// generation (watching.go's [followingMsg]).
+	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.loadTasks(),
+		a.askHeld(), a.watchDriving(), a.watchFollowing()}
+
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
 	}

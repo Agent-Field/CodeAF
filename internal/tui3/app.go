@@ -1488,6 +1488,10 @@ type app struct {
 	// rung: both are the surface holding a keystroke back until it is told
 	// whether to act on it, and neither can be raised while the other is up.
 	stop *stopCard
+	// tabClose is the raised question about taking a tab that is still doing
+	// something off the row (tabclose.go). It shares the stop card's slot and
+	// can never be up beside it.
+	tabClose *tabCloseCard
 	// roomStop is where the ✕ was drawn on the room's pinned header, in columns,
 	// or the empty span when there is nothing there to stop. Written by
 	// [app.roomHead] at layout and read by [app.stopMarkPress], which is the
@@ -2826,6 +2830,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (stop.go). It is a question about ENDING the work the roster and the
 		// room are pages onto, so a key that reached either of them would be a
 		// key aimed at the very thing being stopped.
+		// THE CLOSE-A-TAB CARD IS READ WHERE THE STOP CARD IS READ, and above it:
+		// they share one slot and one keyboard, and this one is up only when the
+		// other cannot be (tabclose.go).
+		if cmd, took := a.tabCloseKey(msg); took {
+			return a, cmd
+		}
 		if cmd, took := a.stopKey(msg); took {
 			return a, tea.Batch(flushed, cmd)
 		}
@@ -3131,6 +3141,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.tabWheel(msg) {
 			return a, nil
 		}
+		// AND THE FOLDER BROWSER ANSWERS THE WHEEL OVER ITS OWN ROWS. Its window
+		// follows its cursor rather than an offset of its own, so the wheel walks
+		// the cursor — the same bargain the roster and the status sheet make, and
+		// the reason the third column fills as it is turned (folderplace.go).
+		if cmd, took := a.folderWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
+			return a, cmd
+		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -3349,11 +3366,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.effortMenuPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE FOLDER BROWSER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
+			// ELSE, on the two lists above's terms and for their reason: it hangs
+			// over a draft somebody is still writing, so a press anywhere else is
+			// a press on whatever is there. Its rows walk and its action row adds
+			// (folderplace.go's [app.folderPress]).
+			if cmd, took := a.folderPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
 			// well as the row (attach.go).
-			if a.chipPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
+			if cmd, took := a.chipPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// AND THE JUMP CHIP IS THE OTHER ONE, floating in the breathing gap
 			// rather than in the box, and column-aware for the same reason: the
@@ -3374,6 +3399,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// tall on a phone — which overlaps the strip and the top of the body,
 			// deliberately, because a finger that misses this one either ends work
 			// nobody meant to end or leaves a person with no way to end it at all.
+			// AND THE CLOSE-A-TAB CARD'S ANSWERS SIT IN THE SAME PLACE, read on
+			// the same terms and just above (tabclose.go).
+			var answered tea.Cmd
+			if a.tabClosePress(msg.Mouse().X, msg.Mouse().Y, &answered) {
+				return a, answered
+			}
 			if a.stopPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -3770,13 +3801,44 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.tookFolderFacts(msg)
 		return a, nil
 
+	case folderKidsMsg:
+		// ONE LEVEL OF THE BROWSER'S COLUMNS, COMING BACK. Every readdir this
+		// surface makes is asked for as a command and lands here: a home directory
+		// on a network mount and a folder with forty thousand entries in it are
+		// both things a keystroke may not wait for, and an answer stamped with a
+		// picker that has since closed is dropped rather than drawn (folderpick.go).
+		return a, a.tookFolderKids(msg)
+
+	case previewLoadedMsg:
+		// ONE FILE READ FOR THE BROWSER'S PREVIEW PANE, COMING BACK. Source with
+		// syntax colour, a picture as half-cells, a PDF's text, a folder's rows —
+		// all of it bounded, cancellable and read off the loop, and an answer the
+		// cursor has moved past is dropped rather than drawn (contextpreview.go).
+		a.tookFolderPreview(msg)
+		return a, nil
+
+	case folderTakenMsg:
+		// A CONFIRMED SELECTION, COMING BACK. Registering a folder is a write on a
+		// local engine and a round trip over a connection, and attaching a file is
+		// a stat — none of which may happen under a keystroke, so the whole batch
+		// runs off the loop and lands here (folderact.go).
+		a.tookFolderTaken(msg)
+		return a, nil
+
+	case placeDroppedMsg:
+		// A FOLDER TAKEN OFF THE CONVERSATION, COMING BACK. The cell is pressed
+		// here and the folder goes over there, which over a connection is a round
+		// trip — so the tray changes when the answer arrives and not before
+		// (folderchip.go).
+		a.tookPlaceDropped(msg)
+		return a, nil
+
 	case folderStoreMsg:
 		// THE PICKS AND THE INDEX, COMING BACK. The picker opened from memory
 		// without either; this is what turns "the order the sources handed these
 		// over" into "the order you actually use them", and it lands mid-list
 		// without touching the filter somebody is typing (folderplace.go).
-		a.tookFolderStore(msg)
-		return a, nil
+		return a, a.tookFolderStore(msg)
 
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
@@ -6106,6 +6168,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// stack trace saved to a file. The model is handed the PATH rather than
 		// the contents, because an attached file is a file and the session
 		// already has a `read` tool (attach.go).
+		//
+		// AND WITH NO PATH AFTER IT, THE BROWSER — the same sheet /folder opens,
+		// with file intent (folderplace.go's [app.openContextPick]). It used to
+		// answer `/attach takes a path`, which is a correction rather than an
+		// answer: somebody who typed the word without the path is somebody who
+		// does not know the path, and a browser is the thing they asked for.
+		if strings.TrimSpace(rest) == "" {
+			return a.openContextPick("", false)
+		}
 		a.attachFilePath(rest)
 		return nil
 
@@ -6483,6 +6554,23 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	a.applyApprovals = conv.ApplyApprovals
 	if conv.RecentSessions != nil {
 		a.recentSessions = conv.RecentSessions
+	}
+	// AND THE TWO FAR READINGS ABOUT THIS CONVERSATION, rebound for the approval
+	// trio's own reason (tui3.go's [Conversation.TaskRoom]). Nil keeps what the
+	// surface holds, because a door whose readings are of one disk answers for
+	// every conversation on it.
+	if conv.TaskRoom != nil {
+		a.farRoomRecord = conv.TaskRoom
+	}
+	if conv.TaskIndex != nil {
+		a.farTasks = conv.TaskIndex
+	}
+	// AND THE CONNECTION THIS CONVERSATION IS ON, for the same reason and one more
+	// (tui3.go's [Conversation.Link]): the questions a session left waiting are
+	// held with that session, and [app.attachConversation] asks for them again the
+	// moment this returns.
+	if conv.Link != nil {
+		a.link = *conv.Link
 	}
 }
 

@@ -361,6 +361,24 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	cfg := launch.Config
 	cfg.AskConsent = true
 
+	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
+	// through the very pair [remote.Engine.Fresh] below is written from
+	// ([v3NextSession] then [v3PointAt]). The launch above resolved this
+	// workspace's LATEST conversation, which is the right answer for every other
+	// hello and the wrong one for this: a window opening a second chat beside the
+	// one it already has must not be handed the one it already has
+	// ([remote.Hello.New] holds the whole of why the two intentions are two
+	// flags).
+	if hello.New {
+		place, err := v3NextSession(cfg.Place, workspace)
+		if err != nil {
+			return nil, err
+		}
+		if cfg, err = v3PointAt(cfg, place); err != nil {
+			return nil, err
+		}
+	}
+
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
 	// is on exactly when the wire carries its lane AND the answer that closes it,
@@ -416,10 +434,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
-	if notice != "" {
+	if notice != "" || hello.New {
 		// The session file moved under us, so the welcome has to name the new
 		// one — everything the surface prints about this conversation comes off
-		// that frame.
+		// that frame. A minted conversation is the same fact said on purpose: it
+		// was never the launch's file and it was never resumed.
 		transcript, resumed = cfg.SessionFile, false
 	}
 
@@ -579,6 +598,14 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 		Workspace: workspace,
 		Model:     strings.TrimSpace(hello.Model),
 		Session:   firstEngineWord(hello.Session, sessionFlag),
+	}
+	// A HELLO MINTING ITS OWN CONVERSATION NAMES NO TRANSCRIPT, and the host's
+	// --session flag is not an answer for it either: that flag says which
+	// conversation this daemon opens for a hello that did not choose, and this
+	// hello chose "another one". The launch resolves the workspace's latest
+	// anyway and [bootEngine] points the config at a sibling of it.
+	if hello.New {
+		opts.Session = ""
 	}
 	if shape := hello.Launch; shape != nil {
 		opts.Yolo = shape.Yolo

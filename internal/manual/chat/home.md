@@ -1109,26 +1109,27 @@ terminal hold*.
 
 ## How many conversations can one terminal hold — is there a limit, and why can I not open another
 
-**With `aforge chat --no-host`, as many as you open.** Nothing counts independent local
-conversations or refuses another: the ninth and the fiftieth open like the first,
-from home's `enter`, a typed path, the switcher (`ctrl+k`), search or `/new`.
-The ordinary engine-backed chat, `--host` and `--at` select one conversation per
-connection instead. Switching there ends the outgoing session on that connection;
-saved conversations remain available.
+**As many as you open, over every door.** Nothing counts them or refuses another: the
+ninth and the fiftieth open like the first, from home's `enter`, a typed path, the
+switcher (`ctrl+k`), search or `/new`. The ordinary engine-backed chat, `--host` and
+`--at` dial a connection per conversation, so opening one closes none of the others;
+`aforge chat --no-host` runs them inside this process instead. The only bound is the
+machine's — memory here, and whatever the engine and your provider will carry.
 
 There used to be a cap of eight, and taking a ninth said `8 open is as many as aforge holds
 — /quit closes this one`. That sentence is gone and nothing says it any more.
 
-Each independent local conversation is fully alive: its turn streams, its tasks run,
-it holds its transcript's lock and heartbeats a presence file every five seconds.
-A window with fifty of them holds fifty conversations' worth of memory.
+Each conversation is fully alive whether or not you are looking at it: its turn streams,
+its tasks run, it holds its transcript's lock and heartbeats a presence file every five
+seconds. A window with fifty of them holds fifty conversations' worth of memory, and over
+an engine door fifty connections.
 `/quit` closes the conversation in front and brings the last one forward.
 
 `ctrl+w` and a tab's `×` hide its tab and preserve its draft. Closing the active tab
-selects the most recently used remaining tab; with none left it goes Home. Independent
-local work stays alive. On a shared engine connection, selecting another tab uses the
-normal session switch and ends the outgoing session; closing the final tab only opens
-Home, so that session stays in front behind it. Closing an inactive tab does not switch.
+selects the most recently used remaining tab; with none left it goes Home. The work stays
+alive over every door — and where that conversation is still working, the press asks first
+(`keep running`, `stop work`, `cancel`). Selecting another tab ends nothing: each
+conversation has its own connection. Closing an inactive tab does not switch.
 
 `2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
 rows. Home is the page that shows every one of them.
@@ -1229,17 +1230,15 @@ What does not move is where the conversation is **standing**: its own working di
 `AGENTS.md` and its settings stay the folder it was opened in. *Choosing a folder* has both
 halves.
 
-For separate conversations with their own project settings, models and histories,
-`aforge chat --no-host` holds **as many as you open**, with no cap on the number.
-One is on screen and the rest stay alive behind it. `/quit` ends one; `ctrl+w` and
-`×` hide its tab and select the most recently used remaining tab, or Home when none
-remain. Local work keeps running and its draft stays with the conversation.
+For separate conversations with their own project settings, models and histories, aforge
+holds **as many as you open**, with no cap on the number, over every door. One is on
+screen and the rest stay alive behind it. `/quit` ends one; `ctrl+w` and `×` hide its tab
+and select the most recently used remaining tab, or Home when none remain — and where that
+conversation is still working they ask first, `keep running` or `stop work`. Closing the
+final tab goes Home. Work keeps running and its draft stays with the conversation.
 
-The ordinary engine-backed chat, `--host` and `--at` instead select one conversation
-per connection. Closing an active tab with another available performs a normal switch,
-which ends the outgoing session on that connection. Closing the final tab goes Home
-without switching sessions. Saved history and unsent drafts remain available.
-The following independent-conversation behavior describes `--no-host`:
+All of the following holds over the ordinary engine socket, `--host`, `--at` and
+`--no-host` alike:
 
 - **`enter` on home** opens any row, in any project, and leaves the one you were in open.
 - **`tab`**, pressed with an empty message box, goes to the conversation you were in before
@@ -1813,8 +1812,9 @@ Over `--host` home lists **the machine your session is running on**. The project
 conversations in them and the work each of those ran are read on the far end and carried
 here, so what you are looking at is the server's afternoon rather than your laptop's — and
 the right end of the tab bar says `on <machine>` so you can see which. Enter on a row opens
-that conversation the way `aforge resume` opens one locally: the engine swaps to it and this
-window keeps drawing.
+that conversation the way `aforge resume` opens one locally, beside the one you are in
+rather than in place of it: the engine gives it a connection of its own and the chat you
+came from keeps running.
 
 Two things a remote home does not do, and both are silences rather than sentences. **No row
 is ever marked `that folder is gone`** — the folders are on the other machine and a stat here
