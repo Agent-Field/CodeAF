@@ -1478,9 +1478,9 @@ Five things are worth knowing about it:
   both were on this file twice, so a day that included a fork or a run read high, and the
   daily limit was reached before that much had actually been spent.
 
-The status line is **this conversation's** own running total, kept by the same step that
-writes the line above. `/cost` prints this conversation and its task family; `/spend` opens the spend place
-for the whole machine. They answer two different questions and neither is a correction of the other.
+The status line shows **this conversation and its task family**, combining the current
+ledger reading with the conversation meter. `/cost` prints that same scope with its
+breakdown; `/spend` opens the ledger for the whole machine.
 
 ## The spend place — what days and models cost, and what the money was for
 
