@@ -463,6 +463,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// The profile answers this question live on every ordinary launch, but
+		// --yolo is the one launch that opens the gate without writing that row,
+		// so its forced posture has to reach the surface by hand instead.
+		ApprovalMode: v3SurfacePosture(*yolo),
 		// AND WHETHER THOSE ROWS SEAT ANYTHING THIS RUN. `--one-model` empties the
 		// roles source and the task model above, so the crew in the profile is
 		// still on disk and still seats nothing — and a surface that did not know
@@ -1441,6 +1445,18 @@ func v3Connect(profileDir string) *connect.Manager {
 		return nil
 	}
 	return manager
+}
+
+// v3SurfacePosture is the tool-approval posture this LAUNCH hands the surface,
+// and it exists because the flag and the profile row open the same gate by two
+// different means. An empty answer is deliberate: on every ordinary launch it
+// leaves the surface reading the profile live, while --yolo's forced allow has
+// no row there to read.
+func v3SurfacePosture(yolo bool) string {
+	if yolo {
+		return string(approval.ActionAllow)
+	}
+	return ""
 }
 
 // v3Policy builds the tool gate from the two approval rows.

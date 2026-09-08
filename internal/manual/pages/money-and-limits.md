@@ -29,6 +29,23 @@ practice carve-out reads `practice off`. `$0` is not shown on any of them,
 because on two of the three it would read as *zero dollars allowed* — the exact
 opposite of what a zero there means.
 
+## Why a cost reads $0.0005 and never $0.00 — a fraction of a cent, did that cost nothing, is that free
+
+Money is spelled at the precision it actually has. At `$0.01` and above it uses
+cents, such as `$3.40` and `$18.40`; below a cent it uses four decimals, such as
+`$0.0005`; and where the journal's own precision runs out it says
+`under $0.0001`.
+
+**A cost that was really spent never reads `$0.00`.** `$0.00` beside real work
+reads as free, and the work was not free. Work that has never been priced shows
+no money at all on its row — not a zero — because "nothing has been billed for
+this" and "this cost nothing" are different facts.
+
+The one deliberate exception is the live board's per-job figure. It is rounded
+to a dime — `$0.70`, not `$0.68` — because the board is rewritten every turn and
+a figure nobody decides on should not move. A result or receipt keeps the more
+precise figure, so a board figure and a result figure can differ by a few cents.
+
 ## Pause and ask, never spend on
 
 When the day's spend reaches the ceiling, aforge does not stop mid-thought and

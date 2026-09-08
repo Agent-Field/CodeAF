@@ -638,6 +638,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it say denied by the person when I did not deny", "permissions"},
 		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
+		{"does --yolo show on the status line", "screen"},
 		{"how do I make it stop asking every time", "permissions"},
 		{"what model is it using right now", "models-and-cost"},
 		{"how do I give it a longer context", "models-and-cost"},
@@ -884,6 +885,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// answer and by somebody comparing two unchecked endings.
 		{"why does my unchecked line quote the model's reply", "adaptive-runs"},
 		{"why do two unchecked runs end with different reasons", "adaptive-runs"},
+		{"the retry died instantly but my fix is already on disk", "adaptive-runs"},
 		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
 		{"why did it run the tests nine times", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a

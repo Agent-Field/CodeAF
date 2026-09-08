@@ -1105,30 +1105,22 @@ func wakeNote(text string) userMessage {
 	return userMessage{message: textMessage("user", text), wake: true, batch: true}
 }
 
-// jobNote is a background job's owed ending in the compact form a boundary
-// needs. The complete output remains in the job's ring and log, addressable
-// through `jobs output`; repeating that tail in every later request would turn
-// a notification into a second copy of the log.
+// jobNote is a background job's ending on the owed lane.
 //
-// AND AN OWED ENDING TRAVELS WHOLE. A WAIT IS ONLY WORTH TAKING IF WHAT IT
-// WAKES WITH IS WORTH READING: a command the work is still standing over stops
-// that work from asking anything at all (task_job_park.go), and it stops it so
-// that the command's own ending can be the next thing the work reads. Trimmed
-// to its first line, that ending would say no more than the row at the foot of
-// every tool result already showed — which is the reading the wait was taken
-// INSTEAD of. So an owed ending arrives with its last lines and the path to the
-// whole log, exactly as it was composed ([jobRegistry.settleExit]).
+// A JOB'S ENDING TRAVELS WHOLE. The ending is the moment its output finally
+// means something, and a note that withheld it would be an invitation to make
+// one more call for what the note was already about. [jobRegistry.settleExit]
+// composes the headline, the last [jobExitTailLines] lines and the path to the
+// whole log before the note reaches this lane.
 //
-// The flag is an argument rather than a second envelope because there is one
-// envelope for a job's ending and this is one fact about it. It also has an end
-// in sight: the general trim is a defect of its own (issue #573), and when it
-// goes the argument goes with it rather than a whole road.
-func jobNote(text string, whole bool) userMessage {
+// A WAIT IS ONLY WORTH TAKING IF WHAT IT WAKES WITH IS WORTH READING. A command
+// the work is still standing over stops that work from asking anything at all
+// (task_job_park.go), and it stops it so that the command's own ending can be
+// the next thing the work reads. Carrying that ending whole is what makes the
+// wait worth taking.
+func jobNote(text string) userMessage {
 	text = strings.TrimSpace(text)
 	note := wakeNote(text)
-	if !whole {
-		note = wakeNote(firstLine(text))
-	}
 	// AND EVERY ENDING IS MARKED AS ONE. It is what releases a worker parked on
 	// the command this note is about, in the same locked step as the append
 	// ([userMessage.ending]).
@@ -2385,15 +2377,11 @@ func (a *Agent) enqueueSteering(text string) {
 	a.enqueueNote(wakeNote(text))
 }
 
-// enqueueJobNote is the registry's owed lane. The headline enters the boundary
-// batch; the complete output remains available through `jobs output`.
-//
-// `whole` is the one ending that is not reduced to its headline — a command the
-// work is still WAITING for, whose ending is the reading that wait was taken for
-// ([jobNote] states the law). Every other caller passes false and travels
-// exactly as it always did.
-func (a *Agent) enqueueJobNote(text string, whole bool) {
-	a.enqueueNote(jobNote(text, whole))
+// enqueueJobNote is the registry's owed lane, and what it carries is the ending
+// as [jobRegistry.settleExit] composed it. The whole log remains available
+// through `jobs output` for anything past the tail.
+func (a *Agent) enqueueJobNote(text string) {
+	a.enqueueNote(jobNote(text))
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by

@@ -1491,10 +1491,12 @@ dies. That used to end the run: exit 1, the provider's own sentence printed as t
 deliverable, and nothing anywhere had looked at the work sitting on disk.
 
 **A worker cut off on the wire is judged on the tree.** Where the last attempt ended because
-a CALL failed rather than because the WORK failed, and the worker left files behind, what is
-on disk is put to the same review a delivered worker faces: the reading of your project's own
-checks first, then the one question — *is this request, as stated, satisfied by what is in
-hand?* A yes ends the run finished, under the same ✓ every satisfied run gets:
+a CALL failed rather than because the WORK failed, whatever the RUN left on the tree — this
+worker's files or an earlier attempt's — is put to the same review a delivered worker faces:
+the reading of your project's own checks first, then the one question — *is this request, as
+stated, satisfied by what is in hand?* A repair round whose first call was refused can die
+instantly, before it reaches a tool; that retry is judged on the fix already on disk. A yes
+ends the run finished, under the same ✓ every satisfied run gets:
 
 ```
   ✓ fix the pager tempfile mode — the request was met as stated
@@ -1511,9 +1513,9 @@ message from the model never arrived, and what is on the tree does not do what w
 — …`. Anything measured decides it before the question is even asked — a check this work
 turned red, a name nothing in the tree binds, a rule you stated and the work broke.
 
-**It widens nothing else.** A worker cut off having written no file still fails as it did;
-so does one whose own work errored, and one whose clock ran out; and where the review itself
-could not be reached, the failure stands rather than being passed.
+**It widens nothing else.** A worker whose own work errored still fails, as does one whose
+clock ran out; where the review itself could not be reached, the failure stands rather than
+being passed; and a run that left nothing anywhere still fails without a review.
 
 ## When a check names what you asked for and asserts nothing about it
 
