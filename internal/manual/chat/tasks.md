@@ -4539,3 +4539,10 @@ If the registration cannot be restored, the task still needs your look and names
 saved folder and the cause. Its files remain in place, and acceptance can be retried
 after repair. It does not claim a missing branch holds the work. Protected branches such
 as main remain untouched; their task branch is kept instead.
+
+
+## Task header model and price readability
+
+Task header pricing uses regular body ink so spending stays readable. The model
+uses a quieter secondary text color; separators and ancillary details remain dim.
+The same hierarchy applies when the header fits its compact layout.

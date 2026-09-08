@@ -37,7 +37,7 @@ func (a *app) roomGroupedFacts(node *taskNode, width int, stop string) (string, 
 	f := a.roomFactsOf(node)
 	state := strings.TrimSpace(a.roomMark(node) + " " + rowAll([]rowField{f.state}))
 	activity := rowAll([]rowField{f.clock, f.calls, f.live})
-	setup := rowAll([]rowField{f.model, f.effort, f.spend})
+	setup := a.roomSetupInk(rowAll([]rowField{f.model, f.effort, f.spend}), node)
 	left := state
 	if activity != "" {
 		if left != "" {
@@ -50,7 +50,7 @@ func (a *app) roomGroupedFacts(node *taskNode, width int, stop string) (string, 
 		if right != "" {
 			right += "   "
 		}
-		right += stop
+		right += a.pal.dim(stop)
 	}
 	lead := ansi.StringWidth(state)
 	paint := func(s string) string {
@@ -67,4 +67,18 @@ func (a *app) roomHeaderPad() int {
 		return 1
 	}
 	return 0
+}
+
+// Price is an accountable figure; the model identifies the setup. Both remain
+// regular weight, above the quiet separators and below the task's main title.
+// Reuse the task fact painter so compact and grouped headers share the roles.
+func (a *app) roomSetupInk(text string, node *taskNode) string {
+	if node == nil {
+		return a.pal.dim(text)
+	}
+	model := strings.TrimSpace(node.model)
+	return tasksPaintTail(text, []tasksFact{
+		{field: rowSay(a.roomSpend(node)), ink: a.pal.ink},
+		{field: rowSay(model, modelBase(model)), ink: a.pal.narr},
+	}, a.pal)
 }

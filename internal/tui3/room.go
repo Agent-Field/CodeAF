@@ -2420,7 +2420,7 @@ func (a *app) roomFactsLine(width int) string {
 		if lead <= 0 || lead > cols {
 			return a.pal.dim(label)
 		}
-		return ink(ansi.Cut(label, 0, lead)) + a.pal.dim(ansi.Cut(label, lead, cols))
+		return ink(ansi.Cut(label, 0, lead)) + a.roomSetupInk(ansi.Cut(label, lead, cols), node)
 	}
 	for _, right := range []string{shown, ""} {
 		line, ok := a.legendLine(left, right, width, paint)
