@@ -29,6 +29,8 @@ package session
 // these five here — a frame or a keystroke reads it, so waiting on the wire for
 // it is a terminal that has stopped repainting.
 type Facts struct {
+	// NeedsPerson names an outstanding human decision, including hidden chats.
+	NeedsPerson bool `json:"needsPerson,omitempty"`
 	// Model is the model the next request will use ([Agent.Model]).
 	Model string `json:"model,omitempty"`
 	// Title is the name the session gave itself ([Agent.Title]), and empty for
@@ -125,6 +127,9 @@ func FactsOf(source FactSource) Facts {
 	// they have no answer to.
 	if door, ok := source.(PlaceSource); ok {
 		facts.Places = door.Places()
+	}
+	if door, ok := source.(interface{ NeedsPerson() bool }); ok {
+		facts.NeedsPerson = door.NeedsPerson()
 	}
 	return facts
 }

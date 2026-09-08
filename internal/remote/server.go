@@ -1024,15 +1024,19 @@ func (sess *Session) announce() {
 
 // factsMoved says whether one event of a turn changes something a frame reads.
 //
-// IT IS A SHORT LIST ON PURPOSE, and every entry earns its place: a turn ending
-// settles the spending and the weight, an error ends a turn the same way, a
-// name being chosen is the one time a session's title ever changes, and a
-// compaction is the one thing that makes a conversation weigh LESS. Every other
-// kind moves text on a screen and no fact behind it — and a list that announced
-// on all of them would put a transcript walk between every delta and the next.
+// State transitions publish spending, identity and attention. Question and
+// settlement events must publish before a hidden reader wakes, while ordinary
+// text and reasoning deltas carry no changed frame facts.
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
-	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted:
+	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
+		session.EventConnectAsk, session.EventConnectDone,
+		session.EventTaskProposal, session.EventTaskUpdate,
+		session.EventStandingProposal, session.EventStandingUpdate,
+		session.EventHarnessOffer, session.EventHarnessRun, session.EventHarnessDesignDone,
+		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
+		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
 		return true
 	}
 	return false

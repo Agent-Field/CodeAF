@@ -157,6 +157,10 @@ func (sess *Session) pumpLane(s *server, name laneName, generation uint64, lane 
 			quiet = true
 			continue
 		}
+		// Publish attention before the event wakes a hidden conversation reader.
+		if factsMoved(event.Kind) {
+			sess.announce()
+		}
 		if err := s.send(Frame{Kind: string(name), Payload: payload}); err != nil {
 			quiet = true
 		}

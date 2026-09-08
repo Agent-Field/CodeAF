@@ -266,6 +266,22 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// A permission question holds its work, not the person's other conversations.
+	// These navigation chords never answer it; ordinary answer keys stay below.
+	if a.asking() && !a.shaping() {
+		switch msg.String() {
+		case closeTabChord:
+			cmd, _ := a.closeTabKey(msg)
+			return cmd
+		case "ctrl+k":
+			cmd, _ := a.hopKey(msg)
+			return cmd
+		case newChatChord:
+			cmd, _ := a.newChatKey(msg)
+			return cmd
+		}
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can

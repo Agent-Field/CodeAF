@@ -103,3 +103,13 @@ second chat runs, Home and tab switching, reopening without duplicate execution,
 completion racing with the dialog, pending permission/input, mouse and keyboard,
 narrow terminals and accessibility tiers. Neither readiness marker nor PR readiness
 is allowed until this behavior is integrated and evidenced.
+
+## Completion ownership — steering 06
+
+All five initial lanes are integrated. The finishui worker, based on b7e75f60d,
+owns the complete browser/preview/mixed attachment UI and its real terminal and
+next-request evidence. Coordinator owns async lifecycle, permission/input,
+completion timing, reconnect and held-task stopping. Preserve the active lane;
+merge only after its runner exits and scoped committed work is reviewed. Full
+combined suites and product acceptance follow integration. Existing valid
+evidence is retained; unchanged baselines are not repeated each supervisor pass.

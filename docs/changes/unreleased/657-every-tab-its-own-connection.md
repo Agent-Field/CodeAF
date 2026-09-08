@@ -4,6 +4,7 @@ title: every chat tab holds its own engine connection, so opening one stops none
 pr: 657
 surface: [chat, engine, remote]
 invalidates:
+  - "A tool permission card swallowed tab navigation, and the remote agent could not report hidden attention. Ctrl+W, Ctrl+K and Ctrl+T now leave its question unanswered while navigating, and pushed conversation facts carry needs-you state before the event that wakes its hidden reader."
   - "The remote client lacked Attach and AttachReplay, so hidden tabs lost turn status and reopening could not recover live output. Independent connection-local observations now carry the engine’s atomic transcript/backlog split without submitting again; a broken link ends these observations and reopening refreshes them."
   - "Chats previously counted only running task nodes when describing held work, so a streaming reply without tasks said nothing new. It now reads the existing turn watcher and says working; completed-turn news remains available until the conversation is reopened."
   - "Home could call a conversation held by this window open in another window; it now uses the keeper identity and says open here. The close-tab card clipped its right-hand answers at narrow widths; it now shortens complete labels while retaining visible click targets and a k shortcut for keep running."

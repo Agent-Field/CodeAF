@@ -1974,3 +1974,6 @@ func loadImages(images []session.Image) ([]session.Image, error) {
 func oversizeImage(path string) error {
 	return fmt.Errorf("session: %s is over the %dMB image limit", filepath.ToSlash(path), maxImageBytes>>20)
 }
+
+// NeedsPerson reads the pushed conversation state without a round trip.
+func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }

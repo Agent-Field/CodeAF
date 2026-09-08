@@ -88,6 +88,10 @@ func (s *server) pumpObserver(ctx context.Context, id uint64, feed *taskFeed, ev
 			if !ok {
 				return
 			}
+			// Publish attention before the event wakes a hidden conversation reader.
+			if factsMoved(ev.Kind) {
+				s.session.announce()
+			}
 			if s.send(Frame{Kind: "observed", ID: id, Payload: mustJSON(WireEvent(ev))}) != nil {
 				return
 			}

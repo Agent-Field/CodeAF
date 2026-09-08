@@ -230,6 +230,13 @@ ends that task; `/quit` ends the program.
 
 ## Keep running, stop work or cancel — closing a tab on a chat that is still working
 
+A tool permission question does not trap you in its tab. `ctrl+w` offers the same
+close actions while leaving the question unanswered; `ctrl+k` opens Chats and
+`ctrl+t` opens another chat. A hidden chat waiting on your answer is marked
+with `?`; Chats says `asking you something`. Reopen it to answer the original question. Cancel on the close card
+leaves both the tab and permission untouched; `stop work` cancels that reply.
+
+
 **Closing a tab with work in it asks first.** A card appears above the message box
 naming that conversation and what it is doing — `Close this tab? the tree walk is
 working · 2 tasks running` — with three answers under it and a dim line saying what the
