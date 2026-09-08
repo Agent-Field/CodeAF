@@ -59,3 +59,20 @@ func TestChatsNamesAHiddenRunningReplyAndRetainsItsCompletion(t *testing.T) {
 		}
 	}
 }
+
+// A typed account question holds one conversation, not navigation between them.
+func TestTypedConnectionInputAllowsSafeTabCloseAndCancel(t *testing.T) {
+	a, _, first := asyncApp(t)
+	turning(a, first)
+	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "typed", Service: "stripe", ServiceName: "Stripe", NeedsKey: true})
+	a.connAsks[0].key = &editor{}
+	a.connAsks[0].key.setText("unsent fixture")
+	drive(t, a, key("ctrl+w"))
+	if !a.closingTab() {
+		t.Fatal("typed input swallowed the close-tab chord")
+	}
+	drive(t, a, key("esc"))
+	if a.closingTab() || !a.entering() || a.connAsks[0].key.String() != "unsent fixture" {
+		t.Fatal("cancel changed the pending input")
+	}
+}

@@ -824,6 +824,13 @@ func (f *folderPick) rows(width, n int, pal palette, st *tokens.Styler, hover in
 	// showing only the way to add something, with no way to see what would be
 	// added, is not a browser. Its own row number is known before it is painted,
 	// so the pointer's band lands on it.
+	// The filter contains the current path while browsing, so its placeholder
+	// cannot teach the preview controls. Reserve a persistent legend above the
+	// action, giving it up only when the terminal cannot hold a useful list.
+	wantLegend := n > 4
+	if wantLegend {
+		n--
+	}
 	wantAction := n > 1
 	if wantAction {
 		n--
@@ -857,6 +864,9 @@ func (f *folderPick) rows(width, n int, pal palette, st *tokens.Styler, hover in
 	}
 	if !wantAction {
 		return out
+	}
+	if wantLegend {
+		out = append(out, pal.dim(folderPad+f.controlLegend(width-folderPadCells)))
 	}
 	f.geom.action = len(out)
 	return append(out, f.actionRow(width, pal, hover))
@@ -1555,4 +1565,15 @@ func (f *folderPick) folderHintAt(room int) string {
 		return rowTail(folderBrowseHintFields, room)
 	}
 	return rowTail(folderHintFields, room)
+}
+
+// controlLegend keeps cancel and the narrow preview door ahead of optional hints.
+func (f *folderPick) controlLegend(room int) string {
+	if !f.browsing {
+		return rowTail([]rowField{rowSay("esc cancel"), rowSay("→ open"), rowSay("enter add")}, room)
+	}
+	if f.pane == folderPaneWide {
+		return rowTail([]rowField{rowSay("esc cancel"), rowSay("alt+o back"), rowSay("↑↓ scroll"), rowSay("←→ slide")}, room)
+	}
+	return rowTail([]rowField{rowSay("esc cancel"), rowSay("alt+o preview"), rowSay("alt+m choose"), rowSay("←→ walk"), rowSay("alt+p hide"), rowSay("shift+arrows scroll"), rowSay("alt+h hidden")}, room)
 }

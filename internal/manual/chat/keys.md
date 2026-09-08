@@ -2885,3 +2885,11 @@ keyboard configuration. A terminal that collapses it to `ctrl+t` sends that inst
 new chat** — the plain chord is never read as a reopen, because a key that opened a
 tab on one terminal and reopened another on the next is a key nobody could predict.
 There is nothing to turn on inside aforge, and the only test is pressing it.
+
+## Switching chats while an account asks for a key
+
+Ctrl+W offers Keep running, Stop work and Cancel while an account asks for typed
+input, just as it does during tool permission. Ctrl+K opens Chats and Ctrl+T
+opens another conversation without answering the question. Cancel leaves the
+pending input untouched. Stop work cancels this conversation's pending question;
+reopening it does not restart the work.

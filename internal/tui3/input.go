@@ -266,9 +266,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// A permission question holds its work, not the person's other conversations.
-	// These navigation chords never answer it; ordinary answer keys stay below.
-	if a.asking() && !a.shaping() {
+	// Pending permission and account input hold their work, not navigation.
+	// These chords never answer either question or edit a partly typed key.
+	if (a.asking() && !a.shaping()) || a.asksConnect() {
 		switch msg.String() {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)

@@ -837,3 +837,18 @@ func TestAThingThatVanishedUnderTheConfirmSaysSo(t *testing.T) {
 		t.Fatalf("the missing folder was not named:\n%s", said)
 	}
 }
+
+// Browsing writes a path into the filter, so placeholder-only hints disappear.
+func TestBrowserKeepsPreviewControlsVisibleWhileAPathIsTyped(t *testing.T) {
+	a, _, root := mixedLab(t)
+	openBrowse(t, a, filepath.Join(root, "here"))
+	for _, width := range []int{52, 170} {
+		rows := a.folder.rows(width, 18, a.pal, a.styler(), -1, "")
+		drawn := ansi.Strip(strings.Join(rows, "\n"))
+		for _, word := range []string{"alt+o", "esc"} {
+			if !strings.Contains(drawn, word) {
+				t.Fatalf("%d columns hide %q: %s", width, word, drawn)
+			}
+		}
+	}
+}

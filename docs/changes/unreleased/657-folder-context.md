@@ -38,3 +38,7 @@ and ANSI256 through the existing framebuffer-safe path, so it is coarser than a
 graphics protocol and it survives a repaint; a blocking `stat`, `ReadDir` or `Read`
 cannot be interrupted, so a read on a hung mount completes late and is then dropped
 rather than aborted; and no Mac-specific rendering claim is made from a Linux box.
+
+The control legend remains visible when the filter holds a path, including the
+full preview door on narrow terminals. Account key-entry questions allow safe
+chat navigation and explicit conversation stopping, alongside permission cards.

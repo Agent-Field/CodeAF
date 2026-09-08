@@ -589,3 +589,11 @@ putting changes into a folder is not available over --host yet — the conversat
 - `/attach` handed a path is unchanged and still answers its own refusals
   (`no such file: <path>`, `<name> is already attached`); `/attach` with nothing after it
   opens this browser instead of correcting you.
+
+## Finding preview controls while a path is typed
+
+The browser keeps a control legend above its action row even when the filter
+contains a path. `esc cancel` closes the browser; `alt+o preview` opens the full
+preview at narrow widths. `alt+m choose` marks an item. Wider frames also name
+walking, hiding the preview, scrolling it and showing hidden files. A terminal
+with too few rows gives the legend's row back to the file list.
