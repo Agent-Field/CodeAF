@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -387,11 +388,11 @@ func (a *app) tabAs(tab chatTab, held *kept, front string) chatTab {
 		// as long as that takes — the tab flickering to a word that means "unnamed"
 		// about a conversation somebody named last week.
 		if name := a.sessionName(); name != "" || strings.TrimSpace(tab.word) == "" {
-			tab.word = a.chatCrumbWord()
+			tab.word = a.chatDisplayName()
 		}
 		tab.file, tab.where = a.file, a.workspace
 	case held != nil:
-		tab.word = hopTitle(held.conv.Agent, held.side)
+		tab.word = chatTabName(hopRawTitle(held.conv.Agent, held.side))
 		tab.file, tab.where = held.conv.SessionFile, held.conv.Workspace
 	}
 	if strings.TrimSpace(tab.file) == "" {
@@ -553,9 +554,8 @@ type tabPiece struct {
 	quiet bool
 }
 
-// tabSepWord and tabCloseWord are the two marks this row draws, at the glyph
-// floor a terminal that cannot be trusted with box drawing gets.
-func (a *app) tabSepWord() string   { return a.linearMark(tabSep, tabSepASCII) }
+// A single quiet cell separates tab targets; the close mark follows the glyph floor.
+func (a *app) tabSepWord() string   { return " " }
 func (a *app) tabCloseWord() string { return a.linearMark(tabCloseMark, tabCloseASCII) }
 
 // tabsFit lays the strip out in the cells it has, and the ladder it walks is one
@@ -781,7 +781,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 		case piece.kind == tabClose:
 			line += a.tabClosePaint(piece, hot, lit, on)
 		case piece.kind == tabHere:
-			word := a.pal.underline(a.pal.selected(a.tabWordPaint(piece, a.pal.accent), 0))
+			word := a.pal.selected(a.pal.bold(a.tabWordPaint(piece, a.pal.ink)), 0)
 			if on {
 				word = a.pal.cursor(word, 0)
 			}
@@ -795,7 +795,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 		case on:
 			line += a.pal.cursor(a.tabWordPaint(piece, a.pal.ink), 0)
 		default:
-			line += a.tabWordPaint(piece, a.pal.dim)
+			line += a.tabWordPaint(piece, a.pal.muted)
 		}
 	}
 	return line
@@ -803,6 +803,18 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 
 // Navigation tint belongs to the name; the small status mark keeps its meaning.
 func (a *app) tabWordPaint(piece tabPiece, ink func(string) string) string {
+	// Color carries selection as a filled tab; plain terminals keep brackets.
+	// Replace the two furniture cells only, preserving every hit coordinate.
+	if piece.tab.here && a.pal.profile >= tokens.ANSI256 {
+		lead := 0
+		if !piece.tab.start && ansi.StringWidth(piece.word) >= tabSignalWidth+2 {
+			lead = tabSignalWidth
+		}
+		end := ansi.StringWidth(piece.word)
+		if ansi.Cut(piece.word, lead, lead+1) == "[" && ansi.Cut(piece.word, end-1, end) == "]" {
+			piece.word = ansi.Cut(piece.word, 0, lead) + " " + ansi.Cut(piece.word, lead+1, end-1) + " "
+		}
+	}
 	if piece.tab.start || piece.tab.signal == tabIdle || ansi.StringWidth(piece.word) < tabSignalWidth+2 {
 		return ink(piece.word)
 	}

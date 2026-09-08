@@ -35,7 +35,7 @@ func TestTheRoomHeaderSaysTheNodeNeedsALook(t *testing.T) {
 	// leads the state word on the facts row rather than the breadcrumb it had
 	// nothing to do with.
 	head := plain(roomHeadAll(a, 120))
-	trail := roomCrumbRoot + roomCrumbSep + "Port the parser"
+	trail := a.chatCrumbWord() + roomCrumbSep + "Port the parser"
 	facts := glyphUnverified + " " + taskUnverifiedWord
 	for _, want := range []string{trail, facts} {
 		if !strings.Contains(head, want) {

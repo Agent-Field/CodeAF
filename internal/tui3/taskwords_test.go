@@ -149,7 +149,7 @@ func TestTheRoomHeaderSaysFinishingWhileAGapIsBeingClosed(t *testing.T) {
 	// spend are the row under it (room.go).
 	a.room = a.newRoom(7, "Write the report")
 	head := plain(roomHeadAll(a, 120))
-	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report") ||
+	if !strings.Contains(head, a.chatCrumbWord()+roomCrumbSep+"Write the report") ||
 		!strings.Contains(head, taskFinishingWord) {
 		t.Fatalf("the room header is %q", head)
 	}
@@ -336,7 +336,7 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			// under it (room.go).
 			a.room = a.newRoom(7, "Write the report")
 			head := plain(roomHeadAll(a, 120))
-			if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report") ||
+			if !strings.Contains(head, a.chatCrumbWord()+roomCrumbSep+"Write the report") ||
 				!strings.Contains(head, taskHeldWord) {
 				t.Fatalf("the room header is %q", head)
 			}

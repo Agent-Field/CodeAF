@@ -714,7 +714,6 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 	a.closeTaskSheet()
 	room := a.newRoom(guest.node.id, tasksLabel(ask.item.entry))
 	room.guest = guest
-	room.loading = true
 	// AND THE PAGE'S `done` IS THE ROW'S. This window's roster has no row for a
 	// task in another conversation, and [roomRowDone] answers `over` for a node it
 	// has never seen — which would draw `task finished` under work running next
@@ -727,7 +726,12 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 	a.sel = -1
 	a.dropHover()
 	a.touch()
-	a.roomPump = a.readRoomRecord()
+	// AND THE PAGE SAYS IT IS LOADING ONLY IF A READ IS ACTUALLY ON THE WAY
+	// (room.go's [app.armRoomRecord]). A view whose owner handed back no room
+	// reader answers nil here, and the flag used to be raised above this line
+	// regardless — which left `loading this task's conversation…` under a header
+	// with a running clock and nothing coming to replace it, for ever.
+	a.armRoomRecord()
 	if guest.notices != nil {
 		// TWO PUMPS, ONE PAGE: the journal reading on its own beat, and the owner's
 		// notices whenever the owner has something to say. Both are stamped with

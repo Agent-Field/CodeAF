@@ -59,7 +59,7 @@ func TestARoomsHeaderNamesWhatItHandedOutAndLeavesTheParentToTheTrail(t *testing
 	if block := strings.Join(rows, "\n"); strings.Contains(block, "part of") {
 		t.Fatalf("the kin block still says the parent the trail is naming:\n%s", block)
 	}
-	if trail := a.roomTrail(); trail != "main ▸ Ship the port ▸ Write the tree" {
+	if trail := a.roomTrail(); trail != "Untitled ▸ Ship the port ▸ Write the tree" {
 		t.Fatalf("the trail does not carry the parent: %q", trail)
 	}
 }
@@ -82,7 +82,7 @@ func TestARootsRoomListsEveryPieceAndClaimsNoParent(t *testing.T) {
 	}
 	// AND ITS TRAIL CLAIMS NONE EITHER: a root's chain is the conversation and the
 	// page, which is the trail this surface has always drawn.
-	if trail := a.roomTrail(); trail != "main ▸ Ship the port" {
+	if trail := a.roomTrail(); trail != "Untitled ▸ Ship the port" {
 		t.Fatalf("a root's trail invented a step: %q", trail)
 	}
 	for _, want := range []string{

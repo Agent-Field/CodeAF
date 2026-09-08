@@ -2751,11 +2751,15 @@ protocols. The engine refuses a mismatch at the door with a sentence naming both
 if you get that instead, run `aforge engine --stop` on the far machine so the older
 process holding your session retires, and connect again.
 
-Opening a queued, running, or landed row is asynchronous. The room opens at once with
-`bringing this task's transcript from the other machine…`, then replaces that line with
-the bounded end of the task's transcript when it arrives. While work runs, the room reads
-that bounded tail on its own beat and `nothing on this page yet — it fills in as the task
-works` lasts only until the first block arrives. The calls, results, reasoning, and
+Opening a queued, running, or landed row is asynchronous. The room opens at once — with
+the instruction the task was given, the sentence naming what the work is doing where the
+engine has published one, and `loading this task's conversation…` while the read is on
+the wire — then replaces the whole of that with the bounded end of the task's transcript
+when it arrives. Where there is no read on the wire the loading line is not drawn at all;
+the page says `nothing on this page yet — it fills in as the task works` instead, and a
+read that failed says `couldn't read this task's conversation · retrying` and keeps
+beating. While work runs, the room reads that bounded tail on its own beat and the
+`nothing on this page yet` line lasts only until the first block arrives. The calls, results, reasoning, and
 messages use the ordinary room renderer. `enter` steers the far worker; `x` raises the
 ordinary confirmation and stopping uses the far engine's own sentence. Changing the
 task's model remains absent over this connection. Leaving with `esc` or `←` works normally.

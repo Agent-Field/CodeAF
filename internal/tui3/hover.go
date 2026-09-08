@@ -48,6 +48,8 @@ type hoverKind uint8
 
 const (
 	hoverNothing hoverKind = iota
+	// hoverHop identifies a chat-switcher row; -1 is its expansion control.
+	hoverHop
 	hoverPaste
 	// hoverEntry is a conversation row that belongs to an entry — a tool call,
 	// its expansion, its "more" foot, a thinking block.
@@ -360,6 +362,12 @@ func (a *app) setHover(x, y int) {
 // overlap — three regions can be true of one screen row — so a hover resolved
 // differently from a press is a surface that lights one thing and does another.
 func (a *app) hoverTarget(x, y int) hoverAt {
+	if a.hopShowing() {
+		if at, ok := a.hopTarget(x, y); ok {
+			return hoverAt{kind: hoverHop, index: at}
+		}
+		return hoverAt{}
+	}
 	if a.pasteEdit.open {
 		return hoverAt{}
 	}

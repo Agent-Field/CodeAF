@@ -270,7 +270,7 @@ func TestEveryTabIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) {
 	a := crumbApp(t)
 	rows := strings.Split(frame(a), "\n")
-	if got := plain(rows[0]); !strings.Contains(got, roomCrumbRoot) && !strings.Contains(got, "main") {
+	if got := plain(rows[0]); !strings.Contains(got, a.chatDisplayName()) {
 		t.Fatalf("the frame's first row is not the strip: %q", got)
 	}
 	if a.roomHeadRow() != 1 {

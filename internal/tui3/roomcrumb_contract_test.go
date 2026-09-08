@@ -71,7 +71,7 @@ func clickHead(t *testing.T, a *app, x int) {
 // order, out of the same tree the roster's column is grown from.
 func TestTheTrailNamesEveryStepOfTheActualChain(t *testing.T) {
 	a := crumbApp(t)
-	const chain = "main ▸ Ship the port ▸ Write the tree ▸ Cut the goldens"
+	const chain = "Untitled ▸ Ship the port ▸ Write the tree ▸ Cut the goldens"
 	if got := a.roomTrail(); got != chain {
 		t.Fatalf("the trail is %q, want %q", got, chain)
 	}
@@ -81,7 +81,7 @@ func TestTheTrailNamesEveryStepOfTheActualChain(t *testing.T) {
 	// AND THE PAGE ONE STEP UP IS THE CHAIN WITHOUT ITS LAST STEP: the trail is
 	// the family read upwards and not a history of where this window has been.
 	openRoomThroughRail(t, a, 3)
-	if got, want := a.roomTrail(), "main ▸ Ship the port ▸ Write the tree"; got != want {
+	if got, want := a.roomTrail(), "Untitled ▸ Ship the port ▸ Write the tree"; got != want {
 		t.Fatalf("from the parent's page the trail is %q, want %q", got, want)
 	}
 }
@@ -96,7 +96,7 @@ func TestTheTrailInventsNoStepItCannotName(t *testing.T) {
 	// that never re-published it would leave things.
 	delete(a.tasks, 3)
 	a.touch()
-	if got, want := a.roomTrail(), "main ▸ Cut the goldens"; got != want {
+	if got, want := a.roomTrail(), "Untitled ▸ Cut the goldens"; got != want {
 		t.Fatalf("the trail is %q, want %q — no id, no blank, no guess", got, want)
 	}
 	if head := plain(strings.Join(a.roomHeadRows(a.width), "\n")); strings.Contains(head, "3") && strings.Contains(head, "▸ 3") {
@@ -148,7 +148,7 @@ func TestAnAncestorCrumbOpensThatPageAndTheCurrentOneIsInert(t *testing.T) {
 	}
 	// AND THE ROOT IS THE WAY BACK OUT, which is the door `esc` and the header's
 	// right end already are.
-	root := crumbSpanFor(t, a, roomCrumbRoot)
+	root := crumbSpanFor(t, a, a.chatCrumbWord())
 	clickHead(t, a, root.from+1)
 	if a.roomOpen() {
 		t.Fatal("the root crumb did not come back out to the conversation")

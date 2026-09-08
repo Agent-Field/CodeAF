@@ -39,6 +39,7 @@ func TestChatHeaderCacheTracksPickerAvailability(t *testing.T) {
 func TestChatHeaderSelectionRemainsClearWithoutColor(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.pal.profile = tokens.NoColor
+	a.chatTabBar = tabBar{}
 	line := plain(a.tabsRow(160))
 	if !strings.Contains(line, "[Shipping the parser]") {
 		t.Fatalf("no plain-text selection marker: %q", line)

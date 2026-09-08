@@ -57,13 +57,13 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	head := plain(headPanel(a))
 	// The clock is the RAIL's spelling of an age ("2m 12s"), because the rail is
 	// where a person already reads this node's clock.
-	for _, want := range []string{"main ▸ Fix the nil-map", "working", "2m 12s", roomBackWord} {
+	for _, want := range []string{a.chatCrumbWord() + " ▸ Fix the nil-map", "working", "2m 12s", roomBackWord} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the focus header is missing %q:\n%s", want, head)
 		}
 	}
-	if !strings.Contains(headRow(a), sgr256(hueAccent)) {
-		t.Fatalf("the focus header is not in the accent:\n%q", headRow(a))
+	if !strings.Contains(headRow(a), sgr256(hueInk)) {
+		t.Fatalf("the current task title has no primary ink:\n%q", headRow(a))
 	}
 	// PINNED: the page scrolls under it and it stays on the first row.
 	a.roomScroll(-3)
@@ -90,8 +90,7 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// What is left over a conversation is the strip and the low-contrast rule
 	// under it, which is the seam between the header panel and the transcript
 	// (chattabs.go's [app.chatRuleHeight]).
-	want := strings.Repeat(" ", headLabelAt) + a.tabSepWord() + tabSignalSlot(a.frontSignal(), a.linear) + "[" + roomCrumbRoot + "]"
-	if a.headHeight() != 1+a.chatRuleHeight(a.width) || !strings.HasPrefix(head, want) {
+	if a.headHeight() != 1+a.chatRuleHeight(a.width) || !strings.Contains(head, a.chatDisplayName()) {
 		t.Fatalf("the conversation's strip is %d rows and reads:\n%q", a.headHeight(), head)
 	}
 	for _, gone := range []string{"Fix the nil-map", roomBackWord, roomCrumbSep} {

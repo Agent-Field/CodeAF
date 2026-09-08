@@ -251,14 +251,19 @@ func (a *app) visible(width int) []row {
 // block asks once, before it draws. Nothing is ever emitted at the top of the
 // transcript.
 func (a *app) layout(width int) []row {
-	out, closed := a.deckRows(a.conversation(), width)
+	// THE READING GUTTER IS TAKEN OUT FIRST AND GIVEN BACK LAST (gutter.go).
+	// Everything between these two lines lays out against the narrower column,
+	// so a block built to the frame's whole width is never shoved past the edge
+	// it was measured for; the pass below moves the finished rows into the air.
+	inner := gutterInner(width)
+	out, closed := a.deckRows(a.conversation(), inner)
 	// THE ONE THING EVER EMITTED AT THE TOP OF THE TRANSCRIPT, and it is emitted
 	// here rather than by any block because it is not one: it says that the
 	// conversation on screen starts part-way through and that scrolling reaches
 	// the rest (replay.go's [app.earlierRow]). It goes while the reader is still
 	// above it — the moment the real beginning is drawn, there is nothing left
 	// to promise and the marker is not laid out at all.
-	if line := a.earlierRow(width); line != "" && len(out) > 0 {
+	if line := a.earlierRow(inner); line != "" && len(out) > 0 {
 		out = append([]row{{text: line, entry: -1}, {entry: -1}}, out...)
 	} else if len(out) > 0 {
 		// AND ONE ROW OF AIR WHERE THE CONVERSATION TRULY BEGINS. When the
@@ -274,14 +279,14 @@ func (a *app) layout(width int) []row {
 	// A TASK COMMAND'S FORMING BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
 	// notes deck it is deliberately not part of. It takes the ordinary block gap
 	// and no border of its own beyond the one named hairline on each live row.
-	if forming := a.preflightRows(width); len(forming) > 0 {
+	if forming := a.preflightRows(inner); len(forming) > 0 {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
 		out = append(out, forming...)
 		closed = true
 	}
-	line, ok := a.harnessStepRow(width)
+	line, ok := a.harnessStepRow(inner)
 	if !ok {
 		line, ok = a.ellipsis()
 	}
@@ -291,6 +296,12 @@ func (a *app) layout(width int) []row {
 		}
 		out = append(out, row{text: line, entry: -1})
 	}
+	// THE GUTTER, BEFORE THE TWO PASSES THAT PAINT THE WHOLE ROW (gutter.go). It
+	// goes here rather than one line later because the wash and the ground below
+	// are statements about the row a person is on, and a band that stopped two
+	// cells short of the frame's edge would say the gutter was not part of it.
+	gutterPass(out, width)
+	a.gutterCards(a.conversation(), width)
 	// THE CUT, SECOND TO LAST. A rewind being chosen is a property of the screen
 	// too — the line between two blocks, and the wash over everything under it —
 	// so it is applied to finished rows here for [app.hoverPass]'s reason, one

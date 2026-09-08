@@ -146,6 +146,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does opening a new chat close the one I am in", "screen"},
 		{"I pressed plus and lost my draft", "screen"},
 		{"new chat page recent conversations", "screen"},
+		// AND THE WORD A TAB WEARS BEFORE THE CONVERSATION HAS EARNED A NAME. The
+		// name arrives by itself a moment after the first reply, so the three ways
+		// this is asked are all really one question about timing: what the word
+		// means, when it goes away, and whether the person is supposed to do
+		// something about it.
+		{"why does my tab say Untitled", "screen"},
+		{"when does a chat get its name", "screen"},
+		{"how do I rename this conversation", "screen"},
 		// AND THE MARK A TAB CAN WEAR, asked as a symbol nobody has a name for and
 		// as the worry underneath it.
 		{"what is the question mark on my tab", "screen"},

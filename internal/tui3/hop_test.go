@@ -726,6 +726,12 @@ func TestSwitcherMouseOpensOnlyVisibleRowsAndKeepsSelectionVisible(t *testing.T)
 	if a.file != "/tmp/lab/this-one.jsonl" {
 		t.Fatal("backdrop click switched chats")
 	}
+	if a.hopShowing() {
+		t.Fatal("backdrop click left the switcher open")
+	}
+	drive(t, a, key(hopOpenKey))
+	a.hop.originY = 4
+	a.hopOver(body, 60, a.pal)
 	target := a.hop.spots[1]
 	a.hopPress(a.hop.left+3, a.hop.top+target.row)
 	if a.file != "/tmp/lab/price-scrape.jsonl" {

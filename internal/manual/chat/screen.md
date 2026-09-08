@@ -68,19 +68,26 @@ hint line last. See the **Places** page.
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
+## Reading padding — text against the left edge
+
+Conversation text and task transcripts have a two-cell left gutter where the body
+column has room. On very narrow layouts the gutter collapses to preserve reading
+width. Links and buttons move with their text. Copying removes the layout gutter
+while preserving the content's indentation.
+
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
 **The first line aforge draws is the conversations this window has been in**, drawn as
 tabs in a row of their own, with a thin rule under it:
 
 ```
-  │ openrouter price scrape  │ Refactor the rail sco…  │[Shipping the parser]×│    Chats ▾
+    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×    Chats ▾
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
-Each tab is a **padded target** with a light vertical rule between it and the next; the
-rules themselves do nothing. The tab you are in has a soft highlight and brackets, and the
-brackets still identify it when color is disabled. **Every tab reacts to the pointer**,
+Each tab is a **padded target** separated by quiet space. The gaps do nothing.
+The active tab has a filled background and stronger text; brackets identify it on
+terminals without background color. **Every tab reacts to the pointer**,
 including the one you are already in, and the highlight it wears as the *chosen* tab stays
 put when the pointer leaves.
 
@@ -115,6 +122,39 @@ shared connection where the conversation itself was closed.
 for a blank row above the message box — for the same reason the room header does. The
 rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
 a seam is the cheapest thing on the frame to give up.
+
+## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
+
+**A conversation names itself once, off the end of its first completed turn.** Until that
+name arrives its tab reads `Untitled`, and then it changes to the name by itself — you do
+not press anything and nothing is re-sent.
+
+The order is exactly this:
+
+1. `+` opens a `New chat` start page. Once a new conversation is created, its tab
+   reads `Untitled`.
+2. You send your first message. It still reads `Untitled` — the name is derived from the
+   first exchange, and the reply is half of that exchange.
+3. The reply finishes. A small, cheap model is asked for a name in eight lowercase words,
+   once, and the tab, the status line and your terminal's window title all change to it a
+   moment later.
+
+**It happens once per conversation and never again.** A chat you resume already has its
+name and is not renamed, and a name that is already there is never replaced by `Untitled`.
+If the naming fails — the model was down, or it answered with the instruction it was given
+instead of a name — the conversation simply stays `Untitled`, nothing is said about it, and
+it is asked for again the next time you open that conversation and finish a turn.
+
+**There is no way to rename a conversation from inside aforge.** No command, no key, no
+click on the tab — the name is the one the conversation gave itself, and the only thing
+that ever changes it is a conversation that was left unnamed being asked again on its next
+finished turn.
+
+**`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
+after the folder it is in: the status line and the window title say the project, home and
+the `ctrl+k` switcher say `new conversation`. And `Untitled` is not `main` — `main` is
+where you are, the conversation you get back to from a task page, which is what `esc/←
+main` and `say it to main` both mean.
 
 ## Closing a tab — the × on a tab, dismissing a chat, does closing a tab stop my work
 

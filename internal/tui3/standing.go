@@ -105,6 +105,12 @@ type standingCard struct {
 	// question the frame drew somewhere else ([choiceSpan]).
 	choiceRow int
 	spans     []choiceSpan
+	// gut is how many columns of the READING GUTTER are already in the spans
+	// above, and it is the proposal card's own field for the proposal card's own
+	// reason (gutter.go, task.go's [taskCard]). It stays zero on home's errand
+	// pane, which draws this same card at a pane-relative origin and never runs
+	// the transcript's pass over it.
+	gut int
 
 	// verdict is what was decided, in the words the row keeps afterwards, and
 	// answer is the chip that settled it. Both are empty for exactly as long as
@@ -859,6 +865,11 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 	// first: a settled card has no chips, and a stale span is a click that
 	// answers a question nobody is asking.
 	card.choiceRow, card.spans = -1, nil
+	// AND THE GUTTER IS UNPAID AGAIN (gutter.go, and task.go's [app.taskCardRows]
+	// makes the same declaration one line down from the same clearing). It
+	// matters most on THIS card, which home's errand pane draws at a
+	// pane-relative origin where the transcript's pass never runs.
+	card.gut = 0
 	head := a.standHead(card, width, sel)
 	if card.settled() {
 		return []string{head, a.standFoot(card, width)}

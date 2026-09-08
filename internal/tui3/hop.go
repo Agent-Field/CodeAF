@@ -209,8 +209,8 @@ type hopRow struct {
 type hopCard struct {
 	open bool
 	// Pointer targets are recorded by the same layout that draws the card.
-	spots                     []hopSpot
-	originY, left, right, top int
+	spots                             []hopSpot
+	originY, left, right, top, bottom int
 	// at is the cursor, an index into rows. It opens on ZERO, which is the most
 	// recently open conversation behind this one — the same place `tab` goes —
 	// so the commonest journey is `ctrl+k enter` and the second commonest is one
@@ -327,6 +327,7 @@ func (a *app) hopOpenAll() {
 	if len(rows) < 2 && rest == 0 {
 		return
 	}
+	a.dropHover()
 	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
@@ -340,6 +341,7 @@ func (a *app) hopOpen() {
 		// the same refusal said where the rows are actually counted.
 		return
 	}
+	a.dropHover()
 	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
@@ -358,6 +360,7 @@ func (a *app) hopSpread(all bool) {
 	if all && a.hop.rest == 0 {
 		return
 	}
+	a.dropHover()
 	at := a.hop.at
 	rows, rest := a.hopReading(all)
 	a.hop.rows, a.hop.rest, a.hop.all, a.hop.armed, a.hop.say = rows, rest, all, -1, ""
@@ -396,6 +399,7 @@ func (a *app) hopClose() {
 	if a.hop.live {
 		a.hopSeal()
 	}
+	a.dropHover()
 	a.hop = hopCard{}
 	a.touch()
 }
@@ -605,6 +609,14 @@ func (a *app) hopFront(now time.Time) hopRow {
 // to a person as the name of their conversation would be worse than saying
 // plainly that it has no name yet.
 func hopTitle(agent Agent, side *aside) string {
+	if title := hopRawTitle(agent, side); title != "" {
+		return readableName(title)
+	}
+	return hopNewWord
+}
+
+// Tabs and the wider switcher share title lookup, with their own empty labels.
+func hopRawTitle(agent Agent, side *aside) string {
 	title := ""
 	if agent != nil {
 		title = strings.TrimSpace(agent.Title())
@@ -612,10 +624,7 @@ func hopTitle(agent Agent, side *aside) string {
 	if title == "" && side != nil {
 		title = strings.TrimSpace(side.title)
 	}
-	if title == "" {
-		return hopNewWord
-	}
-	return readableName(title)
+	return title
 }
 
 // hopNewWord is a conversation nothing has been said in yet. It is the phrase
@@ -730,6 +739,9 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	}
+	// A delayed sweep must not repaint the old pointer after keyboard navigation.
+	a.ptr.have = false
+	a.dropHover()
 	if key == "ctrl+c" {
 		// Put away, and the key goes on to mean what it always means.
 		a.hopClose()
@@ -1062,20 +1074,25 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// borders whole, so the band on the cursor's row covers the padding too —
 	// which is what makes it read as a row of the card rather than a highlight
 	// floating inside one.
-	inside := func(line string, band bool) string {
+	inside := func(line string, band, hovered bool) string {
 		line = fit(line, room)
 		if w := room - ansi.StringWidth(line); w > 0 {
 			line += strings.Repeat(" ", w)
 		}
-		body := pad + line + pad
-		if band {
+		left := pad
+		if hovered {
+			// The padding marker keeps hover visible without color or moving numbers.
+			left = pal.accent("·") + pad[1:]
+		}
+		body := left + line + pad
+		if band || hovered {
 			body = pal.cursor(body, inner)
 		}
 		return pal.dim(box.v) + body + pal.dim(box.v)
 	}
 
 	a.hop.spots = nil
-	lines := []string{edge(box.tl, box.h, box.tr), inside(a.hopHead(room, pal), false), inside("", false)}
+	lines := []string{edge(box.tl, box.h, box.tr), inside(a.hopHead(room, pal), false, false), inside("", false, false)}
 	footWord := a.hopFoot()
 	foot := 1
 	if footWord != "" {
@@ -1106,17 +1123,25 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	end := min(len(a.hop.rows), start+available)
 	for at := start; at < end; at++ {
 		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: at})
-		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, room, pal), at == a.hop.at))
+		hovered := a.hot.kind == hoverHop && a.hot.index == at
+		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
 	}
 	if len(preview) > 0 {
-		lines = append(lines, inside("", false))
+		lines = append(lines, inside("", false, false))
 		for _, line := range preview {
-			lines = append(lines, inside(pal.ink(line), false))
+			lines = append(lines, inside(pal.ink(line), false, false))
 		}
 	}
 	if footWord != "" && len(lines)+1 < height {
-		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: -1})
-		lines = append(lines, inside(pal.dim(fit(footWord, room)), false))
+		hovered := a.hop.say == "" && a.hot.kind == hoverHop && a.hot.index == -1
+		if a.hop.say == "" {
+			a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: -1})
+		}
+		ink := pal.dim
+		if hovered {
+			ink = pal.ink
+		}
+		lines = append(lines, inside(ink(fit(footWord, room)), false, hovered))
 	}
 	return append(lines, edge(box.bl, box.h, box.br))
 }
@@ -1191,7 +1216,7 @@ var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKe
 var hopFootWords = strings.Join(hopClauses, " · ")
 
 // hopLine is one conversation, in five fixed columns.
-func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
+func hopLine(row hopRow, at int, sel, hovered bool, width int, pal palette) string {
 	glyph, glyphInk := tokens.GlyphQueued, pal.dim
 	switch {
 	case row.needs:
@@ -1237,6 +1262,9 @@ func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
 	name := pal.narr(fitPad(row.title, subject))
 	clause := pal.dim(fitPad(row.note, note))
 	if row.needs || row.moving {
+		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+	}
+	if hovered {
 		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
 	}
 	if sel {
@@ -1292,6 +1320,7 @@ func rightPad(s string, width int) string {
 // transcript has a single line about being underneath one.
 func (a *app) hopOver(body []string, width int, pal palette) []string {
 	a.hop.spots = nil
+	a.hop.left, a.hop.right, a.hop.top, a.hop.bottom = 0, 0, 0, 0
 	room := width - 2*hopSideInset
 	if room < 24 {
 		// Too narrow for the inset. The box takes the width it can have rather
@@ -1318,6 +1347,7 @@ func (a *app) hopOver(body []string, width int, pal palette) []string {
 		top = len(out) - len(card)
 	}
 	a.hop.left, a.hop.right, a.hop.top = (width-room)/2, (width+room)/2, top+a.hop.originY
+	a.hop.bottom = a.hop.top + len(card)
 	pad := strings.Repeat(" ", (width-room)/2)
 	for i, line := range card {
 		out[top+i] = pad + line
@@ -1483,23 +1513,36 @@ const (
 // its dimmed backdrop must not activate an invisible task or stop control.
 type hopSpot struct{ row, at int }
 
-func (a *app) hopPress(x, y int) tea.Cmd {
-	if x < a.hop.left || x >= a.hop.right {
-		return nil
+// hopTarget shares the painted interior between clicks and hover. Borders,
+// headings, preview text and refusal messages offer no navigation target.
+func (a *app) hopTarget(x, y int) (int, bool) {
+	if x <= a.hop.left || x >= a.hop.right-1 {
+		return 0, false
 	}
 	for _, spot := range a.hop.spots {
-		if y != a.hop.top+spot.row {
-			continue
+		if y == a.hop.top+spot.row {
+			return spot.at, true
 		}
-		a.hop.live = false
-		if spot.at < 0 {
-			if a.hop.say == "" {
-				a.hopSpread(!a.hop.all)
-			}
-			return nil
-		}
-		a.hop.at = spot.at
-		return a.hopTake()
 	}
-	return nil
+	return 0, false
+}
+
+func (a *app) hopPress(x, y int) tea.Cmd {
+	// The backdrop dismisses without delivering the press to the chat below.
+	if x < a.hop.left || x >= a.hop.right || y < a.hop.top || y >= a.hop.bottom {
+		return a.hopBack()
+	}
+	at, ok := a.hopTarget(x, y)
+	if !ok {
+		return nil
+	}
+	a.hop.live = false
+	if at < 0 {
+		if a.hop.say == "" {
+			a.hopSpread(!a.hop.all)
+		}
+		return nil
+	}
+	a.hop.at = at
+	return a.hopTake()
 }

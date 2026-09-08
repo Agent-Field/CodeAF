@@ -39,6 +39,20 @@ func (a *app) sessionName() string { return readableName(a.title) }
 // ninth spelling of it.
 const unnamedConversationWord = "new conversation"
 
+// A compact placeholder identifies unnamed tabs and breadcrumb roots. Actual
+// titles, including a conversation explicitly named main, keep their names.
+const untitledConversationWord = "Untitled"
+
+func chatTabName(raw string) string {
+	if name := readableName(strings.TrimSpace(raw)); name != "" {
+		return name
+	}
+	return untitledConversationWord
+}
+
+// EventTitleChanged updates a.title and invalidates the frame when naming finishes.
+func (a *app) chatDisplayName() string { return chatTabName(a.title) }
+
 // listName is what a conversation is called ON A LIST, and it is [humanName]'s
 // ladder with its last rung taken out.
 //

@@ -1576,11 +1576,12 @@ type app struct {
 	// over this conversation, on the same beat and for the same reason
 	// (margin.go's [app.marginStanding]): the column is laid out twice a frame,
 	// and what it is asking about is a directory of documents.
-	standRail   []StandingItemView
-	standRailAt time.Time
-	tasks       map[uint64]*taskNode
-	taskOrder   []uint64
-	taskSeen    map[uint64]session.TaskState
+	standRail       []StandingItemView
+	standRailAt     time.Time
+	tasks           map[uint64]*taskNode
+	typedTaskBriefs map[uint64]string
+	taskOrder       []uint64
+	taskSeen        map[uint64]session.TaskState
 	// THE JOB SIDE (jobstate.go). jobs is every background job this conversation
 	// has started, oldest first, and jobsOpen is whether the column's own jobs
 	// section is unfolded. Both are deliberately NOT part of the task side above:
@@ -2792,6 +2793,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd, took := a.stopKey(msg); took {
 			return a, tea.Batch(flushed, cmd)
 		}
+		// An open switcher owns navigation before the page underneath it. A
+		// pointer can open it while the roster or task still holds focus.
+		if a.hopShowing() {
+			if cmd, took := a.hopKey(msg); took {
+				return a, tea.Batch(flushed, cmd)
+			}
+		}
 		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
 		// keyboard (ctrl+t, task.go). Explicit focus outranks ambient place: a room
 		// is where a person is, the roster is what they just asked for, and esc
@@ -3332,7 +3340,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Breadcrumbs and the Back label use only their rendered cells;
 			// punctuation and whitespace do not become navigation shortcuts.
 			if a.crumbPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
+				return a, a.takeRoomPump()
 			}
 			// AND THE TAB STRIP IS THE ROW ABOVE THE TRAIL, which is a switch
 			// between CONVERSATIONS rather than a walk inside one (chattabs.go).
@@ -3475,6 +3483,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMotionMsg:
 		if a.hopShowing() {
+			a.setHover(msg.Mouse().X, msg.Mouse().Y)
+			if a.hot.kind == hoverHop {
+				// Reading a row with the pointer keeps the quick-switch card open.
+				a.hop.live = false
+			}
 			return a, nil
 		}
 		// Motion is the cheapest and commonest message this surface gets — a
@@ -3882,6 +3895,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.pumpShaping(msg.wait, msg.stream)
 
 	case taskStartedMsg:
+		if msg.conv != "" && msg.conv != a.taskBriefConv() {
+			return a, nil
+		}
 		a.settleShaping(msg.wait)
 		if msg.err != nil {
 			a.note("could not start the task · " + msg.err.Error())
@@ -3900,7 +3916,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			a.noticeEvent(eventTaskStarted)
 		}
-		return a, nil
+		// AND THE WORDS THE PERSON TYPED GO ONTO THE NODE. `/task` draws no
+		// proposal card, so this is the one moment the surface can keep the
+		// instruction it just sent, retained until the node arrives (taskbrief.go).
+		return a, a.adoptTypedBrief(msg)
 
 	case subStartedMsg:
 		// A subharness launched off the card, answered. The run itself is a task

@@ -427,12 +427,22 @@ update the older aforge so both ends are the same build and reconnect.
 
 The task roster lists this far conversation's work. Its rows come from the far
    machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that
-   you would see while sitting at that machine. Opening one first says
-   `bringing this task's transcript from the other machine…`, then draws the task's own
-   transcript when it arrives. A running row opens too: its page reads the bounded tail on
-   its own beat, says `nothing on this page yet — it fills in as the task works` before the
-   first block, and fills as the far worker writes. `enter` steers that worker and `x`
-   stops it through the far engine. Changing its model is still absent.
+   you would see while sitting at that machine. Opening one draws what this window
+   already knows — the instruction, and what the far engine last said the work is doing —
+   and, while the read is genuinely on the wire, the line
+   `loading this task's conversation…` under it. The whole of that is replaced by the
+   task's own transcript when it arrives.
+
+   That line is a claim about a read in flight, so it is only ever drawn when there is
+   one. A page with no way to ask the other machine does not show it; it says
+   `nothing on this page yet — it fills in as the task works` instead, which is the honest
+   half of the same sentence. A read that came back with an error is a third thing again
+   and says so: `couldn't read this task's conversation · retrying`, with the instruction
+   still above it and the beat still going.
+
+   A running row opens too: its page reads the bounded tail on its own beat and fills as
+   the far worker writes. `enter` steers that worker and `x` stops it through the far
+   engine. Changing its model is still absent.
 
 9. **Starting tasks works on the far machine.** `/task <brief>`, `/task solo <brief>` and
    `/task adaptive <brief>` send the brief to that conversation's engine. The far machine

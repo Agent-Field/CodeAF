@@ -390,6 +390,14 @@ func (a *app) harnessCardPress(i, x int) {
 	if c == nil || c.page == nil || c.state != "" {
 		return
 	}
+	// THE COLUMNS THE ROW WAS DRAWN IN COME OFF THE PRESS FIRST. The actions are
+	// laid down behind [harnessCardLead], and the whole card sits inside the
+	// transcript's reading gutter (gutter.go) — neither of which the words below
+	// know anything about. The lead was already missing here before the gutter
+	// existed, which is why `save` answered a press two columns left of the word
+	// and `drop` answered one two columns left of ITS word; the gutter would have
+	// made it four.
+	x -= textGutterCols(a.bodyWidth()) + len(harnessCardLead)
 	// Each answer owns its own words and the gap that follows them, which is the
 	// offer row's rule (harness.go's recordHarnessTaps): a press just past a word
 	// is a person aiming at it.

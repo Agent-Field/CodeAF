@@ -3020,7 +3020,7 @@ func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	rows := a.visible(a.bodyWidth())
 	foot := -1
 	for i, r := range rows {
-		if strings.HasPrefix(plain(r.text), taskFootCorner) {
+		if strings.HasPrefix(strings.TrimSpace(plain(r.text)), taskFootCorner) {
 			foot = i
 		}
 	}

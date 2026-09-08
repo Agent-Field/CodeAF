@@ -243,12 +243,47 @@ Three things that look like the same picture and are not:
   Its row is the one under the `jobs` label.
 
 No task page ever draws an empty body under its header. Whatever is true of the task,
-the page says it in one dim line:
+the page says it in one dim line, above whatever else it already knows:
 
 - a finished task whose transcript is gone from the disk keeps its report and says
   `this task's transcript is not here any more`
 - a task that is queued, or one still working with nothing written for it yet, says
   `nothing on this page yet — it fills in as the task works`
+- a page waiting on a read that is genuinely in flight — which is what opening a task on
+  another machine or in another conversation does — says
+  `loading this task's conversation…`. A page with nothing on the way never says it
+- a read that came back with an error says `couldn't read this task's conversation ·
+  retrying`, which is a different fact from either of the two above and keeps its beat
+
+## Why is a task I just started showing an empty page
+
+It should not, and if it does the version you are on is older than this page. A task
+opened the second it starts has journaled nothing yet — its first message is still being
+written — so there is no transcript to replay for a few seconds.
+
+What the page draws in that gap is what it already holds: **the instruction the task was
+given**, which has been in hand since the task was admitted, and then the sentence naming
+what the work is doing right now where the engine has published one — what it is held
+behind, the gap it is closing, or the call it is on. Then the one line about why there is
+nothing else yet.
+
+```
+Widen the import pipe so the nightly run stops timing out.
+rate limited
+nothing on this page yet — it fills in as the task works
+```
+
+Three things worth knowing about that page:
+
+- **It replaces itself.** Every one of those rows is drawn only while the page has no
+  blocks at all, so the first thing the task writes takes the whole scaffold off at once.
+  There is nothing to dismiss and no second door to press.
+- **Opening it starts nothing.** The page is a reader onto work that is already running;
+  pressing the row again closes the page rather than starting anything, and no task is
+  ever run twice by looking at it.
+- **It does not repeat the header.** The header above is already spending its one word on
+  the state — `working`, `waiting`, `queued` — with the clock beside it. The body gives
+  the reason underneath that word, which is what the header had no room for.
 
 A background job whose log is empty or unreadable draws no tail and no error — a job that
 has written nothing yet is a job that started a second ago — and never the old sentence

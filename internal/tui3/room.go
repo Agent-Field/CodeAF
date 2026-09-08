@@ -698,7 +698,7 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 		title = taskIDWord(node.id)
 	}
 	room := a.newRoom(node.id, title)
-	room.done, room.loading = roomRowDone(node), true
+	room.done = roomRowDone(node)
 	a.room = room
 	// The hosted door owes the composer exactly what the local one owes it
 	// ([app.openRoom]): this page's own words, and nobody else's. It is still THIS
@@ -712,7 +712,35 @@ func (a *app) openFarRoom(node *taskNode, title string) {
 	a.sel = -1
 	a.dropHover()
 	a.touch()
+	a.armRoomRecord()
+}
+
+// armRoomRecord parks the journal read a freshly opened page owes itself AND
+// sets [taskRoom.loading] from whether there is actually a read on the way.
+//
+// THE FLAG IS A CLAIM ABOUT THE WIRE, NOT A MOOD, and the two doors that raise
+// it had it the other way round: the flag was set first, unconditionally, and
+// the read was asked for afterwards with nothing checking that it existed. Every
+// door into [app.readRoomRecord] can answer nil — a hosted page whose row has no
+// transcript URI and no by-id reader, a guest view whose owner never handed a
+// room reader back — and where it did, `loading` stayed true with NO command
+// parked, so no answer and no beat were ever coming. That is the page in the
+// defect report: a huge empty body promising `loading this task's conversation…`
+// under a header whose clock was counting up, for ever.
+//
+// So the read is asked for first and the flag is its answer. A page with nothing
+// on the way is not loading; it falls through to the honest line about what it
+// does know ([app.roomRecordRows]).
+// IT PARKS THE READ ALONE AND BATCHES NOTHING WITH IT. Every caller of
+// [app.takeRoomPump] on this road hands the one command straight back to the
+// program loop and reads its answer as a [roomRecordMsg]; wrapping it in a batch
+// here would make the far door's pump a different shape from the guest door's,
+// which batches its own notice lane on top afterwards.
+func (a *app) armRoomRecord() {
 	a.roomPump = a.readRoomRecord()
+	if a.room != nil {
+		a.room.loading = a.roomPump != nil
+	}
 }
 
 // Capture the reader and identity before leaving the program loop, for both
@@ -825,7 +853,20 @@ func (a *app) farRoomPoll(gen int) tea.Cmd {
 	if a.room.done && !a.room.readFailed && !a.roomIsGuest() {
 		return nil
 	}
-	return a.readRoomRecord()
+	cmd := a.readRoomRecord()
+	if cmd == nil {
+		// THE BEAT STOPS AND THE PAGE STOPS SAYING IT IS WAITING, together. A
+		// reader can go away between one beat and the next — a guest view given
+		// back, a row whose URI never arrived — and a page that kept the word
+		// while nothing was coming is the stuck sentence [app.armRoomRecord]
+		// exists to prevent, reached one tick later instead of at the door.
+		if a.room.loading {
+			a.room.loading = false
+			a.roomTouched()
+		}
+		return nil
+	}
+	return cmd
 }
 
 // leavableRoomDoors is the room lane WITH A WAY OUT OF IT (session's
@@ -3099,9 +3140,16 @@ func (a *app) roomRows(width int) []row {
 		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
-	out, closed := a.deckRows(room.deck(), width)
+	// THE READING GUTTER IS TAKEN OUT FIRST AND GIVEN BACK LAST, exactly as in
+	// the conversation (gutter.go, and render.go's [app.layout] states the law).
+	// A task's page is a transcript and is read as one; it stood flush against
+	// the terminal's left edge for the same reason the conversation did, and at
+	// the same cost. A RUN'S PAGE IS NOT — a graph of cards is not a paragraph —
+	// which is why the branch that returns one does so above this line.
+	inner := gutterInner(width)
+	out, closed := a.deckRows(room.deck(), inner)
 	if room.harnessProgress != "" && !room.done {
-		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
+		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, inner)), entry: -1})
 		closed = false
 	}
 	// AN EMPTY ROOM SAYS WHAT IT KNOWS AND WHY IT KNOWS NO MORE, above whatever
@@ -3123,11 +3171,16 @@ func (a *app) roomRows(width int) []row {
 		// THE CONVERSATION UNDER THIS PAGE WAS REPLACED, and there is nothing to
 		// retry. Everything above stays — it is what this window did read, and it
 		// was true when it read it — and this is the last line of it.
-		out = append(out, row{text: a.pal.dim(fit(taskGuestGoneWord, width)), entry: -1})
-	case room.readFailed:
-		out = append(out, row{text: a.pal.dim(fit(roomReadFailedWord, width)), entry: -1})
+		out = append(out, row{text: a.pal.dim(fit(taskGuestGoneWord, inner)), entry: -1})
+	case room.readFailed && len(out) > 0:
+		// A PAGE THAT DID READ SOMETHING SAYS THE FAILURE UNDER IT. An EMPTY one
+		// falls through instead, because a lone `couldn't read…` over a blank body
+		// is the very page this branch was written to prevent — everything the
+		// surface already knows about the work goes on first, and the failure is
+		// the last line of it ([app.roomRecordRows] draws both).
+		out = append(out, row{text: a.pal.dim(fit(roomReadFailedWord, inner)), entry: -1})
 	case len(out) == 0 && room.harnessProgress == "":
-		out = a.roomRecordRows(out, width)
+		out = a.roomRecordRows(out, inner)
 	}
 	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
 	// whatever it did read. It is not a refusal and not an error — the transcript
@@ -3135,7 +3188,7 @@ func (a *app) roomRows(width int) []row {
 	// than papered over with a state word that stopped being true (taskowner.go's
 	// [app.roomGuestStale]).
 	if a.roomGuestStale() {
-		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, width)), entry: -1})
+		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
 	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
@@ -3152,14 +3205,20 @@ func (a *app) roomRows(width int) []row {
 		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
 		// foot it has.
 		var asked bool
-		if out, asked = a.roomSettleRows(out, width); !asked {
+		if out, asked = a.roomSettleRows(out, inner); !asked {
 			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
 			// return` was the whole of what this row said for a year, and esc is
 			// already on the legend and on the focus header above it; where the
 			// words in the box can go was on neither.
-			out = append(out, row{text: a.pal.dim(a.roomFinishedRefusal().fit(width)), entry: -1})
+			out = append(out, row{text: a.pal.dim(a.roomFinishedRefusal().fit(inner)), entry: -1})
 		}
 	}
+	// THE GUTTER, BEFORE THE PASS THAT PAINTS THE WHOLE ROW (gutter.go). The
+	// room's own foot is asked for by name because a node that needs a look draws
+	// its answers with no entry to hang them on, so the deck walk cannot reach it.
+	gutterPass(out, width)
+	a.gutterCards(room.deck(), width)
+	gutDoneCard(a.roomSettleCard(), textGutterCols(width))
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
 	a.restoreRoomAnchor(reading, out)
@@ -3191,29 +3250,116 @@ func (a *app) roomRows(width int) []row {
 // and is empty, so there is nothing to replay and nothing has been lost either.
 // It takes [roomYetWord], which is the same shape of answer said about a page
 // that is not finished being written.
+// AND A PAGE THAT HAS NOT LANDED SPENDS THEM ON THE INSTRUCTION. A task opened
+// the second it is started is the commonest way to reach these rows and it was
+// the worst of them: the only thing under the header was `loading this task's
+// conversation…` — a sentence about the surface's own plumbing, on a page opened
+// by somebody who wanted to see the work. What that person is owed is already in
+// hand before any journal is read, because the contract is frozen at admission
+// (task.go's [taskNode.brief]): THE WORDS THEY ASKED FOR. So the brief goes on
+// first, then what the engine last said the work is doing, then the one line
+// about why there is nothing else — and every one of them comes off together the
+// moment a block arrives, because this whole function is drawn only for a page
+// with no blocks at all.
 func (a *app) roomRecordRows(out []row, width int) []row {
-	if a.room != nil && a.room.loading {
-		return append(out, row{text: a.pal.dim(fit(roomLoadingWord, width)), entry: -1})
-	}
 	node := a.roomNode()
-	word := roomGoneWord
-	if a.room != nil && !a.room.done {
-		word = roomYetWord
-	}
 	if node == nil {
 		// A page this surface never had a row for. There is nothing to add to the
 		// blank except the reason it is blank.
-		return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
+		return append(out, row{text: a.pal.dim(fit(a.roomBlankWord(), width)), entry: -1})
 	}
 	// WHAT THE ROW SAYS THE WORK CAME TO, first, because it is the only thing here
 	// a person came for. The report is prose somebody wrote, so it wraps.
-	if report := strings.TrimSpace(node.report); report != "" {
-		for _, line := range wrap(report, width) {
+	//
+	// THE BRIEF STANDS IN ITS PLACE AND NEVER BESIDE IT, and WHICH of them is
+	// drawn is decided by whether the work is over. A landing's own sentences are
+	// what a finished page is for, and the instruction under them would push them
+	// off a short frame. Work that is still going is the other way round: what a
+	// person opening it wants is what they asked for, and a report on a running
+	// row is a sentence about some EARLIER state of it — a far roster carries the
+	// last outcome it heard beside a row that has since started again, and drawing
+	// that over live work is the page claiming an ending that has not happened.
+	// Either one falls back to the other, because a page with one of them and
+	// neither drawn is the blank this whole function exists to prevent.
+	instruction := firstNonEmpty(strings.TrimSpace(node.brief), strings.TrimSpace(node.assignment))
+	said := instruction
+	if a.room != nil && a.room.done {
+		said = firstNonEmpty(strings.TrimSpace(node.report), instruction)
+	} else if said == "" {
+		said = strings.TrimSpace(node.report)
+	}
+	if said != "" {
+		ink := a.pal.narr
+		if !a.room.done {
+			ink = a.pal.accent
+		}
+		for _, line := range wrap(said, width) {
+			out = append(out, row{text: ink(line), entry: -1})
+		}
+		out = append(out, row{entry: -1})
+	}
+	// THEN WHAT THE WORK IS DOING RIGHT NOW, where the engine has said and the
+	// header has not already spent its one word on it ([app.roomStartingSay]).
+	if say := a.roomStartingSay(node); say != "" {
+		for _, line := range wrap(say, width) {
 			out = append(out, row{text: a.pal.dim(line), entry: -1})
 		}
 	}
-	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, chosen above.
-	return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
+	// AND LAST, WHY THERE IS NO TRANSCRIPT UNDER ANY OF IT.
+	return append(out, row{text: a.pal.dim(fit(a.roomBlankWord(), width)), entry: -1})
+}
+
+// roomBlankWord is the one line an empty page ends on: WHY there is nothing
+// here, which is a different fact in each of four cases and was collapsed into
+// two of them for as long as the loading branch returned early.
+//
+// The order is the order of certainty. A read on the wire has not answered yet
+// and nothing else is known; a read that FAILED is not a page that is loading
+// and never says so, which is the distinction the retry line carries; and under
+// both of them sit the two honest endings a page with no read pending has —
+// nothing has arrived yet, or nothing is left.
+func (a *app) roomBlankWord() string {
+	switch {
+	case a.room == nil:
+		return roomGoneWord
+	case a.room.readFailed:
+		return roomReadFailedWord
+	case a.room.loading:
+		return roomLoadingWord
+	case !a.room.done:
+		return roomYetWord
+	}
+	return roomGoneWord
+}
+
+// roomStartingSay is what the engine last said this work is DOING, for a page
+// that has nothing of its own to draw yet: the difference between a task that
+// has not started writing and a task nothing is happening to.
+//
+// IT NEVER REPEATS THE HEADER. The header spends its one word on the state
+// ([app.roomStateWord]) and collapses two of these to a single word on the way —
+// a paced node reads `waiting` up there and a node closing a gap reads
+// `finishing` — so what is drawn here is the SENTENCE underneath those words,
+// which is the thing the header had no room for. A phase the header prints
+// verbatim (`node.doing`) is deliberately absent: the same string twice, three
+// rows apart, is the one row on the page spent saying nothing.
+//
+// A LANDED PAGE SAYS NONE OF IT. These three fields are reports of RIGHT NOW and
+// the engine clears them at the landing (task.go); drawing a stale one over
+// finished work would be the page claiming live activity that ended.
+func (a *app) roomStartingSay(node *taskNode) string {
+	if node == nil || a.room == nil || a.room.done {
+		return ""
+	}
+	switch {
+	case strings.TrimSpace(node.waiting) != "":
+		return strings.TrimSpace(node.waiting)
+	case strings.TrimSpace(node.mending) != "":
+		return strings.TrimSpace(node.mending)
+	case strings.TrimSpace(node.tool) != "":
+		return strings.TrimSpace(node.tool)
+	}
+	return ""
 }
 
 // roomRowDone answers the one question every foot, legend and refusal on a room

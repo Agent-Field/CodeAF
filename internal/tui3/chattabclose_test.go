@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"strings"
 	"testing"
 	"time"
@@ -266,6 +267,8 @@ func TestTheCloseMarkAppearsUnderThePointerAndTheRowNeverRepacks(t *testing.T) {
 // all still says which conversation you are in.
 func TestTheTabInFrontIsMarkedWithoutColour(t *testing.T) {
 	a, _, _ := tabApp(t)
+	a.pal = newPalette(tokens.NoColor, false)
+	a.chatTabBar = tabBar{}
 	if got := plain(a.tabsRow(a.width)); !strings.Contains(got, "[Shipping the parser]") {
 		t.Fatalf("the tab in front carries no plain-text mark:\n%q", got)
 	}

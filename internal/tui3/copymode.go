@@ -130,6 +130,8 @@ func (a *app) takeMouseBack() bool {
 // for mark, which [newApp] sets to -1 — nothing is marked.
 type copyMode struct {
 	on bool
+	// The reading gutter belongs to the snapshot, even after a resize.
+	gutter int
 	// rows is the snapshot as it is drawn, and text the same rows stripped of
 	// every escape sequence. Two slices rather than one strip-per-yank because
 	// what a person copies must be what a person could paste: SGR in a paste
@@ -170,7 +172,7 @@ func (a *app) enterCopy() {
 	}
 	top := a.offsetFor(len(rows), height)
 	at := min(top+height-1, len(rows)-1)
-	a.copy = copyMode{on: true, rows: snapshot, text: plain, owner: owner, at: at, top: top, mark: -1}
+	a.copy = copyMode{on: true, gutter: textGutterCols(width), rows: snapshot, text: plain, owner: owner, at: at, top: top, mark: -1}
 	a.noticeEvent(eventCopyEntered)
 	a.touch()
 }
@@ -366,7 +368,7 @@ func (a *app) copyYank() tea.Cmd {
 	}
 	lines := make([]string, 0, to-from+1)
 	for _, line := range a.copy.text[from : to+1] {
-		lines = append(lines, copyClean(line))
+		lines = append(lines, copyClean(line, a.copy.gutter))
 	}
 	a.copy.mark = -1
 	a.touch()
@@ -390,7 +392,13 @@ var copyRails = []string{railCont, railContASCII,
 
 // copyClean is one frozen row as it should reach a clipboard: the drawn left
 // rail lifted, and the trailing cells — hover padding, row padding — with it.
-func copyClean(line string) string {
+func copyClean(line string, gut int) string {
+	// THE READING GUTTER IS FRAME FURNITURE AND NEVER TEXT (gutter.go), so it
+	// comes off before anything else is decided. It is dropped by width rather
+	// than by trimming, because what is left of the indent below IS text about
+	// the block — a tool's output sits two columns in, and a yank that lost that
+	// would paste a diff with its hierarchy flattened.
+	line = strings.TrimPrefix(line, strings.Repeat(" ", gut))
 	trimmed := strings.TrimLeft(line, " ")
 	indent := line[:len(line)-len(trimmed)]
 	for _, rail := range copyRails {

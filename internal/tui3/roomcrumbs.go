@@ -205,12 +205,7 @@ func (a *app) roomHereWord() string {
 }
 
 // chatCrumbWord names the actual conversation, including its unnamed state.
-func (a *app) chatCrumbWord() string {
-	if name := a.sessionName(); name != "" {
-		return name
-	}
-	return roomCrumbRoot
-}
+func (a *app) chatCrumbWord() string { return a.chatDisplayName() }
 
 // roomAncestors follows only this room's parent links, avoiding a sorted roster
 // rebuild on every frame. The seen set stops malformed cycles. Fitting folds
@@ -450,11 +445,14 @@ func (a *app) paintCrumbs(label string, at int, paint func(string) string) strin
 		}
 		out.WriteString(a.pal.dim(ansi.Cut(label, cursor, from)))
 		word := ansi.Cut(label, from, to)
-		ink := a.pal.dim
+		ink := a.pal.muted
 		if hit.crumb.kind == crumbHere {
-			ink = a.pal.accent
+			ink = a.pal.ink
 		}
 		shown := ink(word)
+		if hit.crumb.kind == crumbHere {
+			shown = a.pal.bold(shown)
+		}
 		if hovering && hot.span == hit.span {
 			shown = a.pal.cursor(a.pal.ink(word), 0)
 		}

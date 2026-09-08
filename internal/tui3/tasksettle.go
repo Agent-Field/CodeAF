@@ -212,6 +212,10 @@ func (a *app) settlePolicyAsks() bool {
 // frame may not have drawn (the same order [app.roomApprovalRows] keeps).
 func (a *app) settleRows(out []row, card *taskDone, entry, width, indent int) []row {
 	card.chips = nil
+	// AND THE GUTTER IS UNPAID AGAIN, for [app.taskCardRows]'s reason: whatever
+	// this call writes below is written against the row's own columns from zero,
+	// and the transcript's pass moves it from there exactly once (gutter.go).
+	card.gut = 0
 	if !a.settleAsking(card) {
 		if card.decided != "" {
 			pad := strings.Repeat(" ", indent)

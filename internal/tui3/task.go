@@ -128,6 +128,13 @@ type taskCard struct {
 	// not ask.
 	choiceRow int
 	spans     []choiceSpan
+	// gut is how many columns of the READING GUTTER are already in the two span
+	// sets above (gutter.go). The card is drawn at the transcript's own left
+	// edge, which is no longer screen column zero, and the shift is applied to
+	// finished spans by one pass — so the pass has to know what it has already
+	// paid, or a card whose rows came back from the entry cache would be moved
+	// again on every frame until its chips walked off the end of the row.
+	gut int
 
 	// forming says this card is a propose_task call that is STILL ARRIVING —
 	// the block drawn from the first fragment of the call, before there is a
@@ -1733,6 +1740,10 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	// answers a question nobody is asking.
 	card.choiceRow, card.spans = -1, nil
 	card.modelRow, card.modelSpans = -1, nil
+	// AND THE GUTTER IS UNPAID AGAIN, because these spans are about to be minted
+	// against the row's own columns from zero. The pass that moves them into the
+	// transcript's gutter reads this to know what it already owes (gutter.go).
+	card.gut = 0
 	// STILL ARRIVING: three rows, nothing to answer, and no hit targets — which
 	// the two lines above have just made true for this frame.
 	if card.forming && !card.settled() {
@@ -5643,6 +5654,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
 	}
+	a.takeTypedTaskBrief(node)
 	if title := strings.TrimSpace(notice.Title); title != "" {
 		node.label = title
 	}
@@ -5910,6 +5922,7 @@ func (a *app) dropTasks() {
 	a.closeRoom()
 	a.task = nil
 	a.tasks = nil
+	a.typedTaskBriefs = nil
 	a.taskOrder = nil
 	a.taskSeen = nil
 	a.taskLane = nil

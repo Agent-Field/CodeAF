@@ -146,6 +146,12 @@ type taskDone struct {
 	// the proposal's own choices are (task.go's spans): a hit-test that measured
 	// the row itself would be measuring a row this frame may not have drawn.
 	chips []settleChip
+	// gut is how many columns of the READING GUTTER are already in the chips
+	// above (gutter.go), for the reason the proposal's own spans carry one
+	// (task.go's [taskCard]). This card is the one that needs it most: it is
+	// drawn from three places at three indents — the plain card, a rollup, and a
+	// room's foot — and only the last of them nils the chips first.
+	gut int
 }
 
 // The card's words.

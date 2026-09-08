@@ -198,7 +198,7 @@ func tabSignalGlyph(sig tabSignal, ascii bool) string {
 //
 // THE SLOT IS THE SAME WIDTH IN ALL THREE STATES, and that is the whole reason
 // it is a function rather than a concatenation at the call site. A mark that
-// appeared and disappeared would move every name to its right by two cells each
+// appeared and disappeared would move every name to its right by one cell each
 // time a turn started — on a row a person reaches for by POSITION, which is the
 // one thing tabs may not do (chattabs.go's law about the order never moving).
 //
@@ -206,15 +206,15 @@ func tabSignalGlyph(sig tabSignal, ascii bool) string {
 func tabSignalSlot(sig tabSignal, ascii bool) string {
 	glyph := tabSignalGlyph(sig, ascii)
 	if glyph == "" {
-		return "  "
+		return " "
 	}
-	return glyph + " "
+	return glyph
 }
 
 // tabSignalWidth is what the slot costs a tab's label, and it is what
 // [tabWordFloor] has to rise by: a strip that spent its last six cells on a name
 // and then drew a mark over them would trade the word for the mark.
-const tabSignalWidth = 2
+const tabSignalWidth = 1
 
 // tabSignalWord is the state in words, for anywhere with room for them — a
 // hover, a card, a line of help. It is the surface's own vocabulary and not the

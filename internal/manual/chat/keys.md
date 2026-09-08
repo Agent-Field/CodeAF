@@ -1494,7 +1494,12 @@ starting work here, so the box is still standing when you come back.
 **Press `ctrl+k` to choose a conversation without leaving the one you are reading.**
 Press it again, use the arrows, or scroll to move the highlight. The list stays open
 while you read its names; a pause never switches chats or dismisses the list.
-**Enter or a click opens the highlighted row; Escape cancels.** Long selected titles
+Moving the pointer over a row highlights that row without changing the keyboard
+selection or switching chats. A small dot marks the pointer even without color.
+The “more conversations” control also highlights; headings and borders do not.
+An outside click dismisses the card without activating anything behind it.
+**Enter opens the highlighted row; clicking a row opens that conversation. Escape or
+a click outside the card cancels.** Long selected titles
 get additional reading space below the rows. A click outside the list acts on nothing.
 
 This holds even when the `quick switch` setting is on. That setting applies only to

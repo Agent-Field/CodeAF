@@ -184,6 +184,7 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		if node == nil {
 			node = &taskNode{id: id, ident: identFor(id), met: row.EndedAt}
 			a.tasks[id] = node
+			a.takeTypedTaskBrief(node)
 			a.taskOrder = append(a.taskOrder, id)
 		}
 		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
