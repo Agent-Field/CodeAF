@@ -3655,7 +3655,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.room == nil || msg.gen != a.room.gen {
 			return a, nil
 		}
-		a.room.done, a.room.lane = true, nil
+		a.room.setDone(true)
+		a.room.lane = nil
 		// A call that was still being spelled out when the lane ended never
 		// became one, and one the journal left running will never come back: both
 		// rows say so and stop pulsing (room.go).

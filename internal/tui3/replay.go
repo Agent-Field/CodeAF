@@ -542,7 +542,8 @@ func roomReplay(tail int) replayShape {
 // for the PAGE — a helping cut from each half would keep a screenful of a region
 // nobody scrolled to and drop the work that is happening now.
 func (a *app) roomRecord(record session.Record, tail int) ([]entry, int) {
-	blocks, turns := a.recordBlocks(record, tail)
+	blocks, turns := a.recordBlocks(record, 0)
+	blocks = keepRoomTail(blocks, tail)
 	// AND WHAT THE READING COULD NOT DO IS SAID AT THE TOP, above the window
 	// rather than inside it. It is a fact about the READING and not about the
 	// work, so a page long enough to be windowed must not quietly stop saying it
@@ -722,6 +723,12 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			})
 
 		case "aside":
+			if shape.brief && len(blocks) == 0 && canonicalTaskRequest(text) {
+				turn++
+				turns++
+				blocks = append(blocks, entry{kind: entryUser, text: text, turn: turn, brief: true})
+				continue
+			}
 			if text == "" {
 				continue
 			}

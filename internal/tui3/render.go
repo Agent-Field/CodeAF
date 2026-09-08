@@ -1085,7 +1085,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
 		}
 		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
-		marked, pictureMasks := a.maskPictureMarkers(e.text, e, pictureDoors)
+		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
 		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
 			body = nil

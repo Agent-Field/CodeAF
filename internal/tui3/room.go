@@ -378,7 +378,7 @@ func (r *taskRoom) deck() deck {
 	// folded cluster keeps a screenful of calls instead of three.
 	return deck{
 		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, capOpen: r.capOpen,
-		lens: overseerLens, runningTurn: running,
+		lens: r.readingLens(), runningTurn: running,
 	}
 }
 
@@ -822,7 +822,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	// door. What the row on the tasks place said is the only reading this window
 	// has, and [app.openOwnerRoom] set it on the way in.
 	if a.room.guest == nil {
-		a.room.done = roomRowDone(a.tasks[a.room.id])
+		a.room.setDone(roomRowDone(a.tasks[a.room.id]))
 	}
 	if a.room.done && msg.err == nil {
 		return prefetch

@@ -2059,3 +2059,15 @@ caption for each separated block. Opening a block traverses its caption spans
 rather than searching the whole caption list for every entry. Motion uses the
 existing frame clock, shimmer and fade palette, adding no timer, goroutine,
 filesystem access or network request. The screen-reader tier stays static.
+
+## Task request and finished-task reading
+
+A task page keeps the existing `roomTail` entry budget. When its opening brief
+would fall outside that tail, `keepRoomTail` reserves two slots for the brief and
+an explicit history seam, retaining the newest `roomTail - 2` entries. It keeps
+no second transcript. Request presentation is derived only for the brief entry
+and follows the existing cached row/three-line disclosure path; raw text remains
+the entry identity. Finished rooms reuse `foldTurns` without another fold engine.
+Reading bookmarks still retain at most 240 fingerprint settings across each of
+64 tasks; the saved fold style is one enum and work choices follow the fingerprint
+of each derived fold's start rather than an unstable integer index.

@@ -3012,28 +3012,22 @@ unreported, and it thaws at the value it would have had when you leave.
 
 ## Seeing the whole conversation inside a task — what folds and what opens it
 
-**A room holds everything the task said and did, and the settled work's outline is one
-gesture away.** Out in the main thread a finished turn's machinery collapses into one chip —
-`▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
-you asked and the answer you got. A room does the same thing cut differently: a task's
-whole life is one long stretch of work, so folding it by turn would put the entire page
-behind one chip. It folds **by phase** instead — the work before each paragraph the task
-wrote goes behind its own `▸ worked` chip, and every paragraph stays standing.
+**A finished task reads like a conversation: its request, a collapsed work chip,
+and its final answer.** This also applies to nested tasks. Intermediate narration
+and tool calls stay inside the work chip; click it or press `ctrl+e` to inspect them.
+Your later messages and corrections remain visible at their original boundaries.
+A stretch with no final reply keeps its available work visible, so an interrupted
+or tool-only record does not pretend to have an answer.
 
-`ctrl+e` over an empty box opens the newest chip onto its caption outline, a click opens
-any of them, scrolling up at the top of the page opens the one nearest the top, and
-`ui.work = open` opens them all. A caption is a short status line per step (about
-5 to 10 words; wraps on a narrow window); click or select one to
-open its tool rows one level further. **What the task is doing right now keeps its caption
-standing**, and neither your instruction, your corrections, any call that failed, any
-question it asked you, nor the report at the end folds away.
+While a task is running, settled phases keep their existing individual chips and
+current work remains visible. When it finishes, phase expansion choices reset so
+an opened live phase does not accidentally expand the entire finished task.
+`ui.work = open` still opens the detailed work by default.
 
-So a room you walk into — a running task, a task that has landed, a piece of a recursive
-task, a harness being designed — reads top to bottom as the story of the work: the
-instruction it was given, its prose between calls, a chip over the caption outline behind
-each paragraph, anything you steered into it, and the report at the end. Everything the
-page folded is still there: one keypress opens the outline and one more opens a caption's
-machinery. A caption can be wrong; its tool rows are the truth.
+Inside expanded work, captions group the steps. Click a caption to open its tool
+rows. Nothing is removed from the journal. The page retains a bounded recent view;
+on very long records it keeps the opening request and explicitly marks where earlier
+work lies outside that view. Expanding the work reveals the retained entries.
 
 Three bounded things do still hold something back, and every one of them names itself and
 opens:
@@ -3061,6 +3055,13 @@ typed after `/task`, or the brief aforge shaped from them, or a spec you pasted 
 long one that used to be the whole screen: you walked into a task to watch it work and
 were shown the assignment, with the first tool call somewhere below the fold.
 
+Generated assignments use readable section labels: Task request, Original request,
+Deliverable, Completion criteria, Workspace, and context. A child task puts its own
+assignment first, ahead of the inherited project request. Expanding shows the full
+section bodies and the rules sent to the model. The model input and stored original
+payload stay unchanged; this is a reading layout only. Ordinary runtime wake and
+checkpoint notes do not become requests.
+
 So the block folds:
 
 ```
@@ -3085,9 +3086,9 @@ So the block folds:
 every message you send out in the main thread, is drawn in full and has no fold line —
 your own words in a conversation are the one thing this surface will not hide.
 
-**Nothing is remembered.** Opening the instruction is a thing you did to the page you are
-looking at, not a setting: leave the task and come back and it is folded again. There is
-no preference for it and nothing is written to disk.
+**Reading choices stay with the task during this session.** Returning to a task restores
+its request expansion and reading position. A saved live-phase expansion is not applied
+to the finished task's whole-work chip. Nothing is written to the journal.
 
 `ctrl+o` is a chord, so it costs you no character — you can press it with a half-typed
 sentence in the box and carry on. The three visible lines are drawn exactly as they would
