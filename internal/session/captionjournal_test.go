@@ -100,6 +100,15 @@ func TestANarratedStepKeepsItsSentenceAndFamilyAcrossAReopen(t *testing.T) {
 	if back.CaptionCategory == ActionCategoryForTool("bash") {
 		t.Fatal("the assertion above passes for the wrong reason: pick a family bash does not derive")
 	}
+
+	// ReadTranscript is the detached reading used for another agent's page and
+	// across a remote link. It must receive the same caption index as a resumed
+	// Agent rather than silently falling back to the tool-name composite.
+	detached := toolEntryFor(t, ReadTranscript(path).Entries, "call-batch")
+	if detached.Caption != live.Caption || detached.CaptionCategory != live.CaptionCategory {
+		t.Fatalf("the detached reading carries %q/%q, want the live %q/%q",
+			detached.Caption, detached.CaptionCategory, live.Caption, live.CaptionCategory)
+	}
 }
 
 // THE CAPTION IS ANCHORED TO THE BATCH AND TO NOTHING ELSE. It rides the call

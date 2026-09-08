@@ -2,6 +2,9 @@ package session
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -147,5 +150,58 @@ func TestACaptionEventCarriesItsBatchAnchor(t *testing.T) {
 	}
 	if got := captions[0].CallID; got != "call-first" {
 		t.Fatalf("the caption is anchored to %q, want the batch's first call", got)
+	}
+}
+
+// A NARRATOR ANSWER THAT RETURNS AFTER ITS BATCH WAS CANCELLED NEVER BECOMES
+// PART OF THE CONVERSATION. The live event and the journal line are two accounts
+// of the same accepted sentence; keeping the second after suppressing the first
+// would make a reopened conversation say something its live window never did.
+func TestACancelledNarratorAnswerIsNeitherShownNorJournaled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	client := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, client, func(config *Config) { config.SessionFile = path })
+	hub := newEventHub()
+	defer hub.close()
+	call := ai.ToolCall{ID: "call-cancelled", Type: "function",
+		Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"go test ./..."}`}}
+	ctx, cancel := context.WithCancel(withEpisode(context.Background(), agent.newEpisode()))
+	asked := 0
+	client.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if !isCaptionCall(messages) {
+			return nil, false
+		}
+		asked++
+		// The provider succeeds, but the batch ends before its answer returns to
+		// maybeCaption. This is the late-success shape the acceptance gate owns.
+		cancel()
+		return textResponse("test | running the loader suite"), true
+	}
+
+	agent.maybeCaption(ctx, hub, []ai.ToolCall{call}, nil)
+
+	if asked != 1 {
+		t.Fatalf("the cancelled narrator was asked %d times, want its late answer exercised", asked)
+	}
+	hub.mu.Lock()
+	for _, event := range hub.backlog {
+		if event.Kind == EventCaption {
+			hub.mu.Unlock()
+			t.Fatalf("the cancelled answer reached the live frame: %+v", event)
+		}
+	}
+	hub.mu.Unlock()
+	if text, category := agent.file.caption(call.ID); text != "" || category != "" {
+		t.Fatalf("the cancelled answer entered the live journal index: %q/%q", text, category)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var entry sessionEntry
+		if err := json.Unmarshal([]byte(line), &entry); err == nil && entry.Type == "caption" {
+			t.Fatalf("the cancelled answer was journaled: %s", line)
+		}
 	}
 }

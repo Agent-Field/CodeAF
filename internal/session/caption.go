@@ -167,22 +167,23 @@ func (a *Agent) maybeCaption(ctx context.Context, hub *eventHub, calls []ai.Tool
 	if len(calls) > 0 {
 		anchor = calls[0].ID
 	}
+	// THE ANSWER IS ACCEPTED ONCE FOR BOTH RECORD AND FRAME. A response that came
+	// back after this batch's context was cancelled was never shown live, so
+	// writing it would make the same conversation acquire a new title when it was
+	// reopened. Once accepted, both writes proceed even if cancellation races in
+	// immediately afterward; the anchor above keeps a delayed event on its own
+	// step, and one later cancellation check would split the durable and live
+	// accounts of what the narrator said.
+	if ctx.Err() != nil {
+		return
+	}
 	// AND THE RECORD IS WRITTEN WHERE THE EVENT IS SENT, with the same anchor and
 	// the same words. A caption is not a message — nothing was said to the model
 	// here — so it is journaled as a line of its own or it is lost the moment the
 	// window closes, and a reopened conversation falls back to recomposing a
 	// title out of tool names.
-	//
-	// It is written EVEN WHEN THE CONTEXT HAS BEEN CANCELLED, because a cancelled
-	// context means the batch finished, not that the sentence was wrong about it:
-	// the anchor still names that batch, and a reader coming back tomorrow is
-	// better served by the narration than by "running 1 command". What the
-	// cancellation governs is the LIVE frame, where a late title would move under
-	// somebody's eye, and that is the check below.
 	a.file.appendCaption(anchor, line, category)
-	if ctx.Err() == nil {
-		hub.send(Event{Kind: EventCaption, Text: line, Category: category, CallID: anchor})
-	}
+	hub.send(Event{Kind: EventCaption, Text: line, Category: category, CallID: anchor})
 }
 
 // reserveCaption spends one of this turn's narrator calls before the provider

@@ -638,12 +638,12 @@ type Event struct {
 	// "which question" is the same question for both of them.
 	ID uint64
 
-	// CallID is the PROVIDER's id for the tool call an EventToolForming, an
-	// EventToolAnnounced, an EventConsentRequest or an EventCaption is about —
-	// the same string the tool result carries — and is empty on every other
-	// kind. It is empty on a forming event too until the wire has sent one,
-	// which is the first fragment in practice and nothing the consumer may
-	// assume.
+	// CallID is the PROVIDER's id for the tool call a tool lifecycle event
+	// (forming, announced, begin, finished, end or failed), an
+	// EventConsentRequest or an EventCaption is about — the same string the tool
+	// result carries — and is empty on every other kind. It is empty on a forming
+	// event too until the wire has sent one, which is the first fragment in
+	// practice and nothing the consumer may assume.
 	//
 	// ON A CAPTION IT IS THE BATCH'S ANCHOR: the id of the call the batch opened
 	// with, which is how a surface knows WHICH STEP the sentence is about. The
