@@ -343,12 +343,30 @@ func TestChoosingASubdirectoryOfARepositoryReportsTheRootItSnappedTo(t *testing.
 	if ref.Path != canonicalPath(repo) {
 		t.Fatalf("the answer is %q, want the repository root %q — the caller cannot report what it does not get back", ref.Path, canonicalPath(repo))
 	}
+	// AND WHAT THEY POINTED AT IS NOT LOST. The snap is real and it must not be
+	// silent: the record keeps the directory they chose beside the project they
+	// gained, and the model is told both.
+	if ref.Chose != canonicalPath(inside) {
+		t.Fatalf("the record kept %q as what the person pointed at, want %q", ref.Chose, canonicalPath(inside))
+	}
 	seen := modelSees(t, agent)
 	if !strings.Contains(seen, canonicalPath(repo)) {
 		t.Fatalf("the model was not told the folder it actually gained:\n%s", seen)
 	}
-	if strings.Contains(seen, canonicalPath(inside)) {
-		t.Fatalf("the model is told about a subdirectory the conversation did not attach:\n%s", seen)
+	if !strings.Contains(seen, "they pointed at "+canonicalPath(inside)+" inside it") {
+		t.Fatalf("the model was not told which directory the person actually pointed at:\n%s", seen)
+	}
+	// AND CHOOSING THE PROJECT ITSELF CLAIMS NO SUBDIRECTORY, so a person who
+	// picks the root does not carry last week's answer around with them.
+	again, err := agent.ReferPlace(repo, PlaceSaid)
+	if err != nil {
+		t.Fatalf("ReferPlace: %v", err)
+	}
+	if again.Chose != "" {
+		t.Fatalf("choosing the project itself still claims %q was pointed at", again.Chose)
+	}
+	if places := agent.Places(); len(places) != 1 || places[0].Chose != "" {
+		t.Fatalf("the set still holds a subdirectory the person replaced: %+v", places)
 	}
 }
 
@@ -370,6 +388,36 @@ func TestTheConversationsFoldersRideItsFacts(t *testing.T) {
 	places := agent.Facts().Places
 	if len(places) != 1 || places[0].Path != canonicalPath(folder) || places[0].Arrival != PlaceSaid {
 		t.Fatalf("the photograph holds %+v, want the folder the person attached", places)
+	}
+}
+
+// REMOVING A FOLDER DOES NOT THROW AWAY THE WORK WAITING IN IT. The working
+// copies are their own record and they exist nowhere else (standingtree.go);
+// somebody tidying an indicator must not silently discard an hour of unlanded
+// changes, and the person's own folder is untouched either way.
+func TestRemovingAFolderKeepsTheWorkThatIsWaitingToLand(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _, _ := standingLab(t, repo)
+	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "the changed line\n")
+	if waiting := agent.UnlandedChanges(); len(waiting) != 1 {
+		t.Fatalf("the write left %+v waiting, so this test proves nothing", waiting)
+	}
+
+	if err := agent.RemovePlace(repo); err != nil {
+		t.Fatalf("RemovePlace: %v", err)
+	}
+
+	waiting := agent.UnlandedChanges()
+	if len(waiting) != 1 || waiting[0].Folder != canonicalPath(repo) {
+		t.Fatalf("removing the folder threw away the work waiting in it: %+v", waiting)
+	}
+	if _, ok := agent.LandingFor(repo); !ok {
+		t.Fatal("the landing can no longer be found, so the changes cannot be put back")
+	}
+	// AND THE PERSON'S OWN FOLDER NEVER MOVED. Removing an attachment is a change
+	// to this conversation and to nothing on their disk.
+	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "the original line\n" {
+		t.Fatalf("the person's own file now says %q", got)
 	}
 }
 

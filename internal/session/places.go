@@ -96,6 +96,17 @@ type PlaceRef struct {
 	// mode falls out of the deliverable, exactly as [groundMode] decides it for
 	// every other ground.
 	Mode string `json:"mode,omitempty"`
+	// Chose is the directory THE PERSON ACTUALLY POINTED AT, and it is set only
+	// when the snap above moved it — so it is empty for every place chosen at its
+	// own root, which is most of them.
+	//
+	// THE SNAP IS REAL AND MUST NOT BE SILENT. A branch is cut from a repository
+	// and not from a directory inside it, so a person who picks
+	// `…/internal/session` gains the project; but a record that kept only the
+	// project would have quietly widened what they said, and neither the surface
+	// nor the model could tell them what actually happened. This is the one field
+	// that keeps the two honest with each other.
+	Chose string `json:"chose,omitempty"`
 	// Repository records whether git knew this directory when it was referred.
 	// It is the cheap fact a picker draws and a caller reads without paying for
 	// a `rev-parse` per row; the ladder asks git itself where it must be right.
@@ -139,10 +150,13 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 		return PlaceRef{}, fmt.Errorf("a place arrives said or kept, not %q", arrival)
 	}
 	root, repository := repositoryRoot(dir)
-	if repository {
-		dir = root
+	chose := ""
+	if repository && root != dir {
+		// WHAT THEY POINTED AT IS KEPT BESIDE WHAT THEY GAINED, for
+		// [PlaceRef.Chose]'s stated reason.
+		chose, dir = dir, root
 	}
-	ref := PlaceRef{Path: dir, Arrival: arrival, Referred: time.Now(), Repository: repository}
+	ref := PlaceRef{Path: dir, Chose: chose, Arrival: arrival, Referred: time.Now(), Repository: repository}
 	a.refer(ref)
 	return ref, nil
 }
@@ -345,10 +359,21 @@ func (a *Agent) refer(ref PlaceRef) {
 		ref.Referred = time.Now()
 	}
 	known, settled := a.knownPlace(ref.Path)
+	// AND WHAT THE PERSON POINTED AT SURVIVES A GROUND LANDING ON THE SAME PLACE,
+	// but is never carried over a person's own act. A resolved ground makes no
+	// claim about what anybody pointed at, so it inherits the record's; somebody
+	// choosing the project itself is SAYING they pointed at the root, and
+	// resurrecting last week's subdirectory under them would be this file
+	// remembering an intention they have just replaced. IT IS SETTLED BEFORE THE
+	// EARLY RETURN BELOW, because a person re-picking the same project at a
+	// different depth has something new to say about a place already at the head.
+	if ref.Arrival == PlaceKept && ref.Chose == "" {
+		ref.Chose = known.Chose
+	}
 	// The head, with nothing new to say about it. An arrival only ever goes up,
 	// so a ground resolved onto a place the person already named is a place the
 	// set already reads correctly.
-	if settled && (known.Arrival == ref.Arrival || ref.Arrival == PlaceKept) {
+	if settled && (known.Arrival == ref.Arrival || ref.Arrival == PlaceKept) && known.Chose == ref.Chose {
 		return
 	}
 	if ref.Mode == "" {

@@ -143,6 +143,14 @@ func attachedFacts(place PlaceRef) string {
 	if place.Repository {
 		facts = append(facts, "a repository")
 	}
+	// AND WHAT THEY POINTED AT, WHERE THAT IS NOT WHAT THEY GAINED. The snap to
+	// the repository root is real (places.go), and a model told only the root
+	// would answer a question about "the folder I attached" about somewhere wider
+	// than the person meant — while a model told both can start where they pointed
+	// and still reach the rest.
+	if chose := strings.TrimSpace(place.Chose); chose != "" && chose != place.Path {
+		facts = append(facts, "they pointed at "+chose+" inside it, so start there")
+	}
 	// AND A FOLDER THAT IS NO LONGER THERE SAYS SO. The set is a history and is
 	// not rewritten when a disk is unplugged (places.go), so the honest thing to
 	// put in front of the model is the record AND the reading — a model that

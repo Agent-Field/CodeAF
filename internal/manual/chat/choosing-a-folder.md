@@ -95,7 +95,15 @@ written into my own instructions under `Attached folders`: the absolute path, wh
 a repository, and — if it has an `AGENTS.md` or a `CLAUDE.md` of its own — that file's rules
 quoted under a heading naming that folder and saying they hold there and nowhere else. So I
 never go hunting for a folder you chose, never ask you which one you meant, and never blend
-two attached projects' house rules together. What I am **not** given is the folder's
+two attached projects' house rules together.
+
+Choosing a directory **inside a repository** attaches the repository, because a branch is
+cut from a repository and not from a directory in it — and the line you get back says so by
+naming the project rather than what you pointed at. Nothing about that is hidden from
+either of us: the directory you actually pointed at is kept beside the project on the
+record, and I am told both, so I start where you pointed and can still reach the rest.
+
+What I am **not** given is the folder's
 contents: attaching is a reference, not a copy, and I look inside with `ls`, `grep` and
 `read` on the path you chose, the same as anywhere else. A folder that is no longer on disk
 when you attach it is described that way rather than silently.
