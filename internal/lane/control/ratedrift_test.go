@@ -207,3 +207,25 @@ func TestARecoveredStreamStopsBeingJudgedOnItsBadPatch(t *testing.T) {
 		t.Fatal("a healthy rate never shed the bad patch within the ceiling's decay horizon")
 	}
 }
+
+// Providers may group tokens into one streamed event; batching does not lower
+// the visible throughput that the lane's per-token rate belief describes.
+func TestHealthyBatchedTokensKeepTheirProgressCredit(t *testing.T) {
+	p := plan()
+	p.Gap = logNormal(0.05, 1)
+	p.Ceiling = 2 * time.Second
+	p.Lambda = 0
+	watch := New(p)
+	watch.Note(Reading{At: epoch, Visible: 10})
+	for step := 50; step <= 10000; step += 50 {
+		var act Act
+		if step%500 == 0 {
+			act = watch.Note(Reading{At: at(step), Visible: 10})
+		} else {
+			act = watch.Quiet(at(step))
+		}
+		if act.Kind != None {
+			t.Fatalf("20 tokens/second in batches was treated as a collapsed rate at %dms: %+v", step, act)
+		}
+	}
+}

@@ -278,7 +278,10 @@ func (h *hazard) Note(reading Reading) Act {
 			gap := h.now.Sub(h.wrote)
 			if gap > 0 && h.plan.Gap.Known() {
 				decay := math.Exp(-gap.Seconds() / h.plan.Ceiling.Seconds())
-				surprise := (math.Log(gap.Seconds()) - h.plan.Gap.Mu) / h.plan.Gap.Sigma
+				// The belief is per token, while one event may contain a whole
+				// batch. Normalize its interval so healthy batching keeps credit.
+				perToken := gap.Seconds() / float64(reading.Visible)
+				surprise := (math.Log(perToken) - h.plan.Gap.Mu) / h.plan.Gap.Sigma
 				h.drift = h.drift*decay + surprise
 				h.weight = h.weight*decay + 1
 			}

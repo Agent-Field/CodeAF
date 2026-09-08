@@ -172,7 +172,9 @@ says the wait is real when there is nowhere to go.
 
 One slow gap is still only one slow gap. The judgment comes from the run of
 visible gaps, fades over the same time as the ceiling, and clears when the
-stream recovers. Hidden thinking does not count as a visible word; a model that
+stream recovers. A batch containing several visible tokens is counted at its
+per-token rate, so ordinary batching does not look like a crawl.
+Hidden thinking does not count as a visible word; a model that
 interleaves long thoughts between single words can therefore be rescued after
 a ceiling of text arriving too slowly.
 
