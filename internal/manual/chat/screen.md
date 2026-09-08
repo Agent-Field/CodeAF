@@ -1706,7 +1706,8 @@ renderer's own ramp. The foot is aforge's own chrome and wears its dim.
 
 While the main conversation works, recent step descriptions occupy a compact
 window below your question. Older steps are fainter; the newest step shimmers
-while its calls run. Thinking, raw tool calls, arguments and call counts stay
+while its calls run. The highlight is soft and low contrast, with a quiet pause
+between sweeps; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
 behind this view. The window changes when a new step arrives; a quiet interval
 creates no extra steps. Before the first step, the existing activity line below
 the conversation remains the sign that work is running.
@@ -1719,7 +1720,8 @@ return to the compact view. `ctrl+o` can still show all calls.
 The window budgets **3 wrapped rows**, admitting whole captions newest first.
 On a narrow screen, a caption that needs two rows leaves room for fewer steps.
 If the newest caption alone needs more than three rows, it stays whole rather
-than losing words. The screen-reader tier draws the descriptions without motion.
+than losing words. Screen-reader and lower-colour terminals (including 256 colours) draw the
+descriptions without motion. Expanding or collapsing the work is immediate.
 
 Your messages, corrections, answers, approval questions and notices remain
 outside the compact work. A failed step keeps its ordinary outline and controls.

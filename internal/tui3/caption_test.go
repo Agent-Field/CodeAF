@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 func captionFixture() []entry {
@@ -155,6 +156,7 @@ func TestANarrowCaptionWrapsWithoutEllipsis(t *testing.T) {
 
 func TestExpandingACaptionStopsItsShimmerAndStartsTheRowSpinners(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
+	a.pal = newPalette(tokens.TrueColor, false)
 	c := caption{text: "checking the fold", start: 1, calls: 2, began: time.Unix(100, 0)}
 	a.clock = func() time.Time { return time.Unix(104, 0) }
 	a.paints = 0

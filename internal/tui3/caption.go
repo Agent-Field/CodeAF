@@ -504,36 +504,6 @@ func captionText(c caption) string {
 	return shortCaption(c.text)
 }
 
-const shimmerPeriod = 36
-const shimmerBand = 8
-
-// shimmer paints the one moving band a collapsed live caption owns.
-//
-// THE SHIMMER IS THE SPINNER, RELOCATED. Its tool rows are absent while it
-// moves, and opening those rows returns the animation budget to their spinners.
-func (a *app) shimmer(text string) string {
-	if text == "" {
-		return ""
-	}
-	if a.linear {
-		return a.pal.narr(text)
-	}
-	runes := []rune(text)
-	span := len(runes) + shimmerBand
-	center := (a.paints % shimmerPeriod) * span / shimmerPeriod
-	from, to := center-shimmerBand, center
-	var b strings.Builder
-	for i, r := range runes {
-		word := string(r)
-		if i >= from && i < to {
-			b.WriteString(a.pal.ink(word))
-		} else {
-			b.WriteString(a.pal.narr(word))
-		}
-	}
-	return b.String()
-}
-
 // captionRows draws the step title. IT WRAPS; IT NEVER ELLIPSIS-CUTS. A
 // person-facing caption is short (5–10 words), and on a narrow frame those
 // words still show in full across lines rather than ending in `…`.

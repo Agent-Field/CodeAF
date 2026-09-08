@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // liveStepsBase is the fixture's zero so a test can name a moment in it.
@@ -134,6 +136,7 @@ func TestARunningTurnDrawsThreeStepsAndNoMachinery(t *testing.T) {
 // exactly one of the three carries the shimmer.
 func TestOnlyTheStepThatIsRunningShimmers(t *testing.T) {
 	a := liveStepsApp(t)
+	a.pal = newPalette(tokens.TrueColor, false)
 	before := liveRowTexts(a)
 	a.paints = shimmerPeriod / 2
 	a.touch()

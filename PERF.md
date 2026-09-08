@@ -2086,3 +2086,21 @@ the entry identity. Finished rooms reuse `foldTurns` without another fold engine
 Reading bookmarks still retain at most 240 fingerprint settings across each of
 64 tasks; the saved fold style is one enum and work choices follow the fingerprint
 of each derived fold's start rather than an unstable integer index.
+
+## Caption shimmer motion
+
+The current collapsed step reuses `frameInterval` (33 ms) and `paints`, including
+remote frame strides. `shimmerSweep` (72 slots) and `shimmerRest` (24 slots) make
+`shimmerPeriod` a 96-slot cycle: roughly 2.38 seconds of travel and 0.79 seconds
+of rest. This is ambient progress, not an interaction delay; disclosures remain
+immediate. A cosine feather with `shimmerRadius` (8 terminal cells) peaks at
+`shimmerLift` (0.35) of the distance from narration to answer ink. It never moves
+letters or changes layout. Whole graphemes receive colour together.
+
+Each painted line takes two linear walks (cell measurement and drawing), with
+constant-space iteration besides its output. Adjacent graphemes of the same
+colour share one escape pair, so quiet prefixes and suffixes do not spend bandwidth on per-character styling.
+Truecolour interpolates channels directly. No new clock, I/O or background
+worker is involved. Screen-reader and lower-colour modes (including 256 colours)
+remain static because nearest palette matches can introduce abrupt hue changes.
+Tests inspect every emitted frame in both themes for smooth colour changes, a quiet loop boundary, stable width and intact Unicode.
