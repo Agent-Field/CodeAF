@@ -758,9 +758,9 @@ func TestAStalledCheckIsAbandonedAndTheSecondCallAnswers(t *testing.T) {
 		config.Workspace = repo
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
-		// The test clock: a window a test can wait out, cut into calls a test can
-		// wait out twice.
-		config.auditWindow = 200 * time.Millisecond
+		// The first call must time out, while the second still needs room for
+		// real repository setup when other package suites share the machine.
+		config.auditWindow = 10 * time.Second
 	})
 	graph := agent.graph()
 	collect(t, mustSubmit(t, agent, "add a greeting"))
