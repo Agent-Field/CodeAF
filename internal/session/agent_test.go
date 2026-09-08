@@ -1690,6 +1690,67 @@ func callsResponse(calls ...ai.ToolCall) *ai.Response {
 	}
 }
 
+// A response that returns a whole tool batch without streaming still carries
+// the provider's identity through every lifecycle event. The two calls use the
+// same tool name because a name cannot disambiguate the row an event belongs to.
+func TestNonStreamingSameToolBatchCarriesCallIDsThroughLifecycle(t *testing.T) {
+	calls := []ai.ToolCall{
+		{ID: "call-first", Type: "function", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"first.txt"}`}},
+		{ID: "call-second", Type: "function", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"second.txt"}`}},
+	}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return callsResponse(calls...), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, nil)
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatalf("write %s fixture: %v", name, err)
+		}
+	}
+
+	events := collect(t, mustSubmit(t, agent, "read both files"))
+	var begun, ended []Event
+	finished := make(map[string]Event)
+	for _, event := range events {
+		switch event.Kind {
+		case EventToolAnnounced:
+			t.Fatalf("non-streaming response announced a call: %+v", event)
+		case EventToolBegin:
+			begun = append(begun, event)
+		case EventToolFinished:
+			finished[event.CallID] = event
+		case EventToolEnd:
+			ended = append(ended, event)
+		case EventToolFailed:
+			t.Fatalf("tool failed: %+v", event)
+		}
+	}
+	if len(begun) != len(calls) || len(ended) != len(calls) || len(finished) != len(calls) {
+		t.Fatalf("lifecycle counts = begin %d, finished %d, end %d; want %d each", len(begun), len(finished), len(ended), len(calls))
+	}
+	for index, call := range calls {
+		if begun[index].Tool != call.Function.Name || begun[index].Args != call.Function.Arguments || begun[index].CallID != call.ID {
+			t.Errorf("begin %d = %+v, want tool %q args %q call ID %q", index, begun[index], call.Function.Name, call.Function.Arguments, call.ID)
+		}
+		if ended[index].Tool != call.Function.Name || ended[index].Args != call.Function.Arguments || ended[index].CallID != call.ID {
+			t.Errorf("end %d = %+v, want tool %q args %q call ID %q", index, ended[index], call.Function.Name, call.Function.Arguments, call.ID)
+		}
+		got, ok := finished[call.ID]
+		if !ok {
+			t.Errorf("no finished event for call ID %q", call.ID)
+			continue
+		}
+		if got.Tool != call.Function.Name || got.Args != call.Function.Arguments {
+			t.Errorf("finished event for %q = %+v, want tool %q args %q", call.ID, got, call.Function.Name, call.Function.Arguments)
+		}
+	}
+}
+
 func emitReady(t *testing.T, ctx context.Context, call ai.ToolCall) {
 	t.Helper()
 	payload, err := json.Marshal(call)

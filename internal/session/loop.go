@@ -1864,10 +1864,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	for index, call := range calls {
 		rendered[index] = argsText(call)
 		hub.send(Event{
-			Kind: EventToolBegin,
-			Tool: call.Function.Name,
-			Hint: a.gloss(call),
-			Args: rendered[index],
+			Kind:   EventToolBegin,
+			Tool:   call.Function.Name,
+			Hint:   a.gloss(call),
+			Args:   rendered[index],
+			CallID: call.ID,
 		})
 	}
 
@@ -1967,11 +1968,13 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// invention the admission context refuses to make.
 	a.noteCallOutcomes(calls, results)
 
-	// The end events carry Args as well as Output. Carrying the arguments rather
-	// than making the surface remember the begin event costs nothing — the
-	// rendering is the one done above — and buys an end event that is
+	// The end events carry Args, Output, and the provider's call ID. Carrying
+	// them rather than making the surface remember the begin event costs nothing
+	// — the rendering is the one done above — and buys an end event that is
 	// self-contained, which is what a surface that renders a finished row from
-	// one event needs.
+	// one event needs. The ID remains necessary when one batch calls the same
+	// tool more than once, because neither its name nor completion order identifies
+	// the row.
 	for index, call := range calls {
 		if results[index].isError {
 			hub.send(Event{
@@ -1980,6 +1983,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],
 				Output: capOutput(results[index].text),
+				CallID: call.ID,
 				// WHOSE FAILURE THIS WAS travels with it. Everything counting
 				// steps out of band — the runner's no-progress ledger above all —
 				// reads events and not results, so a fact kept only on the result
@@ -1996,6 +2000,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Tool:   call.Function.Name,
 			Args:   rendered[index],
 			Output: capOutput(results[index].text),
+			CallID: call.ID,
 		})
 	}
 	return results
