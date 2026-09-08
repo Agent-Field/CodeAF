@@ -37,13 +37,14 @@ func headFactsRow(a *app) string {
 // ancestry on one and telemetry on the other.
 func headPanel(a *app) string { return headRow(a) + "\n" + headFactsRow(a) }
 
-// tabsRowOf is the frame's FIRST row: the tab strip, when there is one.
+// tabsRowOf reads the tab labels inside the header's optional vertical padding.
 func tabsRowOf(a *app) string {
 	rows := strings.Split(frame(a), "\n")
-	if len(rows) == 0 {
+	at := a.tabsLineRow()
+	if at >= len(rows) {
 		return ""
 	}
-	return rows[0]
+	return rows[at]
 }
 
 // THE HEADER SAYS WHERE YOU ARE AND WHAT IS HAPPENING THERE. It is pinned above
@@ -65,19 +66,18 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	if !strings.Contains(headRow(a), sgr256(hueInk)) {
 		t.Fatalf("the current task title has no primary ink:\n%q", headRow(a))
 	}
-	// PINNED: the page scrolls under it and it stays on the first row.
+	// PINNED: the page scrolls under it and its header row stays in place.
 	a.roomScroll(-3)
 	if got := plain(headRow(a)); !strings.Contains(got, "Fix the nil-map") {
 		t.Fatalf("the header scrolled away with the page:\n%s", got)
 	}
 	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
 	// resolves through — a header the scrolling did not know about would push
-	// the room's last row under the input box. THREE rows are pinned here: the
-	// tab strip, which says which conversation this page is inside, and the two
-	// rows of the room's own header under it — the trail and the facts
-	// (chattabs.go, room.go). The task strip stands down wherever it is
-	// (taskstrip.go, view.go's [app.topHeight]).
-	if a.headHeight() != 3 || a.stripHeight() != 0 || a.bodyTop() != 3 {
+	// the room's last row under the input box. The tab strip and the room's
+	// trail and facts are pinned here, with their breathing room. The task
+	// strip stands down wherever this header is drawn.
+	wantHead := a.tabsHeight(a.width) + a.roomHeadHeight(a.width)
+	if a.headHeight() != wantHead || a.stripHeight() != 0 || a.bodyTop() != wantHead {
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
 			a.headHeight(), a.stripHeight(), a.bodyTop())
 	}
@@ -90,7 +90,7 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// What is left over a conversation is the strip and the low-contrast rule
 	// under it, which is the seam between the header panel and the transcript
 	// (chattabs.go's [app.chatRuleHeight]).
-	if a.headHeight() != 1+a.chatRuleHeight(a.width) || !strings.Contains(head, a.chatDisplayName()) {
+	if a.headHeight() != a.tabsHeight(a.width)+a.chatRuleHeight(a.width) || !strings.Contains(head, a.chatDisplayName()) {
 		t.Fatalf("the conversation's strip is %d rows and reads:\n%q", a.headHeight(), head)
 	}
 	for _, gone := range []string{"Fix the nil-map", roomBackWord, roomCrumbSep} {

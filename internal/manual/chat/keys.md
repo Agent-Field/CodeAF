@@ -585,7 +585,8 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
-| `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
+| `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work |
+| `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `ctrl+e` | Empty box: open or close the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
@@ -1931,7 +1932,7 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 
 ## Keys in the task roster and inside a room
 
-**While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
+**While the task roster holds the keyboard** (`alt+t`, `⌥t`): `esc` gives the keyboard
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
 `alt+w` widens the column and narrows it again. Its hint reads exactly
 `↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
@@ -1944,7 +1945,7 @@ before the message box: a sentence typed while the roster still held the keyboar
 as `riting the port` and `orktree`. Every bare letter on this surface is either a key on a
 modal page with no message box, or an answer to a question drawn on screen, pressed over an
 empty box — and widening a column is neither, so it took a chord. The bare `w` still works
-on the **full-frame roster** (`ctrl+t` under about 100 columns, where the roster is drawn
+on the **full-frame roster** (`alt+t` under about 100 columns, where the roster is drawn
 over the whole frame and there is no message box on screen). The column's own footer says
 `alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam — the
 column's two leftmost cells — does the same thing with the pointer. Both the offer and
@@ -1963,9 +1964,9 @@ the bottom rather than carrying on into the project's record. Old tasks from ear
 sessions are on the tasks place, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
-run none and started no jobs, `ctrl+t` falls through — there is nothing on the column to
+run none and started no jobs, `alt+t` falls through — there is nothing on the column to
 put a cursor on. A session that has only started a server still has the jobs section, so
-`ctrl+t` takes it.
+`alt+t` takes it.
 
 **The column's other lines take no cursor.** Its `standing` section, and the two `+` rows
 that close each of those sections (`+ /task`, `+ /standing`), are the pointer's — the walk
@@ -1986,7 +1987,7 @@ command to keep.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
 here you do not have to ask for the roster first to use. Closing it hands the keyboard
 back to the box. The choice is written to your profile as `ui.task_column`, so the next
-session opens the way you left it, and `ctrl+t` counts as asking for the column back.
+session opens the way you left it, and `alt+t` counts as asking for the column back.
 
 **A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
 drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
@@ -2130,7 +2131,7 @@ at the foot of the page where `this task has finished — say it to main` would 
 and the hint slot reads `a accept · l look again · n not right` while the question stands.
 The room and the card are one question: answer in either and both show the receipt.
 
-**And the roster's row answers them too.** With the roster holding the keyboard (`ctrl+t`)
+**And the roster's row answers them too.** With the roster holding the keyboard (`alt+t`)
 and the cursor on a row that **needs your look**, the hint slot reads
 `a accept · l look again · n not right · esc` in place of the move keys, and those three
 letters answer that row's landing without opening its room. Same card, same answers, same
@@ -2240,7 +2241,7 @@ window follows the cursor.
 
 **The task column on the right scrolls under the pointer** and leaves the conversation
 beside it where it is. It moves the column's own window — running work stays pinned at the
-top, and the `tasks` label with it — unless the column is holding the keyboard (`ctrl+t`),
+top, and the `tasks` label with it — unless the column is holding the keyboard (`alt+t`),
 in which case the window is already following the cursor and the wheel walks that instead.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
@@ -2458,12 +2459,18 @@ A place takes the whole frame, so while one is standing the conversation's keys 
 under it at all. Where your terminal has not reported that it can send `ctrl+.`, the place
 reading simply does not exist and the chord does nothing there.
 
-**`ctrl+t` — two meanings:**
+**`ctrl+t` — three meanings:**
 
 | Where | What it does |
 |---|---|
-| Message box | Give the keyboard to the task roster. Press again or `esc` to take it back |
+| Message box, or the task roster holding the keyboard | Start a new chat — the start page the tab strip's `+` opens. The roster gives the keyboard back on the way |
+| Home | Start a fresh conversation **in the folder of the row under the cursor** |
 | Model picker only | Cycle the reasoning effort |
+
+It used to hand the keyboard to the task roster everywhere. **That is `alt+t` (`⌥t`) now** —
+the same letter under the other modifier, beside the roster's own `alt+w` widen chord. On
+macOS, `⌥t` types `†` instead unless your terminal is set to send Option as Meta — see
+*getting started*, "Option as meta, on macOS", for the setting and where it lives.
 
 **`ctrl+o` — five meanings:**
 
@@ -2514,7 +2521,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | Where you are | What moves |
 |---|---|
 | The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
-| The task roster holds the keyboard (`ctrl+t`) and the cursor is on a task | That task's rung |
+| The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
 | Home, with the cursor on a `◦` standing item row or its card | That item's rung |
 

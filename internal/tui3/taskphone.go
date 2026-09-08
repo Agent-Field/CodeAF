@@ -8,7 +8,7 @@ import (
 //
 // The roster and the record were built for a keyboard and they show it at
 // [tierPhone]: the strip is a row of chips three cells apart, the page under
-// `ctrl+t` names its verbs in a dim sentence at the foot, and the card a row
+// `alt+t` names its verbs in a dim sentence at the foot, and the card a row
 // opens does the same. None of those is a thing a finger can do.
 //
 // Nothing new is invented here — the three doors already exist and every one of

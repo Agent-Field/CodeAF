@@ -35,7 +35,7 @@ func tabWords(a *app) []string {
 	for _, hit := range a.chatTabHits {
 		// The close cells are a target of their own on every tab (chattabs.go),
 		// so a walk of the hit map that counted them would count every tab twice.
-		if hit.kind == tabMore || hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew {
+		if hit.kind == tabMore || hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabHome {
 			continue
 		}
 		words = append(words, hit.tab.word)
@@ -46,7 +46,7 @@ func tabWords(a *app) []string {
 // clickTab presses one column of the frame's first row, which is the strip's.
 func clickTab(t *testing.T, a *app, x int) {
 	t.Helper()
-	if cmd, took := a.tabPress(x, 0); took {
+	if cmd, took := a.tabPress(x, a.tabsLineRow()); took {
 		_ = cmd
 		return
 	}
@@ -254,10 +254,10 @@ func TestEveryTabIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 				t.Fatalf("at %d columns a tab was recorded past the end of the row: %+v\n%q",
 					width, hit.span, line)
 			}
-			if _, ok := a.tabAt(hit.span.from, 0); !ok {
+			if _, ok := a.tabAt(hit.span.from, a.tabsLineRow()); !ok {
 				t.Fatalf("at %d columns the strip does not answer for its own cell %d", width, hit.span.from)
 			}
-			if _, ok := a.tabAt(hit.span.from, 1); ok {
+			if _, ok := a.tabAt(hit.span.from, a.tabsLineRow()+1); ok {
 				t.Fatalf("at %d columns the strip answers for the row under it", width)
 			}
 		}
@@ -270,13 +270,13 @@ func TestEveryTabIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) {
 	a := crumbApp(t)
 	rows := strings.Split(frame(a), "\n")
-	if got := plain(rows[0]); !strings.Contains(got, a.chatDisplayName()) {
+	if got := plain(rows[a.tabsLineRow()]); !strings.Contains(got, a.chatDisplayName()) {
 		t.Fatalf("the frame's first row is not the strip: %q", got)
 	}
-	if a.roomHeadRow() != 1 {
+	if a.roomHeadRow() != a.tabsHeight(a.width) {
 		t.Fatalf("the room's header is on row %d", a.roomHeadRow())
 	}
-	if got := plain(rows[1]); !strings.Contains(got, "Cut the goldens") {
+	if got := plain(rows[a.roomHeadRow()]); !strings.Contains(got, "Cut the goldens") {
 		t.Fatalf("the trail is not on the row under the strip: %q", got)
 	}
 	if a.bodyTop() != a.headHeight()+a.stripHeight() || a.headHeight() < 2 {

@@ -47,7 +47,7 @@ import (
 //
 // ctrl+. IS THE LAST OBVIOUS CHORD AND IT IS SPENT DELIBERATELY. Every
 // ctrl+<letter> this surface could reach for is taken — the readline edits the
-// message box answers without looking, the roster's ctrl+t, the column's ctrl+g,
+// message box answers without looking, the roster's alt+t, the column's ctrl+g,
 // copy mode's ctrl+b — and the four letters that are free are documented as NOT
 // BOUND, which is a promise a person has read. What is left is the punctuation
 // pair, and the pair is the point: ctrl+, opens the settings panel and ctrl+.

@@ -2310,10 +2310,14 @@ func (a *app) roomHeadRows(width int) []string {
 	if rows == 1 {
 		return []string{a.roomTrailRow(width)}
 	}
-	return []string{a.roomTrailRow(width), a.roomFactsLine(width)}
+	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
+	if rows > roomHeadRowCount {
+		head = append(head, "")
+	}
+	return head
 }
 
-// roomHeadRowCount is how many rows a room's own header is on a frame with the
+// roomHeadRowCount counts the semantic rows before optional trailing air on a frame with the
 // height to spare: the trail, and the facts under it. The tab strip above and
 // the kin rows below are counted separately.
 const roomHeadRowCount = 2
@@ -2338,7 +2342,7 @@ func (a *app) roomHeadHeight(width int) int {
 	if a.breathingRows() < 2 {
 		return 1
 	}
-	return roomHeadRowCount
+	return roomHeadRowCount + a.tabsLineRow()
 }
 
 // roomTrailRow is the ancestry, the way out, and nothing else.

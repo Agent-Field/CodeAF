@@ -2265,7 +2265,7 @@ func countdownWord(d time.Duration) string {
 //     one dim block at the bottom of the column, in the group vocabulary the
 //     headings used to carry.
 //
-// THE KEYBOARD IS ASKED FOR, NEVER TAKEN (ctrl+t, esc to give it back). The
+// THE KEYBOARD IS ASKED FOR, NEVER TAKEN (alt+t, esc to give it back). The
 // draft is this surface's rest state and a map that stole keys from it would
 // make typing a thing you check before you do — see the marker law at
 // [app.railRows].
@@ -2382,9 +2382,19 @@ const (
 	railWidenKey   = "w"
 )
 
+// railHoldChord is the key that HANDS THE ROSTER THE KEYBOARD, and it is
+// `alt+t` because ctrl+t is now the new-tab chord this whole surface answers
+// (chatstart.go's [app.newChatKey]) — the key every browser opens a fresh tab
+// with, on a strip that is drawn as tabs. The roster keeps the same letter under
+// the other modifier, which is the smallest move a hand has to make, and it is
+// the modifier [railWidenChord] already spends beside it: a person driving this
+// column is already pressing alt for `alt+w`. macOS composes Option+t into `†`
+// where Option is not meta, which is exactly what [chordDeadKeys] is a table of.
+const railHoldChord = chordAltWord + "t"
+
 // The column's own door, and the two lines that name it.
 //
-// THE KEY IS FREE AND IT IS THE LAST FREE ONE WORTH SPENDING. ctrl+t is the
+// THE KEY IS FREE AND IT IS THE LAST FREE ONE WORTH SPENDING. alt+t is the
 // roster's ([app.railKey]) and every other letter this surface could reach for
 // is a chord the message box already answers — ctrl+a, ctrl+e, ctrl+b, ctrl+f,
 // ctrl+u and ctrl+w are the readline edits a person types without looking, and
@@ -3113,10 +3123,10 @@ func (a *app) railQuiet() bool {
 //
 // It is the width-free half of [app.railShowing], and the two are different
 // questions now: what the frame lends the roster is a question about columns,
-// and whether there is anything to put a cursor on is not. ctrl+t asks this one.
+// and whether there is anything to put a cursor on is not. alt+t asks this one.
 //
 // THE PROJECT'S RECORD DOES NOT COUNT. It is not on this column — the column is
-// this conversation's work (taskview.go) — so a ctrl+t that took the keyboard on
+// this conversation's work (taskview.go) — so an alt+t that took the keyboard on
 // the strength of it would hand six keys to a list with no rows in it. What a
 // directory with a history behind it has is the footer's door, and that is a
 // press and a chord of its own ([taskSheetPastHint]).
@@ -3138,7 +3148,7 @@ func (a *app) railAvail() bool { return len(a.taskOrder) > 0 || len(a.jobs) > 0 
 // the width it actually has.
 //
 // It is the SAME STATE as the column's focus ([app.railHold]) and not a second
-// flag, because it is the same act: ctrl+t asks for the roster, and what the
+// flag, because it is the same act: alt+t asks for the roster, and what the
 // frame does with the request is a question about its width. One state cannot
 // disagree with itself about whether the roster is up.
 func (a *app) railFull() bool {
@@ -3816,7 +3826,7 @@ func (a *app) railTake(hold bool) {
 		return
 	}
 	if hold {
-		// ASKING FOR THE ROSTER IS ASKING FOR IT TO BE THERE. ctrl+t on a frame
+		// ASKING FOR THE ROSTER IS ASKING FOR IT TO BE THERE. alt+t on a frame
 		// whose column has been put away, and the strip's own +N door, are both
 		// requests for the whole list — and a request that moved a cursor inside a
 		// column nobody can see would be the key doing nothing at all. So the
@@ -3839,7 +3849,7 @@ func (a *app) railTake(hold bool) {
 }
 
 // railKey is the roster's claim on the keyboard, and it is a claim it can only
-// make ONCE IT HAS BEEN GIVEN ONE (ctrl+t on, esc off).
+// make ONCE IT HAS BEEN GIVEN ONE (alt+t on, esc off).
 //
 // The draft is this surface's rest state — a person types at it without looking
 // — so a map that answered ↑ whenever it happened to be on screen would make
@@ -3853,7 +3863,7 @@ func (a *app) railTake(hold bool) {
 // outrank a map of work.
 //
 // TWO KEYS ARE READ WITHOUT THE HOLD, and they are the two that are about the
-// roster rather than inside it: ctrl+t, which asks for it, and ctrl+g, which
+// roster rather than inside it: alt+t, which asks for it, and ctrl+g, which
 // takes the column off the frame and puts it back ([app.railStow]).
 //
 // HOME IS ON THE STAND-DOWN LIST BESIDE THE OTHER FULLSCREEN PAGES, and it was
@@ -3901,7 +3911,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// the project's own record rows, or nothing but its label, closes and reopens
 		// like any other. Under [railSlimFloor], where there is no column to close and
 		// nobody has raised the overlay, it still falls through untouched, exactly as
-		// ctrl+t does. A keystroke that silently moved a state nothing is drawing is a
+		// alt+t does. A keystroke that silently moved a state nothing is drawing is a
 		// keystroke a person cannot tell they pressed, and this one would move it into
 		// the NEXT session as well.
 		if !(a.railStanding() || a.railAway) {
@@ -3910,11 +3920,16 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.railStow(!a.railAway)
 		return nil, true
 	}
-	if key == "ctrl+t" {
+	if key == railHoldChord {
 		// ONE KEY AT EVERY WIDTH. With a column on the frame it hands the roster
 		// the keyboard; without one it raises the roster over the body, which is
 		// the same act with the same state behind it ([app.railFull]). Pressed
 		// again — or esc — it puts it away.
+		//
+		// THE CHORD IS alt+t AND NOT ctrl+t ([railHoldChord]). ctrl+t is the
+		// new-tab key now, at every one of these widths and with the roster
+		// holding the keyboard as well — a person on a running task who presses
+		// it gets a fresh conversation, not a column that folds away under them.
 		if !a.railHold && !a.railAvail() {
 			// Nothing to hold. The key falls through rather than being eaten
 			// silently, so a surface that grows another meaning for it later is
@@ -4322,7 +4337,7 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	}
 	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
 	// THE DOOR IS ONLY DRAWN WHERE THERE IS A COLUMN TO CLOSE. Over the body the
-	// roster is an overlay a person raised with ctrl+t and drops with esc
+	// roster is an overlay a person raised with alt+t and drops with esc
 	// ([app.railFull]), and a second way out named at the bottom of it would be
 	// two exits from a room with one.
 	// The chevron and its space are charged for here, because the door is drawn

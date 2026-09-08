@@ -412,7 +412,7 @@ func TestAChildThatNeedsALookWaitsForItsParentAndThenForYou(t *testing.T) {
 		}
 	}
 	// THE ROSTER'S ROW ASKS IT TOO, with the cursor on the child.
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	for range 4 {
 		if a.railWhere.id == 2 {
 			break

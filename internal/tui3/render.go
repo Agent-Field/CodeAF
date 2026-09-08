@@ -3758,7 +3758,7 @@ func (a *app) hintWord() string {
 		}
 		return "y allow · n deny · a always"
 	case a.railHold:
-		// The roster has the keyboard (ctrl+t, task.go) — the one state on this
+		// The roster has the keyboard (alt+t, task.go) — the one state on this
 		// surface where the arrows have left the box entirely. It ranks HERE, under
 		// every overlay and both questions, because that is exactly where
 		// [app.railKey]'s guard stands down; and above the running turn, because

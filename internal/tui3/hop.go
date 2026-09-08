@@ -1061,6 +1061,8 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if !a.hopShowing() || width < 12 || height < 5 {
 		return nil
 	}
+	pal, ground := pal.hopSurfacePalette()
+	surface := func(s string, width int) string { return pal.background(s, width, ground) }
 	inner := width - 2
 	room := inner - 2*hopPad
 	pad := strings.Repeat(" ", hopPad)
@@ -1068,7 +1070,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// rule, a seam, a connector). An accent border would be the box announcing
 	// itself, and what has to be read here is the list inside it.
 	edge := func(left, fill, right string) string {
-		return pal.dim(left + strings.Repeat(fill, inner) + right)
+		return surface(pal.dim(left+strings.Repeat(fill, inner)+right), width)
 	}
 	// The rows a person reads are laid out at `room` and then set inside the
 	// borders whole, so the band on the cursor's row covers the padding too —
@@ -1080,21 +1082,45 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 			line += strings.Repeat(" ", w)
 		}
 		left := pad
+		if band {
+			// Selection remains a position even when the terminal has no color.
+			left = pal.ink(">") + pad[1:]
+		}
 		if hovered {
-			// The padding marker keeps hover visible without color or moving numbers.
-			left = pal.accent("·") + pad[1:]
+			// Hover and selection keep separate cells, so reading another row does
+			// not pretend that Enter has changed its destination.
+			mark := "·"
+			if pal.ascii {
+				mark = "."
+			}
+			left = ansi.Cut(left, 0, hopPad-1) + pal.accent(mark)
 		}
 		body := left + line + pad
-		if band || hovered {
+		switch {
+		case band:
+			body = pal.selected(body, inner)
+		case hovered:
 			body = pal.cursor(body, inner)
+		default:
+			body = surface(body, inner)
 		}
-		return pal.dim(box.v) + body + pal.dim(box.v)
+		return surface(pal.dim(box.v), 1) + body + surface(pal.dim(box.v), 1)
 	}
 
 	a.hop.spots = nil
-	lines := []string{edge(box.tl, box.h, box.tr), inside(a.hopHead(room, pal), false, false), inside("", false, false)}
+	// Roomy cards breathe inside the outline. On a short terminal this air
+	// yields first, preserving a visible selected row and the ways out.
+	verticalPad := 0
+	if height >= 9 {
+		verticalPad = 1
+	}
+	lines := []string{edge(box.tl, box.h, box.tr)}
+	if verticalPad > 0 {
+		lines = append(lines, inside("", false, false))
+	}
+	lines = append(lines, inside(a.hopHead(room, pal), false, false), inside("", false, false))
 	footWord := a.hopFoot()
-	foot := 1
+	foot := 1 + verticalPad
 	if footWord != "" {
 		foot++
 	}
@@ -1132,7 +1158,7 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 			lines = append(lines, inside(pal.ink(line), false, false))
 		}
 	}
-	if footWord != "" && len(lines)+1 < height {
+	if footWord != "" && len(lines)+1+verticalPad < height {
 		hovered := a.hop.say == "" && a.hot.kind == hoverHop && a.hot.index == -1
 		if a.hop.say == "" {
 			a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: -1})
@@ -1142,6 +1168,9 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 			ink = pal.ink
 		}
 		lines = append(lines, inside(ink(fit(footWord, room)), false, hovered))
+	}
+	if verticalPad > 0 {
+		lines = append(lines, inside("", false, false))
 	}
 	return append(lines, edge(box.bl, box.h, box.br))
 }

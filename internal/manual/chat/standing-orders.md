@@ -229,7 +229,7 @@ standing
 anything is in it. The rows under a label are only the real ones: with nothing standing,
 the `standing` section is its label and its `+ /standing` row and nothing between them.
 
-These rows answer to the **pointer**. The roster's keyboard cursor (`ctrl+t`) walks the
+These rows answer to the **pointer**. The roster's keyboard cursor (`alt+t`) walks the
 task rows only. On a build with no ambient side there is no `standing` section at all —
 the column is the roster it always was.
 

@@ -806,7 +806,7 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	case taskSheetKey:
 		// The chord that opened this is the chord that closes it — the roster's own
-		// bargain with ctrl+t — and it closes it from inside a filter as well,
+		// bargain with alt+t — and it closes it from inside a filter as well,
 		// because a chord is not a layer a person is standing in.
 		a.leavePlace()
 		return nil, true

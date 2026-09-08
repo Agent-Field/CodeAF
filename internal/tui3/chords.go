@@ -255,7 +255,7 @@ func chordCtrlDigit(key string) (page, bool) { return placeDigitAt(chordCtrlWord
 // IT IS EXACTLY THE BOUND CHORDS AND NOTHING ELSE. A wider rule — any non-ASCII
 // printable arriving where a chord was expected — catches more terminals and
 // costs a person typing `café` or `größe` into a filter a line about a setting
-// they have no reason to change. These fifteen characters are what somebody
+// they have no reason to change. These sixteen characters are what somebody
 // AIMING AT A CHORD produces, which is the only population the note is for. The
 // cost that remains is honest and small: a Danish `ø` or a German `ß` typed into
 // a place's composer draws one dim line, once, that the next real chord retires.
@@ -265,6 +265,11 @@ var chordDeadKeys = map[rune]string{
 	'≥': "alt+.",
 	'©': "alt+g", 'œ': "alt+q", 'ß': "alt+s",
 	'∑': "alt+w", 'ø': "alt+o", '∫': "alt+b", 'ƒ': "alt+f",
+	// AND THE ROSTER'S OWN HAND-OFF, which took this modifier when ctrl+t became
+	// the new-tab chord (task.go's [railHoldChord]). Option+t composes to `†` on
+	// a US layout exactly as Option+w composes to `∑`, so the chord belongs in
+	// this table for the same reason its neighbour does.
+	'†': "alt+t",
 }
 
 // chordWatch is the whole of the check, read at the top of the key router so

@@ -676,7 +676,7 @@ func TestALiveRowStillOpensItsRoomFromTheColumn(t *testing.T) {
 	}
 	rosterText(a, a.viewHeight())
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	drive(t, a, key("enter"))
 	if a.room == nil || a.room.id != 7 {
 		t.Fatalf("enter on a live row did not open its room: %+v", a.room)
@@ -831,7 +831,7 @@ func TestRunningWorkStaysOnTheColumnHoweverFarTheCursorWalks(t *testing.T) {
 			session.TaskNotice{Merge: mergeWordMerged}))
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	for i := 0; i < 40; i++ {
 		drive(t, a, key("down"))
 	}
@@ -1095,7 +1095,7 @@ func TestTheRostersCursorStopsAtTheLastTaskOfThisConversation(t *testing.T) {
 	}
 	rosterText(a, a.viewHeight())
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if a.railWhere.id != 1 {
 		t.Fatalf("ctrl+t did not park the cursor on this session's node: %+v", a.railWhere)
 	}
@@ -1130,7 +1130,7 @@ func TestCtrlTFallsThroughOnAColumnWithOnlyTheProjectsRecord(t *testing.T) {
 	}
 	rosterText(a, a.viewHeight())
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if a.railHold {
 		t.Fatal("ctrl+t took the keyboard for a column with no rows on it")
 	}

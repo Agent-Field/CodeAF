@@ -270,7 +270,7 @@ func TestAFoldedFamilyWearsItsWorstGlyphAndCountsWhatItHides(t *testing.T) {
 func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	railFocusOn(t, a, 1)
 
 	// ← on an open root folds it and leaves the cursor where the family now is.
@@ -488,7 +488,7 @@ func TestTheWidenHintIsEarnedByTheIndentAndTogglesTheWideTier(t *testing.T) {
 	// other two tiers. It is a chord and no longer the bare letter `w`, because a
 	// bare letter beside a message box is a letter out of somebody's sentence
 	// (chordfocus.go).
-	drive(t, a, ctrlT(), key(railWidenChord))
+	drive(t, a, altT(), key(railWidenChord))
 	if !a.railWide || a.railWidth() != railWideCols {
 		t.Fatalf("%s did not widen the column: wide=%v width=%d", railWidenChord, a.railWide, a.railWidth())
 	}
@@ -534,7 +534,7 @@ func TestTheFullscreenRosterDrawsTheSameTree(t *testing.T) {
 	a.width = 80
 	a.touch()
 	railRun(a)
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railFull() {
 		t.Fatal("ctrl+t did not raise the roster over the body")
 	}

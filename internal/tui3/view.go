@@ -57,7 +57,7 @@ import (
 // every geometric question resolves through ([app.viewHeight]).
 //
 // A FRAME TOO NARROW FOR THE RAIL CAN STILL OPEN THE ROSTER, and there it opens
-// over the body instead of beside it (ctrl+t, task.go's [app.railFull]). The
+// over the body instead of beside it (alt+t, task.go's [app.railFull]). The
 // strip is what makes that reachable without a key at all.
 //
 // A terminal too short for all of it gives up its breathing room first — the
@@ -413,7 +413,13 @@ func (a *app) frameBody() (string, int, int) {
 
 	rows := make([]string, 0, height)
 	if tabs != "" {
+		if a.tabsLineRow() > 0 {
+			rows = append(rows, "")
+		}
 		rows = append(rows, tabs)
+		if a.tabsLineRow() > 0 {
+			rows = append(rows, "")
+		}
 		// AND THE SEAM UNDER THEM OUT IN THE CONVERSATION, where there is no trail
 		// and no facts row to close the panel off (chattabs.go's
 		// [app.chatRuleHeight]). It is charged for by [app.headHeight] on the same

@@ -245,7 +245,8 @@ aligned, each row with its alias tail. The first line is the product's own name,
 `aforge` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
-`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t`, `ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
+`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `alt+t` (the task roster),
+`ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
 
@@ -262,7 +263,7 @@ On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
-back` — the places row, the task roster on `ctrl+t`, the conversation switcher on `ctrl+k`,
+back` — the places row, the task roster on `alt+t`, the conversation switcher on `ctrl+k`,
 `space space` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you

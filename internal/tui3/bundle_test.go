@@ -3606,7 +3606,7 @@ func TestTheRosterTakesTheKeyboardOnlyWhenItIsHandedIt(t *testing.T) {
 		t.Fatal("an unfocused roster drew a cursor")
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railHold {
 		t.Fatal("ctrl+t did not hand the roster the keyboard")
 	}
@@ -3659,7 +3659,7 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskRunning, session.TaskNotice{})},
 		streamEventMsg{gen: a.gen, ev: update(2, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})},
-		ctrlT(),
+		altT(),
 		key("down"), // the newest running node
 	)
 	if a.railWhere.id != 2 {
@@ -3703,7 +3703,7 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	}
 
 	// Twenty rows down is past the window, so the window moves.
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("down"))
 	}

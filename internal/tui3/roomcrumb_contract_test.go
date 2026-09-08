@@ -446,7 +446,7 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	if len(a.crumbs) != 0 {
 		t.Fatalf("the conversation recorded crumbs nothing drew: %+v", a.crumbs)
 	}
-	// The strip is the one pinned row, and the geometry is charged for exactly it.
+	// The strip owns the tab labels and any vertical padding around them.
 	strip := plain(tabsRowOf(a))
 	if !strings.Contains(strip, a.chatCrumbWord()) {
 		t.Fatalf("the tab strip does not name the conversation: %q", strip)
@@ -454,10 +454,9 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	if strings.Contains(strip, "─") {
 		t.Fatalf("the tab strip drew a border across the top of the page: %q", strip)
 	}
-	// The strip and the seam under it are the two pinned rows out here, and both
-	// are charged for (chattabs.go's [app.chatRuleHeight]).
-	want := 1 + a.chatRuleHeight(a.width)
-	if a.headHeight() != want || a.bodyTop() != want || a.roomHeadRow() != 1 {
+	// The padded strip and the seam under it are charged together.
+	want := a.tabsHeight(a.width) + a.chatRuleHeight(a.width)
+	if a.headHeight() != want || a.bodyTop() != want || a.roomHeadRow() != a.tabsHeight(a.width) {
 		t.Fatalf("the strip is drawn but not budgeted: head=%d top=%d row=%d want=%d",
 			a.headHeight(), a.bodyTop(), a.roomHeadRow(), want)
 	}
@@ -493,8 +492,13 @@ func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 		a.width = width
 		a.touch()
 		rows := a.roomHeadRows(width)
-		if len(rows) != roomHeadRowCount {
+		if len(rows) != a.roomHeadHeight(width) || len(rows) < roomHeadRowCount {
 			t.Fatalf("at %d columns the header is %d rows", width, len(rows))
+		}
+		for _, row := range rows[roomHeadRowCount:] {
+			if strings.TrimSpace(plain(row)) != "" {
+				t.Fatalf("at %d columns the header padding contains content: %q", width, plain(row))
+			}
 		}
 		trail, facts := plain(rows[0]), plain(rows[1])
 		// THE TRAIL ROW CARRIES NO TELEMETRY AT ANY WIDTH. That is the whole of the

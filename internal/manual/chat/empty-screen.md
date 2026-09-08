@@ -73,8 +73,9 @@ The `+ /task` and `+ /standing` doors are not lost: `/` lists every command, and
 line under the message box says `/task <brief> starts work`. `ctrl+g` on the empty
 screen counts as a first keystroke like any other — the greeting goes, and the key then
 does what it always does, which is to close the column it would just have raised; press
-it again to bring the column back. `ctrl+t` falls through on a fresh screen, as it does
-on any conversation that has run nothing.
+it again to bring the column back. `alt+t` — the roster's own chord — falls through on a
+fresh screen, as it does on any conversation that has run nothing. `ctrl+t` is not that
+key: it starts a new chat, and it works on a fresh screen like anywhere else.
 
 ## Why the status line shows no cost or token count before I type — where is the $0.00
 

@@ -138,6 +138,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+k do", "keys"},
 		{"why does ctrl+tab do nothing", "keys"},
 		{"what did my other chats do while I was away", "keys"},
+		// AND THE CHORD THAT MOVED. ctrl+t is the new tab now and the task roster
+		// answers alt+t, so both are asked the way a person meets the change: they
+		// press the key they have always pressed and get a page they did not
+		// expect, or they go looking for the roster's key and cannot find it.
+		{"what does ctrl+t do", "keys"},
+		{"ctrl+t used to open the task roster and now it does not", "keys"},
+		{"which key gives the keyboard to the task roster", "keys"},
 		// AND THE `+` BESIDE THE TABS, asked the way somebody meets it: they see a
 		// control they know from a browser and want to know what it costs, they
 		// pressed it and want out, and they are worried about the message they had

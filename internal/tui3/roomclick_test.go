@@ -441,7 +441,7 @@ func TestTheRoomsMarkIsOnTheRosterAtEveryWidth(t *testing.T) {
 	a.railWiden(false)
 
 	// AND OVER THE BODY, which is the roster's third shape.
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railStanding() {
 		t.Fatal("ctrl+t raised no roster")
 	}

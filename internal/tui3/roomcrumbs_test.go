@@ -76,7 +76,7 @@ func TestTheStripsOwnControlOpensThePickerWithoutSwitching(t *testing.T) {
 	if more.span.to == 0 {
 		t.Fatalf("the strip drew no way to the picker: %q\n%+v", plain(a.tabsRow(a.width)), a.chatTabHits)
 	}
-	if cmd, took := a.tabPress(more.span.from, 0); !took || cmd != nil {
+	if cmd, took := a.tabPress(more.span.from, a.tabsLineRow()); !took || cmd != nil {
 		t.Fatalf("the strip's control did not take the press: took=%v", took)
 	}
 	if !a.hop.open || a.title != before {

@@ -257,7 +257,7 @@ func TestTheRosterOpensOverTheBodyOnANarrowFrame(t *testing.T) {
 		t.Fatal("a narrow frame drew a roster nobody asked for")
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railFull() {
 		t.Fatal("ctrl+t did not raise the roster on a frame with no column for it")
 	}

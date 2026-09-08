@@ -202,7 +202,7 @@ func TestTheCloseTargetNeverFallsThroughIntoSelectingTheTab(t *testing.T) {
 		t.Fatalf("the close target overlaps the label: label=%+v close=%+v", label, span)
 	}
 	for x := span.from; x < span.to; x++ {
-		hit, ok := a.tabAt(x, 0)
+		hit, ok := a.tabAt(x, a.tabsLineRow())
 		if !ok || hit.kind != tabClose {
 			t.Fatalf("column %d of the close target answers as %+v", x, hit)
 		}
@@ -221,10 +221,10 @@ func TestTheSeparatorsAreInertAndTheRowIsStillTheStrips(t *testing.T) {
 	before := a.file
 	label := tabSpanFor(t, a, "openrouter price scrape")
 	sep := label.from - 1 // the rule in front of the first tab
-	if _, ok := a.tabAt(sep, 0); ok {
+	if _, ok := a.tabAt(sep, a.tabsLineRow()); ok {
 		t.Fatalf("column %d is a separator and answers as a target", sep)
 	}
-	if _, took := a.tabPress(sep, 0); !took {
+	if _, took := a.tabPress(sep, a.tabsLineRow()); !took {
 		t.Fatal("a press on the strip's own furniture fell through the row")
 	}
 	if a.file != before || a.hop.open {
@@ -424,7 +424,7 @@ func TestEachHeaderRowAnswersForItselfAndForNoOther(t *testing.T) {
 		if _, ok := a.tabAt(headLabelAt+1, a.roomHeadRow()); ok {
 			t.Fatalf("at %d columns the tab row answers on the trail's row", width)
 		}
-		if _, ok := a.crumbAt(headLabelAt+1, 0); ok {
+		if _, ok := a.crumbAt(headLabelAt+1, a.tabsLineRow()); ok {
 			t.Fatalf("at %d columns the trail answers on the tab row", width)
 		}
 		if _, ok := a.crumbAt(headLabelAt+1, a.roomFactsRow()); ok {

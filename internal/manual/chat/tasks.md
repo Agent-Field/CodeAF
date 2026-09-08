@@ -1435,7 +1435,7 @@ until you type, a task lands, or a standing order reaches it (*The empty screen*
 draws no empty label or absence sentence, **whatever the project has behind it** — the
 typeable `+ /task` door remains, and in a directory whose earlier sessions ran tasks the door
 `ctrl+. earlier` sits at the foot of the column. Under 100 columns there is no
-column, and `ctrl+t` opens the same roster over the body instead once this session has
+column, and `alt+t` opens the same roster over the body instead once this session has
 tasks.
 
 Closed with `ctrl+g` when no foreground command owns the key, the column leaves a
@@ -1788,7 +1788,7 @@ around it.
   were about to type anyway.
 - **Pressing it twice does nothing the second time** — the word is already at the front.
 - It is drawn whether or not this conversation has run anything, under the column's own
-  `tasks` label, and it is the **pointer's** row: the roster's keyboard cursor (`ctrl+t`)
+  `tasks` label, and it is the **pointer's** row: the roster's keyboard cursor (`alt+t`)
   walks task rows and skips it. From the keyboard you type the command, which is what the
   row is teaching.
 
@@ -1905,7 +1905,7 @@ With the column closed, work is still visible:
 - The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
   this session has any tasks at all, running or not. A session that has run nothing says
   nothing there — the column you closed was empty, and `ctrl+g` still brings it back.
-- `ctrl+t` still works: asking for the roster brings the column back and gives it the
+- `alt+t` still works: asking for the roster brings the column back and gives it the
   keyboard in one press.
 
 When no command can be kept, `ctrl+g` works whether or not the session has tasks — the
@@ -1943,7 +1943,7 @@ whenever no foreground command can be kept.
 - The edge costs the conversation two columns, exactly as the column it stands for costs it
   its own width. The text re-wraps; nothing is ever drawn underneath it.
 - **On a frame narrower than 100 columns there is no edge**, because there is no column at
-  that width to bring back. The roster still opens over the whole frame with `ctrl+t`.
+  that width to bring back. The roster still opens over the whole frame with `alt+t`.
 - The edge is for the hand that does not type chords. With no foreground command to keep,
   `ctrl+g` is the keyboard's way around the same cycle; with one, it backgrounds the command.
 
@@ -1952,7 +1952,7 @@ this session has run something.
 
 ## Using the roster from the keyboard
 
-`ctrl+t` hands the keyboard to the roster. It is asked for, never taken: the draft is the
+`alt+t` (`⌥t`) hands the keyboard to the roster. It is asked for, never taken: the draft is the
 rest state, so a person who starts typing is typing, not navigating.
 
 | key | what it does |
@@ -1962,7 +1962,7 @@ rest state, so a person who starts typing is typing, not navigating.
 | `←` | fold an open family, or jump to the parent row |
 | `enter` | open the task's room, or a job's page; on the `jobs` label, toggle the section |
 | `alt+w` | toggle the wider 46-column tree (bare `w` only on the full-frame roster) |
-| `esc` or `ctrl+t` | give the keyboard back |
+| `esc` or `alt+t` | give the keyboard back |
 | `ctrl+g` | keep a foreground command when one can be kept; otherwise close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
@@ -1976,11 +1976,11 @@ the row, not a handle.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
-tasks **and no jobs** of this conversation's on the column, `ctrl+t` falls through rather
+tasks **and no jobs** of this conversation's on the column, `alt+t` falls through rather
 than being swallowed — including in a directory whose earlier sessions ran plenty. There
 are no rows down there to put a cursor on; the door `ctrl+. earlier` at the foot of the
 column is how that work is reached. A session that has only started a server still has
-the jobs section to put a cursor on, so `ctrl+t` takes it.
+the jobs section to put a cursor on, so `alt+t` takes it.
 
 **The walk stops at this conversation's last job, after its last task.** `↓` walks the
 families and then the jobs section under them, and clamps there rather than carrying on

@@ -1991,10 +1991,18 @@ roster sort runs in the breadcrumb paint path.
 
 ## Chat-header navigation
 
+The header uses two additional blank rows around the tab labels and one after a
+task's breadcrumb/status pair on frames at least 24 columns by 32 rows. Smaller
+frames collapse these rows; drawing, scrolling and pointer targeting use the same
+height calculation. Home is a capability check in memory and has no hover-time I/O.
+The switcher adds two inner padding rows only when capacity permits, retaining a
+selected conversation on short frames. Its surface color is computed once per card.
+
 The tab strip remembers at most 8 recently used conversations without limiting the
 agents held by the keeper. Stable order is retained for remembered tabs; the current
 chat always survives width fitting and overflow uses the existing conversation picker.
-Each label uses at most 32 cells when several tabs share the row. These are presentation
+Each tab uses at most 32 cells when several tabs share the row, including its
+leading inset and three close-target cells (space, mark, trailing inset). These are presentation
 bounds, not execution or history limits. Frame reads use cached local identity and
 in-memory titles, never fresh history scans or remote calls. Cached click destinations
 include the complete tab identity and picker availability, not just rendered words.

@@ -1629,7 +1629,7 @@ type app struct {
 	// list on this surface scrolls with. railWhere is the focused row,
 	// named by id rather than by index because a fold takes rows out from under a
 	// cursor while nobody is looking, and railHold says the roster has been GIVEN
-	// the keyboard (ctrl+t) — without it there is no cursor, and every key still
+	// the keyboard (alt+t) — without it there is no cursor, and every key still
 	// belongs to the draft.
 	//
 	// railWide is the third width tier, asked for with w and sticky until it is
@@ -2801,7 +2801,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
-		// keyboard (ctrl+t, task.go). Explicit focus outranks ambient place: a room
+		// keyboard (alt+t, task.go). Explicit focus outranks ambient place: a room
 		// is where a person is, the roster is what they just asked for, and esc
 		// gives the keyboard back to whichever of the two is underneath.
 		if cmd, took := a.railKey(msg); took {
@@ -5652,7 +5652,7 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // calls, proposals, landed cards — and adding every paragraph that happens to
 // name a node would put the cursor in the middle of the prose a person is
 // reading, on a row that has no way to draw that it is selected. The destination
-// is not lost to the keyboard either way: ctrl+t opens the roster, and every node
+// is not lost to the keyboard either way: alt+t opens the roster, and every node
 // a link can reach has a row in it (task.go).
 //
 // A press that lands in the prose AROUND a link falls through to the row's own

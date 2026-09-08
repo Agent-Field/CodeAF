@@ -187,10 +187,9 @@ func TestAFlatTasksRoomGrowsNoKinBlock(t *testing.T) {
 	if rows := kinRows(a); len(rows) != 0 {
 		t.Fatalf("a task with no family drew a kin block:\n%q", rows)
 	}
-	// THREE rows: the tab strip, and the two rows of the room's own header under
-	// it — the trail and the facts (chattabs.go, room.go). None of them is a
-	// shelf for a family this task does not have.
-	if a.headHeight() != 1+roomHeadRowCount {
+	// The tab strip and room header include their own breathing room. None
+	// of that space is a shelf for a family this task does not have.
+	if a.headHeight() != a.tabsHeight(a.width)+a.roomHeadHeight(a.width) {
 		t.Fatalf("the pinned region is %d rows over a flat task", a.headHeight())
 	}
 }
@@ -206,9 +205,9 @@ func TestTheKinRowsAreChargedToTheBodyRegion(t *testing.T) {
 	a.touch()
 
 	kin := kinRows(a)
-	// The tab strip, the room's own two rows, and the kin block under them
-	// (chattabs.go, room.go).
-	if a.headHeight() != a.roomHeadRow()+roomHeadRowCount+len(kin) {
+	// The tab strip, the room header including its padding, and the kin block
+	// under them are all charged before the transcript begins.
+	if a.headHeight() != a.roomHeadRow()+a.roomHeadHeight(a.width)+len(kin) {
 		t.Fatalf("the pinned region is %d rows over a %d-row kin block", a.headHeight(), len(kin))
 	}
 	if a.bodyTop() != a.headHeight()+a.stripHeight() {
@@ -218,7 +217,7 @@ func TestTheKinRowsAreChargedToTheBodyRegion(t *testing.T) {
 	// the order the block builds them.
 	rows := strings.Split(frame(a), "\n")
 	for i, want := range kin {
-		at := a.roomHeadRow() + roomHeadRowCount + i
+		at := a.roomHeadRow() + a.roomHeadHeight(a.width) + i
 		if got := plain(rows[at]); got != want {
 			t.Fatalf("frame row %d is %q, want %q", at, got, want)
 		}

@@ -406,7 +406,7 @@ func TestTheFullFrameRosterOpensRowsFromItsFirstCell(t *testing.T) {
 	a, _, _ := roomApp(t)
 	a.width = railSlimFloor - 20
 	railFamily(a)
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railFull() {
 		t.Fatalf("the narrow frame did not raise the roster over the body: showing=%v",
 			a.railShowing())
@@ -420,7 +420,7 @@ func TestTheFullFrameRosterOpensRowsFromItsFirstCell(t *testing.T) {
 		// IS that keyboard ([app.railFull] is the same state as [app.railHold]),
 		// so it is asked for again before each press.
 		if !a.railFull() {
-			drive(t, a, ctrlT())
+			drive(t, a, altT())
 		}
 		y := railRowY(t, a, 3)
 		railClick(t, a, x, y)

@@ -1029,7 +1029,14 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
-		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc back",
+		// THE NEW TAB AND THE ROSTER, IN THAT ORDER AND ON TWO ROWS. They used to be
+		// one key: ctrl+t handed the roster the keyboard, and the tab strip's `+` had
+		// no chord at all. The strip is drawn as tabs, so the key every browser opens
+		// a tab with is the one people press at it — and the roster keeps the letter
+		// under the other modifier (task.go's [railHoldChord]), which is the smallest
+		// move a hand has to make and the modifier its own widen chord already uses.
+		helpKeyRow(newChatChord, "a new chat, beside this one · your draft and its work stay put · esc back"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",

@@ -77,19 +77,23 @@ while preserving the content's indentation.
 
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
-**The first line aforge draws is the conversations this window has been in**, drawn as
-tabs in a row of their own, with a thin rule under it:
+**The header begins with Home and the conversations this window has been in**, drawn as
+tabs in a row of their own, with a thin rule separating navigation from reading:
 
 ```
-    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×    Chats ▾
+  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×    Chats ▾  +
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
-Each tab is a **padded target** separated by quiet space. The gaps do nothing.
-The active tab has a filled background and stronger text; brackets identify it on
+Each tab is a **padded target** separated by quiet space. The filled surface includes
+one blank cell before its status icon and after its close mark; the leading inset
+selects the tab and the trailing inset belongs to the close target. The gaps do nothing.
+Every tab has a filled background. The active tab reverses the surface contrast
+and has stronger text; brackets identify it on
 terminals without background color. **Every tab reacts to the pointer**,
 including the one you are already in, and the highlight it wears as the *chosen* tab stays
-put when the pointer leaves.
+put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
+close mark; Home and `+` gain brackets and Chats changes to uppercase.
 
 **Clicking a tab goes to that conversation** — the same switch `ctrl+k` makes. Clicking the
 tab you are already in does nothing while you are in the conversation itself, and takes you
@@ -122,6 +126,23 @@ shared connection where the conversation itself was closed.
 for a blank row above the message box — for the same reason the room header does. The
 rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
 a seam is the cheapest thing on the frame to give up.
+
+On frames at least 24 columns by 32 rows, a blank row above and below the tabs gives
+navigation its own space. Task breadcrumbs follow below, with one blank row after
+their status line before the conversation. Smaller terminals collapse this vertical
+padding first. The blank rows and gaps cannot activate the content beneath them.
+
+**Home at the left opens the home page**, keeping your conversation and unsent words.
+It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
+opens Home. Home disappears when the connection cannot open conversations, and on
+very narrow frames the current tab takes priority.
+
+The switcher floats on a separate background inside a rounded outline, with space
+above and below its contents when the window is tall enough. `>` marks the keyboard
+choice; the pointer has a separate dot, so hovering another conversation does not
+change what Enter opens. Without color both markers remain visible; ASCII mode uses
+straight corners and a plain dot. Short windows give up inner vertical space before
+the selected row.
 
 ## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
 
@@ -189,9 +210,9 @@ nothing away.
 **`ctrl+w` on the switcher card does the same thing** to the row under the cursor. Ending
 work is `Stop` on a task's page; ending aforge is `/quit`.
 
-## Starting a new chat with the `+` plus button beside the tabs
+## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
 
-**`+` at the tab strip opens a start page. It does not create anything.** No session, no
+**`ctrl+t` or `+` at the tab strip opens a start page. It does not create anything.** No session, no
 agent, no file, nothing on the switcher — pressing it three times and escaping three times
 leaves you exactly where you began. The conversation is made when you **submit the first message or command**.
 
@@ -206,7 +227,7 @@ conversations under it. A selected **New chat** tab labels this page. The other 
 | `↑` / `↓` | Walk the recent conversations, while the box is empty |
 | `enter` on a chosen row | Opens that conversation. It sends nothing |
 | click a recent row | The same |
-| `+` again | Reuses the page you already have |
+| `ctrl+t` or `+` again | Reuses the page you already have |
 
 **A picture on its own is a message.** Drop or paste one and press `enter` with nothing
 typed and the conversation starts on the picture.
@@ -1045,7 +1066,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | legend loses branch and hint slot; status keeps the conversation's name; no context sparkline | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
-| no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |
+| no rail column at all — `alt+t` overlays the roster instead | below width 100 |
 | no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
@@ -2422,7 +2443,7 @@ A finished task's row is one line, and the line it used to carry underneath is *
 not deleted**. It is the same fold a family of tasks uses, on the same keys and the same
 cell:
 
-- **From the keyboard:** `ctrl+t` hands the column the keyboard, `↑` and `↓` walk to the
+- **From the keyboard:** `alt+t` hands the column the keyboard, `↑` and `↓` walk to the
   row, `→` opens it, `←` folds it away again. `esc` gives the keyboard back.
 - **With the pointer:** hover the row and its state glyph turns into `▸`; click that one
   cell to open it, and `▾` in the same cell to close it. Clicking anywhere else on the
@@ -2447,7 +2468,7 @@ turned over the conversation still scrolls the conversation. Three rows a notch,
 as everywhere else on this screen. Work that is running is pinned to the top and does not
 scroll away, and the `tasks` label stays with it.
 
-From the keyboard it is `ctrl+t` to take the column, then `↑` `↓` to walk it — the window
+From the keyboard it is `alt+t` to take the column, then `↑` `↓` to walk it — the window
 follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `alt+w` to
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
 same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `ctrl+v think harder`

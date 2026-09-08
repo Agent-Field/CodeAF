@@ -250,6 +250,50 @@ func (a *app) openChatStart() tea.Cmd {
 	return a.loadStartRecents()
 }
 
+// newChatChord is `ctrl+t`, and what it opens is the start page — the SAME door
+// the `+` at the end of the tab strip presses ([app.openChatStart]).
+//
+// IT IS THE BROWSER'S OWN READING OF THE KEY, on a row that is drawn as tabs: a
+// new tab, beside the ones already there, with everything they were holding left
+// exactly where it was. Nothing is created by the chord — the page is where a
+// first message creates a conversation ([app.startChatEnter]) — so a person who
+// presses it and changes their mind leaves with `esc` and finds their draft,
+// their attachments, their open task page and their reading position untouched
+// ([app.cancelChatStart]).
+//
+// THE CHORD USED TO BE THE ROSTER'S and is not any more: that hand-off is
+// [railHoldChord], `alt+t`, one modifier away. Nothing else on this surface
+// loses the key — the model picker's `ctrl+t` walks a row's thinking effort and
+// is modal above this rung (palette.go), and home's `ctrl+t` starts a
+// conversation in the FOLDER under the cursor, which is a place and modal above
+// this rung too (home.go).
+const newChatChord = "ctrl+t"
+
+// newChatKey is that chord's whole claim on the keyboard, and it reports whether
+// it took the key.
+//
+// IT ANSWERS FROM A HELD ROSTER AS WELL, which is the one state that could have
+// been read the other way. The roster is read before this router (app.go's
+// [app.route]) and no longer claims ctrl+t, so a person standing on a running
+// task presses it and gets a fresh conversation rather than a column folding
+// away under them — and the hold is given back on the way, because the page
+// about to be drawn has a box in it and a keyboard pointed at a list nobody can
+// see is the bug chordfocus.go states.
+//
+// AND PRESSING IT AGAIN ON THE PAGE KEEPS WHAT IS TYPED. [app.openChatStart] is
+// idempotent by design — a person leaning on a control is not asking for two of
+// what it makes — so the second press is the page keeping its words, its caret
+// and its selection rather than a fresh one thrown over the top of them.
+func (a *app) newChatKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if msg.String() != newChatChord {
+		return nil, false
+	}
+	if a.railHold {
+		a.railTake(false)
+	}
+	return a.openChatStart(), true
+}
+
 // cancelChatStart is `esc`: the page comes down and the conversation comes back
 // exactly as it was — its sentence, its caret, its tray, the documents behind
 // its compact tokens, the task page that was open, and where they were reading.

@@ -308,7 +308,7 @@ answer the card on.
 
 | What | Where |
 | --- | --- |
-| the row | the activity strip, and the roster on `ctrl+t` |
+| the row | the activity strip, and the roster on `alt+t` |
 | the room | press the row, or open it from the roster; `esc` comes back out |
 | the thread | the room's journal — the brief, the milestones in plain words (a draft written, an attempt refused, what the review changed), the card, and what became of it — kept on disk with the rest of the session's tasks |
 | stopping it | `x` on its row, or `Stop` on its room's facts row — the same card everything else is stopped by |

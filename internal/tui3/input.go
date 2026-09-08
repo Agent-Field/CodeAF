@@ -525,6 +525,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	// AND `ctrl+t` IS A NEW TAB AT THIS RUNG (chatstart.go's [app.newChatKey]).
+	// It is read here — under every modal, panel and page above, and over the
+	// draft below — because that is exactly what a new tab is worth: it must not
+	// outrank a question the session is blocked on, a place that has taken the
+	// whole frame, or the model picker, whose own ctrl+t walks a row's thinking
+	// effort; and it must outrank the box, because a chord is never a letter of
+	// anybody's sentence. The start page it opens takes the key back on its own
+	// terms — pressing the chord again keeps what is typed there.
+	if cmd, taken := a.newChatKey(msg); taken {
+		return cmd
+	}
+
 	// tab is the path completion's key: "/image " with tab after it offers this
 	// directory's files, and tab again takes the one under the cursor
 	// (files.go). It is read before the lists below because everything above it
