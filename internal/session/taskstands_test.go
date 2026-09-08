@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -300,6 +301,74 @@ func TestATaskStandsWhereTheConversationHasBeenWorking(t *testing.T) {
 	if record.Ground != canonicalPath(project) || record.Mode != TaskModeWorktree {
 		t.Fatalf("the checkpoint records ground %q mode %q", record.Ground, record.Mode)
 	}
+}
+
+// A separator carries no place for work to land, so prose that uses one must
+// not become a path merely because it contains path punctuation.
+func TestASlashWrittenAsProseIsNotAPathToken(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		text string
+		want []string
+	}{
+		{"a spaced slash", " / ", nil},
+		{"a slash between words", "and / or", nil},
+		{"two separators", "//", nil},
+		{"three separators", "///", nil},
+		{"the home root", "~/", nil},
+		{"relative roots", "./ ../", nil},
+		{"named absolute paths among prose", "the header renders / no regression; check /etc/hosts and ~/project/file.go", []string{"/etc/hosts", "~/project/file.go"}},
+		{"named relative paths", "write a/b and notes.md", []string{"a/b", "notes.md"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := pathTokens(test.text); !slices.Equal(got, test.want) {
+				t.Fatalf("pathTokens(%q) = %v, want %v", test.text, got, test.want)
+			}
+		})
+	}
+}
+
+// A done-condition may use a slash as ordinary prose, and admitting that work
+// is the contract because the slash names no folder outside its ground.
+func TestATaskWhoseAcceptanceCarriesAProseSlashIsAdmitted(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	spec := taskSpec{
+		deliverable: "a note in the repo",
+		acceptance:  "the header renders / no regression",
+	}
+	if stand := agent.resolveTaskGround(spec); stand.refusal != "" {
+		t.Fatalf("the prose slash produced the ground refusal %q", stand.refusal)
+	}
+
+	world, release := heldTaskWorld(t, agent, "note.txt", "the note\n")
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "write the note", Summary: "add the repository note", Brief: "write the note",
+		Deliverable: spec.deliverable, Acceptance: spec.acceptance,
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil || isError {
+		t.Fatalf("proposeTask = %q, error=%v, isError=%v", result, err, isError)
+	}
+	if strings.Contains(result, "does not stand in") {
+		t.Fatalf("the admitted proposal carries a ground refusal: %q", result)
+	}
+	<-world
+	graph := agent.graph()
+	graph.mu.Lock()
+	admitted := len(graph.nodes)
+	graph.mu.Unlock()
+	if admitted != 1 {
+		t.Fatalf("the graph admitted %d nodes, want one", admitted)
+	}
+	release()
+	waitDoneNode(t, graph.node(1))
 }
 
 // A path in the contract that is outside the ground and in no repository is

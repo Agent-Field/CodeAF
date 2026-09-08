@@ -2091,6 +2091,14 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 			{Acceptance: "the northern regions are decided."},
 			{Acceptance: "the southern regions are decided."},
 		}, nil},
+		{"a named output shared by two parts remains a collision", []dividePart{
+			{Acceptance: "report.md holds the northern figures"},
+			{Acceptance: "report.md holds the southern figures"},
+		}, []string{"report.md"}},
+		{"a prose slash shared by two parts is not a claim", []dividePart{
+			{Acceptance: "the header renders / no regression"},
+			{Acceptance: "the header renders / no regression"},
+		}, nil},
 		{"a file outside the family tree is not this division's to own", []dividePart{
 			{Acceptance: "/usr/bin/python3 reports the version"},
 			{Acceptance: "/usr/bin/python3 reports the version"},

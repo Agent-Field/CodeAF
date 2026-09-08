@@ -866,12 +866,23 @@ func pathTokens(text string) []string {
 	return out
 }
 
-// looksLikePath is the one judgement pathTokens makes: a separator, or a name
-// with a suffix on it.
+// looksLikePath is the one judgement pathTokens makes: a named place carrying a
+// separator, or a name with a suffix on it.
 func looksLikePath(token string) bool {
+	if !pathTokenNamesSomething(token) {
+		return false
+	}
 	if strings.ContainsRune(token, '/') {
 		return true
 	}
 	dot := strings.LastIndex(token, ".")
 	return dot > 0 && dot < len(token)-1 && !strings.ContainsAny(token, " =")
+}
+
+// pathTokenNamesSomething keeps punctuation alone from becoming a place. A
+// PATH MUST NAME SOMETHING after its home shorthand is removed; a separator
+// root and the two relative roots name no component a task could work on.
+func pathTokenNamesSomething(token string) bool {
+	name := filepath.Clean(strings.TrimPrefix(token, "~"))
+	return name != string(filepath.Separator) && name != "." && name != ".."
 }
