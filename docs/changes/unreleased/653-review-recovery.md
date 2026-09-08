@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A refusal never points at a page that is not there — the guest foot, the closed conversation's send, the lost page's lane
+title: Keep guest recovery with its owner and preserve unanswered corrections
 pr: 653
 surface: [chat]
 invalidates:
