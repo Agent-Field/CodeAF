@@ -1372,12 +1372,14 @@ func TestOnlyProseIsAcceptedAsADowry(t *testing.T) {
 
 // ── the turns that are never checkpointed ───────────────────────────────────
 
-// A NODE, A SCREENLESS SESSION AND THE SESSION'S OWN VOICE ARE ALL LEFT ALONE.
+// A NODE, A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE AND THE SESSION'S OWN
+// VOICE ARE ALL LEFT ALONE.
 //
 // Each for its own reason, and each of them is a turn that would be made worse by
 // a ceiling: a node already runs under a step cap, a deadline and a checker; a
-// session with nobody watching has no one to read the line; and a turn the
-// session started for itself is the session spending money on its own sentence.
+// session with nobody watching and nobody left in charge has no one to read the
+// line; and a turn the session started for itself is the session spending money
+// on its own sentence.
 //
 // AND NONE OF THEM PAYS FOR A SIDECAR EITHER. The gate stands in front of the
 // meter, so a turn that may not be checkpointed is a turn this file never bills.
@@ -1389,7 +1391,7 @@ func TestTheTurnsThatMustNeverBeCheckpointedAreNot(t *testing.T) {
 		mutate func(*Config)
 	}{
 		{"a node", func(config *Config) { config.InTask = true }},
-		{"a session nobody is watching", func(config *Config) { config.AskConsent = false }},
+		{"a session nobody is watching and nobody is left in charge of", func(config *Config) { config.AskConsent = false }},
 	} {
 		t.Run(shape.name, func(t *testing.T) {
 			steps := append(grindingSteps(rounds, checkpointSplitSketch, ""), finalAnswer("done"))

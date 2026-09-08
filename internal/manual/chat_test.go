@@ -499,6 +499,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it move my work to a task after five minutes", "starting-aforge"},
 		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
 		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
+		// The headless door of the same unattended posture (#535), asked as the
+		// budget, the missing start and the screenless carry-on somebody meets.
+		{"can I leave a headless run going with a budget", "starting-aforge"},
+		{"my --once yolo run never started a task", "starting-aforge"},
+		{"does a run with no screen carry its own work on", "starting-aforge"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},

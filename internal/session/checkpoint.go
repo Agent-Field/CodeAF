@@ -2361,10 +2361,12 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 //     deadline and its own checker (task_run.go) — so a second ceiling over the
 //     top of those would be the harness governing the governed, and the task it
 //     started would be a third level of a tree that is two deep by law.
-//   - A SCREENLESS SESSION NEVER CHECKPOINTS. `--once` and anything else running
-//     with nobody watching has no one to read the line, and a ceiling there would
-//     end a turn somebody is waiting on the answer of with a task nobody will see
-//     land.
+//   - A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE NEVER CHECKPOINTS. A
+//     headless session that holds a [Person] has no one to read the line, and a
+//     ceiling there would end a turn somebody is waiting on the answer of with a
+//     task nobody will see land. A screenless session with a goal owner has
+//     exactly the reader an unattended ending needs, so it takes the same road as
+//     a watched conversation.
 //   - AND NOT A LINE THE SESSION WROTE THAT NOBODY OWES AN ANSWER FOR. An ambient
 //     note — a standing run's own instruction, a delta nobody has to reply to — is
 //     the session talking to itself, and ending one of those with a task would be
@@ -2399,7 +2401,13 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 // stands in front of the meter and therefore in front of every call this file
 // makes.
 func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
-	if a.config.InTask || !a.config.AskConsent {
+	if a.config.InTask {
+		return false
+	}
+	// A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE HAS NO ONE TO READ THE
+	// LINE, while a screenless session with a goal owner has exactly the reader
+	// an unattended ending needs and checkpoints like a watched conversation.
+	if !a.config.AskConsent && a.steward() == nil {
 		return false
 	}
 	if user.authored && !user.wake {

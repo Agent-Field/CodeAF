@@ -1683,9 +1683,9 @@ a call that hung and was cut, a checker that would not start, a reply that said 
 work.
 
 The task then reads `finished` and its branch merges like any other. This happens only on a
-run with a budget — a `--yolo` run without one, a headless `--once`, and a task inside
-another task in a session you are watching all keep the old road, where the landing goes to
-whoever holds the decision and they settle it.
+run with a budget — a `--yolo` run without one, a headless `--once` with no ceiling, and a
+task inside another task in a session you are watching all keep the old road, where the
+landing goes to whoever holds the decision and they settle it.
 
 ## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
 
