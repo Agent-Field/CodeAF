@@ -337,6 +337,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop for no progress", "how-tasks-run"},
 		{"does generating an image count as progress", "how-tasks-run"},
 		{"where did the files go when my task was stopped", "how-tasks-run"},
+		// A headless worker that repeatedly reaches one command's timeout names
+		// its own ending now, and these are the words of somebody watching it.
+		{"my command keeps timing out and it just runs it again", "adaptive-runs"},
+		{"why did the worker stop after the same command timed out", "adaptive-runs"},
 		// Written from #568: a task ran an eight-minute test suite, could not
 		// wait on it, polled it with sleep and tail, was read as repeating
 		// itself and killed a run that was passing. Both halves are what the

@@ -1684,6 +1684,23 @@ A file two nodes wrote *successfully* is not this case: the guard counts nodes t
 at a path, never nodes that touched it, so ordinary multi-step work on one file is
 unaffected.
 
+## When the same command times out over and over — a command that never returns, and the worker keeps running it
+
+After the same command times out **three** times in one worker's round, the worker stops
+rather than run it again. What it has already done to the files is judged as it stands;
+the timeout does not throw that work away. The headless run names the ending and the
+command on its `⏳` line:
+
+```
+the same command timed out 3 times, so it was stopped rather than run again: go test ./internal/exec/
+```
+
+Three timeouts from *different* commands do not end anything, and a command that fails
+quickly with a non-zero exit does not count, however often it fails. The command's own
+timeout is unchanged: `t` still defaults to 60 seconds. This rule does not make any
+individual command give up sooner; it stops one command from being started again after
+that command has already reached its timeout three times in the round.
+
 ## What happens to a run when aforge closes or restarts
 
 **A run does not survive the process.** It has no checkpoint and nothing resumes it: its
