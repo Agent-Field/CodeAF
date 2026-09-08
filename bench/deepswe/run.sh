@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
-# Run the aforge harness headless over one DeepSWE task, inside the task's own
-# pinned container, and grade what it left on disk.
+# Run the aforge harness over one DeepSWE task, through ONE of its two doors,
+# inside the task's own pinned container, and grade what it left on disk.
 #
 #   bench/deepswe/run.sh <task-id> <model-id> <seed-tag>
 #
 # Env:
+#   DOOR          do (default) or chat — "The two doors" below
 #   AFORGE_BIN    path to a linux/amd64 aforge binary (required)
-#   API_KEY       provider key; falls back to $OPENROUTER_API_KEY, then to the
-#                 api_key in ~/.aforge/config.json (read only — never written)
+#   API_KEY       provider key; falls back to $OPENROUTER_API_KEY, then to
+#                 ~/.config/openrouter/key, then to the api_key in
+#                 ~/.aforge/config.json (all read only — never written)
 #   CORPUS        tasks directory (default ~/src/swe-pro/tools/deepswe-bench/tasks)
 #   RESULTS       output root (default bench/deepswe/results)
 #   AGENT_SECONDS override the task's own agent budget
+#   CHAT_CAP      a chat cell's --max-cost, in dollars (default 3)
 #   CPUS / MEMORY_MB   override the task's own resource budget
 #   KEEP          1 keeps the agent container for post-mortem
+#   SKIP_GRADE    1 stops once the patch is collected — a rig dry run
 #
-# Writes results/<task>-<model>-<seed>/{run.log,graph.db,model.patch,reward.json,
-# cost.json,meta.json}. Every phase is recorded even when it fails, because the
-# question a failed run has to answer is *which layer* broke.
+# Writes results/<task>-<model>-<seed>/{run.log,do.json|door.json,graph.db,
+# model.patch,reward.json,cost.json,meta.json,home/}. Every phase is recorded
+# even when it fails, because the question a failed run has to answer is
+# *which layer* broke.
 #
 # The harness runs INSIDE the task container (the binary is copied in), matching
 # how the reference runner drives its own CLI. Two deliberate deviations from
@@ -25,6 +30,18 @@
 # `network_mode = "no-network"`), and the container is emulated when the host is
 # not amd64. The verifier still runs with --network none, so grading is
 # unaffected.
+#
+# THE TWO DOORS. `do` is the headless door: the brief on stdin, `-json`, the
+# work model and the plan model pinned, `-yes-spend`, the task's wall as
+# `-timeout`, and the exit code read off the ladder (0 done · 2 partial · 3 a
+# limit · 4 asked). `chat` is the conversation a person sits in front of: the
+# same binary in a real terminal (tmux on the host, `docker exec -it` into the
+# container), `--yolo` so the tool gate never asks, `--one-model` so every seat
+# is the pinned model, `--max-hours` set a minute inside the rig's wall and
+# `--max-cost` at CHAT_CAP, and the brief pasted into the composer byte for
+# byte. chat.sh says how the rig knows a conversation is finished. Everything
+# after the door — the patch, the grade, the spend — is read the same way for
+# both, so a difference in the table is a difference in the product.
 set -uo pipefail
 
 # --- snapshot the rig, then run from the copy -------------------------------
@@ -44,21 +61,38 @@ if [ -z "${BENCH_SNAPSHOT:-}" ]; then
   export RESULTS="${RESULTS:-$__RIG_SRC/results}"
   __out="$RESULTS/$1-$__slug-$3"
   rm -rf "$__out"; mkdir -p "$__out/rig"
-  cp "$__RIG_SRC/run.sh" "$__RIG_SRC/lib.sh" "$__RIG_SRC/report.py" "$__out/rig/"
+  cp "$__RIG_SRC/run.sh" "$__RIG_SRC/lib.sh" "$__RIG_SRC/chat.sh" "$__RIG_SRC/report.py" "$__out/rig/"
+  # The journal reader is the canary's; one reading of a home, spelled once.
+  # A frozen copy of this rig carries its own journal.py beside run.sh, which
+  # is what a campaign directory outside the tree looks like.
+  if [ -f "$__RIG_SRC/journal.py" ]; then cp "$__RIG_SRC/journal.py" "$__out/rig/"
+  else cp "$__RIG_SRC/../canary/lib/journal.py" "$__out/rig/"; fi
   export BENCH_SNAPSHOT="$__out/rig"
+  export BENCH_RIG_REV="$(git -C "$__RIG_SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   exec bash "$__out/rig/run.sh" "$@"
 fi
 
+# coreutils' timeout is `gtimeout` on a Mac that installed it with brew, and
+# lib.sh's grade step calls it by the one name.
+if ! command -v timeout >/dev/null 2>&1 && command -v gtimeout >/dev/null 2>&1; then
+  timeout() { gtimeout "$@"; }
+fi
+
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
+source "$(cd "$(dirname "$0")" && pwd)/chat.sh"
 
 [ $# -eq 3 ] || { echo "usage: run.sh <task-id> <model-id> <seed-tag>" >&2; exit 2; }
 TASK="$1"; MODEL="$2"; SEED="$3"
 SLUG="$(printf '%s' "$MODEL" | tr '/:' '--')"
+DOOR="${DOOR:-do}"
+case "$DOOR" in do|chat) ;; *) echo "run.sh: DOOR must be do or chat, not $DOOR" >&2; exit 2 ;; esac
+CHAT_CAP="${CHAT_CAP:-3}"
 
 BIN="${AFORGE_BIN:-}"
 [ -n "$BIN" ] && [ -x "$BIN" ] || { echo "run.sh: set AFORGE_BIN to a linux/amd64 aforge binary" >&2; exit 2; }
 
 KEY="${API_KEY:-${OPENROUTER_API_KEY:-}}"
+[ -n "$KEY" ] || [ ! -f "$HOME/.config/openrouter/key" ] || KEY="$(tr -d '[:space:]' < "$HOME/.config/openrouter/key")"
 if [ -z "$KEY" ] && [ -f "$HOME/.aforge/config.json" ]; then
   KEY="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.aforge/config.json'))).get('api_key',''))" 2>/dev/null)"
 fi
@@ -69,30 +103,35 @@ OUT="$RESULTS/$TASK-$SLUG-$SEED"
 mkdir -p "$OUT"   # the snapshot step above already cleared it
 NAME="deepswe-af-$TASK-$SEED"
 
-# An isolated profile, so the run can never read or write the owner's ~/.aforge.
+# An isolated home, so the run can never read or write the owner's ~/.aforge.
 # Every model knob is pinned to the one model: the point of the measurement is
-# a single model's behaviour, and any unpinned role silently escalates.
-PROFILE="$OUT/profile"; mkdir -p "$PROFILE"
-python3 - "$PROFILE/config.json" "$MODEL" "$KEY" <<'PY'
-import json, os, sys
-path, model, key = sys.argv[1], sys.argv[2], sys.argv[3]
+# a single model's behaviour, and any unpinned role silently escalates. The rows
+# are the canary's (bench/canary/lib/home.sh) — the talk model, every tier
+# including the worker's, the open tool gate, the day's budget as the cell's
+# ceiling, and the setup marker so the first-run screen never sits in front of
+# the composer — plus the role and fallback pins the earlier sweeps carried.
+PROFILE="$OUT/profile"; mkdir -p "$PROFILE"; chmod 700 "$PROFILE"
+python3 - "$PROFILE/config.json" "$MODEL" "$KEY" "$CHAT_CAP" <<'PY'
+import datetime, json, os, sys
+path, model, key, cap = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
 roles = ["auditor", "careful", "compaction", "consolidate", "designer", "division",
          "guardian", "handoff", "imagegen", "intake", "markreader", "planner",
          "reflex", "router", "routerconfirm", "shaper", "speech", "taskname",
          "title", "video", "vision", "worker"]
-json.dump({
+out = {
     "api_key": key,
-    "tools.approvalMode": "allow",
-    "models.roles": "\n".join(f"{r}:{model}" for r in roles),
     "model.talk": model,
-    "models.tiers.low": model,
-    "models.tiers.high": model,
-    "models.tiers.reflex": model,
-    "models.tiers.mastermind": model,
+    "tools.approvalMode": "allow",
+    "daily_budget_usd": cap,
+    "setup_seen_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "models.roles": "\n".join(f"{r}:{model}" for r in roles),
     "models.fallbacks": model,
     "task.model": model,
     "vision_model": model,
-}, open(path, "w"), indent=2)
+}
+for tier in ("low", "high", "mastermind", "reflex", "worker"):
+    out["models.tiers." + tier] = model
+json.dump(out, open(path, "w"), indent=2)
 PY
 
 meta() { python3 - "$OUT/meta.json" "$@" <<'PY'
@@ -109,11 +148,27 @@ for kv in sys.argv[2:]:
 json.dump(d, open(path, "w"), indent=2)
 PY
 }
-meta "task=$TASK" "model=$MODEL" "seed=$SEED" "language=$TASK_LANG" "image=$TASK_IMAGE" \
+BIN_SHA="$(shasum -a 256 "$BIN" 2>/dev/null | cut -c1-16)"
+meta "task=$TASK" "model=$MODEL" "seed=$SEED" "door=$DOOR" "language=$TASK_LANG" "image=$TASK_IMAGE" \
      "base_commit=$TASK_BASE" "platform=$PLATFORM" "cpus=$TASK_CPUS" "memory_mb=$TASK_MEM" \
-     "agent_seconds_budget=$TASK_SECS" "emulated=$EMULATED" "stage=start"
+     "agent_seconds_budget=$TASK_SECS" "emulated=$EMULATED" "rig_rev=${BENCH_RIG_REV:-unknown}" \
+     "bin_sha256_16=$BIN_SHA" "chat_cap_usd=$CHAT_CAP" "stage=start"
 
-cleanup() { [ "${KEEP:-0}" = 1 ] || docker rm -f "$NAME" >/dev/null 2>&1; }
+# The key lives in two files under the result directory while the run needs
+# it — the profile and, for chat, the launch script. Both are scrubbed on the
+# way out, whichever way the run ends, because results are kept for years.
+scrub() {
+  python3 - "$PROFILE/config.json" <<'PY' 2>/dev/null
+import json, sys
+try:
+    p = sys.argv[1]; d = json.load(open(p)); d["api_key"] = "<scrubbed>"; json.dump(d, open(p, "w"), indent=2)
+except Exception:
+    pass
+PY
+  [ -f "$OUT/rig/chat-launch.sh" ] && sed -i.bak -E 's/OPENROUTER_API_KEY=[^ ]+/OPENROUTER_API_KEY=<scrubbed>/' "$OUT/rig/chat-launch.sh" && rm -f "$OUT/rig/chat-launch.sh.bak"
+  return 0
+}
+cleanup() { scrub; [ "${KEEP:-0}" = 1 ] || docker rm -f "$NAME" >/dev/null 2>&1; }
 trap cleanup EXIT
 
 docker rm -f "$NAME" >/dev/null 2>&1
@@ -149,16 +204,21 @@ docker exec "$NAME" chmod +x /usr/local/bin/aforge >> "$OUT/docker.log" 2>&1
 docker exec "$NAME" mkdir -p /bench/home >> "$OUT/docker.log" 2>&1
 docker cp "$PROFILE/config.json" "$NAME:/bench/home/config.json" >> "$OUT/docker.log" 2>&1
 docker cp "$TASK_DIR/instruction.md" "$NAME:/bench/instruction.md" >> "$OUT/docker.log" 2>&1
+cp "$TASK_DIR/instruction.md" "$OUT/prompt.md"
 
-# The brief is handed over on disk and fed in on STDIN. Two reasons, both
-# learned the hard way. Multi-line prose full of quotes and backticks routed
-# through two layers of shell quoting is how a rig silently truncates the task
-# it thinks it asked for. And `aforge do` takes its goal as a positional
-# argument, so a brief whose first character is "-" — a bullet, which is how
-# several DeepSWE instructions open — is parsed as an unknown flag and the run
-# dies at argument parsing with a usage dump. `do` reads the goal from stdin
-# when no positional argument is given, and that path has no such hazard.
-docker exec -i "$NAME" tee /bench/drive.sh > /dev/null <<'INNER'
+emu_args
+t0=$(date +%s)
+ENDED=""
+if [ "$DOOR" = do ]; then
+  # The brief is handed over on disk and fed in on STDIN. Two reasons, both
+  # learned the hard way. Multi-line prose full of quotes and backticks routed
+  # through two layers of shell quoting is how a rig silently truncates the task
+  # it thinks it asked for. And `aforge do` takes its goal as a positional
+  # argument, so a brief whose first character is "-" — a bullet, which is how
+  # several DeepSWE instructions open — is parsed as an unknown flag and the run
+  # dies at argument parsing with a usage dump. `do` reads the goal from stdin
+  # when no positional argument is given, and that path has no such hazard.
+  docker exec -i "$NAME" tee /bench/drive.sh > /dev/null <<'INNER'
 #!/bin/sh
 set -u
 exec /usr/local/bin/aforge do \
@@ -171,30 +231,52 @@ exec /usr/local/bin/aforge do \
   -yes-spend \
   -json < /bench/instruction.md
 INNER
-docker exec "$NAME" chmod +x /bench/drive.sh >> "$OUT/docker.log" 2>&1
+  docker exec "$NAME" chmod +x /bench/drive.sh >> "$OUT/docker.log" 2>&1
 
-emu_args
-log "$TASK: aforge do — model $MODEL, wall limit ${TASK_SECS}s"
-meta "stage=agent"
-t0=$(date +%s)
-timeout "$((TASK_SECS + 300))" docker exec "${EMU_ARGS[@]}" \
-  -e "OPENROUTER_API_KEY=$KEY" \
-  -e "AFORGE_HOME=/bench/home" \
-  -e "HOME=/root" \
-  -e "BENCH_MODEL=$MODEL" \
-  -e "BENCH_TIMEOUT=$TASK_SECS" \
-  -w /app "$NAME" /bench/drive.sh > "$OUT/run.log" 2>&1
-CODE=$?
-WALL=$(( $(date +%s) - t0 ))
-# 0 = delivered whole, 2 = partial, 124 = the rig's own wall fired first.
-log "$TASK: aforge exited $CODE after ${WALL}s"
-meta "exit_code=$CODE" "agent_seconds=$WALL" "stage=extract"
+  log "$TASK: aforge do — model $MODEL, wall limit ${TASK_SECS}s"
+  meta "stage=agent"
+  # stdout is the one JSON envelope (do.json); stderr is the stream (run.log).
+  timeout "$((TASK_SECS + 300))" docker exec "${EMU_ARGS[@]}" \
+    -e "OPENROUTER_API_KEY=$KEY" \
+    -e "AFORGE_HOME=/bench/home" \
+    -e "HOME=/root" \
+    -e "BENCH_MODEL=$MODEL" \
+    -e "BENCH_TIMEOUT=$TASK_SECS" \
+    -w /app "$NAME" /bench/drive.sh > "$OUT/do.json" 2> "$OUT/run.log"
+  CODE=$?
+  WALL=$(( $(date +%s) - t0 ))
+  # 0 done · 1 could not run · 2 ran and did not finish · 3 a limit stopped it
+  # · 4 needed an answer · 124 the rig's own wall fired first.
+  case "$CODE" in 0) ENDED=self ;; 124) ENDED="wall (killed)" ;; 3) ENDED=limit ;; 4) ENDED=asked ;; *) ENDED=partial ;; esac
+  log "$TASK: aforge exited $CODE after ${WALL}s"
+  rm -rf "$OUT/home"; docker cp "$NAME:/bench/home" "$OUT/home" >> "$OUT/docker.log" 2>&1
+  python3 - "$OUT/home/config.json" <<'PY' 2>/dev/null
+import json, sys
+try:
+    p = sys.argv[1]; d = json.load(open(p)); d["api_key"] = "<scrubbed>"; json.dump(d, open(p, "w"), indent=1)
+except Exception:
+    pass
+PY
+else
+  log "$TASK: aforge chat — model $MODEL, wall limit ${TASK_SECS}s, cap \$$CHAT_CAP"
+  meta "stage=agent"
+  deepswe_chat "$NAME" "$OUT" "$OUT/prompt.md" "$MODEL" "$CHAT_CAP" "$TASK_SECS" "$OUT/rig/chat-launch.sh"
+  WALL=$(( $(date +%s) - t0 ))
+  ENDED="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('ended',''))" "$OUT/door.json" 2>/dev/null)"
+  # The chat door has no exit ladder; the rig spells its ending on do's for the
+  # table: self is done, asked is asked, wall is a limit, and the rest ran and
+  # did not finish.
+  case "$ENDED" in self) CODE=0 ;; asked) CODE=4 ;; wall) CODE=3 ;; *) CODE=2 ;; esac
+  log "$TASK: chat ended '$ENDED' after ${WALL}s"
+fi
+scrub
+meta "exit_code=$CODE" "ended=$ENDED" "agent_seconds=$WALL" "stage=extract"
 
 # Stage first so files the harness created land in the diff; diffing --cached
 # against the base commit then captures committed and uncommitted work alike.
 docker exec "$NAME" git config --global --add safe.directory /app >/dev/null 2>&1
 # An emulated process that crashes leaves a core dump in the working directory,
-# and `git add -A` stages it like any other new file. ink s3 submitted a 
+# and `git add -A` stages it like any other new file. ink s3 submitted a
 # qemu core dump of node as part of its answer. It is the emulator's droppings,
 # not the run's work, so it never reaches the diff.
 docker exec "$NAME" sh -c 'cd /app && rm -f qemu_*.core core.[0-9]* 2>/dev/null; true' >> "$OUT/docker.log" 2>&1
@@ -245,22 +327,30 @@ outdirs=$(find . -maxdepth 3 -name 'tsconfig*.json' -not -path '*/node_modules/*
 # what wins the choice, or a build-output diff beats a clean source one.
 for f in "$out"/*.patch; do
   [ -f "$f" ] || continue
+  # A binary hunk is never source, whatever path it sits at: igel committed a
+  # 502 KB model.joblib and that one file made a three-file branch "richer"
+  # than the whole worktree, so the grader was handed the wrong patch. The
+  # marker is git's own — "GIT binary patch" under --binary, "Binary files"
+  # without it — and a few extensions that are binary by nature.
   awk '
     /^diff --git / { if (p != "") sizes[p] += n; p = $3; sub(/^a\//, "", p); n = 0 }
+    /^GIT binary patch/ || /^Binary files / { binf[p] = 1 }
     { n += length($0) + 1 }
-    END { if (p != "") sizes[p] += n; for (k in sizes) printf "%s\t%d\n", k, sizes[k] }
+    END { if (p != "") sizes[p] += n; for (k in sizes) printf "%s\t%d\t%d\n", k, sizes[k], binf[k] + 0 }
   ' "$f" > "$out/.files"
   # --no-index so a path the repo tracks is still reported when .gitignore names it.
   cut -f1 "$out/.files" | git check-ignore --no-index --stdin 2>/dev/null | sort -u > "$out/.ignored"
   src=0; gen=0
-  while IFS='	' read -r path bytes; do
+  while IFS='	' read -r path bytes isbin; do
     [ -n "$path" ] || continue
     g=0
+    [ "${isbin:-0}" = 1 ] && g=1
     grep -qxF "$path" "$out/.ignored" 2>/dev/null && g=1
     case "$path" in
       dist/*|build/*|coverage/*|__pycache__/*) g=1 ;;
       */dist/*|*/build/*|*/coverage/*|*/__pycache__/*) g=1 ;;
       *.map|*.pyc) g=1 ;;
+      *.joblib|*.pkl|*.pickle|*.npy|*.npz|*.h5|*.hdf5|*.bin|*.so|*.dylib|*.png|*.jpg|*.jpeg|*.gif|*.ico|*.zip|*.gz|*.tar|*.woff|*.woff2|*.pdf) g=1 ;;
     esac
     if [ "$g" = 0 ] && [ -n "$outdirs" ]; then
       for d in $outdirs; do
@@ -280,6 +370,9 @@ docker exec "$NAME" /bench/collect.sh "$TASK_BASE" > "$OUT/candidates.tsv" 2>> "
 BEST=$(sort -t"$(printf '\t')" -k2,2nr -k1,1nr "$OUT/candidates.tsv" 2>/dev/null | head -1 | cut -f4)
 BEST="${BEST:-worktree.patch}"
 docker exec "$NAME" cat "/bench/candidates/$BEST" > "$OUT/model.patch" 2>> "$OUT/docker.log"
+# Every candidate comes out beside the result, so a pick that turns out wrong
+# can be regraded from the record instead of being lost with the container.
+rm -rf "$OUT/candidates"; docker cp "$NAME:/bench/candidates" "$OUT/candidates" >> "$OUT/docker.log" 2>&1
 log "$TASK: graded diff taken from $BEST"
 python3 - "$OUT/meta.json" "$OUT/candidates.tsv" "$BEST" <<'CANDS'
 import json, os, sys
@@ -307,23 +400,55 @@ if best in warn:
           file=sys.stderr)
 json.dump(meta, open(metapath, "w"), indent=2)
 CANDS
-docker cp "$NAME:/bench/graph.db" "$OUT/graph.db" >> "$OUT/docker.log" 2>&1
+[ "$DOOR" = do ] && docker cp "$NAME:/bench/graph.db" "$OUT/graph.db" >> "$OUT/docker.log" 2>&1
 
-# Spend is read from the store's own usage ledger, not from the stream: the
-# ledger is what the harness actually billed.
-python3 - "$OUT/graph.db" "$OUT/cost.json" <<'PY'
-import json, sqlite3, sys
-out = {"cost_usd": 0.0, "prompt_tokens": 0, "completion_tokens": 0, "models": "", "calls": 0}
+# Spend, read three ways and all three written down. cost_usd is the figure
+# the table carries: for `do` the store's own usage ledger, which is what the
+# harness billed and what every earlier sweep reported; for `chat` the call
+# log's sum, the one door every outbound call passes through. The other two
+# readings sit beside it as the cross-check.
+python3 - "$OUT" "$DOOR" "$OUT/rig/journal.py" <<'PY'
+import json, os, sqlite3, subprocess, sys
+out, door, journal = sys.argv[1], sys.argv[2], sys.argv[3]
+def ask(word):
+    return subprocess.run(["python3", journal, word, os.path.join(out, "home")],
+                          capture_output=True, text=True).stdout.strip()
+rec = {"cost_usd": 0.0, "prompt_tokens": 0, "completion_tokens": 0, "models": "", "calls": 0}
 try:
-    c = sqlite3.connect(sys.argv[1])
-    r = c.execute("select coalesce(sum(cost),0), coalesce(sum(prompt_tokens),0), "
-                  "coalesce(sum(completion_tokens),0), coalesce(group_concat(distinct model),''), "
-                  "count(*) from usage").fetchone()
-    out = {"cost_usd": r[0], "prompt_tokens": r[1], "completion_tokens": r[2],
-           "models": r[3], "calls": r[4]}
+    rec["calllog_cost_usd"] = float(ask("cost") or 0)
+    rec["calllog_calls"] = int(ask("calls") or 0)
+    rec["ttft_ms"] = int(ask("ttft") or 0) or None
 except Exception as e:
-    out["error"] = str(e)
-json.dump(out, open(sys.argv[2], "w"), indent=2)
+    rec["calllog_error"] = str(e)
+if door == "do":
+    try:
+        c = sqlite3.connect(os.path.join(out, "graph.db"))
+        r = c.execute("select coalesce(sum(cost),0), coalesce(sum(prompt_tokens),0), "
+                      "coalesce(sum(completion_tokens),0), coalesce(group_concat(distinct model),''), "
+                      "count(*) from usage").fetchone()
+        rec.update({"cost_usd": r[0], "prompt_tokens": r[1], "completion_tokens": r[2],
+                    "models": r[3], "calls": r[4]})
+    except Exception as e:
+        rec["error"] = str(e)
+    try:
+        said = json.load(open(os.path.join(out, "do.json")))
+        rec["spend_usd_json"] = said.get("spend_usd", said.get("spend"))
+        rec["tokens_json"] = said.get("tokens")
+        rec["stop_json"] = said.get("stop")
+        rec["ok_json"] = said.get("ok")
+        rec["settled_json"] = said.get("settled")
+    except Exception as e:
+        rec["json_error"] = str(e)
+else:
+    rec["cost_usd"] = rec.get("calllog_cost_usd", 0.0)
+    rec["calls"] = rec.get("calllog_calls", 0)
+    try:
+        door_rec = json.load(open(os.path.join(out, "door.json")))
+        rec["turns"] = door_rec.get("turns")
+        rec["models"] = ""
+    except Exception as e:
+        rec["door_error"] = str(e)
+json.dump(rec, open(os.path.join(out, "cost.json"), "w"), indent=2)
 PY
 
 # Which worker actually did the work — one row of provenance beside every
@@ -335,8 +460,8 @@ PY
 # is why that sweep's autopsy took a day. splice_subharness is what the subtree
 # was admitted under, an intention and not a fact. nodes.ran is written by the
 # dispatch path at the moment it builds the worker, and it names the worker out
-# loud.
-python3 - "$OUT/graph.db" "$OUT/meta.json" <<'WORKERS'
+# loud. A chat cell has no private store; its record is the journal under home/.
+[ "$DOOR" = do ] && python3 - "$OUT/graph.db" "$OUT/meta.json" <<'WORKERS'
 import json, os, sqlite3, sys
 db, metapath = sys.argv[1], sys.argv[2]
 meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
@@ -358,6 +483,7 @@ try:
         "select subharness from nodes where coalesce(subharness,'') != ''")})
     planned = sorted({r[0] for r in c.execute(
         "select splice_subharness from nodes where coalesce(splice_subharness,'') != ''")})
+    meta["nodes"] = c.execute("select count(*) from nodes").fetchone()[0]
 except Exception as err:
     meta["workers_error"] = str(err)
 meta["workers_ran"] = ran
@@ -370,13 +496,14 @@ WORKERS
 # call was cut and retried, and whether a leaf that restarted came back to
 # banked work rather than a blank page. Recorded rather than judged — the log
 # lines are quoted into meta.json so the claim can be checked.
-python3 - "$OUT/run.log" "$OUT/meta.json" "$OUT/graph.db" <<'LIVENESS'
+[ "$DOOR" = do ] && python3 - "$OUT/run.log" "$OUT/meta.json" "$OUT/graph.db" <<'LIVENESS'
 import json, os, re, sqlite3, sys
 logpath, metapath, db = sys.argv[1], sys.argv[2], sys.argv[3]
 meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
 lines = open(logpath, errors="replace").read().split("\n") if os.path.exists(logpath) else []
-faults = [l.strip() for l in lines if l.lstrip().startswith("\u2717") and "retr" in l.lower()]
+faults = [l.strip() for l in lines if l.lstrip().startswith("✗") and "retr" in l.lower()]
 resumed = [l.strip() for l in lines if re.search(r"resum|banked|picked up where", l, re.I)]
+gates = sum(1 for l in lines if re.match(r"^\s*gate: (fail|refused)", l))
 starts = {}
 try:
     c = sqlite3.connect(db)
@@ -389,14 +516,34 @@ meta["fault_retry_lines"] = faults[:12]
 meta["restarted_nodes"] = {n: k for n, k in starts.items() if k > 1}
 meta["resumed_with_transcript"] = bool(resumed)
 meta["resume_lines"] = resumed[:8]
+meta["gate_rounds"] = gates
 json.dump(meta, open(metapath, "w"), indent=2)
 LIVENESS
+
+# The chat door's own facts, folded into meta so one file carries the row.
+[ "$DOOR" = chat ] && python3 - "$OUT/door.json" "$OUT/meta.json" <<'CHATMETA'
+import json, os, sys
+doorpath, metapath = sys.argv[1], sys.argv[2]
+meta = json.load(open(metapath)) if os.path.exists(metapath) else {}
+try:
+    d = json.load(open(doorpath))
+    for k in ("task_done_s", "done_to_wall_s", "asked_s", "blocked_on", "turns", "calls", "ttft_ms", "max_hours", "max_cost", "tmux_session"):
+        if k in d and d[k] is not None:
+            meta["chat_" + k] = d[k]
+except Exception as e:
+    meta["chat_error"] = str(e)
+json.dump(meta, open(metapath, "w"), indent=2)
+CHATMETA
 
 PATCH_BYTES=$(wc -c < "$OUT/model.patch" | tr -d ' ')
 meta "patch_bytes=$PATCH_BYTES" "stage=grade"
 log "$TASK: patch is ${PATCH_BYTES} bytes"
 
 cleanup; trap - EXIT
+
+if [ "${SKIP_GRADE:-0}" = 1 ]; then
+  meta "stage=not-graded"; log "$TASK: SKIP_GRADE set — not graded"; exit 0
+fi
 
 t1=$(date +%s)
 if grade_patch "$OUT"; then
