@@ -1035,7 +1035,7 @@ func helpText(file string, chords chordSpelling) string {
 		// a tab with is the one people press at it — and the roster keeps the letter
 		// under the other modifier (task.go's [railHoldChord]), which is the smallest
 		// move a hand has to make and the modifier its own widen chord already uses.
-		helpKeyRow(newChatChord, "a new chat, beside this one · your draft and its work stay put · esc back"),
+		helpKeyRow(newChatChord, "a new chat start page · your draft stays put · esc back"),
 		// AND THE OTHER DIRECTION, ON THE ROW UNDER IT. The two chords are one
 		// gesture, so they are read together here as they are in input.go, and the
 		// row says what the key does NOT do — because "close" is the word people
@@ -1043,7 +1043,8 @@ func helpText(file string, chords chordSpelling) string {
 		// AND THE ROW MAY NOT SPELL `ctrl+k` (escword_test.go finds the switcher's own
 		// row by that prefix, and a second row carrying it is a second answer to the
 		// question that test asks). The card is named by what it is instead.
-		helpKeyRow(closeTabChord, "close this tab · the work keeps running · your draft is kept · the switcher reopens it"),
+		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
+		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
 		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",

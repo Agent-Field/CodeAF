@@ -1946,3 +1946,13 @@ answer scrolling off the top.
 `aforge do` and `aforge plan new` with nothing after them say `no goal given` and print
 **that command's** line, not every command's. Pipe the task in instead if it is long:
 `echo "the task" | aforge do`.
+
+## Reopening a closed chat is a key rather than a command
+
+There is no slash command that reopens a tab you closed. **`ctrl+shift+t` does it**
+— the last tab you shut comes back, and pressing it again walks further back
+through the ones before it. The keys page has the whole of it under *Reopen a tab
+you closed*, including what a terminal that cannot send the key does instead.
+
+`ctrl+k` is the other way back: it lists every conversation on this machine, closed
+tabs included, and opening a row brings the tab and its draft back too.

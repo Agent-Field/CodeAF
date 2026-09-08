@@ -586,7 +586,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work |
-| `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Nothing is closed and nothing is interrupted; the draft is kept and `ctrl+k` brings it back |
+| `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept; shared engine connections use normal session-switch semantics |
 | `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `ctrl+e` | Empty box: open or close the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
@@ -732,7 +732,7 @@ at and filtered, not edited by pointer.
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
 | `alt+backspace` | Delete the word behind the caret. This is the word kill in the message box |
 | `ctrl+backspace` | Same as `alt+backspace` |
-| `ctrl+w` | **Not a deletion here.** It closes the tab in front, with the work and the draft kept — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it puts a conversation away |
+| `ctrl+w` | **Not a deletion here.** It closes the tab in front and keeps its draft — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it puts a conversation away |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
 The kills above work the same way in **every** box aforge has, not only the
@@ -748,20 +748,19 @@ inside one.
 `ctrl+t` opens a tab and `ctrl+w` shuts one, which is what those two keys do in
 a browser.
 
-What it does *not* do is the point:
+Your unsent sentence, caret and attachments stay with the conversation. The
+conversation remains in `ctrl+k` and Home, and reopening restores its tab and draft.
 
-- **Nothing is closed and nothing is interrupted.** The agent goes on running,
-  anything running in it keeps going, and the transcript is untouched.
-- **Your unsent sentence and its caret are kept**, along with the attachments in
-  its tray and where you were reading.
-- **The conversation is still there.** `ctrl+k` lists it, home lists it, and
-  going back to it brings the tab and the draft with it.
+Closing the active tab selects the most recently used remaining open tab. With
+none left, the window goes **Home** with the current session behind it.
+Closing an inactive tab does not switch the current conversation.
 
-Where you land depends on what else this window holds. With another conversation
-open, that one comes forward. With none — or on a `--host` connection, which
-holds one conversation at a time — the window goes to **home**, with the
-conversation still alive behind it. So pressing it over and over is clicking the
-`✕` over and over, and it can never cost you work.
+With `aforge chat --no-host`, locally held conversations keep working when another
+tab is selected. The ordinary engine-backed chat, `--host` and `--at` hold one
+selected session per connection: selecting another tab uses the normal session
+switch, which ends the outgoing session on that connection. Closing the final tab
+only opens Home and leaves that session selected. No extra Stop or Close request
+is sent to the newly selected session.
 
 **On the new chat page it closes that page**, exactly as `esc` does: the page
 comes down, the conversation you were in comes back with its draft and its work,
@@ -1504,9 +1503,9 @@ With **three or more** open, that slot says `ctrl+k switch` instead, and `ctrl+k
 card of all of them — see *Switch between open conversations*. `tab` still works and still
 goes to the last one.
 
-It works while a turn is running in either conversation. Nothing is interrupted: the turn
-you leave keeps streaming into its own transcript, and it is redrawn from its first token
-when you come back.
+With `aforge chat --no-host`, it works while either local conversation is running:
+the one you leave keeps streaming into its own transcript. Shared engine connections
+hold one selected session instead; switching ends the previous session on that connection.
 
 **On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
 search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
@@ -1576,7 +1575,7 @@ has that one row, and the fold has the rest of the machine in it.
 this window has been in are drawn there, the one you are in bright and underlined;
 clicking one switches to it, and the `Chats ▾` control (or `Chats +3 ▾` where the row is
 too narrow for every tab) at its right end opens this card with its fold already open. The
-`×` on a tab puts that conversation away without closing it, and `ctrl+w` is that `×` on
+`×` on a tab dismisses its view, and `ctrl+w` is that `×` on
 the tab you are in. See *Conversation tabs* and
 *Closing a tab* on the screen page.
 
@@ -1591,7 +1590,7 @@ the tab you are in. See *Conversation tabs* and
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Put the conversation under the cursor away — off this window's tab row, with work preserved. See below |
+| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. Selecting a remaining tab follows normal local or shared connection behavior. See below |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1610,8 +1609,8 @@ it. Everywhere else the legend reads `space space home · tab last · ctrl+k swi
 **There is no cap** on what one terminal holds at once: taking a row is never refused for
 having too many open. The card draws the first twelve rows and hands a digit to the first
 nine; past that the cursor is the way, and home is the page that shows every conversation
-you have. Nothing closes one for you — `/quit` closes the one in front, and `ctrl+w` here
-puts the one under the cursor away without closing it.
+you have. Independent local conversations remain alive until closed with `/quit`.
+Shared connections instead select one session; switching ends the outgoing session.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1674,26 +1673,16 @@ unlooked-at — and waits for your choice.
 
 ## Put a conversation away from the switcher — ctrl+w, closing a chat, too many open
 
-**`ctrl+w` on the row takes that conversation off this window's tab row, and does nothing
-else.** The card stays up and says `put away — still running`, so tidying three of them
-costs three keystrokes rather than three openings.
+**`ctrl+w` dismisses the tab under the cursor.** An inactive row leaves the card
+open with `tab closed · <title>`, so several tabs can be put away in succession.
+Its saved conversation and draft remain available; Enter reopens it.
 
-It is the same key that closes the tab you are in when no card is up (*Close the tab you
-are in*, above) — one gesture, aimed at whatever is in front of you: a row while the
-switcher is open, the tab in front when it is not.
-
-**It does not close anything.** The conversation goes on running, its unsent sentence and
-caret are kept, its transcript is untouched, and its row stays on this very card — `enter`
-on it brings the conversation, its tab and its draft straight back. There is no warning
-and no second press, because there is nothing to warn about.
-
-`ctrl+w` used to end the conversation, agent and all, with a two-press arm in front of it
-when work was running. That was the wrong act under this spelling: the key every browser
-and editor puts a row away with should put a row away.
-
-`ctrl+w` on the row marked `you are here` puts the conversation you are in away — the
-window switches to another chat it is holding, or goes Home with this one still in front
-behind it. Nothing is stopped either way.
+On the row marked `you are here`, the card closes and the window selects the most
+recently used remaining tab, or Home when none remain. This is the same action as
+`ctrl+w` in the conversation and the tab's `×`. Independent local work keeps running.
+On a shared engine connection, selecting another tab ends the outgoing session
+through the normal session switch. Closing the final tab opens Home without
+switching, leaving that session selected behind it.
 
 **`ctrl+w` on a row below the fold does nothing** and says
 `that one is not open here — enter opens it`. There is nothing here to put away: this
@@ -2855,3 +2844,42 @@ live-applies on the next render; work stays indented in either mode.
 ## Starting a new chat with plus
 
 The `+` at the right of the conversation tabs opens a **New chat** start page. Type a first message or choose a recent conversation. Opening the page creates nothing. `esc` or its tab's close control returns to your previous chat or task with its draft. The first message creates the conversation. A draft parked on the start page stays for this window's lifetime. See *Starting a new chat with the `+` plus button beside the tabs* on the screen page.
+
+## Reopen a tab you closed — ctrl+shift+t, undo close tab, get that chat back
+
+**`ctrl+shift+t` puts the last tab you shut back**, and pressing it again walks
+further back through the ones before it, newest first. It is the third key of the
+same grammar: `ctrl+t` opens a tab, `ctrl+w` shuts one, `ctrl+shift+t` undoes the
+shutting.
+
+A held local conversation returns with its unsent sentence, caret, attachments
+and reading state. A remembered conversation is resumed through the existing open
+door. On shared engine connections this performs the normal session switch, which
+ends the outgoing session on that connection. It does not create a new conversation.
+If reopening fails, the reason is shown and the entry stays first in line for retry.
+
+**It works from home**, which is where shutting your last tab leaves you — that is
+the press this key most often undoes.
+
+What it will not do:
+
+- **A tab you already brought back yourself is skipped.** Reopening a conversation
+  from `ctrl+k` or from home takes it off the list, so the key moves on to the one
+  under it rather than spending a press on the tab in front of you.
+- **The same conversation is never on the list twice.** Shut it, reopen it, shut it
+  again, and it is still one entry.
+- **The New chat page is not on the list.** Nothing was created there, so there is
+  nothing to come back to — and the first message you had half typed was parked
+  when the page closed. `ctrl+t` opens the page again and hands it straight back.
+- With nothing shut, the key does nothing at all, and it never types into your
+  message box.
+
+The window remembers the last **32** tabs you shut, which is as many as the tab row
+itself remembers, and it remembers them only for as long as the window is open.
+
+**Your terminal has to be able to send the key.** aforge answers the event spelled
+`ctrl+shift+t`. Whether it arrives distinctly depends on the terminal and its
+keyboard configuration. A terminal that collapses it to `ctrl+t` sends that instead, and **you get a
+new chat** — the plain chord is never read as a reopen, because a key that opened a
+tab on one terminal and reopened another on the next is a key nobody could predict.
+There is nothing to turn on inside aforge, and the only test is pressing it.

@@ -334,6 +334,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	//
 	// ctrl+c is the one exception, for the reason it is everywhere on this file:
 	// leaving is never modal.
+	// WITH ONE CHORD READ ON HOME ABOVE THAT CLAIM, and it is the one gesture home
+	// is the LANDING for rather than a destination of: shutting the last tab leaves
+	// this window on home with the conversation still alive behind it
+	// (chattabs.go's [app.tabDismiss]), so `ctrl+shift+t` — the undo of exactly
+	// that press — has to be reachable from where the press put you. It is scoped
+	// to home alone and to a chord no place binds, so every other place keeps every
+	// key it had, and the rung below is untouched (tabreopen.go).
+	if a.at(pageHome) {
+		if cmd, taken := a.reopenTabKey(msg); taken {
+			return cmd
+		}
+	}
+
 	if a.pageShowing() && msg.String() != "ctrl+c" {
 		return a.placeKeyPress(msg)
 	}
@@ -547,6 +560,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// word kill; `alt+backspace` and `ctrl+backspace` are the two names a hand
 	// actually presses and both still reach the switch below.
 	if cmd, taken := a.closeTabKey(msg); taken {
+		return cmd
+	}
+
+	// AND `ctrl+shift+t` PUTS THE LAST ONE BACK, at the same rung and for the same
+	// reasons (tabreopen.go's [app.reopenTabKey]). The three keys are one grammar —
+	// open a tab, shut a tab, undo the shutting — so they are read side by side,
+	// and this one is deliberately never spelled `ctrl+t`: a terminal that cannot
+	// tell the two apart sends the plain chord and gets a new chat, which is what
+	// that key has always done here.
+	if cmd, taken := a.reopenTabKey(msg); taken {
 		return cmd
 	}
 

@@ -13,19 +13,10 @@ import tea "charm.land/bubbletea/v2"
 // being told to, and until this wave the only way to shut one was the pointer or
 // a trip through the switcher card.
 //
-// IT CLOSES NOTHING AND INTERRUPTS NOTHING, because it is one call into
-// chattabs.go's [app.tabDismiss] and that function holds the whole of the law:
-// the agent goes on running, the unsent sentence and its caret stay where they
-// were, the transcript is untouched, and the conversation is still on the
-// switcher. Reopening it from home or from `ctrl+k` brings the tab and the draft
-// straight back. There is deliberately no second lifecycle here — a close that
-// preserved drafts its own way would be a second answer to a question the ✕ has
-// already answered, kept in step with the first by nothing.
-//
-// SO IT IS SAFE TO LEAN ON. Pressing it again is clicking the ✕ again: the next
-// conversation this window holds comes forward and can be shut in turn, and the
-// last one leaves the window on home with that conversation still alive behind
-// it.
+// The existing tabDismiss lifecycle owns both pointer and keyboard closing.
+// Drafts retain their recipient; local held agents keep running, and shared
+// connections use their existing single-conversation swap. Repeated presses
+// select the remaining tabs in recency order, then Home when none remain.
 const closeTabChord = "ctrl+w"
 
 // closeTabKey is that chord's whole claim on the keyboard, and it reports

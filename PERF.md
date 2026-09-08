@@ -1991,10 +1991,11 @@ roster sort runs in the breadcrumb paint path.
 
 ## Chat-header navigation
 
-The header uses two additional blank rows around the tab labels and one after a
-task's breadcrumb/status pair on frames at least 24 columns by 32 rows. Smaller
-frames collapse these rows; drawing, scrolling and pointer targeting use the same
-height calculation. Home is a capability check in memory and has no hover-time I/O.
+At widths of at least 48 columns, the header gains a blank row above the tabs
+at 32 rows, below them at 36 rows, and after task metadata at 40 rows. Staggering
+these thresholds keeps a growing terminal from losing reading rows. Smaller
+frames collapse the padding; drawing, scrolling and pointer targeting share the
+same height calculation. Home is a capability check in memory and has no hover-time I/O.
 The switcher adds two inner padding rows only when capacity permits, retaining a
 selected conversation on short frames. Its surface color is computed once per card.
 
@@ -2004,6 +2005,10 @@ chat is revealed after navigation; explicit arrow or wheel browsing may move it 
 Overflow has a bounded in-memory viewport and the existing conversation picker. The
 32-candidate cap supports realistic multi-chat work without fitting dozens of names into
 six-cell labels; no new history reads, agent limit, or animation loop is introduced.
+The window-local reopen stack retains at most the same 32 closed tab addresses,
+with one entry per conversation. This history is not persisted. It stores no
+transcript or agent; reopening
+uses the existing conversation connection and draft restoration path.
 Each tab uses at most 32 cells when several tabs share the row, including its
 leading inset and three close-target cells (space, mark, trailing inset). These are presentation
 bounds, not execution or history limits. Frame reads use cached local identity and

@@ -1496,6 +1496,12 @@ type app struct {
 	// tab on every frame, and a key leaves it in [app.rememberOpen], which is the
 	// one door every road that brings a conversation forward goes through.
 	tabShut map[string]bool
+	// closedTabs is the tabs this window has shut, oldest first, and it is what
+	// `ctrl+shift+t` walks back through (tabreopen.go's [app.reopenClosedTab]).
+	// It is window-local and lives no longer than the session: a reopen is the
+	// undo of a gesture made in this window, and nothing about it is written
+	// down anywhere. It is bounded by [tabsCap], the row's own cap.
+	closedTabs []chatTab
 
 	// THE PASTE BRACKET. pasting says the terminal has opened one and not yet
 	// closed it; pasted is what has arrived inside it; pasteAt is when the last

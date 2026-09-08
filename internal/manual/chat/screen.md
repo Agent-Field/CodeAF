@@ -191,39 +191,31 @@ the `ctrl+k` switcher say `new conversation`. And `Untitled` is not `main` — `
 where you are, the conversation you get back to from a task page, which is what `esc/←
 main` and `say it to main` both mean.
 
-## Closing a tab — the × on a tab, dismissing a chat, does closing a tab stop my work
+## Closing a tab — the × on a tab, Ctrl+W, where do I go next
 
-**No. The `×` on a tab closes the VIEW and nothing else.**
+**`×` or `ctrl+w` closes the tab in front.** Closing another tab leaves the
+current chat selected. Closing the current tab selects the most recently used
+remaining tab; only closing the last tab takes you to Home. A destination that
+cannot be opened leaves the current tab and draft in place and explains why.
 
-The agent behind it goes on running, its unsent draft, its caret and its attachments stay
-exactly where you left them, its transcript is untouched, and the conversation is still on
-the switcher `ctrl+k` opens. Reopening it from there or from home brings the tab **and the
-draft** straight back. Nothing about the `×` interrupts an agent or closes a session.
+The close mark appears on the selected tab and on a hovered tab. Its padded
+cells stay reserved on every tab, so hovering cannot move the targets. The close
+cells dismiss; the label beside them selects. With color disabled the newly
+visible `×` also identifies pointer hover.
 
-**The mark is drawn on the tab you are in and on the tab under the pointer**, and the cells
-it sits in are held open on every tab whether or not the mark is in them — so nothing
-re-packs under your hand when you move across the row. On the other tabs the cells are
-blank until you point at one, which is also how the row shows a hover with color disabled:
-a `×` that was not there a moment ago.
+Unsent drafts, carets and attachments stay with their conversation. Reopen a
+closed tab from Chats, Home or `ctrl+shift+t` to retrieve them. The keyboard
+shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
 
-**The close target is hit-tested on its own cells.** A press on the `×` dismisses the tab; a
-press one cell to its left selects it. Neither can be mistaken for the other.
+**Locally held conversations keep running.** Hosted connections follow their
+existing one-conversation switching behavior: selecting the next tab replaces
+the active session on that connection. The UI does not send a second stop or
+close to the newly selected chat. Closing the last tab to Home leaves its
+connection in place.
 
-Where you end up depends on which tab it was:
-
-| The tab you dismissed | What happens |
-| --- | --- |
-| one you are not in | it just leaves the row |
-| the one you are in, with another visible chat this window holds | the window switches to that one and the tab leaves the row |
-| the one you are in, with nowhere else to go | the window goes to **Home**, with the conversation still in front behind it |
-| the one you are in, over an engine-backed connection | the window goes to **Home**. Nothing is switched and nothing is closed, because that connection holds one conversation at a time and switching away would end the very work the dismissal promised to leave alone |
-
-**The last tab can be dismissed.** It takes you Home. It does not quit aforge and it throws
-nothing away.
-
-**`ctrl+w` closes the current tab**, preserving its draft and running work. On the
-switcher card it closes the row under the cursor instead. Ending
-work is `Stop` on a task's page; ending aforge is `/quit`.
+On the switcher card, `ctrl+w` closes the selected row. On New chat it closes
+the start page and parks its unfinished first message. Stop on a task page
+ends that task; `/quit` ends the program.
 
 ## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
 

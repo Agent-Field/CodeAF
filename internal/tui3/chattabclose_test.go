@@ -167,28 +167,6 @@ func TestDismissingTheLastTabGoesHomeAndKeepsTheConversation(t *testing.T) {
 	}
 }
 
-// AND OVER A SHARED ENGINE HANDLE THE TAB IN FRONT GOES HOME TOO, rather than
-// switching: that connection holds one conversation at a time, so a switch
-// meant only to put a row away would end the work it promised to leave alone.
-func TestDismissingTheTabInFrontOverASharedHandleGoesHome(t *testing.T) {
-	a, _, _ := tabApp(t)
-	a.shared = true
-	before := a.file
-	span := tabCloseSpanFor(t, a, "Shipping the parser")
-	clickTab(t, a, span.from)
-	if !a.at(pageHome) {
-		t.Fatalf("a shared handle dismissed its front tab to page %v", a.page)
-	}
-	if a.file != before {
-		t.Fatalf("a shared handle switched conversations to dismiss a tab: %q", a.file)
-	}
-	a.showPage(pageNone)
-	a.touch()
-	if !strings.Contains(plain(a.tabsRow(a.width)), "Shipping the parser") {
-		t.Fatalf("the conversation still in front lost its tab:\n%q", plain(a.tabsRow(a.width)))
-	}
-}
-
 // ── THE TARGETS ─────────────────────────────────────────────────────────────
 
 // THE CLOSE CELLS ARE HIT-TESTED ON THEIR OWN, and a press on them never falls

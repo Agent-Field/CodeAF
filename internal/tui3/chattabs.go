@@ -1056,32 +1056,17 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 
 // ── DISMISSING A TAB ────────────────────────────────────────────────────────
 
-// tabDismiss takes one conversation off the tab row. IT CLOSES NOTHING.
+// tabDismiss removes a conversation's tab from this window. Its transcript and
+// recipient-scoped draft remain available when the person reopens it.
 //
-// The agent goes on running, its unsent draft, caret and attachments stay
-// exactly where they were, its transcript is untouched, and the conversation is
-// still on the switcher — so this is a change to what this window is SHOWING and
-// to nothing else. Reopening it from the switcher or from home brings the tab
-// and the draft back ([app.rememberOpen] is where the dismissal is lifted, which
-// is the one door every road forward goes through).
+// An inactive tab simply leaves the row. Closing the active tab selects the
+// most recently used remaining tab, using the same attach/open seam as ordinary
+// navigation. Home is the fallback only when no other tab remains. A refused
+// open keeps the outgoing tab selected and its draft intact.
 //
-// THREE CASES, AND THE DIFFERENCE BETWEEN THEM IS WHERE THE PERSON ENDS UP:
-//
-//   - A tab that is not in front simply leaves the row.
-//   - The tab in front, over this process's OWN engine, with another conversation
-//     this window is holding: the window switches to that one and the tab that
-//     was in front leaves the row. Nothing about the conversation being left
-//     changes — it goes into the keeper alive, which is what a switch has always
-//     done.
-//   - The tab in front with nowhere safe to go, and EVERY tab in front over a
-//     shared engine handle: the window goes to Home with the conversation still
-//     in front behind it. A shared handle holds one conversation at a time
-//     ([oneConversationWord]), so switching away from it to satisfy a dismissal
-//     would end the very work the dismissal promised to leave running — and
-//     going Home leaves the connection and its work exactly as they are. The tab
-//     is NOT marked dismissed in this case, because the window is still on that
-//     conversation and a row claiming otherwise would be a row that lies the
-//     moment `esc` comes back to it.
+// Local held conversations remain alive. Shared connections retain their normal
+// single-conversation switching contract: the engine performs the swap, and this
+// surface must never close the handle afterward because it now names the target.
 func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
 	a.tabReveal()
 	if tab.start {
@@ -1092,44 +1077,57 @@ func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()
 	}
-	if tab.key == "" {
-		if tab.here {
-			return a.showPage(pageHome)
-		}
+	if tab.key == "" && !tab.here {
 		return nil
 	}
-	if tab.key != a.frontTabKey() {
+	if tab.key != "" && tab.key != a.frontTabKey() {
 		a.tabShutKey(tab.key)
 		a.touch()
 		return nil
 	}
-	if !a.shared {
-		if next, ok := a.lastVisibleTab(); ok {
-			if cmd, ours := a.bringForward(a.behind[next].conv.SessionFile); ours {
-				a.tabShutKey(tab.key)
-				a.touch()
-				return cmd
-			}
+	if next, ok := a.lastVisibleTab(); ok {
+		cmd, held := a.bringForward(next.file)
+		refusal := ""
+		if !held {
+			cmd, refusal = a.openBeside(next.where, next.file)
 		}
+		if refusal != "" {
+			a.note(refusal)
+			return nil
+		}
+		if a.convKey(a.file) == next.key {
+			a.tabShutKey(tab.key)
+			a.touch()
+		}
+		return cmd
 	}
-	// NOWHERE SAFE TO GO. Home is a place in this window rather than a door out
-	// of the program: the conversation is still in front underneath it, still
-	// running, and its row on home is what brings it back.
+	// Home is a place in this window; the last conversation stays behind it.
+	a.tabShutKey(tab.key)
 	cmd = a.showPage(pageHome)
 	a.touch()
 	return cmd
 }
 
-// Closing a view selects another visible view; a dismissed conversation remains
-// available in Chats until the person deliberately reopens it.
-func (a *app) lastVisibleTab() (string, bool) {
+// Closing selects the last visited surviving tab, including remembered tabs
+// whose agent is no longer held. The stable row order is the fallback when a
+// tab has not acquired a recency entry yet.
+func (a *app) lastVisibleTab() (chatTab, bool) {
+	eligible := func(tab chatTab) bool {
+		return !tab.start && tab.key != "" && tab.key != a.frontTabKey() && !a.tabShut[tab.key]
+	}
 	for at := len(a.prev) - 1; at >= 0; at-- {
-		key := a.prev[at]
-		if !a.tabShut[key] && a.behind[key] != nil && tabsHold(a.chatTabs, key) {
-			return key, true
+		for _, tab := range a.chatTabs {
+			if tab.key == a.prev[at] && eligible(tab) {
+				return tab, true
+			}
 		}
 	}
-	return "", false
+	for at := len(a.chatTabs) - 1; at >= 0; at-- {
+		if tab := a.chatTabs[at]; eligible(tab) {
+			return tab, true
+		}
+	}
+	return chatTab{}, false
 }
 
 // tabShutKey records one conversation as dismissed from the row. The map is the
@@ -1141,6 +1139,10 @@ func (a *app) tabShutKey(key string) {
 	if key == "" {
 		return
 	}
+	// The reopen stack is written HERE, before the row is rebuilt below, because
+	// the row is where this conversation's address, workspace and name are kept
+	// (tabreopen.go's [app.rememberClosedTab]).
+	a.rememberClosedTab(key)
 	if a.tabShut == nil {
 		a.tabShut = map[string]bool{}
 	}
