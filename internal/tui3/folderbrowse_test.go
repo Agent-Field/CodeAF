@@ -94,7 +94,7 @@ func TestTheColumnsAreParentHereAndTheChildrenOfTheCursor(t *testing.T) {
 	if want := []string{"one", "two"}; strings.Join(child.names, ",") != strings.Join(want, ",") {
 		t.Fatalf("the children column holds %v, want %v", child.names, want)
 	}
-	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, -1), "\n"))
+	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, ""), "\n"))
 	for _, want := range []string{"deep", "one", "two", "here"} {
 		if !strings.Contains(drawn, want) {
 			t.Fatalf("%q is not on the sheet:\n%s", want, drawn)
@@ -218,6 +218,53 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 	}
 }
 
+// WHAT LIGHTS IS WHAT A PRESS ACTS ON. The three columns do three different
+// things to a press, so which of them the pointer is over is a question about x
+// — a band across the row would offer to do one of them wherever the pointer
+// happened to be.
+func TestThePointerLightsTheColumnItIsActuallyOver(t *testing.T) {
+	a, _, root := browseLab(t)
+	openBrowse(t, a, filepath.Join(root, "here"))
+	markedRowY(a, chromeOverlay, 0)
+	geom, row := a.folder.geom, a.folder.geom.head+1
+
+	for _, probe := range []struct {
+		where string
+		x     int
+		want  string
+	}{
+		{"the parent column", geom.up.from, folderColUp},
+		{"the middle column", geom.here.from + 2, folderColHere},
+		{"the children column", geom.kids.from, folderColKids},
+	} {
+		if got, ok := a.folderHoverColumn(probe.x, row); !ok || got != probe.want {
+			t.Errorf("%s at x=%d answered %q", probe.where, probe.x, got)
+		}
+	}
+	if got, _ := a.folderHoverColumn(0, 0); got != folderColCrumb {
+		t.Errorf("the breadcrumb row answered %q", got)
+	}
+	if got, _ := a.folderHoverColumn(0, geom.action); got != folderColRow {
+		t.Errorf("the action row is a whole-row target and answered %q", got)
+	}
+
+	// And only the middle column's row takes the band.
+	// The band is INK and not text, so the rows are compared unstripped: plain()
+	// would throw away the only thing that changed.
+	cold := a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, "")[row]
+	lit := func(col string) bool {
+		return a.folder.rows(a.width, a.overlayHeight(), a.pal, row, col)[row] != cold
+	}
+	if !lit(folderColHere) {
+		t.Fatal("the pointer over the middle column lights nothing")
+	}
+	for _, col := range []string{folderColUp, folderColKids} {
+		if lit(col) {
+			t.Fatalf("the pointer over the %s column lit a row it does not act on", col)
+		}
+	}
+}
+
 // THE WHEEL WALKS THE CURSOR over the sheet's own rows, and belongs to whatever
 // is under it anywhere else.
 func TestTheWheelWalksTheBrowserOverItsOwnRows(t *testing.T) {
@@ -247,7 +294,7 @@ func TestTheActionRowAddsTheFolderTheCursorIsOn(t *testing.T) {
 	openBrowse(t, a, filepath.Join(root, "here"))
 	drive(t, a, key("down")) // onto `deep`
 
-	rows := a.folder.rows(a.width, a.overlayHeight(), a.pal, -1)
+	rows := a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, "")
 	if a.folder.geom.action <= 0 {
 		t.Fatalf("the sheet drew no action row (%d)", a.folder.geom.action)
 	}
@@ -291,7 +338,7 @@ func TestAnUnreadableFolderSaysSoRatherThanLookingEmpty(t *testing.T) {
 	if a.folder.cols.here.err == nil {
 		t.Fatal("the refusal was flattened into an empty folder")
 	}
-	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, -1), "\n"))
+	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, ""), "\n"))
 	if !strings.Contains(drawn, folderClosedWord) {
 		t.Fatalf("the sheet says nothing about the refusal:\n%s", drawn)
 	}
@@ -301,7 +348,7 @@ func TestAnUnreadableFolderSaysSoRatherThanLookingEmpty(t *testing.T) {
 	// An empty folder IS the other word, on the same sheet.
 	empty := filepath.Join(root, "sibling")
 	openBrowse(t, a, empty)
-	drawn = plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, -1), "\n"))
+	drawn = plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, ""), "\n"))
 	if !strings.Contains(drawn, folderLeafWord) {
 		t.Fatalf("an empty folder says nothing:\n%s", drawn)
 	}
@@ -716,7 +763,7 @@ func TestTheBrowserFitsANarrowFrame(t *testing.T) {
 		if width < folderWideAt && up > 0 {
 			t.Fatalf("at %d cells the parent column was still drawn", width)
 		}
-		rows := a.folder.rows(width, a.overlayHeight(), a.pal, -1)
+		rows := a.folder.rows(width, a.overlayHeight(), a.pal, -1, "")
 		if len(rows) == 0 {
 			t.Fatalf("at %d cells the sheet drew nothing", width)
 		}
@@ -734,7 +781,7 @@ func TestTheBrowserFitsANarrowFrame(t *testing.T) {
 func TestTheSmallestSheetIsStillDirectories(t *testing.T) {
 	a, _, root := browseLab(t)
 	openBrowse(t, a, filepath.Join(root, "here"))
-	rows := a.folder.rows(a.width, 1, a.pal, -1)
+	rows := a.folder.rows(a.width, 1, a.pal, -1, "")
 	if len(rows) != 1 {
 		t.Fatalf("one row of frame drew %d rows", len(rows))
 	}

@@ -382,6 +382,44 @@ func (a *app) folderPress(x, y int) (tea.Cmd, bool) {
 	return a.folderWork(), true
 }
 
+// folderHoverColumn resolves a pointer on the sheet to WHICH COLUMN it is over,
+// and reports whether the sheet is drawing columns at all.
+//
+// It exists because what lights has to be what a press acts on (hover.go's law),
+// and on this sheet that is a question about x: the three columns walk out, move
+// the cursor and walk in. The action row and a candidate row are whole-row
+// targets and answer [folderColRow], which is the same answer every other list
+// down here gives.
+func (a *app) folderHoverColumn(x, row int) (string, bool) {
+	if !a.folder.open {
+		return "", false
+	}
+	geom := a.folder.geom
+	if !a.folder.browsing || row == geom.action {
+		return folderColRow, true
+	}
+	if geom.head > 0 && row == 0 {
+		return folderColCrumb, true
+	}
+	switch {
+	case geom.up.holds(x):
+		return folderColUp, true
+	case geom.kids.holds(x):
+		return folderColKids, true
+	}
+	return folderColHere, true
+}
+
+// The five things the pointer can be over on this sheet. They are the hover's
+// own alphabet and nothing else reads them.
+const (
+	folderColRow   = "row"
+	folderColCrumb = "crumb"
+	folderColUp    = "up"
+	folderColHere  = "here"
+	folderColKids  = "kids"
+)
+
 // folderWheel turns the wheel over the browser into a walk of whichever surface
 // is up, and reports whether it took the gesture. The window follows the cursor
 // here rather than an offset of its own, so scrolling and selecting are one act

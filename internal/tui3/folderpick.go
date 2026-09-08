@@ -782,7 +782,7 @@ func (f *folderPick) note(at, width int) string {
 // rows draws exactly n rows: the candidate list, or the columns — and under
 // either of them the action row, which is the one thing on this surface that
 // ADDS a folder rather than moving around one.
-func (f *folderPick) rows(width, n int, pal palette, hover int) []string {
+func (f *folderPick) rows(width, n int, pal palette, hover int, col string) []string {
 	if n <= 0 {
 		return nil
 	}
@@ -799,7 +799,7 @@ func (f *folderPick) rows(width, n int, pal palette, hover int) []string {
 	var body []string
 	switch {
 	case f.browsing:
-		body = f.columnRows(width, n, pal, hover)
+		body = f.columnRows(width, n, pal, hover, col)
 	case len(f.hits) == 0:
 		body = []string{pal.dim(folderPad + folderNoMatchWord)}
 		f.geom.body = 1
@@ -838,7 +838,7 @@ const folderNoMatchWord = "no folder matches · type a path to browse"
 // under the cursor on the right. No borders and no rules between them — the
 // columns are told apart by the gaps and by the ink, which is what every other
 // block on this surface does.
-func (f *folderPick) columnRows(width, n int, pal palette, hover int) []string {
+func (f *folderPick) columnRows(width, n int, pal palette, hover int, col string) []string {
 	out := make([]string, 0, n)
 	// THE BREADCRUMB IS THE FIRST ROW AND IS WORTH ONE ROW OF THE COLUMNS,
 	// because it is the only thing on the sheet that says where you are in one
@@ -862,7 +862,7 @@ func (f *folderPick) columnRows(width, n int, pal palette, hover int) []string {
 		if up > 0 {
 			line += folderCell(f.upText(row, up, pal), up) + " "
 		}
-		line += folderCell(f.hereText(row, here, pal, hover == row+f.geom.head), here)
+		line += folderCell(f.hereText(row, here, pal, col == folderColHere && hover == row+f.geom.head), here)
 		if kids > 0 {
 			line += " " + folderNameCell(child, row, kids, pal)
 		}
