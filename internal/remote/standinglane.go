@@ -185,8 +185,10 @@ func (sess *Session) pumpLane(s *server, name laneName, generation uint64, lane 
 			quiet = true
 			continue
 		}
-		// Publish attention before the event wakes a hidden conversation reader.
-		if factsMoved(event.Kind) {
+		// Publish attention before waking a hidden reader. The title frame already
+		// carries those facts; announcing a newer revision first would invalidate
+		// its replay before a new subscriber can receive the name.
+		if named == nil && factsMoved(event.Kind) {
 			sess.announce()
 		}
 		var payload []byte
@@ -198,7 +200,6 @@ func (sess *Session) pumpLane(s *server, name laneName, generation uint64, lane 
 		}
 		if err != nil {
 			continue
-
 		}
 		if err := s.send(Frame{Kind: string(name), Payload: payload}); err != nil {
 			quiet = true

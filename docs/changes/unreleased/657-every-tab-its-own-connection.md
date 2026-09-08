@@ -63,3 +63,7 @@ Sibling local-engine tabs retain the originating launch settings. Previously,
 reopening a tab created by Ctrl+T could fail the interactive-launch compatibility
 check and fall back onto the journal held by its own engine, leaving pending
 input unreachable behind a takeover wait. The ordinary reconnect rejoins it now.
+
+Title subscriptions replay the current name without a redundant newer attention
+snapshot invalidating the replay. Pending-question events still publish attention
+before waking hidden conversation readers.
