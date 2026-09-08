@@ -102,8 +102,8 @@ const (
 	// tabsCap is how many tabs the strip remembers. It is the switcher's own
 	// order it falls back on when it overflows, so the tab that goes is the one
 	// nobody has been in for longest.
-	tabsCap = 8
-	// tabsWord is the LABELLED control at the row's right end, and the label is
+	tabsCap = 32
+	// tabsWord is the LABELLED control after the visible tabs, and the label is
 	// the whole point of it: a bare `▾` floating at the end of a row of words is
 	// a mark nobody can read as a door. It opens the switcher `ctrl+k` opens,
 	// showing every conversation on this machine rather than only the ones this
@@ -164,7 +164,7 @@ const (
 	// press aimed at it can never be read as a press aimed at the label beside
 	// it (hover.go's law: what lights is exactly what the press acts on).
 	tabClose
-	// tabMore is the labelled control at the right end — the switcher, and the
+	// tabMore is the labelled control after the tabs — the switcher, and the
 	// count of what the row could not spell.
 	tabMore
 	// tabFold is that same count on a frame where the switcher cannot open. It
@@ -175,6 +175,8 @@ const (
 	tabFold
 	tabNew
 	tabHome
+	tabScrollLeft
+	tabScrollRight
 )
 
 // tabHit is where one piece was drawn and what pressing it does. It is the
@@ -194,7 +196,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabMore, tabNew, tabHome:
+	case tabOther, tabClose, tabMore, tabNew, tabHome, tabScrollLeft, tabScrollRight:
 		return true
 	}
 	return false
@@ -290,7 +292,7 @@ func (a *app) frontTabKey() string {
 // as long as the number of conversations this window has been in, which the
 // keeper deliberately does not cap (keeper.go). Sixty open conversations was
 // sixty times sixty comparisons per frame for a row that can only ever draw
-// eight. The pass now walks prev FROM THE MOST RECENT END and stops as soon as
+// the presentation cap. The pass walks prev FROM THE MOST RECENT END and stops as soon as
 // it has [tabsCap] candidates, which is the same answer — the cap below drops by
 // exactly that recency — without constructing an unbounded candidate list. The recency scan can still
 // walk older dismissed entries; only the candidate membership checks are bounded.
@@ -355,7 +357,7 @@ func (a *app) tabList() []chatTab {
 
 // tabsHold and keysHold are the two membership questions this file asks, walked
 // rather than mapped: the list being walked is bounded by [tabsCap] and a walk
-// of eight costs no allocation at all.
+// over the bounded candidates costs no allocation at all.
 func tabsHold(tabs []chatTab, key string) bool {
 	for _, tab := range tabs {
 		if tab.key == key {
@@ -458,14 +460,24 @@ func (a *app) tabsHeight(width int) int {
 	if width < roomHeadFloor || a.breathingRows() < 2 {
 		return 0
 	}
-	return 1 + 2*a.tabsLineRow()
+	return 1 + a.tabsLineRow() + a.tabsBottomPad()
 }
 
 // tabsLineRow leaves one row of air around the navigation on roomy frames.
 // Compact terminals keep the same controls without spending reading rows.
 func (a *app) tabsLineRow() int {
 	width, height := a.size()
-	if width >= 2*roomHeadFloor && height >= 2*airyFloor {
+	if width >= 4*roomHeadFloor && height >= 2*airyFloor {
+		return 1
+	}
+	return 0
+}
+
+// tabsBottomPad adds a second navigation gap only after the frame has earned
+// another four reading rows, so resizing never trades a larger body for chrome.
+func (a *app) tabsBottomPad() int {
+	width, height := a.size()
+	if width >= 4*roomHeadFloor && height >= 2*airyFloor+4 {
 		return 1
 	}
 	return 0
@@ -574,7 +586,7 @@ type tabPiece struct {
 	kind tabKind
 	tab  chatTab
 	// quiet says this piece is furniture — the rule between two tabs, or the gap
-	// that pushes the switcher to the right end. It answers to nothing and is
+	// beside the switcher. It answers to nothing and is
 	// painted at the row's quietest step.
 	quiet bool
 }
@@ -583,11 +595,9 @@ type tabPiece struct {
 func (a *app) tabSepWord() string   { return " " }
 func (a *app) tabCloseWord() string { return a.linearMark(tabCloseMark, tabCloseASCII) }
 
-// tabsFit lays the strip out in the cells it has, and the ladder it walks is one
-// law: THE TAB THAT IS UP IS ALWAYS ON THE STRIP. What gives way is the tabs at
-// the ends, and they give way to a count at the right end — never to silence,
-// because a strip that quietly drew three of somebody's six conversations would
-// be a strip that says they have three.
+// tabsFit keeps names readable and exposes overflow through a scrolling window.
+// Selection is revealed unless the person explicitly browsed away from it; the
+// hidden count and directional controls describe everything outside that window.
 func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 	if room <= 0 || len(tabs) == 0 {
 		return nil, nil
@@ -604,7 +614,7 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 		}
 	}
 	sepW := ansi.StringWidth(a.tabSepWord())
-	// The right end is reserved BEFORE the fitting, because a control squeezed in
+	// The controls are reserved BEFORE the fitting, because a control squeezed in
 	// afterwards would be a control drawn over the last tab's own cells. What it
 	// asks for is the widest spelling it could want; what it gets is decided
 	// again once the tabs have taken their share ([app.tabsMoreWord]).
@@ -623,7 +633,7 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 	// so the widths a hover reads are the widths the layout wrote.
 	cell := budget
 	if len(tabs) > 1 {
-		cell = max(tabWordFloor+tabCloseCells+tabInsetCells, min(tabWordCap, (budget-sepW*(len(tabs)+1))/len(tabs)))
+		cell = min(tabWordCap, budget-2*sepW)
 	}
 	words := make([]string, len(tabs))
 	widths := make([]int, len(tabs))
@@ -634,30 +644,29 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 		}
 		widths[at] = ansi.StringWidth(words[at]) + tabInsetCells + tabCloseCells
 	}
-	from, to := active, active+1
-	for start := 0; start <= active; start++ {
-		at, end := 0, start
-		for i := start; i < len(tabs); i++ {
-			if widths[i] == 0 || at+sepW+widths[i]+sepW > budget {
-				break
-			}
-			at, end = at+sepW+widths[i], i+1
-		}
-		if end > active {
-			from, to = start, end
-			break
-		}
+	from, to, scroll := a.tabWindow(tabs, widths, budget, active)
+	windowBudget := budget
+	if scroll {
+		windowBudget -= 2 * tabArrowCells
 	}
 	pieces := make([]tabPiece, 0, 3*(to-from)+3)
 	hits := make([]tabHit, 0, 2*(to-from)+1)
 	at := 0
+	if scroll {
+		piece, hit := a.tabArrowPiece(false, from > 0, at)
+		pieces = append(pieces, piece)
+		if hit != nil {
+			hits = append(hits, *hit)
+		}
+		at += tabArrowCells
+	}
 	for i := from; i < to; i++ {
 		word := words[i]
 		if to-from == 1 {
 			// The one tab that is left takes whatever the row has, cut. A name with
 			// an ellipsis in it still says which conversation this is; a blank row
 			// says nothing at all.
-			word = a.tabName(tabs[i], budget-tabCloseCells-tabInsetCells-2*sepW)
+			word = a.tabName(tabs[i], windowBudget-tabCloseCells-tabInsetCells-2*sepW)
 		}
 		width := ansi.StringWidth(word) + tabInsetCells
 		if width == tabInsetCells {
@@ -683,36 +692,39 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 		pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
 		at += sepW
 	}
-	// AND THE SWITCHER SITS AT THE ROW'S RIGHT END, pushed there by a gap that is
-	// furniture. Right-aligned because it is not one of the tabs and must not
-	// read as the next one along.
+	if scroll {
+		arrowAt := budget - tabArrowCells
+		if at < arrowAt {
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", arrowAt-at), quiet: true})
+		}
+		piece, hit := a.tabArrowPiece(true, to < len(tabs), arrowAt)
+		pieces = append(pieces, piece)
+		if hit != nil {
+			hits = append(hits, *hit)
+		}
+		at = budget
+	}
+	// New chat follows the visible names. A scrolling viewport uses its whole
+	// budget, placing these same controls at the edge without a second layout.
+	if showNew {
+		pieces = append(pieces, tabPiece{word: " + ", kind: tabNew})
+		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + 3}, kind: tabNew})
+		at += 3
+	}
 	hidden := len(tabs) - (to - from)
 	word, kind := a.tabsMoreWord(hidden, false), tabMore
 	if !a.hopAvailable() {
 		word, kind = a.tabsFoldWord(hidden), tabFold
 	}
 	for width := ansi.StringWidth(word); width > 0; width = ansi.StringWidth(word) {
-		if at+tabsMoreGap+width <= room {
-			gap := room - at - width
-			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", gap), quiet: true})
-			at += gap
+		if at+tabsMoreGap+width <= fullRoom {
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabsMoreGap), quiet: true})
+			at += tabsMoreGap
 			pieces = append(pieces, tabPiece{word: word, kind: kind})
 			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: kind})
 			break
 		}
 		word = a.tabsShorter(word, hidden)
-	}
-	if showNew {
-		used := 0
-		for _, piece := range pieces {
-			used += ansi.StringWidth(piece.word)
-		}
-		from := fullRoom - 3
-		if used < from {
-			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", from-used), quiet: true})
-		}
-		pieces = append(pieces, tabPiece{word: " + ", kind: tabNew})
-		hits = append(hits, tabHit{span: hudSpan{from: from, to: fullRoom}, kind: tabNew})
 	}
 	return pieces, hits
 }
@@ -799,7 +811,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabMore && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabMore && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
@@ -811,17 +823,19 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				word = a.pal.underline(word)
 			}
 			line += word
-		case piece.kind == tabMore || piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome:
+		case piece.kind == tabMore || piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome || piece.kind == tabScrollLeft || piece.kind == tabScrollRight:
 			if lit && hot.kind == piece.kind {
 				word := piece.word
 				if a.pal.profile < tokens.ANSI256 {
 					switch piece.kind {
 					case tabHome:
-						word = "[Home]"
+						word = a.linearMark("·", ".") + "Home "
 					case tabNew:
-						word = "[+]"
+						word = a.linearMark("·", ".") + "+ "
 					case tabMore:
 						word = strings.ToUpper(word)
+					case tabScrollLeft, tabScrollRight:
+						word = a.linearMark("·", ".") + strings.TrimSpace(word) + " "
 					}
 				}
 				line += a.pal.cursor(a.pal.ink(word), 0)
@@ -982,6 +996,12 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	switch hit.kind {
+	case tabScrollLeft:
+		a.tabScroll(-1)
+		return nil, true
+	case tabScrollRight:
+		a.tabScroll(1)
+		return nil, true
 	case tabHome:
 		return a.openHome(), true
 	case tabNew:
@@ -999,6 +1019,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	case tabClose:
 		return a.tabDismiss(hit.tab), true
 	case tabHere:
+		a.tabReveal()
 		if hit.tab.start {
 			return nil, true
 		}
@@ -1019,6 +1040,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // refusals said in the same words, because one gesture with two spellings of
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
+	a.tabReveal()
 	if tab.start {
 		return a.openChatStart()
 	}
@@ -1061,6 +1083,7 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 //     conversation and a row claiming otherwise would be a row that lies the
 //     moment `esc` comes back to it.
 func (a *app) tabDismiss(tab chatTab) (cmd tea.Cmd) {
+	a.tabReveal()
 	if tab.start {
 		return a.cancelChatStart()
 	}

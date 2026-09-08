@@ -35,7 +35,7 @@ func tabWords(a *app) []string {
 	for _, hit := range a.chatTabHits {
 		// The close cells are a target of their own on every tab (chattabs.go),
 		// so a walk of the hit map that counted them would count every tab twice.
-		if hit.kind == tabMore || hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabHome {
+		if hit.kind == tabMore || hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabHome || hit.kind == tabScrollLeft || hit.kind == tabScrollRight {
 			continue
 		}
 		words = append(words, hit.tab.word)
@@ -201,7 +201,7 @@ func TestANarrowStripKeepsTheTabInFrontAndCountsWhatItHid(t *testing.T) {
 		if len(tabWords(a)) == 3 {
 			continue // everything is spelled; there is nothing hidden to mark
 		}
-		if !strings.Contains(strip, glyphMore) {
+		if !strings.Contains(strip, glyphMore) && !strings.Contains(strip, tabHiddenLead+itoa(len(a.chatTabs)-len(tabWords(a)))) {
 			t.Fatalf("at %d columns the strip dropped tabs in silence:\n%q", width, strip)
 		}
 	}

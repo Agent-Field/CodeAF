@@ -245,8 +245,8 @@ aligned, each row with its alias tail. The first line is the product's own name,
 `aforge` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
-`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `alt+t` (the task roster),
-`ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
+`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
+`alt+t` (the task roster), `ctrl+l`, `alt+backspace` (the word kill), `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
 

@@ -61,7 +61,7 @@ func TestSwitcherSurfaceHasInsetAirAndSeparateSelectionAndHover(t *testing.T) {
 			t.Fatal("roomy card crowds its top or bottom outline")
 		}
 		selected, hovered := lines[a.hop.spots[0].row], lines[a.hop.spots[1].row]
-		if !strings.HasPrefix(plain(selected), "│> ") || !strings.HasPrefix(plain(hovered), "│ ·") {
+		if !strings.HasPrefix(plain(selected), "│>  1") || !strings.HasPrefix(plain(hovered), "│ · 2") {
 			t.Fatal("hover is indistinguishable from the keyboard destination")
 		}
 		if profile == tokens.NoColor {
@@ -86,7 +86,7 @@ func TestSwitcherSurfaceUsesTheAsciiFloor(t *testing.T) {
 	a.pal = newPalette(tokens.NoColor, true)
 	a.hot = hoverAt{kind: hoverHop, index: 0}
 	lines := a.hopCardLines(40, 16, a.pal)
-	if !strings.HasPrefix(lines[0], "+---") || !strings.HasPrefix(lines[a.hop.spots[0].row], "|>.") {
+	if !strings.HasPrefix(lines[0], "+---") || !strings.HasPrefix(lines[a.hop.spots[0].row], "|>. 1") {
 		t.Fatal("ASCII outline, selection or hover marker was lost")
 	}
 }

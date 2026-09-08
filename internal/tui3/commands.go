@@ -1036,6 +1036,14 @@ func helpText(file string, chords chordSpelling) string {
 		// under the other modifier (task.go's [railHoldChord]), which is the smallest
 		// move a hand has to make and the modifier its own widen chord already uses.
 		helpKeyRow(newChatChord, "a new chat, beside this one · your draft and its work stay put · esc back"),
+		// AND THE OTHER DIRECTION, ON THE ROW UNDER IT. The two chords are one
+		// gesture, so they are read together here as they are in input.go, and the
+		// row says what the key does NOT do — because "close" is the word people
+		// fear on a conversation that has an hour of work in it.
+		// AND THE ROW MAY NOT SPELL `ctrl+k` (escword_test.go finds the switcher's own
+		// row by that prefix, and a second row carrying it is a second answer to the
+		// question that test asks). The card is named by what it is instead.
+		helpKeyRow(closeTabChord, "close this tab · the work keeps running · your draft is kept · the switcher reopens it"),
 		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
@@ -1056,7 +1064,11 @@ func helpText(file string, chords chordSpelling) string {
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
 		"space space    over an empty box: home · /home · esc back",
-		"ctrl+w         delete the word behind the caret · ctrl+u the line",
+		// THE WORD KILL IS NAMED BY THE KEYS THAT STILL REACH THE BOX. ctrl+w was
+		// on this row until it became the close-tab chord above, and a sheet that
+		// went on offering it would be teaching a keystroke that shuts the window
+		// you are typing in.
+		"alt+backspace  delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",

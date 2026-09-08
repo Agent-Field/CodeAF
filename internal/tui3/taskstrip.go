@@ -286,7 +286,19 @@ func (a *app) stripRows(width int) []string {
 	if door, ok := a.stripPhoneDoor(width); ok {
 		return []string{door, ""}
 	}
-	if row := a.stripRowText(width, a.stripNodes()); row != "" {
+	if row := a.stripRowText(gutterInner(width), a.stripNodes()); row != "" {
+		// The chip keeps its own inner padding inside the reading gutter. Its
+		// pointer targets move with the row, and every layout resets them above
+		// so repeated hover reads cannot accumulate an extra indent.
+		lead := textGutterCols(width)
+		if lead > 0 {
+			row = strings.Repeat(" ", lead) + row
+			for i := range a.stripSpans {
+				a.stripSpans[i].span = a.stripSpans[i].span.shift(lead)
+			}
+			a.stripMore = a.stripMore.shift(lead)
+			a.stripHarn = a.stripHarn.shift(lead)
+		}
 		return []string{row, ""}
 	}
 	return nil

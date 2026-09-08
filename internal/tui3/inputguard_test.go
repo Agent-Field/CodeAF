@@ -242,11 +242,17 @@ func TestAStandingCardArrivingTakesHomeDownLikeTheQuestionsAboveIt(t *testing.T)
 
 // ── the deletion keys ───────────────────────────────────────────────────────
 
-// EVERY NAME A TERMINAL SENDS THEM BY. A word kill that only answered to ctrl+w
-// is a word kill most people never find: alt+backspace is what a Mac keyboard
-// does, ctrl+backspace is what Windows does, and cmd+delete is the line kill.
+// EVERY NAME A TERMINAL SENDS THEM BY. A word kill that only answered to one
+// spelling is a word kill most people never find: alt+backspace is what a Mac
+// keyboard does, ctrl+backspace is what Windows does, and cmd+delete is the line
+// kill.
+//
+// ctrl+w IS NOT ON THIS LIST ANY MORE and it is not an omission: it is the chord
+// that shuts the tab in front now (tabclosekey.go), read far above the box, and
+// tabclosekey_test.go holds both halves of that trade. It still edits the filter
+// of every modal overlay, which the test below this one walks.
 func TestTheWordAndLineKillsAnswerToEveryNameTheySendUnder(t *testing.T) {
-	for _, name := range []string{"ctrl+w", "alt+backspace", "ctrl+backspace"} {
+	for _, name := range []string{"alt+backspace", "ctrl+backspace"} {
 		_, a := wired(nil)
 		a.input.setText("read the config file")
 		drive(t, a, key(name))

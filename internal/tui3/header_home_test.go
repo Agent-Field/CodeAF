@@ -73,14 +73,16 @@ func TestHeaderPaddingIsInertAndHomeHasPlainHover(t *testing.T) {
 			t.Fatal("Home padding is not part of the target")
 		}
 		a.hot = hot
-		if !strings.Contains(plain(a.tabsRow(a.width)), "[Home]") {
+		if !strings.Contains(plain(a.tabsRow(a.width)), "·Home ") {
 			t.Fatal("Home has no plain-terminal hover feedback")
 		}
 	}
 }
 
 func TestHeaderHomeAndPaddingAdaptWithoutLosingActiveTab(t *testing.T) {
-	a, _, _ := tabApp(t)
+	lab := newStartLab(t)
+	a := lab.app()
+	keepThree(t, a)
 	a.resume = func(string) (Agent, error) { return nil, nil }
 	for _, width := range []int{12, 20, 24, 40, 80, 160} {
 		for _, height := range []int{16, 31, 32, 50} {
@@ -100,8 +102,11 @@ func TestHeaderHomeAndPaddingAdaptWithoutLosingActiveTab(t *testing.T) {
 				t.Fatalf("lost active tab at %dx%d: %q", width, height, plain(line))
 			}
 			want := 1
-			if width >= 24 && height >= 32 {
-				want = 3
+			if width >= 48 && height >= 32 {
+				want++
+			}
+			if width >= 48 && height >= 36 {
+				want++
 			}
 			if a.tabsHeight(width) != want {
 				t.Fatalf("wrong header budget at %dx%d", width, height)
@@ -136,5 +141,20 @@ func TestPlainHeaderHoverChangesEveryActionWithoutMovingItsTarget(t *testing.T) 
 		}
 		a.hot = hoverAt{}
 		_ = a.tabsRow(a.width)
+	}
+}
+
+func TestHeaderAirDoesNotShrinkReadingWhenTerminalGrows(t *testing.T) {
+	a := headRoom(t)
+	a.width = 80
+	previous := 0
+	for height := 30; height <= 45; height++ {
+		a.height = height
+		a.touch()
+		available := height - a.headHeight()
+		if previous > available {
+			t.Fatalf("header took reading rows on growth to %d: %d -> %d", height, previous, available)
+		}
+		previous = available
 	}
 }

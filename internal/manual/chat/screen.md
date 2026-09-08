@@ -81,7 +81,7 @@ while preserving the content's indentation.
 tabs in a row of their own, with a thin rule separating navigation from reading:
 
 ```
-  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×    Chats ▾  +
+  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +  Chats ▾
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -93,23 +93,37 @@ and has stronger text; brackets identify it on
 terminals without background color. **Every tab reacts to the pointer**,
 including the one you are already in, and the highlight it wears as the *chosen* tab stays
 put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
-close mark; Home and `+` gain brackets and Chats changes to uppercase.
+close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats changes to uppercase.
 
 **Clicking a tab goes to that conversation** — the same switch `ctrl+k` makes. Clicking the
 tab you are already in does nothing while you are in the conversation itself, and takes you
 back out to it from a task page.
 
-**The order never changes as you switch.** Tabs sit in the order this window first entered
-them, so the one you reached for a minute ago is still in the same place. At most eight are
-kept; past that the one you have not been in for longest falls off, and the tab you are in
-never does.
+## Many open conversation tabs — horizontal scrolling, overflow, and readable names
 
-**`Chats ▾` at the right end opens the switcher** — the same card `ctrl+k` opens, with
+**The order never changes as you switch.** Tabs sit in the order this window first entered
+them, so the one you reached for a minute ago is still in the same place. At most 32 are
+remembered; past that the one you have not been in for longest falls off, and the tab you
+are in never does. This is a presentation limit, not a limit on running work or history.
+
+**Many tabs scroll horizontally instead of shrinking their names.** On a roomy strip,
+`‹` and `›` appear at the edges when more tabs exist in that direction (`<` and `>` in
+ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
+the names. This changes neither the conversation, its draft nor the transcript position.
+The selected tab may leave view while you browse; choosing a conversation or closing a
+tab brings the selection back. Narrow frames keep the selected tab and `Chats` fallback
+without spending its name on arrows.
+
+**`+` and `Chats ▾` follow the last visible tab**, with small gaps between their
+targets. They stay beside a short row of tabs; when the row fills, the tabs scroll
+and the controls remain at its edge. **`Chats ▾` opens the switcher** — the same card `ctrl+k` opens, with
 every conversation on this machine in it, its fold already open. Where the row is too
 narrow for every tab the control reads `Chats +3 ▾`, counting the tabs that did not fit.
 On a narrower frame it drops the `▾`, then the count, and keeps the word `Chats`: the
 word is what says it is a door. Where the switcher cannot open at all, the count is drawn
 alone (`+3`) and does nothing, because it is still true.
+
+## What stays alive when switching tabs — saved drafts, compact headers, and Home
 
 **A tab does not claim the conversation is running.** It says this window has been there
 and one press goes back. Over an engine-backed connection (`--host`, `--at`, and the
@@ -127,10 +141,10 @@ for a blank row above the message box — for the same reason the room header do
 rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
 a seam is the cheapest thing on the frame to give up.
 
-On frames at least 24 columns by 32 rows, a blank row above and below the tabs gives
-navigation its own space. Task breadcrumbs follow below, with one blank row after
-their status line before the conversation. Smaller terminals collapse this vertical
-padding first. The blank rows and gaps cannot activate the content beneath them.
+On frames at least 48 columns wide, a blank row above the tabs appears at 32 rows,
+one below at 36 rows, and one after task metadata at 40 rows. These separate steps
+keep the reading area from shrinking as the window grows. Smaller terminals collapse
+the vertical padding. Blank tab rows and gaps cannot activate the content beneath them.
 
 **Home at the left opens the home page**, keeping your conversation and unsent words.
 It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
@@ -207,7 +221,8 @@ Where you end up depends on which tab it was:
 **The last tab can be dismissed.** It takes you Home. It does not quit aforge and it throws
 nothing away.
 
-**`ctrl+w` on the switcher card does the same thing** to the row under the cursor. Ending
+**`ctrl+w` closes the current tab**, preserving its draft and running work. On the
+switcher card it closes the row under the cursor instead. Ending
 work is `Stop` on a task's page; ending aforge is `/quit`.
 
 ## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
@@ -3306,3 +3321,24 @@ Two limits worth knowing. The fence is only read as one when it **opens the repl
 `<think>` written in the middle of a paragraph is a model talking about the tag, and your
 answer keeps its own words. And a fence that is opened and never closed leaves a reply with
 no words outside it, which is the case above: the working is the reply.
+
+
+## Task header status, timing, model and cost after breadcrumbs
+
+The task breadcrumb keeps the current task bright and its ancestors quieter. When
+space allows, it reserves a padded Back target by folding middle ancestors first.
+The next row groups the outcome, elapsed time and activity on the left, with model,
+effort and cost on the right. Stop stays at the far right while it is available.
+All known facts fit on this one row on roomy frames; narrow frames use the existing
+priority order and shorter labels. Unknown figures are absent.
+
+When the task rail folds into compact chips, that row shares the task page's
+reading margin. The chips retain their own inner padding; phone windows keep
+the full-row task door.
+
+## Stopped design task has a saved answer but an empty conversation
+
+A finished or stopped design task shows its saved report when there are no
+conversation messages to display. An older progress notice cannot hide that
+answer. While work is still running, the task continues to show its current
+progress and original prompt as they become available.

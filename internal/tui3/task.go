@@ -2397,7 +2397,7 @@ const railHoldChord = chordAltWord + "t"
 // THE KEY IS FREE AND IT IS THE LAST FREE ONE WORTH SPENDING. alt+t is the
 // roster's ([app.railKey]) and every other letter this surface could reach for
 // is a chord the message box already answers — ctrl+a, ctrl+e, ctrl+b, ctrl+f,
-// ctrl+u and ctrl+w are the readline edits a person types without looking, and
+// and ctrl+u are the readline edits a person types without looking, and
 // taking one of those for a sidebar would be a keystroke that deleted a word the
 // first time somebody meant it. ctrl+g is readline's abort, which this surface
 // has always spelled esc, so nothing is lost by binding it.

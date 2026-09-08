@@ -537,6 +537,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// AND `ctrl+w` SHUTS ONE AT THE SAME RUNG AND FOR THE SAME REASONS
+	// (tabclosekey.go's [app.closeTabKey]). The two chords are one gesture with two
+	// directions, so they are read side by side: under every modal, panel and page
+	// above — the switcher's own ctrl+w puts a row away and each filterable overlay
+	// edits its search with it, and all of them are looking at the person who
+	// pressed it — and over the box below, because a chord is never a letter of
+	// anybody's sentence. What it takes from the box is readline's spelling of the
+	// word kill; `alt+backspace` and `ctrl+backspace` are the two names a hand
+	// actually presses and both still reach the switch below.
+	if cmd, taken := a.closeTabKey(msg); taken {
+		return cmd
+	}
+
 	// tab is the path completion's key: "/image " with tab after it offers this
 	// directory's files, and tab again takes the one under the cursor
 	// (files.go). It is read before the lists below because everything above it
@@ -906,12 +919,21 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.input.killToStart()
 		a.editTags(from, to, 0)
 		return a.edited()
-	case "ctrl+w", "alt+backspace", "ctrl+backspace":
-		// DELETE THE WORD BEHIND THE CARET, under all three of its names.
-		// ctrl+w is readline's; alt+backspace is the one both macOS and every
-		// GTK/Qt text field agree on, and it is the one people actually press;
-		// ctrl+backspace is Windows' and the terminals that speak the kitty
-		// protocol send it faithfully.
+	case "alt+backspace", "ctrl+backspace":
+		// DELETE THE WORD BEHIND THE CARET, under both of the names that reach
+		// this box. alt+backspace is the one both macOS and every GTK/Qt text
+		// field agree on, and it is the one people actually press; ctrl+backspace
+		// is Windows' and the terminals that speak the kitty protocol send it
+		// faithfully.
+		//
+		// ctrl+w IS READLINE'S THIRD NAME FOR THIS EDIT AND IT NO LONGER ARRIVES
+		// HERE. It is the chord that shuts the tab in front now, read far above
+		// this switch (tabclosekey.go's [app.closeTabKey]) — the key every browser
+		// closes a tab with, on a strip that is drawn as tabs, beside the ctrl+t
+		// that opens one. Listing it here as well would be a case that can never
+		// run and a comment that says the opposite of what the surface does. It
+		// still edits the FILTER of every overlay that has one, because those boxes
+		// are modal above that rung and read their own keys (editkeys.go).
 		//
 		// ctrl+h is deliberately NOT here. A terminal in backspace-sends-BS mode
 		// delivers a plain backspace as ctrl+h (ultraviolet's key table maps

@@ -586,6 +586,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work |
+| `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Nothing is closed and nothing is interrupted; the draft is kept and `ctrl+k` brings it back |
 | `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `ctrl+e` | Empty box: open or close the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
@@ -615,8 +616,8 @@ not on the row your terminal wrapped it onto. `up` only reaches history when the
 caret is on the first logical line, and `down` only when it is on the last.
 
 A word jump crosses the same boundary the word kill deletes: spaces first, then
-the run of non-spaces, so `alt+left` then `ctrl+w` always deletes exactly the
-word it just crossed.
+the run of non-spaces, so `alt+left` then `alt+backspace` always deletes exactly
+the word it just crossed.
 
 ## Click to move the cursor — clicking the message box places the caret
 
@@ -680,7 +681,7 @@ memory panel, the connect key box, the connections panel.
 | `alt+right` / `alt+f` / `ctrl+right` | A word forward |
 | `super+left` / `meta+left` / `ctrl+a` | Start of the line |
 | `super+right` / `meta+right` | End of the line |
-| `alt+backspace` / `ctrl+backspace` / `ctrl+w` | Delete the word behind the caret |
+| `alt+backspace` / `ctrl+backspace` | Delete the word behind the caret. `ctrl+w` does it too in every filter and search box — but **not** in the message box, where it closes the tab |
 | `ctrl+u` | Delete to the start of the line |
 
 This did not used to be true: until this wave the jumps were bound in the message
@@ -729,15 +730,51 @@ at and filtered, not edited by pointer.
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
-| `ctrl+w` | Delete the word behind the caret. While the switcher is up it puts the conversation under the cursor away instead — off the tab row, with work preserved |
-| `alt+backspace` | Same as `ctrl+w` |
-| `ctrl+backspace` | Same as `ctrl+w` |
+| `alt+backspace` | Delete the word behind the caret. This is the word kill in the message box |
+| `ctrl+backspace` | Same as `alt+backspace` |
+| `ctrl+w` | **Not a deletion here.** It closes the tab in front, with the work and the draft kept — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it puts a conversation away |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
-All five of the kills above work the same way in **every** box aforge has, not
-only the message box: the model picker, the sessions roster, the deliverables
-list, the connect key box and panel, the memory panel, the settings filter and
-its value editor, and the task page's filter.
+The kills above work the same way in **every** box aforge has, not only the
+message box: the model picker, the sessions roster, the deliverables list, the
+connect key box and panel, the memory panel, the settings filter and its value
+editor, and the task page's filter. In those boxes `ctrl+w` is a word kill too —
+they are the whole screen while they are up, and no tab could be closed from
+inside one.
+
+## Close the tab you are in — ctrl+w, close a chat, shut this conversation
+
+**`ctrl+w` closes the tab in front, and it is exactly the `✕` on that tab.**
+`ctrl+t` opens a tab and `ctrl+w` shuts one, which is what those two keys do in
+a browser.
+
+What it does *not* do is the point:
+
+- **Nothing is closed and nothing is interrupted.** The agent goes on running,
+  anything running in it keeps going, and the transcript is untouched.
+- **Your unsent sentence and its caret are kept**, along with the attachments in
+  its tray and where you were reading.
+- **The conversation is still there.** `ctrl+k` lists it, home lists it, and
+  going back to it brings the tab and the draft with it.
+
+Where you land depends on what else this window holds. With another conversation
+open, that one comes forward. With none — or on a `--host` connection, which
+holds one conversation at a time — the window goes to **home**, with the
+conversation still alive behind it. So pressing it over and over is clicking the
+`✕` over and over, and it can never cost you work.
+
+**On the new chat page it closes that page**, exactly as `esc` does: the page
+comes down, the conversation you were in comes back with its draft and its work,
+and the first message you had half typed is parked for the next time you open it.
+
+Ending a conversation for good is a different act, and this key is not it:
+`Stop` on a task's page ends that work, and `/quit` closes the conversation in
+front. See *Put a conversation away from the switcher* below, which is the same
+gesture aimed at a row on the `ctrl+k` card instead of at the tab in front.
+
+The trade is that `ctrl+w` no longer deletes a word in the message box.
+**`alt+backspace` and `ctrl+backspace` still do**, and one of the two reaches
+aforge on every terminal.
 
 ## Why cmd+backspace does nothing — which terminal you are in decides
 
@@ -761,7 +798,9 @@ sitting, that is the key to use instead — nothing is missing and there is noth
 to turn on inside aforge.
 
 The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
-`ctrl+w` is *their* everywhere-spelling. On iTerm2's Natural Text Editing preset
+between the two of them every terminal sends one — which is what makes it safe
+for `ctrl+w`, their old third spelling, to close the tab instead. On iTerm2's
+Natural Text Editing preset
 `⌥⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
 aforge does not detect what your terminal sends and cannot tell you which of
 these it will deliver; the only test is pressing it.
@@ -1537,7 +1576,8 @@ has that one row, and the fold has the rest of the machine in it.
 this window has been in are drawn there, the one you are in bright and underlined;
 clicking one switches to it, and the `Chats ▾` control (or `Chats +3 ▾` where the row is
 too narrow for every tab) at its right end opens this card with its fold already open. The
-`×` on a tab puts that conversation away without closing it. See *Conversation tabs* and
+`×` on a tab puts that conversation away without closing it, and `ctrl+w` is that `×` on
+the tab you are in. See *Conversation tabs* and
 *Closing a tab* on the screen page.
 
 | Key | What it does |
@@ -1637,6 +1677,10 @@ unlooked-at — and waits for your choice.
 **`ctrl+w` on the row takes that conversation off this window's tab row, and does nothing
 else.** The card stays up and says `put away — still running`, so tidying three of them
 costs three keystrokes rather than three openings.
+
+It is the same key that closes the tab you are in when no card is up (*Close the tab you
+are in*, above) — one gesture, aimed at whatever is in front of you: a row while the
+switcher is open, the tab in front when it is not.
 
 **It does not close anything.** The conversation goes on running, its unsent sentence and
 caret are kept, its transcript is untouched, and its row stays on this very card — `enter`
@@ -2502,10 +2546,10 @@ Two more chords surprise people:
   terminal's selection away, and copy mode is what buys it back.
 - **`ctrl+e` means two things** depending on whether the box is empty: end of line
   when there is text, open the most recent thinking block when there is not.
-- **`ctrl+w` means two things**, and never on the same screen: in the message box it
-  deletes the word behind the caret; while the **switcher** is up it closes the
-  conversation under the cursor. The card has taken the whole keyboard by then, and there
-  is no caret on it to delete a word behind.
+- **`ctrl+w` means two things**, and never on the same screen: in a conversation it closes
+  the tab in front; while the **switcher** is up it puts the conversation under the cursor
+  away. The card has taken the whole keyboard by then. In the message box the word kill it
+  used to be is `alt+backspace`.
 - **`ctrl+k` means two things**, and never on the same screen: it opens the switcher, and
   inside a harness design's room, while its approval row is up, it saves the design. That
   row is modal and takes the key first.

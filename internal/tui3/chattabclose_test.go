@@ -313,7 +313,7 @@ func TestCtrlWOnTheSwitcherPutsTheRowAwayWithoutClosingIt(t *testing.T) {
 
 // ── THE `Chats` CONTROL ─────────────────────────────────────────────────────
 
-// IT IS LABELLED, IT IS AT THE RIGHT END, AND IT OPENS THE SWITCHER ON EVERY
+// IT IS LABELLED, IT FOLLOWS THE TABS, AND IT OPENS THE SWITCHER ON EVERY
 // CHAT — not on the ones this window happens to hold.
 func TestTheChatsControlOpensTheSwitcherOnEveryChat(t *testing.T) {
 	a, _, _ := tabApp(t)
@@ -330,7 +330,7 @@ func TestTheChatsControlOpensTheSwitcherOnEveryChat(t *testing.T) {
 	if more.span.to == 0 {
 		t.Fatalf("the row drew no switcher control:\n%q", strip)
 	}
-	// It is at the right end, not in the run of tabs.
+	// It ends the run of navigation controls, after the tabs and new-chat door.
 	if more.span.to < ansi.StringWidth(strip)-1 {
 		t.Fatalf("the control is not right-aligned: %+v on a %d-cell row", more.span, ansi.StringWidth(strip))
 	}

@@ -417,7 +417,7 @@ func (a *app) frameBody() (string, int, int) {
 			rows = append(rows, "")
 		}
 		rows = append(rows, tabs)
-		if a.tabsLineRow() > 0 {
+		if a.tabsBottomPad() > 0 {
 			rows = append(rows, "")
 		}
 		// AND THE SEAM UNDER THEM OUT IN THE CONVERSATION, where there is no trail

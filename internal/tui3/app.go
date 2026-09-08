@@ -1488,6 +1488,7 @@ type app struct {
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
 	chatTabBar tabBar
+	tabView    tabViewport
 	// tabShut is the conversations whose TAB has been dismissed — the whole of
 	// the new state the ✕ on a tab costs (chattabs.go's [app.tabDismiss]). The
 	// conversation itself is untouched: still held, still running, still on the
@@ -3088,6 +3089,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.MouseWheelDown:
 				a.expandScroll(3)
 			}
+			return a, nil
+		}
+		// A wheel over conversation tabs browses their names without moving the
+		// transcript or changing the conversation below them.
+		if a.tabWheel(msg) {
 			return a, nil
 		}
 		// The roster over the body is the same claim one step earlier: while it

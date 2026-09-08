@@ -126,10 +126,8 @@ const (
 // exactly the shape the arm existed to apologise for. Ending work is `Stop` on a
 // task's own page, and ending the program is `/quit`.
 //
-// IT MEANS SOMETHING ELSE IN THE MESSAGE BOX — delete the word behind the caret
-// (input.go) — and that is not a collision: the card has taken the whole
-// keyboard while it is up, and there is no caret on it to delete a word behind.
-// The manual's page about chords that mean more than one thing carries the pair.
+// Outside the switcher, the same chord closes the current tab. Modal search
+// fields retain their word-delete edit while they own the keyboard.
 const hopAwayKey = chordCtrlWord + "w"
 
 // hopAlias and hopBackAlias are the muscle memory, bound ONLY where the terminal
@@ -1021,7 +1019,7 @@ const (
 	// visible past both edges, which is what says the page is still there.
 	hopSideInset = 6
 	// hopPad is the air inside the box, between its border and its rows.
-	hopPad = 2
+	hopPad = 3
 	// The fixed columns, in cells.
 	hopGlyphCol   = 2
 	hopSubjectCol = 34
@@ -1088,12 +1086,13 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 		}
 		if hovered {
 			// Hover and selection keep separate cells, so reading another row does
-			// not pretend that Enter has changed its destination.
+			// not pretend that Enter has changed its destination. The last padding
+			// cell stays blank so neither marker touches the row number.
 			mark := "·"
 			if pal.ascii {
 				mark = "."
 			}
-			left = ansi.Cut(left, 0, hopPad-1) + pal.accent(mark)
+			left = ansi.Cut(left, 0, 1) + pal.accent(mark) + pad[2:]
 		}
 		body := left + line + pad
 		switch {

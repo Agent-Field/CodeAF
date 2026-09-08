@@ -1998,9 +1998,12 @@ height calculation. Home is a capability check in memory and has no hover-time I
 The switcher adds two inner padding rows only when capacity permits, retaining a
 selected conversation on short frames. Its surface color is computed once per card.
 
-The tab strip remembers at most 8 recently used conversations without limiting the
+The tab strip remembers at most 32 recently used conversations without limiting the
 agents held by the keeper. Stable order is retained for remembered tabs; the current
-chat always survives width fitting and overflow uses the existing conversation picker.
+chat is revealed after navigation; explicit arrow or wheel browsing may move it offscreen.
+Overflow has a bounded in-memory viewport and the existing conversation picker. The
+32-candidate cap supports realistic multi-chat work without fitting dozens of names into
+six-cell labels; no new history reads, agent limit, or animation loop is introduced.
 Each tab uses at most 32 cells when several tabs share the row, including its
 leading inset and three close-target cells (space, mark, trailing inset). These are presentation
 bounds, not execution or history limits. Frame reads use cached local identity and
@@ -2009,7 +2012,7 @@ include the complete tab identity and picker availability, not just rendered wor
 
 
 The navigation panel renders a separate transcript separator and, inside a task,
-a separate metadata row. Its tab candidate slice is bounded to eight entries;
+a separate metadata row. Its tab candidate slice is bounded to 32 entries;
 the recency stack and held agents remain uncapped. Membership walks can still
 inspect recency keys when candidates are dismissed or missing, but the renderer
 no longer builds an unbounded temporary tab list and compares each entry against

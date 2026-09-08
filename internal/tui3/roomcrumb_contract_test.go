@@ -182,11 +182,11 @@ func TestWalkingUpTheTrailKeepsEachPagesOwnDraft(t *testing.T) {
 // the crumb that would come back first if the terminal grew.
 func TestTheTrailFoldsItsMiddleAndTheFoldOpensTheParent(t *testing.T) {
 	// FOLDING IS FROM THE OUTSIDE IN. Keep the original fifty-column content
-	// budget while allowing for the longer unnamed-conversation label. The `…`
+	// budget while allowing for the unnamed label and the reserved Back target. The `…`
 	// hides the family root, the immediate parent is still spelled, and the fold
 	// opens the nearest thing IT hid, which is that outer step.
 	a := crumbApp(t)
-	a.width = 50 + ansi.StringWidth(a.chatCrumbWord()) - ansi.StringWidth("main")
+	a.width = 50 + ansi.StringWidth(a.chatCrumbWord()) - ansi.StringWidth("main") + ansi.StringWidth(" "+roomBackWord+" ") + 3
 	a.touch()
 	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if !strings.Contains(head, crumbFoldWord) {

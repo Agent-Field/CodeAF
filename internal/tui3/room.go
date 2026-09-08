@@ -2342,7 +2342,7 @@ func (a *app) roomHeadHeight(width int) int {
 	if a.breathingRows() < 2 {
 		return 1
 	}
-	return roomHeadRowCount + a.tabsLineRow()
+	return roomHeadRowCount + a.roomHeaderPad()
 }
 
 // roomTrailRow is the ancestry, the way out, and nothing else.
@@ -2382,12 +2382,11 @@ func (a *app) roomTrailRow(width int) string {
 // than nested for [app.roomTrailRow]'s reason: a hue inside a hue ends at the
 // inner one's reset.
 //
-// AND IT DEGRADES BY WHAT IT IS FOR, on the fitter every list on this surface
-// already uses (rowfit.go). The facts are a RANKED PREFIX — the first one that
-// will not fit ends the line and nothing later is skipped forward into the gap
-// — so a narrow row says the same ranked things a wide one does, with the tail
-// missing rather than a different tail.
+// Roomy frames group outcome and activity apart from model, effort and cost.
+// When those complete groups cannot fit, the shared ranked fitter (rowfit.go)
+// retains a prefix of the compact priority order, without skipping facts.
 func (a *app) roomFactsLine(width int) string {
+	a.roomStop = hudSpan{}
 	node := a.roomNode()
 	mark := a.roomStopWord()
 	shown := mark
@@ -2401,6 +2400,15 @@ func (a *app) roomFactsLine(width int) string {
 	// thing on a surface with no boxes.
 	if mark != "" && a.hoveringRoomStop() {
 		shown = a.pal.ink(mark)
+	}
+	if node != nil && !a.orchOpen() {
+		if line, ok := a.roomGroupedFacts(node, width, shown); ok {
+			if mark != "" {
+				cols := ansi.StringWidth(mark)
+				a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
+			}
+			return line
+		}
 	}
 	left, lead := a.roomFactsWord(node, width)
 	ink := a.pal.dim
@@ -2511,15 +2519,18 @@ func (a *app) roomHeadWord(width int) string {
 // surface is written by the render that drew it: a trail laid out twice is a
 // trail a click can miss by exactly the difference between the two layouts.
 //
-// THE TRAIL TAKES THE WHOLE ROW AND NEGOTIATES WITH NOTHING. It used to be
-// offered the line less the leading fact, because the state word shared the row
-// with it and was worth more than the middle of a chain. The facts moved down a
-// row, so what is left is the ladder roomcrumbs.go already holds: the two ends
-// survive, the middle folds to `…`, and law 1 ends it when the page's own name
-// cannot survive whole.
+// The current task keeps its identity. The way back gets a reserved target
+// when the middle of the path can fold enough to keep both; otherwise the path
+// uses the whole row and its root remains a way out.
 func (a *app) roomHeadParts(width int) (string, []crumbHit) {
 	room := max(width-roomHeadFurniture, 0)
-	line, hits, _ := a.roomCrumbLine(room)
+	// Reserve the padded Back target before fitting the middle of the path.
+	// If that would cut the current task's identity, the path keeps priority.
+	withBack := width - headLabelAt - ansi.StringWidth(" "+roomBackWord+" ") - 3
+	line, hits, whole := a.roomCrumbLine(max(withBack, 0))
+	if !whole {
+		line, hits, _ = a.roomCrumbLine(room)
+	}
 	if a.orchOpen() {
 		// A RUN'S PAGE HAS A TRAIL AND NO CRUMB THIS WINDOW CAN OPEN (roomorch.go):
 		// its steps are the run's own goals and none of them is a node in this
@@ -2549,16 +2560,7 @@ const roomHeadFurniture = 4
 // made before the work started, not news, and they are the first thing a narrow
 // frame can afford to lose.
 func (a *app) roomHeadFacts(node *taskNode) []rowField {
-	work := roomWorkOf(a.roomEntries())
-	return []rowField{
-		rowSay(a.roomStateWord(node)),
-		rowSay(a.roomClock(node)),
-		rowSay(a.roomSpend(node)),
-		roomCallField(work.calls),
-		rowSay(a.roomLiveWord(node, work)),
-		rowSay(strings.TrimSpace(node.model), modelBase(strings.TrimSpace(node.model))),
-		rowSay(a.taskEffortClause(node)),
-	}
+	return a.roomFactsOf(node).ranked()
 }
 
 // roomCallField is HOW MUCH WORK THIS IS, counted. It is the chip's own grammar
@@ -3183,7 +3185,7 @@ func (a *app) roomRows(width int) []row {
 		// surface already knows about the work goes on first, and the failure is
 		// the last line of it ([app.roomRecordRows] draws both).
 		out = append(out, row{text: a.pal.dim(fit(roomReadFailedWord, inner)), entry: -1})
-	case len(out) == 0 && room.harnessProgress == "":
+	case len(out) == 0:
 		out = a.roomRecordRows(out, inner)
 	}
 	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
