@@ -214,6 +214,11 @@ const outputLimit = 4000
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// A CUT STREAM'S RECEIPT ARRIVES AFTER THIS TURN'S CALL HAS RETURNED. The
+	// sink belongs on the turn context before any of its calls or errands derive
+	// children from it, so every streamed request can hand that late fact back to
+	// this agent without making the turn wait for it.
+	ctx = provider.WithReconcile(ctx, a.reconciled)
 	started := time.Now()
 	var turn Usage
 
@@ -2514,15 +2519,23 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // ── usage ───────────────────────────────────────────────────────────────────
 
 // bankedCall is one call's money on its way into the books: what it cost, who
-// answered, what for, how the lane behind it behaved, and the two things that
+// answered, what for, how the lane behind it behaved, and the things that
 // differ between the doors — whether the machine's ledger is owed a row (a fold
-// is not a call) and whether this was a step of the conversation.
+// is not a call), whether this was a step of the conversation, and whether its
+// money arrived too late to belong to the turn now running.
 type bankedCall struct {
 	used   Usage
 	model  string
 	role   string
 	lane   laneFacts
 	ledger bool
+	// late says this money reached the books after the turn that spent it had
+	// already ended. It still belongs in the session and the machine ledger, but
+	// the RUNNING turn's share must not move for money spent by an earlier one.
+	late bool
+	// reconciled marks the ledger row as figures supplied by a provider receipt
+	// after the stream ended without its usage block.
+	reconciled bool
 	// turn says this call was a STEP OF THE CONVERSATION and not an errand run
 	// beside it, which is the whole of what [Usage.Turns] counts.
 	turn bool
@@ -2567,12 +2580,14 @@ func (a *Agent) bank(call bankedCall) {
 	// cost, so the only honest figure to journal it with is the one accumulated
 	// here (abandon.go's [Agent.Abandon]). It is reset when a turn opens and is
 	// meaningless outside one, which is why it is not exported.
-	a.turnSpend.Input += call.used.Input
-	a.turnSpend.Output += call.used.Output
-	a.turnSpend.CacheRead += call.used.CacheRead
-	a.turnSpend.CacheWrite += call.used.CacheWrite
-	a.turnSpend.CostUSD += call.used.CostUSD
-	a.turnSpend.Calls += call.used.Calls
+	if !call.late {
+		a.turnSpend.Input += call.used.Input
+		a.turnSpend.Output += call.used.Output
+		a.turnSpend.CacheRead += call.used.CacheRead
+		a.turnSpend.CacheWrite += call.used.CacheWrite
+		a.turnSpend.CostUSD += call.used.CostUSD
+		a.turnSpend.Calls += call.used.Calls
+	}
 	if call.turn {
 		a.usage.Turns++
 	}
@@ -2581,8 +2596,37 @@ func (a *Agent) bank(call bankedCall) {
 	}
 	a.mu.Unlock()
 	if call.ledger {
-		a.recordUsageLine(call.used, call.model, call.role, call.lane)
+		a.recordUsageLine(call.used, call.model, call.role, call.lane, call.reconciled)
 	}
+}
+
+// reconciled receives the one late answer for a call whose stream ended before
+// its usage block. A missing receipt moves only the visible gap counter; a
+// found one enters through [Agent.bank], the same door as every ordinary call,
+// so the session meter and the machine ledger cannot diverge.
+func (a *Agent) reconciled(receipt provider.Reconciled) {
+	if !receipt.Found || receipt.Billed.Empty() {
+		a.recordUnbilledReceipt(receipt.Model)
+		return
+	}
+	used := Usage{
+		Input:   receipt.PromptTokens,
+		Output:  receipt.CompletionTokens,
+		CostUSD: receipt.Cost,
+		Calls:   1,
+	}
+	lane := laneFacts{Hedged: receipt.Hedged}
+	if receipt.Hedged {
+		// HedgeWasteUSD is a receipt column and is never added to a money total,
+		// so repeating this call's own USD there identifies waste without double
+		// counting it. Only rescue arms carry the context marker; an original arm
+		// that loses has none and reconciles as an ordinary cut.
+		lane.Waste = receipt.Cost
+	}
+	a.bank(bankedCall{
+		used: used, model: receipt.Model, lane: lane, ledger: true,
+		late: true, reconciled: true,
+	})
 }
 
 // addUsage folds one response's accounting into the turn and the session, and

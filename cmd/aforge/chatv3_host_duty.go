@@ -135,8 +135,10 @@ func (d *hostDuty) claim(key string) bool {
 // and a test could not wait for without guessing at a duration.
 func (d *hostDuty) land(scope, key string) {
 	recovered := recover()
+	// Publication owns the latch until it finishes, even when the notice sink
+	// itself panics and the outer guard must record that failure.
+	defer d.release(key)
 	if recovered == nil {
-		d.release(key)
 		return
 	}
 	_ = guard.Note(scope, recovered)
@@ -144,7 +146,6 @@ func (d *hostDuty) land(scope, key string) {
 	if first && tell != nil {
 		tell(fmt.Sprintf("%s over this connection fell over once and will be tried again", what))
 	}
-	d.release(key)
 }
 
 // faulted marks that this duty has a fault to mention and answers whether this

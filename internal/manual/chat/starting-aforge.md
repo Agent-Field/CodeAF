@@ -127,7 +127,7 @@ refuses the budget flags at its door; configure that machine's launch instead.
 
 ## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
 
-For a fixed headless goal (`--once --yolo` with a budget), four things change:
+For a fixed headless goal (`--once --yolo` with a budget), five things change:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
@@ -147,6 +147,13 @@ For a fixed headless goal (`--once --yolo` with a budget), four things change:
   it is working in is part of the answer and is left alone, and anything it wrote
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
+- **The hours end the run even while its work is out.** The run cannot continue
+  past the hours you gave it, whether work is out or not: the wall is read while
+  the conversation is idle as well as at the end of a reply. If time runs out
+  with a task still running, that task is stopped through the usual stop: its row
+  settles, and its branch, working copy and everything it did are kept. Nothing
+  starts after the wall. If a reply is still speaking, the wall waits; that reply
+  reaches its own ending and stops there instead of being sealed from outside.
 
 ## Why did it stop at a task that was finished
 
@@ -181,10 +188,13 @@ So before the work moves, the same reading a stopped turn gets is taken:
   `stopping here · ` line every other stop uses. If a piece of work is still running when
   that happens, it does **not** stop there: the work moves onto a task as usual and the same
   stop is said again at the next ending, once nothing is in flight.
-- **The hours or the money ran out** — this is the one stop that does not wait for anything.
-  Waiting is more of exactly what ran out, so it ends the turn even with work still going,
-  and says so on the end of its own line: `· work was still going and was left where it was`.
-  Nothing is killed and nothing is thrown away; what was running is where you left it.
+- **The hours or the money ran out** — this is the one stop that does not buy another
+  reply. Waiting is more of exactly what ran out, so a reply already speaking reaches its
+  own ending even with work still going, and says so on the end of its line:
+  `· work was still going and was left where it was`. A money-only ceiling leaves that
+  work where it is. If the hours ran out, the wall reader then stops the work through its
+  usual stop and says `· work was still going, so it was stopped and what it did was kept`.
+  Nothing is thrown away, and its branch and working copy are kept.
 
 **And a handover it asked for is never dropped.** A long turn can normally talk its own
 handover out of happening: if the model says nothing is left and the second reader's sketch
@@ -249,21 +259,26 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
-## It says nothing has been finished yet after editing or creating a file · inline work · emptied file · blank file · zero bytes
+## Inline work is finished with a witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
 
-**And work aforge did itself counts as finished work.** The question is not only "did a
-task come home": a session that made the change and wrote the tests **inline**, with no
-task at all, has finished something — as long as the second reader agrees nothing is left.
-That includes a fix that is one edit to a file the project already had, which is the
-commonest fix there is: it used to count only files the session created, so a one-line change
-to an existing file read as nothing finished until the run stopped itself over green work.
-Before this, a run that did the whole job in the conversation read `nothing has been
-finished yet` at the end of every reply over a tree it had just written, said the same
-thing twice, and stopped itself for going round in circles one second after tidying up. If
-that reader names a gap instead, the run carries on into it, and being finished is settled
-by running your checks over the tree either way.
+**Work aforge did itself counts as finished work with a second opinion.** A session that
+made the change and wrote the tests **inline**, with no task at all, has finished something
+when the second reader agrees nothing is left. That includes one edit to an existing file;
+older runs counted only new files and could stop themselves over a green fix while saying
+`nothing has been finished yet`. If the reader names a gap, the run carries on into that gap
+whatever the checks say.
 
-**And a file is your work only while its content still differs from what it was before the
+**If the second reader could not be reached, silence is not treated as a gap.** On an
+unattended run aforge actually runs your declared checks over the tree and lets a green
+reading stand in, saying `the reader could not be reached, so the checks stood in for it`.
+A red check carries the run on with that command named. At least one declared check must
+start and finish: with no check declared, or none that ran, nothing can stand in and the run
+carries on exactly as before. An install with no reader is different from a failed call;
+that absence runs no check on its own.
+
+## A changed file counts only while its content differs · a reverted or stashed edit is not finished work
+
+**A file is your work only while its content still differs from what it was before the
 edit.** A change put back the way it was, a revert, or a fix pushed onto `git stash` and
 never popped leaves the path written and nothing in the tree, so none of them counts as
 finished work. A stash the run took itself and never popped is said out loud as well —
@@ -271,11 +286,40 @@ finished work. A stash the run took itself and never popped is said out loud as 
 finishing over it; a stash you already had before the run started is yours and is never
 counted, and neither is the one a landing takes to set your uncommitted work aside.
 
+## An emptied, blank or zero-byte created file does not count as finished work
+
 **A file the run created counts as its work only while there is something in it.** A
 rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell
 step can leave it emptied, blank, or at zero bytes; none of those empty files counts as
 finished work. It is still your file: nothing inside the folder aforge is working in is
 ever deleted, whatever is in it.
+
+## The git an unattended run left on its own will not run · why it refused to stash, checkout, pull or reset --hard
+
+**A session left running on its own with a budget answers to the same git list as a
+task.** It decides on its own word that the work is done, and a stash can make that word
+false by taking the work out of the tree it judges. The refusal happens before the shell
+runs.
+
+It will not run `stash` in any form except `stash list` and `stash show`; `merge`,
+`rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`,
+`update-ref`, or `symbolic-ref`; `pull`, `fetch`, `clone`, `remote`, or `submodule`;
+`push`; `reset --hard`, `reset --merge`, or `reset --keep`; or `restore --source`.
+These are one list: they take the working copy away, put it onto work the session did not
+do, bring in remote work, or send the session's work to a shared remote on its own word.
+
+**Reading is still allowed.** `git status`, `diff`, `log`, `show`, `branch --list`,
+`stash list`, and `stash show` can look at any branch. Plain `git reset` can unstage,
+plain `git restore <path>` can restore the session's own path, and `git add` and
+`git commit` are allowed. For a stash, the session reads exactly:
+
+> git stash is not yours to run here: it takes your working copy away, and what is in it is the work this session will be judged on. Leave the change in the tree, or commit it.
+
+The `1 stash entry holds work that is not in the tree` reading in the section above says
+the stash out loud after the fact; this refusal is why there is now usually nothing for
+that reading to say. None of these refusals applies to a session you are sitting in front
+of, or to an unattended run that named no ceiling: nothing is deciding on its own that
+the work is done then, and your git is your own.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
@@ -314,8 +358,10 @@ says so plainly, so nothing goes off to fix it by accident:
 1 check was already failing before this work and is not counted: tox -e py
 ```
 
-A session you are sitting in front of runs none of this: your tree is in front of you, and
-nothing is checked or decided on your behalf.
+This section describes the session's own end-of-reply reading, which runs only when you
+leave a session working with a budget. A task's checker takes its separate before-reading
+whether you are watching or away; **The check says my tests fail but they were already
+failing** in *How tasks run* explains that task reading and its limits.
 
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 

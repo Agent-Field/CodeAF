@@ -39,12 +39,14 @@ var protectedBranchNames = [...]string{
 // currentBranch reads the branch checked out at a repository's root. Detached
 // HEAD is the empty string by design: it is not a destination a landing can
 // safely move, and git's quiet symbolic-ref is the direct reading of that fact.
+// Full ref names keep a same-named tag from changing a branch's spelling to
+// heads/name, which would disguise protected names from the landing guard.
 func currentBranch(root string) string {
-	out, err := git(root, "symbolic-ref", "--short", "-q", "HEAD")
+	out, err := git(root, "symbolic-ref", "-q", "HEAD")
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(out)
+	return strings.TrimPrefix(strings.TrimSpace(out), "refs/heads/")
 }
 
 // branchCommit reads the world a named branch points at. Empty is ordinary:
@@ -55,7 +57,7 @@ func branchCommit(root, branch string) string {
 	if strings.TrimSpace(root) == "" || branch == "" {
 		return ""
 	}
-	out, err := git(root, "rev-parse", "--verify", "--quiet", branch+"^{commit}")
+	out, err := git(root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch+"^{commit}")
 	if err != nil {
 		return ""
 	}
@@ -181,14 +183,14 @@ func branchMovedByPerson(root, branch, recorded string) bool {
 	if tip == "" || tip == recorded {
 		return false
 	}
-	if _, err := git(root, "merge-base", "--is-ancestor", recorded, branch); err != nil {
+	if _, err := git(root, "merge-base", "--is-ancestor", recorded, "refs/heads/"+branch); err != nil {
 		var exited *exec.ExitError
 		if errors.As(err, &exited) && exited.ExitCode() == 1 {
 			return true
 		}
 		return false
 	}
-	committers, err := git(root, "log", "--format=%ce", recorded+".."+branch)
+	committers, err := git(root, "log", "--no-show-signature", "--format=%ce", recorded+"..refs/heads/"+branch)
 	if err != nil {
 		return false
 	}

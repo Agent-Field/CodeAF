@@ -170,6 +170,68 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 
 // ── a session that changed the deliverable has finished something (#513) ────
 
+// TestAReaderNobodyCouldReachIsNotAWitnessThatWorkIsUnfinished proves C1, C3
+// and C4: completed declared checks may witness inline work only after a reader
+// call failed; silence with no reader and an unreachable reader with no check
+// both leave the original witness law standing.
+func TestAReaderNobodyCouldReachIsNotAWitnessThatWorkIsUnfinished(t *testing.T) {
+	checked := Remains{
+		Made:              true,
+		ReaderUnreachable: true,
+		Checks:            []CheckRun{{Command: "go test ./...", Ran: true, Passed: true}},
+	}
+	if !checked.finishedSomething() {
+		t.Fatal("green checks that ran did not stand in for the reader nobody could reach")
+	}
+	if unmet := checked.unmet(); len(unmet) != 0 {
+		t.Fatalf("green checked inline work still had something left: %v", unmet)
+	}
+
+	absent := Remains{Made: true}
+	if absent.finishedSomething() {
+		t.Fatal("an install with nobody to ask treated silence as a witness")
+	}
+	if unmet := absent.unmet(); len(unmet) != 1 || unmet[0] != nothingFinishedYet {
+		t.Fatalf("silence with no reader changed what is left: %v", unmet)
+	}
+
+	unanswered := Remains{Made: true, ReaderUnreachable: true}
+	if unanswered.finishedSomething() {
+		t.Fatal("an unreachable reader with no check became a witness")
+	}
+	if unmet := unanswered.unmet(); len(unmet) != 1 || unmet[0] != nothingFinishedYet {
+		t.Fatalf("an unreachable reader with no check changed what is left: %v", unmet)
+	}
+
+	unread := Remains{
+		Made:              true,
+		ReaderUnreachable: true,
+		Checks:            []CheckRun{{Command: "missing-check", Ran: false, Passed: false}},
+	}
+	if unread.finishedSomething() {
+		t.Fatal("a declared check that never ran became a witness")
+	}
+}
+
+// TestAReaderThatNamedAGapIsStillWhatIsLeft proves C5: a reader that answered
+// with a gap was reached, so green checks never stand in for it or erase what it
+// found.
+func TestAReaderThatNamedAGapIsStillWhatIsLeft(t *testing.T) {
+	const gap = "the scopes are still parsed case-sensitively"
+	remains := Remains{
+		Made:   true,
+		Reader: gap,
+		Checks: []CheckRun{{Command: "go test ./...", Ran: true, Passed: true}},
+	}
+	if remains.finishedSomething() {
+		t.Fatal("green checks overruled a reader that named a gap")
+	}
+	unmet := remains.unmet()
+	if !strings.Contains(strings.Join(unmet, "\n"), gap) {
+		t.Fatalf("the reader's gap is not what remains: %v", unmet)
+	}
+}
+
 // WORK THIS SESSION DID WITH ITS OWN HANDS IS FINISHED WORK, WITH THE READER
 // AGREEING.
 //
@@ -194,9 +256,9 @@ func TestInlineWorkWithTheReaderAgreeingIsFinishedWork(t *testing.T) {
 		t.Fatalf("a session that wrote the whole fix itself was told it had finished nothing: %+v", decision)
 	}
 
-	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked, and one
-	// whose call failed, both answer the same silence, and silence is not
-	// agreement.
+	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked is silence,
+	// and silence is not agreement. A failed call is carried separately now, but
+	// without a declared check that actually ran it is no stronger.
 	alone := steward.Decide(Remains{
 		Said:       "The scheme parsing is fixed and the tests pass.",
 		Acceptance: "the bearer scheme is case-insensitive and the suite passes",

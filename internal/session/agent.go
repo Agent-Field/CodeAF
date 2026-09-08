@@ -386,6 +386,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.mu.Lock()
 	agent.opened = true
 	agent.mu.Unlock()
+	// THE WALL IS READ AFTER THE SESSION IS OPEN. Recovery may put work back on
+	// the frontier, but no ending or notice may run before the caller can hold
+	// the agent and a surface can subscribe to its standing lane.
+	agent.armWallClock()
 	return agent, nil
 }
 
@@ -1930,6 +1934,13 @@ func (a *Agent) Close() error {
 	if a.closeDone == nil {
 		a.closeDone = make(chan struct{})
 	}
+	// No wall reader outlives the session. The channel is made only for an
+	// unattended session with a wall, and the first Close is the only writer of
+	// `closed`, so this close is taken exactly once under the lock the reader's
+	// lifetime is guarded by.
+	if a.wallStop != nil {
+		close(a.wallStop)
+	}
 	// AS THE LAST ACT, past every round below and past the file's own close: a
 	// deferred close runs after `return file.Close()` has evaluated, so a caller
 	// released by it is released by a session that has finished leaving. Every
@@ -2936,7 +2947,14 @@ func (a *Agent) resumeTurn(ctx context.Context) <-chan Event {
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
 func (a *Agent) wakeLocked() bool {
-	if a.running || a.closed || (a.config.InTask && !a.config.roomThread) || !a.opened {
+	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
+	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
+	// different decision in [Steward.Decide], while the wall's budget ending is
+	// the one stop allowed to win over work still moving. [wallIsUp] reads the
+	// Steward's own wall and clock without asking its spend closure while this
+	// function holds a.mu.
+	wallGone := wallIsUp(a.steward())
+	if a.running || a.closed || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
 		return false
 	}
 	if err := a.railBlockLocked(); err != nil {

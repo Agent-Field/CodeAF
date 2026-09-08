@@ -203,6 +203,30 @@ func TestLogsShowsTheWholeRowAndNotHalfOfIt(t *testing.T) {
 	}
 }
 
+// TestLogsShowsTheActionReasonAndTheRefusedRescue is C4/C5 at the person-facing
+// door: the controller's word sits beside its action, a refused hedge says why,
+// and an ordinary call grows no placeholder fields.
+func TestLogsShowsTheActionReasonAndTheRefusedRescue(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		record calllog.Record
+		want   string
+	}{
+		{
+			"both explanations are present",
+			calllog.Record{Action: "hedge", Reason: "rate collapsed", Refused: "budget"},
+			"acted hedge · rate collapsed · no rescue: budget",
+		},
+		{"neither explanation is present", calllog.Record{}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := strings.Join(hedgeFields(test.record), " · "); got != test.want {
+				t.Fatalf("hedge fields = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 // TestLogsNamesOnlyAPinThatDidNotTravel is C4: the displaced pin sits beside
 // the effort that won, while an ordinary pinned-effort row gains no empty word.
 func TestLogsNamesOnlyAPinThatDidNotTravel(t *testing.T) {

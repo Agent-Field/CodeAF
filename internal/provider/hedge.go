@@ -183,6 +183,10 @@ type hedgeRace struct {
 	// question: a race that re-asked on the next delta would turn one refusal
 	// into a poll.
 	refused bool
+	// refusal is the first reason a controller-requested hedge did not reach
+	// the wire. The first word wins because one row needs one answer to why its
+	// rescue was refused, not a history rewritten by later beats.
+	refusal string
 	// asked is the offer this request raised, empty until a pinned lane stalls
 	// and once only — a second question about one answer is nagging.
 	asked  string
@@ -550,13 +554,16 @@ func (r *hedgeRace) act(from int, act control.Act) {
 // hedge is another arm: budgeted, to a machine nobody has asked yet, and never
 // past [maxArms].
 func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
-	alt = r.claim(alt, false)
+	var why string
+	alt, why = r.claim(alt, false)
 	if alt == "" {
+		r.rememberRefusal(why)
 		return
 	}
 	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
 		r.mu.Lock()
 		r.refused = true
+		r.rememberRefusalLocked("budget")
 		delete(r.tried, strings.ToLower(alt))
 		r.mu.Unlock()
 		return
@@ -599,13 +606,15 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	if r == nil || r.base == nil || r.base.Err() != nil {
 		return false
 	}
-	alt := r.claim(act.Lane, true)
+	alt, why := r.claim(act.Lane, true)
 	if alt == "" && !r.openStallRescue() {
+		r.rememberRefusal(why)
 		return false
 	}
 	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
 		r.mu.Lock()
 		r.refused = true
+		r.rememberRefusalLocked("budget")
 		if alt != "" {
 			delete(r.tried, strings.ToLower(alt))
 		}
@@ -614,6 +623,7 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	}
 	r.mu.Lock()
 	if r.winner >= 0 || len(r.arms) >= maxArms {
+		r.rememberRefusalLocked("no room")
 		r.mu.Unlock()
 		return false
 	}
@@ -697,18 +707,18 @@ func (r *hedgeRace) openStallRescue() bool {
 	return r.plan.Lane == "" && len(r.plan.Alts) == 0 && !r.plan.Pinned && len(r.arms) == 1 && r.winner < 0
 }
 
-// claim reserves the machine a rescue would go to, and answers empty when there
-// is no room, no money or nowhere left to go.
+// claim reserves the machine a rescue would go to, and answers the reason when
+// there is no room, no money or nowhere left to go.
 //
 // IT IS ONE FUNCTION SO THAT THE GATES CANNOT DRIFT. Every act that puts a
 // request on the wire — the controller's hedge, the answered offer, the walk
 // past a refusal — asks exactly this question, and it is asked under the lock
 // so that two arms deciding at once cannot both take the last machine.
-func (r *hedgeRace) claim(preferred string, past bool) string {
+func (r *hedgeRace) claim(preferred string, past bool) (lane, why string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.winner >= 0 || len(r.arms) >= maxArms {
-		return ""
+		return "", "no room"
 	}
 	// past is the walk and the stall rescue: a lane that FAILED, or one that
 	// has sat past the ceiling without dying, must not be left unanswered
@@ -716,19 +726,40 @@ func (r *hedgeRace) claim(preferred string, past bool) string {
 	// caller stops at a refusal, which is what keeps one refusal from
 	// becoming a poll.
 	if r.refused && !past {
-		return ""
+		return "", "budget"
 	}
 	if lane := strings.TrimSpace(preferred); lane != "" && !r.tried[strings.ToLower(lane)] {
 		r.tried[strings.ToLower(lane)] = true
-		return lane
+		return lane, ""
 	}
 	for _, alt := range r.plan.Alts {
 		if lane := strings.TrimSpace(alt.Lane); lane != "" && !r.tried[strings.ToLower(lane)] {
 			r.tried[strings.ToLower(lane)] = true
-			return lane
+			return lane, ""
 		}
 	}
-	return ""
+	return "", "no alt"
+}
+
+// rememberRefusal keeps the first reason a controller-requested hedge did not
+// reach the wire. Later beats can encounter another closed gate, but changing
+// the word would make the call's row depend on timing rather than on what first
+// stopped its rescue.
+func (r *hedgeRace) rememberRefusal(why string) {
+	if strings.TrimSpace(why) == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rememberRefusalLocked(why)
+}
+
+// rememberRefusalLocked is the locked half for callers already changing the
+// race state beside the refusal.
+func (r *hedgeRace) rememberRefusalLocked(why string) {
+	if r.refusal == "" {
+		r.refusal = why
+	}
 }
 
 // ask is a pinned lane's rescue: the person who named the machine is asked
@@ -895,7 +926,7 @@ func (r *hedgeRace) walk(from int, cause error) {
 	if dead != "" {
 		r.report.ended(refusal.news(dead))
 	}
-	alt := r.claimServing()
+	alt, _ := r.claimServing()
 	if alt == "" {
 		return
 	}
@@ -930,11 +961,11 @@ func (r *hedgeRace) armLane(index int) string {
 // that has just been written out of the serving set would spend an arm to be
 // told the same 404 a second time. Each turn of the loop is a claim, so a lane
 // the walk skips is also a lane it never returns to.
-func (r *hedgeRace) claimServing() string {
+func (r *hedgeRace) claimServing() (string, string) {
 	for {
-		alt := r.claim("", true)
+		alt, why := r.claim("", true)
 		if alt == "" || lanes.Serves(r.model, alt) {
-			return alt
+			return alt, why
 		}
 	}
 }
@@ -1181,7 +1212,8 @@ func (r *hedgeRace) askedLane(arm int) string {
 }
 
 // spend is how many requests this question became, what the OTHER arms have
-// cost so far, and the one sentence the row has to carry.
+// cost so far, why a requested rescue did not leave, and the one sentence the
+// row has to carry.
 //
 // IT IS COMPUTED LIVE AND IT IS AN ESTIMATE, because a row is written when its
 // own stream ends and the arms beside it may still be running. From the row of
@@ -1189,7 +1221,7 @@ func (r *hedgeRace) askedLane(arm int) string {
 // that did not, it is what the rest of the question cost. Both are the figure a
 // person reading one line wants, and neither can be the router's own: a
 // cancelled stream never sends a usage frame.
-func (r *hedgeRace) spend(arm int) (arms int, waste float64, note string) {
+func (r *hedgeRace) spend(arm int) (arms int, waste float64, note, refused string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, other := range r.arms {
@@ -1197,7 +1229,7 @@ func (r *hedgeRace) spend(arm int) (arms int, waste float64, note string) {
 			waste += r.estimateLocked(laneOf(other), other.watch.written())
 		}
 	}
-	return len(r.arms), waste, r.note
+	return len(r.arms), waste, r.note, r.refusal
 }
 
 // settle writes the ledger and the report, and hands back the winner's answer.

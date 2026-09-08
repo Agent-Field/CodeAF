@@ -250,6 +250,117 @@ func (w *warmRunaway) CompleteWithMessages(context.Context, []ai.Message, ...ai.
 	}, nil
 }
 
+// billedRunaway gives every turn one stated price and always asks to write, so
+// the real loop keeps going until one of its own bounds stops it. It exists for
+// the landing contract below: warmRunaway is calibrated to the audited leaf and
+// other tests depend on that exact shape.
+type billedRunaway struct {
+	turn  turnBilling
+	calls int
+}
+
+func (b *billedRunaway) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
+	b.calls++
+	return &ai.Response{
+		Choices: []ai.Choice{{
+			Message: ai.Message{
+				Role:    "assistant",
+				Content: []ai.ContentPart{{Type: "text", Text: "still working"}},
+				ToolCalls: []ai.ToolCall{call(fmt.Sprintf("b%d", b.calls), "write",
+					fmt.Sprintf(`{"path":"priced-%d.txt","text":"x"}`, b.calls))},
+			},
+			FinishReason: "tool_calls",
+		}},
+		Usage: &ai.Usage{
+			PromptTokens:         b.turn.prompt,
+			CompletionTokens:     b.turn.completion,
+			CacheReadInputTokens: b.turn.cached,
+		},
+	}, nil
+}
+
+// C1 — The reserve cannot buy a second grant.
+//
+// The worker trial's four old landing turns billed 122,392 tokens against a
+// 150,000-token grant. This leaf makes the same failure unmistakable: every
+// turn costs a quarter of its grant, so the old reserve would buy a whole
+// second grant. The token allowance ends it after one landing turn instead.
+// That same one turn pins C3: even though it carries the landing past its token
+// allowance, the workspace still gets one complete turn in which to land.
+func TestTheLandingReserveCannotBuyASecondGrant(t *testing.T) {
+	const grant = 40_000
+	turn := turnBilling{prompt: grant / 4}
+	crossingCalls := turnsUntilExhausted(grant, func(int) turnBilling { return turn })
+	if crossingCalls != 4 {
+		t.Fatalf("the fixture crossed after %d calls, want four quarter-grant turns", crossingCalls)
+	}
+
+	client := &billedRunaway{turn: turn}
+	linear := NewLinear(client, workspace(t), nil, 100, grant, time.Hour)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := client.calls - crossingCalls; got != 1 {
+		t.Fatalf("landing calls = %d, want the one turn that leaves the tree consistent", got)
+	}
+
+	crossingSpend := crossingCalls * spentOfTurn(turn)
+	landingSpend := spent(outcome) - crossingSpend
+	ceilingWithTurnInFlight := landingAllowance(grant) + spentOfTurn(turn)
+	if landingSpend > ceilingWithTurnInFlight {
+		t.Fatalf("landing billed %d, past its %d allowance plus the %d-token turn in flight",
+			landingSpend, landingAllowance(grant), spentOfTurn(turn))
+	}
+	legacyLandingSpend := landingTurns * spentOfTurn(turn)
+	if legacyLandingSpend <= 2*landingSpend {
+		t.Fatalf("the old four-turn reserve would bill %d against today's %d; the fixture does not expose the regression",
+			legacyLandingSpend, landingSpend)
+	}
+	if want := grant + grant/4; spent(outcome) != want {
+		t.Fatalf("leaf spent %d, want %d (1.25 times its grant)", spent(outcome), want)
+	}
+}
+
+// C2 and C3 — The landing still gets its four turns when it can afford them,
+// and the token half of the reserve never reduces that floor to zero.
+func TestALeanLandingStillGetsItsFourTurns(t *testing.T) {
+	const grant = 20_000
+	turn := turnBilling{prompt: 1_000}
+	crossingCalls := turnsUntilExhausted(grant, func(int) turnBilling { return turn })
+
+	client := &billedRunaway{turn: turn}
+	linear := NewLinear(client, workspace(t), nil, 100, grant, time.Hour)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := client.calls - crossingCalls; got != landingTurns {
+		t.Fatalf("landing calls = %d, want the full %d-turn reserve", got, landingTurns)
+	}
+	if outcome.Stop != StopBudget || outcome.Exhausted != StopBudget {
+		t.Fatalf("stop = %s, exhausted = %q — want the budget landing both times",
+			outcome.Stop, outcome.Exhausted)
+	}
+}
+
+// C4 — The allowance is sized from the grant, in one place.
+func TestTheLandingAllowanceIsSizedFromTheGrant(t *testing.T) {
+	const grant = 100_000
+	allowance := landingAllowance(grant)
+	if allowance <= 0 || allowance >= grant {
+		t.Fatalf("allowance = %d for a %d grant, want a positive strict fraction", allowance, grant)
+	}
+	if got, want := landingAllowance(grant/10), allowance/10; got != want {
+		t.Fatalf("a tenth-sized grant got %d tokens, want a tenth of %d (%d)", got, allowance, want)
+	}
+	for _, grant := range []int{0, -1} {
+		if got := landingAllowance(grant); got != 0 {
+			t.Fatalf("landingAllowance(%d) = %d, want none", grant, got)
+		}
+	}
+}
+
 // The regression itself, driven through the real loop.
 //
 // A leaf billing at a 98% hit rate spends about a sixth of what it costs the

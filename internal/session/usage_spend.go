@@ -618,6 +618,9 @@ func UsageSubjectWord(kind string) string {
 // when the child closes. Folded is the honest one; the halves are what makes it
 // auditable rather than a figure that jumped.
 type Receipt struct {
+	// Unbilled is the owned calls whose provider receipts could not be priced.
+	Unbilled int
+
 	// Direct is what the node's OWN calls cost — its turns and the auxiliary
 	// calls made on its behalf.
 	Direct float64
@@ -669,6 +672,9 @@ func UsageTree(lines []UsageLine, conversation string) Receipt {
 			receipt.Direct += line.USD
 		default:
 			continue
+		}
+		if line.Unbilled {
+			receipt.Unbilled++
 		}
 		receipt.Calls += line.Calls
 	}

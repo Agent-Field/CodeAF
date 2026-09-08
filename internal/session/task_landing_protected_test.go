@@ -12,9 +12,12 @@ import (
 // leaves the task branch waiting, including when that commit rewrites or moves
 // behind the recorded world. An untouched branch remains the merging control.
 func TestC16APersonsCommitOnTheBranchKeepsTheTaskBranch(t *testing.T) {
-	for _, change := range []string{"committed", "amended", "reset back", "control"} {
+	for _, change := range []string{"committed", "amended", "reset back", "tag shadows branch", "control"} {
 		t.Run(change, func(t *testing.T) {
 			repo := newTestRepo(t)
+			if change == "tag shadows branch" {
+				mustGit(t, repo, "tag", "work")
+			}
 			if change == "reset back" {
 				writeFile(t, filepath.Join(repo, "before-cut.txt"), "present at the cut\n")
 				mustGit(t, repo, "add", "before-cut.txt")
@@ -31,7 +34,7 @@ func TestC16APersonsCommitOnTheBranchKeepsTheTaskBranch(t *testing.T) {
 			writeFile(t, filepath.Join(tree.dir, "node.txt"), "the node's work\n")
 
 			switch change {
-			case "committed":
+			case "committed", "tag shadows branch":
 				writeFile(t, filepath.Join(repo, "person.txt"), "the person's commit\n")
 				mustGit(t, repo, "add", "person.txt")
 				mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person moved work")
@@ -41,7 +44,7 @@ func TestC16APersonsCommitOnTheBranchKeepsTheTaskBranch(t *testing.T) {
 				mustGit(t, repo, "reset", "--hard", "HEAD~1")
 			}
 
-			beforeHead := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
+			beforeHead := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/work"))
 			beforeStatus := gitOut(t, repo, "status", "--porcelain=v1", "--untracked-files=all")
 			beforeShared := readFile(t, filepath.Join(repo, "shared.txt"))
 			merge, detail, _ := tree.comeHome("write after the cut", []string{"node.txt"})
@@ -62,7 +65,7 @@ func TestC16APersonsCommitOnTheBranchKeepsTheTaskBranch(t *testing.T) {
 			if merge != mergeKept || detail != want {
 				t.Fatalf("landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 			}
-			if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")); got != beforeHead {
+			if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/work")); got != beforeHead {
 				t.Fatalf("work moved from %s to %s", beforeHead, got)
 			}
 			if got := gitOut(t, repo, "status", "--porcelain=v1", "--untracked-files=all"); got != beforeStatus {
@@ -390,5 +393,26 @@ func TestC15ARepositorySubdirectoryGroundIsStillProtected(t *testing.T) {
 	elsewhere := taskTree{root: repo, ground: t.TempDir(), home: "work"}
 	if elsewhere.landsInThePersonsRepository() {
 		t.Error("a ground outside the root is being read as the person's repository")
+	}
+}
+
+// A tag with a protected branch's name must not disguise that branch as heads/dev.
+func TestATagCannotDisguiseAProtectedLandingBranch(t *testing.T) {
+	repo := newTestRepo(t)
+	mustGit(t, repo, "checkout", "-b", "dev")
+	mustGit(t, repo, "tag", "dev")
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	tree, err := prepareTaskTree(place, repo, "tagged-protected", 1, "write a note")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/dev"))
+	writeFile(t, filepath.Join(tree.dir, "node.txt"), "the task's work\n")
+	merge, detail, _ := tree.comeHome("write a note", []string{"node.txt"})
+	if merge != mergeKept || !strings.Contains(detail, "on dev, which aforge never writes to") {
+		t.Fatalf("tag disguised the protected branch: %q, %q", merge, detail)
+	}
+	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/dev")); after != before {
+		t.Fatalf("protected checkout moved from %s to %s", before, after)
 	}
 }

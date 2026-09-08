@@ -118,6 +118,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the refusal that is about no machine at all, asked in the router's
 		// own sentence and in the words somebody reaches for after reading it.
 		{"all providers have been ignored", "lanes"},
+		{"I switched off some providers in my openrouter account", "lanes"},
+		{"does aforge know which providers my account has turned off", "lanes"},
 		{"why did every provider get ignored", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
 		{"why does it say paid model training violation", "models-and-cost"},
@@ -383,6 +385,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did my task stop for no progress", "how-tasks-run"},
 		{"does generating an image count as progress", "how-tasks-run"},
 		{"where did the files go when my task was stopped", "how-tasks-run"},
+		// A headless worker that repeatedly reaches one command's timeout names
+		// its own ending now, and these are the words of somebody watching it.
+		{"my command keeps timing out and it just runs it again", "adaptive-runs"},
+		{"why did the worker stop after the same command timed out", "adaptive-runs"},
 		// Written from #568: a task ran an eight-minute test suite, could not
 		// wait on it, polled it with sleep and tail, was read as repeating
 		// itself and killed a run that was passing. Both halves are what the
@@ -447,6 +453,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does the check run", "how-tasks-run"},
 		{"why did my task fail on a file it says it created", "how-tasks-run"},
 		{"does the checker see the files my task installed", "how-tasks-run"},
+		{"the check said my tests fail but they were already failing before the task", "how-tasks-run"},
 		// Written from a real run: the worker's last line scrolled past and then
 		// the card said nothing for minutes while a check and a round ran, and
 		// the person watching concluded the work had hung.
@@ -523,6 +530,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		{"why did it refuse to run git stash", "starting-aforge"},
+		{"it would not stash my changes on an unattended run", "starting-aforge"},
+		{"what git will it not run when left on its own", "starting-aforge"},
 		// The unattended run that would not finish, asked the four ways somebody
 		// meets it: the line it stopped on, the loop they watched, the note at
 		// the cap, and the check it kept failing over a file they never wrote a
@@ -545,6 +555,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it move my work to a task after five minutes", "starting-aforge"},
 		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
 		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
+		{"the reader timed out and then it did the whole fix twice", "starting-aforge"},
 		// The headless door of the same unattended posture (#535), asked as the
 		// budget, the missing start and the screenless carry-on somebody meets.
 		{"can I leave a headless run going with a budget", "starting-aforge"},
@@ -930,6 +941,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it said partial but the tests were green", "adaptive-runs"},
 		{"it said done but never ran the tests", "adaptive-runs"},
 		{"the request was met as stated", "adaptive-runs"},
+		// A stopped run now answers the person's original list point by point.
+		// These are the two ways the missing line was reported: asking what did
+		// land, and naming the one item the old ending silently dropped.
+		{"the run stopped early — which of the things I asked for did it actually do", "adaptive-runs"},
+		{"it fixed three of my four and never said which one it missed", "adaptive-runs"},
 		// And the same ending arriving the other way round: the work is done,
 		// the checks are green, and the run reports a failure because the
 		// worker's last call to the model never came back. Both are asked in
@@ -937,6 +953,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// provider's own sentence.
 		{"it failed but the tests were green", "adaptive-runs"},
 		{"the model dropped out after finishing", "adaptive-runs"},
+		// A faulted review's new tail, asked by somebody reading the quoted
+		// answer and by somebody comparing two unchecked endings.
+		{"why does my unchecked line quote the model's reply", "adaptive-runs"},
+		{"why do two unchecked runs end with different reasons", "adaptive-runs"},
 		{"the retry died instantly but my fix is already on disk", "adaptive-runs"},
 		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
 		{"why did it run the tests nine times", "adaptive-runs"},
@@ -1482,6 +1502,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the model picker keep jumping", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
+		{"was I charged for a reply that got cut off", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one
 		// turn hopping across six endpoints, each hop paying full price for a
 		// context the last endpoint already had. Both halves of that are things
@@ -1973,6 +1994,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I read the manual from the terminal", "commands"},
 		{"does reading the manual cost anything", "commands"},
 		{"list every page of the manual", "commands"},
+		// The wave that gave /status a second form. Each of these is asked by
+		// somebody who wants the session's facts for a PROGRAM rather than for
+		// their own eyes — the plain wish, the flag met in the command list, and
+		// the reason they want it — and the page they must reach is the one that
+		// says what the object carries and what it leaves out.
+		{"can I get the status as json", "commands"},
+		{"what does /status --json print", "commands"},
+		{"print the status line facts as json for a script", "commands"},
+		{"is there a machine-readable status", "commands"},
 
 		// PAIRING, ASKED BY SOMEBODY WHO WATCHED IT CONTRADICT ITSELF. The machine
 		// used to say "paired" before it had written the device into its list, so a
@@ -1995,6 +2025,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does it mean when a run says it was delivered without a check", "running-from-the-terminal"},
 		{"what does stop unchecked mean", "running-from-the-terminal"},
 		{"why did my headless run exit 2 when the answer looks fine", "running-from-the-terminal"},
+		// C6: the unattended road and the session task road have different
+		// checks, and the manual must answer in the words a person brings to each.
+		{"what checked my unattended run", "running-from-the-terminal"},
+		{"does task.audit apply to aforge do", "running-from-the-terminal"},
+		{"did anything check that headless run", "running-from-the-terminal"},
+		{"what judged the delivery", "running-from-the-terminal"},
 		{"what does aforge wake do", "running-from-the-terminal"},
 		// "how do I see what a task did" is deliberately NOT here: in the chat a
 		// task's own room is that question's answer, and how-tasks-run rightly
@@ -2132,6 +2168,18 @@ func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
 		}
 	}
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
+}
+
+// #161: a person asking about the bill for a cut reply must reach the receipt
+// rule itself, not merely a neighbouring section about retries or stream walls.
+func TestTheCutReplyCostQuestionReachesTheReceiptAnswer(t *testing.T) {
+	const said = "calls the provider charged for and could not be priced"
+	for _, section := range Chat().Search("was I charged for a reply that got cut off", DefaultResults) {
+		if section.Page == "models-and-cost" && strings.Contains(section.Body, said) {
+			return
+		}
+	}
+	t.Fatalf("the cut-reply cost question does not reach the section that says %q", said)
 }
 
 // #578: a ground never climbs out of the machine's scratch, so a workspace under

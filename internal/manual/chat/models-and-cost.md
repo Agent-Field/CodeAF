@@ -1000,6 +1000,26 @@ nothing is being routed around and the next attempt lands in exactly the same pl
 aforge stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 switches off **endpoint** steering; it does not switch off moving to another model.
 
+## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
+
+Yes, a provider may still charge for the prompt and the tokens it produced before a stream
+was cut. The last usage block never arrives in that case, so aforge does not guess from the
+text it happened to receive. When the stream named the provider's generation id, aforge asks
+for that generation's own receipt in the background. Your reply does not wait for this.
+
+When the receipt arrives, its own cost and token counts move the conversation's meter and add
+one late line to the machine's usage ledger. That line is marked `reconciled`, meaning its
+figures came from the receipt rather than the cut stream. A losing rescue arm is recorded as
+hedged waste from its own receipt too; it is real provider money, but it is not added twice.
+
+When no generation id arrived, the base has no receipt route, or the receipt still cannot be
+had after the short retry schedule, aforge writes an `unbilled` marker with no invented
+price or token count. The marker survives a restart. `/cost` counts missing prices for this
+conversation and its tasks; `/spend` counts the markers in its selected time window. Both
+say, for example, `2 calls the provider charged for and could not be priced`. At zero they
+say nothing. Settings→Spending also shows missing receipts learned during this process.
+Receipt workers exit when their queue is empty and start again when another receipt arrives.
+
 ## A reply that never finished — the turn ran for half an hour, aforge looked frozen, nothing happened for ages, the model kept writing and never stopped
 
 The two clocks above are both about **silence**. A reply that keeps producing a token every
@@ -1472,15 +1492,20 @@ how many requests and how many tokens in and out, what it cost, the conversation
 in, the piece of work or the standing promise it was made for, and the project directory it
 ran against.
 
-Four things are worth knowing about it:
+Five things are worth knowing about it:
 
 - **The figures are the bill, not an estimate.** Until this file existed, "what did opus cost
   me this month" could only be answered by opening every transcript on the machine, and "what
   did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
   in it.
-- **A call that cost nothing writes no line.** So a day with no lines is a day
-  nothing was spent, rather than a day of zeroes. The place obeys the same law and draws
+- **A call that cost nothing writes no priced line.** Missing receipts instead leave
+  an explicit `unbilled` marker, so a missing price is never called free. The place obeys the same law and draws
   nothing for an unpriced call rather than calling it free.
+- **A call the provider charged for and the stream never priced is asked about late.** A
+  cut stream that named its generation is matched to the provider's own receipt in the
+  background. A found receipt writes its exact cost and token counts on a row marked
+  `reconciled`; when no receipt can be had, no figure is invented and a durable `unbilled` marker is
+  written instead. The reply never waits for this accounting.
 - **A record that could not be written is counted and said.** Writing this file never makes a
   reply wait: if the disk stops answering, the row is dropped rather than the turn. When that
   happens the spend place's top line and the Spending tab both grow a reading — `3 spending
@@ -1494,10 +1519,9 @@ Four things are worth knowing about it:
   both were on this file twice, so a day that included a fork or a run read high, and the
   daily limit was reached before that much had actually been spent.
 
-`/cost` and the status line are **this conversation's** own running total, kept by the same
-step that writes the line above — so the two cannot drift apart. The spend place is the whole
-machine; `/cost` is this conversation. They answer two different questions and neither is a
-correction of the other.
+The status line shows **this conversation and its task family**, combining the current
+ledger reading with the conversation meter. `/cost` prints that same scope with its
+breakdown; `/spend` opens the ledger for the whole machine.
 
 ## The spend place — what days and models cost, and what the money was for
 
@@ -2426,9 +2450,10 @@ aforge logs --path          print the file and nothing else
 One line per call, and it reads like this:
 
 ```
-21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  1204 in  466 out  1024 cached  $0.0003  acted hedge  2 arms  hedged  waste $0.0012
+21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  1204 in  466 out  1024 cached  $0.0003  acted hedge  drift  2 arms  hedged  waste $0.0012
 21:12:41  compile  z-ai/glm-5.3-flash  deepinfra  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
 21:13:04  leaf  #build  z-ai/glm-5.3  novita  high  max 65536  deadline 30.0s  ⋯ in flight 3m12s
+21:14:06  leaf  #build  z-ai/glm-5.3  novita  high  max 65536  → 200  1m2s  acted hedge  rate collapsed  no rescue: budget
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
@@ -2445,10 +2470,15 @@ aforge about that model.
 
 **`auto→coreweave` is the router overriding a choice** — the endpoint asked for on the
 left, the one that answered on the right. When they are the same you see one name, and a
-call to something that is not a router shows none. **`acted hedge · 2 arms · hedged ·
-waste $0.0012`** is a call that went quiet, had a second request fired at another endpoint
-to rescue it, and what the arm that lost cost. Almost every line has none of that, because
-almost nothing has to be done.
+call to something that is not a router shows none. **`acted hedge · drift · 2 arms ·
+hedged · waste $0.0012`** is a call that went quiet, had a second request fired at another
+endpoint to rescue it, names the controller's reason, and says what the arm that lost cost.
+That reason can be `first token late`, `drift`, `long think`, `ceiling`, `no heartbeat`, or
+`rate collapsed`. **`acted hedge · rate collapsed · no rescue: budget`** means the visible
+answer had slowed to a crawl and the controller called for a hedge, but the spending limit
+kept the second request off the wire. The other refusal words are `no alt` when no untried
+machine remained and `no room` when the arm limit had already been reached. Almost every
+line has none of that, because almost nothing has to be done or refused.
 
 **`pinned high` after the thinking level is a level that did not travel** — the seat's class
 value asked for it and something else decided this one call. The word on the left is what the

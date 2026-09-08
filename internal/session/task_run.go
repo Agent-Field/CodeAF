@@ -115,11 +115,21 @@ const (
 	// else's repository.
 	tasksDirName = ".aforge-v3/tasks"
 
-	// taskReportLines and taskReportLineLimit bound the report. Two or three
-	// lines is what a person reads off a finished card and what a dependent's
-	// brief can afford to carry; the whole story is in the node's journal.
+	// taskReportLines and taskReportLineLimit bound the ordinary report. Two or
+	// three lines is what a person reads off a finished card and what a
+	// dependent's brief can afford to carry; the whole story is in the node's
+	// journal.
 	taskReportLines     = 3
 	taskReportLineLimit = 300
+
+	// taskReportFenceLines is how much further a report may run to finish a
+	// fenced block it opened. A REPORT CARRIES WHAT IT PROMISES, but only a short
+	// quoted tail belongs on the finished card rather than in the node's journal.
+	taskReportFenceLines = 8
+
+	// taskReportCut tells the reader that the node said more than the bounded
+	// report could carry. It stands alone so it cannot become part of a fence.
+	taskReportCut = "…"
 
 	// taskSlugLimit keeps a branch name readable in `git branch`.
 	taskSlugLimit = 32
@@ -451,6 +461,9 @@ type TaskNode struct {
 	// the wrong repository.
 	Base     string
 	Universe string
+	// CheckBase is the immutable Git commit captured before the worker runs.
+	// A universe's Seal names a filesystem snapshot, not a Git commit.
+	CheckBase string
 	// Expects is THE CHECKABLE HALF OF THE HANDOFF this node was given: what its
 	// brief assumes is already true of the world it gets (handoffcontract.go).
 	// It sits beside Ground for the same reason Rung does — the ground says
@@ -929,11 +942,12 @@ type TaskGraph struct {
 	// resumes it — its `done` is never closed, and a stop that waited on that
 	// channel would wait for something nobody is going to send.
 	runners sync.WaitGroup
-	// quitting is set once, by the graph's bounded stop, and it is what makes a
-	// closed session a session with no running nodes: after it the frontier
-	// starts nothing, so no goroutine can join the wait that is already under
-	// way. It is read and written under `mu` beside the Add above, which is
-	// what keeps a node from being counted after the count is being waited on.
+	// quitting closes the frontier: after it is set, nothing starts. The graph's
+	// bounded stop sets it when the session quits so no goroutine can join the
+	// wait already under way; the wall sets it because a run past its ceiling
+	// may not start work it cannot pay for. It is read and written under `mu`
+	// beside the Add above, which keeps a node from being counted after the
+	// count is being waited on.
 	quitting bool
 	// report is called once per node reaching a final state, outside the lock.
 	// It is how the world hears: the update event, and the note that reaches the
@@ -2372,6 +2386,18 @@ func (a *Agent) taskLimits(node *TaskNode) taskLimits {
 	if a.config.TaskDeadline > 0 {
 		limits.deadline = a.config.TaskDeadline
 	}
+	// A TASK STARTED UNDER A WALL GETS AN INTERVAL THAT FITS WHAT THE RUN HAS
+	// left. The allowance is the floor because it is the same setup-and-check
+	// margin that refuses a handover when there is no useful task interval left
+	// (turnwall.go); making up a smaller duration here would reopen that refused
+	// road through a different task door.
+	if steward := a.steward(); steward != nil {
+		budget := steward.Budget()
+		left, _ := budget.Left()
+		if budget.Wall > 0 {
+			limits.deadline = max(min(limits.deadline, left), taskAllowance)
+		}
+	}
 	return limits
 }
 
@@ -2619,6 +2645,7 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
+	tree.checkBase = n.CheckBase
 	tree.home, tree.homeSha = n.Home, n.HomeSha
 	return tree
 }
@@ -2957,6 +2984,7 @@ func (n *TaskNode) setTree(tree taskTree) {
 	// the work actually happened in.
 	n.Rung, n.Seal = tree.rung, tree.seal
 	n.Base, n.Universe = tree.base, tree.universe
+	n.CheckBase = tree.checkBase
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
 }
@@ -6007,18 +6035,19 @@ func insideWorktree(dir, name string) (string, bool) {
 	return clean, true
 }
 
-// taskReport is the node's last word: the final assistant message, cut to three
-// lines. It is read off the child's transcript rather than accumulated from its
-// deltas because both paths — a streaming provider and a non-streaming one —
-// end with the same recorded message, and only one of them emits deltas.
+// taskReport is the node's short last word: the final assistant message, with a
+// fenced block allowed enough room to keep the words it promises. It is read
+// off the child's transcript rather than accumulated from its deltas because
+// both paths — a streaming provider and a non-streaming one — end with the same
+// recorded message, and only one of them emits deltas.
 func taskReport(child *Agent) string {
-	return firstLines(lastSaid(child), taskReportLines)
+	return composeTaskReport(lastSaid(child))
 }
 
 // lastSaid is an agent's final assistant message, whole. It is what taskReport
-// clips and what the auditor's verdict is parsed out of (task_audit.go) — a
-// verdict is four lines and a report is three, and cutting before the parse
-// would be the harness deciding a verdict was too long to read.
+// composes and what the auditor's verdict is parsed out of (task_audit.go) — a
+// verdict is four lines and an ordinary report is three, and cutting before the
+// parse would be the harness deciding a verdict was too long to read.
 func lastSaid(child *Agent) string {
 	entries := child.Transcript()
 	for index := len(entries) - 1; index >= 0; index-- {
@@ -6029,6 +6058,74 @@ func lastSaid(child *Agent) string {
 		return entry.Text
 	}
 	return ""
+}
+
+// composeTaskReport keeps the ordinary three-line report small while carrying
+// a fenced block that begins there. A REPORT NEVER LEAVES AN OPENING FENCE
+// HANGING: a block that overruns its small allowance is closed here, and every
+// report that leaves a line behind says so on a line of its own.
+func composeTaskReport(text string) string {
+	var kept []string
+	var fence string
+	openedAt := -1
+	dropped := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		room := taskReportLines
+		if fence != "" {
+			room += taskReportFenceLines
+		}
+		if len(kept) >= room {
+			dropped = true
+			break
+		}
+
+		marker, bare := taskReportFenceMarker(line)
+		switch {
+		case fence == "" && marker != "":
+			fence = marker
+			openedAt = len(kept)
+		case fence != "" && bare && marker[0] == fence[0] && len(marker) >= len(fence):
+			fence = ""
+			openedAt = -1
+		}
+		kept = append(kept, clip(line, taskReportLineLimit))
+	}
+
+	if fence != "" {
+		if len(kept) == openedAt+1 {
+			kept = kept[:openedAt]
+			dropped = true
+		} else {
+			kept = append(kept, clip(fence, taskReportLineLimit))
+			dropped = true
+		}
+	}
+	if dropped {
+		kept = append(kept, taskReportCut)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// taskReportFenceMarker reads only the delimiter at the start of a trimmed
+// line. The rest is an opening fence's information string; a closing fence is
+// bare, and its caller still has to match its character and length to the one
+// that opened the block.
+func taskReportFenceMarker(line string) (marker string, bare bool) {
+	if len(line) < 3 || (line[0] != '`' && line[0] != '~') {
+		return "", false
+	}
+	end := 1
+	for end < len(line) && line[end] == line[0] {
+		end++
+	}
+	if end < 3 {
+		return "", false
+	}
+	return line[:end], end == len(line)
 }
 
 // firstLines is the first n non-empty lines, each clipped.
@@ -6697,6 +6794,8 @@ type taskTree struct {
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing
 	// uncommitted, which is the ordinary case.
 	base string
+	// checkBase remains a Git commit even when seal names a filesystem snapshot.
+	checkBase string
 	// universe is the furrow fork's name, when a fork made this world, and it is
 	// the only handle furrow takes for dropping the record afterwards.
 	universe string
@@ -6910,7 +7009,13 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 	if out, err := git(root, "worktree", "add", "-b", branch, dir, from); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
-	return taskTree{dir: dir, root: root, branch: branch, home: home, homeSha: homeSha, place: place, ground: root, mode: TaskModeWorktree}, nil
+	// The cut's commit remains the baseline even if the worker commits its own
+	// edits later. The check base travels through checkpoints and repairs.
+	start, err := git(dir, "rev-parse", "HEAD")
+	if err != nil {
+		return taskTree{}, fmt.Errorf("read task base: %w", err)
+	}
+	return taskTree{dir: dir, root: root, branch: branch, home: home, homeSha: homeSha, place: place, ground: root, mode: TaskModeWorktree, checkBase: strings.TrimSpace(start)}, nil
 }
 
 // prepareTaskTreeOn gives one node a place to work ON ITS GROUND, which is the

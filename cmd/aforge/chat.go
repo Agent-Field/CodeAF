@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -126,6 +127,19 @@ type brainOptions struct {
 	// newClient builds provider clients. Nil is the real one; a test scripts a
 	// provider through it and drives the same brain every other caller drives.
 	newClient func(config.Config, string) (*liveClient, error)
+}
+
+// remainingWall reads what the errand's own context still leaves.
+//
+// WHAT THE ERRAND'S WALL LEAVES IS THE ONLY FIGURE THAT CARRIES THE PERSON'S
+// OWN NUMBER. The runner passes the same context settings.ExecContext preserves
+// and the leaf actually runs under; a surface with no wall has no deadline here
+// and keeps the token-sized room it has always granted.
+func remainingWall(ctx context.Context) time.Duration {
+	if at, ok := ctx.Deadline(); ok {
+		return time.Until(at)
+	}
+	return 0
 }
 
 // buildBrain assembles the brain: every provider client, the reconciler, the
@@ -527,8 +541,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
 		leafRoom := exec.SubharnessFor(subharness)
-		deadline := leafRoom.Deadline(tokens)
-		watchdog := leafRoom.Watchdog(tokens)
+		wallLeft := remainingWall(ctx)
+		deadline := leafRoom.DeadlineWithin(tokens, wallLeft)
+		watchdog := exec.WatchdogAbove(deadline)
 		if isReflex {
 			turns, tokens = reflexTurns, reflexTokens
 			deadline = reflexDeadline
@@ -667,8 +682,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if fold {
 			turns, tokens = foldGrant(modelCatalog.ContextLength(workingModel),
 				exec.FoldTurns, pushed, tokens)
-			deadline = leafRoom.Deadline(tokens)
-			watchdog = leafRoom.Watchdog(tokens)
+			wallLeft = remainingWall(ctx)
+			deadline = leafRoom.DeadlineWithin(tokens, wallLeft)
+			watchdog = exec.WatchdogAbove(deadline)
 			build.maxTurns, build.maxTokens, build.deadline = turns, tokens, deadline
 		}
 		// Journaled either way, so a benchmark can tell a fold that fired from a
@@ -970,7 +986,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					attempted.Fold = false
 					build.maxTurns, build.maxTokens = openTurns, openTokens
 					build.deadline = openDeadline
-					watchdog = leafRoom.Watchdog(openTokens)
+					watchdog = exec.WatchdogAbove(build.deadline)
 					worker = runningWorker(node.ID, subharness, build, "")
 					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
 						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
@@ -1158,7 +1174,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// path to find. Naming them in the error text is enough — the error
 			// is what a failed node records, and a downstream step now reads
 			// paths out of it the same way it reads them out of a summary.
-			failure := humanFailure(node, err, absolute, withheld)
+			account := checklistAccount(graph, node.ID, absolute)
+			failure := humanFailure(node, err, absolute, withheld, account)
 			// A sibling's failure is the board note nobody should have to
 			// remember to write: the workers still running are about to lean on
 			// a result that is not coming, and the reason it died is the fact
@@ -2683,6 +2700,20 @@ func (b *leafBanker) bank(billed provider.Billed) {
 	b.total.Cost += billed.Cost
 }
 
+// reconciled is the leaf's late half of [leafBanker.bank]. A found provider
+// receipt is the same real call money and belongs on the node immediately; an
+// absent receipt has no figure this graph can honestly record.
+func (b *leafBanker) reconciled(receipt provider.Reconciled) {
+	if b == nil {
+		return
+	}
+	if !receipt.Found {
+		session.RecordUnbilledCall(session.UsageLedgerPath(), session.UsageLine{Task: b.nodeID, Model: receipt.Model})
+		return
+	}
+	b.bank(receipt.Billed)
+}
+
 // banked is what this leaf's calls have already put on disk, which is what the
 // landing roll-up subtracts so the same money is not journaled twice.
 func (b *leafBanker) banked() exec.Usage {
@@ -2703,7 +2734,9 @@ func armBilling(ctx context.Context, banker *leafBanker) context.Context {
 	if banker == nil {
 		return ctx
 	}
-	return provider.WithBilling(provider.WithCallNode(ctx, banker.nodeID), banker.bank)
+	ctx = provider.WithCallNode(ctx, banker.nodeID)
+	ctx = provider.WithBilling(ctx, banker.bank)
+	return provider.WithReconcile(ctx, banker.reconciled)
 }
 
 // leafShape accumulates one attempt's per-turn ledger onto whatever earlier
@@ -3764,8 +3797,9 @@ func leafCause(node store.Node, err error) string {
 // unedited, where the record page shows it in full and no clipping reaches.
 //
 // The partial files ride below too, for the retry and for the person who wants
-// them, not for the notification.
-func humanFailure(node store.Node, err error, artifacts []string, withheld string) error {
+// them, not for the notification. The checklist follows them so a run that
+// never reached its delivery gate still accounts for every thing it was asked.
+func humanFailure(node store.Node, err error, artifacts []string, withheld, checklist string) error {
 	if err == nil {
 		return nil
 	}
@@ -3784,7 +3818,31 @@ func humanFailure(node store.Node, err error, artifacts []string, withheld strin
 	if withheld = strings.TrimSpace(withheld); withheld != "" {
 		body += "\n\n" + withheld
 	}
+	if checklist = strings.TrimSpace(checklist); checklist != "" {
+		body += "\n\n" + checklist
+	}
 	return errors.New(body)
+}
+
+// checklistAccount is best-effort on the failure path because losing a journal
+// read must never replace the work and error the node already has to hand over.
+func checklistAccount(graph *store.Store, nodeID string, wrote []string) string {
+	if graph == nil {
+		return ""
+	}
+	acceptance, found, err := graph.AcceptanceFor(nodeID)
+	if err != nil || !found {
+		return ""
+	}
+	// A GATE NOBODY COULD READ IS NOT A GATE THAT ANSWERED, and it is not a
+	// reason to drop the person's own list. The list is still accounted for,
+	// with nothing claimed answered — which is the conservative side, and the
+	// same direction every other unreadable row is read in here.
+	gate, gateRead, err := graph.DeliveryGateFor(nodeID)
+	if err != nil {
+		gate, gateRead = store.DeliveryGate{}, false
+	}
+	return revision.ChecklistAccount(revision.AnswerChecklist(acceptance.Points, gate, gateRead, wrote))
 }
 
 // failureCauseBytes bounds the cause line. A provider that answers a refusal

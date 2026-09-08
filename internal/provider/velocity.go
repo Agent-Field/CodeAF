@@ -475,7 +475,13 @@ func (p *providerPrefs) narrowing() bool {
 // rule in [velocityLedger.preferences] exists to prevent. So it turns on
 // [velocityLedger.coveringIgnoreRefused]: the router is the only authority on
 // the size of the set, it says so in a sentence, and it is asked once per model.
-// A demand needs no such evidence, because a demand IS the set.
+// Once it has, [velocityLedger.reachableLanes] subtracts the machines that same
+// refusal proved the router would not have sent to. The learning
+// spares every lane on the transmitted ignore list,
+// so every subtraction is sound even though this process cannot read the
+// account's own exclusions. A demand needs neither evidence nor subtraction,
+// because a demand IS the set and its refusal says nothing about machines
+// outside it.
 func (l *velocityLedger) keepTheSetServable(model string, prefs *providerPrefs) {
 	if prefs == nil || len(prefs.Ignore) == 0 {
 		return
@@ -485,7 +491,7 @@ func (l *velocityLedger) keepTheSetServable(model string, prefs *providerPrefs) 
 		if !l.coveringIgnoreRefused(model) {
 			return
 		}
-		set = l.lanesKnown(model)
+		set = l.reachableLanes(model)
 	}
 	if len(set) == 0 {
 		return
@@ -524,6 +530,25 @@ func (l *velocityLedger) lanesKnown(model string) []string {
 		names = append(names, entry.provider)
 	}
 	return names
+}
+
+// reachableLanes is every known endpoint except one the router has proved it
+// would not have sent to, with the ledger's first-seen order preserved.
+func (l *velocityLedger) reachableLanes(model string) []string {
+	known := l.lanesKnown(model)
+	if len(known) == 0 {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	unreachable := l.unreachable[normalizeModel(model)]
+	reachable := make([]string, 0, len(known))
+	for _, name := range known {
+		if !unreachable[name] {
+			reachable = append(reachable, name)
+		}
+	}
+	return reachable
 }
 
 // nearestForgiveness is the name in `set` whose refusal expires soonest — the
@@ -1098,6 +1123,14 @@ type velocityLedger struct {
 	// what it records is the shape of a model's serving set, which does not
 	// change between one call and the next.
 	coveredIgnore map[string]bool
+	// unreachable is model → endpoint → "the router would not have sent to this
+	// machine". A covering-ignore refusal from the router is the only evidence
+	// that adds an entry, and a served answer is the only evidence that clears
+	// one.
+	//
+	// The transmitted ignore list is the evidence: a cooldown that expired
+	// while the response traveled back still belonged to us on that request.
+	unreachable map[string]map[string]bool
 }
 
 func newVelocityLedger() *velocityLedger {
@@ -1108,6 +1141,7 @@ func newVelocityLedger() *velocityLedger {
 		runs:          map[string]map[string]time.Duration{},
 		noCeiling:     map[string]bool{},
 		coveredIgnore: map[string]bool{},
+		unreachable:   map[string]map[string]bool{},
 	}
 }
 
@@ -1166,6 +1200,27 @@ func (v *velocityLedger) refuseCoveringIgnore(model string) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.coveredIgnore[normalizeModel(model)] = true
+}
+
+// learnUnreachable records the lanes a covering-ignore refusal proved the
+// router would not have sent to. It reads the transmitted ignore list rather than
+// current cooldowns, which may have expired while the response was in flight.
+func (l *velocityLedger) learnUnreachable(model string, ignored []string) {
+	if l == nil {
+		return
+	}
+	key := normalizeModel(model)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for name := range l.lanes[key] {
+		if namesEndpoint(ignored, name) {
+			continue
+		}
+		if l.unreachable[key] == nil {
+			l.unreachable[key] = map[string]bool{}
+		}
+		l.unreachable[key][name] = true
+	}
 }
 
 // coveringIgnoreRefused reports whether [refuseCoveringIgnore] has been called
@@ -1358,6 +1413,9 @@ func (l *velocityLedger) observe(model, served string, ttft time.Duration, token
 	if sighting.Provider == "" {
 		return sighting
 	}
+	// A machine that answered is reachable, and that is the only evidence that
+	// can undo what the router's refusal taught this process.
+	delete(l.unreachable[key], sighting.Provider)
 	lanes := l.lanes[key]
 	if lanes == nil {
 		lanes = map[string]*lane{}

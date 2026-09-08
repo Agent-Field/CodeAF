@@ -425,6 +425,10 @@ behind, and that is the difference between a deliverable and a dropping.
 
 ## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
 
+A tag with the same name as a branch does not change which branch is protected
+or which commit the landing compares. Git signature-display settings also do
+not change whether a forward commit belongs to aforge.
+
 Automatic task landing never merges into a protected branch. The protected names are `main`, `master`,
 `dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
 `release`; any branch a remote names as its default counts too. The task is still **done**.
@@ -869,7 +873,7 @@ refused before they run, and the task reads the refusal and keeps working:
 
 | Refused | Because |
 | --- | --- |
-| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
+| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref`, `symbolic-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
 | `pull`, `fetch`, `clone`, `remote`, `submodule` | they bring in work the task did not do, and a task reports what it writes as its own |
 | `push` | a task's work comes home through its landing, not over a remote (the section above) |
 | `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
@@ -887,17 +891,26 @@ command aimed at another directory is answered by the path law above instead —
 copy" — because "this is your own copy" is false about a repository the task is not standing
 in, and a refusal a model can see through is a refusal it goes around.
 
-**None of this applies to you.** In your own conversation, in your own checkout, aforge
-runs whatever git you ask for. The rule exists because a task reports work as *its own*,
-and one that fast-forwarded onto `main` really did report somebody else's fixes as the
-thing it had just built.
+**In a session you are sitting in front of, none of this applies to you.** In your own
+conversation, in your own checkout, aforge runs whatever git you ask for. A session you
+left running on its own with a budget answers to this same list, because it decides on its
+own word that the work is done; *The git an unattended run left on its own will not run*
+in *What aforge is, and how you start it* says exactly what that session reads. The rule
+exists because a task reports work as *its own*, and one that fast-forwarded onto `main`
+really did report somebody else's fixes as the thing it had just built.
 
 ## How a task reports back to you
 
-When a task lands, its **report** is its final assistant message, cut to the first **3
-non-empty lines**, each clipped to **300 characters**. That cut is what a row and a card
-show. What the task actually produced is kept whole beside it — up to **16,000
-characters**, and past that the whole text is written to a file next to the task's
+When a task lands, its **report** begins with the first **3 non-empty lines** of its final
+assistant message, each clipped to **300 characters**. If those lines open a fenced code
+block, the report can carry up to **8 extra non-empty lines** beyond that ordinary room to
+include its contents and closing fence. A report never ends on a bare opening fence. When
+any non-empty line is left out — or when the report had to close a block the task left open,
+because that closing line is the report's and not the task's — it ends with `…` on a line of
+its own; a report that carries the whole message unaltered has no such mark.
+
+What the task actually produced is kept whole beside this report — up to **16,000
+characters**, and past that the whole text is written to a file next to the task’s
 transcript and the record points at it — so the answer is never only three lines
 anywhere it is used again.
 
@@ -968,6 +981,22 @@ that could not be made at all stops the landing before the merge — nothing is 
 nothing is given back, and the task needs your look (*My task could not save what it wrote*
 above). Two tasks finishing at
 once are serialized, so a merge is never lost.
+
+## My task's report is cut off or ends at a code block — where the rest of the report went
+
+If a **report is cut off**, it ends with `…` on a line of its own. When one of its first **3
+non-empty lines** opens a fenced code block, the report carries up to **8 extra non-empty
+lines** beyond its ordinary room to keep the quoted content and its closing fence; it never
+ends in a bare opening fence. If that block cannot close within the extra room — or the task
+itself never closed it — the report closes it and then marks the cut, because that closing
+line is the report's own. This is why a current report does not end in three backticks with
+the code block missing from the report.
+
+The missing lines were not discarded. The task's journal keeps the whole final message,
+and its page shows that message under `what it said at the end`. Open the task from
+`/history` or `ctrl+.`, then press `enter` on its row. That is where the rest of the report
+went; the short report on the landing card, and the one the task's row keeps for later,
+stay bounded.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
 
@@ -1044,8 +1073,11 @@ longer evidence that anybody is looking at *that* conversation.
 Two clocks, and neither is a hard stop.
 
 **One hour per checkpoint.** The run, every correction round and every check inside it
-share a 60-minute interval — but when it fires, a second look decides what
-happens next. That look stands in the task's own working copy and has to open it: an answer
+share a 60-minute interval — unless the task starts under `--max-hours` with less of the
+run's wall left, in which case its interval is what remains. The setup-and-check allowance
+is the floor, so a task is never handed a shorter interval than it needs to open and be
+checked. When the interval fires, a second look decides what happens next. That look stands
+in the task's own working copy and has to open it: an answer
 given without reading anything is sent back once, told so, and the second answer is the one
 that counts. Working toward the brief: the task gets another hour, up to five in all
 (5 hours is the hard backstop, and a healthy task never meets it). Circling: it is told to
@@ -1318,6 +1350,11 @@ With it off, the gate stands open, the task's own account merges, the task lands
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
 
+**`task.audit` is this road's row and only this road's.** It governs tasks the conversation
+hands out with `/task`. It does not reach `aforge do`, whose delivery is judged by the
+delivery gate instead — see *running from the terminal* for what checks an unattended run
+and how its `--json` result names it.
+
 ## What the work SAYS it did is checked too — claims, and the ones nothing could settle
 
 **A landing's claims are its checklist.** Everything the work asserts about the world is a
@@ -1494,6 +1531,40 @@ How the restore is built depends on your workspace:
 
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
+
+## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
+
+A worker committing its own edits does not move this baseline. A restored task
+whose older record has no captured base supplies no before-reading; the current
+branch tip is never substituted for the missing history.
+
+Before a task's work is checked, aforge runs the task's named checks on the **base commit
+its copy was cut from**. That is the before-reading: it says which checks were already red
+before the task began. The check of what would ship is then compared with it. A check that
+was already failing and is still failing is not this task's to answer for; an acceptance
+that says the suite passes is met when everything this task could have broken is green and
+the rest is exactly as it was found. A check that was passing before the task and is red
+after it **is** this task's.
+
+The checker is told that distinction before it reads which commands it may run. If the base
+was clean, it is told every check was passing before the work began, so any red it finds is
+the task's. If a command could not start, changed the tree while it ran, or lay beyond the
+five-minute reading window, it counts neither way and is not named: aforge does not guess
+whose failure it is. A reading nobody could take produces no claim about earlier failures
+at all.
+
+The base reading is taken once per commit and shared by every task part cut from that same
+commit. The second reading is needed only when the base had red to subtract. This happens
+whether you are watching the session or left it running. Where a task works over a plain
+folder rather than a repository, there is no base commit to read, so nothing is subtracted
+and nothing about earlier red is claimed.
+
+When old red remains under work that finishes, its report keeps the checker's own evidence
+first and then says exactly:
+
+```
+1 check was already failing before this work and is not counted: go test ./...
+```
 
 ## What the checker is shown of what the task already ran
 

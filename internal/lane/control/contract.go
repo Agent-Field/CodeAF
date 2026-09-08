@@ -269,14 +269,23 @@ type Act struct {
 // "why did it act" on the one row somebody autopsies.
 const CeilingReason = "ceiling"
 
+// RateReason is the machine word [Act.Reason] carries when a collapsed visible
+// rate stopped earning progress and the ceiling raised the act.
+//
+// IT IS SPELLED ONCE AND EXPORTED because the call log and tests that script a
+// controller both read it, and a second spelling would be a second answer to
+// "why did it act" on the one row somebody autopsies.
+const RateReason = "rate collapsed"
+
 // Reading is one moment of a stream's life as the read loop sees it.
 //
 // THE THREE COUNTS ARE NOT INTERCHANGEABLE. Visible is text on the screen and
-// is the only thing that resets the deadline. Hidden is the endpoint writing
-// where nobody can read — a run of thought, a tool call being assembled — and
-// it keeps the stream alive and moves the phase without counting as progress.
-// Beat is the router's own comment line: proof about the PATH and about
-// nothing else, so it never resets the silence clock.
+// is the only thing that can reset the deadline, while its measured rate keeps
+// up. Hidden is the endpoint writing where nobody can read — a run of thought,
+// a tool call being assembled — and it keeps the stream alive and moves the
+// phase without counting as progress. Beat is the router's own comment line:
+// proof about the PATH and about nothing else, so it never resets the silence
+// clock.
 type Reading struct {
 	At      time.Time
 	Visible int

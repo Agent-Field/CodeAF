@@ -216,6 +216,8 @@ type taskRecord struct {
 	Seal     string     `json:"groundSeal,omitempty"`
 	Base     string     `json:"groundBase,omitempty"`
 	Universe string     `json:"groundUniverse,omitempty"`
+	// CheckBase preserves the before-reading when the worker commits or resumes.
+	CheckBase string `json:"checkBase,omitempty"`
 
 	// Frozen is the world every part of THIS node starts from, written when it
 	// divided ([TaskNode.Frozen]). It is here for the reason the four above are —
@@ -985,6 +987,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Rung:           n.Rung,
 		Seal:           n.Seal,
 		Base:           n.Base,
+		CheckBase:      n.CheckBase,
 		Universe:       n.Universe,
 		Frozen:         n.Frozen,
 		Family:         n.Family,
@@ -1529,6 +1532,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Rung:           record.Rung,
 		Seal:           record.Seal,
 		Base:           record.Base,
+		CheckBase:      record.CheckBase,
 		Universe:       record.Universe,
 		Frozen:         record.Frozen,
 		Family:         record.Family,
