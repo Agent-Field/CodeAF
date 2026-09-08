@@ -626,16 +626,9 @@ func TestTheTrayDrawsWhatWasAttachedAndNotWhatWasWorkedOut(t *testing.T) {
 func TestTheTrayNamesTheDirectoryThatWasActuallyChosen(t *testing.T) {
 	a, agent, root := browseLab(t)
 	deep := filepath.Join(root, "here", "deep")
-	agent.places = []session.PlaceRef{{Path: root, Arrival: session.PlaceSaid}}
-
-	was := placeScope
-	t.Cleanup(func() { placeScope = was })
-	placeScope = func(ref session.PlaceRef) string {
-		if ref.Path == root {
-			return deep
-		}
-		return ""
-	}
+	agent.places = []session.PlaceRef{{Path: root, Chose: deep, Arrival: session.PlaceSaid}}
+	door := &scopedRemovalAgent{fakeAgent: agent}
+	a.agent = door
 	if cells := a.placeTrayCells(); len(cells) != 1 || !strings.Contains(cells[0], "deep") {
 		t.Fatalf("the tray drew %v, want the folder that was chosen", cells)
 	}
@@ -645,8 +638,8 @@ func TestTheTrayNamesTheDirectoryThatWasActuallyChosen(t *testing.T) {
 		t.Fatal("the cell offered no way off")
 	}
 	settleFolder(t, a, cmd)
-	if len(agent.places) != 0 {
-		t.Fatalf("the removal did not act on the held path: %+v", agent.places)
+	if door.removed != deep {
+		t.Fatalf("the removal named %q, want the selected scope %q", door.removed, deep)
 	}
 }
 
@@ -837,4 +830,15 @@ func TestTheSmallestSheetIsStillDirectories(t *testing.T) {
 	if got := plain(rows[0]); strings.Contains(got, folderAddWord) {
 		t.Fatalf("the only row is the action row: %q", got)
 	}
+}
+
+// scopedRemovalAgent records the identity sent over the attachment removal door.
+type scopedRemovalAgent struct {
+	*fakeAgent
+	removed string
+}
+
+func (a *scopedRemovalAgent) RemovePlace(path string) error {
+	a.removed = path
+	return nil
 }

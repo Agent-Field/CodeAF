@@ -4,6 +4,7 @@ title: attached folders reach the next model request and can be removed
 pr: 657
 surface: [chat, engine, remote]
 invalidates:
+  - "Selecting two subfolders in one repository used to replace the first attachment, and removal targeted the root. Selected scopes now stay independent in context, persistence and removal while sharing one working ground."
   - "Attached repository subfolders previously loaded only root instructions. Applicable AGENTS.md and CLAUDE.md files now load along the selected ancestry, with explicit directory scopes and the same total budget."
   - "Choosing a folder used to update the conversation record without telling the next model request. Explicitly attached folders now appear in its instructions with scoped project rules, and removal takes them out again."
   - "The local wire client could lack folder registration while the surface offered it. The engine now advertises folder support and the client exposes registration, removal and the remembered set."

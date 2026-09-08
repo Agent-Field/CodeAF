@@ -301,7 +301,7 @@ func (a *app) markFolderHeld() {
 	}
 	held := map[string]bool{}
 	for _, ref := range a.attachedPlaces() {
-		held[ref.Path] = true
+		held[folderScopePath(ref)] = true
 	}
 	a.folder.held = held
 }
@@ -544,7 +544,7 @@ func (a *app) referredPlaces() []string {
 	}
 	paths := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		paths = append(paths, ref.Path)
+		paths = append(paths, folderScopePath(ref))
 	}
 	return paths
 }

@@ -170,6 +170,9 @@ When you select a subfolder in a repository, applicable `AGENTS.md` and `CLAUDE.
 files are read from the repository root down to that selected folder. Each excerpt
 names its own directory scope; more specific nested rules take precedence there.
 Sibling folders are not searched for rules, and shared ancestors are quoted once.
+Two subfolders selected in the same repository remain separate attachments. Removing
+one removes only that selected scope and its rules; the other stays attached. They
+still share one repository when work needs an isolated branch.
 
 Choosing a directory **inside a repository** attaches the repository, because a branch is
 cut from a repository and not from a directory in it — and the line you get back says so by

@@ -139,8 +139,8 @@ func (a *Agent) Places() []PlaceRef { return a.referredPlaces() }
 //
 // THE PATH IS SNAPPED TO THE REPOSITORY ROOT when it sits inside one, for
 // [groundRoot]'s reason: a branch is cut from a repository and not from a
-// directory inside it, so a person pointing at `…/internal/session` and a person
-// pointing at the project itself must not become two different places.
+// directory inside it. Chose preserves each independently selected context scope:
+// two subdirectories may share a working ground without becoming one attachment.
 func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) {
 	dir, err := a.placePath(path)
 	if err != nil {
@@ -187,9 +187,6 @@ func (a *Agent) RemovePlace(path string) error {
 		return fmt.Errorf("a place is a folder · this one has no path")
 	}
 	if dir, err := a.placePath(want); err == nil {
-		if root, ok := repositoryRoot(dir); ok {
-			dir = root
-		}
 		want = dir
 	} else if filepath.IsAbs(want) {
 		want = canonicalPath(filepath.Clean(want))
@@ -203,7 +200,7 @@ func (a *Agent) RemovePlace(path string) error {
 	a.mu.Lock()
 	kept := make([]PlaceRef, 0, len(a.places))
 	for _, place := range a.places {
-		if place.Path != want {
+		if placeScopePath(place) != want {
 			kept = append(kept, place)
 		}
 	}
@@ -254,7 +251,6 @@ func (a *Agent) SetPlaceMode(path, word string) error {
 			continue
 		}
 		found, places[index].Mode = true, mode
-		break
 	}
 	if found {
 		a.places = places
@@ -358,17 +354,15 @@ func (a *Agent) refer(ref PlaceRef) {
 	if ref.Referred.IsZero() {
 		ref.Referred = time.Now()
 	}
-	known, settled := a.knownPlace(ref.Path)
-	// AND WHAT THE PERSON POINTED AT SURVIVES A GROUND LANDING ON THE SAME PLACE,
-	// but is never carried over a person's own act. A resolved ground makes no
-	// claim about what anybody pointed at, so it inherits the record's; somebody
-	// choosing the project itself is SAYING they pointed at the root, and
-	// resurrecting last week's subdirectory under them would be this file
-	// remembering an intention they have just replaced. IT IS SETTLED BEFORE THE
-	// EARLY RETURN BELOW, because a person re-picking the same project at a
-	// different depth has something new to say about a place already at the head.
-	if ref.Arrival == PlaceKept && ref.Chose == "" {
-		ref.Chose = known.Chose
+	known, settled := a.knownPlace(placeScopePath(ref))
+	// A resolved ground must not widen or collapse explicitly selected scopes.
+	// The existing references already provide its repository to the ladder.
+	if ref.Arrival == PlaceKept {
+		for _, place := range a.referredPlaces() {
+			if place.Path == ref.Path && place.Arrival == PlaceSaid {
+				return
+			}
+		}
 	}
 	// The head, with nothing new to say about it. An arrival only ever goes up,
 	// so a ground resolved onto a place the person already named is a place the
@@ -397,7 +391,7 @@ func (a *Agent) refer(ref PlaceRef) {
 	a.mu.Lock()
 	kept := make([]PlaceRef, 0, len(a.places)+1)
 	for _, place := range a.places {
-		if place.Path != ref.Path {
+		if placeScopePath(place) != placeScopePath(ref) {
 			kept = append(kept, place)
 		}
 	}
@@ -412,6 +406,15 @@ func (a *Agent) refer(ref PlaceRef) {
 	a.keepAttached()
 }
 
+// placeScopePath is the attachment identity. Path remains the working ground,
+// because two selected folders can share a repository without sharing a scope.
+func placeScopePath(place PlaceRef) string {
+	if place.Chose != "" {
+		return place.Chose
+	}
+	return place.Path
+}
+
 // knownPlace is what the set already holds about one path, and whether it is
 // sitting at the head of it — which is the one shape that may cost nothing at
 // all. A path the conversation has never referred to answers a zero [PlaceRef].
@@ -419,7 +422,7 @@ func (a *Agent) knownPlace(path string) (PlaceRef, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for index, place := range a.places {
-		if place.Path == path {
+		if placeScopePath(place) == path {
 			return place, index == 0
 		}
 	}

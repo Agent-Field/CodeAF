@@ -424,6 +424,7 @@ func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []grou
 		}
 	}
 	for _, tier := range [][]PlaceRef{namedSaid, namedKept, said, kept} {
+		tier = distinctPlaceGrounds(tier)
 		switch len(tier) {
 		case 0:
 		case 1:
@@ -434,6 +435,20 @@ func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []grou
 		}
 	}
 	return taskStand{}, false
+}
+
+// distinctPlaceGrounds weighs a repository once within an evidence tier. Several
+// attachments can share its working ground without requiring a two-roots question.
+func distinctPlaceGrounds(places []PlaceRef) []PlaceRef {
+	seen := map[string]bool{}
+	out := make([]PlaceRef, 0, len(places))
+	for _, place := range places {
+		if !seen[place.Path] {
+			seen[place.Path] = true
+			out = append(out, place)
+		}
+	}
+	return out
 }
 
 // placeStand is one referred place as an answer: the SAID rung, and the person's

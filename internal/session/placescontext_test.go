@@ -365,8 +365,8 @@ func TestChoosingASubdirectoryOfARepositoryReportsTheRootItSnappedTo(t *testing.
 	if again.Chose != "" {
 		t.Fatalf("choosing the project itself still claims %q was pointed at", again.Chose)
 	}
-	if places := agent.Places(); len(places) != 1 || places[0].Chose != "" {
-		t.Fatalf("the set still holds a subdirectory the person replaced: %+v", places)
+	if places := agent.Places(); len(places) != 2 || places[0].Chose != "" || places[1].Chose != canonicalPath(inside) {
+		t.Fatalf("the root and the separately selected scope were not both kept: %+v", places)
 	}
 }
 
@@ -508,5 +508,62 @@ func TestAttachedSubfolderLoadsOnlyApplicableNestedInstructions(t *testing.T) {
 		if strings.Contains(seen, content) != want {
 			t.Fatalf("instruction inclusion for %s: want %v", file, want)
 		}
+	}
+}
+
+// Two scopes share a working ground without replacing one another's context.
+func TestTwoSelectedSubdirectoriesRemainIndependentAttachments(t *testing.T) {
+	repo := newTestRepo(t)
+	first, second := filepath.Join(repo, "one space"), filepath.Join(repo, "日本語")
+	writeFile(t, filepath.Join(first, "AGENTS.md"), "FIRST_SCOPE_RULE")
+	writeFile(t, filepath.Join(second, "AGENTS.md"), "SECOND_SCOPE_RULE")
+	dir := t.TempDir()
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = filepath.Join(dir, "session.jsonl")
+		c.Place = Place{Dir: dir}
+	})
+	for _, path := range []string{first, second, first} {
+		if _, err := a.ReferPlace(path, PlaceSaid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := a.Places(); len(got) != 2 {
+		t.Fatalf("selected scopes collapsed or duplicated: %+v", got)
+	}
+	stand := a.resolveTaskGround(taskSpec{deliverable: "the fix", acceptance: "tests pass"})
+	if stand.ask != "" || stand.dir != canonicalPath(repo) {
+		t.Fatalf("one repository became two grounds: %+v", stand)
+	}
+	a.keepGround(stand)
+	if got := a.Places(); len(got) != 2 {
+		t.Fatalf("resolving work changed the selected scopes: %+v", got)
+	}
+	for _, word := range []string{"FIRST_SCOPE_RULE", "SECOND_SCOPE_RULE"} {
+		if !strings.Contains(modelSees(t, a), word) {
+			t.Fatalf("missing %s", word)
+		}
+	}
+	if err := a.RemovePlace(first); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Places(); len(got) != 1 || got[0].Chose != canonicalPath(second) {
+		t.Fatalf("removal affected the other scope: %+v", got)
+	}
+	seen := modelSees(t, a)
+	if strings.Contains(seen, "FIRST_SCOPE_RULE") || !strings.Contains(seen, "SECOND_SCOPE_RULE") {
+		t.Fatalf("removal composed wrong scoped rules: %s", seen)
+	}
+	persisted := loadPlaces(dir)
+	if len(persisted) != 1 || persisted[0].Chose != canonicalPath(second) {
+		t.Fatalf("saved selection differs: %+v", persisted)
+	}
+	if err := os.RemoveAll(second); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RemovePlace(second); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Places()) != 0 {
+		t.Fatal("deleted scope cannot be removed")
 	}
 }

@@ -83,6 +83,14 @@ func (a *app) attachedPlaces() []session.PlaceRef {
 // the repository root used for task isolation; the tray must name the selection.
 var placeScope = func(ref session.PlaceRef) string { return ref.Chose }
 
+// folderScopePath keeps the action's identity aligned with the name on its chip.
+func folderScopePath(ref session.PlaceRef) string {
+	if scope := placeScope(ref); scope != "" {
+		return scope
+	}
+	return ref.Path
+}
+
 // canRemovePlace reports whether taking a folder back off can actually reach the
 // conversation. See this file's header.
 func (a *app) canRemovePlace() bool {
@@ -184,7 +192,7 @@ func (a *app) dropPlaceChip(at int) (tea.Cmd, bool) {
 	if at < 0 || at >= len(refs) || at >= placeTrayCap {
 		return nil, false
 	}
-	return a.dropPlace(refs[at].Path)
+	return a.dropPlace(folderScopePath(refs[at]))
 }
 
 // dropPlace is the removal itself, and it is ONE function because there are TWO
