@@ -1457,14 +1457,14 @@ Five things are worth knowing about it:
   me this month" could only be answered by opening every transcript on the machine, and "what
   did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
   in it.
-- **A call that cost nothing writes no line.** So a day with no lines is a day
-  nothing was spent, rather than a day of zeroes. The place obeys the same law and draws
+- **A call that cost nothing writes no priced line.** Missing receipts instead leave
+  an explicit `unbilled` marker, so a missing price is never called free. The place obeys the same law and draws
   nothing for an unpriced call rather than calling it free.
 - **A call the provider charged for and the stream never priced is asked about late.** A
   cut stream that named its generation is matched to the provider's own receipt in the
   background. A found receipt writes its exact cost and token counts on a row marked
   `reconciled`; when no receipt can be had, no figure is invented and a durable `unbilled` marker is
-  said instead. The reply never waits for this accounting.
+  written instead. The reply never waits for this accounting.
 - **A record that could not be written is counted and said.** Writing this file never makes a
   reply wait: if the disk stops answering, the row is dropped rather than the turn. When that
   happens the spend place's top line and the Spending tab both grow a reading — `3 spending
@@ -1479,8 +1479,8 @@ Five things are worth knowing about it:
   daily limit was reached before that much had actually been spent.
 
 The status line is **this conversation's** own running total, kept by the same step that
-writes the line above. `/cost` is an alias of `/spend` and opens the spend place for the whole
-machine. They answer two different questions and neither is a correction of the other.
+writes the line above. `/cost` prints this conversation and its task family; `/spend` opens the spend place
+for the whole machine. They answer two different questions and neither is a correction of the other.
 
 ## The spend place — what days and models cost, and what the money was for
 

@@ -9,9 +9,9 @@ invalidates:
   - "A streamed call that ended without a usage block — cut by its wall, cut by silence, torn, interrupted, or a hedge's losing arm — reached neither the conversation's meter nor `~/.aforge/v3/usage.jsonl`, and no surface said so. The provider's generation id is asked for that generation's own receipt in the background now, and the receipt's exact cost and token counts are written down late; the ledger still invents nothing, but the gap is no longer silent."
   - "`internal/provider/billing.go` had one door, `WithBilling`, and a response with no usage block was simply dropped there. There is a second door beside it, `WithReconcile`, told only what became of a call the wire never priced — the two are mutually exclusive, so one call can never be banked through both."
   - "A row in the usage ledger was always the provider's usage block off the wire. A row may now carry `reconciled: true`, which says its figures came from the provider's generation receipt after the stream ended; every row without the field means what it always did."
-  - "`session.UsageDrops` was the only shortfall a spend surface could report — records the disk would not take. `session.UnbilledCalls` sits beside it for calls the provider charged for and nothing could price, said on Settings→Spending and the `/cost` spend place as `2 calls the provider charged for and could not be priced`. Both draw nothing at zero."
+  - "`session.UsageDrops` was the only shortfall a spend surface could report — records the disk would not take. `session.UnbilledCalls` sits beside it for calls the provider charged for and nothing could price, said on Settings→Spending and the `/spend` place as `2 calls the provider charged for and could not be priced`. Both draw nothing at zero."
   - "`hedge_waste_usd` on a rescued call was always `hedgeRace.estimate`'s proportion of the frontier's price. A losing arm whose receipt can be had now writes its own row carrying the receipt's figure, so the waste column is a measurement wherever one exists and an estimate only where it does not."
-  - "The manual said `/cost` and the status line are this conversation's own running total. `/cost` is an alias of `/spend` and opens the machine's spend place; the status line is the conversation's total."
+  - "The first draft incorrectly called /cost an alias of /spend. /cost remains the conversation and its task family, while /spend opens the machine ledger; both now expose missing-price markers in their own scope."
 ---
 
 The audit that closed the books on the 2026-08-31 dogfood run found the ledger
@@ -25,8 +25,8 @@ heard about, in the flattering direction.
 The fact that was missing is that the stream has already named its generation id
 by the time it is cut, and the router serves an exact receipt for that id. So
 the id is what the money is asked for, on a bounded background schedule that no
-reply ever waits on. A receipt that cannot be had still writes nothing — a
-guessed number is worse than a gap — but the gap is counted and said now, which
+reply ever waits on. A receipt that cannot be had writes an unbilled marker without a guessed
+number. The gap is counted and said now, which
 is the same sentence the missing-writes reading already makes about the other
 shortfall (290-one-ledger-one-number).
 
