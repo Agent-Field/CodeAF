@@ -258,7 +258,7 @@ before any machine is asked.
 
 That sentence is the only thing that tells aforge which machines your account
 will not reach. Every machine aforge has timed for this model that aforge was
-not itself refusing at that moment stops being counted as somewhere the request
+not itself refusing in that request stops being counted as somewhere the request
 can land. On the next request, aforge drops the machine on its own list that is
 nearest returning, and the request lands. A switched-off provider therefore
 costs one refused round trip per model in a session, rather than one on every

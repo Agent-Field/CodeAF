@@ -477,7 +477,7 @@ func (p *providerPrefs) narrowing() bool {
 // the size of the set, it says so in a sentence, and it is asked once per model.
 // Once it has, [velocityLedger.reachableLanes] subtracts the machines that same
 // refusal proved the router would not have sent to. The learning
-// under-approximates that set because it spares every lane under a live veto,
+// spares every lane on the transmitted ignore list,
 // so every subtraction is sound even though this process cannot read the
 // account's own exclusions. A demand needs neither evidence nor subtraction,
 // because a demand IS the set and its refusal says nothing about machines
@@ -1122,10 +1122,8 @@ type velocityLedger struct {
 	// that adds an entry, and a served answer is the only evidence that clears
 	// one.
 	//
-	// IT UNDER-LEARNS BY CONSTRUCTION. The wire's ignore list may be smaller
-	// than the ledger's live cooldowns because the way out may release one, so
-	// every live cooldown is spared: what remains is a subset of the machines
-	// the refusal proved unreachable, never a guess beyond them.
+	// The transmitted ignore list is the evidence: a cooldown that expired
+	// while the response traveled back still belonged to us on that request.
 	unreachable map[string]map[string]bool
 }
 
@@ -1199,18 +1197,17 @@ func (v *velocityLedger) refuseCoveringIgnore(model string) {
 }
 
 // learnUnreachable records the lanes a covering-ignore refusal proved the
-// router would not have sent to. It reads the live cooldowns rather than
-// rebuilding a preference object, so it neither expires nor redraws anything.
-func (l *velocityLedger) learnUnreachable(model string) {
+// router would not have sent to. It reads the transmitted ignore list rather than
+// current cooldowns, which may have expired while the response was in flight.
+func (l *velocityLedger) learnUnreachable(model string, ignored []string) {
 	if l == nil {
 		return
 	}
 	key := normalizeModel(model)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := l.now()
-	for name, entry := range l.lanes[key] {
-		if !entry.ignoredUntil.IsZero() && now.Before(entry.ignoredUntil) {
+	for name := range l.lanes[key] {
+		if namesEndpoint(ignored, name) {
 			continue
 		}
 		if l.unreachable[key] == nil {

@@ -363,7 +363,7 @@ func TestALaneTheRouterWillNotSendToLeavesTheDenominator(t *testing.T) {
 	client.velocity.brisk(model, "Bravo")
 	client.velocity.pace(model, "Bravo", time.Minute)
 	client.velocity.refuseCoveringIgnore(model)
-	client.velocity.learnUnreachable(model)
+	client.velocity.learnUnreachable(model, []string{"Bravo"})
 
 	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
 	if prefs == nil {
@@ -385,7 +385,7 @@ func TestALaneUnderVetoIsNeverLearnedUnreachable(t *testing.T) {
 	client.velocity.pace(model, "Alpha", 4*time.Minute)
 	client.velocity.pace(model, "Bravo", time.Minute)
 	client.velocity.refuseCoveringIgnore(model)
-	client.velocity.learnUnreachable(model)
+	client.velocity.learnUnreachable(model, []string{"Alpha", "Bravo"})
 
 	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
 	if prefs == nil || !equalStrings(prefs.Ignore, []string{"Alpha"}) {
@@ -445,7 +445,7 @@ func TestAnAnsweringMachineIsBackInTheDenominator(t *testing.T) {
 	client.velocity.brisk(model, "Bravo")
 	client.velocity.pace(model, "Bravo", time.Minute)
 	client.velocity.refuseCoveringIgnore(model)
-	client.velocity.learnUnreachable(model)
+	client.velocity.learnUnreachable(model, []string{"Bravo"})
 	client.velocity.brisk(model, "Alpha")
 
 	prefs := client.wirePreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
@@ -472,5 +472,24 @@ func TestNothingLeavesTheDenominatorBeforeTheRouterHasSaidSo(t *testing.T) {
 	want := `{"sort":"latency","order":["Alpha"],"ignore":["Bravo"],"allow_fallbacks":true,"require_parameters":true}`
 	if string(encoded) != want {
 		t.Fatalf("provider preferences = %s, want the unchanged healthy object %s", encoded, want)
+	}
+}
+
+// A cooldown may expire while the request is in flight. Its transmitted veto
+// is still ours and must not become evidence of an account exclusion.
+func TestAnExpiredInFlightVetoDoesNotTeachAnAccountExclusion(t *testing.T) {
+	client, _ := routedClient(t, RoutingLatency, answered(plainAnswer))
+	const model = "vendor/fast-model"
+	now := time.Now()
+	client.velocity.now = func() time.Time { return now }
+	client.velocity.brisk(model, "Alpha")
+	client.velocity.brisk(model, "Bravo")
+	client.velocity.brisk(model, "Charlie")
+	client.velocity.pace(model, "Bravo", time.Second)
+	client.velocity.pace(model, "Charlie", time.Minute)
+	now = now.Add(2 * time.Second)
+	client.velocity.learnUnreachable(model, []string{"Bravo", "Charlie"})
+	if client.velocity.unreachable[normalizeModel(model)]["Bravo"] {
+		t.Fatal("our transmitted Bravo veto was mistaken for an account exclusion after its cooldown expired")
 	}
 }

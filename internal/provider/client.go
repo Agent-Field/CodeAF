@@ -521,12 +521,12 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	if c.velocity != nil && ignoredEverything(peek) && c.velocity.holdsVetoes(model) {
 		c.velocity.refuseCoveringIgnore(model)
 		// THE SAME SENTENCE CARRIES MORE THAN THE MEMO TAKES. The set was
-		// empty, so every machine this process knows and was not refusing is a
+		// empty, so every machine this process knows and the request did not refuse is a
 		// machine the router would not have sent to. A refusal of a DEMAND is
 		// exempt: with `allow_fallbacks: false` its set is exactly what the
 		// demand names, and the refusal says nothing about a machine outside it.
-		if refusal.Lane == "" {
-			c.velocity.learnUnreachable(model)
+		if sent := refusedWirePreferences(response); sent != nil && len(sent.Only) == 0 && len(sent.Ignore) > 0 {
+			c.velocity.learnUnreachable(model, sent.Ignore)
 		}
 	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
@@ -2281,4 +2281,25 @@ func clipRaw(raw json.RawMessage) string {
 		text = strings.TrimSpace(text[:maxRawClip]) + "…"
 	}
 	return text
+}
+
+// refusedWirePreferences reads the object that actually left. Cooldowns can
+// expire while a refusal travels back, so rebuilding this from the live ledger
+// would turn our own transmitted veto into an account exclusion.
+func refusedWirePreferences(response *http.Response) *providerPrefs {
+	if response == nil || response.Request == nil || response.Request.GetBody == nil {
+		return nil
+	}
+	body, err := response.Request.GetBody()
+	if err != nil {
+		return nil
+	}
+	defer body.Close()
+	var sent struct {
+		Provider *providerPrefs `json:"provider"`
+	}
+	if json.NewDecoder(body).Decode(&sent) != nil {
+		return nil
+	}
+	return sent.Provider
 }
