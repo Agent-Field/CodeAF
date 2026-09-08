@@ -634,12 +634,11 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
-	// The same file changed on both sides, which is the one thing a merge cannot
-	// decide for anybody.
+	// The person's uncommitted work and the node's copy changed the same file,
+	// which leaves the branch at the cut while still giving the merge two
+	// versions it cannot decide between for anybody.
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's line\n")
-	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 	node.setTree(tree)
 	node.finish("edited the shared file", []string{"shared.txt"}, tree.branch, tree.merge)
 
