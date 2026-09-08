@@ -194,8 +194,8 @@ func TestALandedNodesIndexRowCarriesItsModelAndItsTokens(t *testing.T) {
 // Nothing is edited — the newest row for an id is the one that counts.
 //
 // The pair is read off the FILE and not out of [ReadTaskIndex], because the
-// reader is where "the newest row counts" is actually enforced: it collapses a
-// node to one row on the way out ([newestPerNode]), so a run that started and
+// reader is where "the last row counts" is actually enforced: it collapses a
+// node to one row on the way out ([lastPerNode]), so a run that started and
 // ended answers with its ending and never with both. The two halves are tested
 // together here — the file keeps the pair, the reader hands back the closing
 // row — because a reader that collapsed the wrong way would still pass either
@@ -235,6 +235,11 @@ func TestTheRunsClosingRowLandsInTheIndexWithTheWholeTank(t *testing.T) {
 	if opening.Cost != 0 {
 		t.Fatalf("the launch row priced a run that had not spent anything yet: %+v", opening)
 	}
+	// An ending field on a row that has not ended is a landing time nobody can
+	// read as anything else.
+	if !opening.EndedAt.IsZero() {
+		t.Fatalf("a running row is dated %s, which is when it began", opening.EndedAt)
+	}
 	if closing.Status != string(TaskDone) || closing.Outcome != "the tariff table is keyed by region" {
 		t.Fatalf("the closing row is %+v", closing)
 	}
@@ -247,8 +252,8 @@ func TestTheRunsClosingRowLandsInTheIndexWithTheWholeTank(t *testing.T) {
 	if closing.Model != "cheap/planner" {
 		t.Fatalf("the closing row says the run thought with %q, want the planner's model", closing.Model)
 	}
-	// The two rows name the same piece of work, so a reader taking the newest
-	// row per id is taking the newest row about the SAME thing.
+	// The two rows name the same piece of work, so a reader taking the last row
+	// per id is taking the last row about the SAME thing.
 	if closing.Name != opening.Name || closing.Title != opening.Title {
 		t.Fatalf("the closing row renamed the run: %q/%q against %q/%q",
 			closing.Name, closing.Title, opening.Name, opening.Title)

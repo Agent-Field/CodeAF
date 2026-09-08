@@ -460,6 +460,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
 		{"the run said empty goal and did nothing", "adaptive-runs"},
+		// A file the review called a change even though the run only read it,
+		// asked in the three ways the person meets the false account.
+		{"it said I only changed one file and I changed none", "adaptive-runs"},
+		{"why did it name a file I only told it to read", "adaptive-runs"},
+		{"the review complained about a file I never wrote", "adaptive-runs"},
 		// A rule the person stated about what the run may DO, asked the four ways
 		// somebody meets it: before they run, and after the run broke it.
 		{"I said change no files and it changed files", "adaptive-runs"},
@@ -642,6 +647,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it say denied by the person when I did not deny", "permissions"},
 		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
+		{"does --yolo show on the status line", "screen"},
 		{"how do I make it stop asking every time", "permissions"},
 		{"what model is it using right now", "models-and-cost"},
 		{"how do I give it a longer context", "models-and-cost"},
@@ -884,6 +890,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// provider's own sentence.
 		{"it failed but the tests were green", "adaptive-runs"},
 		{"the model dropped out after finishing", "adaptive-runs"},
+		{"the retry died instantly but my fix is already on disk", "adaptive-runs"},
 		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
 		{"why did it run the tests nine times", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
@@ -1858,6 +1865,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
+		{"does aforge do use the lane I pinned", "lanes"},
+		{"is my pinned provider used when I run from a terminal", "lanes"},
 		// And the one thing that ends a pin without the person: the router
 		// saying that machine cannot serve that model at all (issue #456). It
 		// is asked as somebody reads it on the screen and wants to know what it

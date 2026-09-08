@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -746,6 +747,28 @@ func LanePinned(profileDir, slot string) (string, bool) {
 		return "", false
 	}
 	return value, true
+}
+
+// LanePinAt is one slot's lane row resolved into the answer the transport
+// takes. The three states of the row are the three states of the pin, and a row
+// nobody has written is `auto` — the belief chooses per answer.
+func LanePinAt(profileDir, slot string) provider.LanePin {
+	if name, pinned := LanePinned(profileDir, slot); pinned {
+		return provider.LanePin{Lane: name, Borrow: LaneBorrowAt(profileDir, slot)}
+	}
+	if strings.EqualFold(LaneAt(profileDir, slot), LaneOpenRouter) {
+		return provider.LanePin{OpenRouter: true}
+	}
+	return provider.LanePin{}
+}
+
+// InstallLaneRows hands this profile's lane rows to the process-wide knobs the
+// transport reads them from. It uses the RESOLVER'S entrance so loading a row
+// already in force never forgets a retirement the wire earned; only a person's
+// own act belongs at [provider.RepinLane].
+func InstallLaneRows(profileDir string) {
+	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
+	provider.SetLaneGuard(LaneGuardAt(profileDir))
 }
 
 // SetLane writes one slot's lane. An empty word clears the row back to auto,
@@ -1845,12 +1868,12 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
 		},
 		// AND THE ROW UNDER IT NAMES A MACHINE. Routing says what a request
-		// prefers; this says which endpoint the conversation actually goes to,
-		// for the person who has watched the numbers and knows.
+		// prefers; this says which endpoint requests from this home actually go
+		// to, for the person who has watched the numbers and knows.
 		Setting{
 			Key: LaneSettingKey(LaneSlotTalk), Category: CategoryModels, Kind: SettingText,
 			Label: "lane", EmptyLabel: LaneAuto,
-			Hint: "which machine behind your model answers you. One model id is served by " +
+			Hint: "which machine behind your model answers requests from this home. One model id is served by " +
 				"a dozen endpoints that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets aforge " +
 				"pick the fastest one each answer; a name — `cloudflare` — pins it and nothing " +
