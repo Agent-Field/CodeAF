@@ -1706,6 +1706,7 @@ could be checked.
 | the no-progress guard | `noProgressRepeatCap` (4) repeated calls, a `noProgressStagnantCap` (6) stagnant window, or `noProgressTurnFloor` (60) | **yes** |
 | mutation-free recon notice | `noProgressReconTurns` (10) consecutive tool-calling turns that changed nothing in the workspace | no — asks for the result, and asks again at each further span |
 | `wallPaceAt` (0.5) | the elapsed share of this leaf's own wall, read to the second | no — one live clock reading, once, before the landing reserve |
+| the landing reserve | `landingTurns` (4) turns or `landingTokenShare` (0.2) of the grant, whichever arrives first | it **ends** a leaf the grant already landed |
 | `toolTimeoutRepeatCap` (3) | timeouts of one exact tool call (tool name and argument text), counted across a leaf round | **yes**, unless a budget or deadline landing already owns the ending |
 | `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
@@ -1717,6 +1718,14 @@ is not evidence of a stall. It gets a reminder at each mutation-free span and, o
 `wallPaceAt` of its own wall, one live reading of what has gone and what is left. A leaf that
 is genuinely circling is stopped by the repeat and stagnant signals, which fire at 4 and 6
 turns and reach it far sooner.
+
+The effective ceiling a caller gets is therefore the grant, plus
+`landingTokenShare` of that grant, plus the overshoot of the turn that crosses
+the grant and the overshoot of the turn that crosses the landing allowance.
+Both crossings are measured after a complete turn, so there can be two separate
+overshoots. The complete landing turn keeps a mid-edit workspace whole. The token half exists because four leaves in the
+2026-09-03 worker trial reached 1.18×, 1.28×, 1.74× and 2.04× their grants; one
+reserve alone billed 122,392 tokens against a 150,000-token grant.
 
 **The two cumulative bounds were retired as stops, and the arithmetic is why.**
 Σ over turns of the prompt is `turns × mean-context` wearing a token name: a
