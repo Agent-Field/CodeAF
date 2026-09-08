@@ -48,3 +48,15 @@ Build ONLY via make build into each worktree's bin/aforge. Never install Linux a
 
 Final shared SUMMARY.md must name base/head hashes, branch/PR link, merged lane commits, exact tests and limitations, remaining blockers and Mac fetch/merge/build steps. A clean build alone is not completion. Never claim completion if context attachment, clicks, search or persistence is missing. Keep the PR draft while unfinished or mismatched, and leave final merge into codex/conversation-execution to the owner.
 
+
+## Owner steering 02 — files, previews and visual quality
+
+The 2026-09-08 update expands this wave beyond folders. Build one Add context browser for folders and files: `/folder` opens with folder intent and bare `/attach` reuses the browser while explicit paths, paste/drop and existing image attachments retain their behavior. Opening or previewing never attaches; confirmation distinguishes persistent folder references from file/image attachments. Support deliberate mixed selection with a compact tray.
+
+Use the supplied Yazi image as layout guidance: readable current path, narrow ancestry, generous active contents, stable useful preview and compact explicit controls. Preserve successive folder navigation, aforge theme and plain-font usability. Preview can hide or expand; narrow terminals keep filenames and controls legible. The supplied Nearform interview summary emphasizes keeping essential information present and revealing secondary panes on demand.
+
+Code previews use existing Chroma syntax highlighting with language detection, subdued line numbers, safe tabs/Unicode, ANSI-safe horizontal clipping, bounded reads and visible truncation. Never execute files or render embedded control sequences. Reuse `internal/tui3/imagepreview.go` for aspect-preserving half-cell TrueColor/ANSI256 pictures; this is portable text-cell rendering, not Kitty/iTerm graphics. Unsupported renderers and PDF/video/archive files need honest useful fallbacks. Keep preview reads asynchronous, bounded, cached and protected against stale results.
+
+Capture and visually inspect real wide/narrow terminal screens for dense folders, code, text, images and fallback, mixed selection, no matches and permission errors. Verify mouse, wheel, keyboard and pane controls agree. End-to-end local-engine evidence must show preview without attachment, deliberate confirmation, correct chips and the actual next request carrying exact folder scope or existing file/media attachments; verify removal/reopen and draft preservation. Spark evidence cannot prove Mac-specific graphics.
+
+PR #657 stays draft until this expanded contract is supported. Shared `reports/QUALITY_READY` is required alongside `reports/READY`; neither is earned by unit tests or a clean build alone. Full owner steering and screenshot remain in the shared wave directory as `STEERING-02.md` and `reference-yazi.png`.

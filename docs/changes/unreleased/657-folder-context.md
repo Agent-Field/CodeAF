@@ -1,0 +1,14 @@
+---
+kind: changed
+title: attached folders reach the next model request and can be removed
+pr: 657
+surface: [chat, engine, remote]
+invalidates:
+  - "Choosing a folder used to update the conversation record without telling the next model request. Explicitly attached folders now appear in its instructions with scoped project rules, and removal takes them out again."
+  - "The local wire client could lack folder registration while the surface offered it. The engine now advertises folder support and the client exposes registration, removal and the remembered set."
+  - "Attached instruction files could exceed their aggregate budget when earlier files left only a partial allowance. Each read now uses the remaining allowance and names any truncated source."
+---
+
+This entry describes the integrated engine and wire behavior. The folder browser,
+file attachments and preview expansion remain under construction on the draft wave
+branch; update this entry to match the completed product before review readiness.

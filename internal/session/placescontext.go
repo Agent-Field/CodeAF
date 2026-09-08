@@ -184,8 +184,11 @@ func attachedInstructions(attached []PlaceRef) string {
 					attachedRules, place.Path, name, file)
 				continue
 			}
-			rules, truncated := readInstructionFileWithin(place.Path, name, attachedFileLimit)
-			if rules == "" {
+			// A partially spent budget cannot admit another whole file. The
+			// reader also preserves rune boundaries under this smaller limit.
+			limit := min(attachedFileLimit, attachedFilesBudget-spent)
+			rules, truncated := readInstructionFileWithin(place.Path, name, limit)
+			if rules == "" && !truncated {
 				continue
 			}
 			spent += len(rules)
@@ -199,8 +202,8 @@ func attachedInstructions(attached []PlaceRef) string {
 			}
 			out.WriteString(fence + "\n")
 			if truncated {
-				fmt.Fprintf(&out, "\n(%s is longer than %dKiB; the rest is on disk — read %s if you need it.)\n",
-					name, attachedFileLimit>>10, file)
+				fmt.Fprintf(&out, "\n(%s exceeds the %d-byte allowance remaining for this file; the rest is on disk — read %s if you need it.)\n",
+					name, limit, file)
 			}
 		}
 	}

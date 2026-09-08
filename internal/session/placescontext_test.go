@@ -429,3 +429,30 @@ func promptTail(text string) string {
 	}
 	return "…" + text[len(text)-1200:]
 }
+
+// Uneven files leave a partial budget; the last read must spend only what
+// remains rather than allowing another whole file into the next request.
+func TestAttachedInstructionsRespectTheRemainingAggregateBudget(t *testing.T) {
+	var refs []PlaceRef
+	for _, size := range []int{3001, 3001, 3001, 4096, 100} {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, agentsFileName), strings.Repeat("§", size))
+		refs = append(refs, PlaceRef{Path: dir, Arrival: PlaceSaid})
+	}
+	// ASCII sizes produce a partial budget, then a multibyte final file tests
+	// that the cut is still valid UTF-8 at that smaller boundary.
+	for _, ref := range refs[:3] {
+		writeFile(t, filepath.Join(ref.Path, agentsFileName), strings.Repeat("Q", 3001))
+	}
+	block := attachedBlock(refs, t.TempDir())
+	quoted := strings.Count(block, "Q") + 2*strings.Count(block, "§")
+	if quoted > attachedFilesBudget || quoted < attachedFilesBudget-1 {
+		t.Fatalf("quoted %d instruction bytes, want %d or one fewer at a rune boundary", quoted, attachedFilesBudget)
+	}
+	if !strings.Contains(block, "the rest is on disk") || !strings.Contains(block, filepath.Join(refs[3].Path, agentsFileName)) {
+		t.Fatal("the partial-budget cut must name where the rest can be read")
+	}
+	if strings.ContainsRune(block, '\uFFFD') {
+		t.Fatal("the partial-budget cut split a Unicode character")
+	}
+}

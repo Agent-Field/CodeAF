@@ -95,7 +95,9 @@ written into my own instructions under `Attached folders`: the absolute path, wh
 a repository, and — if it has an `AGENTS.md` or a `CLAUDE.md` of its own — that file's rules
 quoted under a heading naming that folder and saying they hold there and nowhere else. So I
 never go hunting for a folder you chose, never ask you which one you meant, and never blend
-two attached projects' house rules together.
+two attached projects' house rules together. Instruction excerpts are limited to 4 KiB per
+file and 12 KiB across attached folders; a partly used total leaves only its remaining
+bytes for the next file. A cut excerpt names the file to read for the rest.
 
 Choosing a directory **inside a repository** attaches the repository, because a branch is
 cut from a repository and not from a directory in it — and the line you get back says so by
