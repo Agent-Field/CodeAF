@@ -638,6 +638,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it say denied by the person when I did not deny", "permissions"},
 		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
+		{"does --yolo show on the status line", "screen"},
 		{"how do I make it stop asking every time", "permissions"},
 		{"what model is it using right now", "models-and-cost"},
 		{"how do I give it a longer context", "models-and-cost"},

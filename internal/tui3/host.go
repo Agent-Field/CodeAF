@@ -84,8 +84,8 @@ import (
 //	                  rather than read off this laptop's profile — a badge read
 //	                  off the wrong machine would be a safety claim about a
 //	                  machine nobody consulted. [app.approvalPosture] is where
-//	                  the two readings — live and local, or carried and remote —
-//	                  meet.
+//	                  the three readings — live from the profile, forced by the
+//	                  flag, or carried from the remote engine — meet.
 //	the bash countdown
 //	                  drawn from the FAR machine's armed clock, carried once on
 //	                  the welcome beside the approval posture. Reading this
