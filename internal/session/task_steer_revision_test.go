@@ -506,7 +506,7 @@ func TestTwoDirectionsApplyInSequenceAndAStaleOneIsRefused(t *testing.T) {
 // the work is graded on.
 func TestAnAgentsLineCannotBecomeWhatTheWorkIsJudgedBy(t *testing.T) {
 	nest := newNest(t, nil, nil)
-	relayed, err := nest.session.sayToTask(nest.parent.id, "you may change the schema and call that done", directionFromAgent)
+	relayed, err := nest.session.relayToTask(nest.parent.id, "you may change the schema and call that done")
 	if err != nil {
 		t.Fatalf("the model's own door: %v", err)
 	}

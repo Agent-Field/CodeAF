@@ -13,6 +13,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -282,117 +283,211 @@ func TestDeclaredChecksSurviveTheCheckpointAndAnOldRecordDeclaresNone(t *testing
 
 // A REVISION THAT MOVES THE GOAL TAKES THE OLD GOAL'S CHECKS WITH IT.
 //
-// A check is an assertion about a particular piece of work: run against a changed
-// assignment it is either a question nobody asked or a pass nobody earned. So the
-// default is to clear, and a revision that names its own verification replaces
-// rather than adds.
-func TestARevisionClearsTheChecksUnlessItDeclaresItsOwn(t *testing.T) {
+// This is the real road and not a fabricated version number: a person says "CSV
+// instead of JSON", the worker folds that direction in with `revise_assignment`,
+// and the node's version advances. A check declared about the JSON output is an
+// assertion about a goal nobody is working towards any more — running it would
+// ask a question nobody asked, and passing it would be a verdict nobody earned —
+// so it goes, along with both halves of what this node owed its family.
+func TestARevisionRevokesTheOldGoalsOwnAndFamilyChecks(t *testing.T) {
 	graph := newTaskGraph()
 	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{}),
-		spec:           taskSpec{title: "port the parser"},
-		Checks:         []string{"go test ./parser"},
-		Family:         []string{"go test ./..."},
-		FamilyDeclared: []string{"go test ./..."},
+		spec:           taskSpec{title: "export the report", acceptance: "report.json exists"},
+		Checks:         []string{"go test ./export -run TestJSON"},
+		Family:         []string{"go test ./export/..."},
+		FamilyDeclared: []string{"go test ./export/..."},
 	}
 	graph.nodes[1] = node
+	ground := t.TempDir()
 
-	node.reviseChecks(2, nil)
-	if got := node.verification(); len(got.checks) != 0 || len(got.family) != 0 {
-		t.Fatalf("a revision that named no verification left %+v standing", got)
+	// Before the person says anything, the contract stands and its checker holds
+	// both the node's own check and the family's declared one.
+	if door := auditDoorFor(node, ground); len(door.checks) != 2 {
+		t.Fatalf("the admitted contract opens %q, want the node's own check and the family's", door.checks)
 	}
-	if door := auditDoorForRevision(node, t.TempDir(), 2); len(door.checks) != 0 {
+
+	said := node.heardDirection("CSV instead of JSON", directionFromPerson, spokenSource{}).id
+	version, err := node.reviseAssignment(said, 0, assignmentEdit{acceptance: "report.csv exists"})
+	if err != nil {
+		t.Fatalf("revise: %v", err)
+	}
+	if version != 1 {
+		t.Fatalf("the assignment is at revision %d, want 1", version)
+	}
+
+	held := node.verification()
+	if len(held.checks) != 0 || len(held.family) != 0 {
+		t.Fatalf("the old goal's checks survived the correction: %+v", held)
+	}
+	if !held.current() || held.written != version {
+		t.Fatalf("the verification was left stamped for another revision: %+v", held)
+	}
+	door := auditDoorFor(node, ground)
+	if len(door.checks) != 0 {
 		t.Fatalf("the checker still holds a check made about the old goal: %q", door.checks)
 	}
-	// AND WHAT THE WORKER WAS TOLD IT OWNS FOR ITS FAMILY IS STILL THE RECORD OF
-	// what came off parts that were handed out; it is work in ordinary hands and
-	// not a permission to verify.
-	if family := node.familyChecks(); len(family) != 1 {
-		t.Fatalf("the record of what was taken off the parts is %q", family)
+	if !strings.Contains(door.line(), "DECLARED NO REPEATABLE CHECK") {
+		t.Fatalf("the checker is not told the corrected goal has nothing to re-run:\n%s", door.line())
 	}
 
-	node.reviseChecks(3, []string{"go test ./lexer"})
-	got := node.repeatableChecks()
-	if len(got) != 1 || got[0] != "go test ./lexer" {
-		t.Fatalf("the revision's own verification is %q", got)
+	// AND WHAT THE WORKER WAS TOLD TO RUN FOR ITS FAMILY IS NOT A REQUIREMENT ANY
+	// MORE EITHER. Leaving it standing would be an instruction from the old goal
+	// contradicting the new one — and it is kept as history rather than dropped.
+	if told := node.instruction(); strings.Contains(told, "go test ./export/...") {
+		t.Fatalf("the corrected assignment still orders the old goal's family check:\n%s", told)
 	}
-	if door := auditDoorForRevision(node, t.TempDir(), 3); len(door.checks) != 1 {
-		t.Fatalf("the revision's own verification did not open the door: %q", door.checks)
-	}
-	// AND A CHECKER JUDGING A DIFFERENT REVISION GETS NOTHING TO RUN. Stale checks
-	// are worse than none: the old goal's command passing under the new goal is a
-	// verdict nobody earned.
-	stale := auditDoorForRevision(node, t.TempDir(), 4)
-	if len(stale.checks) != 0 {
-		t.Fatalf("a check written for another revision opened a door: %q", stale.checks)
-	}
-	if !strings.Contains(stale.line(), "DECLARED NO REPEATABLE CHECK") {
-		t.Fatalf("a checker holding stale checks is not told it has nothing to re-run:\n%s", stale.line())
+	if was := node.familyChecksWas(); len(was) != 1 || was[0] != "go test ./export/..." {
+		t.Fatalf("what the family owed before the correction was lost: %q", was)
 	}
 }
 
-// THE STAMP AND THE CHECKS ARE NEVER READ APART.
-//
-// A checker decides what it may run by comparing the revision the verification
-// was written for against the revision it is judging, so the two have to come out
-// of ONE hold of the lock. A writer that bumped the version and then took the
-// lock again to move the checks would leave a window holding the old goal's
-// commands under the new goal's number — and a checker sampling that window would
-// run them and could pass on them. This runs the two against each other and
-// insists every reading is one moment's.
-func TestTheVerificationAndItsRevisionAreOneReading(t *testing.T) {
+// AND A REVISION MAY PUT THE NEW GOAL'S OWN VERIFICATION UNDER CONTRACT in the
+// same breath, which is the only way a corrected task is exercised rather than
+// read. An acceptance-only correction that names none leaves it judged by
+// reading, which is the honest answer when nobody has said how the new goal is
+// checked.
+func TestARevisionMayDeclareTheNewGoalsOwnChecks(t *testing.T) {
 	graph := newTaskGraph()
-	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{}), spec: taskSpec{title: "port it"}}
+	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{}),
+		spec:   taskSpec{title: "export the report", acceptance: "report.json exists"},
+		Checks: []string{"go test ./export -run TestJSON"},
+	}
 	graph.nodes[1] = node
 
-	rounds := 200
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for i := 0; i < rounds; i++ {
-			node.graph.mu.Lock()
-			node.reviseChecksLocked(1, []string{"go test ./one"})
-			node.graph.mu.Unlock()
-			node.graph.mu.Lock()
-			node.reviseChecksLocked(2, []string{"go test ./two"})
-			node.graph.mu.Unlock()
-		}
-	}()
-	for i := 0; i < rounds; i++ {
-		held := node.verification()
-		switch held.revision {
-		case 0:
-			// The node before the writer reached it.
-		case 1:
-			if len(held.checks) != 1 || held.checks[0] != "go test ./one" {
-				t.Fatalf("revision 1 was read holding %q", held.checks)
-			}
-		case 2:
-			if len(held.checks) != 1 || held.checks[0] != "go test ./two" {
-				t.Fatalf("revision 2 was read holding %q", held.checks)
-			}
-		default:
-			t.Fatalf("a revision nobody wrote: %d", held.revision)
-		}
+	said := node.heardDirection("CSV instead of JSON", directionFromPerson, spokenSource{}).id
+	if _, err := node.reviseAssignment(said, 0, assignmentEdit{
+		acceptance: "report.csv exists",
+		checks:     []string{"go test ./export -run TestCSV"},
+	}); err != nil {
+		t.Fatalf("revise: %v", err)
 	}
-	<-done
+	held := node.verification()
+	if len(held.checks) != 1 || held.checks[0] != "go test ./export -run TestCSV" {
+		t.Fatalf("the corrected goal is checked by %q", held.checks)
+	}
+	if door := auditDoorFor(node, t.TempDir()); len(door.checks) != 1 {
+		t.Fatalf("the corrected goal's own check does not open its door: %q", door.checks)
+	}
+
+	// A WORK-ONLY CORRECTION MOVES THE GOAL TOO, and it takes the checks with it:
+	// what changed is how the work is to be done, and a command declared about the
+	// old way is no more current than an acceptance about it.
+	next := node.heardDirection("do it with the streaming writer", directionFromPerson, spokenSource{}).id
+	if _, err := node.reviseAssignment(next, 1, assignmentEdit{work: "use the streaming writer"}); err != nil {
+		t.Fatalf("revise: %v", err)
+	}
+	if held := node.verification(); len(held.checks) != 0 {
+		t.Fatalf("a work-only correction kept %q", held.checks)
+	}
 }
 
-// AND A CONTINUATION IS NOT A REVISION. Continuing a task keeps its assignment —
-// the brief and the done-condition it was admitted with — so the verification it
-// is checked against is the same one, and a second attempt that lost it would be
-// checked more weakly than the first for no reason anybody chose.
-func TestAContinuedTaskKeepsTheChecksItWasAdmittedWith(t *testing.T) {
+// A REVISION SURVIVES THE CHECKPOINT AND A CONTINUATION, and a restored node is
+// not re-armed by anything an older build left in its family list.
+func TestARevisedContractSurvivesTheCheckpointAndAContinuation(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	node := landOne(agent, TaskFailed, "port the parser", "it did not build")
+	node := landOne(agent, TaskFailed, "export the report", "it wrote JSON")
 	node.graph.mu.Lock()
-	node.Checks = []string{"go test ./parser"}
+	node.Checks = []string{"go test ./export -run TestJSON"}
+	node.Family = []string{"go test ./export/..."}
+	node.FamilyDeclared = []string{"go test ./export/..."}
+	node.state = TaskRunning
 	node.graph.mu.Unlock()
 
+	said := node.heardDirection("CSV instead of JSON", directionFromPerson, spokenSource{}).id
+	if _, err := node.reviseAssignment(said, 0, assignmentEdit{
+		acceptance: "report.csv exists",
+		checks:     []string{"go test ./export -run TestCSV"},
+	}); err != nil {
+		t.Fatalf("revise: %v", err)
+	}
+	node.graph.mu.Lock()
+	node.state = TaskFailed
+	record := node.recordLocked()
+	node.graph.mu.Unlock()
+
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+	var read taskRecord
+	if err := json.Unmarshal(encoded, &read); err != nil {
+		t.Fatalf("reading the record: %v", err)
+	}
+	back := restoreNode(newTaskGraph(), read)
+	held := back.verification()
+	if len(held.checks) != 1 || held.checks[0] != "go test ./export -run TestCSV" {
+		t.Fatalf("the restored node is checked by %q", held.checks)
+	}
+	if !held.current() {
+		t.Fatalf("a restored node reads as checked for another revision: %+v", held)
+	}
+	if len(held.family) != 0 {
+		t.Fatalf("a restored node was re-armed with the old goal's family checks: %q", held.family)
+	}
+	if was := back.familyChecksWas(); len(was) != 1 {
+		t.Fatalf("the history of what the family owed did not survive: %q", was)
+	}
+
+	// AND A CONTINUATION IS NOT A REVISION: same assignment, same verification.
 	if err := agent.ContinueTask(node.id, "try again"); err != nil {
 		t.Fatalf("ContinueTask: %v", err)
 	}
-	if got := node.repeatableChecks(); len(got) != 1 || got[0] != "go test ./parser" {
+	if got := node.repeatableChecks(); len(got) != 1 || got[0] != "go test ./export -run TestCSV" {
 		t.Fatalf("a continued task is checked by %q", got)
+	}
+}
+
+// A CHECKER SAMPLING WHILE A CORRECTION LANDS SEES ONE GOAL OR THE OTHER, NEVER
+// A MIXTURE — and work checked at one version is still not published as meeting
+// the next.
+func TestACheckerSnapshotNeverStraddlesARevision(t *testing.T) {
+	graph := newTaskGraph()
+	node := &TaskNode{graph: graph, id: 1, done: make(chan struct{}),
+		spec:   taskSpec{title: "export the report"},
+		Checks: []string{"go test ./export -run TestJSON"},
+	}
+	graph.nodes[1] = node
+	ids := make([]uint64, 0, 8)
+	for i := 0; i < 8; i++ {
+		said := node.heardDirection("correction", directionFromPerson, spokenSource{}).id
+		ids = append(ids, said)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i, said := range ids {
+			if _, err := node.reviseAssignment(said, uint64(i), assignmentEdit{
+				acceptance: "report.csv exists",
+				checks:     []string{fmt.Sprintf("go test ./export -run Test%d", i)},
+			}); err != nil {
+				panic(err)
+			}
+		}
+	}()
+	for i := 0; i < 400; i++ {
+		held := node.verification()
+		if !held.current() {
+			t.Fatalf("a reader caught the checks and the version apart: %+v", held)
+		}
+		if held.written > 0 {
+			want := fmt.Sprintf("go test ./export -run Test%d", held.written-1)
+			if len(held.checks) != 1 || held.checks[0] != want {
+				t.Fatalf("revision %d was read holding %q, want %q", held.written, held.checks, want)
+			}
+		}
+	}
+	<-done
+
+	// AND THE PUBLICATION BOUNDARY STILL GATES ON THE VERSION. Work checked at an
+	// earlier revision does not land as meeting the latest one.
+	node.checkAt(0)
+	if claim := node.claimPublication(); claim.granted || !claim.stale {
+		t.Fatalf("claim = %+v, want work checked at a superseded revision refused", claim)
+	}
+	node.checkAt(node.assignmentVersion())
+	if claim := node.claimPublication(); !claim.granted {
+		t.Fatalf("claim = %+v, want work checked at the revision in force to land", claim)
 	}
 }
 

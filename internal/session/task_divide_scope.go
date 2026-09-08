@@ -599,6 +599,18 @@ func foldedInto(held, more []string) []string {
 	return held
 }
 
+// familyChecksWas is what this node owed its family before a revision moved the
+// goal ([TaskNode.FamilyWas]): history a reader can see, and a requirement on
+// nobody.
+func (n *TaskNode) familyChecksWas() []string {
+	if n == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return append([]string(nil), n.FamilyWas...)
+}
+
 // familyChecks is what this node owns for its family, copied out under the lock
 // so a reader cannot be handed a slice the graph is still appending to.
 func (n *TaskNode) familyChecks() []string {

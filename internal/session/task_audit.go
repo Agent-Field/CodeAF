@@ -2178,6 +2178,7 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 			// The arguments are JSON and a pretty-printed call would spend six lines
 			// of the packet saying what one says (tools_standing.go's [oneLine]).
 			receipt.args = clip(oneLine(call.Function.Arguments), taskReportLineLimit)
+
 		}
 		out = append(out, receipt)
 	}

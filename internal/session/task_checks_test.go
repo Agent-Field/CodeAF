@@ -348,6 +348,24 @@ func TestNoToolchainIsWrittenIntoTheAuditorsDoor(t *testing.T) {
 	}
 }
 
+// Checker admission must not regain the old prose-harvesting entry point. The
+// account guard in that entry point was fixed upstream; explicit contracts
+// remove it entirely. Behavioral tests below and in task_checks_contract_test.go
+// prove that quoted commands stay inert while declared checks can run.
+func TestCheckerAdmissionHasNoProseHarvest(t *testing.T) {
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, "task_checks.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parsing task_checks.go: %v", err)
+	}
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Name.Name == "declaredChecks" {
+			t.Fatal("checker admission regained the prose-harvesting entry point; use explicit verification contracts")
+		}
+	}
+}
+
 // AN AUDITOR WITH NOTHING TO RUN CONCLUDES INSTEAD OF SPINNING.
 //
 // Five minutes is the price of a real check. An audit that has no runnable check

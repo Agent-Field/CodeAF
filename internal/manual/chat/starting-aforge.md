@@ -98,11 +98,11 @@ For a fixed unattended goal, use the one-message door with a budget:
     aforge chat --once "finish the import fix" --yolo --max-hours 6
     aforge chat --once "finish the import fix" --yolo --max-cost 20
 
-That posture is the same without a screen. The `--once` form above carries its
-own work on exactly as the conversation does, moves a long reply's work onto a
-task at the same points, and has every ending read the same way. The only
-difference is how the decision is shown: there is no screen to draw its line on,
-so the line is kept in the transcript instead.
+## Does a run with no screen carry its own work on
+
+Yes, when launched with `--once`, `--yolo` and a budget as above. A headless
+unattended run checkpoints long replies at the same points. Its decisions are
+kept in the transcript, where a run without a screen can still be inspected.
 
 Either limit alone is enough; both means whichever runs out first. The defaults can
 come from `AFORGE_MAX_HOURS` and `AFORGE_MAX_COST`; explicit flags take precedence.
@@ -365,10 +365,10 @@ carrying on for the rest of its hours over work nothing was ever going to start.
 
 ## It keeps saying a file does not pass · a check nobody asked for
 
-**A check is a command, never a file.** When somebody writes the session's
-`done when` sentence and names something in backticks, or a piece of work names
-it in its own account, aforge runs it in a fresh shell to see whether the work
-stands up. A file is opened the way the file itself says it opens: if it is
+**A check is a command, never a file.** Only a command declared in the work's
+`checks` field is offered as repeatable verification; a backticked command in a
+brief or `done when` sentence is prose. A declared check runs in a fresh shell
+to see whether the work stands up. A file is opened the way the file itself says it opens: if it is
 executable, or its first line names the program that runs it, that is what gets
 run. **A file that says neither is not a check at all** and is left out — a
 source file quoted in a sentence is something to look at, not something to run.

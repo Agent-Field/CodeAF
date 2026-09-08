@@ -58,7 +58,7 @@ func TestC16APersonsCommitOnTheBranchKeepsTheTaskBranch(t *testing.T) {
 				return
 			}
 
-			want := "its branch " + tree.branch + " was kept: work has moved on since the work was cut — merge it where you want it"
+			want := "its branch " + tree.branch + " was kept: work has moved on since the work was cut — inspect the retained task branch before choosing a destination"
 			if merge != mergeKept || detail != want {
 				t.Fatalf("landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 			}
@@ -124,7 +124,7 @@ func TestC17ARestoredRecordStillReadsTheCommitItWasCutFrom(t *testing.T) {
 
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved work")
 	merge, detail, _ := rebuilt.comeHome("write after a restart", []string{"restored.txt"})
-	want := "its branch " + rebuilt.branch + " was kept: work has moved on since the work was cut — merge it where you want it"
+	want := "its branch " + rebuilt.branch + " was kept: work has moved on since the work was cut — inspect the retained task branch before choosing a destination"
 	if merge != mergeKept || detail != want {
 		t.Fatalf("restored landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 	}
@@ -253,7 +253,7 @@ func TestC7AndC8EarlierKeptReasonsWinWhenTheTipAlsoMoved(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "kept.txt"), "kept\n")
 		mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved main")
 		merge, detail, _ := tree.comeHome("write while main moves", []string{"kept.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+		want := "its branch " + tree.branch + " was kept: your checkout is on main, which tasks do not merge into automatically"
 		if merge != mergeKept || detail != want {
 			t.Fatalf("protected landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 		}
@@ -269,7 +269,7 @@ func TestC7AndC8EarlierKeptReasonsWinWhenTheTipAlsoMoved(t *testing.T) {
 		mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved work")
 		mustGit(t, repo, "checkout", "-b", "other")
 		merge, detail, _ := tree.comeHome("write before both moves", []string{"kept.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — merge it where you want it"
+		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — inspect the retained task branch before choosing a destination"
 		if merge != mergeKept || detail != want {
 			t.Fatalf("moved-name landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 		}
@@ -285,7 +285,7 @@ func TestC7AndC8EarlierKeptReasonsWinWhenTheTipAlsoMoved(t *testing.T) {
 		mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved work")
 		mustGit(t, repo, "checkout", "--detach")
 		merge, detail, _ := tree.comeHome("write before detaching", []string{"kept.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — check one out and merge it"
+		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 		if merge != mergeKept || detail != want {
 			t.Fatalf("detached landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 		}

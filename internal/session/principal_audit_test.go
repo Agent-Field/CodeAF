@@ -234,14 +234,16 @@ func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
 	}
 }
 
-// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO CHECK INTO THE
-// SESSION'S CHECKS, IN EITHER SPELLING.
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NOTHING AT ALL INTO
+// THE SESSION'S CHECKS — NOT A PROMPT STEP, AND NOT A BACKTICKED COMMAND.
 //
 // When no one could write a done-condition, the person's words arrive behind
-// [routeAskAcceptance]. The measured tox reproduction must still remain a
-// story about seeing the bug rather than become a command run against the
-// deliverable tree. A second session keeps the control honest: the same words
-// in a done-condition somebody wrote still name checks.
+// [routeAskAcceptance], and a request is not a contract. The measured tox
+// reproduction must remain a story about seeing the bug rather than become
+// `chmod 000 tox.ini` run against the deliverable tree — and the same is true of
+// a command the request names, because the commands in a request are the WORK:
+// "run `./slow-build.sh` and report the marker" says to do it once, and a session
+// harvesting it would do it at baseline and again after delivery.
 func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
 	tree := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
@@ -263,27 +265,8 @@ func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
 	if backticked == "" {
 		t.Fatal("the tree's run_tests.sh is not invocable, so the source boundary cannot be exercised")
 	}
-	for _, command := range []string{backticked, "chmod 000 tox.ini"} {
-		if containsWord(checks, command) {
-			t.Errorf("%q out of the ask-fallback done-condition became a session check: %v", command, checks)
-		}
-	}
-
-	// THE ACCEPTANCE IS IMMUTABLE FOR THE SESSION, so the work's side of the
-	// law is read off a second session whose written done-condition names both
-	// commands in the same spellings.
-	written, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	written.steward().setAcceptance(
-		"check it with `run_tests.sh`\nthe done-condition also requires:\n$ chmod 000 tox.ini")
-	writtenChecks := written.sessionChecks()
-	for _, command := range []string{backticked, "chmod 000 tox.ini"} {
-		if !containsWord(writtenChecks, command) {
-			t.Errorf("the written done-condition did not keep %q as a session check: %v", command, writtenChecks)
-		}
+	if len(checks) != 0 {
+		t.Fatalf("the person's own request became a list of commands the harness runs: %v", checks)
 	}
 }
 

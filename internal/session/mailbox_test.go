@@ -887,17 +887,24 @@ func TestARelayedLineIsNeverRememberedAsThePersonsAsk(t *testing.T) {
 }
 
 // AND A LINE SAID INTO A ROOM IS NEVER REDIRECTED. A report with nowhere to go
-// belongs in front of a person; somebody's words do not, whoever said them —
-// the answer is a refusal they can read.
-func TestALineIntoAnEmptyRoomIsRefusedAndNotRedirected(t *testing.T) {
+// belongs in front of a person; somebody's words do not, whoever said them.
+//
+// WHAT BECOMES OF THEM DEPENDS ON THE NODE AND NOT ON THE SEAT. While the work
+// is still running the words are kept on the TASK'S OWN record — nobody read
+// them, no landing may publish over them, and the receipt says so
+// (assignment.go). Either way they reach no reader they were not addressed to,
+// which is the invariant this test is about.
+func TestALineIntoAnEmptyRoomIsHeldOnTheTaskAndNeverRedirected(t *testing.T) {
 	nest := newNest(t, nil, nil)
 	nest.parent.openRoom().speaking(nil)
 
-	if _, err := nest.session.SteerTask(nest.parent.id, "the config lives under etc/"); err == nil {
-		t.Fatal("a line into an empty room was accepted")
+	held, err := nest.session.SteerTask(nest.parent.id, "the config lives under etc/")
+	if err != nil || !held.Held {
+		t.Fatalf("receipt = %+v, err = %v: want the person's words kept on the running task", held, err)
 	}
-	if _, err := nest.session.relayToTask(nest.parent.id, "you may change the schema"); err == nil {
-		t.Fatal("the model's line into an empty room was accepted")
+	relayed, err := nest.session.relayToTask(nest.parent.id, "you may change the schema")
+	if err != nil || !relayed.Held {
+		t.Fatalf("receipt = %+v, err = %v: want the model's line kept on the running task", relayed, err)
 	}
 	if got := queuedText(nest.session); len(got) != 0 {
 		t.Fatalf("words said to a node were put in front of the conversation instead: %#v", got)

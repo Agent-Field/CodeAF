@@ -31,13 +31,14 @@ package session
 // ── AUTHORITY IS NOT DELEGABLE ──
 //
 // A revision must cite a DIRECTION: one recorded message, with an id, from
-// somebody who may revise this work. Only [directionFromPerson] may. The
-// model's own coordination into a node (`tasks … say`, and after the comms
-// lane's seam lands, anything carrying its `fromAgent` origin) is recorded and
-// readable and is refused as a basis for revision — an agent that could revise
-// the work it is being graded on would be marking its own homework, and a
-// descendant phrasing a request as an instruction must not thereby acquire the
-// authority nobody gave it.
+// somebody who may revise this work. Only [directionFromPerson] may, and who
+// that is comes from the delivery seam's own label rather than from this file's
+// guess — [directionOf] is the single mapping, and every origin but the person's
+// own door maps to the reading that grants nothing (mailbox.go). The model's
+// coordination into a node (`tasks … say`, [Agent.relayToTask]) is recorded and
+// readable and refused as a basis for revision: an agent that could revise the
+// work it is graded on would be marking its own homework, and a descendant
+// phrasing a request as an instruction must not thereby acquire authority.
 //
 // A worker cannot mint a direction either: the only doors that record one are
 // the person's own ([Agent.SteerTask], [Agent.ContinueTask]). The worker's tool
@@ -90,6 +91,18 @@ const (
 	// recorded and it may never revise: see the authority note above.
 	directionFromAgent
 )
+
+// directionOf is THE ONE PLACE the delivery seam's speaker becomes this file's
+// question about authority (mailbox.go's [messageOrigin]). Only the person's own
+// door maps to the person; another agent, the runtime, and anything a later
+// origin adds map to the reading that grants nothing, because an origin this
+// file does not recognise must never be able to move a done-condition.
+func directionOf(origin messageOrigin) directionFrom {
+	if origin == fromPerson {
+		return directionFromPerson
+	}
+	return directionFromAgent
+}
 
 func (f directionFrom) String() string {
 	switch f {
@@ -188,8 +201,20 @@ type assignmentEdit struct {
 	work        string
 	deliverable string
 	acceptance  string
+	// checks is the repeatable verification THE NEW GOAL is to be checked by, and
+	// it is the one field here whose ABSENCE is itself a decision. A revision
+	// always takes the old goal's executable checks away — a command declared
+	// about JSON output proves nothing about CSV, and passing it would be a
+	// verdict nobody earned — so a revision that names none leaves the work judged
+	// by reading, and one that names its own puts those under contract instead
+	// (task_checks.go).
+	checks []string
 }
 
+// empty is asked of what a revision CHANGES ABOUT THE GOAL, and `checks` is
+// deliberately not part of it: a call carrying only commands has said nothing
+// about what the work is for, and minting a version for it would let a worker
+// re-arm its own checker without the person having moved anything.
 func (e assignmentEdit) empty() bool {
 	return strings.TrimSpace(e.work) == "" &&
 		strings.TrimSpace(e.deliverable) == "" &&
@@ -545,8 +570,8 @@ func (a *taskAssignment) revisionBlock() string {
 
 // revisedSaid is every word of the person's that has actually moved this
 // assignment, in order, and empty on an unrevised node. It is what the check
-// harvest reads as "the person's message" once there is a later one than the one
-// the work was admitted from (task_run.go's [TaskNode.checkTexts]).
+// obligation text reads as "the person's message" once there is a later one than
+// the one the work was admitted from (wakecause.go).
 func (a *taskAssignment) revisedSaid() string {
 	if len(a.revisions) == 0 {
 		return ""
@@ -758,7 +783,23 @@ func (n *TaskNode) reviseAssignment(id, expected uint64, edit assignmentEdit) (u
 	if n.publishing {
 		return 0, errPublishing
 	}
-	return n.assignment.revise(id, expected, edit, time.Now())
+	version, err := n.assignment.revise(id, expected, edit, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	// AND THE VERIFICATION MOVES IN THE SAME HOLD THE VERSION MOVED IN.
+	//
+	// A check is an assertion about a particular goal. The instant this node's
+	// version says CSV, a command declared about JSON is either a question nobody
+	// asked or — worse — a pass nobody earned, and the same is true of the
+	// family's checks this node was carrying for parts it handed out under the old
+	// goal. So they go with the version, here, rather than through a second call
+	// that took the lock again: a reader catching the gap between the two would
+	// see the old goal's commands wearing the new goal's number, which is exactly
+	// the verdict this is written to prevent (task_run.go's
+	// [TaskNode.reviseChecksLocked]).
+	n.reviseChecksLocked(version, edit.checks)
+	return version, nil
 }
 
 // assignmentNow is the snapshot every reader of "what is this work for" takes.
@@ -1110,7 +1151,17 @@ func (g *TaskGraph) runAgainForDirections(node *TaskNode) bool {
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""
+	// THIS IS A NEW LIFE OF THE WORK, and it takes the same bookkeeping a
+	// continue takes ([TaskGraph.reopen]): the attempt counter rises and the
+	// announcement marks are cleared in the same locked step, so a delivery of an
+	// earlier life's ending that is still in flight cannot record this attempt as
+	// already announced ([TaskNode.claimNote]).
+	node.attempt++
 	node.noted = false
+	node.notedRead = false
+	node.notedState = ""
+	node.noting = false
+	node.notingClaim = noteClaim{}
 	node.queuedSaid = false
 	node.held = ""
 	node.checked = ""
@@ -1137,19 +1188,6 @@ func directionIDs(said []taskDirection) []uint64 {
 	for _, one := range said {
 		ids = append(ids, one.id)
 	}
-	return ids
-}
-
-// carriedDirections is what this attempt's opening request will carry: the words
-// written into its finding that no request has put in front of a model yet.
-func (n *TaskNode) carriedDirections() []uint64 {
-	if n == nil || n.graph == nil {
-		return nil
-	}
-	n.graph.mu.Lock()
-	defer n.graph.mu.Unlock()
-	ids := make([]uint64, len(n.carried))
-	copy(ids, n.carried)
 	return ids
 }
 

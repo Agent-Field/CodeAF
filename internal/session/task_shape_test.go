@@ -168,7 +168,8 @@ func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 // bug report uses, and the door once treated it as the work's check. Driving
 // the ask through StartTask proves the admitted node keeps the account boundary;
 // reading that node's real door and the file's mode proves the command was
-// neither offered nor run, while the check the shaper authored still arrives.
+// neither offered nor run. The shaper writes prose, so its backticked suggestion
+// does not declare a repeatable verification contract either.
 func TestAPastedIssuesBacktickedCommandNeverReachesTheDoorItStartedThrough(t *testing.T) {
 	tree := t.TempDir()
 	tox := writeCheckFile(t, tree, "tox.ini", "[tox]\n", 0o644)
@@ -198,9 +199,9 @@ func TestAPastedIssuesBacktickedCommandNeverReachesTheDoorItStartedThrough(t *te
 	if node == nil {
 		t.Fatal("the pasted issue did not produce an admitted node")
 	}
-	door := auditDoorFor(node, auditPlace{ground: tree, ran: tree})
-	if len(door.checks) != 1 || door.checks[0] != "check.sh" {
-		t.Fatalf("the admitted node's checks are %q, want only the tree's own check.sh", door.checks)
+	door := auditDoorFor(node, tree)
+	if len(door.checks) != 0 {
+		t.Fatalf("the admitted node harvested prose as checks: %q", door.checks)
 	}
 	if containsWord(door.allowed, "chmod 000 tox.ini") {
 		t.Fatalf("the pasted reproduction entered the admitted node's door: %q", door.allowed)

@@ -249,6 +249,10 @@ type taskRecord struct {
 	// only honest reading of a list an older build filled out of prose.
 	FamilyDeclared []string `json:"familyDeclaredChecks,omitempty"`
 	ChecksRevision uint64   `json:"checksRevision,omitempty"`
+	// FamilyWas is what this node owed its family before a revision moved the goal
+	// ([TaskNode.FamilyWas]): kept so that what was required is still readable, and
+	// required by nothing.
+	FamilyWas []string `json:"familyChecksWas,omitempty"`
 
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
@@ -977,13 +981,16 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Ground:         n.Ground,
 		Mode:           n.Mode,
 		Home:           n.Home,
-		HomeSha:        n.HomeSha,
 		Rung:           n.Rung,
 		Seal:           n.Seal,
 		Base:           n.Base,
 		Universe:       n.Universe,
 		Frozen:         n.Frozen,
 		Family:         n.Family,
+		Checks:         n.Checks,
+		FamilyDeclared: n.FamilyDeclared,
+		ChecksRevision: n.checksRevision,
+		FamilyWas:      n.FamilyWas,
 		Acceptance:     n.spec.acceptance,
 		DependsOn:      dependsOn,
 		Parent:         n.parent,
@@ -1019,9 +1026,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Assignment:     recordedAssignment(n.assignment),
-		Checks:         n.Checks,
-		FamilyDeclared: n.FamilyDeclared,
-		ChecksRevision: n.checksRevision,
+		HomeSha:        n.HomeSha,
 	}
 }
 
@@ -1520,13 +1525,16 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Ground:         record.Ground,
 		Mode:           record.Mode,
 		Home:           record.Home,
-		HomeSha:        record.HomeSha,
 		Rung:           record.Rung,
 		Seal:           record.Seal,
 		Base:           record.Base,
 		Universe:       record.Universe,
 		Frozen:         record.Frozen,
 		Family:         record.Family,
+		Checks:         record.Checks,
+		FamilyDeclared: record.FamilyDeclared,
+		checksRevision: record.ChecksRevision,
+		FamilyWas:      record.FamilyWas,
 		state:          record.State,
 		report:         record.Report,
 		ending:         record.Ending,
@@ -1554,9 +1562,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		interrupted:    record.Interrupted,
 		offer:          record.Offer,
 		assignment:     restoredAssignment(record.Assignment),
-		Checks:         record.Checks,
-		FamilyDeclared: record.FamilyDeclared,
-		checksRevision: record.ChecksRevision,
+		HomeSha:        record.HomeSha,
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading

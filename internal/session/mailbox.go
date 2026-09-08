@@ -31,11 +31,14 @@ package session
 // would additionally need authenticated authority, admission policy and replay
 // protection. None of that is here or implied: no discovery, no registry, no bus.
 //
-// AND NO ASSIGNMENT REVISION TRAVELS WITH A DELIVERY YET. A correction and a
-// worker's finalization remain two independent races on one node: a worker that
-// lands before reading an accepted correction finishes against the older
-// request. Accepted means a live reader has the words, not that the work has
-// been re-aimed.
+// AND A DELIVERY STILL CARRIES NO ASSIGNMENT REVISION: accepted means a live
+// reader has the words, never that the work has been re-aimed. What closed the
+// race between a correction and a worker's finalization is the NODE's own
+// boundary rather than anything here (assignment.go): a line said into a room is
+// recorded on the task as a direction with an origin taken from [messageOrigin],
+// a landing may not publish while one is unread, and only the person's own
+// direction can move what the work is judged by. This file still decides who is
+// addressed and whether they took it, and nothing more.
 
 import "fmt"
 

@@ -280,9 +280,11 @@ the **whole** ask, journaled and frozen for the session — a done-condition the
 work can rewrite is one the work grades itself against. Every acceptance before
 this was one unit of work's, read only by that unit's auditor.
 
-**The terminal audit.** Before a Steward may say done: re-run the checks the work
-itself named (`declaredChecks`, the same reading a unit of work's auditor uses),
-each in a fresh process in the deliverable tree; then reconcile everything the
+**The terminal audit.** Before a Steward may say done: re-run the explicit
+verification contracts held by the current tasks (`sessionChecks` uses each
+node's `auditDoorFor`), each in a fresh process in the deliverable tree. Commands
+in prose and worker receipts do not grant permission to run them again. A
+revision revokes the previous goal's contract. Then reconcile everything the
 session created. A created path inside the deliverable tree is part of the
 answer; outside it, it is scratch, and scratch is removed and written down.
 Nothing the session did not create is ever touched — the created bit is measured

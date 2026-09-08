@@ -294,21 +294,17 @@ func plainDoor(allowed []string) auditDoor {
 // stands ([runnableHere]) — because a contract is written before the work and a
 // command that names nothing under the auditor's feet is a refusal it will spend
 // a step on rather than a check it can make.
-func auditDoorFor(node *TaskNode, ground string) auditDoor {
-	return auditDoorForRevision(node, ground, node.verification().revision)
-}
-
-// auditDoorForRevision is that door built for ONE REVISION OF THE ASSIGNMENT, and
-// it is the entry point a steering road hands its own revision to.
 //
-// STALE CHECKS ARE WORSE THAN NO CHECKS. A command declared against one goal, run
-// against the next one and passed, is a verdict nobody earned — so a node whose
-// verification was stamped for another revision gets the reading commands and the
-// sentence that says it has nothing to re-run, exactly as a node that declared
-// nothing does. The comparison is made against ONE SNAPSHOT of the node
-// ([TaskNode.verification]), so the checks and the stamp a decision is made on
-// cannot come from two different moments.
-func auditDoorForRevision(node *TaskNode, ground string, revision uint64) auditDoor {
+// AND STALE CHECKS ARE WORSE THAN NO CHECKS. A command declared against one goal,
+// run against the next one and passed, is a verdict nobody earned — so a node
+// whose verification was written for an earlier revision of its assignment gets
+// the reading commands and the sentence that says it has nothing to re-run,
+// exactly as a node that declared nothing does. The verification and the revision
+// it is judged against come out of ONE snapshot ([TaskNode.verification]), taken
+// in one hold of the graph's lock, because two readings could not be compared
+// honestly: a revision landing between them would show the old goal's commands
+// wearing the new goal's number.
+func auditDoorFor(node *TaskNode, ground string) auditDoor {
 	var checks []string
 	if node != nil {
 		// THE FAMILY'S DECLARED CHECKS COME THROUGH THE SAME DOOR AS THE NODE'S
@@ -317,8 +313,7 @@ func auditDoorForRevision(node *TaskNode, ground string, revision uint64) auditD
 		// given to this node because it is the only one that can honestly make
 		// them. What was merely RECOGNISED in a part's prose is not here: lifting
 		// moves a permission and never mints one ([declaredAmong]).
-		held := node.verification()
-		if held.revision == revision {
+		if held := node.verification(); held.current() {
 			checks = appendChecks(checks, runnableChecks(held.checks, ground))
 			checks = appendChecks(checks, runnableChecks(held.family, ground))
 		}

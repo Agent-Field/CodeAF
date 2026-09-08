@@ -532,12 +532,13 @@ func TestASecondAskWithTheSameSharedCheckIsRepairedRatherThanRefusedAgain(t *tes
 // are ordinary hands. What it does not do any more is hand a checker a verb.
 func TestAProseRepeatedActionIsLiftedWithoutBecomingCheckerAuthority(t *testing.T) {
 	nest := newDivideNest(t, wideBrief, 0)
-	// THE SPELLING IS ONE THE LINT CAN SEE: it reads a done-condition clause as a
-	// command only when the first word is a program the shell would find and some
-	// later word names something findable ([ordersWork]), which is what makes this
-	// a control over the road that really lifts rather than over one that never
-	// fires.
-	const action = "sh ./counter.sh --all"
+	// THE SPELLING IS ONE THE LINT CAN SEE AND THE SCOPE RULE CANNOT MISREAD: a
+	// clause is read as a command when its first word is a program the shell would
+	// find and a later word names something findable ([ordersWork]), and a script
+	// PATH repeated in three done-conditions is refused earlier, as a file two
+	// parts both claim ([scopeCollisions]). This is a command every part is
+	// ordered to run and no part owns, which is the shape that reaches the lift.
+	const action = "go test -run TestWholeSuite"
 	repeating := func() []dividePart {
 		parts := familyParts("rank", "sessions", "browse")
 		for i := range parts {
@@ -579,7 +580,7 @@ func TestAProseRepeatedActionIsLiftedWithoutBecomingCheckerAuthority(t *testing.
 		if _, ok := doorRefusal(action, door); ok {
 			t.Fatalf("%q's checker may run the action its parts merely repeated", node.title())
 		}
-		if strings.Contains(door.offer(), "counter.sh") {
+		if strings.Contains(door.offer(), "TestWholeSuite") {
 			t.Fatalf("%q's checker is offered the action nobody declared:\n%s", node.title(), door.offer())
 		}
 	}

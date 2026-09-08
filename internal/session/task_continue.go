@@ -110,14 +110,12 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		// and no repeat of them to recognise (task_forward.go).
 		node.assignment.hear(words, directionFromPerson, time.Now(), spokenSource{})
 	}
-	// Everything on the record is now in front of the next attempt: the words
-	// above, and anything said while the last one was finishing that no worker
-	// read. The block below carries the second kind, which the finding has no
-	// other place for; the first kind is the finding's own section, named with
-	// the id so the worker can cite it.
-	// Everything waiting is written into the finding and STAYS PENDING until the
-	// attempt's opening request carries it (assignment.go): a continue is a node
-	// queued, not a node that has read anything.
+	// The block below carries what was said while the last attempt was finishing
+	// and no worker read; this continue's own words are the finding's own
+	// section, named with the id so the worker can cite it. Both STAY PENDING
+	// until the
+	// attempt's opening request carries them (assignment.go): a continue is a
+	// node queued, not a node that has read anything.
 	said := node.assignment.pendingFrom(directionFromPerson)
 	node.carried = directionIDs(said)
 	node.finding = withReport(composeContinueFinding(node.deliveredLocked(), words, latestDirectionID(said, words)),

@@ -42,7 +42,8 @@ var reviseSchemaJSON = `{"type":"object","properties":{` +
 	`"at_revision":{"type":"integer","description":"The revision this task is at as your instruction states it — 0 when it has never been revised. A mismatch is refused rather than merged, so that two corrections cannot land out of order"},` +
 	`"acceptance":{"type":"string","description":"The done-condition as it now stands, WHOLE: what somebody else could check without taking your word for it. Leave out only if the direction did not change it. Anything you omit stays as it was"},` +
 	`"deliverable":{"type":"string","description":"Optional. What must exist at the end, if the direction changed that: the thing and where it is"},` +
-	`"work":{"type":"string","description":"Optional. One or two lines on what the direction changes about the work itself, for whoever reads this task's document after you"}` +
+	`"work":{"type":"string","description":"Optional. One or two lines on what the direction changes about the work itself, for whoever reads this task's document after you"},` +
+	checksSchemaJSON + `` +
 	`},"required":["direction","at_revision"],"additionalProperties":false}`
 
 // reviseArguments is the wire form.
@@ -52,6 +53,10 @@ type reviseArguments struct {
 	Acceptance  string `json:"acceptance"`
 	Deliverable string `json:"deliverable"`
 	Work        string `json:"work"`
+	// Checks is the repeatable verification the REVISED goal is checked by. A
+	// revision always takes the old goal's checks away (assignment.go), so this is
+	// how a worker puts the new goal's own under contract in the same breath.
+	Checks []string `json:"checks,omitempty"`
 }
 
 // assignmentTools is the verb, and it is on exactly one belt: a task worker's.
@@ -96,10 +101,18 @@ func (a *Agent) reviseAssignment(_ context.Context, args json.RawMessage) (strin
 	if parsed.Direction == 0 {
 		return "Name the direction you are folding in. A revision has to come from something the person said.", true, nil
 	}
+	// THE CHECKS ARE READ THE WAY EVERY OTHER DOOR READS THEM (task_checks.go's
+	// [declaredCheckList]), so a command this belt would not run cannot be put
+	// under contract here either, and the model is told which one and why.
+	checks, problem := declaredCheckList(parsed.Checks)
+	if problem != "" {
+		return problem, true, nil
+	}
 	version, err := node.reviseAssignment(parsed.Direction, parsed.AtRevision, assignmentEdit{
 		work:        parsed.Work,
 		deliverable: parsed.Deliverable,
 		acceptance:  parsed.Acceptance,
+		checks:      checks,
 	})
 	if err != nil {
 		return reviseRefusal(err), true, nil
@@ -112,6 +125,15 @@ func (a *Agent) reviseAssignment(_ context.Context, args json.RawMessage) (strin
 		out.WriteString("\nWhat must exist:\n" + now.deliverable + "\n")
 	}
 	out.WriteString("\nThis is what the check will judge your work against. What the person did not change is unchanged.")
+	// AND WHAT IT NOW MAY RUN, SAID PLAINLY. The old goal's checks are gone with
+	// the old goal, so a worker that does not hear this would go on believing its
+	// finished work will be exercised by a command nobody holds any more.
+	if len(checks) > 0 {
+		out.WriteString("\nIts checker will run: " + strings.Join(checks, ", ") + ".")
+	} else {
+		out.WriteString("\nAny checks declared for the earlier goal are dropped; unless you name `checks` here, " +
+			"the finished work is judged by reading.")
+	}
 	return out.String(), true, nil
 }
 

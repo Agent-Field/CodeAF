@@ -189,7 +189,7 @@ func (a *Agent) resultPlaceLocked() resultPlace {
 		// not the repository it borrowed (landing.go).
 		workspace: strings.TrimSpace(a.config.Workspace),
 		droppings: a.config.droppingsPlace(),
-		journal:   a.file.path(),
+		journal:   a.file.journalName(),
 	}
 }
 

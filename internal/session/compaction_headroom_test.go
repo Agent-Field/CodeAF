@@ -249,7 +249,10 @@ func stubbableTranscript(agent *Agent, bulk, bulkBytes, results, resultBytes int
 	agent.messageReasoning = make([]provider.MessageReasoning, len(agent.messages))
 }
 
-func transcriptOf(agent *Agent) []ai.Message {
+// liveTranscript is this agent's messages, copied under its lock. The name is
+// not transcriptOf: admission_test.go builds one from person turns, and two
+// helpers with one name in a package is a collision the merge found.
+func liveTranscript(agent *Agent) []ai.Message {
 	agent.mu.Lock()
 	defer agent.mu.Unlock()
 	return append([]ai.Message(nil), agent.messages...)
@@ -334,7 +337,7 @@ func TestAPassThatOnlyStubbedStillFoldsToTheTarget(t *testing.T) {
 		t.Fatalf("estimate after the pass = %d, want at most the target %d; stubbing alone would have left %d, under the threshold %d and above the target",
 			after, target, stubbedOnly, threshold)
 	}
-	messages := transcriptOf(agent)
+	messages := liveTranscript(agent)
 	stubbed := false
 	for _, message := range messages {
 		if message.Role == "tool" && strings.HasPrefix(strings.TrimSpace(messageContentText(message)), stubMarker) {
@@ -387,7 +390,7 @@ func TestFoldingToTheTargetStillLeavesTheRunningTurnAlone(t *testing.T) {
 	if changed, err := agent.compact(context.Background(), nil); !changed || err != nil {
 		t.Fatalf("compact = %v, %v; want a pass", changed, err)
 	}
-	messages := transcriptOf(agent)
+	messages := liveTranscript(agent)
 	if !holdsText(messages, "the correction I just typed") {
 		t.Fatalf("the person's correction was folded: %v", rolesOf(messages))
 	}

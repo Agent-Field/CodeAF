@@ -1315,9 +1315,9 @@ After the name the card carries the span, the file count, and how the branch cam
 or `branch kept · <branch>`.
 
 `branch kept · <branch>` on a **done** task means the work finished but your checkout was
-on a protected branch, was on a different branch than when the work was cut, moved to a
-different commit by your own work after the cut, or was detached. The branch named
-there holds the finished work; the how-tasks-run page explains the exact reason.
+on a protected branch, was on a different branch than when the work was cut, moved
+to a different commit by your own work after the cut, or was detached. The branch
+named there holds the finished work; the how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
 does not by itself request a merge or a checkout change.
 
@@ -3253,6 +3253,15 @@ it can fold it into the task's own **done-condition** with its tool for exactly 
 you last said, and so is the check: the person who reads the finished work is judging
 CSV, not the JSON you called off.
 
+**The old goal's checks go with the old goal.** A task can declare the commands that
+re-establish its result (`checks` on `propose_task`), and such a command is an assertion
+about the goal it was declared for. A revision therefore clears them — the task's
+own and any it was holding for parts it handed out — in the same instant the version moves,
+so nothing that passed about JSON can be quoted about CSV. The worker may declare the new
+goal's checks in the same call; when it does not, the corrected work is judged by reading
+it and by what the work's own receipts show, and what was required before stays on the
+task's record as history.
+
 **Your words are kept beside the new condition.** The task's page and the checker's packet
 both carry what you actually typed and what the worker made of it, so a restatement that
 has drifted from your sentence is a thing you can see rather than the only account left.
@@ -3716,8 +3725,8 @@ hand as each report lands.
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
 repository in a state two of them fought over. A hand that declared `[]` does not carry those
-two tools in the first place. They also cannot get around the reply's write allowance: what
-they change spends the same allowance when their reports come home.
+two tools in the first place. They also cannot get around the reply's write
+allowance: what they change spends the same allowance when their reports come home.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
