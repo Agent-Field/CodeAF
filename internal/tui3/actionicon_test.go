@@ -170,11 +170,9 @@ func TestAStepsFamilyIsTheSameOnEveryRepaint(t *testing.T) {
 	}
 }
 
-// AND A CONVERSATION READ BACK OFF DISK DRAWS THE MARKS ITS TOOLS ALWAYS
-// IMPLIED. A replayed entry carries no narration — the sentence is recomposed
-// from the calls — so the family has to come from the same place, and it has to
-// be the same answer the live turn drew.
-func TestAReopenedStepDerivesTheSameFamilyWithNoNarration(t *testing.T) {
+// Older journals carry no narrator override. Their icons remain useful because
+// the same tool families provide the deterministic fallback.
+func TestALegacyStepDerivesItsFamilyWithNoSavedNarration(t *testing.T) {
 	live := liveStepsFixture()
 	for i := range live {
 		if live[i].kind == entryTool {
