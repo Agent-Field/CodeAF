@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -309,5 +310,116 @@ func TestStatusNamesTheBuildHoldingTheConversation(t *testing.T) {
 	a.slash("/status")
 	if text := lastNote(t, a); !strings.Contains(text, "\nbuild") || !strings.Contains(text, a.build) {
 		t.Fatalf("the note lost the build:\n%s", text)
+	}
+}
+
+// ── 4. /status --json ───────────────────────────────────────────────────────
+
+// ONE OBJECT, THE SAME FACTS, IN THE SAME ORDER. The two forms are one list
+// ([app.statusItems]) precisely so that a person and a program asking the same
+// question of the same session cannot be told two different things, and the
+// order is part of that claim: the object is built by hand from the ordered
+// slice because a Go map would randomize it.
+func TestStatusJSONCarriesTheSameFactsInTheSameOrder(t *testing.T) {
+	agent := &fakeAgent{
+		model:  "openrouter/deepseek-v4-flash",
+		window: 128_000,
+		weight: 12_400,
+		usage:  session.Usage{Input: 12_400, Output: 900, CostUSD: 0.31},
+	}
+	a := newTestApp(agent)
+	a.model, a.ctxWindow, a.ctxTokens = agent.model, 128_000, 12_400
+	a.build = "1265feda built 2026-08-27 13:28"
+	a.file = "/tmp/lab/.aforge/sessions/2026-08-17T09-15-02.json"
+
+	a.slash("/status --json")
+	text := lastNote(t, a)
+
+	var object map[string]string
+	if err := json.Unmarshal([]byte(text), &object); err != nil {
+		t.Fatalf("the note is not one JSON object of strings: %v\n%s", err, text)
+	}
+	items := a.statusItems()
+	if len(object) != len(items) {
+		t.Fatalf("the object has %d keys and the list has %d rows:\n%s", len(object), len(items), text)
+	}
+	for _, item := range items {
+		if object[item.label] != item.value {
+			t.Fatalf("%q is %q in the object and %q on the list:\n%s", item.label, object[item.label], item.value, text)
+		}
+	}
+	// The ORDER, read off the wire rather than off the map, which has none.
+	decoder := json.NewDecoder(strings.NewReader(text))
+	if _, err := decoder.Token(); err != nil {
+		t.Fatalf("the object does not open: %v", err)
+	}
+	for _, item := range items {
+		key, err := decoder.Token()
+		if err != nil {
+			t.Fatalf("the object ran out before %q: %v", item.label, err)
+		}
+		if key != item.label {
+			t.Fatalf("the object says %v where the list says %q:\n%s", key, item.label, text)
+		}
+		if _, err := decoder.Token(); err != nil {
+			t.Fatalf("%q has no value: %v", item.label, err)
+		}
+	}
+}
+
+// THE EMPTINESS LAW SURVIVES THE SERIALIZATION. A fact this session does not
+// have is not a key — never `null`, never `""`, and never a zero. It is the
+// same silence the text form keeps, and it is the one thing a serializer is
+// most likely to undo, because a struct with an unset field still marshals.
+func TestStatusJSONOmitsWhatTheSessionDoesNotHaveRatherThanZeroingIt(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.model = "m"
+
+	a.slash("/status --json")
+	text := lastNote(t, a)
+
+	var object map[string]any
+	if err := json.Unmarshal([]byte(text), &object); err != nil {
+		t.Fatalf("the note is not one JSON object: %v\n%s", err, text)
+	}
+	for _, absent := range []string{"spend", "context", "file", "build"} {
+		if _, ok := object[absent]; ok {
+			t.Fatalf("a session with no %s grew the key anyway:\n%s", absent, text)
+		}
+	}
+	for key, value := range object {
+		if value == nil {
+			t.Fatalf("%q is null rather than absent:\n%s", key, text)
+		}
+		if word, ok := value.(string); !ok || word == "" {
+			t.Fatalf("%q is %#v rather than a non-empty string:\n%s", key, value, text)
+		}
+	}
+	if strings.Contains(text, "$0.00") || strings.Contains(text, "0%") {
+		t.Fatalf("the object billed a session that has spent nothing:\n%s", text)
+	}
+}
+
+// --json IS THE ONLY ARGUMENT, SPELLED EXACTLY. Anything else after the name
+// falls through to the bare text note, which is the route /status has always
+// answered on — a refusal the manual page states in the same words.
+func TestStatusAnswersOnlyTheExactJSONFlagAndOtherwisePrintsTheText(t *testing.T) {
+	for _, line := range []string{"/status", "/status --JSON", "/status json", "/status --json --pretty", "/status -j"} {
+		a := newTestApp(&fakeAgent{model: "m"})
+		a.slash(line)
+		text := lastNote(t, a)
+		if strings.HasPrefix(strings.TrimSpace(text), "{") {
+			t.Fatalf("%q printed the object:\n%s", line, text)
+		}
+		if text != a.statusText() {
+			t.Fatalf("%q did not print the text note:\n%s", line, text)
+		}
+	}
+	// And the command's other words reach the flag too, because the table
+	// resolves the name before the argument is read.
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.slash("/info --json")
+	if text := lastNote(t, a); !strings.HasPrefix(strings.TrimSpace(text), "{") {
+		t.Fatalf("/info --json did not print the object:\n%s", text)
 	}
 }
