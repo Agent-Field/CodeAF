@@ -260,6 +260,11 @@ func TestTheSessionIsNamedOnlyOnce(t *testing.T) {
 	if got := awaitTitle(t, agent); got != "tokenizer speed" {
 		t.Fatalf("the first turn left the session called %q", got)
 	}
+	// Title() changes under the naming goroutine before that goroutine publishes
+	// its one event. Join the publication before opening a second turn, or a
+	// scheduler pause in that gap makes the first turn's legitimate event arrive
+	// on the second turn's hub and look like a second naming attempt.
+	agent.waitForTitle()
 	second := collect(t, mustSubmit(t, agent, "and the parser?"))
 
 	if got := countKind(second, EventTitleChanged); got != 0 {
