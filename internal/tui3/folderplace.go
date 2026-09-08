@@ -108,6 +108,11 @@ func (a *app) referPlace(chosen chosenPlace) {
 	// repository and not from a folder inside one — and a surface that quietly
 	// printed the root a person had not chosen would be misreporting the scope
 	// they actually picked.
+	// The engine's own word for what was pointed at is preferred over ours
+	// ([placeScope]); ours is what is left when it has nothing to say.
+	if scope := placeScope(ref); scope != "" {
+		chose = scope
+	}
 	line := folderChoseWord + shown
 	if chose != path {
 		line += folderInsideWord + tildePath(chose, a.tilde)
@@ -136,10 +141,34 @@ func (a *app) placeDoor() (placeReferrer, bool) {
 	return door, ok
 }
 
-// canReferPlace is what every road onto a folder asks BEFORE it offers one.
+// placeCapable is the engine's OWN STATEMENT about whether it can keep the
+// folders a conversation is about, made at the door and re-read after /new,
+// /resume and a reconnect (internal/remote's `Welcome.Folders`).
+//
+// IT EXISTS BECAUSE A TYPE ASSERTION CANNOT ANSWER THE QUESTION. The ordinary
+// local launch goes through the wire too, and `*remote.Agent` carries
+// ReferPlace, Places and RemovePlace whatever is on the far end of the pipe —
+// so [placeReferrer] is satisfied by every connection there has ever been,
+// including one whose engine has never heard of a folder. Asserting the methods
+// proves the CLIENT has them; only the far side can say whether they do
+// anything.
+type placeCapable interface{ KeepsFolders() bool }
+
+// canReferPlace is what every road onto a folder asks BEFORE it offers one: the
+// methods, and then — where anything is willing to say — the answer to whether
+// they will do anything.
+//
+// An agent that makes no such statement is believed, because that is what the
+// in-process session is: it has the methods and it is the engine, so there is
+// nobody else to ask.
 func (a *app) canReferPlace() bool {
-	_, ok := a.placeDoor()
-	return ok
+	if _, ok := a.placeDoor(); !ok {
+		return false
+	}
+	if says, ok := a.agent.(placeCapable); ok {
+		return says.KeepsFolders()
+	}
+	return true
 }
 
 // ── the command ─────────────────────────────────────────────────────────────

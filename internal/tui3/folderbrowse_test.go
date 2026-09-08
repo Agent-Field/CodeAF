@@ -7,9 +7,11 @@ package tui3
 // UNLESS IT REACHED THE CONVERSATION.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -305,6 +307,35 @@ func TestAnUnreadableFolderSaysSoRatherThanLookingEmpty(t *testing.T) {
 	}
 }
 
+// EVERY WAY A READ CAN FAIL HAS ITS OWN SENTENCE, and a read that has not
+// happened yet has none at all — the emptiness law, where a level still in
+// flight draws nothing rather than a placeholder saying so.
+func TestEachWayAReadFailsHasItsOwnWord(t *testing.T) {
+	for _, row := range []struct {
+		name string
+		read folderRead
+		want string
+	}{
+		{"not asked yet", folderRead{}, ""},
+		{"read and empty", folderRead{done: true}, folderLeafWord},
+		{"refused", folderRead{err: os.ErrPermission, done: true}, folderClosedWord},
+		{"gone", folderRead{err: os.ErrNotExist, done: true}, folderMissingWord},
+		{"a file", folderRead{err: syscall.ENOTDIR, done: true}, folderNotDirWord},
+		{"anything else", folderRead{err: errors.New("io"), done: true}, folderUnreadableWord},
+	} {
+		if got := folderStateWord(row.read); got != row.want {
+			t.Errorf("%s says %q, want %q", row.name, got, row.want)
+		}
+	}
+	// A read that names a real error is never the empty-folder word, whatever
+	// else it is.
+	for _, err := range []error{os.ErrPermission, os.ErrNotExist, syscall.ENOTDIR, errors.New("io")} {
+		if folderStateWord(folderRead{err: err, done: true}) == folderLeafWord {
+			t.Fatalf("%v was reported as an empty folder", err)
+		}
+	}
+}
+
 // HIDDEN FOLDERS ARE REACHABLE, by the toggle and by typing a name that starts
 // with a dot — which is what somebody reaching for `.config` already does.
 func TestHiddenFoldersAreReachable(t *testing.T) {
@@ -443,6 +474,98 @@ func TestAConversationThatCannotHoldAFolderIsNotOfferedOne(t *testing.T) {
 	}
 }
 
+// AND THE ENGINE'S OWN WORD OUTRANKS THE METHODS BEING THERE. The ordinary
+// local launch goes through the wire, so the client carries ReferPlace, Places
+// and RemovePlace whatever is on the far end of the pipe — a type assertion is
+// true for every connection there has ever been, and only the far side can say
+// whether the methods do anything.
+func TestAnEngineThatSaysItCannotKeepFoldersIsBelieved(t *testing.T) {
+	a, agent, _ := browseLab(t)
+	a.entries = nil
+	a.agent = statedAgent{Agent: a.agent, door: agent}
+
+	if a.canReferPlace() {
+		t.Fatal("the surface believed the methods over the engine's own answer")
+	}
+	if cmd := a.openFolderPick(""); cmd != nil || a.folder.open {
+		t.Fatal("the picker opened over an engine that says it cannot keep a folder")
+	}
+	if got := plain(lastNote(t, a)); got != folderNoDoorWord {
+		t.Fatalf("the refusal said %q", got)
+	}
+	// And with the same methods and a yes, everything is offered again.
+	a.agent = statedAgent{Agent: a.agent, door: agent, yes: true}
+	if !a.canReferPlace() {
+		t.Fatal("an engine that says yes was refused")
+	}
+}
+
+// statedAgent carries the whole folder door AND the engine's own statement about
+// whether it does anything — internal/remote's `KeepsFolders`, off
+// `Welcome.Folders`.
+type statedAgent struct {
+	Agent
+	door *fakeAgent
+	yes  bool
+}
+
+func (s statedAgent) KeepsFolders() bool            { return s.yes }
+func (s statedAgent) Places() []session.PlaceRef    { return s.door.Places() }
+func (s statedAgent) RemovePlace(path string) error { return s.door.RemovePlace(path) }
+func (s statedAgent) ReferPlace(path string, arrival session.PlaceArrival) (session.PlaceRef, error) {
+	return s.door.ReferPlace(path, arrival)
+}
+
+// THE INDICATOR IS A CLAIM ABOUT WHAT SOMEBODY DID, so it draws the folders they
+// attached and not the ones the ground ladder worked out and wrote down.
+func TestTheTrayDrawsWhatWasAttachedAndNotWhatWasWorkedOut(t *testing.T) {
+	a, agent, root := browseLab(t)
+	agent.places = []session.PlaceRef{
+		{Path: filepath.Join(root, "here"), Arrival: session.PlaceSaid},
+		{Path: filepath.Join(root, "sibling"), Arrival: session.PlaceKept},
+	}
+	cells := a.placeTrayCells()
+	if len(cells) != 1 || !strings.Contains(cells[0], "here") {
+		t.Fatalf("the tray drew %v — only what was attached belongs there", cells)
+	}
+	// The picker's own rows are a RANKING and may have both: they are places to
+	// choose from, not a claim that anybody chose them.
+	if len(a.referredPlaces()) != 2 {
+		t.Fatalf("the picker's first layer lost a place: %v", a.referredPlaces())
+	}
+}
+
+// THE CELL NAMES WHAT THE PERSON POINTED AT. A folder inside a repository is
+// held as the repository, and a row that read `agentfield` for a person who
+// chose `agentfield/internal/session` would be showing them a scope they did not
+// pick.
+func TestTheTrayNamesTheDirectoryThatWasActuallyChosen(t *testing.T) {
+	a, agent, root := browseLab(t)
+	deep := filepath.Join(root, "here", "deep")
+	agent.places = []session.PlaceRef{{Path: root, Arrival: session.PlaceSaid}}
+
+	was := placeScope
+	t.Cleanup(func() { placeScope = was })
+	placeScope = func(ref session.PlaceRef) string {
+		if ref.Path == root {
+			return deep
+		}
+		return ""
+	}
+	if cells := a.placeTrayCells(); len(cells) != 1 || !strings.Contains(cells[0], "deep") {
+		t.Fatalf("the tray drew %v, want the folder that was chosen", cells)
+	}
+	// And the removal still works on the folder the conversation actually holds.
+	cmd, ok := a.dropPlaceChip(0)
+	if !ok {
+		t.Fatal("the cell offered no way off")
+	}
+	settleFolder(t, a, cmd)
+	if len(agent.places) != 0 {
+		t.Fatalf("the removal did not act on the held path: %+v", agent.places)
+	}
+}
+
 // A REFUSAL FROM THE CONVERSATION IS THE LINE, and no pick is written down for
 // a place it did not gain.
 func TestARefusedFolderIsNotReportedAsAdded(t *testing.T) {
@@ -525,7 +648,7 @@ func TestTheTrayShowsTheFoldersAndTakesOneOff(t *testing.T) {
 // still say what the conversation is about, because that much is true.
 func TestWithoutARemovalDoorTheCellsAreStillDrawnAndOfferNothing(t *testing.T) {
 	a, agent, root := browseLab(t)
-	agent.places = []session.PlaceRef{{Path: filepath.Join(root, "here")}}
+	agent.places = []session.PlaceRef{{Path: filepath.Join(root, "here"), Arrival: session.PlaceSaid}}
 	a.agent = halfDoorAgent{a.agent, agent}
 
 	cells := a.placeTrayCells()
@@ -557,7 +680,7 @@ func (h halfDoorAgent) ReferPlace(path string, arrival session.PlaceArrival) (se
 func TestTheTrayCountsTheFoldersItCannotName(t *testing.T) {
 	a, agent, root := browseLab(t)
 	for _, name := range []string{"one", "two", "three", "four", "five"} {
-		agent.places = append(agent.places, session.PlaceRef{Path: filepath.Join(root, name)})
+		agent.places = append(agent.places, session.PlaceRef{Path: filepath.Join(root, name), Arrival: session.PlaceSaid})
 	}
 	cells := a.placeTrayCells()
 	if len(cells) != placeTrayCap+1 {

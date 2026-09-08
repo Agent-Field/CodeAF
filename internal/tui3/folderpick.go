@@ -42,10 +42,12 @@ package tui3
 // dropped rather than filed against whatever is under the cursor now.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -1031,31 +1033,53 @@ func folderNameCell(read folderRead, row, room int, pal palette) string {
 	return ""
 }
 
-// folderStateWord is what a column with no names in it says about itself, and
-// there are three different things it can be saying.
+// folderStateWord is what a column with no names in it says about itself — and
+// there are five different things it can be saying, four of which are reasons
+// and one of which is silence.
+//
+// THE READ THAT FAILED AND THE READ THAT FOUND NOTHING ARE TOLD APART BY THE
+// ERROR AND NEVER BY THE COUNT. That is the defect this replaced: `folderKids`
+// dropped `os.ReadDir`'s error and answered nil, so a directory somebody may not
+// open drew `nothing below here` — a confident lie about their own disk.
 func folderStateWord(read folderRead) string {
 	switch {
 	case !read.done:
 		return ""
-	case read.err != nil && os.IsPermission(read.err):
+	case read.err == nil:
+		return folderLeafWord
+	case os.IsPermission(read.err):
 		return folderClosedWord
-	case read.err != nil:
-		return folderUnreadableWord
+	case os.IsNotExist(read.err):
+		return folderMissingWord
+	case errors.Is(read.err, syscall.ENOTDIR):
+		return folderNotDirWord
 	}
-	return folderLeafWord
+	return folderUnreadableWord
 }
 
-// The three things a column with no rows can be saying. They are constants
+// The five things a column with no rows can be saying. They are constants
 // because the manual quotes each of them exactly as it is spelled here.
+//
+// THE FOUR REFUSALS ARE THE SEARCH LANE'S OWN SPELLING (its `folderReadWord`,
+// reports/search.md), deliberately: that lane's read helpers replace the readdir
+// under this file after integration, and two lanes shipping two sentences for
+// the same disk error would be a wording change nobody decided on. The constants
+// are named apart from its own so the two files can sit in one package until the
+// swap happens.
 const (
-	// folderLeafWord is a directory with no subdirectories under it.
+	// folderLeafWord is a directory that WAS read and has nothing under it.
 	folderLeafWord = "nothing below here"
 	// folderClosedWord is a directory this machine will not let this program
-	// read. It is NEVER the word above: a folder somebody may not open is not a
-	// folder with nothing in it.
-	folderClosedWord = "you cannot read this folder"
+	// read. It is NEVER the word above.
+	folderClosedWord = "this folder cannot be read · permission denied"
+	// folderMissingWord is a directory that has been moved or deleted since the
+	// row naming it was drawn.
+	folderMissingWord = "this folder is no longer here"
+	// folderNotDirWord is a path that names a file. It is reachable: a person
+	// may type one into the box.
+	folderNotDirWord = "this is a file, not a folder"
 	// folderUnreadableWord is every other way a readdir fails.
-	folderUnreadableWord = "this folder could not be read"
+	folderUnreadableWord = "this folder cannot be read"
 )
 
 // actionRow is the one row on this sheet that ADDS a folder, with what the

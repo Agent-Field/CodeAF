@@ -128,10 +128,18 @@ take a beat to say whether it is dirty — the keys never wait for it.
 
 ## An empty folder, and one you are not allowed to read
 
-They are two different things and the browser says which is which. A folder with no folders
-inside it says `nothing below here`. A folder this machine will not let aforge open says
-`you cannot read this folder`, and anything else that goes wrong reading one says `this
-folder could not be read`. A permission is never reported as emptiness.
+They are different things and the browser says which is which, where the rows would have
+been. A folder that **was** read and has nothing inside it says `nothing below here` — and
+you can still add it; a leaf is a perfectly good choice. A read that **failed** says why:
+
+```
+this folder cannot be read · permission denied
+this folder is no longer here
+this is a file, not a folder
+this folder cannot be read
+```
+
+A permission is never reported as emptiness.
 
 ## What choosing a folder actually does — this conversation is now about it
 
@@ -376,8 +384,10 @@ nothing to offer yet · type a path after /folder, or use the picker's box
 no folder matches · type a path to browse
 no such folder · <path>
 nothing below here
-you cannot read this folder
-this folder could not be read
+this folder cannot be read · permission denied
+this folder is no longer here
+this is a file, not a folder
+this folder cannot be read
 ```
 
 And the two `/land` gives you, exactly as they are written:
@@ -399,7 +409,9 @@ putting changes into a folder is not available over --host yet — the conversat
   there; the picker only ranks what it has seen, so type its path.
 - The fifth is the add action on a row whose folder has since been moved or deleted. The
   rows come from memory, and one stat at that moment is what catches it.
-- `nothing below here` is a folder with no folders inside it. You can still add it — a leaf
-  is a perfectly good choice.
-- The last two are a folder you are not allowed to open, and a folder that could not be read
-  for any other reason. Neither is ever reported as an empty folder.
+- `nothing below here` is a folder that was read and has no folders inside it. You can still
+  add it — a leaf is a perfectly good choice.
+- The last four are reads that failed: a folder you are not allowed to open, one that has
+  been moved or deleted since the row naming it was drawn, a path that turned out to name a
+  file, and every other way a read can go wrong. None of them is ever reported as an empty
+  folder.

@@ -55,16 +55,44 @@ func placeChipMark(pal palette) string {
 // path, which would push four folders past the width of any terminal.
 const placeChipCap = 18
 
-// referredPlaceRefs is what this conversation is about, newest first, straight
-// off the one door that has them. Nil where the build has no such door, which
-// is the same silence the picker refuses on.
-func (a *app) referredPlaceRefs() []session.PlaceRef {
+// attachedPlaces are the folders THE PERSON ATTACHED, newest first, straight off
+// the one door that has them.
+//
+// IT IS THE SAID ROWS AND ONLY THE SAID ROWS. `Places` also carries what the
+// ground ladder worked out and wrote down (session.PlaceKept) — a cache of an
+// answer rather than an instruction — and an indicator that drew those would be
+// telling a person they had attached folders they never touched, with a `✕`
+// beside each one. The picker's first rows are a RANKING and may have both;
+// this row is a CLAIM about what somebody did, and may not.
+func (a *app) attachedPlaces() []session.PlaceRef {
 	door, ok := a.placeDoor()
 	if !ok {
 		return nil
 	}
-	return door.Places()
+	refs := door.Places()
+	out := make([]session.PlaceRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref.Arrival == session.PlaceSaid {
+			out = append(out, ref)
+		}
+	}
+	return out
 }
+
+// placeScope is THE DIRECTORY A PERSON ACTUALLY POINTED AT, where the engine's
+// repository-root snap moved it — `PlaceRef.Chose` on the integrated tree — and
+// "" for a folder chosen at its own root.
+//
+// IT IS A SEAM AND IT IS ONE LINE. The field arrives with the context lane's
+// work and this lane's base does not carry it, so the whole of what the browser
+// needs to change to draw it is the body of this function: `return ref.Chose`.
+// It is a var for [servedSighting]'s reason — a test states a scope without the
+// field existing, so what this surface DOES with one is pinned today and only
+// the reading of it is outstanding.
+//
+// `Path` stays the key for everything else: it is what the conversation holds,
+// what [app.dropPlaceChip] removes, and what work is cut from.
+var placeScope = func(ref session.PlaceRef) string { return "" }
 
 // canRemovePlace reports whether taking a folder back off can actually reach the
 // conversation. See this file's header.
@@ -84,7 +112,7 @@ func (a *app) canRemovePlace() bool {
 // without claiming space it has not got. `/folder`'s own first rows are the
 // whole set, on demand, and the manual says so.
 func (a *app) placeTrayCells() []string {
-	refs := a.referredPlaceRefs()
+	refs := a.attachedPlaces()
 	if len(refs) == 0 {
 		return nil
 	}
@@ -99,7 +127,15 @@ func (a *app) placeTrayCells() []string {
 	shown := min(len(refs), placeTrayCap)
 	out := make([]string, 0, shown+1)
 	for _, ref := range refs[:shown] {
-		out = append(out, mark+" "+fit(placeChipName(ref.Path), placeChipCap)+drop)
+		// THE CELL NAMES WHAT THE PERSON POINTED AT, not what the engine snapped
+		// it to. Somebody who chose `~/repo/internal/session` and read `repo` off
+		// this row would have been shown a scope they did not pick, which is the
+		// one thing the wave's brief forbids by name.
+		name := ref.Path
+		if scope := placeScope(ref); scope != "" {
+			name = scope
+		}
+		out = append(out, mark+" "+fit(placeChipName(name), placeChipCap)+drop)
 	}
 	if rest := len(refs) - shown; rest > 0 {
 		out = append(out, "+"+strconv.Itoa(rest)+placeTrayMoreWord)
@@ -159,7 +195,7 @@ func (a *app) dropPlaceChip(at int) (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
-	refs := a.referredPlaceRefs()
+	refs := a.attachedPlaces()
 	if at < 0 || at >= len(refs) || at >= placeTrayCap {
 		return nil, false
 	}
