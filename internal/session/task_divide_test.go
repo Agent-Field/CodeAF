@@ -1196,7 +1196,7 @@ func TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal(t *testi
 		}
 		// The checker sees the acceptance and nothing else about the goal, so the
 		// question it is actually asked is where this has to be true.
-		question := auditQuestion(kids[i], taskTree{}, auditGround{}, auditDoor{}, landingFiles{}, "", nil)
+		question := auditQuestion(kids[i], taskTree{}, auditGround{}, auditDoor{}, checkGround{}, landingFiles{}, "", nil)
 		if !strings.Contains(question, want) {
 			t.Fatalf("the checker for part %d was asked %q, want its own done-condition", kids[i].id, question)
 		}
@@ -1210,7 +1210,7 @@ func TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal(t *testi
 	if got := nest.parent.acceptance(); got != original {
 		t.Fatalf("the whole job is now finished against %q, want the condition it was admitted with", got)
 	}
-	if strings.Contains(auditQuestion(nest.parent, taskTree{}, auditGround{}, auditDoor{}, landingFiles{}, "", nil), alphaDone) {
+	if strings.Contains(auditQuestion(nest.parent, taskTree{}, auditGround{}, auditDoor{}, checkGround{}, landingFiles{}, "", nil), alphaDone) {
 		t.Fatal("the whole job is being checked against one of its parts' conditions")
 	}
 }

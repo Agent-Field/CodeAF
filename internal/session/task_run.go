@@ -382,6 +382,9 @@ type TaskNode struct {
 	// the wrong repository.
 	Base     string
 	Universe string
+	// CheckBase is the immutable Git commit captured before the worker runs.
+	// A universe's Seal names a filesystem snapshot, not a Git commit.
+	CheckBase string
 	// Expects is THE CHECKABLE HALF OF THE HANDOFF this node was given: what its
 	// brief assumes is already true of the world it gets (handoffcontract.go).
 	// It sits beside Ground for the same reason Rung does — the ground says
@@ -2346,6 +2349,7 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
+	tree.checkBase = n.CheckBase
 	tree.home, tree.homeSha = n.Home, n.HomeSha
 	return tree
 }
@@ -2684,6 +2688,7 @@ func (n *TaskNode) setTree(tree taskTree) {
 	// the work actually happened in.
 	n.Rung, n.Seal = tree.rung, tree.seal
 	n.Base, n.Universe = tree.base, tree.universe
+	n.CheckBase = tree.checkBase
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
 }
@@ -6036,6 +6041,8 @@ type taskTree struct {
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing
 	// uncommitted, which is the ordinary case.
 	base string
+	// checkBase remains a Git commit even when seal names a filesystem snapshot.
+	checkBase string
 	// universe is the furrow fork's name, when a fork made this world, and it is
 	// the only handle furrow takes for dropping the record afterwards.
 	universe string
@@ -6249,7 +6256,13 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 	if out, err := git(root, "worktree", "add", "-b", branch, dir, from); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
-	return taskTree{dir: dir, root: root, branch: branch, home: home, homeSha: homeSha, place: place, ground: root, mode: TaskModeWorktree}, nil
+	// The cut's commit remains the baseline even if the worker commits its own
+	// edits later. The check base travels through checkpoints and repairs.
+	start, err := git(dir, "rev-parse", "HEAD")
+	if err != nil {
+		return taskTree{}, fmt.Errorf("read task base: %w", err)
+	}
+	return taskTree{dir: dir, root: root, branch: branch, home: home, homeSha: homeSha, place: place, ground: root, mode: TaskModeWorktree, checkBase: strings.TrimSpace(start)}, nil
 }
 
 // prepareTaskTreeOn gives one node a place to work ON ITS GROUND, which is the
