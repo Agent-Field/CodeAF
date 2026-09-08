@@ -116,6 +116,41 @@ func TestTheSwitcherUsesAmberOnlyForRowsThatNeedThePerson(t *testing.T) {
 	}
 }
 
+// FILES ARE NEWS ONLY AFTER THEIR ROW LANDS. A run started after the last look
+// but still carrying no ending is not counted as change since that look; the
+// same row becomes news once its closing row dates the landing.
+func TestARunningRunIsNotNewsSinceTheLastLook(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	seen := now.Add(-2 * time.Hour)
+	noteFor := func(entry session.TaskIndexEntry) string {
+		row := session.SessionRow{
+			ID: "room-a", Title: "Pricing audit", At: seen.Add(time.Hour),
+			Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{entry}},
+		}
+		world := session.World{Projects: []session.Project{{Name: "pricing", Dir: "/pricing", Sessions: []session.SessionRow{row}}}}
+		reading := readSwitcher(world, nil, switcherHere{}, nil, seen, now, switcherView{}, switcherLedgerInput{})
+		for _, stop := range switcherStops(reading) {
+			if stop.kind == switcherConversation {
+				return stop.note
+			}
+		}
+		t.Fatal("the conversation is missing from the switcher")
+		return ""
+	}
+	running := session.TaskIndexEntry{
+		ID: "1", Title: "Audit the pricing code", Kind: session.TaskKindAdaptive,
+		Status: string(session.TaskRunning), FilesChanged: 7,
+	}
+	if note := noteFor(running); note != "" {
+		t.Fatalf("the still-running run is news since the last look: %q", note)
+	}
+	running.Status = string(session.TaskDone)
+	running.EndedAt = now.Add(-time.Hour)
+	if note := noteFor(running); note != "7 files made" {
+		t.Fatalf("the landed run's news is %q, want its seven files", note)
+	}
+}
+
 func TestTheSwitcherFoldsOnlyTheQuietTailAndCanHideIt(t *testing.T) {
 	lab := newSwitcherLab()
 	text := switcherText(lab.read(false, false, switcherLedgerInput{}), 120)

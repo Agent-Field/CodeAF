@@ -409,8 +409,22 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	return json.Marshal(wire)
 }
 
+// effortAsked is what this call really asks for after the client's own pinned
+// effort has been folded into the caller's request. The seat's pin outranks an
+// ordinary per-call or run-wide economy, while a request marked required is a
+// correctness bound on this particular answer and wins. A pin is explicit so
+// an unknown catalog row cannot erase an operator's own choice, and it never
+// carries a budget because class-value notation has no budget form.
+func (c *Client) effortAsked(requested effortRequest) effortRequest {
+	if c.config.Effort == EffortNone || requested.required {
+		return requested
+	}
+	return effortRequest{effort: c.config.Effort, explicit: true}
+}
+
 // resolveEffort decides whether the knob may travel, and in what shape.
 func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
+	requested = c.effortAsked(requested)
 	effort := c.requestedEffort(model, requested)
 	// A model that reasons unconditionally answers the disable with a 400, and
 	// no amount of operator intent changes that. What travels instead is the
@@ -432,6 +446,7 @@ func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
 // answers to the memo — a model this process has already watched reject the
 // field gets the rung it can actually serve, which is high without a budget.
 func (c *Client) resolveReasoningBudget(model string, requested effortRequest) int {
+	requested = c.effortAsked(requested)
 	if requested.budget <= 0 {
 		return 0
 	}
