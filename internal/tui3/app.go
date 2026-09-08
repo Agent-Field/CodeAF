@@ -3102,6 +3102,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.tabWheel(msg) {
 			return a, nil
 		}
+		// AND THE FOLDER BROWSER ANSWERS THE WHEEL OVER ITS OWN ROWS. Its window
+		// follows its cursor rather than an offset of its own, so the wheel walks
+		// the cursor — the same bargain the roster and the status sheet make, and
+		// the reason the third column fills as it is turned (folderplace.go).
+		if cmd, took := a.folderWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
+			return a, cmd
+		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -3320,11 +3327,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.effortMenuPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE FOLDER BROWSER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
+			// ELSE, on the two lists above's terms and for their reason: it hangs
+			// over a draft somebody is still writing, so a press anywhere else is
+			// a press on whatever is there. Its rows walk and its action row adds
+			// (folderplace.go's [app.folderPress]).
+			if cmd, took := a.folderPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
 			// well as the row (attach.go).
-			if a.chipPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
+			if cmd, took := a.chipPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// AND THE JUMP CHIP IS THE OTHER ONE, floating in the breathing gap
 			// rather than in the box, and column-aware for the same reason: the
@@ -3723,6 +3738,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// is answered here for the reason above: the branch and the dirty flag
 		// come out of git, and a keystroke may not wait for git (folderplace.go).
 		a.tookFolderFacts(msg)
+		return a, nil
+
+	case folderKidsMsg:
+		// ONE LEVEL OF THE BROWSER'S COLUMNS, COMING BACK. Every readdir this
+		// surface makes is asked for as a command and lands here: a home directory
+		// on a network mount and a folder with forty thousand entries in it are
+		// both things a keystroke may not wait for, and an answer stamped with a
+		// picker that has since closed is dropped rather than drawn (folderpick.go).
+		return a, a.tookFolderKids(msg)
+
+	case placeDroppedMsg:
+		// A FOLDER TAKEN OFF THE CONVERSATION, COMING BACK. The cell is pressed
+		// here and the folder goes over there, which over a connection is a round
+		// trip — so the tray changes when the answer arrives and not before
+		// (folderchip.go).
+		a.tookPlaceDropped(msg)
 		return a, nil
 
 	case folderStoreMsg:
