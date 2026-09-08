@@ -466,6 +466,89 @@ func TestAGuestPageWhoseConversationWasReplacedKeepsWhatItReadAndStops(t *testin
 	}
 }
 
+// A FINISHED TASK ON A READING PAGE DOES NOT SEND YOUR WORDS TO THE WRONG
+// CONVERSATION. The ordinary finished foot says `say it to main`, and main here
+// is THIS window's conversation — whose task of the same number is different
+// work. The foot names the owner instead, and the box keeps the reading word,
+// which was true while the work ran and is exactly as true now.
+func TestAFinishedGuestPageNamesTheOwnersDoorAndKeepsItsReadingWord(t *testing.T) {
+	a, door := guestLab(t)
+	door.watching()
+	enterAway(t, a)
+	if !a.roomIsGuest() {
+		t.Fatal("the row opened no reading page")
+	}
+	ownerSays(t, a, session.Event{
+		Kind: session.EventTaskUpdate,
+		Task: &session.TaskNotice{ID: 7, Title: "Port the parser", State: session.TaskDone},
+	})
+	if !a.room.done {
+		t.Fatal("the owner said its work landed and the page did not take it")
+	}
+
+	body := roomText(a)
+	if !strings.Contains(body, roomFinishedRefusal.what) {
+		t.Fatalf("the landed reading page never says the work is over:\n%s", body)
+	}
+	if strings.Contains(body, refusalMainDoor) {
+		t.Fatalf("a finished reading page aims the words at this window's own conversation:\n%s", body)
+	}
+	// THE DOOR IS THE OWNER, BY NAME — the same name the trail already uses.
+	if !strings.Contains(body, refusalOwnerLead+"docs pass") {
+		t.Fatalf("the finished reading page does not name the conversation that owns the work:\n%s", body)
+	}
+
+	// AND THE BOX GOES ON SAYING WHAT THE PAGE IS. A finished refusal in the
+	// placeholder would override the read-only word with an offer about a box
+	// that never could steer from here.
+	box, _, _ := a.inputBlock(80)
+	lane := plain(strings.Join(a.roomSteerLaneRows(box, 80), ""))
+	if !strings.Contains(lane, roomGuestLane) {
+		t.Fatalf("the finished reading page's composer dropped the reading word: %q", lane)
+	}
+	if strings.Contains(lane, refusalMainDoor) {
+		t.Fatalf("the finished reading page's composer offers this window's main: %q", lane)
+	}
+}
+
+// A PAGE THAT HAS ITS FINAL ANSWER GIVES THE OWNER'S LANE BACK AT ONCE, AND
+// ONCE ONLY. The engine has said this conversation is not the one it joined any
+// more; holding the subscription until the page closes keeps this window a
+// reader on a conversation with nothing left to say, and releasing it again on
+// the way out would close one subscription twice.
+func TestALostGuestPageReleasesTheOwnersLaneOnceAndAtOnce(t *testing.T) {
+	a, door := guestLab(t)
+	door.watching()
+	enterAway(t, a)
+	if !a.roomIsGuest() {
+		t.Fatal("the row opened no reading page")
+	}
+
+	a.farRoomRead(roomRecordMsg{
+		gen: a.room.gen,
+		err: errors.New("engine: that conversation is not open here any more"),
+	})
+	if !a.room.guest.lost {
+		t.Fatal("the page did not take the engine's final answer")
+	}
+	if door.left != 1 {
+		t.Fatalf("the owner's lane was released %d times at the final answer, want once", door.left)
+	}
+	// A NOTICE STILL IN FLIGHT RELEASES NOTHING TWICE AND RE-ARMS NOTHING.
+	if next := a.tookGuestNotice(taskGuestNoticeMsg{gen: a.room.gen, closed: true}); next != nil {
+		t.Fatal("a lost page asked its owner's lane for more")
+	}
+	if door.left != 1 {
+		t.Fatalf("a late notice released the lane again: %d releases", door.left)
+	}
+	// AND LEAVING RELEASES THE CONNECTION, NOT THE LANE A SECOND TIME.
+	a.closeRoom()
+	if door.left != 1 || door.closed != 1 {
+		t.Fatalf("leaving released the lane %d times and the connection %d times, want once each",
+			door.left, door.closed)
+	}
+}
+
 // A WINDOW WITH NO ENGINE ROAD STILL ANSWERS THE ROW. The capability is absent
 // rather than broken, so the card is the door and nothing is said about machinery
 // the person cannot see.

@@ -98,9 +98,9 @@ For a fixed unattended goal, use the one-message door with a budget:
     aforge chat --once "finish the import fix" --yolo --max-hours 6
     aforge chat --once "finish the import fix" --yolo --max-cost 20
 
-## Does a run with no screen carry its own work on
+## Does a run with no screen carry its own work on · headless --once checkpoints
 
-Yes, when launched with `--once`, `--yolo` and a budget as above. A headless
+Yes, when launched with `--once`, `--yolo` and a time or cost budget. A headless
 unattended run checkpoints long replies at the same points. Its decisions are
 kept in the transcript, where a run without a screen can still be inspected.
 

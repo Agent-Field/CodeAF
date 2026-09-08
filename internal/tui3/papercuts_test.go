@@ -27,9 +27,11 @@ func TestEveryRefusalOnTheTaskSurfacesNamesADoor(t *testing.T) {
 		}
 		// A DOOR IS A PLACE, NOT A KEY. `esc to return` was what the finished
 		// room said for a year, and esc is a way off the page rather than a
-		// destination for a sentence — so a door has to name somewhere this
-		// surface can actually put the words.
-		if !strings.Contains(r.door, roomCrumbRoot) {
+		// destination for a sentence — so a door has to name somewhere the words
+		// can actually go: this window's own conversation, or — on a page read
+		// through somebody else's — the conversation that owns the work, which is
+		// the one place main is NOT (roomrefusal.go's [roomGuestFinishedRefusal]).
+		if !strings.Contains(r.door, roomCrumbRoot) && !strings.Contains(r.door, refusalOwnerPlace) {
 			t.Fatalf("%q names %q, which is not a place words can go", r.what, r.door)
 		}
 		for _, spelling := range []string{r.line(), r.short()} {

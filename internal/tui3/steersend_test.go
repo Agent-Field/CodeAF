@@ -41,6 +41,10 @@ type namedRoomFake struct {
 	repeat bool
 	// lost is how many of the next crossings answer with a dead link.
 	lost int
+	// loseAck accepts the send, then loses this many receipts, including repeats.
+	loseAck int
+	// afterAckLoss refuses subsequent asks once the last receipt has been lost.
+	afterAckLoss error
 	// open is the conversation this engine currently has, when it is one that
 	// checks. A send naming another one is refused and delivered nowhere.
 	open string
@@ -63,9 +67,18 @@ func namedEngine(t *testing.T, repeat bool) (*app, *namedRoomFake) {
 
 func (f *namedRoomFake) SteerRepeatKnown() bool { return f.repeat }
 
-func (f *namedRoomFake) SteerTaskFrom(id uint64, text string, from session.SteerSource) (session.SteerReceipt, error) {
+func (f *namedRoomFake) SteerTaskFrom(id uint64, text string, from session.SteerSource) (receipt session.SteerReceipt, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	defer func() {
+		if err == nil && f.loseAck > 0 {
+			f.loseAck--
+			if f.loseAck == 0 && f.afterAckLoss != nil {
+				f.roomFake.steerErr = f.afterAckLoss
+			}
+			receipt, err = session.SteerReceipt{}, lostLink{}
+		}
+	}()
 	f.crossings = append(f.crossings, from)
 	if f.lost > 0 {
 		f.lost--
@@ -390,10 +403,11 @@ func TestAnUnresolvedSendRoundTripsThroughItsKeptValue(t *testing.T) {
 		t.Fatalf("another conversation's record was restored onto this page: %d sends held", got)
 	}
 
-	// AND A CONVERSATION THAT IS CLOSED FOR GOOD LETS GO OF IT.
+	// Closing is not a receipt. The original name remains available if this
+	// conversation is resumed, and nothing is sent merely because it closed.
 	next.forgetSteerOwner(next.steerOwner())
-	if left := next.steerSnapshots("/srv/one.jsonl", 7); len(left) != 0 {
-		t.Fatalf("a closed conversation is still holding %+v", left)
+	if left := next.steerSnapshots("/srv/one.jsonl", 7); len(left) != 1 || left[0].scope != kept[0].scope || left[0].seq != kept[0].seq {
+		t.Fatalf("closing discarded or renamed the unanswered correction: %+v", left)
 	}
 }
 
@@ -680,6 +694,44 @@ func TestAConversationWithNoTranscriptCannotSteer(t *testing.T) {
 	a.host = "devbox"
 	if there := a.steerOwner(); there == here {
 		t.Fatalf("the same path on another machine took the same name (%q)", there)
+	}
+}
+
+// AND THE ENGINE'S OWN REFUSAL AFTER THE SAME CLOSE ENDS THE SAME WAY. The
+// `not that conversation` ending keeps a send for the walk back to its page;
+// after a real close there is no walk back, and `your words are kept on its
+// page` is the same false sentence one error over.
+func TestARefusedSendWhoseConversationWasClosedKeepsTheWordsOutLoud(t *testing.T) {
+	a, engine := namedEngine(t, true)
+	a.file = "/srv/one.jsonl"
+	engine.open = "/srv/one.jsonl"
+	clickRail(t, a, 0)
+	one := steerAddress{owner: a.steerOwner(), task: 7}
+	cmd := typeSteer(t, a, "make it CSV")
+
+	// Closed for real, and the engine behind the same handle has moved on too,
+	// so the crossing comes back [session.ErrNotThatConversation].
+	a.closeRoom()
+	a.forgetSteerOwner(one.owner)
+	a.file = "/srv/two.jsonl"
+	engine.open = "/srv/two.jsonl"
+
+	deliver(t, a, cmd)
+
+	if got := engine.delivered(); len(got) != 0 {
+		t.Fatalf("a closed conversation's correction was delivered somewhere: %v", got)
+	}
+	if noted(a, steerElsewhereAway) {
+		t.Fatal("the conversation claims the words are kept on a page that was closed")
+	}
+	if !noted(a, steerKeptNowhere) || !noted(a, "make it CSV") {
+		t.Fatal("the words of a closed conversation's correction were dropped rather than said")
+	}
+	if len(a.outbox.unsure) != 0 {
+		t.Fatalf("a closed conversation's send is still held for a retry: %+v", a.outbox.unsure)
+	}
+	if a.input.String() != "" {
+		t.Fatalf("the words were tipped into another conversation's box: %q", a.input.String())
 	}
 }
 

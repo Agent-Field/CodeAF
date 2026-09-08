@@ -412,6 +412,10 @@ What each foot means now:
 - `this task has finished — say it to main` — a **task** that is over, whatever kind it
   was. Nothing more is coming; scroll up to read what it did. Where the task has a parent
   the line offers that door too: `…, or open its parent, Ship the port`.
+- `this task has finished — say it in docs pass` — the same landing on a page that is
+  **reading another conversation's task**. The door is the owning conversation, by its
+  name when this window has one and `…say it in the conversation that owns it` when it
+  does not — never `main`, which on that page is the wrong conversation for the words.
 
 **A job's page has no composer, so none of those job feet name a door for typed words.**
 `m` is how a job's ending reaches the conversation. A task's foot still names a door,
@@ -469,6 +473,12 @@ If the engine refuses the correction, its words are recovered for that task with
 replacing a newer draft. If the connection fails and delivery is uncertain, the row says
 `no answer — it is not known whether this arrived`. The correction remains a pending
 message with its original identity, rather than becoming a fresh message in the box.
+
+If the conversation the correction belongs to was **closed** while it was still crossing,
+there is no page and no record left to keep it, so the answer is said out loud instead:
+`task 7 was not corrected, and its conversation is not open here · these words are only
+in this line: ` followed by the whole sentence, which also joins your `↑` history. It is
+not held for a retry and is never moved to the conversation now in front.
 
 ## Retry a task correction without sending it twice
 

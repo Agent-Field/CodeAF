@@ -170,6 +170,8 @@ const (
 // those words belong to is not in this window at all — closed here, or taken
 // over by another window. There is no page to keep them on and no box to put
 // them in, so the sentence itself is said here rather than lost.
+const steerUnsureClosed = " gave no answer — delivery is unknown; reopen its conversation to ask again"
+
 const steerKeptNowhere = " was not corrected, and its conversation is not open here · these words are only in this line: "
 
 // taskSteerIdentityDoor is the engine door that can be asked TWICE for one
@@ -394,6 +396,13 @@ type steerSend struct {
 	// so it can never again be described as certainly undelivered — a later
 	// refusal only tells us about the later crossing.
 	lost bool
+	// gone says the conversation this send belongs to was CLOSED FOR REAL while
+	// the crossing was in the air ([app.forgetSteerOwner] marks it). The answer
+	// still arrives and still matches — an unmatched answer releases nothing and
+	// would strand the address — but there is no page until the conversation
+	// reopens. Its uncertain send stays on disk and in the owner-scoped outbox;
+	// [app.steerKeptGone] never treats silence as refusal.
+	gone bool
 	// remembered says this sentence is already in the recall list. One send is
 	// one line the person typed, however many times it is asked about.
 	remembered bool
@@ -535,6 +544,8 @@ type steerSentMsg struct {
 	gen     int
 	receipt session.SteerReceipt
 	err     error
+	// unanswered records a lost first answer even if the automatic retry refused.
+	unanswered bool
 	// asked is how many crossings this send has now cost, retries included.
 	asked int
 }
@@ -745,8 +756,9 @@ func steerCrossing(send *steerSend) tea.Cmd {
 	task, words := send.at.task, send.words
 	key, at, gen, asked := send.key, send.at, send.gen, send.asked
 	return func() tea.Msg {
+		unanswered := false
 		answer := func(receipt session.SteerReceipt, err error, tries int) tea.Msg {
-			return steerSentMsg{key: key, at: at, gen: gen, receipt: receipt, err: err, asked: tries}
+			return steerSentMsg{key: key, at: at, gen: gen, receipt: receipt, err: err, asked: tries, unanswered: unanswered}
 		}
 		cross := func() (session.SteerReceipt, error) {
 			if door.identity != nil {
@@ -758,6 +770,7 @@ func steerCrossing(send *steerSend) tea.Cmd {
 			return session.SteerReceipt{}, errors.New(roomUnavailableRefusal.line())
 		}
 		receipt, err := cross()
+		unanswered = errors.Is(err, session.ErrSendUnanswered)
 		// ONE AUTOMATIC REPEAT, AND ONLY FOR THE ONE ERROR THAT MEANS NOBODY
 		// ANSWERED. A refusal is an answer — the node is done, or has nobody in it
 		// — and asking again would send the same words at the same closed door.
@@ -786,6 +799,7 @@ func (a *app) steerSent(msg steerSentMsg) tea.Cmd {
 	}
 	delete(a.outbox.flying, msg.key)
 	send.asked = msg.asked
+	send.lost = send.lost || msg.unanswered
 	var next tea.Cmd
 	if a.outbox.flight[msg.at] == msg.key {
 		next = a.releaseSteer(msg.at)
@@ -902,6 +916,14 @@ func (a *app) rememberSteer(send *steerSend) {
 // steerFailed is a send that did not go, or that nobody answered for. They are
 // two different endings and the difference is the whole of this function.
 func (a *app) steerFailed(send *steerSend, msg steerSentMsg) tea.Cmd {
+	// ── ITS CONVERSATION WAS CLOSED WHILE THE CROSSING WAS IN THE AIR ──
+	//
+	// The closed page cannot receive an answer. Keep uncertainty under its
+	// original owner and name, and describe the missing page without inventing
+	// a refusal. A definite refusal can still give the person's words back.
+	if send.gone {
+		return a.steerKeptGone(send, msg.err)
+	}
 	// ── NOBODY ANSWERED ──
 	//
 	// The words may be on the node's record already, so they are NOT handed back
@@ -974,7 +996,11 @@ func (a *app) steerFailed(send *steerSend, msg steerSentMsg) tea.Cmd {
 			a.roomTouched()
 			return nil
 		}
-		a.note(taskIDWord(send.at.task) + steerElsewhereAway)
+		word := steerElsewhereAway
+		if send.lost {
+			word = steerUnsureAway
+		}
+		a.note(taskIDWord(send.at.task) + word)
 		return nil
 	}
 	// ── A REFUSAL DOES NOT SETTLE A SEND THAT WAS ALREADY UNCERTAIN ──
@@ -1028,6 +1054,31 @@ func (a *app) steerFailed(send *steerSend, msg steerSentMsg) tea.Cmd {
 		return nil
 	}
 	a.raiseGuard(send.line, msg.err.Error())
+	return nil
+}
+
+// steerKeptGone handles an answer after its conversation was closed. Closing
+// a page cannot settle a crossing: an unknown outcome keeps its original name
+// and payload, and only a definite refusal may give words back to a composer.
+func (a *app) steerKeptGone(send *steerSend, err error) tea.Cmd {
+	if send.lost || errors.Is(err, session.ErrSendUnanswered) {
+		send.lost = true
+		a.outbox.unresolved(send)
+		a.holdSend(send, draftSendUnanswered)
+		a.rememberSteer(send)
+		if a.steerOwner() == send.at.owner && a.room != nil && a.room.id == send.at.task {
+			a.adoptOneSteer(a.room, send)
+			a.raiseLostGuard(send)
+		} else {
+			a.note(taskIDWord(send.at.task) + steerUnsureClosed)
+		}
+		return nil
+	}
+	a.outbox.resolved(send)
+	a.rememberSteer(send)
+	if !a.recoverOwned(send.at.owner, taskRecipient(send.at.task), send.snapshot(draftSendRefused)) {
+		a.note(taskIDWord(send.at.task) + steerKeptNowhere + strings.TrimSpace(send.line))
+	}
 	return nil
 }
 
@@ -1105,10 +1156,8 @@ func (a *app) restoreSteerDraft(send *steerSend) {
 	a.note(taskIDWord(send.at.task) + steerKeptNowhere + strings.TrimSpace(send.line))
 }
 
-// forgetSteerOwner drops everything held for one conversation. It is what a
-// conversation being CLOSED owes — not one going into the keeper, which is
-// coming back to these very sends — and it is the twin of the drafts lane's own
-// forgetting.
+// forgetSteerOwner cancels unsent work for a closed conversation. Crossings
+// and unanswered sends keep their identity because closing is not a receipt.
 func (a *app) forgetSteerOwner(owner string) {
 	if owner == "" {
 		// A conversation this build could never name held no sends either
@@ -1116,13 +1165,23 @@ func (a *app) forgetSteerOwner(owner string) {
 		// only ever match by accident.
 		return
 	}
-	for at := range a.outbox.unsure {
+	// An unanswered crossing remains unanswered after a close. Its record and
+	// its name survive, but nothing retries until its own page is reopened.
+	for at, held := range a.outbox.unsure {
 		if at.owner == owner {
-			delete(a.outbox.unsure, at)
+			for _, send := range held {
+				send.gone = true
+			}
 		}
 	}
 	for at := range a.outbox.queue {
 		if at.owner == owner {
+			for _, send := range a.outbox.queue[at] {
+				if send.lost {
+					send.gone = true
+					a.outbox.unresolved(send)
+				}
+			}
 			delete(a.outbox.queue, at)
 		}
 	}
@@ -1132,6 +1191,13 @@ func (a *app) forgetSteerOwner(owner string) {
 	for key, send := range a.outbox.waiting {
 		if send != nil && send.at.owner == owner {
 			delete(a.outbox.waiting, key)
+		}
+	}
+	// A crossing cannot be recalled. Its answer must still match, and its
+	// durable snapshot survives the close until the outcome can be learned.
+	for _, send := range a.outbox.flying {
+		if send != nil && send.at.owner == owner {
+			send.gone = true
 		}
 	}
 }
@@ -1273,7 +1339,10 @@ func (a *app) restoreSteerSnapshots(conversation string, task uint64, kept []out
 				Scope: one.scope, Seq: one.seq, At: one.at,
 				Conversation: strings.TrimSpace(conversation),
 			},
-			keep: steerKeep{pastes: append([]pasteChip(nil), one.pastes...)},
+			keep: steerKeep{
+				box:    editor{value: []rune(one.line), cursor: max(0, min(one.caret, len([]rune(one.line))))},
+				pastes: append([]pasteChip(nil), one.pastes...),
+			},
 			// It was crossing or it was unanswered, and either way nobody learned its
 			// outcome — which is what [steerSend.lost] means.
 			lost: true,
@@ -1377,9 +1446,11 @@ func (a *app) adoptUnsentSteer(room *taskRoom) {
 
 // adoptOneSteer draws one unresolved send onto the page in front of it.
 func (a *app) adoptOneSteer(room *taskRoom, send *steerSend) {
-	if send == nil || send.gen == room.gen {
+	if send == nil || send.at.owner != a.steerOwner() || send.at.task != room.id || send.gen == room.gen {
 		return
 	}
+	send.gone = false
+	a.holdSend(send, draftSendUnanswered)
 	send.gen = room.gen
 	send.door = a.steerDoorNow()
 	send.elbow = &steerElbow{
