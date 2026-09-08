@@ -4,6 +4,7 @@ title: a cut stream's bill is asked for from the provider's own receipt, and a p
 pr: 631
 surface: [engine, chat]
 invalidates:
+  - "A remote background duty released its latch before recording its fault and queuing its notice. It now finishes publication before releasing the latch, so the next trip cannot pass a fault still being announced."
   - "A spend window containing only missing-price markers took the no-spending teaching path. The page now treats those markers as a real reading and displays their count even when no priced call exists."
   - "Review found that missing prices lived only in a process counter and never reached /cost. They now persist as attributed unbilled markers without invented money; /cost reads this conversation and its task descendants, and /spend reads its selected time window after restart."
   - "The first receipt permanently started four workers for every transient client. Workers now retire when their queue drains, with admission and retirement serialized so a later receipt restarts them safely."
