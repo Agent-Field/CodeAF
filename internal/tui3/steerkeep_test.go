@@ -290,7 +290,7 @@ func TestAnAnswerSettlesTheConversationItWasTypedInAfterASwitch(t *testing.T) {
 	}
 
 	// The whole conversation goes into the keeper and another takes the surface.
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	leaving := a.front()
 	a.stow(leaving, a.detachConversation())
 	a.file = filepath.Join(filepath.Dir(leaving.SessionFile), "another.jsonl")

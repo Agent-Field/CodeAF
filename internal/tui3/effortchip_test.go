@@ -59,11 +59,10 @@ func (e *effortAgent) SetConversationEffort(rung string) bool {
 	return true
 }
 
-// dialled is an app whose session runs at the shipped rung and can be moved off
-// it, which is every ordinary install.
+// dialled is an app with an explicit high install setting to exercise the dial.
 func dialled(t *testing.T) (*effortAgent, *app) {
 	t.Helper()
-	agent := &effortAgent{fakeAgent: &fakeAgent{model: "deepseek/deepseek-v4"}, installed: effort.Ship}
+	agent := &effortAgent{fakeAgent: &fakeAgent{model: "deepseek/deepseek-v4"}, installed: effort.High}
 	return agent, newTestApp(agent)
 }
 
@@ -99,7 +98,7 @@ func TestTheTrayChipNamesTheResolvedThinkingRung(t *testing.T) {
 	}
 	strip := plain(a.chipStrip(a.width))
 	if !strings.Contains(strip, glyphEffort+" high") {
-		t.Fatalf("the tray does not name the shipped rung: %q", strip)
+		t.Fatalf("the tray does not name the configured rung: %q", strip)
 	}
 
 	// And it follows the resolver rather than remembering anything: a rung set on

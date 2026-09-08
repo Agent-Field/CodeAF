@@ -10,10 +10,9 @@ import (
 // WHAT A CONVERSATION IS CALLED BEFORE IT HAS EARNED A NAME, AND WHEN THE NAME
 // ARRIVES.
 //
-// A session names itself ONCE, off the end of its first completed turn, on a
-// cheap model, and never again (internal/session's title.go states all three
-// laws). Between the first message and the reply that pays for the name there is
-// genuinely nothing to draw, so the name column has to say SOMETHING — and what
+// A session starts naming itself asynchronously on its first accepted message
+// (internal/session's title.go states the retry and lifetime bounds). While the
+// name is being written, the name column has to say SOMETHING — and what
 // it said was `main`, which is this surface's word for a PLACE (`esc/← main`,
 // [refusalMainDoor]'s "say it to main") and not a name at all. A person with one
 // unnamed conversation open read a tab claiming their chat was called `main`.
@@ -46,16 +45,16 @@ func TestAnUnnamedConversationIsNotDrawnUnderThePlaceWord(t *testing.T) {
 	}
 }
 
-// The name the session gives itself arrives on an event, AFTER the turn that
-// paid for it, and the surface takes it without being asked twice.
+// The name the session gives itself arrives on an event, independently of the turn
+// that triggered it, and the surface takes it without being asked twice.
 func TestTheNameArrivesOnItsEventAndReplacesThePlaceholder(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	if got := a.chatDisplayName(); got != untitledConversationWord {
 		t.Fatalf("the conversation started out called %q", got)
 	}
 
-	// This is the whole of the road: the namer fires at the end of the first
-	// completed turn and sends one event, [app.applyEvent] hands it to
+	// This is the whole of the road: the namer starts beside the first
+	// answer and sends its event when ready, [app.applyEvent] hands it to
 	// [app.setTitle], and the next read of the name is the name.
 	a.applyEvent(session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}, false)
 

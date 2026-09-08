@@ -165,30 +165,25 @@ the selected row.
 
 ## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
 
-**A conversation names itself once, off the end of its first completed turn.** Until that
-name arrives its tab reads `Untitled`, and then it changes to the name by itself — you do
-not press anything and nothing is re-sent.
+**Naming starts when your first message is accepted.** The title model works in the
+background alongside the answer. The answer does not wait for a title, and the title does
+not wait for the answer to finish.
 
-The order is exactly this:
+1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
+2. Sending your first message starts both the conversation and background naming.
+3. When the name arrives, the tab, breadcrumb root, status line and terminal window title
+   update automatically. This also works after the answer has finished or you have switched
+   to another tab. Returning to the conversation keeps its saved name.
 
-1. `+` opens a `New chat` start page. Once a new conversation is created, its tab
-   reads `Untitled`.
-2. You send your first message. It still reads `Untitled` — the name is derived from the
-   first exchange, and the reply is half of that exchange.
-3. The reply finishes. A small, cheap model is asked for a name in eight lowercase words,
-   once, and the tab, the status line and your terminal's window title all change to it a
-   moment later.
+**Temporary failures retry automatically.** There are up to three naming attempts, with
+short increasing delays, within a two-minute overall window. You do not need to send
+another message. A failed title never interrupts the answer or changes its working state.
+If those attempts fail, or the model returns an empty or invalid name, the tab remains
+`Untitled`; an unnamed saved conversation can try again on its next message after reopening.
 
-**It happens once per conversation and never again.** A chat you resume already has its
-name and is not renamed, and a name that is already there is never replaced by `Untitled`.
-If the naming fails — the model was down, or it answered with the instruction it was given
-instead of a name — the conversation simply stays `Untitled`, nothing is said about it, and
-it is asked for again the next time you open that conversation and finish a turn.
-
-**There is no way to rename a conversation from inside aforge.** No command, no key, no
-click on the tab — the name is the one the conversation gave itself, and the only thing
-that ever changes it is a conversation that was left unnamed being asked again on its next
-finished turn.
+**An existing name wins.** Naming runs once per session lifetime, and a chat that already
+has a name is not named again. Closing the session cancels unfinished naming. There is no
+command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
 after the folder it is in: the status line and the window title say the project, home and
@@ -1415,8 +1410,9 @@ Because that part was never the answer. It was aforge saying what it was about t
 
 A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
 work start under it in the same turn is narration** — "let me check the config first" —
-and the moment the next tool call opens, that paragraph visibly steps back: it moves into
-the same two-column gutter the tool rows use, and drops one shade below the body text.
+and the moment the next tool call opens, that paragraph becomes work. In the compact
+conversation it supplies a step description; inside the opened outline it uses the same
+two-column gutter as the tool rows and drops one shade below the body text.
 
 **The answer is the last thing the turn says, and it is the only flush-left, full-ink
 block in it.** So: scan down the left edge. Text that starts at the margin was said to
@@ -1778,6 +1774,121 @@ shows the same words the closed table showed.
 The header is painted secondary, the hairline tertiary and the body primary — the prose
 renderer's own ramp. The foot is aforge's own chrome and wears its dim.
 
+## The three live steps under my question — compact progress, opening the work
+
+While the main conversation works, recent step descriptions occupy a compact
+window below your question. Older steps are fainter; the newest step shimmers
+while its calls run. A soft highlight sweeps across the text every two seconds,
+reaching ordinary reading brightness; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
+behind this view. The window changes when a new step arrives. Before the first step and between
+finished calls, a separate “Working” line carries the shimmer; it does not make
+finished work look active. Hidden work has a clickable `▸ Working · ctrl+e`
+door even before the first caption. Waiting and retry information remains available.
+
+Click a step, or press `ctrl+e` with an empty message box, to open the full
+outline. Each caption then opens its own calls. The live caption keeps its
+existing open default. Click `▾ working · ctrl+e`, or press `ctrl+e` again, to
+return to the compact view. `ctrl+o` can still show all calls.
+
+The window budgets **3 wrapped rows**, admitting whole captions newest first.
+On a narrow screen, a caption that needs two rows leaves room for fewer steps.
+If the current caption alone needs more than three rows, it stays whole rather
+than losing words. Between calls, the current activity takes priority over a
+finished caption too tall to fit beside it; open the work to read that caption. Screen-reader and lower-colour terminals (including 256 colours) draw the
+descriptions without motion. Expanding or collapsing the work is immediate.
+
+Your messages, corrections, answers, approval questions and notices remain
+outside the compact work. A failed step keeps its ordinary outline and controls.
+A correction can separate two compact blocks, preserving where you said it.
+Task pages and individual node transcripts retain their existing detailed view.
+
+## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
+
+Each of the three compact step lines carries **one small mark** in front of it,
+in a gutter two columns wide. The mark says what **kind** of work that step is —
+searching, editing, running a command — so you can tell at a glance what is
+happening before you have read which file it is happening to.
+
+| kind | normal icon | plain fallback | what it conveys |
+| --- | --- | --- | --- |
+| **search** | magnifying glass | `⌕` | looking for something |
+| **read** | text document | `▤` | opening or listing information |
+| **edit** | pencil | `✎` | changing content |
+| **create** | plus | `+` | writing content or generating media |
+| **run** | terminal | `$` | running a command |
+| **test** | flask | `◎` | checking work |
+| **browse** | globe | `↗` | visiting a page or service |
+| **transfer** | exchange arrows | `⇄` | moving files or state |
+| **communicate** | speech bubble | `»` | sending a message or speaking |
+| **coordinate** | branching paths | `⇉` | handing work to tasks or forks |
+| **plan** | list | `≡` | keeping track of the work |
+| **wait** | clock | `◷` | waiting for something outside the turn |
+| **work** | gear | `▪` | other work, including unfamiliar connected tools |
+
+## The step marks never move and never say whether a step passed — no tick, no cross, still icons
+
+**The marks never move.** The newest step's *words* shimmer while its calls run;
+its mark holds still. Between tool calls, a short `Working` line keeps that
+sign of activity in the compact block. There is only one animated line.
+
+**They never say how a step went.** There is no tick, no cross and no warning
+mark here. A step that failed is not folded into this block at all — it keeps its
+ordinary rows — so a mark here could only ever mean "nothing has gone wrong yet",
+which is not worth a column. `test` draws a flask (a target in plain mode), not a checkmark, because the
+mark names the *act* of checking and not its result.
+
+**The gutter is a fixed two columns.** Every step spends the same width whatever
+its kind, and a description that wraps onto a second line leaves those two
+columns blank, so all three sentences start in one column and the block does not
+shift as steps arrive.
+
+**The mark fades with its own line.** The oldest step is a faint mark and faint
+words; the newest is at ordinary reading strength. The gutter is never brighter
+than the sentence it belongs to.
+
+## Proper icons, missing icons, empty boxes, Nerd Font and the step icons setting
+
+The normal view uses the Font Awesome icons included in Nerd Fonts. Under
+`/settings` → Display → **step icons** (`ui.icons`), `auto` chooses those icons
+unless terminal detection calls for plain symbols. Known console and locale
+limitations fall back; colour depth alone does not remove icons.
+
+A terminal cannot report which font it uses. If you see empty boxes, select
+`plain`, or select a Nerd Font in your terminal. Choose `rich` to use a patched
+font on a conservatively detected terminal. The setting takes effect immediately.
+No font is installed or changed automatically. Screen-reader and ASCII modes
+keep simple one-character marks with the same fixed gutter.
+
+## Where the marks come from — can the model choose the wrong icon
+
+The kind is named by the same cheap one-line narrator that writes the step
+description. It answers in the form `run | starting the local server`: one word
+from the list above, then the sentence. **It costs no extra call** — the word
+rides the sentence that was already being written, on the same budget of at most
+three narrations per turn.
+
+**A mark is drawn before any narration arrives**, and it is derived from the
+tools the step actually called — `grep` is a search, `edit` is an edit, `bash` is
+a run. When the narrator's answer lands it replaces the description and the mark
+together, in the same repaint, so the two are never out of step. If the narrator
+says nothing, says a word that is not on the list, or the answer arrives after
+the step has finished, the tool-derived mark stands and nothing is retried.
+
+A tool that came from a **connected account** has a name aforge has never seen,
+so its steps draw the generic gear (`▪` in plain mode) rather than a guess.
+
+**A reopened conversation retains saved descriptions and categories.** Older
+conversations without that information derive their icons from the saved tool names. Scrolling a finished turn back into view never changes a
+mark.
+
+## The live work collapses when the answer finishes
+
+When the turn finishes, its work collapses even if you opened it while it ran.
+Your question and the answer remain visible. Open the finished `▸ worked` chip
+to inspect the steps again. Reopening the conversation also starts with completed
+work folded, including long turns whose older history loads as you scroll.
+`ui.work = open` remains the explicit preference for expanded work.
+
 ## Tool cards: a running call against a finished one
 
 A turn's tool calls are one object on screen: a rail down the left, one row per call,
@@ -1815,7 +1926,7 @@ ever — a column of ticks is a column you must read to learn nothing. In the
 screen-reader tier the marks are `o` queued, `*` running, `x` failed, `.` idle; `?` is
 already ASCII.
 
-Calls in one step fold under a short **caption** — one sentence of about 5 to
+Inside the opened work, calls in one step fold under a short **caption** — one sentence of about 5 to
 10 words saying what that step is doing and where, with the honest call count
 at the right. On a narrow window the caption wraps onto the next line; it is
 never cut with an ellipsis mid-sentence. Press `ctrl+o` on the live caption or
@@ -3344,10 +3455,12 @@ about the same conversation.
 
 ## The dim thought row above a reply — and models that think between their words
 
-Some models put their working on the wire. While it streams you see a dim three-line
-window under a `thinking · N tok` header; the moment the first word of the reply lands it
-collapses to one row — `thought for 6s · 148 tok · ctrl+e` — and `ctrl+e` or a click
-reopens it. The count of tokens on the row is how much working the model wrote, and the
+Some models put their working on the wire. The compact conversation hides this behind
+the work disclosure. Open the work with `ctrl+e` to inspect it, then click the thought
+block to expand or collapse that block. Inside the opened work, or on a task page,
+streaming thinking uses a dim three-line window under a `thinking · N tok` header; the moment the first word of the reply lands it
+collapses to one row — `thought for 6s · 148 tok · ctrl+e`. Clicking the row
+reopens it; `ctrl+e` prioritizes the whole work disclosure when one is available. The count of tokens on the row is how much working the model wrote, and the
 seconds are how long it spent.
 
 Some models keep thinking in between the words of their own answer, a few tokens at a

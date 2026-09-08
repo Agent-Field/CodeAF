@@ -28,8 +28,11 @@ func TestSessionFileRoundTrip(t *testing.T) {
 			return textResponse("nothing in there yet"), nil
 		},
 	}}
-	first, _ := newTestAgent(t, writer, func(config *Config) { config.SessionFile = path })
+	// Name requests are independent of the foreground tool/answer sequence.
+	namer := naming(writer, namerReply{title: "workspace inventory"})
+	first, _ := newTestAgent(t, namer, func(config *Config) { config.SessionFile = path })
 	collect(t, mustSubmit(t, first, "what is in the workspace?"))
+	waitTitleJob(t, first)
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -73,7 +76,7 @@ func TestSessionFileRoundTrip(t *testing.T) {
 			t.Fatal("reopening the session rewrote the header")
 		}
 	}
-	// The session named itself after its first completed turn, so one line is
+	// The background naming has settled independently of the turn, so one line is
 	// the title (title.go) and is not part of the transcript. Counting it here
 	// rather than filtering it out silently is the point: the journal holds
 	// exactly the messages plus the facts about the session itself.

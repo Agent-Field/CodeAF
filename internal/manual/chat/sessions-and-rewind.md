@@ -456,7 +456,7 @@ the page:
 ```
 
 **It names the conversation, not the file.** The name is the one the session gave itself
-from its first exchange; a conversation that has not named itself yet is called by the
+from its opening message; a conversation that has not named itself yet is called by the
 opening of the first thing you said in it. Either way it is one row, at every width.
 
 It used to print the journal's absolute path there instead, which ran to four or five
@@ -477,14 +477,16 @@ in the older spelling.
 The name is written by a model, once, and appears in the status line below the message
 box: `porting the parser · gpt-4.1-mini:high`.
 
-**It arrives one turn in.** As soon as your first exchange finishes, the model on the
-`title` role — small work, so a cheap one — is shown the opening question and answer and
-then asked, at the end of that same message,
-`Name this session in ≤8 words, lowercase, no quotes. Answer with the name only.` That is
-**one call per conversation** — it is never retried inside a conversation, so a provider
-having a bad minute costs you a name and nothing else. Until it lands, the status line
-falls back to the folder's name; nothing says
-"untitled".
+**It starts with your first message.** The model on the `title` role is shown the opening
+question and asked for a short name in the background. The answer and the naming request
+run independently. A late name still reaches an idle chat, a background tab, or a hosted
+chat after the connection is restored; no refresh or follow-up message is needed.
+
+Temporary provider failures get up to three attempts within a two-minute window, using
+short increasing delays. Closing the session cancels this work. Failed or invalid naming
+leaves the conversation usable with its existing placeholder; an existing name is never
+overwritten. Title calls remain billed to the session and cost history, separately from
+an unrelated turn that happens to be running when the name arrives.
 
 The name is capped at **80 characters**, and the status line fits it to the room left by
 the model rather than letting identity push telemetry off the frame.
@@ -515,15 +517,15 @@ survives, so `fix: nil map crash` is kept whole.
 **A refused name is not a blank row.** The conversation simply has no name of its own, and
 the lists that draw a name — home, `/resume`, `recent sessions` — fall back to **your own
 opening words**, the first line you typed, exactly as they do for a conversation whose
-first turn has not finished yet. The legend above the message box shows only the branch
+background naming has not finished yet. The legend above the message box shows only the branch
 until a real name lands.
 
 **The ones already named badly heal themselves.** A transcript or a folder that was written
 down under the instruction is read back as having no name at all, and the folder's row gets
 your opening words back — they are read out of the transcript, where they have been all
 along. Nothing is rewritten: the old line stays in the file, which is append-only. The next
-time you open that conversation the namer gets its one call again, on your next completed
-turn, appending the good name the way every name is appended.
+time you open that conversation, your next message starts another bounded naming attempt
+in the background, appending the good name when it arrives.
 
 ## /resume — opening an earlier conversation
 

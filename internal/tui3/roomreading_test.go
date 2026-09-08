@@ -68,8 +68,9 @@ func TestTaskReadingDoesNotCrossConversationOrHost(t *testing.T) {
 			if which == "guest" {
 				a.room.guest = &taskGuest{session: a.file + ".guest"}
 			}
+			a.room.done = true
 			page := roomText(a)
-			if strings.Contains(page, "generate_image 1 call") {
+			if len(a.room.workOpen) != 0 || strings.Contains(page, "I have the aesthetic") {
 				t.Fatalf("another owner's expansion leaked into %s", which)
 			}
 		})
@@ -79,8 +80,10 @@ func TestTaskReadingDoesNotCrossConversationOrHost(t *testing.T) {
 func TestTaskReadingWaitsForSuccessfulHostedRead(t *testing.T) {
 	a := openWorked(t)
 	a.toggleLatestWorkfold()
+	before := roomText(a)
 	a.closeRoom()
 	a.openRoom(7, "Draw two posters")
+	a.room.done = true
 	a.room.loading = true
 	a.roomRows(a.bodyWidth())
 	if a.room.readingRestored {
@@ -88,6 +91,7 @@ func TestTaskReadingWaitsForSuccessfulHostedRead(t *testing.T) {
 	}
 	a.closeRoom()
 	a.openRoom(7, "Draw two posters")
+	a.room.done = true
 	a.room.readFailed = true
 	a.roomRows(a.bodyWidth())
 	if a.room.readingRestored {
@@ -95,8 +99,8 @@ func TestTaskReadingWaitsForSuccessfulHostedRead(t *testing.T) {
 	}
 	a.room.readFailed = false
 	a.room.dirty = true
-	if !strings.Contains(roomText(a), "generate_image 1 call") {
-		t.Fatal("successful read did not restore the expanded work")
+	if after := roomText(a); after != before {
+		t.Fatalf("successful read did not restore the expanded work:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
 

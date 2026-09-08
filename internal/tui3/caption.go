@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // caption is the title of one discrete step of a turn's work.
@@ -24,6 +26,12 @@ type caption struct {
 	calls            int
 	began, ended     time.Time
 	told             string
+	// category is the family of work this step belongs to as the NARRATOR named
+	// it, and it is empty whenever the narrator named none. [stepCategory] is
+	// the door that answers the question completely, falling to the batch's own
+	// tool names — this field is only the model's half, kept beside [told] the
+	// way [told] is kept beside [text].
+	category session.ActionCategory
 }
 
 // captionSource records which rung supplied the words.
@@ -70,6 +78,13 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				// Walking backwards and retaining the match merges consecutive
 				// prose heads into the earliest head over this one batch.
 				head = i
+				continue
+			}
+			// Reasoning may sit between this step's narration and its calls.
+			// Once its narration is found, an intervening block separates it
+			// from an older phase; borrowing that older head loses this one.
+			if head >= 0 {
+				break
 			}
 		}
 
@@ -97,7 +112,11 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 				c.ended = e.ended
 			}
 			if e.caption != "" {
+				// The newest narration in the batch wins, and its family comes
+				// with it — the two were written together and are read together,
+				// so a step never wears the mark of a sentence it is not showing.
 				c.told = e.caption
+				c.category = e.captionCat
 			}
 		}
 		if live {
@@ -502,36 +521,6 @@ func captionText(c caption) string {
 		return captionWords(c.told)
 	}
 	return shortCaption(c.text)
-}
-
-const shimmerPeriod = 36
-const shimmerBand = 8
-
-// shimmer paints the one moving band a collapsed live caption owns.
-//
-// THE SHIMMER IS THE SPINNER, RELOCATED. Its tool rows are absent while it
-// moves, and opening those rows returns the animation budget to their spinners.
-func (a *app) shimmer(text string) string {
-	if text == "" {
-		return ""
-	}
-	if a.linear {
-		return a.pal.narr(text)
-	}
-	runes := []rune(text)
-	span := len(runes) + shimmerBand
-	center := (a.paints % shimmerPeriod) * span / shimmerPeriod
-	from, to := center-shimmerBand, center
-	var b strings.Builder
-	for i, r := range runes {
-		word := string(r)
-		if i >= from && i < to {
-			b.WriteString(a.pal.ink(word))
-		} else {
-			b.WriteString(a.pal.narr(word))
-		}
-	}
-	return b.String()
 }
 
 // captionRows draws the step title. IT WRAPS; IT NEVER ELLIPSIS-CUTS. A

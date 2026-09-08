@@ -224,12 +224,20 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)
+			if retryElsewhere(ctx, knobs) {
+				return nil, lastErr
+			}
 			if attempt >= maxAttempts-1 {
 				break
 			}
 			continue
 		}
 		rateLimited := response.StatusCode == http.StatusTooManyRequests
+		// Error bodies can stall too. They are read below before a retry, so
+		// they need the same idle bound as successful streaming bodies.
+		if stream {
+			response.Body = newIdleWatchdog(response.Body, streamIdleTimeout, cancelAttempt)
+		}
 		// The provider's comeback instruction is read before the slot goes back,
 		// because it is what tells the limiter how wide this 429's window is:
 		// one window, one halving (limiter.go).
@@ -239,9 +247,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		sharedLimiter.release(rateLimited, named)
 		if !retryableStatus(response.StatusCode) {
-			if stream {
-				response.Body = newIdleWatchdog(response.Body, streamIdleTimeout, cancelAttempt)
-			}
 			return response, nil
 		}
 		if rateLimited {
@@ -283,6 +288,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// refuseUpstream). A 429 was already answered above with the wait the
 		// provider itself named, and this leaves it alone.
 		c.refuseUpstream(request, knobs, lastErr)
+		// One watched request has one recovery owner. When its existing race
+		// can fund an alternative, return the fault there instead of waiting
+		// and replaying the same encoded request up to three times first.
+		// Rate limits keep their named wait: an account-wide 429 is not a
+		// reason to multiply traffic, and a person's strict pin remains strict.
+		if !rateLimited && retryElsewhere(ctx, knobs) {
+			return nil, lastErr
+		}
 		// Non-rate-limit faults keep the original, shorter patience.
 		if !rateLimited && attempt >= maxAttempts-1 {
 			break
@@ -295,6 +308,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// was bounded by: a patient call has no constant to name, and a fault that
 	// broke out after three attempts never had six.
 	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
+}
+
+func retryElsewhere(ctx context.Context, knobs callKnobs) bool {
+	if knobs.laneChoice != nil && len(knobs.laneChoice.Only) > 0 {
+		return false
+	}
+	return streamWatchFrom(ctx).canWalk()
 }
 
 // outOfPatience reports whether this call has spent everything it is willing to

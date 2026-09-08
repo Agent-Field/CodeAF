@@ -1750,6 +1750,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// (standinglane.go).
 		sess.watchLane(s, laneDesign)
 		return nil, nil
+	case MethodTitleWatch:
+		// THE NAMING LANE, SUBSCRIBED. It answers nothing: what it buys is the
+		// name this conversation gives itself arriving as a "title" frame,
+		// including the one it is already carrying (standinglane.go).
+		sess.watchLane(s, laneTitle)
+		return nil, nil
 	case MethodSubharnessResolve:
 		args, err := arg[SubharnessResolveArgs](call)
 		if err != nil {

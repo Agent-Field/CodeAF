@@ -73,7 +73,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
 	noCompact := flags.Bool("no-compact", false, "never compact automatically")
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
-	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
+	reasoning := flags.String("reasoning", "", "reasoning override: auto (inherit), low, medium, high, xhigh or max; off is an alias for auto")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
 	at := flags.String("at", "", "reach a machine that has no ssh, by the name `aforge serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
 	// --no-host is the escape hatch off the local dial, and it means here
@@ -175,7 +175,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// and /new — a new agent — starts with no level at all.
 	level, ok := session.ParseReasoning(*reasoning)
 	if !ok {
-		return fmt.Errorf("--reasoning %q: use off, low, medium or high", *reasoning)
+		return fmt.Errorf("--reasoning %q: use auto, low, medium, high, xhigh or max (off also clears the override)", *reasoning)
 	}
 
 	// THE OTHER DOOR, and it forks BEFORE any of this machine's own resolution

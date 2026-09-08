@@ -1912,6 +1912,21 @@ of five ceilings stopped a leaf is FAILSAFE.md's fourth clause exactly — an
 absence that means five things at once. Pinned by
 `internal/exec/inks9_test.go`.
 
+## Learned routing work stays bounded
+
+`internal/lane/workload.go` retains at most **256** model/request-class forecasts
+(`workloadLimit`), evicting the oldest class. Receipt weight decays with the
+existing routing `HalfLife`; less than half an observation of remaining evidence
+defers to conversation history. The existing shared journal persists observations,
+so this adds no provider lookup or network operation to the send path. A class is
+model, tool availability, foreground/background intent and resolved reasoning
+setting. Forecasts are bounded by the request's actual wire output ceiling.
+
+Readable stream progress uses a single accumulated byte counter and the existing
+`charsPerToken` estimate, independent of frame size. It retains no text and adds
+no per-frame allocation. Token bills remain receipt-based. Session routing headers
+respect the protocol's **256-character** maximum by hashing longer identities.
+
 ## The generalist leaves a record
 
 `exec.TranscriptFrom` had **one reader in the tree**, and it was not the leaf
@@ -2044,3 +2059,101 @@ The full answer stays in the task journal.
 `TestAReportWillNotHangAnOpeningFence` and
 `TestACheckpointRowKeepsTheReportsFencedTail` pin the ordinary bound, the fenced
 exception and the durable report the task surface reads.
+
+## Compact live conversation steps
+
+The main conversation budgets `liveStepRows` (3) wrapped rows for recent step
+captions. It admits whole captions newest first; if the newest caption alone
+exceeds that budget on a narrow frame, it is kept whole. This is a presentation
+budget, not a limit on saved work, tool results or the answer. Questions,
+corrections, answers, notices and failed steps can separate compact blocks.
+
+The window reuses the caption list already derived for the layout. Its entry
+and caption walks advance through the ordered lists; it does not rescan every
+caption for each separated block. Opening a block traverses its caption spans
+rather than searching the whole caption list for every entry. Motion uses the
+existing frame clock, shimmer and fade palette, adding no timer, goroutine,
+filesystem access or network request. The screen-reader tier stays static.
+
+## Task request and finished-task reading
+
+A task page keeps the existing `roomTail` entry budget. When its opening brief
+would fall outside that tail, `keepRoomTail` reserves two slots for the brief and
+an explicit history seam, retaining the newest `roomTail - 2` entries. It keeps
+no second transcript. Request presentation is derived only for the brief entry
+and follows the existing cached row/three-line disclosure path; raw text remains
+the entry identity. Finished rooms reuse `foldTurns` without another fold engine.
+Reading bookmarks still retain at most 240 fingerprint settings across each of
+64 tasks; the saved fold style is one enum and work choices follow the fingerprint
+of each derived fold's start rather than an unstable integer index.
+
+## Caption shimmer motion
+
+The current collapsed step is sampled by `frameInterval` (33 ms), but its
+position follows elapsed time through `app.now`, so skipped or remote frames do
+not slow the motion. `shimmerPeriod` is two seconds, with a continuous cosine
+feather and no separately scheduled pause. The band travels beyond both ends
+before wrapping, so the loop boundary is quiet. Its half-width is the larger
+of `shimmerMinRadius` (6 terminal cells) and `shimmerWidthRatio` (0.20) of the
+line width. This broader feather smooths the bright crest at terminal frame
+rates; the crest reaches ordinary answer ink without bolding or moving letters.
+Whole graphemes receive colour together.
+
+Each painted line takes two linear walks (cell measurement and drawing), with
+constant-space iteration besides its output. Adjacent graphemes of the same
+colour share one escape pair; only the feather needs per-cluster spans. A
+69-cell caption spends at most 30 colour spans rather than styling every letter.
+Truecolour interpolates channels directly. No new timer, I/O or background
+worker is involved. Screen-reader and lower-colour modes (including 256 colours)
+remain static because nearest palette matches can introduce abrupt hue changes.
+Tests inspect the whole cycle in both themes for visible yet smooth colour,
+a quiet loop boundary, stable width, intact Unicode and elapsed-time behavior
+under skipped frames. An actual paint-handler regression checks that between
+finished calls only the current Working state moves, within the same three-row
+budget. The laid-out activity row suppresses a duplicate footer pulse.
+
+## Memory lookup before the first response
+
+Pre-turn recall shares `lane.VisiblePatience` (10 seconds) across response repair
+and model fallback; a shorter caller deadline wins. This is a cancellation ceiling,
+not a sleep: successful lookup returns immediately and the ordinary learned lane
+controller can act earlier. `RoleRecall` values interactive, critical-path latency
+without publishing its private output. Other reflex operations share the existing
+`roles.PatienceFor(RoleReflex)` (45 seconds) across retries. Recall bypasses the
+ordinary session auxiliary adapter, so its own operation now owns these bounds.
+On recall failure, the main request proceeds without selected memories. The phase
+uses the existing session heartbeat and clears before the main request starts.
+
+Host attachment compares a build identity captured at process initialization,
+including timestamp precision beyond the minute shown on screen. This adds one
+string to the existing local-socket handshake and no executable hashing or extra
+network round trip. A mismatched busy host remains alive.
+
+## Conversation titles run independently of foreground turns
+
+`startTitleLocked` starts one naming job when the first user message is accepted into
+an unnamed journal-backed session. `titleTried` is marked under the agent lock before
+launch; later turns and end-of-turn fallback calls cannot launch duplicates. The job
+uses session lifetime, not a turn context. Neither Submit nor turn-stream closure waits
+for it. Closing cancels the job before joins and uses the existing `closeGrace` bound.
+
+`titleAttempts = 3` bounds the automatic retry ladder; `titleWindow = 2 minutes` covers
+all attempts and backoff. Transient transport failures and individual auxiliary deadlines
+retry while the overall context remains live. Backoff uses `retryBaseDelay` (2 seconds),
+doubling to 4 seconds before the third attempt. Empty/invalid names, permanent failures,
+and cancellation do not retry. Each attempt retains the role ladder's existing maximum
+of two provider rungs, so the outer job permits at most six role-level calls, subject to
+the shared deadline and the provider adapter's existing transport policy. Prompt input
+remains clipped by `titleClip`; returned names by `titleLimit`.
+
+The session title no longer consumes the interrupt generation's task-naming allowance:
+its lifetime gate already prevents duplicate jobs, while retries must survive Escape.
+Task naming and planner limits are unchanged. Detached title usage enters session totals
+and the usage ledger but cannot change a later or abandoned turn's spend.
+
+Title subscriptions are conversation-owned, stopped on detach/close, and replay the saved
+name. Hosted title frames reuse revisioned `FactsPush`; newer ordinary facts also notify
+changed names so overtaking cannot lose the visible update. Reconnect reopens an existing
+title subscription once, without polling or model work. Background title redraws neither
+consume completion flags nor raise attention banners. Metadata read-modify-write is
+serialized per agent, with owned-field patches so stale spend snapshots preserve titles.

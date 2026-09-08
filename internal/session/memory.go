@@ -188,7 +188,11 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 	// runs twice a turn, beside an answer somebody is reading, and a surface
 	// that drew whichever call answered last was drawing this one
 	// (internal/lane's roles.go, and phasenews.go for what it decides).
-	ctx = provider.WithRole(ctx, lane.RoleMemory)
+	// Preserve the operation's role: foreground recall and background keeping
+	// have different latency value even though both are billed as memory.
+	if !provider.RoleFrom(ctx).Known() {
+		ctx = provider.WithRole(ctx, lane.RoleMemory)
+	}
 	response, err := b.inner.CompleteWithMessages(ctx, messages, options...)
 	if err == nil {
 		// The active model is read from the same options the provider reads.
@@ -249,7 +253,11 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
 		memoryNotice(hub, line)
 	}
 
+	// This lookup precedes the main model call. Keep its own phase visible so
+	// a provider that has not been asked yet is never blamed for the wait.
+	a.tellPhase(provider.PhasePreparing, "saved context", time.Time{})
 	block := a.routedMemory(ctx, cue, hub, true)
+	a.endPhase()
 
 	a.mu.Lock()
 	a.memoryText = block

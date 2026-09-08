@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: reopening long conversations keeps completed work folded
-pr: 656
+pr: 653
 surface: [chat, engine, docs]
 invalidates:
   - "Replayed work was believed to derive the same closed chip as completed live work. The leading fragment of a long turn is numbered zero, and zero also meant no running turn; comparing them kept old captions and calls visible. Only a nonzero running turn now prevents folding, including after older history is loaded."

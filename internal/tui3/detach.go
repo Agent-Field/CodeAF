@@ -128,11 +128,12 @@ type laneStops struct {
 	wakes   func()
 	designs func()
 	runs    func()
+	titles  func()
 }
 
 // leave gives every standing lane back and forgets the stops.
 func (l *laneStops) leave() {
-	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs} {
+	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs, l.titles} {
 		if stop != nil {
 			stop()
 		}
@@ -384,6 +385,8 @@ func (a *app) clearConversation() {
 	a.gen++
 	a.taskGen++
 	a.designGen++
+	a.titleGen++
+	a.titleLane = nil
 	a.orchGen++
 	a.roomGen++
 	a.pilotGen++
@@ -547,8 +550,9 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// are facts about THIS conversation's connection; the waits the previous one
 	// armed are parked on the previous one's channels and discard themselves by
 	// generation (watching.go's [followingMsg]).
-	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks(),
+	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.loadTasks(),
 		a.askHeld(), a.watchDriving(), a.watchFollowing()}
+
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
 	}

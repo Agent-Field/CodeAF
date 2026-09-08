@@ -397,12 +397,14 @@ var blockingCommands = []string{
 	"waitSteerLane",
 	"waitStir",
 	"waitTask",
+	"waitTitle",
 	"waitWake",
 	"watchDesigns",
 	"watchDriving",
 	"watchFollowing",
 	"watchRuns",
 	"watchTasks",
+	"watchTitles",
 	"watchWakes",
 }
 
@@ -1219,6 +1221,7 @@ func TestAnOpenCallSaysItIsRunning(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "run the tests")
+	showLiveWork(t, a)
 
 	call := len(a.entries) - 1
 	a.openTool(call)
@@ -1716,7 +1719,7 @@ func TestNewOnAUsedConversationAddsOneAndClearsTheTranscript(t *testing.T) {
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	typeLine(t, a, "something old")
 	drive(t, a, streamClosedMsg{gen: a.gen})
 

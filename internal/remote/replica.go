@@ -68,20 +68,34 @@ func (r *replica) fill(push *FactsPush) {
 // [stream.push] drops an unreadable event: one bad line is one lost statement,
 // the next one is complete (a push is never a delta), and the framing was
 // chosen so a torn write costs a line and not the stream.
-func (r *replica) take(payload json.RawMessage) {
+func (r *replica) take(payload json.RawMessage) bool {
 	if len(payload) == 0 {
-		return
+		return false
 	}
 	var push FactsPush
 	if err := json.Unmarshal(payload, &push); err != nil {
-		return
+		return false
 	}
+	return r.takePush(push)
+}
+
+// takePush is [replica.take] for a push that has already been decoded, and it
+// answers WHETHER THIS SET LANDED.
+//
+// The answer is not decoration. The naming lane carries its own fact set so a
+// name and the facts it belongs to cannot be read out of order (client.go), and
+// "this push was refused as old news" is exactly the sentence that must also
+// refuse the name riding with it: a title minted for the conversation this
+// surface was in a moment ago is older than the welcome of the one it is in
+// now, and drawing it would put the previous conversation's name on this tab.
+func (r *replica) takePush(push FactsPush) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if push.Rev <= r.rev {
-		return
+		return false
 	}
 	r.rev, r.facts = push.Rev, push.Facts
+	return true
 }
 
 // read is the whole set as it stands.

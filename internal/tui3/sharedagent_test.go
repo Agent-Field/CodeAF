@@ -87,7 +87,7 @@ func sharedSurface(t *testing.T) (*app, *sharedEngine, *sharedHandle) {
 	a := newTestApp(handle)
 	a.host = "devbox"
 	a.shared = true
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	// The door hands the SAME handle back and swaps what it names, which is the
 	// hosted Resume, spelled here in four lines.
 	a.resume = func(file string) (Agent, error) {
@@ -224,7 +224,7 @@ func TestALocalDoorStillClosesWhatResumeLeavesAndKeepsWhatItOpensBeside(t *testi
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.resume = func(string) (Agent, error) { return second, nil }
 

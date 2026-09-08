@@ -859,12 +859,12 @@ off → low → medium → high → off; it does not offer `xhigh` or `max`.
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
-`high`, `xhigh`, `max`. There is also **off**, which is the dial left alone — aforge asks
+`high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
 for nothing and the model thinks however it thinks.
 
-**The default is `high`.** It is the **thinking** row in `/settings`, among the model rows
-beside the model you talk to, and its choices are `off, low, medium, high, xhigh, max`. The
-row is written to the profile as `effort`.
+**The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
+beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max`. The
+row is written to the profile as `effort`. Existing explicit settings remain in force.
 Move it down to make the model think less, which is what gives you faster and cheaper
 answers; move it to `xhigh` or `max` when you would rather wait and get the careful one.
 
@@ -880,7 +880,7 @@ Several things can name a rung, and the most specific one wins:
    it, think at `low`. The errands aforge runs beside your turn — naming a conversation,
    summarising it, judging where a request belongs — ask for nothing at all. Your own turn,
    and the task workers you hand work out to, take the default.
-5. **The default** — the **thinking** row, which is `high` until somebody chooses otherwise.
+5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which has a chip above the box naming it. On a task — the
@@ -892,6 +892,18 @@ The **thinking** row in `/settings` stays what it is: the answer for every conve
 that has not been dialled by hand. The keys page has the whole of it — see *The thinking
 chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
 There is no slash command for it.
+
+## Auto reasoning — use OpenRouter defaults instead of forcing high
+
+The **thinking** row in `/settings` defaults to `auto`. It omits the reasoning override
+entirely, leaving the selected model's defaults to OpenRouter. It does not disable
+thinking or force a token budget, and the model may still spend time reasoning.
+Existing explicit conversation, task, model and install levels remain in force.
+Older `off` settings mean the same thing as auto and remain readable.
+
+`--reasoning auto` clears the launch override and inherits the conversation or install
+setting; choose auto in `/settings` to change the install default. Scoped overrides
+still take precedence. Standing work and its checks keep their existing low role default.
 
 ## What low, medium, high, xhigh and max actually ask the model for
 
@@ -2407,11 +2419,14 @@ Every request in a conversation re-sends the whole conversation. What keeps that
 
 So aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
 
-It moves off that endpoint when the endpoint stops earning it, and there are three ways that happens:
+It moves off that endpoint when the endpoint stops earning it:
 
 - **The request failed there** — an error, a refusal, or a reply that went quiet or turned to garbage halfway through. The next request is routed afresh.
-- **The cache was gone anyway.** If a long prompt comes back having read nothing from the cache, there is no warm context left to come back for, so the next request is free to land anywhere.
 - **It charged too much.** The same quarter-over-list price cap described above rides on every one of these requests, and an endpoint that billed above it loses its place. A warm cache is never worth any price.
+
+A successful answer with no reported cache hit keeps its place. The prefix may have changed, the old cache may have expired, or the endpoint may have omitted its cache accounting. That answer can warm the next request; switching immediately would make it cold again. The slow-response monitor still applies.
+
+The same stable identity also travels in OpenRouter's session header so a successful cold request can establish continuity before the first reported cache hit. A changed opening after compaction keeps that identity.
 
 Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
 

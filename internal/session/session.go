@@ -520,6 +520,11 @@ const (
 	// A SURFACE THAT IGNORES THIS KIND IS UNCHANGED: the deterministic
 	// composite already stands in the caption slot, and this event only
 	// replaces that floor when a cheap model had something better to say.
+	//
+	// [Event.Category] rides with it and is the same news about the same step:
+	// which FAMILY of work the sentence is about (actioncategory.go). It is
+	// empty whenever the narrator did not name one, and a surface reads that
+	// emptiness as "ask the tools", never as "draw nothing".
 	EventCaption
 )
 
@@ -564,6 +569,23 @@ type Event struct {
 	Err           error
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
+
+	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
+	// word from the closed list in actioncategory.go — and it is zero on every
+	// other kind.
+	//
+	// EMPTY IS THE NORMAL MISSING CASE AND NOT AN ERROR. The narrator is a cheap
+	// model asked for a prefix it may ignore, and a surface that receives none
+	// derives the family from the batch's own tool names
+	// ([ActionCategoryForTools]), which is deterministic and cannot be wrong
+	// about which hands were used. So this field REFINES a mark that is already
+	// correct; it never supplies one that would otherwise be missing.
+	//
+	// It rides the wire behind a json tag of its own so a peer built before it
+	// existed simply does not see it (internal/remote's [EventWire] embeds this
+	// struct whole), and a caption saved by an older build replays with an empty
+	// one and derives the same mark it always drew.
+	Category ActionCategory `json:"Category,omitempty"`
 
 	// Args is the tool call's arguments rendered for display: the JSON the
 	// model sent, compacted to one line and capped. It is set on
@@ -616,11 +638,22 @@ type Event struct {
 	// "which question" is the same question for both of them.
 	ID uint64
 
-	// CallID is the PROVIDER's id for the tool call an EventToolForming, an
-	// EventToolAnnounced or an EventConsentRequest is about — the same string
-	// the tool result carries — and is empty on every other kind. It is empty on
-	// a forming event too until the wire has sent one, which is the first
-	// fragment in practice and nothing the consumer may assume.
+	// CallID is the PROVIDER's id for the tool call a tool lifecycle event
+	// (forming, announced, begin, finished, end or failed), an
+	// EventConsentRequest or an EventCaption is about — the same string the tool
+	// result carries — and is empty on every other kind. It is empty on a forming
+	// event too until the wire has sent one, which is the first fragment in
+	// practice and nothing the consumer may assume.
+	//
+	// ON A CAPTION IT IS THE BATCH'S ANCHOR: the id of the call the batch opened
+	// with, which is how a surface knows WHICH STEP the sentence is about. The
+	// narrator answers on a goroutine that can be descheduled between checking
+	// that its batch is still open and reaching the hub, so a caption can arrive
+	// after its batch ended and the next one began. A surface keying on "the
+	// newest tool row" then retitles the running step with a sentence about the
+	// finished one; keyed by this id it drops news about work it is no longer
+	// holding. An event with no anchor is an engine built before this, and a
+	// surface may serve it by recency exactly as it always did.
 	//
 	// ON A CONSENT REQUEST IT IS WHICH CALL IS BEING ASKED ABOUT. A surface pairs
 	// the question to the row it draws the question under, and the card reads the
@@ -2672,8 +2705,31 @@ type Agent struct {
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the
 	// journal, so it never re-names itself.
+	// Metadata patches serialize disk transactions independently of agent reads.
+	metaMu sync.Mutex
+
 	title      string
 	titleTried bool
+
+	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
+	// that may be running. They are memoryCtx's bargain above, for the same
+	// reason and with the same two lines: the namer now runs BESIDE the turn
+	// that triggered it (title.go), so it cannot ride the turn's context — a
+	// quick answer would cancel a name that is still being written — and it may
+	// not outlive the session either.
+	//
+	// The context is written once at construction and cancelled once by Close;
+	// both are read under mu, because the one thing that must be atomic is
+	// "closed, therefore no new errand" ([Agent.startTitleJob]).
+	titleCtx  context.Context
+	titleStop context.CancelFunc
+	titleJobs sync.WaitGroup
+	// titleWatchers is the standing subscription to the name this session gives
+	// itself, and it exists because THE NAME NOW ARRIVES AFTER THE TURN THAT
+	// BOUGHT IT MAY HAVE ENDED. It is [Agent.harnessWatchers]' shape exactly
+	// (harness_build.go), for its stated reason: an event about work that
+	// outlives its turn has no turn stream left to land on.
+	titleWatchers []*eventStream
 
 	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
 	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose

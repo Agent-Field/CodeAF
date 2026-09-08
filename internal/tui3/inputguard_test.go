@@ -473,16 +473,23 @@ func TestATwoTapLeftGoesHome(t *testing.T) {
 // the settle that followed collapsed the block over whatever they had chosen.
 func TestAThinkOpenedWhileItStreamsShowsTheWholeBufferAndStaysOpen(t *testing.T) {
 	a := reasoningLines(t, "one", "two", "three", "four", "five")
+	// THE RUNNING TURN'S WORK IS OPENED FIRST, because the conversation now
+	// stands a running turn's machinery — the reasoning block with it — behind
+	// three compact lines until somebody asks for it (livesteps.go). The block
+	// below is what a reader sees once they have asked.
+	showLiveWork(t, a)
 
 	// Closed, it is the reading window: a header and three lines.
 	if got := len(thoughtBlockRows(t, a)); got != 1+thoughtLive {
 		t.Fatalf("the closed block draws %d rows, want %d", got, 1+thoughtLive)
 	}
 
-	// ctrl+e over an empty box opens it, mid-stream.
-	drive(t, a, key("ctrl+e"))
-	if !a.toggledThoughtOpen() {
-		t.Fatal("ctrl+e did not open the streaming block")
+	// The block's own door opens it, mid-stream. It is called here rather than
+	// pressed as `ctrl+e`, because over a running turn that key now belongs to the
+	// whole work the block sits inside (workfold.go's [app.toggleLatestWorkfold]);
+	// a click on the block is the gesture that reaches this one (thinking.go).
+	if !a.toggleLatestThought() {
+		t.Fatal("the block's own door did not open the streaming block")
 	}
 	body := strings.Join(plainRows(a), "\n")
 	for _, want := range []string{"one", "two", "three", "four", "five"} {
@@ -503,10 +510,12 @@ func TestAThinkOpenedWhileItStreamsShowsTheWholeBufferAndStaysOpen(t *testing.T)
 			strings.Join(plainRows(a), "\n"))
 	}
 
-	// And the same key closes it again.
-	drive(t, a, key("ctrl+e"))
+	// And the same door closes it again.
+	if !a.toggleLatestThought() {
+		t.Fatal("the block's own door stopped answering")
+	}
 	if a.toggledThoughtOpen() {
-		t.Fatal("ctrl+e did not close what it opened")
+		t.Fatal("the door did not close what it opened")
 	}
 }
 
@@ -514,6 +523,7 @@ func TestAThinkOpenedWhileItStreamsShowsTheWholeBufferAndStaysOpen(t *testing.T)
 // not about disabling the automatic collapse for everybody.
 func TestAThinkNobodyTouchedCollapsesOnItsOwn(t *testing.T) {
 	a := reasoningLines(t, "one", "two")
+	showLiveWork(t, a)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "so:")})
 	if a.toggledThoughtOpen() {
 		t.Fatal("a block nobody opened came back expanded")

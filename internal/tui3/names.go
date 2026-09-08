@@ -1,6 +1,12 @@
 package tui3
 
-import "strings"
+import (
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
 
 // WHAT A SESSION IS CALLED, AND WHAT IT IS CALLED ON SCREEN.
 //
@@ -52,6 +58,60 @@ func chatTabName(raw string) string {
 
 // EventTitleChanged updates a.title and invalidates the frame when naming finishes.
 func (a *app) chatDisplayName() string { return chatTabName(a.title) }
+
+// ── the naming lane ─────────────────────────────────────────────────────────
+//
+// A CONVERSATION NAMES ITSELF WHILE THE ANSWER IS STILL BEING WRITTEN, and since
+// #653 it starts doing so the moment the person's first message is accepted
+// rather than when the turn ends (session's title.go). The turn's own stream
+// still carries [session.EventTitleChanged] when a turn is running, which is
+// where this surface has always read it; the standing lane below carries it for
+// the case that change created — a question answered in four seconds, named in
+// six, with no turn left to carry the news.
+//
+// It is [app.watchDesigns]' shape exactly, down to the generation: the channel
+// belongs to the agent that handed it over, so a replaced conversation gets a
+// new one and events from the old one are dropped by their generation.
+
+// namedAgent is the standing subscription to the name a conversation gives
+// itself. It is asserted rather than added to [Agent] for [designAgent]'s
+// reason: a scripted agent in this package's tests has never heard of it, and a
+// surface driven by one must stay representable.
+type namedAgent interface {
+	TitleChanges() <-chan session.Event
+}
+
+// leavableNamer is the naming lane WITH A WAY OUT OF IT (session's title.go).
+type leavableNamer interface {
+	WatchTitle() (<-chan session.Event, func())
+}
+
+// watchTitles opens the lane and starts pumping it. It is called wherever
+// [app.watchDesigns] is.
+func (a *app) watchTitles() tea.Cmd {
+	agent, ok := a.agent.(namedAgent)
+	if !ok {
+		return nil
+	}
+	a.titleGen++
+	if leavable, ok := agent.(leavableNamer); ok {
+		a.titleLane, a.stops.titles = leavable.WatchTitle()
+	} else {
+		a.titleLane, a.stops.titles = agent.TitleChanges(), nil
+	}
+	return waitTitle(a.titleLane, a.titleGen)
+}
+
+// waitTitle takes one event off the lane and asks for the next.
+func waitTitle(ch <-chan session.Event, gen int) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return titleLaneClosedMsg{gen: gen}
+		}
+		return titleEventMsg{gen: gen, ev: ev}
+	}
+}
 
 // listName is what a conversation is called ON A LIST, and it is [humanName]'s
 // ladder with its last rung taken out.

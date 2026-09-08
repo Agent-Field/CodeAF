@@ -97,11 +97,33 @@ const (
 	interruptTitle   = 2
 )
 
+// interruptRoleKind says which of an Esc generation's two allowances a role
+// spends, and 0 for a role that spends neither.
+//
+// THE SESSION'S OWN NAMER IS NOT ON THIS LIST, and that is the one exception
+// here worth stating. Everything gated above is FOREGROUND WORK bought by the
+// turn the person just stopped — a planner, a mark reader, the two words a task
+// is called — and the allowance exists so that a leftover and a redirect racing
+// inside one generation cannot each buy one.
+//
+// A session naming itself is none of that. Since #653 it is started when the
+// person's first message is accepted, it runs on the SESSION'S lifetime rather
+// than any turn's, and its dedup is [Agent.titleTried] — which is strictly
+// stronger than a generation's allowance: one naming per session for the life
+// of the process, against one per Esc. Leaving it here cost the thing the
+// allowance was never about — a transient failure whose retry landed inside a
+// live generation was answered with [errInterruptQuiet] and read as "the model
+// said no", and the session stayed unnamed; and a task named first in the same
+// generation took the slot before the namer's first attempt ever reached it.
+//
+// [roles.RoleTaskName] keeps the allowance. It is a name bought by the work a
+// turn started, on that turn's clock, and it is exactly the case F13/F17 were
+// written about.
 func interruptRoleKind(role roles.Role) int {
 	switch role {
 	case roles.RoleMarkReader, roles.RoleHandoff, roles.RolePlanner, roles.RoleRouterConfirm:
 		return interruptPlanner
-	case roles.RoleTaskName, roles.RoleTitle:
+	case roles.RoleTaskName:
 		return interruptTitle
 	}
 	return 0

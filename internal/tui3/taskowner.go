@@ -435,7 +435,7 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 	// when it lands, and a page opened over a row that had already landed must not
 	// keep the foot up if the owner revives it.
 	was := room.done
-	room.done = roomRowDone(guest.node)
+	room.setDone(roomRowDone(guest.node))
 	a.roomTouched()
 	a.touch()
 	next := waitGuestNotices(guest.notices, msg.gen)

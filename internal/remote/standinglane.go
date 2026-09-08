@@ -39,6 +39,12 @@ type laneName string
 // adaptive run lane is stated as unbuilt in lanes.go, with the exact reason.
 const laneDesign laneName = "design"
 
+// laneTitle is the naming lane: the one event a session sends when it has named
+// itself. It is a standing lane rather than a turn's event because the name is
+// now minted beside the turn that bought it and very often lands after that
+// turn has ended (internal/session's title.go).
+const laneTitle laneName = "title"
+
 // laneDoor is the slice of *session.Agent one lane needs, asserted rather than
 // required of [WrappedAgent] for tasklane.go's reason: an engine whose agent has
 // no designer and no runs has no lane to offer, and a capability that cannot
@@ -55,6 +61,16 @@ var laneDoors = map[laneName]laneDoor{
 			return nil, nil, false
 		}
 		lane, stop := door.WatchHarnessDesigns()
+		return lane, stop, true
+	},
+	laneTitle: func(agent WrappedAgent) (<-chan session.Event, func(), bool) {
+		door, ok := agent.(interface {
+			WatchTitle() (<-chan session.Event, func())
+		})
+		if !ok {
+			return nil, nil, false
+		}
+		lane, stop := door.WatchTitle()
 		return lane, stop, true
 	},
 }
@@ -146,12 +162,24 @@ func (sess *Session) pumpLane(s *server, name laneName, generation uint64, lane 
 		if quiet {
 			continue
 		}
-		payload, err := json.Marshal(WireEvent(event))
-		if err != nil {
-			continue
-		}
 		sess.mu.Lock()
 		stale := sess.generation != generation || sess.laneAt(name)[s] != feed
+		// THE NAMING LANE'S FRAME IS BUILT UNDER THIS SAME HOLD, and it is the
+		// only lane here that carries anything but the event.
+		//
+		// The reason is the revision. A name is a FACT as well as an event, and
+		// the number that orders it against every other fact this session states
+		// is minted under this lock ([Session.factsLocked] says why it may not be
+		// minted anywhere else). Photographing the set out here would let a set
+		// taken BEFORE the name reach the surface after it and blank the title;
+		// worse, a swap between this unlock and the write below would land a name
+		// belonging to the conversation the surface just left. Both are refused
+		// on the surface by one rule, and this is where the number they are
+		// refused by comes from ([FactsPush]).
+		var named *FactsPush
+		if !stale && name == laneTitle {
+			named = sess.factsLocked()
+		}
 		sess.mu.Unlock()
 		if stale {
 			quiet = true
@@ -160,6 +188,17 @@ func (sess *Session) pumpLane(s *server, name laneName, generation uint64, lane 
 		// Publish attention before the event wakes a hidden conversation reader.
 		if factsMoved(event.Kind) {
 			sess.announce()
+		}
+		var payload []byte
+		var err error
+		if named != nil {
+			payload, err = json.Marshal(named)
+		} else {
+			payload, err = json.Marshal(WireEvent(event))
+		}
+		if err != nil {
+			continue
+
 		}
 		if err := s.send(Frame{Kind: string(name), Payload: payload}); err != nil {
 			quiet = true

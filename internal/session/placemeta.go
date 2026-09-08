@@ -41,25 +41,20 @@ const metaTitleLimit = 56
 // reaches the journal.
 //
 // The title it writes is a PLACEHOLDER — the person's own opening words — and
-// only while there is none. The session names itself properly a turn later
+// only while there is none. The session starts naming itself alongside the answer
 // (title.go), and [Agent.stampTitle] replaces this with that. Between the two
 // the picker still has a row a person recognizes, which is the whole difference
 // between a list of conversations and a list of ids.
 func (a *Agent) stampUserLocked(text string) {
-	dir := strings.TrimSpace(a.config.Place.Dir)
-	if dir == "" {
-		return
-	}
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		return
-	}
-	meta = a.fillMetaLocked(meta)
-	meta.LastUserAt = time.Now()
-	if strings.TrimSpace(meta.Title) == "" {
-		meta.Title = placeholderTitle(text)
-	}
-	_ = SaveMeta(dir, meta)
+	snapshot := a.fillMetaLocked(Meta{})
+	a.updateMeta(a.config.Place.Dir, snapshot, func(meta *Meta) {
+		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
+		meta.LastUserAt = time.Now()
+		if strings.TrimSpace(meta.Title) == "" {
+			meta.Title = placeholderTitle(text)
+		}
+	})
 }
 
 // placeholderTitle cuts the folder's working name out of what a person said:
@@ -113,24 +108,69 @@ func openingPlaceholder(dir string) string {
 	return ""
 }
 
-// stampTitle records the name the session gave itself. It takes no lock of its
-// own beyond the one [Agent.fillMetaLocked] needs, which is why it is called
-// from [Agent.setTitle] with the agent lock released and re-taken: writing a
-// file is not work to do under the lock a turn is waiting on.
+// stampTitle records the earned name. Snapshot agent state first, then serialize
+// its metadata patch without holding the lock a foreground turn is waiting on.
 func (a *Agent) stampTitle(title string) {
 	title = strings.TrimSpace(title)
-	dir := strings.TrimSpace(a.config.Place.Dir)
-	if dir == "" || title == "" {
+	if title == "" {
 		return
 	}
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		meta.Title = clip(title, metaTitleLimit)
+	})
+}
+
+// metaSnapshot reads agent state before taking the metadata lock. The opposite
+// order would deadlock stampUserLocked, which already holds the agent lock.
+func (a *Agent) metaSnapshot() Meta {
+	_, snapshot := a.metaSnapshotAt()
+	return snapshot
+}
+
+// AnchorWorkspace can replace Place while a title arrives. Read its directory
+// under the same lock as the remaining snapshot, even though anchoring keeps it.
+func (a *Agent) metaSnapshotAt() (string, Meta) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config.Place.Dir, a.fillMetaLocked(Meta{})
+}
+
+// updateMeta serializes the whole read-modify-write, not just the final rename.
+// Each patch owns its fields; a spend snapshot made before naming cannot write
+// an old title back afterward. Snapshot collection must never run inside patch.
+func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return
+	}
+	a.metaMu.Lock()
+	defer a.metaMu.Unlock()
 	meta, err := LoadMeta(dir)
 	if err != nil {
 		return
 	}
-	a.mu.Lock()
-	meta = a.fillMetaLocked(meta)
-	a.mu.Unlock()
-	meta.Title = clip(title, metaTitleLimit)
+	// Seed identity when rebuilding a missing file, while retaining current disk
+	// fields that another transaction may have updated since the snapshot.
+	if meta.ID == "" {
+		meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
+	}
+	if meta.Workspace == "" {
+		meta.Workspace = snapshot.Workspace
+	}
+	if meta.Created.IsZero() {
+		meta.Created = snapshot.Created
+	}
+	if meta.Model == "" {
+		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+	}
+	if meta.Places == nil {
+		meta.Places = snapshot.Places
+	}
+	if meta.Trees == nil {
+		meta.Trees = snapshot.Trees
+	}
+	patch(&meta)
 	_ = SaveMeta(dir, meta)
 }
 
@@ -160,11 +200,9 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	// a value a person can choose their way back to: a session dialled to max
 	// and then turned off again has to come back off rather than back at max.
 	meta.Effort = a.effort.String()
-	// And the folders this conversation turned out to be about, for the rung's
-	// reason and one more: EVERY STAMP KEEPS THEM TRUE. The set moves during a
-	// turn — a ground resolved, a folder named — and every writer of this file
-	// goes through here, so a place accrued between two stamps cannot be undone
-	// by whichever one happens to run next (places.go).
+	// Configuration stamps own the folders this conversation is about. Title
+	// and spend patches preserve the latest stored set instead of replacing it
+	// with a snapshot captured before a folder was named (places.go).
 	meta.Places = a.places
 	// And the working copies held on those folders, for the same reason and one
 	// sharper: the places are an answer that could be worked out again, and this
@@ -206,26 +244,16 @@ func (a *Agent) stampPlaces() { a.stampMeta() }
 // bytes, and it happens once per file first written rather than once per write.
 func (a *Agent) stampTrees() { a.stampMeta() }
 
-// stampMeta is the write those two share: read the identity, fill in everything
-// this running session knows about itself, put it back. It is one function
-// because a stamp that wrote only ITS OWN field would be two writers of one
-// file, and the one that ran second would put back what it had read before the
-// other moved.
-//
+// stampMeta updates the configuration and working context those three stamps
+// share. The transaction reads the latest title and spending from disk and
+// preserves them; this snapshot owns only model, effort, places and trees.
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
 func (a *Agent) stampMeta() {
-	dir := strings.TrimSpace(a.config.Place.Dir)
-	if dir == "" {
-		return
-	}
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		return
-	}
-	a.mu.Lock()
-	meta = a.fillMetaLocked(meta)
-	a.mu.Unlock()
-	_ = SaveMeta(dir, meta)
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
+	})
 }
 
 // stampSpend records the conversation's running total — what the talking has
@@ -258,14 +286,15 @@ func (a *Agent) stampMeta() {
 // provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
 // stated reason: the total is a citation and the transcript is the record.
 func (a *Agent) stampSpend() {
-	dir := strings.TrimSpace(a.config.Place.Dir)
-	if dir == "" {
-		return
-	}
 	a.mu.Lock()
+	dir := a.config.Place.Dir
+	snapshot := a.fillMetaLocked(Meta{})
 	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
 	a.mu.Unlock()
-	a.writeSpend(dir, spent, tokens)
+	if spent <= 0 && tokens <= 0 {
+		return
+	}
+	a.writeSpendSnapshot(dir, snapshot, spent, tokens)
 }
 
 // stampRestoredSpend fills the total in for a conversation resumed from a
@@ -279,7 +308,8 @@ func (a *Agent) stampSpend() {
 // keeps it true from here on, and a rewrite per open would be a file touched by
 // every window that merely looked.
 func (a *Agent) stampRestoredSpend(restored Usage) {
-	dir := strings.TrimSpace(a.config.Place.Dir)
+	dir, _ := a.metaSnapshotAt()
+	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return
 	}
@@ -300,13 +330,12 @@ func (a *Agent) writeSpend(dir string, spent float64, tokens int) {
 	if spent <= 0 && tokens <= 0 {
 		return
 	}
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		return
-	}
-	a.mu.Lock()
-	meta = a.fillMetaLocked(meta)
-	a.mu.Unlock()
-	meta.SpentUSD, meta.Tokens = spent, tokens
-	_ = SaveMeta(dir, meta)
+	a.writeSpendSnapshot(dir, a.metaSnapshot(), spent, tokens)
+}
+
+// The snapshot can predate a title commit; only the spend belongs to this patch.
+func (a *Agent) writeSpendSnapshot(dir string, snapshot Meta, spent float64, tokens int) {
+	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		meta.SpentUSD, meta.Tokens = spent, tokens
+	})
 }

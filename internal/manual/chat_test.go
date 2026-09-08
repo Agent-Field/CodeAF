@@ -746,6 +746,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"one tool call is taking up four rows", "screen"},
 		{"how do I see the whole command of a tool call", "screen"},
 		{"why is the colour from go test output missing", "screen"},
+		// The action marks in the compact working block, asked in the words
+		// somebody actually reaches for. Nobody knows the word "family" or
+		// "category" for this — they say "icon", "symbol", "little mark", or
+		// they describe the character they are looking at.
+		{"what are the little icons next to the steps while it works", "screen"},
+		{"what does the symbol in front of a step mean", "screen"},
+		{"what is the pencil next to the progress line", "screen"},
+		{"do I need a nerd font for the icons", "screen"},
+		{"can the icon beside a step be wrong", "screen"},
 		{"how do I copy text out", "keys"},
 		// The pointer gestures themselves: the one everybody already owns, and
 		// the complaint they arrive with when the sweep took more than they
@@ -1519,7 +1528,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did old tool results turn into pointers during one long answer", "models-and-cost"},
 		{"what does folded results tokens mean", "models-and-cost"},
 
-		// The effort ladder. One dial with five rungs under a default of `high`,
+		// The effort ladder. One dial with five rungs under a default of `auto`,
 		// so every question about it is asked in the words somebody uses for the
 		// *feeling* they want: a deeper answer, a faster one, a model that is
 		// thinking too long for what they asked. The last two are asked by

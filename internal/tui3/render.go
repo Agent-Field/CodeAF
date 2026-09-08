@@ -102,6 +102,10 @@ type row struct {
 	entry int // index into app.entries; -1 for a blank or the fold line
 	hit   hitKind
 	turn  int // the turn a fold line folds
+	// activity says this row already carries the running turn's sign of life.
+	// The footer reads the actual drawing so an opened or absent compact block
+	// cannot suppress the only remaining indication of work.
+	activity bool
 	// links are the task references drawn in this row's own columns
 	// (markdown.go). They are the one thing on the transcript a click resolves
 	// by COLUMN rather than by row, and they are recorded here for the reason
@@ -287,8 +291,11 @@ func (a *app) layout(width int) []row {
 		closed = true
 	}
 	line, ok := a.harnessStepRow(inner)
-	if !ok {
+	if !ok && !hasCompactActivity(out) {
 		line, ok = a.ellipsis()
+		if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
+			line = a.activityLine("  " + a.shimmer("Working"))
+		}
 	}
 	if ok {
 		if closed && len(out) > 0 {
@@ -368,6 +375,11 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			wasCluster, wasBlock = false, false
 		}
 	}
+	// THE RUNNING TURN'S OWN WINDOWS (livesteps.go). They are derived here, beside
+	// the folds and off the same captions, because they are the same object one
+	// tense earlier: the machinery of one turn, standing behind one door keyed by
+	// that turn. A page that is not the conversation derives none.
+	lives := deriveLiveWork(d)
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
@@ -421,6 +433,77 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// that says how long ago that was. Both are drawn HERE — at the seam
 			// between two turns — because that is where a person reads them.
 			clock(i)
+		}
+
+		// THE RUNNING TURN'S MACHINERY IS THREE LINES UNTIL SOMEBODY OPENS IT
+		// (livesteps.go). It is read after the clock and before the cluster for the
+		// chip's reason: the block stands exactly where the work stands, so it takes
+		// the blank the work's first block would have taken.
+		if w, ok := lives[i]; ok {
+			if !a.workFoldOpen(d, w.turn) {
+				// The block owns its activity door before the first caption,
+				// and spends the ordinary gap only when it actually draws.
+				rows := a.liveStepBlock(w, width, d.entries)
+				if len(rows) > 0 {
+					if wasUser || wasBlock {
+						gap()
+					}
+					out = append(out, rows...)
+					wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				}
+				i = w.end - 1
+				continue
+			}
+			if wasUser || wasBlock {
+				gap()
+			}
+			// OPEN IS THE OUTLINE, and it is the outline an open chip draws, one
+			// tense earlier: every step as a caption row with its own door onto its
+			// own calls. The reasoning blocks inside the window are drawn where they
+			// happened — a person who opened the work asked for the machinery, and
+			// the model's working is machinery this surface has always shown.
+			out = append(out, a.liveWorkDoor(w))
+			// THE STEPS ARE WALKED WITH A CURSOR AND THE SPANS ARE STEPPED OVER.
+			// The window already knows its own steps in order ([liveWork.steps]),
+			// so a block between two of them is one that belongs to no step and is
+			// drawn as itself; asking every row which step holds it would be the
+			// same page at the cost of rows times steps.
+			step := 0
+			for at := w.start; at < w.end; at++ {
+				if step >= len(w.steps) || at != w.steps[step].start {
+					for _, text := range a.entryRows(d, at, width) {
+						out = append(out, row{text: text, entry: at})
+					}
+					continue
+				}
+				c := w.steps[step]
+				step++
+				// The rest of the step's own span — its narration and its calls —
+				// is the caption's to draw, so the walk resumes past it.
+				at = c.end - 1
+				capOpen := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width)...)
+				if !capOpen {
+					continue
+				}
+				out = append(out, a.captionBody(d, c, width)...)
+				toolsFrom, toolsTo := captionTools(c, es)
+				// AND AN OPEN STEP KEEPS THE CALL WINDOW IT ALREADY HAD. This is
+				// the same batch the cluster below draws with the same budget
+				// ([app.foldWindow] — the running call and the two it followed);
+				// opening the work asks to see the steps, not to be handed a turn's
+				// whole call log, and a second answer here would make one batch two
+				// lengths depending on which door reached it.
+				if window := a.foldWindow(d); toolsTo-toolsFrom > window && !d.unfolded[w.turn] {
+					toolsFrom = toolsTo - window
+				}
+				for call := toolsFrom; call < toolsTo; call++ {
+					out = append(out, a.toolRows(d, call, call == toolsTo-1, width)...)
+				}
+			}
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			i = w.end - 1
+			continue
 		}
 
 		// A run of tool entries from one turn is a cluster, and a cluster is
@@ -1007,7 +1090,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
 		}
 		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
-		marked, pictureMasks := a.maskPictureMarkers(e.text, e, pictureDoors)
+		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
 		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
 			body = nil
@@ -1511,7 +1594,12 @@ func (a *app) ellipsis() (string, bool) {
 	if !a.ellipsisShowing() {
 		return "", false
 	}
-	line := a.pal.accent("  " + a.pulse())
+	return a.activityLine(a.pal.accent("  " + a.pulse())), true
+}
+
+// activityLine keeps the same truthful wait information behind either sign of
+// life: the compact text sweep or the detailed transcript's existing pulse.
+func (a *app) activityLine(line string) string {
 	// THREE ANSWERS TO ONE QUESTION, AND THE MOST SPECIFIC ONE WINS. All three
 	// say "nothing is arriving"; they differ in how much they know about why.
 	//
@@ -1525,7 +1613,7 @@ func (a *app) ellipsis() (string, bool) {
 	// already told us.
 	if news, ok := a.livePhase(); ok {
 		if words := phaseWords(news, a.now()); words != "" {
-			return line + a.pal.dim(" "+words), true
+			return line + a.pal.dim(" "+words)
 		}
 	}
 	// THE WAIT OUTRANKS THE SILENCE, and only one of the two is ever on the
@@ -1533,12 +1621,12 @@ func (a *app) ellipsis() (string, bool) {
 	// and the wait is the more specific of them: it names what is being waited
 	// on and how long for, where "still working" only says that something is.
 	if tail := a.waitingWords(); tail != "" {
-		return line + a.pal.dim(tail), true
+		return line + a.pal.dim(tail)
 	}
-	if a.silentFor() >= stillWorking {
+	if a.silentFor() >= stillWorking && strings.TrimSpace(ansi.Strip(line)) != "Working" {
 		line += a.pal.dim(stillWorkingWord)
 	}
-	return line, true
+	return line
 }
 
 // ellipsisShowing reports whether the pulse row is on the frame at all — which
@@ -1577,6 +1665,18 @@ func (a *app) ellipsisShowing() bool {
 // HOME AT A TIME, and never the same words on two rows.
 func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
+}
+
+// hasCompactActivity asks the rows that actually drew, rather than re-deriving
+// their visibility from engine state. Expanding a block returns its activity
+// budget to the ordinary tool rows and footer on the very same frame.
+func hasCompactActivity(rows []row) bool {
+	for _, r := range rows {
+		if r.activity {
+			return true
+		}
+	}
+	return false
 }
 
 // harnessStepRow is the live row under a running sub-harness's announcement:

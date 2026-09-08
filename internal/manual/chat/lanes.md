@@ -71,6 +71,35 @@ model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
+## Learning which provider finishes my work faster
+
+Auto considers both the first words and the generation that must finish before
+the next step can run. Readable prose can arrive while you read. Reasoning and
+tool arguments keep the next operation waiting, so their completion speed matters.
+
+Completed calls teach aforge how much of each kind to expect for that model,
+whether tools are available, and its reasoning setting. Recent evidence counts
+more; stale evidence gives way to the conversation's previous answers. A new
+conversation with no evidence starts with unknown answer size. The request's
+output limit bounds the estimate. Capped, interrupted and unusable replies do not
+teach it that a complete answer is short.
+
+The measurements share the existing local routing history across sessions, with
+a bounded number of remembered request types. Endpoint names, prices and speeds
+come from the provider information and actual calls; there is no preferred-provider
+list to maintain. A successful endpoint stays preferred for that conversation's
+cache, while the slow-response monitor watches that endpoint and can still rescue
+a stalled request under the existing spending limits.
+
+Text arriving in a batch earns progress for its approximate token count, so a
+provider that sends whole phrases is not judged as though each phrase were one
+token. Tool-only replies also teach the first-token and generation clocks.
+
+When a watched request fails and its recovery allowance can fund another
+endpoint, that endpoint is tried before repeating the failed request. Rate
+limits still respect their retry delay. Without an affordable alternative, the
+existing bounded retries and wait reporting remain.
+
 ## Pinning one lane yourself — does aforge do use the lane I pinned, and is my pinned provider used from a terminal
 
 You can name the lane yourself. In the model picker, the lanes under a model are

@@ -140,6 +140,25 @@ type sessionEntry struct {
 	Note      bool           `json:"note,omitempty"`
 	ReplyTags []TaskReplyTag `json:"replyTags,omitempty"`
 
+	// Caption is a `caption` line: the sentence the cheap narrator wrote about
+	// one BATCH of tool calls while it ran, and the family of work it named
+	// (caption.go, actioncategory.go).
+	//
+	// IT IS ITS OWN LINE BECAUSE IT ARRIVES AFTER THE MESSAGE IT IS ABOUT. The
+	// assistant message carrying a batch is journaled BEFORE the batch runs; the
+	// narration lands half a second later at the earliest, so there is no line
+	// open to write it into. It is anchored instead — [journalCaption.CallID] is
+	// the batch's first call — which is the same identity a live surface pairs
+	// on, so the record and the stream name the step the same way.
+	//
+	// WITHOUT IT A REOPENED CONVERSATION LOSES THE SENTENCE AND THE MARK. The
+	// deterministic composite recomposes something from the tool names, so the
+	// row is not blank — but `test` becomes `run` and "starting the local
+	// server" becomes "running 1 command", which is a conversation that reads
+	// differently on Tuesday than it did on Monday. Absent from every line that
+	// is not one, and from every file written before it existed.
+	Caption *journalCaption `json:"caption,omitempty"`
+
 	// Deliveries names the durable deliveries this line is the record of
 	// ([durableDelivery]): a landing's news, identified by session, task,
 	// attempt and ending. It is what lets a resumed session tell a landing it
@@ -782,6 +801,26 @@ type journalSteer struct {
 	Landing  string `json:"landing,omitempty"`
 }
 
+// journalCaption is one step's narration as the file keeps it: which BATCH it is
+// about, what was said, and which family of work that was.
+//
+// CallID IS THE ANCHOR AND IT IS THE BATCH'S FIRST CALL. A caption is about a
+// run of calls rather than about any one of them, and the run's own identity is
+// the identity of the call that opened it — which is a provider id the model
+// minted, so it is stable across the journal, the wire and the surface, and it
+// cannot be confused with the call that opened the batch AFTER it. Anchoring on
+// "the newest tool row" instead is what let a late answer retitle a step it was
+// never about (caption.go states the race).
+//
+// Category carries omitempty because a narrator that named no family is the
+// ordinary case and a file should not spend bytes saying so; an absent one
+// replays as the empty string, which a surface reads as "ask the tools".
+type journalCaption struct {
+	CallID   string         `json:"callId"`
+	Text     string         `json:"text"`
+	Category ActionCategory `json:"category,omitempty"`
+}
+
 // journalPartImage names the one non-text part a person's message can carry
 // today. It is a field rather than an implied shape so a file written now stays
 // readable when there is a second kind.
@@ -949,6 +988,16 @@ type sessionFile struct {
 	// ([sessionFile.steerMark], read by [shapeEntries]).
 	steers map[string]SteerMark
 
+	// captions is WHAT THE NARRATOR SAID ABOUT EACH BATCH, keyed by the batch's
+	// first call id ([journalCaption]).
+	//
+	// It lives here for the steers' and the notes' reason: the transcript cannot
+	// answer the question. A caption is not a message — the model never reads
+	// one, nothing is sent in it — so there is no line in the conversation for it
+	// to be recovered from, and a replay without this index falls back to
+	// recomposing a sentence out of tool names.
+	captions map[string]journalCaption
+
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
 	// It is the file's answer to "what did this cost before today", and the agent
@@ -1097,6 +1146,56 @@ func (s *sessionFile) steerMark(message ai.Message) *SteerMark {
 		return nil
 	}
 	return &mark
+}
+
+// caption returns what the narrator said about the batch this call opened, and
+// the family it named — "" and "" for every call that is not a batch's anchor,
+// which is most of them.
+//
+// The NIL RECEIVER answers empty, for the reason [sessionFile.steerMark] answers
+// nil: a session with no file wrote no journal, so there is nothing to have read.
+func (s *sessionFile) caption(callID string) (string, ActionCategory) {
+	if s == nil {
+		return "", ""
+	}
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return "", ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mark, told := s.captions[callID]
+	if !told {
+		return "", ""
+	}
+	return mark.Text, mark.Category
+}
+
+// appendCaption journals one step's narration against the batch it is about.
+//
+// IT IS CALLED WHERE THE EVENT IS SENT and with the same anchor, so the record
+// and the live stream cannot disagree about which step was named. A second
+// narration of the same batch simply lands after the first; the replay takes the
+// last, which is what the person was left looking at.
+//
+// An anchorless or wordless caption is not written: neither could be found again,
+// and a line nothing can look up is a line that only grows the file.
+func (s *sessionFile) appendCaption(callID, text string, category ActionCategory) {
+	if s == nil {
+		return
+	}
+	callID, text = strings.TrimSpace(callID), strings.TrimSpace(text)
+	if callID == "" || text == "" {
+		return
+	}
+	mark := journalCaption{CallID: callID, Text: text, Category: category}
+	s.mu.Lock()
+	if s.captions == nil {
+		s.captions = make(map[string]journalCaption, 4)
+	}
+	s.captions[callID] = mark
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{Type: "caption", Caption: &mark, Timestamp: stamp()})
 }
 
 // rememberSteer marks one message as a splice, in a map the caller owns — the
@@ -1333,6 +1432,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.delivered = replayed.delivered
 	journal.noteDeliveries = replayed.noteDeliveries
 	journal.steers = replayed.steers
+	journal.captions = replayed.captions
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -1483,6 +1583,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
 	notes := make(map[string]bool)
+	// And the caption index, for the notes' reason exactly: a `caption` line is
+	// news about a batch that is not carried by any message, so this pass is the
+	// only place it can be picked up (see [sessionFile.captions]).
+	captions := make(map[string]journalCaption)
 	replyTags := make(map[string][]TaskReplyTag)
 	delivered := make(map[string]bool)
 	noteDeliveries := make(map[string][]string)
@@ -1599,6 +1703,23 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if len(entry.Parts) > 0 && len(rebuilt) > 0 {
 				rememberParts(images, rebuilt[0], entry.Parts)
 			}
+		case "caption":
+			// ONE BATCH'S NARRATION. It rebuilds no message — nothing was ever
+			// said to the model here — so it only indexes, and the LAST line for
+			// a batch wins the way the title's last line does: the narrator can
+			// speak twice about one step while it runs, and what a person was
+			// left looking at is what the record should give back.
+			if entry.Caption == nil {
+				continue
+			}
+			mark := *entry.Caption
+			if strings.TrimSpace(mark.CallID) == "" || strings.TrimSpace(mark.Text) == "" {
+				// A line with no anchor names no step, and a line with no words
+				// says nothing. Either would be a caption that could only ever
+				// be found by accident.
+				continue
+			}
+			captions[mark.CallID] = mark
 		case "steer":
 			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
 			// ([sessionFile.appendSteerFellThrough]). Those words never reached
@@ -1746,6 +1867,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		delivered:      delivered,
 		noteDeliveries: noteDeliveries,
 		steers:         steers,
+		captions:       captions,
 		usage:          spent,
 		created:        created,
 		existed:        lines > 0,
@@ -1931,6 +2053,9 @@ type replayedSession struct {
 	// already running, keyed by [noteKey] — the index [sessionFile.steers] is
 	// opened holding (steer.go).
 	steers map[string]SteerMark
+	// captions is what the narrator said about each batch, keyed by the batch's
+	// first call id — the index [sessionFile.captions] is opened holding.
+	captions map[string]journalCaption
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went

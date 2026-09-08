@@ -247,6 +247,8 @@ const (
 	KeyHints = "ui.hints"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
+	// KeyIcons selects the step icon repertoire independently of colour.
+	KeyIcons = "ui.icons"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -620,6 +622,16 @@ const (
 )
 
 var WorkModes = []string{WorkFold, WorkOpen}
+
+// IconModes keeps the normal rich presentation and its compatibility floor
+// selectable without changing the terminal's colour or animation settings.
+const (
+	IconsAuto  = "auto"
+	IconsRich  = "rich"
+	IconsPlain = "plain"
+)
+
+var IconModes = []string{IconsAuto, IconsRich, IconsPlain}
 
 const DefaultWork = WorkFold
 
@@ -1639,7 +1651,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
 			Label: "thinking", Choices: EffortChoices,
-			Hint: "how hard the model thinks about your turns and the work you hand out. " +
+			Hint: "how hard the model thinks about your turns and the work you hand out. Auto leaves reasoning to the model. " +
 				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
 				"Standing items and their checks stay low whatever this says.",
 			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
@@ -1917,6 +1929,13 @@ func (s *Settings) build() []Setting {
 			Hint:  "fold rolls completed reasoning, calls, results, and intermediate text into one worked chip. open keeps that work visible. The change applies immediately.",
 			read:  func() string { return WorkAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyWork, raw, WorkModes) },
+		},
+		Setting{
+			Key: KeyIcons, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "step icons", Choices: IconModes,
+			Hint:  "auto uses rich icons, with plain symbols on terminals that need them. rich requires a Nerd Font. Choose plain if your font shows empty boxes. The change applies immediately.",
+			read:  func() string { return IconsAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyIcons, raw, IconModes) },
 		},
 		// Before the audit row, because it comes first in the life of a task: this
 		// says what STARTS when you type /task, the audit row says what has to be
@@ -3298,6 +3317,20 @@ func WorkAt(profileDir string) string {
 		}
 	}
 	return DefaultWork
+}
+
+// IconsAt resolves the step icon preference. Unknown values use detection
+// rather than turning off the normal rich presentation.
+func IconsAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyIcons); ok {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, mode := range IconModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return IconsAuto
 }
 
 // RoutingAt resolves the routing row to its word, default latency. An
