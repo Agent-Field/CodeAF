@@ -761,6 +761,24 @@ type Welcome struct {
 	// CORRECTION AT ALL. An unenforced claim is worse than no claim: the surface
 	// would believe the engine was guarding something nobody is guarding.
 	SteerOwner bool `json:"steerOwner,omitempty"`
+
+	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
+	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
+	// than refusing them (wire_places.go).
+	//
+	// IT IS CARRIED BECAUSE THE QUESTION IS ASKED BEFORE ANYTHING IS CHOSEN, and
+	// that is [Welcome.SteerRepeat]'s reason exactly. A surface at this end holds
+	// a *remote.Agent, which ALWAYS has the three methods on it — so the type
+	// assertion a local surface uses to tell a capable agent from an incapable
+	// one answers yes for every connection and says nothing about the machine at
+	// the far end. Without this flag the only honest reading arrives as the
+	// refusal to the call, which is after the person has already picked a folder
+	// out of a list and pressed enter.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING: an engine that predates
+	// these doors sends no field, and a surface that believed it could attach
+	// would open a picker whose every row ends in an error.
+	Folders bool `json:"folders,omitempty"`
 }
 
 // Driver is who holds the keyboard on one conversation, as told to ONE surface.

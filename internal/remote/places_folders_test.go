@@ -232,6 +232,19 @@ func TestAnEngineThatRefusesAFolderIsNotReportedAsHavingTakenIt(t *testing.T) {
 	}
 }
 
+// THE ENGINE SAYS AT THE DOOR WHETHER IT CAN HOLD A FOLDER AT ALL, and that is
+// the fact a surface needs before it opens a picker. Its own type assertion
+// cannot answer it: *remote.Agent carries the three methods whatever is behind
+// the pipe, so the assertion says yes for every connection there has ever been.
+func TestTheEngineSaysAtTheDoorWhetherItCanHoldAFolder(t *testing.T) {
+	if capable := foldersLoop(t, newFoldersAgent()); !capable.Client.Agent().KeepsFolders() {
+		t.Fatal("an engine whose agent keeps folders said at the door that it does not")
+	}
+	if plain := foldersLoop(t, &fakeAgent{model: "m"}); plain.Client.Agent().KeepsFolders() {
+		t.Fatal("an engine that cannot keep a folder said at the door that it can")
+	}
+}
+
 // AND AN ENGINE THAT KEEPS NO FOLDERS AT ALL SAYS SO IN THE MACHINE'S OWN TERMS,
 // rather than answering an empty nothing a surface would draw as success. A
 // capability that cannot work is absent, not broken.

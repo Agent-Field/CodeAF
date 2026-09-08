@@ -158,6 +158,15 @@ type placeKeeper interface {
 	RemovePlace(path string) error
 }
 
+// keepsFolders is whether one engine's agent can hold a folder at all, and it is
+// the ONE reading of that question: [Welcome.Folders] is filled from it and the
+// two doors above refuse on it, so a surface cannot be told yes at the door and
+// refused on the call.
+func keepsFolders(agent any) bool {
+	_, ok := agent.(placeKeeper)
+	return ok
+}
+
 // foldersOffWord is an engine that cannot hold a folder at all. It is the third
 // refusal in this file and it is said in the machine's own terms for
 // [engineOffWord]'s reason.
@@ -190,6 +199,16 @@ func MemoryOff(err error) bool {
 // handle the surface holds: the local door and the ssh door hand the same
 // *remote.Agent to the same picker, and a capability that lived on the client
 // would be one the picker could not reach.
+
+// KeepsFolders answers FOR THE MACHINE AT THE OTHER END, off what it said at the
+// door ([Welcome.Folders]) — the fact a surface needs BEFORE it opens a picker,
+// and the one its own type assertion cannot give it: this type always has the
+// three methods below, whatever is behind the pipe.
+//
+// AND IT IS RE-READ RATHER THAN REMEMBERED, exactly as [Agent.SteerRepeatKnown]
+// is: /new, /resume and a reconnect all replace the welcome, and the engine
+// behind it can change with them.
+func (a *Agent) KeepsFolders() bool { return a.c.Welcome().Folders }
 
 // ReferPlace attaches one folder to the conversation on the ENGINE machine.
 //
