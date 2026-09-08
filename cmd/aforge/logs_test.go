@@ -217,6 +217,25 @@ func TestLogsShowsTheActionReasonAndTheRefusedRescue(t *testing.T) {
 	}
 }
 
+// TestLogsNamesOnlyAPinThatDidNotTravel is C4: the displaced pin sits beside
+// the effort that won, while an ordinary pinned-effort row gains no empty word.
+func TestLogsNamesOnlyAPinThatDidNotTravel(t *testing.T) {
+	displaced := callLogLine(calllog.Record{
+		Time: "2026-08-28T21:12:53.000Z", Model: "sim/model",
+		Effort: "off", EffortPin: "high", Status: 200,
+	}, false, stoppedClock(t)())
+	if !strings.Contains(displaced, "sim/model  off  pinned high  → 200") {
+		t.Fatalf("a displaced pin is not beside the effort that won: %q", displaced)
+	}
+	carried := callLogLine(calllog.Record{
+		Time: "2026-08-28T21:12:53.000Z", Model: "sim/model",
+		Effort: "high", Status: 200,
+	}, false, stoppedClock(t)())
+	if strings.Contains(carried, "pinned") {
+		t.Fatalf("a pin that travelled grew an override reading: %q", carried)
+	}
+}
+
 func TestLogsFiltersByTagModelAndNode(t *testing.T) {
 	path := fixtureLog(t)
 	for _, probe := range []struct {

@@ -61,7 +61,8 @@ take whatever machine the router happened to hand them. They fetch the same shee
 rank it with the same arithmetic — so a headless machine, one that only ever runs work
 from a terminal, is choosing between endpoints rather than between none, and every run
 leaves a record the next one starts from. Nobody is sitting in front of an errand, so it is
-the price ranking above that applies to it.
+the price ranking above that applies to it. `auto` is the answer only while your home's
+lane row says auto; a pin in that home replaces this ranking at every terminal door.
 
 **A model it has never sent to is not a model it knows nothing about.** The
 public sheet names every endpoint serving it, and what aforge has learned about
@@ -70,7 +71,7 @@ model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
-## Pinning one lane yourself — naming the machine that answers, and whether a pin is honoured
+## Pinning one lane yourself — does aforge do use the lane I pinned, and is my pinned provider used from a terminal
 
 You can name the lane yourself. In the model picker, the lanes under a model are
 its endpoints; picking one pins it, and every request for that model goes
@@ -79,6 +80,13 @@ means "no opinion from me — let the router balance it".
 
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
+
+**The pin belongs to your home, not to one conversation.** Every door reads the same
+profile row when it opens: `aforge do`, `aforge exec`, `aforge plan`, `aforge run` and
+the background pass all honour the lane you picked, just as the chat does. A run from a
+terminal and a task running overnight therefore ask for your pinned provider too.
+
+## When the machine I pinned cannot serve the model — the one thing that ends a pin without me
 
 **There is exactly one thing that ends a pin without you: the machine you named
 saying it will not serve that model at all.** That is not a wait and not a bad
@@ -236,7 +244,9 @@ A refusal is final for that machine, immediately:
   demand for one machine is the first thing dropped — and the answer usually
   arrives from wherever the router picks.
 
-**And one refusal is about nobody at all.** When the router answers `All
+## What all providers have been ignored means — a refusal from nobody
+
+When the router answers `All
 providers have been ignored`, no machine was ever asked: a list had removed the
 whole set before the request left — either aforge's own running list of slow and
 unavailable machines, or the ignored providers set on your account. Nothing is
@@ -248,13 +258,14 @@ one to stop asking for. aforge stops sending the list that emptied the set for
 that model and the next request lands, so this is at most one wasted round trip
 in a session rather than every request for five minutes.
 
-The row keeps up with all of it. `refused · trying parasail…` while the answer
-is moving, and if parasail refuses too the promise is **taken back** rather than
-left standing: the row reads `parasail refused`, which is what actually
-happened. A row still saying `trying …` about a request that has already failed
-is the one thing it will not do.
+The status row keeps up with the refusal and retry: `refused · trying parasail…`
+while the answer is moving, and if parasail refuses too the promise is **taken
+back** rather than left standing. The row reads `parasail refused`, which is what
+actually happened; it never says `trying …` about a request that has already failed.
 
-**And one refusal is about the base rather than about a machine.** Some bases
+## When the base refuses a lane choice — why a proxy may not honour my pin
+
+Some bases
 take no lane choice at all — a plain OpenAI-compatible endpoint behind
 `AFORGE_BASE_URL`, a proxy that strips the field, a gateway that never heard of
 it. aforge finds out by asking: your pin goes out on a real request, once, and
@@ -286,6 +297,8 @@ remembered as having none for five minutes, then asked again in the background.
 A router that has the page but **does not publish that one model** says so in
 its own words, about the model, and nothing is remembered about the base. A 500,
 a timeout or a rate limit is a bad afternoon rather than an answer.
+
+## Does a proxy honour my pinned lane — how a custom base answers
 
 **Whether a base honours a lane choice is learned the same way**, never from
 its address. A base that served an endpoints page takes one. Any other base is

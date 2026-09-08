@@ -727,10 +727,9 @@ func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
-	// The person's branch moves under the node, on the same line.
+	// The person's uncommitted work stands in the merge's way on the same line.
+	// Their branch has not moved, so the merge itself still gets to answer.
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's line\n")
-	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
 	merge, detail, _ := tree.comeHome("edit the shared file", []string{"shared.txt"})
 	if merge != mergeConflicted {

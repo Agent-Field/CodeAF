@@ -196,13 +196,14 @@ func (c *Client) record(facts recordFacts) {
 		// the headless verbs publish in their `--json` envelope. A call made
 		// with no run on its context falls back to this process's own, which is
 		// exactly what the record does (internal/trace's RunFrom).
-		Run:    trace.RunFrom(facts.ctx),
-		Phase:  facts.phase,
-		Tag:    callTag(facts.ctx),
-		Node:   callNode(facts.ctx),
-		Model:  model,
-		Served: strings.TrimSpace(facts.served),
-		Effort: c.recordedEffort(model, facts.knobs),
+		Run:       trace.RunFrom(facts.ctx),
+		Phase:     facts.phase,
+		Tag:       callTag(facts.ctx),
+		Node:      callNode(facts.ctx),
+		Model:     model,
+		Served:    strings.TrimSpace(facts.served),
+		Effort:    c.recordedEffort(model, facts.knobs),
+		EffortPin: c.recordedEffortPin(model, facts.knobs),
 		// The ceiling that TRAVELLED, from the one function that works it out
 		// for the encoder and the transport alike (thinking.go's ceilingFor).
 		// The caller's own figure is deliberately not here: the gap between the
@@ -292,6 +293,19 @@ func (c *Client) recordedEffort(model string, knobs callKnobs) string {
 		return ""
 	}
 	return string(effort)
+}
+
+// recordedEffortPin is the client's pinned effort when this call did not carry
+// it, and nothing at all when the pin travelled or the client has no pin. It
+// compares against [Client.recordedEffort], the encoder's own reading, so a
+// relaxed request and a model that replaces an unsupported disable are named
+// from what went over the wire rather than from what the caller first wanted.
+func (c *Client) recordedEffortPin(model string, knobs callKnobs) string {
+	pin := string(c.config.Effort)
+	if pin == "" || c.recordedEffort(model, knobs) == pin {
+		return ""
+	}
+	return pin
 }
 
 // recordedCeiling is the max_tokens the request carried, or nothing when it

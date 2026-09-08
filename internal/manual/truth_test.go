@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -299,7 +300,14 @@ func crewFacts(t *testing.T) []quotedFact {
 			quotes: []quotedIn{{"models-and-cost", "%s"}},
 		})
 	}
+	_, defaultMastermindEffort := roles.SplitEffort(config.DefaultMastermindModel)
 	return append(facts, quotedFact{
+		fact: "the shipped mastermind's thinking level", owner: "config.DefaultMastermindModel",
+		value: defaultMastermindEffort,
+		quotes: []quotedIn{{
+			"models-and-cost", "shipped **mastermind** carries `:%s`",
+		}},
+	}, quotedFact{
 		fact: "the line /crew max confirms with", owner: "config.CrewSummary after config.ApplyCrew",
 		value:  crewConfirmLine(t, config.CrewMax),
 		quotes: []quotedIn{{"commands", "%s"}, {"models-and-cost", "%s"}},
