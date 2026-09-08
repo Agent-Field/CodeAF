@@ -257,8 +257,8 @@ Yes, and they show **the far machine's**.
 
 `space` `space` opens the home of the machine your session runs on: its projects, its
 conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
-that conversation — the engine swaps to it and this window keeps drawing, the same door
-`aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
+that conversation beside the one you are in — the engine gives it a connection of its own
+and the chat you came from keeps running, the same door `aforge resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
 Three of the seven places still read the machine this window is running on, and each says so

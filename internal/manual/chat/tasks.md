@@ -4512,20 +4512,31 @@ eight explicit ancestor levels; earlier ancestors are represented by a fold. The
 stays pinned while you scroll. Task drafts, scroll anchors and expanded sections stay
 with their task when navigating within this process, subject to the reading cache limits.
 
-## Switching chats through the engine — duplicate names, one open conversation, and saved history
+## Switching chats through the engine — duplicate names, conversations that keep running, and saved history
 
-The ordinary engine-backed chat, `--host`, and `--at` currently select one conversation
-per connection. Opening another closes the previous session on that connection; its
-saved history remains available. The switcher lists saved chats directly rather than
-pretending the shared connection represents several independently running chats. It
-must not show the new chat under the previous chat's name or stop the newly selected
-chat a second time.
+The ordinary engine-backed chat, `--host` and `--at` all hold **one connection per
+conversation**. Opening another conversation dials another connection and closes nothing:
+the chat you came from keeps writing its reply, keeps running its tasks, and its output is
+all there when you go back to it. The same is true of `aforge chat --no-host`, which runs
+its conversations inside this process instead. The switcher lists them with `working`,
+`needs you` or nothing against each, and must not show a new chat under a previous chat's
+name.
 
-The entry line says `closed · <previous chat> — a connection holds one conversation at a time`.
-Use `aforge chat --no-host` for independent local conversations that remain open while
-you switch between them. That in-process mode does not keep working after its terminal
-exits. Persistent multiple-conversation switching on one engine connection is not yet
-supported. Merely browsing Ctrl+k does not select or close anything.
+The entry line `closed · <previous chat> — a connection holds one conversation at a time`
+belongs to a door that has no way to dial a second connection, and is not something any
+shipped door says today. Merely browsing Ctrl+k does not select or close anything.
+
+**What ends a conversation is explicit.** `stop work` on the card that appears when you
+close a working tab ends the turn and the running nodes in that one conversation and
+nothing else. Over an engine-backed door, quitting aforge detaches instead: the work
+outlives the window and is still going when you come back to it. An in-process
+(`--no-host`) conversation does not keep working after its terminal exits.
+
+**Stop work reaches what this window is driving.** In the conversation in front of you
+that is its turn and the task nodes it is running. A conversation held in the background
+gets its turn stopped; task nodes it started keep going, and the card says so — open it
+and stop them there. Background jobs a conversation started are not stopped by either
+answer.
 
 
 ## Accepting a saved task after its Git registration was released
