@@ -25,14 +25,6 @@ var liveLandingEndedAtWriters = map[string]string{
 	"recordNode":                 "an adaptive run's node has just landed",
 	"recordRoot":                 "an adaptive run's root has just landed",
 	"interrupt":                  "a design or run that settles on interruption is ending here",
-	// AN ADAPTIVE FAMILY'S OPENING ROW IS THE ODD ONE and it is listed rather
-	// than excused: it writes `EndedAt: family.started` on a row whose Status is
-	// TaskRunning, so a run that has not ended carries its START instant in the
-	// ending field, to give the row something to sort and date by while it runs.
-	// Reasonable on the tasks place, confusing everywhere else, and the widened
-	// law is what surfaced it — it is older than this change and out of its
-	// scope to move.
-	"newOrchestrateFamily": "an adaptive family's opening row dates itself by its start",
 }
 
 // C8 — Every session writer that stamps a TaskIndexEntry with time.Now is a

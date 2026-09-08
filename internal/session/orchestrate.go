@@ -1537,14 +1537,13 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
-	// THE ROW IS WRITTEN LIVE, AND IT IS THE ONE ROW IN THIS FILE THAT IS. Every
-	// other row the project index holds is written when work LANDED; this one
-	// says "running" so the "@" list and the `tasks` tool can see a run that is
-	// still going, and it is a promise that a second row will close it —
-	// [orchestrateFamily.settle] keeps that promise when the run ends inside this
-	// process, and [Agent.closeInflightTaskIndexRows] keeps it when the process
-	// went away instead. A row left saying "running" is a project's record of a
-	// present that ended hours ago.
+	// THE ROW IS WRITTEN LIVE, SAYS RUNNING, AND CARRIES NO ENDING. The "@" list
+	// and the `tasks` tool need the run from its first breath, but EndedAt can only
+	// mean that the work landed and this work has not. The row is a promise that
+	// a second row will close it — [orchestrateFamily.settle] keeps that promise
+	// when the run ends inside this process, and [Agent.closeInflightTaskIndexRows]
+	// keeps it when the process went away instead. A row left saying "running" is
+	// a project's record of a present that ended hours ago.
 	a.recordTaskIndexEntry(TaskIndexEntry{
 		ID:    strconv.FormatUint(family.root, 10),
 		Name:  TaskSlug(family.goal),
@@ -1556,7 +1555,6 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		// (session's TaskKindAdaptive).
 		Kind:          TaskKindAdaptive,
 		Status:        string(TaskRunning),
-		EndedAt:       family.started,
 		SessionID:     session,
 		TranscriptURI: orchestrateFamilyURI(session, family.run),
 	})

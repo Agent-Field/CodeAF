@@ -2282,7 +2282,9 @@ which the outcome above is the first sentence.
 
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
-  has no clock. Nothing here appears as a zero.
+  has no clock. That includes a run that plans itself: while it is running its card carries
+  its state word and no `landed` clause at all; the clock appears when the run ends. Nothing
+  here appears as a zero.
 - **The first address is labelled with what that directory was**, in plain words and never
   in git's: `a branch of your repository`, `its own copy of the folder`, `your own folder`,
   or `where` when aforge's record does not say. *Does a task touch my working copy?* in
