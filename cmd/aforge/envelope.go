@@ -504,6 +504,12 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 	if strings.TrimSpace(outcome.Unjudged) != "" {
 		fields["unjudged"] = outcome.Unjudged
 	}
+	// And its opposite number, on the same terms: the key appears on exactly
+	// the runs something judged, so a caller reads the presence of one or the
+	// other and never both.
+	if strings.TrimSpace(outcome.JudgedBy) != "" {
+		fields["judged_by"] = outcome.JudgedBy
+	}
 	if len(outcome.Checklist) > 0 {
 		fields["checklist"] = outcome.Checklist
 	}
