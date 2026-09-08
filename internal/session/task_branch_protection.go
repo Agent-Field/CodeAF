@@ -12,9 +12,8 @@ const (
 	aforgeGitEmail = "aforge@localhost"
 )
 
-// aforgeGitIdentity is THE ONE SPELLING of the identity every commit and merge
-// the harness writes carries. The moved-tip guard compares against the same
-// email, so a writer and the policy that recognizes its work cannot drift.
+// aforgeGitIdentity marks commits the task system creates so sibling landings
+// can distinguish its own forward progress from a person's intervening work.
 func aforgeGitIdentity() []string {
 	return []string{"-c", "user.name=" + aforgeGitName, "-c", "user.email=" + aforgeGitEmail}
 }

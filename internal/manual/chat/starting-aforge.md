@@ -365,10 +365,10 @@ carrying on for the rest of its hours over work nothing was ever going to start.
 
 ## It keeps saying a file does not pass · a check nobody asked for
 
-**A check is a command, never a file.** Only a command declared in the work's
-`checks` field is offered as repeatable verification; a backticked command in a
-brief or `done when` sentence is prose. A declared check runs in a fresh shell
-to see whether the work stands up. A file is opened the way the file itself says it opens: if it is
+**A check is a command explicitly declared in the task's `checks` field.**
+A command quoted in your request, a brief or a `done when` sentence does not
+become permission to run it. Declared checks run in a fresh shell to see whether
+the work stands up. A file is opened the way the file itself says it opens: if it is
 executable, or its first line names the program that runs it, that is what gets
 run. **A file that says neither is not a check at all** and is left out — a
 source file quoted in a sentence is something to look at, not something to run.

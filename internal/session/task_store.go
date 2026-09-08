@@ -981,6 +981,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Ground:         n.Ground,
 		Mode:           n.Mode,
 		Home:           n.Home,
+		HomeSha:        n.HomeSha,
 		Rung:           n.Rung,
 		Seal:           n.Seal,
 		Base:           n.Base,
@@ -1026,7 +1027,6 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Assignment:     recordedAssignment(n.assignment),
-		HomeSha:        n.HomeSha,
 	}
 }
 
@@ -1525,6 +1525,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Ground:         record.Ground,
 		Mode:           record.Mode,
 		Home:           record.Home,
+		HomeSha:        record.HomeSha,
 		Rung:           record.Rung,
 		Seal:           record.Seal,
 		Base:           record.Base,
@@ -1562,7 +1563,6 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		interrupted:    record.Interrupted,
 		offer:          record.Offer,
 		assignment:     restoredAssignment(record.Assignment),
-		HomeSha:        record.HomeSha,
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading

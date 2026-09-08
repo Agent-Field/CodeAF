@@ -3725,8 +3725,8 @@ hand as each report lands.
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
 repository in a state two of them fought over. A hand that declared `[]` does not carry those
-two tools in the first place. They also cannot get around the reply's write
-allowance: what they change spends the same allowance when their reports come home.
+two tools in the first place. A writing hand also spends the reply's write
+allowance when its changes come home.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
