@@ -120,7 +120,7 @@ been shown what changed and said so. See `## /land` below.
 are standing in and touches whatever it names, including files in a folder you chose. Only
 the model's `read`, `write` and `edit` go through the copy.
 
-## /land — merge what you did into my folder, put the changes in, land the work
+## /land — merge what you did into my folder, put the changes in, land the work, I committed or rebased before landing
 
 `/land` on its own shows what is waiting and moves nothing:
 
@@ -146,8 +146,10 @@ written by aforge. You get the sentence on its own — `its branch chat/agentfie
 kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
 — and it is not a failure: the work is finished and on that branch, and `git merge` takes
 it whenever you want it. The same keep happens when you are on a different branch than when
-the work was cut, or on no branch at all. For a plain folder the files are copied back over
-it by name, **whole or not at all**: if any one of them cannot be placed, your folder is
+the work was cut, when you moved that branch to another commit yourself after the cut, or
+when you are on no branch at all. Commits written by aforge's own landings do not count as
+you moving it. For a plain folder the files are copied back over it by name, **whole or not
+at all**: if any one of them cannot be placed, your folder is
 left exactly as it was and you get `could not put it all into agentfield ·` with the reason.
 The changes stay waiting, so `/land` is still there to try again once the way is clear.
 

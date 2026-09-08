@@ -57,9 +57,8 @@ func prepareTaskTreeForNode(ctx context.Context, place Place, workspace, session
 		return taskTree{}, err
 	}
 	for _, branch := range branches[1:] {
-		if _, err := git(tree.dir,
-			"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-			"merge", "--no-edit", branch); err == nil {
+		if _, err := git(tree.dir, append(aforgeGitIdentity(),
+			"merge", "--no-edit", branch)...); err == nil {
 			continue
 		}
 		_, _ = git(tree.dir, "merge", "--abort")

@@ -72,10 +72,9 @@ func TestTheOneRoadHomeStillRefusesToCallAConflictDone(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	node := loneTestNode(t, "edit the shared file")
-	// The person's branch and the node's copy both move the same line.
+	// The person's uncommitted work and the node's copy both move the same line.
+	// The branch itself stays at the cut, so this reaches the merge-conflict road.
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
-	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "the person's edit")
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
 	agent := &Agent{}
@@ -109,9 +108,9 @@ func TestAConflictedMergeNoticeNamesTheBranchAndDoesNotClaimSuccess(t *testing.T
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	node := loneTestNode(t, "edit the shared file")
+	// Keeping the person's clash uncommitted leaves the branch at the recorded
+	// cut while still making the merge refuse to overwrite their work.
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
-	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "the person's edit")
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
 	agent := &Agent{}

@@ -132,11 +132,10 @@ func openFamilyRepository(dir string) string {
 	// commit somebody's global settings would sign is a passphrase prompt on a
 	// terminal nobody is watching — neither is a thing to lose a family tree
 	// over, and neither commit is the person's to answer for.
-	if out, err := git(dir,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
+	if out, err := git(dir, append(aforgeGitIdentity(),
 		"-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "--allow-empty",
-		"-m", familyTreeCommitMessage); err != nil {
+		"-m", familyTreeCommitMessage)...); err != nil {
 		return familyTreeProblem(out, err)
 	}
 	return ""

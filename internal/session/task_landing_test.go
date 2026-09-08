@@ -180,8 +180,8 @@ func TestAResumedNodeStillOwnsWhatItWroteBeforeTheProcessDied(t *testing.T) {
 // half-finished merge, and the branch kept with the conflicting file named in
 // the words a person reads.
 func TestAConflictedMergeLeavesHomeCleanAndNamesTheFile(t *testing.T) {
-	repo := newTestRepo(t)
-	tree, err := prepareTaskTree(Place{}, repo, "dddd4444dddd4444", 1, "edit the shared file")
+	place, repo := newOwnedPlace(t)
+	tree, err := prepareTaskTree(place, repo, "dddd4444dddd4444", 1, "edit the shared file")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}

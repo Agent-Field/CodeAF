@@ -183,6 +183,9 @@ type taskRecord struct {
 	// additive: an older record without it still gets the detached and protected
 	// checks at landing, and simply cannot detect that the checkout moved.
 	Home string `json:"home,omitempty"`
+	// HomeSha is the commit Home named when the branch was cut. It is additive
+	// beside Home so older records take the same name-only landing road as before.
+	HomeSha string `json:"homeSha,omitempty"`
 
 	// Rung, Seal, Base and Universe are WHICH COPY OF THE GROUND the work
 	// actually happened in (session/groundladder.go): which rung of the ground
@@ -697,6 +700,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Ground:        n.Ground,
 		Mode:          n.Mode,
 		Home:          n.Home,
+		HomeSha:       n.HomeSha,
 		Rung:          n.Rung,
 		Seal:          n.Seal,
 		Base:          n.Base,
@@ -1188,6 +1192,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Ground:      record.Ground,
 		Mode:        record.Mode,
 		Home:        record.Home,
+		HomeSha:     record.HomeSha,
 		Rung:        record.Rung,
 		Seal:        record.Seal,
 		Base:        record.Base,

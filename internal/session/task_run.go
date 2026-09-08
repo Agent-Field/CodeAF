@@ -303,6 +303,10 @@ type TaskNode struct {
 	// cut. It is the fixed side of the moved-checkout question at landing time;
 	// absence is ordinary for a checkpoint written before this field existed.
 	Home string
+	// HomeSha is the commit Home named at the cut. The branch name answers which
+	// destination the person chose, but only this commit answers which world that
+	// name held before they and the task went on working independently.
+	HomeSha string
 	// Rung is which rung of the ground ladder made this node's world and Seal is
 	// the one string that names that world — furrow's sealed snapshot, or the
 	// machine commit's sha (groundladder.go). They are written beside Ground and
@@ -2319,7 +2323,7 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
-	tree.home = n.Home
+	tree.home, tree.homeSha = n.Home, n.HomeSha
 	return tree
 }
 
@@ -2650,7 +2654,7 @@ func (n *TaskNode) setTree(tree taskTree) {
 	if tree.ground != "" {
 		n.Ground, n.Mode = tree.ground, tree.mode
 	}
-	n.Home = tree.home
+	n.Home, n.HomeSha = tree.home, tree.homeSha
 	// AND WHICH RUNG OF THE GROUND LADDER MADE THE WORLD (groundladder.go). It
 	// travels with the ground because it is the other half of the same fact: the
 	// ground says which folder the work is about, and this says which copy of it
@@ -5909,6 +5913,9 @@ type taskTree struct {
 	// The landing compares it with the branch there now so work never follows a
 	// person who moved their checkout somewhere else while the task ran.
 	home string
+	// homeSha is the commit that name held at the cut. The name alone answers
+	// which branch the person chose, never which world that branch still names.
+	homeSha string
 	// merge is the outcome so far: "inplace" for a non-repository, and empty
 	// while a branch is still out.
 	merge string
@@ -6125,6 +6132,7 @@ func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (tas
 func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, from string) (taskTree, error) {
 	defer lockGitRoot(place, root)()
 	home := currentBranch(root)
+	homeSha := branchCommit(root, home)
 	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err
 	}
@@ -6149,7 +6157,7 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 	if out, err := git(root, "worktree", "add", "-b", branch, dir, from); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
-	return taskTree{dir: dir, root: root, branch: branch, home: home, place: place, ground: root, mode: TaskModeWorktree}, nil
+	return taskTree{dir: dir, root: root, branch: branch, home: home, homeSha: homeSha, place: place, ground: root, mode: TaskModeWorktree}, nil
 }
 
 // prepareTaskTreeOn gives one node a place to work ON ITS GROUND, which is the
@@ -6834,9 +6842,8 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, la
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if out, err := git(dir,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"commit", "--no-verify", "-m", message); err != nil {
+	if out, err := git(dir, append(aforgeGitIdentity(),
+		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
 		// and those are refusals a second answer can get past. Which of the two
