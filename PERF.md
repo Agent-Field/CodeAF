@@ -776,6 +776,9 @@ run to the common path and one bounded model call to two seams.
 | one check's captured assertion text | **16KB** | `verify.assertionTextBytes` |
 | words of a sentence read as one name | **4** | `verify.spokenWindow` |
 | behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
+| one behaviour in the closing account | **140 bytes** | `revision.behaviourWords` |
+| one explanation in the closing account | **80 bytes** | `revision.checkWords` |
+| the complete closing account | **half of `store.MaxDigestBytes`** | `revision.checklistBlockBytes`; machine rows remain whole |
 | the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
 
 **The checklist's length is derived from the request and not typed.** A request
