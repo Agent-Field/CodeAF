@@ -81,6 +81,18 @@ func textualNode() store.Node {
 			"follow_end(animate: bool = False), and a FollowChanged message."}}
 }
 
+// readOnlyFixture is the file named by the measured run's contract and the
+// body that must never be mistaken for that run's deliverable.
+func readOnlyFixture(t *testing.T) (root, body string) {
+	t.Helper()
+	root = t.TempDir()
+	body = "These are repository instructions the run only read.\n"
+	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return root, body
+}
+
 // THE GATE JUDGES THE WORLD. The fence carries the change, the worker's object
 // is presented as a claim about it, and neither the object nor the word
 // "contract" is anywhere the judge could mistake for the deliverable.
@@ -115,6 +127,154 @@ func TestAChangedTreeIsWhatTheFenceHolds(t *testing.T) {
 	claim := prompt[strings.Index(prompt, deliverableClose):]
 	if !strings.Contains(claim, "IS NOT THE DELIVERABLE") || !strings.Contains(claim, "contract") {
 		t.Fatalf("the worker's account is not below the fence as a claim:\n%s", claim)
+	}
+}
+
+// A FILE THE RUN ONLY READ IS NOT THE CHANGE IT MADE. The subject stays the
+// worker's claim, the fence holds that claim, and the record enum has no file a
+// refusal could name.
+//
+// This is the run of 2026-09-03 in full: a contract that opened "Read CLAUDE.md
+// at the repository root before you start", 156 shell calls, not one write, and
+// a refusal whose first clause read "The only file this run changed is
+// CLAUDE.md". Everything after that clause was true and that clause was not.
+func TestAFileTheRunOnlyReadIsNotTheChangeItMade(t *testing.T) {
+	root, fileBody := readOnlyFixture(t)
+	request := "Read CLAUDE.md at the repository root before you start; its rules bind you"
+	workerAnswer := "I read the repository instructions and made no changes."
+	evidence := Evidence{
+		Named: NamedFiles(request), Workspace: root, Observed: true,
+	}
+	settings := config.Config{Model: "worker/model"}
+	judge := &recordingJudge{replies: []string{`{"pass":true,"exercised":false}`}}
+	node := store.Node{ID: "task-1", Provenance: store.Provenance{Intent: request}}
+
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, node,
+		workerAnswer, "", evidence, "worker/model")
+
+	if judgment.Subject != string(SubjectClaim) {
+		t.Fatalf("the gate recorded a file the run only read as its subject: %q", judgment.Subject)
+	}
+	prompt := judge.lastPrompt()
+	opened, closed := strings.Index(prompt, deliverableOpen), strings.Index(prompt, deliverableClose)
+	if opened < 0 || closed < opened {
+		t.Fatalf("the deliverable fence is missing from the prompt:\n%s", prompt)
+	}
+	fenced := prompt[opened:closed]
+	if !strings.Contains(fenced, workerAnswer) {
+		t.Fatalf("the fence does not hold the worker's own answer:\n%s", fenced)
+	}
+	if strings.Contains(prompt, "CHANGE THIS RUN MADE TO THE TREE") {
+		t.Fatalf("a read-only run was presented as a changed tree:\n%s", prompt)
+	}
+	if strings.Contains(prompt, strings.TrimSpace(fileBody)) {
+		t.Fatalf("the file the run only read was printed as its deliverable:\n%s", prompt)
+	}
+
+	evidence.completeAgainstTheWorld()
+	if evidence.Subject() != SubjectClaim || evidence.SubjectWords() != string(SubjectClaim) {
+		t.Fatalf("the swept file changed the subject: %q, %q",
+			evidence.Subject(), evidence.SubjectWords())
+	}
+	if names := evidence.recordNames(); len(names) != 0 {
+		t.Fatalf("the verdict shape admits a file the run never wrote: %+v", names)
+	}
+}
+
+// THE SWEEP STILL ANSWERS THE NAME IT WAS ASKED FOR. Its answer closes only
+// absence findings, says in words that the run did not write the file, and
+// remains one answer when the world is read twice — which is the half of igel
+// s6 that must survive the split.
+func TestASweptFileStillAnswersTheNameItWasAskedFor(t *testing.T) {
+	root, _ := readOnlyFixture(t)
+	evidence := Evidence{
+		Named:     NamedFiles("Read CLAUDE.md before you start"),
+		Done:      plan.Done{Produces: []string{"CLAUDE.md"}},
+		Workspace: root,
+		Observed:  true,
+	}
+
+	evidence.completeAgainstTheWorld()
+	if len(evidence.Swept) != 1 {
+		t.Fatalf("the workspace did not answer the named file exactly once: %+v", evidence.Swept)
+	}
+	first := evidence.Swept[0]
+	evidence.completeAgainstTheWorld()
+	if len(evidence.Swept) != 1 || evidence.Swept[0] != first {
+		t.Fatalf("reading the world twice double-counted its answer: %+v", evidence.Swept)
+	}
+	if mechanical, missing := MissingProduces(evidence.Done, evidence.producedArtifacts()); missing {
+		t.Fatalf("the mechanical gate says a file on disk is missing: %+v", mechanical)
+	}
+	if missing := evidence.MissingPromised(); len(missing) != 0 {
+		t.Fatalf("a file on disk stayed among the missing promises: %+v", missing)
+	}
+	if closed := AdmitGapArtifact([]string{"CLAUDE.md"}, evidence); closed == "" {
+		t.Fatal("a file on disk did not close the absence finding")
+	}
+	block := evidence.namedBlock()
+	if !strings.Contains(block, "a file of that name is there") ||
+		!strings.Contains(block, "this run did not write it") {
+		t.Fatalf("the named-file block does not distinguish the sweep's answer:\n%s", block)
+	}
+	if strings.Contains(block, "produced, at") {
+		t.Fatalf("a file the run did not write was reported as produced:\n%s", block)
+	}
+}
+
+// A SWEPT FILE DECIDES NO QUESTION ABOUT WHAT THE RUN CHANGED. A real
+// three-file record stays a three-file tree, while its read-only twin has no
+// code change, no broken rule, and no wider reading of the project's checks.
+func TestASweptFileDoesNotWidenTheChangeTheGateCounts(t *testing.T) {
+	root, record := treeFixture(t)
+	readmeBody := "This pre-existing file was not part of the change.\n"
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte(readmeBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	named := NamedFiles("Read README.md before changing the implementation")
+	evidence := Evidence{
+		Artifacts: record, Named: named, Workspace: root, Observed: true,
+	}
+	focusBefore := strings.Join(gateFocus(evidence), "\n")
+
+	evidence.completeAgainstTheWorld()
+	if evidence.SubjectWords() != "tree (3 files)" {
+		t.Fatalf("the swept file changed the tree's count: %q", evidence.SubjectWords())
+	}
+	if names := evidence.recordNames(); len(names) != 3 {
+		t.Fatalf("the record enum was widened by the swept file: %+v", names)
+	}
+	tree := evidence.treeBlock(ctxbudget.Budget{})
+	if strings.Contains(tree, "README.md") || strings.Contains(tree, strings.TrimSpace(readmeBody)) {
+		t.Fatalf("the file this run did not write entered the deliverable fence:\n%s", tree)
+	}
+	if !codeChanged(evidence) {
+		t.Fatal("the run's three recorded files stopped counting as a code change")
+	}
+	if focusAfter := strings.Join(gateFocus(evidence), "\n"); focusAfter != focusBefore {
+		t.Fatalf("the sweep widened the acceptance focus:\nbefore: %s\nafter: %s",
+			focusBefore, focusAfter)
+	}
+
+	readOnly := Evidence{
+		Named: named, Workspace: root, Observed: true,
+		Constraints: []plan.Constraint{{Text: "Change no files.", Kind: plan.ConstraintNoWrites}},
+	}
+	readOnlyFocus := strings.Join(gateFocus(readOnly), "\n")
+	readOnly.completeAgainstTheWorld()
+	if codeChanged(readOnly) {
+		t.Fatal("a file the run only read counted as changed code")
+	}
+	if held := HoldConstraints(readOnly); len(held) != 0 {
+		t.Fatalf("a file the run only read broke a no-writes rule: %+v", held)
+	}
+	if changed := constraintChanges(readOnly); len(changed) != 0 {
+		t.Fatalf("the mechanical constraint check saw a swept file as changed: %+v", changed)
+	}
+	if focusAfter := strings.Join(gateFocus(readOnly), "\n"); focusAfter != readOnlyFocus {
+		t.Fatalf("the read-only sweep widened the acceptance focus:\nbefore: %s\nafter: %s",
+			readOnlyFocus, focusAfter)
 	}
 }
 

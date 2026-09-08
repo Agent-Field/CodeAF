@@ -233,18 +233,19 @@ func TestAFileTheWorkspaceHoldsIsProducedWhateverTheRegistrySays(t *testing.T) {
 		t.Fatal("the registry already answered, so this test proves nothing")
 	}
 	evidence.completeAgainstTheWorld()
-	found, ok := ProducedFile("feature_schema.joblib", evidence.Artifacts)
+	found, ok := ProducedFile("feature_schema.joblib", evidence.producedArtifacts())
 	if !ok {
 		t.Fatal("a file the workspace holds was still not produced")
 	}
 	if !strings.HasSuffix(found, filepath.Join("model_results", "feature_schema.joblib")) {
 		t.Errorf("the fuller path is not what the record answers with: %q", found)
 	}
-	if _, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
+	if _, missing := MissingProduces(evidence.Done, evidence.producedArtifacts()); missing {
 		t.Error("the mechanical gate still says a file on disk is missing")
 	}
-	if block := evidence.namedBlock(); !strings.Contains(block, "produced, at") ||
-		!strings.Contains(block, "model_results") {
+	if block := evidence.namedBlock(); !strings.Contains(block, "a file of that name is there") ||
+		!strings.Contains(block, "this run did not write it") ||
+		!strings.Contains(block, "model_results") || strings.Contains(block, "produced, at") {
 		t.Errorf("the sentence the judge reads does not quote the fuller path:\n%s", block)
 	}
 
@@ -256,7 +257,7 @@ func TestAFileTheWorkspaceHoldsIsProducedWhateverTheRegistrySays(t *testing.T) {
 		t.Fatal(err)
 	}
 	elsewhere.completeAgainstTheWorld()
-	if _, ok := ProducedFile("docs/memo.md", elsewhere.Artifacts); ok {
+	if _, ok := ProducedFile("docs/memo.md", elsewhere.producedArtifacts()); ok {
 		t.Error("a file at the wrong address closed a request that named the address")
 	}
 }
