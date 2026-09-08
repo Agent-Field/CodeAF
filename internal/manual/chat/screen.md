@@ -1701,11 +1701,12 @@ renderer's own ramp. The foot is aforge's own chrome and wears its dim.
 
 While the main conversation works, recent step descriptions occupy a compact
 window below your question. Older steps are fainter; the newest step shimmers
-while its calls run. The highlight is soft and low contrast, with a quiet pause
-between sweeps; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
-behind this view. The window changes when a new step arrives; a quiet interval
-creates no extra steps. Before the first step, the existing activity line below
-the conversation remains the sign that work is running.
+while its calls run. A soft highlight sweeps across the text every two seconds,
+reaching ordinary reading brightness; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
+behind this view. The window changes when a new step arrives. Before the first step and between
+finished calls, a separate “Working” line carries the shimmer; it does not make
+finished work look active. Hidden work has a clickable `▸ Working · ctrl+e`
+door even before the first caption. Waiting and retry information remains available.
 
 Click a step, or press `ctrl+e` with an empty message box, to open the full
 outline. Each caption then opens its own calls. The live caption keeps its
@@ -1714,8 +1715,9 @@ return to the compact view. `ctrl+o` can still show all calls.
 
 The window budgets **3 wrapped rows**, admitting whole captions newest first.
 On a narrow screen, a caption that needs two rows leaves room for fewer steps.
-If the newest caption alone needs more than three rows, it stays whole rather
-than losing words. Screen-reader and lower-colour terminals (including 256 colours) draw the
+If the current caption alone needs more than three rows, it stays whole rather
+than losing words. Between calls, the current activity takes priority over a
+finished caption too tall to fit beside it; open the work to read that caption. Screen-reader and lower-colour terminals (including 256 colours) draw the
 descriptions without motion. Expanding or collapsing the work is immediate.
 
 Your messages, corrections, answers, approval questions and notices remain

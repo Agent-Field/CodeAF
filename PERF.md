@@ -2089,21 +2089,28 @@ of each derived fold's start rather than an unstable integer index.
 
 ## Caption shimmer motion
 
-The current collapsed step reuses `frameInterval` (33 ms) and `paints`, including
-remote frame strides. `shimmerSweep` (72 slots) and `shimmerRest` (24 slots) make
-`shimmerPeriod` a 96-slot cycle: roughly 2.38 seconds of travel and 0.79 seconds
-of rest. This is ambient progress, not an interaction delay; disclosures remain
-immediate. A cosine feather with `shimmerRadius` (8 terminal cells) peaks at
-`shimmerLift` (0.35) of the distance from narration to answer ink. It never moves
-letters or changes layout. Whole graphemes receive colour together.
+The current collapsed step is sampled by `frameInterval` (33 ms), but its
+position follows elapsed time through `app.now`, so skipped or remote frames do
+not slow the motion. `shimmerPeriod` is two seconds, with a continuous cosine
+feather and no separately scheduled pause. The band travels beyond both ends
+before wrapping, so the loop boundary is quiet. Its half-width is the larger
+of `shimmerMinRadius` (6 terminal cells) and `shimmerWidthRatio` (0.20) of the
+line width. This broader feather smooths the bright crest at terminal frame
+rates; the crest reaches ordinary answer ink without bolding or moving letters.
+Whole graphemes receive colour together.
 
 Each painted line takes two linear walks (cell measurement and drawing), with
 constant-space iteration besides its output. Adjacent graphemes of the same
-colour share one escape pair, so quiet prefixes and suffixes do not spend bandwidth on per-character styling.
-Truecolour interpolates channels directly. No new clock, I/O or background
+colour share one escape pair; only the feather needs per-cluster spans. A
+69-cell caption spends at most 30 colour spans rather than styling every letter.
+Truecolour interpolates channels directly. No new timer, I/O or background
 worker is involved. Screen-reader and lower-colour modes (including 256 colours)
 remain static because nearest palette matches can introduce abrupt hue changes.
-Tests inspect every emitted frame in both themes for smooth colour changes, a quiet loop boundary, stable width and intact Unicode.
+Tests inspect the whole cycle in both themes for visible yet smooth colour,
+a quiet loop boundary, stable width, intact Unicode and elapsed-time behavior
+under skipped frames. An actual paint-handler regression checks that between
+finished calls only the current Working state moves, within the same three-row
+budget. The laid-out activity row suppresses a duplicate footer pulse.
 
 ## Memory lookup before the first response
 

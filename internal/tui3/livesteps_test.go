@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -137,8 +139,9 @@ func TestARunningTurnDrawsThreeStepsAndNoMachinery(t *testing.T) {
 func TestOnlyTheStepThatIsRunningShimmers(t *testing.T) {
 	a := liveStepsApp(t)
 	a.pal = newPalette(tokens.TrueColor, false)
+	captionTimeAt(a, 0)
 	before := liveRowTexts(a)
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/2)
 	a.touch()
 	after := liveRowTexts(a)
 
@@ -189,10 +192,9 @@ func tierOf(t *testing.T, s string) string {
 	return s[from : from+to+1]
 }
 
-// A TURN THAT HAS ONLY THOUGHT INVENTS NOTHING. There is no step yet, so there
-// is no line — the pulse at the transcript's foot is already saying what is
-// true (render.go's [app.ellipsis]).
-func TestATurnWithNoStepsYetDrawsNoInventedProgress(t *testing.T) {
+// A TURN THAT HAS ONLY THOUGHT INVENTS NOTHING. It has a truthful Working
+// state and a visible door onto hidden reasoning, but no invented step.
+func TestATurnWithNoStepsYetKeepsAVisibleWorkDoor(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries = []entry{
 		{kind: entryUser, text: "why is the loader slow?", turn: 1},
@@ -211,10 +213,23 @@ func TestATurnWithNoStepsYetDrawsNoInventedProgress(t *testing.T) {
 			t.Fatalf("the surface invented %q with no step to report:\n%s", invented, page)
 		}
 	}
+	doors := 0
 	for _, r := range rows(a) {
 		if r.hit == hitWorkFold {
-			t.Fatalf("a window with no steps drew a row: %q", plain(r.text))
+			doors++
+			if !strings.Contains(plain(r.text), "Working · ctrl+e") || !r.activity {
+				t.Fatalf("hidden work has no truthful activity door: %q", plain(r.text))
+			}
 		}
+	}
+	if doors != 1 {
+		t.Fatalf("want one visible work door, got %d: %s", doors, page)
+	}
+	if !a.toggleLatestWorkfold() {
+		t.Fatal("the visible work door could not open")
+	}
+	if !strings.Contains(livePage(a), "probably reading") {
+		t.Fatal("opening work lost reasoning")
 	}
 }
 
@@ -487,8 +502,9 @@ func TestTheLinearTierDrawsTheWindowStill(t *testing.T) {
 	a := liveStepsApp(t)
 	a.linear = true
 	a.touch()
+	captionTimeAt(a, 0)
 	before := liveRowTexts(a)
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/2)
 	a.touch()
 	after := liveRowTexts(a)
 
@@ -540,5 +556,111 @@ func TestACompletedTurnDerivesNoWindow(t *testing.T) {
 	d.captions = deriveCaptions(d.entries, d.runningTurn)
 	if got := deriveLiveWork(d); len(got) != 0 {
 		t.Fatalf("a finished conversation derived a window: %#v", got)
+	}
+}
+
+// A completed caption must never be relit as ongoing just because the model
+// has not answered yet. The real frame handler advances one separate status.
+func TestBetweenCallsThePaintClockMovesOnlyCurrentActivity(t *testing.T) {
+	a := liveStepsApp(t)
+	a.pal = newPalette(tokens.TrueColor, false)
+	last := &a.entries[len(a.entries)-1]
+	last.status, last.ended = toolOK, liveStepsBase.Add(8*time.Second)
+	captionTimeAt(a, 500*time.Millisecond)
+	a.touch()
+	before := rows(a)
+	activity, captions := 0, 0
+	for _, r := range before {
+		if r.hit == hitWorkFold {
+			captions++
+			if r.activity {
+				activity++
+				if !strings.Contains(plain(r.text), "Working") {
+					t.Fatalf("completed tool claims it is live: %s", plain(r.text))
+				}
+			}
+		}
+	}
+	if activity != 1 || captions != liveStepRows {
+		t.Fatalf("activity=%d rows=%d", activity, captions)
+	}
+	captionTimeAt(a, 800*time.Millisecond)
+	a.paint()
+	after := rows(a)
+	if len(before) != len(after) {
+		t.Fatal("activity changed the page height")
+	}
+	moved := 0
+	for i, r := range before {
+		if r.text != after[i].text {
+			moved++
+			if !r.activity {
+				t.Fatalf("finished work moves at row %d: %q", i, plain(r.text))
+			}
+		}
+	}
+	if moved != 1 {
+		t.Fatalf("real paint clock moved %d rows, want only the current status", moved)
+	}
+	for _, r := range after {
+		if strings.Contains(plain(r.text), a.pulse()) {
+			t.Fatal("compact activity kept a second pulse")
+		}
+	}
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "The loader reads the tree once.", turn: 1})
+	a.touch()
+	if hasCompactActivity(rows(a)) {
+		t.Fatal("old compact work claimed activity while the answer writes")
+	}
+}
+
+func TestPendingActivityKeepsWaitDetailsAcrossFullFrameTransitions(t *testing.T) {
+	forgetPhases()
+	t.Cleanup(forgetPhases)
+	a := liveStepsApp(t)
+	a.width, a.height = 140, 40
+	a.model = phaseModel
+	now := liveStepsBase.Add(20 * time.Second)
+	a.clock = func() time.Time { return now }
+	a.frameBody()
+	last := &a.entries[len(a.entries)-1]
+	last.status, last.ended = toolOK, liveStepsBase.Add(8*time.Second)
+	a.awaited = now.Add(-6 * time.Second)
+	a.live = -1
+	a.touch()
+	frame, _, _ := a.frameBody()
+	if !strings.Contains(plain(frame), "waiting for") {
+		t.Fatalf("between-call wait vanished: %s", plain(frame))
+	}
+	PostPhaseNews(PhaseNews{Model: a.model, Role: lane.RoleTalk, Phase: provider.PhaseRetrying, At: now, Since: now.Add(-2 * time.Second), Detail: "2 of 6"})
+	for _, open := range []bool{false, true, false} {
+		a.setWorkOpen(a.conversation(), a.turn, open)
+		a.touch()
+		frame, _, _ = a.frameBody()
+		if got := strings.Count(plain(frame), "2 of 6"); got != 1 {
+			t.Fatalf("open=%v phase appeared %d times on transition: %s", open, got, plain(frame))
+		}
+	}
+	a.entries = append(a.entries, entry{kind: entryThinking, turn: 1, text: "private reasoning", began: now})
+	a.live = len(a.entries) - 1
+	a.lastDelta = time.Now()
+	a.touch()
+	frame, _, _ = a.frameBody()
+	if got := strings.Count(plain(frame), "2 of 6"); got != 1 {
+		t.Fatalf("streaming reasoning drew phase %d times: %s", got, plain(frame))
+	}
+}
+
+func TestPendingActivityTakesPriorityOverAnOversizedFinishedCaption(t *testing.T) {
+	a := liveStepsApp(t)
+	w := liveWork{turn: 1, pending: true, steps: []caption{{text: "reading the complete configuration and checking every startup setting", ended: liveStepsBase}}}
+	out := a.liveStepBlock(w, 20)
+	if len(out) > liveStepRows || !hasCompactActivity(out) {
+		t.Fatalf("pending window lost its budget or current state: %#v", out)
+	}
+	for _, r := range out {
+		if strings.Contains(plain(r.text), "reading") {
+			t.Fatal("an oversized completed caption was partially drawn")
+		}
 	}
 }

@@ -3,38 +3,45 @@ package tui3
 import (
 	"math"
 	"strings"
+	"time"
 
 	"github.com/rivo/uniseg"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// These frame slots belong to the existing paint clock, including its remote
-// stride. PROGRESS HAS ONE CLOCK: a caption never starts a timer of its own.
-// A slow sweep and a quiet rest signal ongoing work without asking to be read
-// again. The long period is for ambient progress, never for a key or disclosure.
+// The sweep follows elapsed time, sampled by the existing paint clock. A busy
+// terminal may skip pictures without slowing the sign of life. The two-second
+// travel and cosine feather follow Codex's terminal summary shimmer; keeping
+// the crest at ordinary reading ink makes the movement visible without a flash.
+// https://github.com/openai/codex/blob/main/codex-rs/tui/src/summary_shimmer.rs
 const (
-	shimmerSweep  = 72
-	shimmerRest   = 24
-	shimmerPeriod = shimmerSweep + shimmerRest
-	shimmerRadius = 8.0
-	shimmerLift   = 0.35
+	shimmerPeriod     = 2 * time.Second
+	shimmerMinRadius  = 6.0
+	shimmerWidthRatio = 0.20
 )
 
 // shimmer paints the one moving highlight a collapsed live caption owns.
 //
 // THE SHIMMER IS THE SPINNER, RELOCATED. Opening the work returns its animation
 // budget to the tool rows immediately. The letters never move, and the smooth
-// bell stays well below answer ink even at its crest. Measuring whole graphemes
+// bell reaches ordinary answer ink only at its crest. Measuring whole graphemes
 // in terminal cells keeps accents and joined emoji intact under the highlight.
 func (a *app) shimmer(text string) string {
-	phase := a.paints % shimmerPeriod
-	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor ||
-		phase == 0 || phase >= shimmerSweep-1 {
+	if text == "" || a.linear || a.pal.linear || a.pal.profile < tokens.TrueColor {
 		return a.pal.narr(text)
 	}
+	// A turn supplies a stable origin when it has one. Rooms can run while the
+	// conversation is idle, so they use the same clock's absolute phase instead.
+	// Neither rendering nor opening a disclosure starts another timer.
+	elapsed := time.Duration(a.now().UnixNano())
+	if !a.turnBegan.IsZero() {
+		elapsed = a.now().Sub(a.turnBegan)
+	}
+	phase := (elapsed%shimmerPeriod + shimmerPeriod) % shimmerPeriod
 	width := uniseg.StringWidth(text)
-	center := -shimmerRadius + float64(phase)/float64(shimmerSweep-1)*(float64(width)+2*shimmerRadius)
+	radius := math.Max(shimmerMinRadius, float64(width)*shimmerWidthRatio)
+	center := -radius + float64(phase)/float64(shimmerPeriod)*(float64(width)+2*radius)
 	var b strings.Builder
 	graphemes := uniseg.NewGraphemes(text)
 	cell := 0
@@ -44,8 +51,8 @@ func (a *app) shimmer(text string) string {
 		word, cells := graphemes.Str(), graphemes.Width()
 		distance := math.Abs(float64(cell) + float64(cells)/2 - center)
 		amount := 0.0
-		if distance < shimmerRadius {
-			amount = shimmerLift * (1 + math.Cos(math.Pi*distance/shimmerRadius)) / 2
+		if distance < radius {
+			amount = (1 + math.Cos(math.Pi*distance/radius)) / 2
 		}
 		color := a.pal.shimmerHue(amount)
 		// Adjacent clusters with the same colour share one escape pair. Most of

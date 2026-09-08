@@ -102,6 +102,10 @@ type row struct {
 	entry int // index into app.entries; -1 for a blank or the fold line
 	hit   hitKind
 	turn  int // the turn a fold line folds
+	// activity says this row already carries the running turn's sign of life.
+	// The footer reads the actual drawing so an opened or absent compact block
+	// cannot suppress the only remaining indication of work.
+	activity bool
 	// links are the task references drawn in this row's own columns
 	// (markdown.go). They are the one thing on the transcript a click resolves
 	// by COLUMN rather than by row, and they are recorded here for the reason
@@ -287,8 +291,11 @@ func (a *app) layout(width int) []row {
 		closed = true
 	}
 	line, ok := a.harnessStepRow(inner)
-	if !ok {
+	if !ok && !hasCompactActivity(out) {
 		line, ok = a.ellipsis()
+		if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
+			line = a.activityLine("  " + a.shimmer("Working"))
+		}
 	}
 	if ok {
 		if closed && len(out) > 0 {
@@ -434,10 +441,8 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// the blank the work's first block would have taken.
 		if w, ok := lives[i]; ok {
 			if !a.workFoldOpen(d, w.turn) {
-				// A WINDOW WITH NOTHING TO SAY YET DRAWS NOTHING, and a block that
-				// draws nothing buys no gap and closes nothing — the rows are built
-				// before the blank above them is asked for, because a blank spent on
-				// an empty block is a blank nobody can see the reason for.
+				// The block owns its activity door before the first caption,
+				// and spends the ordinary gap only when it actually draws.
 				rows := a.liveStepBlock(w, width)
 				if len(rows) > 0 {
 					if wasUser || wasBlock {
@@ -1589,7 +1594,12 @@ func (a *app) ellipsis() (string, bool) {
 	if !a.ellipsisShowing() {
 		return "", false
 	}
-	line := a.pal.accent("  " + a.pulse())
+	return a.activityLine(a.pal.accent("  " + a.pulse())), true
+}
+
+// activityLine keeps the same truthful wait information behind either sign of
+// life: the compact text sweep or the detailed transcript's existing pulse.
+func (a *app) activityLine(line string) string {
 	// THREE ANSWERS TO ONE QUESTION, AND THE MOST SPECIFIC ONE WINS. All three
 	// say "nothing is arriving"; they differ in how much they know about why.
 	//
@@ -1603,7 +1613,7 @@ func (a *app) ellipsis() (string, bool) {
 	// already told us.
 	if news, ok := a.livePhase(); ok {
 		if words := phaseWords(news, a.now()); words != "" {
-			return line + a.pal.dim(" "+words), true
+			return line + a.pal.dim(" "+words)
 		}
 	}
 	// THE WAIT OUTRANKS THE SILENCE, and only one of the two is ever on the
@@ -1611,12 +1621,12 @@ func (a *app) ellipsis() (string, bool) {
 	// and the wait is the more specific of them: it names what is being waited
 	// on and how long for, where "still working" only says that something is.
 	if tail := a.waitingWords(); tail != "" {
-		return line + a.pal.dim(tail), true
+		return line + a.pal.dim(tail)
 	}
-	if a.silentFor() >= stillWorking {
+	if a.silentFor() >= stillWorking && strings.TrimSpace(ansi.Strip(line)) != "Working" {
 		line += a.pal.dim(stillWorkingWord)
 	}
-	return line, true
+	return line
 }
 
 // ellipsisShowing reports whether the pulse row is on the frame at all — which
@@ -1655,6 +1665,18 @@ func (a *app) ellipsisShowing() bool {
 // HOME AT A TIME, and never the same words on two rows.
 func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
+}
+
+// hasCompactActivity asks the rows that actually drew, rather than re-deriving
+// their visibility from engine state. Expanding a block returns its activity
+// budget to the ordinary tool rows and footer on the very same frame.
+func hasCompactActivity(rows []row) bool {
+	for _, r := range rows {
+		if r.activity {
+			return true
+		}
+	}
+	return false
 }
 
 // harnessStepRow is the live row under a running sub-harness's announcement:

@@ -159,15 +159,15 @@ func TestExpandingACaptionStopsItsShimmerAndStartsTheRowSpinners(t *testing.T) {
 	a.pal = newPalette(tokens.TrueColor, false)
 	c := caption{text: "checking the fold", start: 1, calls: 2, began: time.Unix(100, 0)}
 	a.clock = func() time.Time { return time.Unix(104, 0) }
-	a.paints = 0
+	captionTimeAt(a, 0)
 	closed := a.captionRow(c, true, false, 80).text
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/4)
 	if next := a.captionRow(c, true, false, 80).text; next == closed {
 		t.Fatal("collapsed live caption did not shimmer")
 	}
-	a.paints = 0
+	captionTimeAt(a, 0)
 	open := a.captionRow(c, true, true, 80).text
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/4)
 	if next := a.captionRow(c, true, true, 80).text; next != open {
 		t.Fatal("expanded caption kept shimmering")
 	}
@@ -178,7 +178,7 @@ func TestTheLinearTierDrawsNoShimmer(t *testing.T) {
 	a.linear = true
 	a.paints = 0
 	first := a.shimmer("checking")
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/4)
 	if second := a.shimmer("checking"); second != first {
 		t.Fatalf("linear shimmer moved: %q then %q", first, second)
 	}

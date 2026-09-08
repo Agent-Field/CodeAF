@@ -1,5 +1,7 @@
 package tui3
 
+import "github.com/charmbracelet/x/ansi"
+
 // ── WHILE A TURN RUNS, THE CONVERSATION SHOWS THREE LINES OF WHAT IT IS DOING ─
 //
 // A completed turn out in the conversation is one chip: the question, the answer,
@@ -23,18 +25,16 @@ package tui3
 //     machinery, and the machinery is what a person delegated precisely so they
 //     would not have to watch it. All of it is one gesture away and none of it is
 //     lost — the window HIDES rows, it never drops them.
-//   - IT NEVER MANUFACTURES A STEP. The lines are captions or there are no lines:
-//     a turn that has thought for ten seconds and called nothing has nothing
-//     truthful to put here, and the pulse at the transcript's foot
-//     (render.go's [app.ellipsis]) is already the honest sign of life — it says
-//     `thinking · 12s` or `still working`, which is more than an invented
-//     caption would say and is true.
-//   - AND IT NEVER MOVES ON ITS OWN. A new line appears when a new step begins
-//     and at no other moment, so silence leaves the current step standing rather
-//     than producing a fresh sentence about nothing.
+//   - IT NEVER MANUFACTURES A STEP. Before the first caption and between
+//     finished calls, a separate Working state keeps the window alive. It is
+//     the running turn's state, not a claim that another step has happened.
+//     The same row opens hidden work even before there is a caption to click.
+//   - A NEW CAPTION ARRIVES ONLY WITH WORK. Silence can change the activity
+//     state, but never invents another semantic description.
 //
 // THE MOTION IS THE ONE THIS SURFACE ALREADY OWNS. The newest step shimmers
-// while a call under it is in flight (caption.go's [app.shimmer] — the spinner,
+// while a call under it is in flight, or the Working row moves between calls
+// (captionmotion.go's [app.shimmer] — the spinner,
 // relocated), and the steps above it step down the fade ladder the thinking
 // window uses (styles.go's [thoughtFade]): faint, then dim, then the live one.
 // Nothing here starts a timer or a goroutine; every frame this block moves on is
@@ -103,6 +103,9 @@ type liveWork struct {
 	start, end int
 	// steps are the captions inside it, in the order they happened.
 	steps []caption
+	// pending is the live frontier between calls. It is a state indicator, never
+	// a caption claiming that a completed call is still doing work.
+	pending bool
 }
 
 // deriveLiveWork is the windows one page draws, and it answers nothing at all on
@@ -161,7 +164,14 @@ func liveWorkRuns(d deck) map[int]liveWork {
 		for step < len(d.captions) && d.captions[step].start < hi {
 			step++
 		}
-		out[lo] = liveWork{turn: d.runningTurn, start: lo, end: hi, steps: d.captions[from:step]}
+		w := liveWork{turn: d.runningTurn, start: lo, end: hi, steps: d.captions[from:step], pending: hi == len(es)}
+		for _, c := range w.steps {
+			if c.ended.IsZero() {
+				w.pending = false
+				break
+			}
+		}
+		out[lo] = w
 		lo = hi - 1
 	}
 	return out
@@ -290,16 +300,24 @@ func (a *app) collapseLiveWork(turn int) {
 // THE NEWEST STEP IS NEVER CHOPPED, which is what the budget costs on a narrow
 // frame. Rows are taken newest-first and a step is only admitted whole, so a
 // caption that wraps to two lines pushes the oldest step out of the window
-// rather than being cut to fit — and a caption that alone wraps past the budget
-// is drawn in full with nothing above it. A step title is five to ten words that
+// rather than being cut to fit. A current caption that alone wraps past the
+// budget is drawn in full. Between calls, the current activity takes priority:
+// a finished caption too tall to fit beside it remains behind the disclosure. A step title is five to ten words that
 // somebody has to be able to read; an ellipsis in the middle of one would be the
 // surface saving a row at the cost of the only thing the row was for.
 func (a *app) liveStepBlock(w liveWork, width int) []row {
-	// THE EMPTINESS LAW. A run with no steps in it yet — a turn that has done
-	// nothing but think — draws NOTHING here rather than a manufactured line
-	// about progress that has not happened.
+	// Hidden reasoning needs a visible door even before a call has supplied a
+	// caption. The label claims only that the turn is working; no step is invented.
 	if len(w.steps) == 0 {
-		return nil
+		word := a.pal.dim("Work")
+		if w.pending {
+			word = a.shimmer("Working")
+			if a.ellipsisShowing() {
+				word = a.activityLine(word)
+			}
+		}
+		return []row{{text: a.pal.dim(a.linearMark("▸ ", "> ")) + word + a.pal.dim(" · ctrl+e"),
+			entry: -1, hit: hitWorkFold, turn: w.turn, activity: w.pending}}
 	}
 	room := width - workIndentCols(width)
 	if room < 8 {
@@ -307,11 +325,24 @@ func (a *app) liveStepBlock(w liveWork, width int) []row {
 	}
 	// Newest first, one whole step at a time, until the budget is spent.
 	type step struct {
-		lines []string
-		live  bool
+		lines   []string
+		live    bool
+		pending bool
 	}
 	picked := make([]step, 0, liveStepRows)
 	used := 0
+	if w.pending {
+		text := "Working"
+		// The compact state inherits the footer's useful wait information only
+		// while the footer would own it. During streaming reasoning the status
+		// line keeps the phase instead, so no frame says the same fact twice.
+		if a.ellipsisShowing() {
+			text = ansi.Strip(a.activityLine(text))
+		}
+		lines := wrap(text, room)
+		picked = append(picked, step{lines: lines, live: true, pending: true})
+		used += len(lines)
+	}
 	for at := len(w.steps) - 1; at >= 0; at-- {
 		lines := wrap(captionText(w.steps[at]), room)
 		if len(lines) == 0 {
@@ -347,9 +378,12 @@ func (a *app) liveStepBlock(w liveWork, width int) []row {
 				painted = a.pal.narr(line)
 				if i == 0 {
 					painted = a.shimmer(line)
+					if s.pending && len(line) >= len("Working") {
+						painted = a.shimmer("Working") + a.pal.dim(line[len("Working"):])
+					}
 				}
 			}
-			out = append(out, row{text: painted, entry: -1, hit: hitWorkFold, turn: w.turn})
+			out = append(out, row{text: painted, entry: -1, hit: hitWorkFold, turn: w.turn, activity: s.live && at == 0})
 		}
 	}
 	return out
