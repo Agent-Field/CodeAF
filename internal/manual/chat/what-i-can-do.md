@@ -9,8 +9,9 @@ Not only programming. Nothing else on this page is about code in particular:
 files, shell commands, the web, pictures, audio and video, your connected
 accounts, your own settings. A folder of contracts, a pile of recordings to
 transcribe and a repository are the same material to aforge — whatever is in the
-folder it was pointed at. Where there is a repository a task hands its work back
-on a branch; where there is none it works in the folder itself and says so:
+folder it was pointed at. Where there is a repository a task works on a branch and merges
+into an ordinary checked-out branch; on a protected, moved or detached checkout the task
+branch is kept for you instead. Where there is no repository it works in the folder itself and says so:
 `it worked directly in the workspace: there was no repository to branch`.
 
 ## Can you read, write, create, delete, rename or move files?
@@ -261,11 +262,19 @@ asked. A finished or killed job drops off the list immediately.
 [job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
 ```
 
-**When a job ends**, its exit code and last non-empty output line arrive in the
-conversation on their own:
+**When a job ends**, its exit code, last non-empty output line, output tail and
+path to the full log arrive in the conversation on their own:
 
 ```
-while you worked: job 3 exited 0: BUILD OK
+while you worked:
+
+job 3 exited 0: BUILD OK
+
+checking packages
+…
+BUILD OK
+
+[job 3 · last 50 lines · full log: <path>]
 ```
 
 If aforge is mid-turn the note lands at the next step; if the turn had already
@@ -273,10 +282,9 @@ ended, the note starts a new one, exactly as a finished task does. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
 
-The rest stays behind `jobs output`: its default is the last 50 lines and its
-footer names the whole log. This keeps a long build tail from dragging the model
-away from the work it was already doing while preserving every line when it
-needs the detail.
+The note carries the last 50 lines. The whole log stays on disk and the note
+names its path, so an older line is one `jobs output` call away and the ending
+itself never is.
 
 So you should never see aforge running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
@@ -345,10 +353,10 @@ job 3 started; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
 A background job never times out and is not tied to the turn that started it.
 Everything it writes goes to that log file; the last **64KB** is also held in
 memory for quick reads. When the job exits, aforge is told at the next step in
-one boundary batch, e.g.
-`while you worked: job 3 exited 1: make: *** [build] Error 1` — the last
-non-empty log line, clipped to 120 characters. Use `jobs output` for the output
-behind that headline.
+one boundary batch. Its headline, e.g.
+`job 3 exited 1: make: *** [build] Error 1`, quotes the last non-empty log line,
+clipped to 120 characters. Under it the note carries the last 50 lines and the
+path to the full log; use `jobs output` for anything older than that tail.
 
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
 

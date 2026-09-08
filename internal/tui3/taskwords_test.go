@@ -472,7 +472,7 @@ func TestTheStateNobodyCouldJudgeReadsAsNeedingYourLook(t *testing.T) {
 // (task.go's [mergeScreenWords]).
 //
 // THIS TEST IS WHAT MAKES THE TABLE A GUARANTEE. It reads the engine's OWN const
-// block — the four strings [session.TaskNotice].Merge can carry, spelled once in
+// block — the strings [session.TaskNotice].Merge can carry, spelled once in
 // internal/session — and fails when any of them has no line in the table. A
 // fifth outcome added to the engine breaks this test by name on the day it is
 // added, rather than reaching somebody's screen as a word nobody can read.
@@ -533,7 +533,7 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 	}
 }
 
-// engineMergeWords is the FOUR STRINGS [session.TaskNotice].Merge can carry, read
+// engineMergeWords is the strings [session.TaskNotice].Merge can carry, read
 // out of internal/session's own const block.
 //
 // IT PARSES THE SOURCE rather than importing them, because they are unexported —
@@ -579,9 +579,40 @@ func engineMergeWords(t *testing.T) []string {
 	// A READING THAT FOUND NOTHING IS A BROKEN READING, not an empty engine. The
 	// const block moving to another file must fail here loudly rather than pass
 	// this test by having nothing to check.
-	if len(words) < 4 {
-		t.Fatalf("%s: found %v, and internal/session has always published four merge words —\n"+
+	if len(words) < 5 {
+		t.Fatalf("%s: found %v, and internal/session publishes five merge words —\n"+
 			"the const block has moved and this reader has to be pointed at it", source, words)
 	}
 	return words
+}
+
+// C13: a finished branch kept off a protected checkout is named the same way
+// on the settled card, the rail and the room, and the engine's bare token never
+// becomes a person-facing label.
+func TestC13AKeptLandingSaysBranchKeptEverywhere(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Protect the checkout", session.TaskDone,
+		session.TaskNotice{Merge: mergeWordKept, Branch: "task/protect"})})
+	node := a.tasks[7]
+	want := taskBranchKept + " · task/protect"
+
+	if got := plain(strings.Join(a.railUnder(node, 60), "\n")); got != want {
+		t.Fatalf("the rail says %q, want %q", got, want)
+	}
+	card := &taskDone{merge: mergeWordKept, branch: "task/protect"}
+	if got := plain(a.doneTail(card)); !strings.Contains(got, " · "+want) {
+		t.Fatalf("the settled card says %q, want it to contain %q", got, want)
+	}
+	if got := a.roomStateWord(node); got != taskBranchKept {
+		t.Fatalf("the room header says %q, want %q", got, taskBranchKept)
+	}
+	for where, got := range map[string]string{
+		"rail": plain(strings.Join(a.railUnder(node, 60), "\n")),
+		"card": plain(a.doneTail(card)),
+		"room": a.roomStateWord(node),
+	} {
+		if got == mergeWordKept || strings.Contains(got, " · "+mergeWordKept+" · ") {
+			t.Fatalf("the %s draws the engine token on its own: %q", where, got)
+		}
+	}
 }

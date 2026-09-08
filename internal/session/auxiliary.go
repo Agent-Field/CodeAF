@@ -98,6 +98,12 @@ func (a *Agent) callRole(
 		sessionDefault = a.model
 	}
 	a.mu.Unlock()
+	// ONE ESC SPENDS ONE PLANNER AND ONE TITLE. A second claim in the same
+	// generation is silence — the leftover race and the redirect must not
+	// each fire their own (interrupt_fan.go, F13/F17).
+	if err := a.interrupt.allow(role); err != nil {
+		return nil, "", err
+	}
 	rungs, err := roles.Ladder(roles.Source(source), role, sessionDefault)
 	if err != nil {
 		return nil, "", err

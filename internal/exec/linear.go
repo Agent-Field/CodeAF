@@ -1148,6 +1148,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// ever run needs the ask.
 		for index, call := range calls {
 			outcome.record(call, results[index].IsError)
+			outcome.noteCommand(call)
 		}
 
 		trace.turn(outcome.Turns, response, calls, results, "")
@@ -1374,6 +1375,11 @@ func (l *Linear) land(
 	// would let a measurement push Run past the deadline its caller leased it.
 	PhotographAfter(ctx, l.workspace, l.history, l.deadline, task, opening,
 		leafMovedTheTree(l.workspace, task.leafKey()), outcome)
+	// A closing photograph's finding used to reach nobody when a leaf had
+	// already been told to land: the record held `"red":1`, but only a leaf
+	// with room for a close was ever told. Assignment rather than append makes a
+	// later landing clear a finding the leaf settled over its fresh photograph.
+	outcome.Standing = SelfCloseFindings(outcome)
 	outcome.Elapsed = time.Since(started)
 	// AND THE METER IS READ AT LAND, NOT AT THE GRANT. The two live bounds are
 	// read when the landing reserve is handed out, and then the landing turns

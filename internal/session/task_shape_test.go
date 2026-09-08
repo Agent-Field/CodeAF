@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +74,40 @@ var shapedAnswer = `{"title":"` + shapedTitle +
 	`question, no three-item lists, no sentence that would be true of any launch.",` +
 	`"acceptance":"` + shapedAcceptance + `"}`
 
+// C2: a /task shape that asks to work in place inside a repository is given the
+// same branch isolation as a model proposal, and its start note says so once.
+func TestC2APersonsShapedTaskCannotBePutInARepositoryCheckoutByTheShaper(t *testing.T) {
+	repo := newTestRepo(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	answer := `{"title":"isolated note","brief":"write isolated.txt","acceptance":"isolated.txt exists","where":"in place"}`
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+		config.RolesSource = shaperSettings()
+	})
+	world, release := heldTaskWorld(t, agent, "isolated.txt", "only in the task copy\n")
+	id, _, note, err := agent.StartTask(t.Context(), "write the isolated note")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := <-world
+	want := whereRedirectSentence("in place", canonicalPath(repo))
+	if strings.Count(note, want) != 1 {
+		t.Fatalf("start note does not carry the redirect once: %q", note)
+	}
+	if tree.root != canonicalPath(repo) || !withinDir(place.Trees(), tree.dir) || !strings.HasPrefix(tree.branch, "task/") {
+		t.Fatalf("tree = %+v, want a task branch under the session trees", tree)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "isolated.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the repository checkout was written: %v", err)
+	}
+	release()
+	waitDoneNode(t, agent.graph().node(id))
+}
+
 // THE NODE IS ADMITTED WITH THE SHAPED BRIEF AND THE SHAPED NAME, and the two
 // things a person reads underneath are still their own words: the summary under
 // the row, and the request the worker is told outranks anything a model wrote.
@@ -122,6 +158,65 @@ func TestAPersonsTaskIsAdmittedWithTheShapedBrief(t *testing.T) {
 	}
 	if got := client.efforts[0]; got != provider.EffortHigh {
 		t.Fatalf("effort = %q, want the level the tier named", got)
+	}
+}
+
+// A PASTED ISSUE'S BACKTICKED REPRODUCTION NEVER REACHES THE DOOR IT STARTED
+// THROUGH.
+//
+// The measured ask named `chmod 000 tox.ini` in the punctuation nearly every
+// bug report uses, and the door once treated it as the work's check. Driving
+// the ask through StartTask proves the admitted node keeps the account boundary;
+// reading that node's real door and the file's mode proves the command was
+// neither offered nor run, while the check the shaper authored still arrives.
+func TestAPastedIssuesBacktickedCommandNeverReachesTheDoorItStartedThrough(t *testing.T) {
+	tree := t.TempDir()
+	tox := writeCheckFile(t, tree, "tox.ini", "[tox]\n", 0o644)
+	writeCheckFile(t, tree, "check.sh", "#!/bin/sh\nexit 0\n", 0o755)
+	ask := "Pasted issue body. Repro: `chmod 000 tox.ini`, then watch the suite fail."
+	answer := "{\"title\":\"repair tox\",\"brief\":\"Repair the tox configuration and check it with `check.sh`.\",\"acceptance\":\"`check.sh` passes.\"}"
+	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse(answer), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(config *Config) {
+		config.Workspace = tree
+		config.TaskAudit = true
+		config.RolesSource = shaperSettings()
+	})
+	ran := make(chan uint64, 1)
+	stubbedGraph(agent, func(node *TaskNode) {
+		node.graph.complete(node, TaskDone)
+		ran <- node.id
+	})
+
+	id, _, _, err := agent.StartTask(t.Context(), ask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled(t, ran)
+	node := agent.graph().node(id)
+	if node == nil {
+		t.Fatal("the pasted issue did not produce an admitted node")
+	}
+	door := auditDoorFor(node, auditPlace{ground: tree, ran: tree})
+	if len(door.checks) != 1 || door.checks[0] != "check.sh" {
+		t.Fatalf("the admitted node's checks are %q, want only the tree's own check.sh", door.checks)
+	}
+	if containsWord(door.allowed, "chmod 000 tox.ini") {
+		t.Fatalf("the pasted reproduction entered the admitted node's door: %q", door.allowed)
+	}
+	if strings.Contains(door.offer(), "chmod 000 tox.ini") {
+		t.Fatalf("the admitted node offered the pasted reproduction:\n%s", door.offer())
+	}
+	if _, ok := auditRefusal("chmod 000 tox.ini", door.allowed); ok {
+		t.Fatal("the admitted node's gate allowed the pasted reproduction")
+	}
+	info, err := os.Stat(tox)
+	if err != nil {
+		t.Fatalf("stat tox.ini after the task started: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o644 {
+		t.Fatalf("tox.ini mode after the task started = %04o, want 0644", mode)
 	}
 }
 

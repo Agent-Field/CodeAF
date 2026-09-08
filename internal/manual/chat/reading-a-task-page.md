@@ -17,6 +17,18 @@ been going, what it has cost and how many calls it has made.
 
 Nothing here is thrown away — what is folded is one keypress from open.
 
+## When did this task start — the task page says nothing where the time should be, or `started` is blank on a finished task
+
+**The time on one task's own page comes from that task's record.** Its completion card says
+`started 14:02` only when the record carries the instant the work began. Reopening the
+conversation does not replace that instant with the time you sat down.
+
+An older record may carry a duration but no start or landing instant. When that duration is
+at least one second, the settled task page shows it in the header — for example `12m` —
+while the completion card omits the entire `started 14:02` segment. A shorter or absent
+duration leaves the header figure out too. The duration is never used to invent a
+wall-clock time.
+
 ## Why most of the work is hidden on a task page — the `▸ worked` chips, the caption outline, and `ctrl+e`
 
 **This is the answer to "my task page is hiding most of the work", "where did the tool
@@ -163,10 +175,11 @@ Every word it draws:
 - `waiting` — still running, but its calls to the model are being paced.
 - `stopping` — you ended it and it is still letting go; `stopped` once it has.
 - `needs your look` — it finished and nobody could say whether the work holds.
-- `merged`, `in your own folder`, `conflicted`, `stopped`, `done`, `failed` — it is over,
-  and the word says how it ended: its branch came home; there was no branch to bring home,
-  so it edited your own files; the merge clashed; it was ended early; it is over and nothing
-  was said about a branch; or it did not come off.
+- `merged`, `branch kept`, `in your own folder`, `conflicted`, `stopped`, `done`, `failed`
+  — it is over, and the word says how it ended: its branch came home; the work is finished
+  and left on its own branch because your checkout is one aforge will not write to; there
+  was no branch to bring home, so it edited your own files; the merge clashed; it was ended
+  early; it is over and nothing was said about a branch; or it did not come off.
 - A sub-harness being designed says what it is doing in its own words — `designing`, and
   `awaiting your look` while its page sits waiting on you.
 

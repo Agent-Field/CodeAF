@@ -1040,7 +1040,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 		}
 		if planNode != nil {
-			plans.recordOutcome(planGraph, planNode, outcome, err)
+			plans.recordOutcome(planPrefix, planGraph, planNode, outcome, err)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
 			// A cancel is news for the plan above this leaf, and it is the one
@@ -1963,7 +1963,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
 		if planNode != nil {
-			plans.recordOutcome(planGraph, planNode, outcome, nil)
+			plans.recordOutcome(planPrefix, planGraph, planNode, outcome, nil)
 		}
 		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
 			// The recalibration report reaches the job's RECORD, not a stdout the
@@ -3017,28 +3017,29 @@ func settlementShortWords(evidence store.DeliveryGate) string {
 // rule the person set and the work broke, each of them settles the answer to no
 // without a model being asked anything.
 //
-// IT WIDENS NOTHING. A leaf that failed on the wire having written nothing has
-// no delivery to judge and fails exactly as it did. A leaf whose own work
-// errored was judged by the work and fails exactly as it did. And a gate that
-// could not be reached leaves the failure standing, because the failure is
-// already there and only a positive answer may overturn it — which is the
-// opposite of the gate's own fail-open direction, and deliberately so. So does a
-// settlement whose journal row could not be written: see settlementStands.
+// IT WIDENS NOTHING ELSE. A job that failed on the wire having left nothing on
+// its record has no delivery to judge and fails exactly as it did. A leaf whose
+// own work errored was judged by the work and fails exactly as it did. And a
+// gate that could not be reached leaves the failure standing, because the
+// failure is already there and only a positive answer may overturn it — which
+// is the opposite of the gate's own fail-open direction, and deliberately so.
+// So does a settlement whose journal row could not be written: see
+// settlementStands.
 func settledOnTheTree(ctx context.Context, settings config.Config, client *pool.Client,
 	graph *store.Store, node store.Node, task exec.Task, outcome *exec.Outcome,
 	record artifactRecord, artifacts []string, jobDir, workerModel string,
 ) (string, bool) {
-	if !failedOnTheWire(outcome) || len(artifacts) == 0 {
+	landed := jobArtifacts(record, artifacts)
+	if !failedOnTheWire(outcome) || len(landed) == 0 {
 		return "", false
 	}
 	// The delivery is what the person would have been handed, built exactly as
 	// the delivered path builds it: whatever the worker had said by the time it
-	// was cut off, and the files it left. A worker cut off mid-turn has often
+	// was cut off, and the files the run left. A worker cut off mid-turn has often
 	// said nothing at all, and then the files ARE the delivery — the same shape
 	// a leaf that answers with a file and no prose already produces.
-	delivery := outcome.Text + summaryFileList + strings.Join(artifacts, "\n")
-	records := gateEvidence(node, task.Spec, outcome, jobArtifacts(record, artifacts),
-		true, jobDir)
+	delivery := outcome.Text + summaryFileList + strings.Join(landed, "\n")
+	records := gateEvidence(node, task.Spec, outcome, landed, true, jobDir)
 	gateCtx := withRepairJournal(ctx, graph, node.ID)
 	gate := revision.JudgeDeliverable(gateCtx, settings, client, graph, node, delivery,
 		task.Contract, records, workerModel)
@@ -4226,28 +4227,29 @@ func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, strin
 	return prefix, entry.graph, nil, entry.model, entry.client
 }
 
-// recordOutcome writes a leaf's measured ending onto its plan node — the same
-// fields, in the same shape, that the headless scheduler records.
-func (j *jobPlans) recordOutcome(graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error) {
+// recordOutcome writes a leaf's measured ending onto its plan node through the
+// same seam, in the same shape, that the headless scheduler uses.
+func (j *jobPlans) recordOutcome(prefix string, graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error) {
 	locks := j.locksFor(graph)
 	locks.document.Lock()
 	defer locks.document.Unlock()
-	if outcome != nil {
-		node.Turns = outcome.Turns
-		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
-		node.Cost = outcome.Usage.Cost
-		node.Stop = string(outcome.Stop)
-		node.Verdict = outcome.Verdict
-		node.Artifacts = outcome.Artifacts
-		node.Result = outcome.Text
-		node.Checked = outcome.Account.Summary()
-		node.Calibration = append([]string(nil), outcome.Calibration...)
+	exec.Settle(node, outcome, err, func() { j.journalSettled(prefix, graph) })
+}
+
+// journalSettled persists the plan document a leaf has just settled, so a
+// restart restores the job as it happened rather than as it was planned. Its
+// caller holds this document's lock, and taking the registry lock from there is
+// the document-then-registry direction put already uses; the reverse direction
+// is the one the registry forbids.
+func (j *jobPlans) journalSettled(prefix string, graph *plan.Graph) {
+	if j.journal == nil || prefix == "" {
+		return
 	}
-	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
-		node.State = plan.StateFailed
-	} else {
-		node.State = plan.StateDone
+	entry, ok := j.get(prefix)
+	if !ok || entry.graph != graph {
+		return
 	}
+	j.journal(prefix, entry)
 }
 
 // takeIfRoot removes and returns a job's graph when the landed node is that

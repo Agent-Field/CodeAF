@@ -311,7 +311,8 @@
       },
       "picked_at": "2026-09-02T19:50:21Z",
       "measured": "2026-09-03",
-      "constraints": "lib/constraints/pypa__virtualenv.txt"
+      "constraints": "lib/constraints/pypa__virtualenv.txt",
+      "version": "20.39.1.dev3+g1d4a33811"
     },
     {
       "id": "pypa-build-860",

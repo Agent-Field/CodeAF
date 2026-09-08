@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/leave"
 	"github.com/Agent-Field/aforge-v2/internal/openrouterauth"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -461,6 +463,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// The profile answers this question live on every ordinary launch, but
+		// --yolo is the one launch that opens the gate without writing that row,
+		// so its forced posture has to reach the surface by hand instead.
+		ApprovalMode: v3SurfacePosture(*yolo),
 		// AND WHETHER THOSE ROWS SEAT ANYTHING THIS RUN. `--one-model` empties the
 		// roles source and the task model above, so the crew in the profile is
 		// still on disk and still seats nothing — and a surface that did not know
@@ -1318,10 +1324,9 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	}
 	// AND WHICH MACHINE BEHIND THAT MODEL, which is the row beside routing and a
 	// different question: routing says what a request PREFERS, and this says
-	// which endpoint it actually goes to (internal/config's lane keys). It is
-	// resolved here, with routing, because it is resolved the same way — a
-	// settings read on this side of the door, an already-decided answer handed
-	// down — and it is handed to a process-wide knob rather than onto the config
+	// which endpoint it actually goes to (internal/config's lane keys). The
+	// shared resolution lives in internal/config so every door gets the same
+	// answer, and it is handed to a process-wide knob rather than onto the config
 	// because the picker rewrites it while the program is running
 	// (internal/provider's lanepin.go says why that is not a Config field).
 	//
@@ -1331,25 +1336,10 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// so it must not be able to forget what the wire said about the row while
 	// nobody has touched it. A person's own act goes to [provider.RepinLane]
 	// (internal/tui3's laneRowChanged), which forgets unconditionally.
-	provider.SetLanePin(v3LanePin(profileDir))
-	// And whether a slow answer is worth one extra call to rescue. It is one
-	// switch over the hedge and the probe together, for the reason it is one row.
-	provider.SetLaneGuard(config.LaneGuardAt(profileDir))
+	// The speed guard travels with the pin because the adjacent rows are one
+	// routing posture and two readers of that posture would drift.
+	config.InstallLaneRows(profileDir)
 	return cfg, nil
-}
-
-// v3LanePin reads the conversation's lane row into the answer the transport
-// takes. The three states of the row are the three states of the pin, and a row
-// nobody has written is `auto` — the belief chooses per answer.
-func v3LanePin(profileDir string) provider.LanePin {
-	slot := config.LaneSlotTalk
-	if name, pinned := config.LanePinned(profileDir, slot); pinned {
-		return provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(profileDir, slot)}
-	}
-	if strings.EqualFold(config.LaneAt(profileDir, slot), config.LaneOpenRouter) {
-		return provider.LanePin{OpenRouter: true}
-	}
-	return provider.LanePin{}
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the
@@ -1439,6 +1429,18 @@ func v3Connect(profileDir string) *connect.Manager {
 		return nil
 	}
 	return manager
+}
+
+// v3SurfacePosture is the tool-approval posture this LAUNCH hands the surface,
+// and it exists because the flag and the profile row open the same gate by two
+// different means. An empty answer is deliberate: on every ordinary launch it
+// leaves the surface reading the profile live, while --yolo's forced allow has
+// no row there to read.
+func v3SurfacePosture(yolo bool) string {
+	if yolo {
+		return string(approval.ActionAllow)
+	}
+	return ""
 }
 
 // v3Policy builds the tool gate from the two approval rows.
@@ -2117,12 +2119,37 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
 func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, resumed bool) error {
+	// The leaving road stands before session opening because opening can take
+	// time, and a signal there would otherwise take the default disposition and
+	// skip every defer — the whole of #471. Cancelling the turn is all the
+	// leaving work needed here: the deferred agent.Close below settles the tasks
+	// and checkpoint. Defers run last-in-first-out, so Close runs before this
+	// road stands down and keeps the second signal live through a close that can
+	// take the turn's grace plus two job rounds.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var leaving atomic.Bool
+	// A leaving somebody asked for is not a failure to report: a person who
+	// typed kill -INT is not owed an "error: context canceled" line, and the
+	// manual promises the surface the same clean status-0 exit.
+	reported := func(failure error) error {
+		if leaving.Load() {
+			return nil
+		}
+		return failure
+	}
+	stopLeaving := leave.On(func() {
+		leaving.Store(true)
+		cancel()
+	}, nil)
+	defer stopLeaving()
+
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
 	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace, v3OpenSession)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	agent.SetReasoning(level)
 	if notice != "" {
@@ -2132,7 +2159,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	// wrote tracks whether the reply has begun, so a tool line never opens the
 	// output with a stray blank line and never lands mid-sentence.
@@ -2177,7 +2204,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 		}
 	}
 	newline()
-	return failure
+	return reported(failure)
 }
 
 // v3RecentSessionSlots bounds one listing. Twenty is far more than the four the

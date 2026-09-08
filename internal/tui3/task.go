@@ -206,27 +206,30 @@ type taskNode struct {
 	// every row from an older engine or checkpoint, drawn as it always was
 	// (taskending.go).
 	ending session.TaskEnding
-	// began is the moment the node started, derived once from the update's own
-	// Elapsed so the clock is the frame's and not the event's. met is when this
-	// surface first heard of the node at all, which is the honest spawn time for
-	// a node that never reached running IN THIS WINDOW — see [taskNode.restored]
-	// for the case where it is not.
-	began, met time.Time
+	// started and ended are the record's own instants, carried by the engine on
+	// every node update when it has them. began is the older live fallback,
+	// derived once from the update's own Elapsed so the clock is the frame's and
+	// not the event's. met is when this surface first heard of the node at all,
+	// which is the honest spawn time for a node that never reached running IN THIS
+	// WINDOW — see [taskNode.restored] for the case where it is not.
+	started, ended time.Time
+	began, met     time.Time
 	// restored is a node this window never watched: the first news it had of it
 	// was already settled, which is what a conversation reopened off a checkpoint
 	// replays (session's task_run.go rebuilds the roster from the graph).
 	//
-	// THE CLOCK ON ONE OF THESE BELONGS TO NOBODY. The checkpoint keeps how long
-	// the work RAN and never when it started (task_store.go writes elapsed_ms and
-	// no stamp), so met is the moment this terminal opened and not the moment the
-	// work began — and met plus elapsed, which is what the page used to date these
-	// rows by, is a landing time in the FUTURE. A window opened at 23:40 dated a
-	// twelve-minute node at 23:52 and the tasks place's own date filter then threw
-	// it off the page altogether.
+	// THE RECORDED CLOCK ON ONE OF THESE BELONGS TO THE WORK. A current checkpoint
+	// keeps the instants the work started and landed beside how long it ran, so a
+	// reopened surface reads those facts directly. An older checkpoint may carry
+	// only elapsed_ms; there met is the moment this terminal opened and not the
+	// moment the work began — and met plus elapsed, which is what the page used to
+	// date these rows by, is a landing time in the FUTURE. A window opened at 23:40
+	// dated a twelve-minute node at 23:52 and the tasks place's own date filter then
+	// threw it off the page altogether.
 	//
-	// So a restored node has no start and no landing time, and the emptiness law
-	// draws neither ([taskNode.spawnedAt], [taskNodeEnded]): absence for want of a
-	// figure is silence, never a guess.
+	// So a restored node reads the record's start and landing time, and one whose
+	// record genuinely carried neither draws neither ([taskNode.spawnedAt],
+	// [taskNodeEnded]): absence for want of a figure is silence, never a guess.
 	restored bool
 	// elapsed is the node's final age, as the update that ended it reported.
 	elapsed time.Duration
@@ -426,12 +429,16 @@ func taskRenamesContext(notice *session.TaskNotice, node *taskNode) bool {
 // it is deliberately not the moment the proposal was made: a question asked at
 // 13:58 and answered at 14:02 started at 14:02.
 //
-// A NODE THIS WINDOW NEVER WATCHED HAS NO START, and answers the zero time so
-// that the card draws no stamp at all. Meeting a settled node is meeting it
-// AFTER the fact — the terminal's open time is not the work's start, and a card
-// that stamped one with the other told a person the work happened at the moment
-// they sat down ([taskNode.restored] carries the whole reasoning).
+// A NODE THIS WINDOW NEVER WATCHED READS THE RECORD'S START. Only a record that
+// genuinely carries none answers the zero time so the card draws no stamp at
+// all. Meeting a settled node is meeting it AFTER the fact — the terminal's open
+// time is not the work's start, and a card that stamped one with the other told a
+// person the work happened at the moment they sat down ([taskNode.restored]
+// carries the whole reasoning).
 func (n *taskNode) spawnedAt() time.Time {
+	if !n.started.IsZero() {
+		return n.started
+	}
 	if !n.began.IsZero() {
 		return n.began
 	}
@@ -493,6 +500,7 @@ const (
 	mergeWordConflicted = "conflicted"
 	mergeWordInPlace    = "inplace"
 	mergeWordAborted    = "aborted"
+	mergeWordKept       = "kept"
 )
 
 // ── WHERE THE WORK LANDED, IN A PERSON'S WORDS ──────────────────────────────
@@ -522,7 +530,7 @@ const (
 // instead, because "this work is over" is true of every merge outcome there can
 // be and a token nobody can read is true of nothing.
 var mergeScreenWords = map[string]string{
-	// Two of the four already mean on screen what they mean in the branch.
+	// Two of the five already mean on screen what they mean in the branch.
 	mergeWordMerged:     mergeWordMerged,
 	mergeWordConflicted: mergeWordConflicted,
 	// "aborted" reads as a crash and is almost never one: the commonest way a
@@ -530,6 +538,9 @@ var mergeScreenWords = map[string]string{
 	// given (see [taskStoppedKept], which adds the branch clause where a row has
 	// the cells for it).
 	mergeWordAborted: taskStoppedWord,
+	// "kept" says what the engine did with a ref; the person-facing fact is
+	// that a finished branch is waiting for them to take it.
+	mergeWordKept: taskBranchKept,
 	// "inplace" is not an outcome at all — it is WHERE the work is. There was no
 	// branch, so nothing had to come home, and the fact a person needs is that
 	// their own files were the ones edited.
@@ -2463,11 +2474,11 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 // off. That is worth keeping — it is why the roster keeps everything — and it is
 // not worth the top of the column and a group that never folds.
 //
-// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Three
+// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Four
 // outcomes pass it and nothing else does: work nobody could judge, which moves
 // only when a person decides (session's ResolveUnverified); a branch that
-// conflicted; and a run that stopped with its branch kept. The last two are the
-// same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
+// was deliberately kept; a branch that conflicted; and a run that stopped with
+// its branch kept. The last three are the same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
 // nobody but a person is going to bring home — and they are read off the merge
 // word rather than off the state, because a failed node and a done node can each
 // wear either one. A failure with NO kept branch left nothing behind to deliver,
@@ -2521,9 +2532,9 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 // it lives on a branch that never came home, and nothing but a person is going
 // to bring it home.
 //
-// THE BRANCH IS THE WHOLE OF THE CLAIM. "conflicted" and "aborted" are the two
-// merge words session writes when it keeps a branch (task_run.go's comeHome and
-// abortedMerge), and a node wearing one of them WITH a branch name has real work
+// THE BRANCH IS THE WHOLE OF THE CLAIM. "kept", "conflicted" and "aborted" are
+// the merge words session writes when it keeps a branch (task_run.go's comeHome
+// and abortedMerge), and a node wearing one of them WITH a branch name has real work
 // sitting somewhere a person can go and get. A node that ran in the person's own
 // tree, or one that ended before there was ever a branch, wears no name here and
 // has left nothing behind — so it is not undelivered, it is simply over.
@@ -2590,7 +2601,7 @@ func (a *app) taskParentDeciding(node *taskNode) bool {
 
 func taskUndelivered(node *taskNode) bool {
 	switch node.merge {
-	case mergeWordConflicted, mergeWordAborted:
+	case mergeWordConflicted, mergeWordAborted, mergeWordKept:
 		return strings.TrimSpace(node.branch) != ""
 	}
 	return false
@@ -4964,6 +4975,10 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		paint, text = a.pal.warn, taskUnverifiedWaits
 	default:
 		switch node.merge {
+		case mergeWordKept:
+			// FINISHED AND WAITING ON ITS BRANCH. The state stays done because the
+			// work is complete; the row names the one action left to the person.
+			text = taskBranchKept + " · " + node.branch
 		case mergeWordConflicted:
 			// THE ONE LOUD ROW ON THE RAIL. A branch that did not merge is work
 			// that is finished and not delivered, and its branch is the only
@@ -5558,6 +5573,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// costs a clock that is not there.
 		node = &taskNode{
 			id: notice.ID, ident: identFor(notice.ID), met: a.now(),
+			started: notice.StartedAt, ended: notice.EndedAt,
 			restored: notice.State != session.TaskRunning && notice.State != session.TaskQueued,
 		}
 		// THE CONTRACT IS COPIED OFF THE PROPOSAL, ONCE. The updates carry a state
@@ -5688,6 +5704,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// that stood, which is the whole of what [taskRenamesContext] lets through.
 	if word := strings.TrimSpace(notice.Context); word != "" {
 		node.context = word
+	}
+	// THE RECORD'S CLOCK IS KEPT LIKE EVERY OTHER FACT ABOVE. A later resolution
+	// may move the landing instant, while an update from an older engine that
+	// carries no stamp cannot erase one this surface already received.
+	if !notice.StartedAt.IsZero() {
+		node.started = notice.StartedAt
+	}
+	if !notice.EndedAt.IsZero() {
+		node.ended = notice.EndedAt
 	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.

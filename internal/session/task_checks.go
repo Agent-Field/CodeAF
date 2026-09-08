@@ -12,7 +12,9 @@ package session
 //	(a) THE CHECK THE WORK DECLARES — every command the node's own document
 //	    names, read out of the brief and the frozen acceptance the node was
 //	    finished against, and kept only if the checker could really run it where
-//	    it is standing ([declaredChecks], [runnableHere]).
+//	    it is standing ([declaredChecks], [runnableHere]). A check of either
+//	    spelling is read from the work's own account and never from the person's
+//	    pasted words.
 //	(b) THE CHECK THE WORK RAN — every command the last worker itself ran as one
 //	    command, read off its own tool receipts ([ranChecks]).
 //	(c) THE ALWAYS-SAFE READING COMMANDS — the ones that print and cannot change
@@ -271,7 +273,11 @@ func plainDoor(allowed []string) auditDoor {
 func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
 	var checks []string
 	if node != nil {
-		checks = appendChecks(checks, declaredChecks(node.instruction(), place.ground))
+		var declared []string
+		for _, source := range node.checkTexts() {
+			declared = append(declared, declaredChecks(source.text, place.ground, source.from)...)
+		}
+		checks = appendChecks(checks, declared)
 		checks = appendChecks(checks, ranChecks(node.lastReceipts(), place.ran))
 		// AND SOURCE (c): THE CHECKS THIS NODE OWNS FOR THE FAMILY IT HANDED OUT
 		// ([TaskNode.Family]). They were taken off its parts because a check that
@@ -481,6 +487,29 @@ func appendChecks(checks, more []string) []string {
 	return checks
 }
 
+// checkSource states whose account named a candidate check. A check belongs to
+// the work, never to a shell transcript in the person's pasted words.
+//
+// THE ZERO VALUE IS THE RESTRICTIVE ONE, AND THAT ORDER IS THE POINT. Both
+// callers name the account explicitly today, but a third one written later
+// that forgets to will be handed the person's reading rather than the work's —
+// so a forgotten field costs a run one check it could have made, which is
+// recoverable, instead of costing the gate itself, which is how
+// `chmod 000 tox.ini` came out of a pasted reproduction and ran.
+type checkSource int
+
+const (
+	checksFromAsk checkSource = iota
+	checksFromWork
+)
+
+// checkText keeps one part of a node's document beside whose account supplied
+// it, because that provenance decides whether the text names a check at all.
+type checkText struct {
+	text string
+	from checkSource
+}
+
 // declaredChecks is source (a): every command the work's OWN DOCUMENT names.
 //
 // IT READS THE TWO CONVENTIONS PROSE HAS FOR NAMING A COMMAND and no others: a
@@ -489,6 +518,15 @@ func appendChecks(checks, more []string) []string {
 // every language there is, which is exactly why they are the ones read here — a
 // rule that looked for a build system's name would be the constant this file
 // replaced, wearing a regexp.
+//
+// WHOSE ACCOUNT THE TEXT CAME FROM DECIDES WHETHER IT NAMES A CHECK AT ALL.
+// Either convention in the work's own brief or acceptance names a check; either
+// one in the person's pasted words names none. A measured tox run read
+// `chmod 000 tox.ini` out of a pasted reproduction and tried it against the
+// deliverable tree, where success would have made the project's configuration
+// unreadable without tripping the tree-moved guard. Nearly every bug report
+// backticks its reproduction, so exempting backticks was the same hole wearing
+// different punctuation.
 //
 // TWO FILTERS STAND BETWEEN A BACKTICK AND A DOOR, and they ask different
 // questions. [commandLike] asks whether the span has the SHAPE of one command —
@@ -501,7 +539,15 @@ func appendChecks(checks, more []string) []string {
 // THE GROUND IS THE DIRECTORY THE CHECKER WILL BE PUT IN, threaded down from the
 // caller that already knows it. A span resolved against any other directory
 // would be admitted or refused on the strength of a tree nobody is standing in.
-func declaredChecks(text, ground string) []string {
+func declaredChecks(text, ground string, from checkSource) []string {
+	// ONLY THE WORK'S ACCOUNT NAMES A CHECK, IN EITHER SPELLING. Every value
+	// not explicitly identified as the work stays restrictive, so a new source
+	// added later cannot read the person's words merely because its caller
+	// forgot to classify it.
+	if from != checksFromWork {
+		return nil
+	}
+
 	var out []string
 	// The odd-numbered pieces of a split on the backtick are what was BETWEEN a
 	// pair of them. A fenced block splits into empty pieces around its own
@@ -827,6 +873,29 @@ func dropStandingIn(line, ran string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(rest), true
+}
+
+// preparedAuditCommand is the command the gate will actually run: the first
+// stage of what the model typed, with trailing pipes and redirections taken
+// off. THE MODEL OFTEN ADDS THOSE ITSELF — `python3 -m pytest … 2>&1`,
+// `go test ./... > /tmp/out` — and the gate used to refuse the whole line
+// because '>' is composition, then the auditor retried the same shape on
+// the dear tier (F40). What the line RUNS is its first stage; that is
+// already the law for receipts ([firstStage]), and it is the law here so
+// the auditor never emits a command its own contract then rejects.
+//
+// A LINE THAT IS NOT A PIPELINE IS LEFT ALONE. `go test ./... && rm -rf .`
+// is still two commands, still refused, and a shorter reading of it would
+// be a wider door.
+func preparedAuditCommand(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return command
+	}
+	if stage, ok := firstStage(command); ok {
+		return strings.TrimSpace(stage)
+	}
+	return command
 }
 
 // firstStage keeps the command a line RUNS and drops what only reads its output:

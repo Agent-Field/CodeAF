@@ -56,6 +56,17 @@ The unit is a **cell**: one issue, one door, one clone, one home, one grade.
    `install_constrained: false` and the table's `why` column reads `unpinned`,
    because a cell that built an environment nobody measured must not be read
    against counts from one that was.
+
+   **The cell builds the version the base was measured at.** The working tree
+   fetches the base commit and no tags, so a project versioned from VCS
+   metadata installs as a placeholder like `0.1.dev1+g1d4a338`, which cannot
+   satisfy its own dependents — `pypa/virtualenv`'s dev group carries
+   `pre-commit-uv`, which requires `virtualenv>=20`, so pip's resolution is
+   impossible and every one of its cells read `venv: pip install --group dev
+   failed`. `pick.py` records the version its own tagged clone installed as in
+   the entry's `version`, and a cell exports it as
+   `SETUPTOOLS_SCM_PRETEND_VERSION` and `HATCH_VCS_PRETEND_VERSION` around its
+   pip installs only, never for the door.
 3. **A home of its own.** `AFORGE_HOME` moves the whole state root, so every
    cell has its own journal, call log, budget and first-run history. Only the
    api key is carried over from the person's profile; the talk model, all four
@@ -136,6 +147,7 @@ of it is written by `pick.py` and validated before the entry is kept.
 | `prompt` | what is handed to the door, verbatim — the issue, nothing else |
 | `install` | the rung of `pick.py`'s ladder the suite installed on |
 | `constraints` | the resolution that rung was measured under, frozen by `pick.py` as `lib/constraints/<owner>__<name>.txt`; every `pip install` in a cell passes `-c` on it. Absent means the entry predates the freeze, and its cells resolve the rung afresh |
+| `version` | the version the project installed as when the base was measured, read from that venv with `importlib.metadata`; a cell exports it as `SETUPTOOLS_SCM_PRETEND_VERSION` and `HATCH_VCS_PRETEND_VERSION` for its pip installs. Absent when it could not be read, and a cell then installs with whatever version its tagless tree produces |
 | `python` | the interpreter the pick was validated with |
 | `original_tests` | how the pull request's test files stood before it, or a note |
 | `f2p_at_base` | those tests run at `base`: they must fail there or it is no test |

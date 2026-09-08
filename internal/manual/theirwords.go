@@ -7,11 +7,15 @@ package manual
 // was measured sending "who can see my files privacy file access", "privacy
 // files who can see my workspace", "who can see my files when I use aforge" —
 // and this corpus is a few dozen short sections, so two words nobody said move
-// the ranking off the page:
+// the ranking off the page. Those were the numbers then; the permissions
+// section has since been reworded to carry the privacy and file-access terms,
+// so only one of the three still misses and the rows in the test file carry
+// stand-ins for the two that reach the page on their own now:
 //
-//	who can see my files                        → permissions, 3rd of 4
-//	who can see my files privacy file access    → MISS
-//	privacy files who can see my workspace      → MISS
+//	who can see my files                        → permissions, 2nd of 4
+//	who can see my files when I use aforge      → MISS
+//	who can view my files in aforge             → MISS
+//	visibility of files in the workspace        → MISS
 //
 // The person's own words are the better question and the harness is holding
 // them, so the search reads BOTH: the question as the model composed it, and

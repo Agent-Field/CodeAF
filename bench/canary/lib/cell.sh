@@ -43,6 +43,10 @@ REPO="$(field repo)"
 BASE="$(field base)"
 MERGE="$(field merge)"
 INSTALL="$(field install)"
+# The version the pick measured this base at, read the same way as `install`
+# and `constraints`. Empty for a pool written before the version was recorded,
+# and for a project whose version does not come from VCS metadata at all.
+VERSION="$(field version)"
 field prompt > "$PROMPT"
 mapfile -t TESTS < <(lines test_files)
 BASE_SUITE="$("$PY" -c 'import json,sys; b=json.load(open(sys.argv[1])).get("base_suite"); print(json.dumps(b) if b else "")' "$ENTRY")"
@@ -257,6 +261,22 @@ venv() {
   [ -n "$pin" ] && c=(-c "$pin")
   (
     cd "$WORK" || exit 1
+    # THE CELL BUILDS THE VERSION THE BASE WAS MEASURED AT. The working tree
+    # fetches exactly the base commit and no tags, so a project that takes its
+    # version from VCS metadata — hatch-vcs, setuptools-scm — installs as a
+    # placeholder like `0.1.dev1+g1d4a338`, and a placeholder version cannot
+    # satisfy the project's own dependents: pypa/virtualenv's dev group carries
+    # pre-commit-uv, which requires `virtualenv>=20`, so pip's resolution
+    # becomes impossible and every cell of that repository read `venv: pip
+    # install --group dev failed`. Fetching the tags is not the fix — the
+    # mirror's tags need not describe the base commit, and a tag fetch widens
+    # what the door can read — so the pick's measured version is pretended
+    # back. It is exported inside this subshell, around the pip installs and
+    # nowhere else: the door must not inherit it.
+    if [ -n "$VERSION" ]; then
+      export SETUPTOOLS_SCM_PRETEND_VERSION="$VERSION"
+      export HATCH_VCS_PRETEND_VERSION="$VERSION"
+    fi
     "$PY" -m venv .venv >/dev/null 2>&1 || exit 1
     .venv/bin/pip install -q --upgrade pip >/dev/null 2>&1
     case "$INSTALL" in

@@ -270,7 +270,8 @@ type TaskIndexEntry struct {
 	Tokens int `json:"tokens,omitempty"`
 	// DurationMS is how long it ran.
 	DurationMS int64 `json:"durationMs,omitempty"`
-	// EndedAt is when it landed, and it is zero for a row merged in live. Every
+	// EndedAt is when it landed. It is zero for a row merged in live and for a
+	// row rebuilt from a record that never carried the landing instant. Every
 	// ordering in this file is on it (see [taskIndexAt]).
 	EndedAt time.Time `json:"endedAt"`
 	// SessionID is the conversation that ran it — the id in the journal's
@@ -461,31 +462,39 @@ func ReadTaskIndex(path string) []TaskIndexEntry {
 	}
 	// scanner.Err() is deliberately unread: a truncated tail is the same
 	// tolerated case as an unparseable line, and the rows before it are good.
+	rows = lastPerNode(rows)
 	sortTaskIndex(rows)
-	rows = newestPerNode(rows)
 	if len(rows) > taskIndexRows {
 		rows = rows[:taskIndexRows]
 	}
 	return rows
 }
 
-// newestPerNode keeps ONE row per node: the last thing the file says about it.
+// lastPerNode keeps ONE row per node: the last thing the file says about it.
 //
 // The file is append-only and a node can be written more than once — a run's
 // root takes a row when it starts and another when it settles, a node that
 // needed somebody's look takes a second row when they give it — and this is the
 // half of that arrangement that makes the later row MEAN anything. Without it
-// both rows are in every answer, and a reader that takes the first one it sees
-// gets whichever the sort happened to put there: the drop-up drew "running"
-// beside a run that had ended, because the row saying so was still in the list.
+// both rows are in every answer. The collapse happens while the rows are still
+// in FILE ORDER, before the display sort: a running row has no landing clock,
+// and borrowing the display order would put that undated opening ahead of the
+// later line that says the run ended.
 //
 // IT IS AN INDEX, NOT AN ARCHIVE (see this file's header). The transitions a
 // node went through are in its transcript; what the index is asked is what the
 // work CAME TO, and that is one answer per node.
-func newestPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
-	seen := make(map[string]bool, len(rows))
+func lastPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
+	last := make(map[string]int, len(rows))
+	for index, row := range rows {
+		id := strings.TrimSpace(row.ID)
+		if id == "" {
+			continue
+		}
+		last[row.SessionID+"\x00"+id] = index
+	}
 	kept := rows[:0]
-	for _, row := range rows {
+	for index, row := range rows {
 		id := strings.TrimSpace(row.ID)
 		if id == "" {
 			// A row with no id names no node, so nothing can replace it and it can
@@ -495,10 +504,9 @@ func newestPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
 			continue
 		}
 		key := row.SessionID + "\x00" + id
-		if seen[key] {
+		if last[key] != index {
 			continue
 		}
-		seen[key] = true
 		kept = append(kept, row)
 	}
 	return kept
@@ -589,7 +597,9 @@ func (a *Agent) liveTaskRows() []TaskIndexEntry {
 
 // recordTaskIndex writes one landed node into the project's index. It is called
 // from the graph's report hook (task_run.go), which is the one place a node
-// reaching a final state is a fact rather than a guess.
+// reaching a final state is a fact rather than a guess. The fallback stamps that
+// live transition for any older settling road that did not put the same fact on
+// the node; a row rebuilt elsewhere keeps its honest zero instead.
 func (a *Agent) recordTaskIndex(node *TaskNode) {
 	path := a.config.taskIndexFile()
 	if path == "" || node == nil {
@@ -697,10 +707,7 @@ func (a *Agent) heldTaskIDs() map[string]bool {
 
 // indexEntryLocked is one node as a row, with the graph held.
 func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
-	elapsed := n.elapsed
-	if elapsed == 0 && !n.started.IsZero() {
-		elapsed = time.Since(n.started)
-	}
+	elapsed := n.ageLocked()
 	// The list and the count come out of the SAME call, which is what keeps them
 	// from disagreeing (see [taskFileCitations]). They are the node's LEAVINGS
 	// and not its live tally: a row is what the work came to, and what a node has
@@ -755,7 +762,7 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		Tokens:        n.input + n.output,
 		DurationMS:    elapsed.Milliseconds(),
 		SessionID:     session,
-		ArtifactURI:   taskArtifactURI(n.worktree, n.branch),
+		ArtifactURI:   taskArtifactURI(n.worktree, n.branch, n.merge),
 		TranscriptURI: taskURI(n.journal),
 	}
 	if entry.Where == "" {
@@ -777,17 +784,16 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		entry.Phase = n.life
 	}
 	if n.state.settled() {
-		// A landed node's EndedAt is now minus nothing: the report hook runs at
-		// the transition. A row rebuilt later — the live merge over a graph that
-		// still holds finished nodes — keeps the file's row instead, which is
-		// where the original stamp is.
+		// A landed node's EndedAt is the record's own fact. A restored record that
+		// predates that fact keeps the zero time, so reading history cannot date it
+		// with the instant a window happened to open.
 		//
 		// An UNVERIFIED node is landed by this measure and by every other one in
 		// this file: its run is over, its cost is frozen, and the row it writes
 		// is the project's record that the work happened and nobody could judge
 		// it. A resolution later writes a second row, which is what an
 		// append-only history is for.
-		entry.EndedAt = time.Now()
+		entry.EndedAt = n.ended
 	}
 	return entry
 }
@@ -806,7 +812,13 @@ func taskIndexParent(parent uint64) string {
 // [interrupt] checks a branch: a worktree that was merged and pruned is a
 // directory that is not there, and a row promising one would send both readers
 // of this index at a path that does not exist.
-func taskArtifactURI(worktree, branch string) string {
+func taskArtifactURI(worktree, branch, merge string) string {
+	// A KEPT LANDING'S RESULT IS THE BRANCH. The released task folder may still
+	// exist to hold files the task did not write, but it is not the checked work
+	// this finished row promises to open.
+	if branch = strings.TrimSpace(branch); merge == mergeKept && branch != "" {
+		return "git:" + branch
+	}
 	if worktree = strings.TrimSpace(worktree); worktree != "" {
 		if info, err := os.Stat(worktree); err == nil && info.IsDir() {
 			return taskURI(worktree)
