@@ -2575,8 +2575,8 @@ between **0.7 and 8 seconds**.
 are the provider's own `Retry-After` rather than anything aforge chose.
 
 **No arrow is drawn unless both halves are real** — a moment, and something that really
-happens at it. So there is no countdown when there is no other machine to go to: a
-conversation pinned to one lane, `routing` set to `off`, an endpoint that is not a router,
+happens at it. So there is no countdown when there is no other machine to go to: a home
+whose lane row pins one machine, `routing` set to `off`, an endpoint that is not a router,
 or a model with only one machine behind it. You still get the phase and the count-up,
 which are true, and no promise, which is the point — aforge would rather show you nothing
 than a countdown that expires and does nothing.

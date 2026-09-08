@@ -2040,7 +2040,7 @@ Where a model publishes no price, no cap is sent at all rather than one guessed 
 
 Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
 
-**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider your conversation actually goes to — see "choose a provider" above.
+**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above.
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
@@ -2059,7 +2059,8 @@ for the rest of this session, including the next rescue.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
-conversation; it does not change your OpenRouter privacy setting.
+home — including terminal runs and background work; it does not change your OpenRouter
+privacy setting.
 
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
@@ -2107,9 +2108,10 @@ window gives them up in — the sparkline goes first, and the note about capabil
 the uptime because `no tools` changes the answer you get. `←` or `tab` closes the lanes
 again.
 
-`enter` on a lane **pins** it: every request for this conversation goes to that lane
-and nowhere else — unless the router says that lane cannot serve that model at all, which
-is the one thing that ends a pin without you. It says so once, in the conversation
+`enter` on a lane **pins** it in your home: chat, `aforge do`, `aforge exec`, `aforge
+plan`, `aforge run` and background work all ask for that lane and nowhere else — unless
+the router says that lane cannot serve that model at all, which is the one thing that ends
+a pin without you. It says so once, in the conversation
 (`coreweave cannot serve this model; routing on auto for this model until you pin again`),
 routes that one model on auto for the rest of the run, and leaves your row and every other
 model alone. *Lanes → Pinning one lane yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
@@ -2304,8 +2306,8 @@ lane to name yet, so the walk is `auto` ↔ `openrouter`.
 The **your model** row says which lane is answering it beside the model id — `auto
 (cloudflare now)` while the choice is aforge's, `pinned: cloudflare` once it is yours.
 `lane` and `routing` are different questions: routing is what every request **prefers**
-(fastest, cheapest, or nothing at all), and lane is which endpoint your conversation
-actually lands on.
+(fastest, cheapest, or nothing at all), and lane is which endpoint requests from your home
+actually land on.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 

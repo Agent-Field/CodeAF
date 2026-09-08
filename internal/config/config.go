@@ -383,6 +383,11 @@ func load(requireKey bool) (Config, error) {
 	// (internal/calllog). It opens no file here — the first call does — so a
 	// process that never talks to a model leaves nothing behind.
 	calllog.Open(config.ProfileDir)
+	// The lane pin and guard are process-wide facts from the same profile, so
+	// they are installed beside the other profile facts here. Every door loads
+	// through this point, which closes the headless paths that used to send
+	// their first request without the lane row the person had chosen.
+	InstallLaneRows(config.ProfileDir)
 	config.VisionModel = VisionModelAt(config.ProfileDir)
 	// THE FIVE CAPABILITY SLOTS ARE ONE KNOB EACH, and this is the older
 	// surfaces' end of it (docs/MULTIMODAL.md Decision 5). They used to read

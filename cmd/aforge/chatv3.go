@@ -1324,10 +1324,9 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	}
 	// AND WHICH MACHINE BEHIND THAT MODEL, which is the row beside routing and a
 	// different question: routing says what a request PREFERS, and this says
-	// which endpoint it actually goes to (internal/config's lane keys). It is
-	// resolved here, with routing, because it is resolved the same way — a
-	// settings read on this side of the door, an already-decided answer handed
-	// down — and it is handed to a process-wide knob rather than onto the config
+	// which endpoint it actually goes to (internal/config's lane keys). The
+	// shared resolution lives in internal/config so every door gets the same
+	// answer, and it is handed to a process-wide knob rather than onto the config
 	// because the picker rewrites it while the program is running
 	// (internal/provider's lanepin.go says why that is not a Config field).
 	//
@@ -1337,25 +1336,10 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// so it must not be able to forget what the wire said about the row while
 	// nobody has touched it. A person's own act goes to [provider.RepinLane]
 	// (internal/tui3's laneRowChanged), which forgets unconditionally.
-	provider.SetLanePin(v3LanePin(profileDir))
-	// And whether a slow answer is worth one extra call to rescue. It is one
-	// switch over the hedge and the probe together, for the reason it is one row.
-	provider.SetLaneGuard(config.LaneGuardAt(profileDir))
+	// The speed guard travels with the pin because the adjacent rows are one
+	// routing posture and two readers of that posture would drift.
+	config.InstallLaneRows(profileDir)
 	return cfg, nil
-}
-
-// v3LanePin reads the conversation's lane row into the answer the transport
-// takes. The three states of the row are the three states of the pin, and a row
-// nobody has written is `auto` — the belief chooses per answer.
-func v3LanePin(profileDir string) provider.LanePin {
-	slot := config.LaneSlotTalk
-	if name, pinned := config.LanePinned(profileDir, slot); pinned {
-		return provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(profileDir, slot)}
-	}
-	if strings.EqualFold(config.LaneAt(profileDir, slot), config.LaneOpenRouter) {
-		return provider.LanePin{OpenRouter: true}
-	}
-	return provider.LanePin{}
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the

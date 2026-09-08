@@ -1037,15 +1037,7 @@ func (a *app) laneRowChanged() {
 		return
 	}
 	slot := laneSlotFor(a.model)
-	if name, pinned := config.LanePinned(a.profileDir, slot); pinned {
-		provider.RepinLane(provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(a.profileDir, slot)})
-		return
-	}
-	if strings.EqualFold(config.LaneAt(a.profileDir, slot), config.LaneOpenRouter) {
-		provider.RepinLane(provider.LanePin{OpenRouter: true})
-		return
-	}
-	provider.RepinLane(provider.LanePin{})
+	provider.RepinLane(config.LanePinAt(a.profileDir, slot))
 }
 
 // ── THE STATUS LINE ─────────────────────────────────────────────────────────
