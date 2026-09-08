@@ -147,7 +147,7 @@ turns into a conversation.
 
 ## I updated aforge on that machine and it still says the versions differ
 
-It works on the next connection, and there is nothing left to clean up by hand.
+The next connection checks the running build as well as protocol compatibility. An idle old copy is replaced automatically; a busy one is left running and the connection explains how to retire it.
 
 Something over there holds your conversation between connections. It is started by the
 first connection and outlives it, which is what lets a turn keep running after you close
@@ -157,7 +157,7 @@ the old one is still answering, which is how you can be told to update something
 updated an hour ago.
 
 So before it hands your window over, `aforge engine` asks whatever is already holding that
-workspace which build it is. Three things can be true:
+workspace which build it is. The check includes the source/build stamp even when the wire protocol has not changed; a host too old to report a build stamp is treated as an older copy. Three things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.

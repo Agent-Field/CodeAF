@@ -329,7 +329,7 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 			return []rowField{rowSay(word)}
 		}
 		return []rowField{rowSay(word+" → "+modelBase(news.Then), word)}
-	case provider.PhaseRunning, provider.PhaseBriefing:
+	case provider.PhaseRunning, provider.PhaseBriefing, provider.PhasePreparing:
 		// THE NOUN IS THE SUBSTANCE AND THE VERB IS THE FRAME, so a narrow row
 		// keeps "running" or "briefing" and lets the noun go before the clock
 		// does. The two phases share this arm because they share the shape: a

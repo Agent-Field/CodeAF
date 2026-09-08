@@ -51,6 +51,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -214,7 +215,7 @@ func clearStaleEngineHost(workspace string) error {
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
 		return nil
-	case host.Version == remote.Version:
+	case host.Version == remote.Version && host.Build == buildinfo.Identity():
 		return nil
 	}
 	// Another build, and it is answering, so it can be asked to go.

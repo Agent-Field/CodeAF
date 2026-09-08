@@ -751,3 +751,14 @@ func TestThePhaseWordsAreDrawnOnOneRowAndNeverTwice(t *testing.T) {
 		t.Fatalf("with the pulse gone the phase is on no row at all: %q", line)
 	}
 }
+
+func TestMemoryPreflightNamesItsOwnWaitBeforeTheModelIsAsked(t *testing.T) {
+	now := time.Now()
+	a := phaseApp(t, now)
+	a.awaited = now.Add(-50 * time.Second)
+	PostPhaseNews(PhaseNews{Phase: provider.PhasePreparing, Detail: "saved context", Model: phaseModel, Role: lane.RoleTalk, Since: now.Add(-3 * time.Second), At: now})
+	line, ok := a.ellipsis()
+	if !ok || !strings.Contains(plain(line), "preparing saved context · 3s") || strings.Contains(plain(line), "waiting for") {
+		t.Fatalf("misattributed helper wait: %q", plain(line))
+	}
+}

@@ -123,6 +123,8 @@ const (
 	// on, before there is a task to point at (internal/session's checkpoint.go).
 	// Detail names who it is for, so the row reads "briefing a worker".
 	PhaseBriefing Phase = "briefing"
+	// PhasePreparing names bounded context lookup before the main request starts.
+	PhasePreparing Phase = "preparing"
 	// PhaseTakingStock is the reading a turn stops for at a mark: a second mind
 	// is shown an account of the work so far and asked what is left of the ask
 	// (internal/session's checkpoint.go, [readMark]). It is a ten-to-thirty

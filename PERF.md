@@ -2104,3 +2104,20 @@ Truecolour interpolates channels directly. No new clock, I/O or background
 worker is involved. Screen-reader and lower-colour modes (including 256 colours)
 remain static because nearest palette matches can introduce abrupt hue changes.
 Tests inspect every emitted frame in both themes for smooth colour changes, a quiet loop boundary, stable width and intact Unicode.
+
+## Memory lookup before the first response
+
+Pre-turn recall shares `lane.VisiblePatience` (10 seconds) across response repair
+and model fallback; a shorter caller deadline wins. This is a cancellation ceiling,
+not a sleep: successful lookup returns immediately and the ordinary learned lane
+controller can act earlier. `RoleRecall` values interactive, critical-path latency
+without publishing its private output. Other reflex operations share the existing
+`roles.PatienceFor(RoleReflex)` (45 seconds) across retries. Recall bypasses the
+ordinary session auxiliary adapter, so its own operation now owns these bounds.
+On recall failure, the main request proceeds without selected memories. The phase
+uses the existing session heartbeat and clears before the main request starts.
+
+Host attachment compares a build identity captured at process initialization,
+including timestamp precision beyond the minute shown on screen. This adds one
+string to the existing local-socket handshake and no executable hashing or extra
+network round trip. A mismatched busy host remains alive.
