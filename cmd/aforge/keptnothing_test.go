@@ -282,3 +282,23 @@ func TestTheSentenceKeepsThePersonsVocabulary(t *testing.T) {
 		}
 	}
 }
+
+// A worker can register its last artifact after the watcher has already read
+// an empty list. The closing answer must include that late file.
+func TestTheClosingTreeAccountIncludesFilesRegisteredDuringShutdown(t *testing.T) {
+	workspace := t.TempDir()
+	outcome := headlessOutcome{Nodes: 1, workspace: workspace, stop: stopDeadline, Deliverable: "The time limit was reached."}
+	registry := &errandRegistry{}
+	path := filepath.Join(workspace, "late.txt")
+	if err := os.WriteFile(path, []byte("last work"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry.add(path)
+	outcome = groundedAfterShutdown(outcome, registry)
+	if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != path {
+		t.Fatalf("late artifact missing from closing record: %+v", outcome)
+	}
+	if !strings.Contains(outcome.Deliverable, "late.txt") || strings.Contains(outcome.Deliverable, keptNothingOpening(t)) {
+		t.Fatalf("closing answer contradicts the late file: %q", outcome.Deliverable)
+	}
+}

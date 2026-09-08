@@ -294,14 +294,15 @@ When a run did work but ended without delivering or creating or changing a file,
 ends with:
 
 ```
-Nothing reached disk: this run worked in /srv/project, editing it in place, and no file there was created or changed while it ran.
+No created or changed files were recorded: this run worked in /srv/project, editing it in place.
 ```
 
 A run that did write instead names every file by its absolute path.
 
 The run's own record is separate. On a run that does not finish cleanly, the
 `record kept at <path>` line on stderr names the private store holding its traces and job
-logs. “Nothing reached disk” is about the project directory, not that record. Under
+logs. The empty file record concerns the project directory. It does not prove the directory is
+unchanged: deletions and files outside the bounded workspace scan may be absent. Under
 `aforge do --json`, `workspace` carries the same absolute project directory.
 
 ## Where is the record of my headless run — reading a kept one-shot's store

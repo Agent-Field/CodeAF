@@ -586,21 +586,18 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	}
 	outcome.Seconds = time.Since(started).Seconds()
 	outcome.workspace = workspaceRoot
-	// AND THE ENDING SAYS WHERE THE WORK WENT. Said here, once, because five
-	// different arms compose an ending and a sixth will be written; this is
-	// the one place all of them pass through. A run handed to a resident is
-	// not spoken for: the registry this process holds is empty because the
-	// work happened somewhere else, which is not the same fact as an empty
-	// tree.
-	if deferredTo == nil {
-		outcome.Deliverable = groundedInTheTree(outcome)
-	}
 	// The wall is the case that made this necessary. A leaf cancelled by the
 	// timeout journals its usage row on the way down, which is after the
 	// watcher has returned and — until this line moved the shutdown ahead of
 	// the read — after the receipt had already been printed without it. One
 	// leaf landing that late is the whole of the 36 % under-report.
 	settle()
+	// The watcher can return while a cancelled leaf is still registering its
+	// last files. Read that record after shutdown, then describe what it holds.
+	// A resident owns a different registry and cannot be spoken for here.
+	if deferredTo == nil {
+		outcome = groundedAfterShutdown(outcome, produced)
+	}
 	priceErrand(graph, session, openedAt, &outcome)
 	return outcome, nil
 }
@@ -2544,10 +2541,21 @@ func producedWords(artifacts []string) string {
 // before-and-after read of the tree plus what the write tools recorded, and
 // that evidence deliberately excludes deletions (exec.Workspace.Artifacts drops
 // ArtifactDeleted, because a path that is gone is not a path to open). So the
-// claim is that nothing was created or changed — never that the directory is
-// as it was found, which would be false for a run that only removed something.
-const keptNothing = "Nothing reached disk: this run worked in %s, editing it in place, " +
-	"and no file there was created or changed while it ran."
+// claim concerns the recorded files, never that the directory is as it was
+// found or that no write occurred. The bounded workspace sweep can miss files.
+const keptNothing = "No created or changed files were recorded: this run worked in %s, editing it in place."
+
+// groundedAfterShutdown includes files registered while the watcher was
+// returning. The record is bounded and omits deleted paths, so an empty record
+// is reported as an empty record rather than proof the tree never changed.
+func groundedAfterShutdown(outcome headlessOutcome, produced *errandRegistry) headlessOutcome {
+	if paths := produced.list(); len(paths) > 0 {
+		outcome.Artifacts = paths
+		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, paths)
+	}
+	outcome.Deliverable = groundedInTheTree(outcome)
+	return outcome
+}
 
 // groundedInTheTree holds a refused run's closing line answerable to the
 // working directory, the way groundedInArtifacts holds it answerable to the

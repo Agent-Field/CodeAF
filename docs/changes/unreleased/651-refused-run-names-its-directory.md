@@ -16,3 +16,8 @@ The run that reported this spent 45 minutes and $1.98 across two leaves that
 made 156 shell calls between them and not one `write` or `edit`. The tree was
 correctly untouched, `-w` was correctly honoured, and the close said neither
 thing — which left the one fact that mattered to be discovered by hand.
+
+Review correction: the file record is refreshed after worker shutdown, so a late
+registered artifact reaches the ending. An empty bounded record now says
+`No created or changed files were recorded` rather than claiming no file reached
+disk; deleted paths and files outside the scan cannot support that stronger claim.

@@ -47,7 +47,7 @@ work done.
 | `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
 
 A run that ends without delivering and without writing anything says so in its own answer:
-`Nothing reached disk: this run worked in /srv/project, editing it in place, and no file there was created or changed while it ran.`
+`No created or changed files were recorded: this run worked in /srv/project, editing it in place.`
 The run's own traces live under the kept store named by the `record kept at <path>` line on stderr; that store is a different place from the working directory.
 
 Flags may appear after the task text; `do` reorders its own arguments. Naming
