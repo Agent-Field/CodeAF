@@ -1096,6 +1096,17 @@ something you never asked for — "March refers to any calendar year present in 
 names nothing distinctive, so it is refused, and the run tells you so rather than quietly
 redoing work against it.
 
+## It said I only changed one file and I changed none — why did it name a file I only told it to read or never wrote
+
+When a run changed files, the review is shown those files and any finding about the change
+must name one of them. When the run changed nothing, the review is shown the worker's own
+answer instead, and any finding is about that answer.
+
+A file you only told the run to read is never counted as a change. The review can therefore
+never say that a file you asked it to read is the only file the run changed. If you asked
+for a file that was already there, it still answers the ask: the review is told that the
+file is there and that this run did not write it.
+
 ## When the work broke something that was working — checks that passed before and fail after
 
 A run working in a repository reads that repository's **own** way of checking itself — the

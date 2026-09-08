@@ -87,16 +87,24 @@ func (e Evidence) PromisedFiles() []string {
 	return trimmedCitations(promised)
 }
 
-// MissingPromised is those of them the run did not leave behind, settled against
+// MissingPromised is those of them the workspace does not hold, settled against
 // the disk by the same rule the mechanical gate uses.
 func (e Evidence) MissingPromised() []string {
+	produced := e.producedArtifacts()
 	var missing []string
 	for _, name := range e.PromisedFiles() {
-		if !producedNonEmpty(name, e.Artifacts) {
+		if !producedNonEmpty(name, produced) {
 			missing = append(missing, name)
 		}
 	}
 	return missing
+}
+
+// producedArtifacts joins the run's own record to the names the workspace
+// sweep found for the promised-file question. Readers deciding what the run
+// changed may never call it: only Artifacts is the run's record of that answer.
+func (e Evidence) producedArtifacts() []string {
+	return append(append([]string{}, e.Artifacts...), e.Swept...)
 }
 
 // producesFiles lists the produces entries that name a file rather than an
@@ -400,17 +408,17 @@ func RemovedPublicNames(removed []string) (judgment Judgment, ok bool) {
 const producedSweepLimit = 6000
 
 // completeAgainstTheWorld settles every file this delivery is ABOUT against the
-// tree it was produced in, and adds what it finds to the record.
+// tree it was produced in, and keeps what it finds apart from the run's record.
 //
-// FAILSAFE clause 2, applied to the last record in this gate that was still an
-// account rather than an observation. What a run left behind is answered by the
-// filesystem, and the artifact registry is a report of it: a leaf that landed
-// under another node's key, a file a background job wrote after the leaf's own
-// sweep, a path recorded by a worker this process never held. igel s6 is the
-// measured case — the request asked for `feature_schema.joblib`, the gate said
-// "nothing of that name was left behind", and `model_results/feature_schema.joblib`
-// was on disk and in the graded patch. The judge then convicted a correct
-// deliverable of not having written it.
+// FAILSAFE clause 2, applied to the last answer in this gate that was still an
+// account rather than an observation. Whether the workspace holds a promised
+// name is answered by the filesystem, because the artifact registry can miss a
+// leaf that landed under another node's key, a file a background job wrote after
+// the leaf's own sweep, or a path recorded by a worker this process never held.
+// igel s6 is the measured case — the request asked for
+// `feature_schema.joblib`, the gate said "nothing of that name was left behind",
+// and `model_results/feature_schema.joblib` was on disk and in the graded patch.
+// The judge then convicted a correct deliverable of not having written it.
 //
 // A FILE ANYWHERE UNDER THE WORKSPACE THAT ANSWERS TO THE NAME IS PRODUCED, and
 // namedAs is what "answers to the name" means — the same law, read by the same
@@ -426,18 +434,22 @@ const producedSweepLimit = 6000
 //
 // It is asked ONLY about names this delivery already holds — what the request
 // named and what the plan promised — so it is one bounded walk that answers a
-// closed question, never a re-inventory of the tree.
+// closed question, never a re-inventory of the tree. The walk answers a NAME:
+// whether the workspace holds a file carrying it. That answer is not a
+// statement about what this run changed, so it lands in Swept and the run's own
+// record stays in Artifacts.
 func (e *Evidence) completeAgainstTheWorld() {
 	root := strings.TrimSpace(e.Workspace)
 	if root == "" {
 		return
 	}
+	produced := e.producedArtifacts()
 	var wanted []string
 	for _, name := range append(append([]string{}, e.Named...), producesFiles(e.Done)...) {
 		if fileKey(name) == "" {
 			continue
 		}
-		if _, held := ProducedFile(name, e.Artifacts); held {
+		if _, held := ProducedFile(name, produced); held {
 			continue
 		}
 		wanted = append(wanted, name)
@@ -449,7 +461,7 @@ func (e *Evidence) completeAgainstTheWorld() {
 	if len(found) == 0 {
 		return
 	}
-	e.Artifacts = append(append([]string{}, e.Artifacts...), found...)
+	e.Swept = append(append([]string{}, e.Swept...), found...)
 }
 
 // sweepFor is that one walk: every path under root that answers to one of these
