@@ -1519,7 +1519,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did old tool results turn into pointers during one long answer", "models-and-cost"},
 		{"what does folded results tokens mean", "models-and-cost"},
 
-		// The effort ladder. One dial with five rungs under a default of `high`,
+		// The effort ladder. One dial with five rungs under a default of `auto`,
 		// so every question about it is asked in the words somebody uses for the
 		// *feeling* they want: a deeper answer, a faster one, a model that is
 		// thinking too long for what they asked. The last two are asked by

@@ -859,12 +859,12 @@ off → low → medium → high → off; it does not offer `xhigh` or `max`.
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
-`high`, `xhigh`, `max`. There is also **off**, which is the dial left alone — aforge asks
+`high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
 for nothing and the model thinks however it thinks.
 
-**The default is `high`.** It is the **thinking** row in `/settings`, among the model rows
-beside the model you talk to, and its choices are `off, low, medium, high, xhigh, max`. The
-row is written to the profile as `effort`.
+**The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
+beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max`. The
+row is written to the profile as `effort`. Existing explicit settings remain in force.
 Move it down to make the model think less, which is what gives you faster and cheaper
 answers; move it to `xhigh` or `max` when you would rather wait and get the careful one.
 
@@ -880,7 +880,7 @@ Several things can name a rung, and the most specific one wins:
    it, think at `low`. The errands aforge runs beside your turn — naming a conversation,
    summarising it, judging where a request belongs — ask for nothing at all. Your own turn,
    and the task workers you hand work out to, take the default.
-5. **The default** — the **thinking** row, which is `high` until somebody chooses otherwise.
+5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which has a chip above the box naming it. On a task — the
@@ -892,6 +892,18 @@ The **thinking** row in `/settings` stays what it is: the answer for every conve
 that has not been dialled by hand. The keys page has the whole of it — see *The thinking
 chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
 There is no slash command for it.
+
+## Auto reasoning — use OpenRouter defaults instead of forcing high
+
+The **thinking** row in `/settings` defaults to `auto`. It omits the reasoning override
+entirely, leaving the selected model's defaults to OpenRouter. It does not disable
+thinking or force a token budget, and the model may still spend time reasoning.
+Existing explicit conversation, task, model and install levels remain in force.
+Older `off` settings mean the same thing as auto and remain readable.
+
+`--reasoning auto` clears the launch override and inherits the conversation or install
+setting; choose auto in `/settings` to change the install default. Scoped overrides
+still take precedence. Standing work and its checks keep their existing low role default.
 
 ## What low, medium, high, xhigh and max actually ask the model for
 

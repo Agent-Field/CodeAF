@@ -1639,7 +1639,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
 			Label: "thinking", Choices: EffortChoices,
-			Hint: "how hard the model thinks about your turns and the work you hand out. " +
+			Hint: "how hard the model thinks about your turns and the work you hand out. Auto leaves reasoning to the model. " +
 				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
 				"Standing items and their checks stay low whatever this says.",
 			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },

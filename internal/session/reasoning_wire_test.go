@@ -8,6 +8,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	cfgstore "github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
 // ── the reasoning level, end to end ─────────────────────────────────────────
@@ -264,5 +267,46 @@ func TestParseReasoningTakesTheFourLevelsAndNothingElse(t *testing.T) {
 	agent.SetReasoning("higher")
 	if got := agent.Reasoning(); got != "high" {
 		t.Fatalf("after a bad level the model reads %q, want the high it was set to", got)
+	}
+}
+
+// An ordinary profile must reach the real request without a reasoning override,
+// while a saved explicit level must still win after the shipped default changes.
+func TestProfileDefaultReasoningReachesTheWire(t *testing.T) {
+	for _, choice := range []string{"unset", "auto", "high"} {
+		t.Run(choice, func(t *testing.T) {
+			profile := t.TempDir()
+			if choice != "unset" {
+				rung, _ := effort.Parse(choice)
+				if err := cfgstore.WriteDefaultEffort(profile, rung); err != nil {
+					t.Fatal(err)
+				}
+			}
+			server := newReasoningServer(t, askTool, answerOK)
+			agent, err := New(Config{Workspace: t.TempDir(), Model: "vendor/default-reasoning", APIKey: "test", BaseURL: server.URL, DefaultEffort: cfgstore.DefaultEffortAt(profile)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = agent.Close() })
+			drainTurn(t, agent, "finish the task")
+			if server.requests() != 2 {
+				t.Fatalf("want both tool and answer requests, got %d", server.requests())
+			}
+			for i := 0; i < server.requests(); i++ {
+				if choice == "high" {
+					if got := server.reasoningOf(t, i); got != "high" {
+						t.Fatalf("explicit high sent %q", got)
+					}
+					continue
+				}
+				server.mu.Lock()
+				for _, field := range []string{"reasoning", "reasoning_effort", "include_reasoning"} {
+					if _, present := server.bodies[i][field]; present {
+						t.Errorf("%s request %d forced %s", choice, i, field)
+					}
+				}
+				server.mu.Unlock()
+			}
+		})
 	}
 }

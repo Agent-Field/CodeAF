@@ -6,12 +6,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
-// AN UNCONFIGURED INSTALL IS THE SHIPPED RUNG AND NOT SILENCE.
-//
-// This is the one place in this file that does not answer an unset key with
-// emptiness, and it is deliberate: the install's row is the ladder's last rung,
-// so there is nowhere further to fall through to and "and otherwise?" has to
-// have an answer.
+// Missing settings use the provider default; explicit choices survive a write.
 func TestTheInstallRungDefaultsToTheShippedOneAndSurvivesAWrite(t *testing.T) {
 	dir := t.TempDir()
 	if got := DefaultEffortAt(dir); got != effort.Ship {
@@ -40,12 +35,12 @@ func TestTheInstallRungDefaultsToTheShippedOneAndSurvivesAWrite(t *testing.T) {
 
 // The settings row and the ladder are one list: a rung added or dropped moves
 // the sheet with it rather than leaving a choice nothing can parse.
-func TestTheSettingsRowOffersExactlyTheLadderAndOff(t *testing.T) {
+func TestTheSettingsRowOffersExactlyTheLadderAndAuto(t *testing.T) {
 	if len(EffortChoices) != len(effort.Rungs)+1 {
-		t.Fatalf("the row offers %v; the ladder is %v plus off", EffortChoices, effort.Rungs)
+		t.Fatalf("the row offers %v; the ladder is %v plus auto", EffortChoices, effort.Rungs)
 	}
-	if EffortChoices[0] != "off" {
-		t.Fatalf("the row's first choice is %q, want off — an empty first option reads as broken",
+	if EffortChoices[0] != "auto" {
+		t.Fatalf("the row's first choice is %q, want auto — an empty first option reads as broken",
 			EffortChoices[0])
 	}
 	for _, choice := range EffortChoices {
@@ -53,7 +48,24 @@ func TestTheSettingsRowOffersExactlyTheLadderAndOff(t *testing.T) {
 			t.Fatalf("the row offers %q, which the ladder cannot parse", choice)
 		}
 	}
-	if got := EffortWord(effort.None); got != "off" {
-		t.Fatalf("EffortWord(absence) = %q, want off", got)
+	if got := EffortWord(effort.None); got != "auto" {
+		t.Fatalf("EffortWord(absence) = %q, want auto", got)
+	}
+}
+
+// Old profiles must keep their meaning without requiring a migration.
+func TestLegacyOffReadsAsAutoAndExplicitHighSurvives(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeChoice(dir, KeyEffort, "off", []string{"off"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := EffortWord(DefaultEffortAt(dir)); got != "auto" {
+		t.Fatalf("legacy off reads %q, want auto", got)
+	}
+	if err := WriteDefaultEffort(dir, effort.High); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultEffortAt(dir); got != effort.High {
+		t.Fatalf("explicit high was replaced with %q", got)
 	}
 }

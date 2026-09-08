@@ -1105,10 +1105,10 @@ What it changes and what it does not:
   `meta.json` — so it is still there after you close aforge and come back.
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
-  row in `/settings`, which ships at `high`.
-- **`off` is not on the chip or in the list.** The five rungs are the ladder; turning
-  thinking off entirely is the `off` choice on the **thinking** settings row.
-- With thinking set to `off` and nothing else asking for any, there is **no chip at all** —
+  row in `/settings`, which ships at `auto` (the provider default).
+- **`auto` is not on the chip or in the list.** The five rungs are the ladder; the
+  **thinking** settings row offers `auto` to use provider defaults. It does not disable thinking.
+- With thinking set to `auto` and no more specific level chosen, there is **no chip at all** —
   there is nothing to report. `ctrl+v` still works and puts the chip back at `low`.
 
 **When the chip will not move.** A thinking level dialled onto the model itself — the
@@ -2572,7 +2572,7 @@ roads always wrote.
 **It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
 never returns to "nobody said" — clearing a rung hands the work back to whatever stands
 over it, which is a decision rather than something a wheel does on its way past. Set a
-thing back to nothing in the place it is written down: the `thinking` row's own `off`.
+thing back to nothing in the place it is written down: the `thinking` row's own `auto`.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
