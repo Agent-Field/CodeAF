@@ -4170,8 +4170,11 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	// is one question with corrections hanging off it (#252, ruling 2).
 	var said string
 	for _, r := range a.roomRows(a.bodyWidth()) {
-		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
-			said = r.text
+		// Past the reading gutter and no further: what is asserted below is the
+		// first style the ROW ITSELF carries (pastGutter).
+		row := pastGutter(a.bodyWidth(), r.text)
+		if strings.HasPrefix(plain(row), glyphSteer+"the config lives under etc/") {
+			said = row
 		}
 	}
 	if said == "" {
@@ -4186,8 +4189,9 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	a.roomTouched()
 	settled := ""
 	for _, r := range a.roomRows(a.bodyWidth()) {
-		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
-			settled = r.text
+		row := pastGutter(a.bodyWidth(), r.text)
+		if strings.HasPrefix(plain(row), glyphSteer+"the config lives under etc/") {
+			settled = row
 		}
 	}
 	if !strings.Contains(settled, sgrOf(a.pal.narr)+"the config lives under etc/") {
@@ -4331,10 +4335,22 @@ func TestEveryTaskSteerConfirmsDelivery(t *testing.T) {
 	}
 }
 
-// elbowRowIn is the drawn row a task page's correction is on, plain, or "".
+// pastGutter takes the reading gutter's own cells off the front of a drawn row
+// and NOTHING else (gutter.go). The pass prepends bare spaces to a finished row,
+// ahead of the row's first style, so a test that reads what a row OPENS with —
+// its first glyph, its first SGR — has to step over exactly the air this width
+// bought. It asks [textGutterCols] rather than trimming two, because a frame at
+// the phone tier buys none and a test that assumed two would then eat the row.
+func pastGutter(width int, text string) string {
+	return strings.TrimPrefix(text, strings.Repeat(" ", textGutterCols(width)))
+}
+
+// elbowRowIn is the drawn row a task page's correction is on, plain and past the
+// gutter, or "".
 func elbowRowIn(a *app, words string) string {
-	for _, r := range a.roomRows(a.bodyWidth()) {
-		if line := plain(r.text); strings.HasPrefix(line, glyphSteer+words) {
+	width := a.bodyWidth()
+	for _, r := range a.roomRows(width) {
+		if line := pastGutter(width, plain(r.text)); strings.HasPrefix(line, glyphSteer+words) {
 			return line
 		}
 	}

@@ -124,7 +124,7 @@ func TestANarrowRoomGivesTheTrailRowToTheNameAndKeepsTheFactsUnderIt(t *testing.
 			t.Fatalf("the trail row drew the telemetry %q that belongs on the row under it:\n\t%q", never, trail)
 		}
 	}
-	if !strings.HasPrefix(trail, roomCrumbRoot) {
+	if !strings.HasPrefix(trail, a.chatCrumbWord()) {
 		t.Fatalf("the 60-column trail row lost the trail it hangs off:\n\t%q", trail)
 	}
 	// AND THE FACTS ARE STILL THERE, on their own row, ranked.

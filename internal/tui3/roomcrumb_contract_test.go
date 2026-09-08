@@ -111,7 +111,7 @@ func TestACycleInTheFamilyEndsTheTrailRatherThanTheProgram(t *testing.T) {
 	a.tasks[1].parent = itoa(4)
 	a.touch()
 	trail := a.roomTrail()
-	if !strings.HasPrefix(trail, roomCrumbRoot) || !strings.HasSuffix(trail, "Cut the goldens") {
+	if !strings.HasPrefix(trail, a.chatCrumbWord()) || !strings.HasSuffix(trail, "Cut the goldens") {
 		t.Fatalf("the trail lost its two ends walking a cycle: %q", trail)
 	}
 	if n := strings.Count(trail, roomCrumbSep); n > crumbLayoutCap {
@@ -181,17 +181,18 @@ func TestWalkingUpTheTrailKeepsEachPagesOwnDraft(t *testing.T) {
 // fold opens the nearest ancestor it hid — which is the immediate parent, and
 // the crumb that would come back first if the terminal grew.
 func TestTheTrailFoldsItsMiddleAndTheFoldOpensTheParent(t *testing.T) {
-	// FOLDING IS FROM THE OUTSIDE IN, so at fifty columns the `…` stands for the
-	// root of the family alone and the immediate parent is still spelled — and
-	// the fold opens the nearest thing IT hid, which is that outer step.
+	// FOLDING IS FROM THE OUTSIDE IN. Keep the original fifty-column content
+	// budget while allowing for the longer unnamed-conversation label. The `…`
+	// hides the family root, the immediate parent is still spelled, and the fold
+	// opens the nearest thing IT hid, which is that outer step.
 	a := crumbApp(t)
-	a.width = 50
+	a.width = 50 + ansi.StringWidth(a.chatCrumbWord()) - ansi.StringWidth("main")
 	a.touch()
 	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if !strings.Contains(head, crumbFoldWord) {
-		t.Fatalf("a fifty-column header spelled the whole chain:\n%q", head)
+		t.Fatalf("the header spelled the whole chain:\n%q", head)
 	}
-	for _, want := range []string{roomCrumbRoot, "Write the tree", "Cut the goldens"} {
+	for _, want := range []string{a.chatCrumbWord(), "Write the tree", "Cut the goldens"} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the folded header lost %q:\n%q", want, head)
 		}
@@ -217,7 +218,7 @@ func TestTheTrailFoldsItsMiddleAndTheFoldOpensTheParent(t *testing.T) {
 			t.Fatalf("at forty columns the trail still spells %q:\n%q", gone, narrow)
 		}
 	}
-	if !strings.Contains(narrow, roomCrumbRoot) || !strings.Contains(narrow, "Cut the goldens") {
+	if !strings.Contains(narrow, b.chatCrumbWord()) || !strings.Contains(narrow, "Cut the goldens") {
 		t.Fatalf("at forty columns the trail lost one of its two ends:\n%q", narrow)
 	}
 	deep := crumbSpanFor(t, b, crumbFoldWord)
@@ -236,7 +237,7 @@ func TestANarrowTrailNeverHidesThatThereIsMoreChain(t *testing.T) {
 		a.width = width
 		a.touch()
 		head := plain(strings.Join(a.roomHeadRows(width), "\n"))
-		if !strings.Contains(head, roomCrumbRoot) {
+		if !strings.Contains(head, a.chatCrumbWord()) {
 			// Below the two ends the root itself is given up; that is the one rung
 			// where the fold goes too, and the page's own name is all that is left.
 			continue
@@ -358,7 +359,7 @@ func TestAGuestPagesChainIsDrawnAndOpensNothing(t *testing.T) {
 			t.Fatalf("the guest header is missing %q:\n%q", want, head)
 		}
 	}
-	if strings.Contains(head, roomCrumbRoot+roomCrumbSep) {
+	if strings.Contains(head, a.chatCrumbWord()+roomCrumbSep) {
 		t.Fatalf("the guest page hangs its chain off this conversation:\n%q", head)
 	}
 	for _, hit := range a.crumbs {
@@ -447,7 +448,7 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	}
 	// The strip is the one pinned row, and the geometry is charged for exactly it.
 	strip := plain(tabsRowOf(a))
-	if !strings.Contains(strip, roomCrumbRoot) {
+	if !strings.Contains(strip, a.chatCrumbWord()) {
 		t.Fatalf("the tab strip does not name the conversation: %q", strip)
 	}
 	if strings.Contains(strip, "─") {
