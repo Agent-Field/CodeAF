@@ -357,6 +357,52 @@ func TestAStaleDirectoryAnswerIsDropped(t *testing.T) {
 	}
 }
 
+// WALKING OUT LANDS ON THE FOLDER YOU CAME FROM even when the level above has
+// never been read — the cursor is a NAME held until the readdir answers, not an
+// index applied to a column that is not there yet.
+func TestWalkingOutWaitsForTheLevelAboveToArrive(t *testing.T) {
+	a, _, root := browseLab(t)
+	openBrowse(t, a, filepath.Join(root, "here", "deep"))
+	// Nothing above `deep` has been read on purpose: forget every level, then
+	// walk out and let only the parent's own readdir land.
+	a.folder.forget()
+	drive(t, a, key("left"))
+	if a.folder.cols.dir != filepath.Join(root, "here") {
+		t.Fatalf("← landed on %s", a.folder.cols.dir)
+	}
+	settleFolder(t, a, a.askFolderKids())
+	if got, _ := a.folder.here(); got != filepath.Join(root, "here", "deep") {
+		t.Fatalf("the cursor came out onto %q, not the folder it left", got)
+	}
+	if a.folder.cols.upAt < 0 {
+		t.Fatal("the parent column does not know which row we are standing in")
+	}
+}
+
+// THE PICKS ARRIVING FROM DISK DO NOT BLANK THE COLUMNS. They re-rank a list;
+// they say nothing about any directory, and a sheet that flushed three columns
+// a person is reading to redraw them a frame later would be the background
+// reaching into their hands.
+func TestThePicksArrivingDoNotFlushTheColumns(t *testing.T) {
+	a, _, root := browseLab(t)
+	openBrowse(t, a, filepath.Join(root, "here"))
+	drive(t, a, key("down"))
+	was, _ := a.folder.here()
+
+	a.tookFolderStore(folderStoreMsg{store: folderStore{
+		Picks: map[string]folderPickCount{filepath.Join(root, "sibling"): {N: 3, At: a.now()}},
+	}})
+	if !a.folder.browsing {
+		t.Fatal("the store closed the columns")
+	}
+	if len(a.folder.cols.here.names) == 0 {
+		t.Fatal("the columns were blanked by a file of pick counts")
+	}
+	if got, _ := a.folder.here(); got != was {
+		t.Fatalf("the cursor moved to %q, want %s", got, was)
+	}
+}
+
 // ── the law: the surface does not claim what did not happen ─────────────────
 
 // A CONVERSATION WITH NO WAY TO REMEMBER A FOLDER IS NOT OFFERED ONE. This is

@@ -203,6 +203,15 @@ type folderCols struct {
 	// upAt is which of the parent's rows is the directory we are standing in,
 	// or -1 when the parent could not be read.
 	upAt int
+	// keep is the child the cursor is FOR — the directory somebody just walked
+	// out of, or the row a toggle should not lose — held until the level it
+	// belongs to has actually been read.
+	//
+	// IT IS A NAME AND NOT AN INDEX, and it outlives the readdir on purpose:
+	// walking out of a folder whose parent is not in the cache used to land the
+	// cursor at the top of that parent, because the level arrived a frame after
+	// the only code that knew which row to look for had finished.
+	keep string
 }
 
 // folderCrumb is one segment of the path above the columns: the name drawn, the
@@ -457,23 +466,39 @@ func folderKids(dir string, hidden bool) folderRead {
 // anywhere else.
 func (f *folderPick) browseAt(dir, keep string) {
 	dir = filepath.Clean(dir)
-	f.cols = folderCols{dir: dir, here: f.read(dir), upAt: -1}
+	f.cols = folderCols{dir: dir, here: f.read(dir), upAt: -1, keep: keep}
 	if parent := filepath.Dir(dir); parent != dir {
 		f.cols.up = f.read(parent)
-		for at, name := range f.cols.up.names {
-			if name == filepath.Base(dir) {
-				f.cols.upAt = at
+		f.markUp()
+	}
+	f.seatCursor()
+}
+
+// markUp finds the row of the parent column that is the directory we are
+// standing in, and -1 where the parent has not been read or does not hold it.
+func (f *folderPick) markUp() {
+	f.cols.upAt = -1
+	for at, name := range f.cols.up.names {
+		if name == filepath.Base(f.cols.dir) {
+			f.cols.upAt = at
+			break
+		}
+	}
+}
+
+// seatCursor puts the cursor on the name the columns are waiting for, if that
+// name has arrived, and follows it with the window either way.
+func (f *folderPick) seatCursor() {
+	if f.cols.keep != "" {
+		for at, name := range f.cols.here.names {
+			if name == f.cols.keep {
+				f.cols.cursor, f.cols.keep = at, ""
 				break
 			}
 		}
 	}
-	for at, name := range f.cols.here.names {
-		if keep != "" && name == keep {
-			f.cols.cursor = at
-			break
-		}
-	}
-	f.cols.top = listTop(f.cols.cursor, 0, len(f.cols.here.names), f.page())
+	f.cols.cursor = moveCursor(f.cols.cursor, 0, len(f.cols.here.names))
+	f.cols.top = listTop(f.cols.cursor, f.cols.top, len(f.cols.here.names), f.page())
 }
 
 // read is one level out of the cache, and the zero [folderRead] — not done, no
@@ -505,16 +530,10 @@ func (f *folderPick) took(dir string, read folderRead) bool {
 	switch dir {
 	case f.cols.dir:
 		f.cols.here = read
-		f.cols.cursor = moveCursor(f.cols.cursor, 0, len(read.names))
-		f.cols.top = listTop(f.cols.cursor, f.cols.top, len(read.names), f.page())
+		f.seatCursor()
 	case filepath.Dir(f.cols.dir):
-		f.cols.up, f.cols.upAt = read, -1
-		for at, name := range read.names {
-			if name == filepath.Base(f.cols.dir) {
-				f.cols.upAt = at
-				break
-			}
-		}
+		f.cols.up = read
+		f.markUp()
 	}
 	return true
 }
@@ -526,6 +545,7 @@ func (f *folderPick) took(dir string, read folderRead) bool {
 func (f *folderPick) forget() {
 	f.kids, f.asking = map[string]folderRead{}, map[string]bool{}
 	f.cols.here, f.cols.up, f.cols.upAt = folderRead{}, folderRead{}, -1
+	f.cols.top = 0
 }
 
 // browseSync keeps the columns pointed at whatever the typed path names. It is
@@ -1163,10 +1183,18 @@ func (f *folderPick) navigate(msg tea.KeyPressMsg) bool {
 		f.complete()
 		return false
 	case folderHiddenKey:
+		// THE CURSOR STAYS ON THE FOLDER IT WAS ON. Revealing the hidden ones
+		// inserts rows above and below it, and a toggle that threw a person back
+		// to the top of a level they had scrolled down would be a toggle nobody
+		// presses twice.
+		keep := ""
+		if f.browsing && f.cols.cursor >= 0 && f.cols.cursor < len(f.cols.here.names) {
+			keep = f.cols.here.names[f.cols.cursor]
+		}
 		f.hidden = !f.hidden
 		f.forget()
 		if f.browsing {
-			f.browseAt(f.cols.dir, "")
+			f.browseAt(f.cols.dir, keep)
 		}
 		return true
 	}

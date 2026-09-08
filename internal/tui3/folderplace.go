@@ -785,13 +785,28 @@ func (a *app) tookFolderStore(msg folderStoreMsg) {
 	if !a.folder.open {
 		return
 	}
-	// THE FILTER AND THE CURSOR SURVIVE. Somebody who typed three characters
-	// while the store was in flight has not stopped typing, and a list that
-	// reset itself under them would be the background reaching into their hands.
+	// THE FILTER, THE CURSOR AND EVERYTHING ALREADY READ SURVIVE. Somebody who
+	// typed three characters while the store was in flight has not stopped
+	// typing, and a list that reset itself under them would be the background
+	// reaching into their hands. The caches survive for a sharper version of the
+	// same reason: they are answers about directories, and nothing about a
+	// directory changed because a file of pick counts arrived — re-asking for
+	// them would flush three columns a person is looking at and redraw them a
+	// frame later.
 	filter, cursor := a.folder.filter, a.folder.cursor
-	facts := a.folder.facts
+	facts, kids, asking := a.folder.facts, a.folder.kids, a.folder.asking
+	hidden, gen, cols := a.folder.hidden, a.folder.gen, a.folder.cols
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
+	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
+	// The COLUMNS are kept whole and not re-seated: which level they are on and
+	// which row of it the cursor is on are facts about where a person has walked
+	// to, and a store arriving is not news about either.
+	a.folder.cols = cols
+	// AND SO DOES THE GENERATION, because the reads still in flight were stamped
+	// with it: bumping it here would drop every column this picker had already
+	// asked for and leave the sheet blank until the next keystroke asked again.
+	a.folder.gen = gen
 	a.folder.rank()
 	a.folder.cursor = moveCursor(cursor, 0, len(a.folder.hits))
 	if a.folder.browsing {
