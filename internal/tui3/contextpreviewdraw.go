@@ -25,6 +25,7 @@ package tui3
 // north star].
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -488,6 +489,45 @@ func previewFacts(pv filePreview) string {
 }
 
 // ── filling the region ──────────────────────────────────────────────────────
+
+// previewCanvas is [previewRows] WITH THE LAST ANSWER KEPT, for a pane that is
+// redrawn on every tick rather than on every change.
+//
+// The cost this exists for is the lexer's. [prose.HighlightLine] is about sixty
+// microseconds a row, so a forty-row pane of source is a couple of milliseconds
+// — nothing on a frame where something moved, and a fourteenth of the budget on
+// the thirty frames a second where nothing did. It is the same memo toolview.go
+// puts in front of [app.codeRowsWith], for the same reason and at the same size.
+//
+// ONE ENTRY IS THE WHOLE CACHE. A pane draws one preview at one size, so a
+// second slot would never be read; the key changes exactly when something a
+// person would see has changed, and a miss is simply the draw that was going to
+// happen anyway.
+type previewCanvas struct {
+	key  string
+	kept []string
+}
+
+// rows is the memoised [previewRows]. The key is everything that decides a row:
+// which file and at what size and time ([filePreview.Key]), what the reader made
+// of it, the box, and the two things that would otherwise go stale — the painter
+// and the ink a re-measured ground moves ([codeBlockCache] says why the ink has
+// to be in there).
+func (c *previewCanvas) rows(pal palette, st *tokens.Styler, pv filePreview, box previewBox) []string {
+	key := fmt.Sprintf("%p|%v|%v|%d|%v|%v|%+v|%d|%d|%s",
+		st, pal.ramp.dim, pal.ramp.ink, pal.profile, pal.ascii, pal.linear,
+		box, pv.Key.Bytes, pv.Kind, pv.Key.Path+"\x00"+pv.Note)
+	if key == c.key && c.kept != nil {
+		return c.kept
+	}
+	c.key, c.kept = key, previewRows(pal, st, pv, box)
+	return c.kept
+}
+
+// drop forgets the kept rows, which is what a palette that has been re-derived
+// under them means — the key carries the ink, so this is belt as well as braces
+// for a caller that would rather be explicit.
+func (c *previewCanvas) drop() { c.key, c.kept = "", nil }
 
 // previewPad fills the box out to its full height with blank rows, for a caller
 // composing the preview beside columns that must stay the same height.

@@ -469,3 +469,43 @@ func TestNothingSelectedDrawsNothing(t *testing.T) {
 		t.Fatalf("an empty preview drew %d rows", len(rows))
 	}
 }
+
+// ── the memo ────────────────────────────────────────────────────────────────
+
+// A PANE REDRAWN ON A TICK MUST NOT LEX THE SAME FORTY ROWS AGAIN, and the same
+// pane after anything a person would see has changed must.
+func TestTheKeptRowsAreGivenUpWhenAnythingThatDecidesThemMoves(t *testing.T) {
+	pal, st := drawPalette(), drawStyler()
+	pv := textPreview("Go", "package main", "func main() {}")
+	box := previewBox{Width: 50, Height: 6, Numbers: true}
+	var canvas previewCanvas
+
+	first := canvas.rows(pal, st, pv, box)
+	if again := canvas.rows(pal, st, pv, box); &again[0] != &first[0] {
+		t.Fatal("an unchanged pane was drawn a second time")
+	}
+	for name, moved := range map[string]func(){
+		"a wider pane":   func() { box.Width = 70 },
+		"a scroll":       func() { box.Top = 1 },
+		"another file":   func() { pv.Key.Path = "/tmp/other" },
+		"a new sentence": func() { pv.Note = previewCutWord },
+	} {
+		before := canvas.rows(pal, st, pv, box)
+		moved()
+		after := canvas.rows(pal, st, pv, box)
+		if len(after) > 0 && len(before) > 0 && &after[0] == &before[0] {
+			t.Errorf("%s: the pane kept rows it should have given up", name)
+		}
+	}
+	// A re-derived palette moves the ink inside finished strings, which no other
+	// part of the key can see (adaptive.go's [app.repaintPalette]).
+	held := canvas.rows(pal, st, pv, box)
+	pal.ramp.dim = pal.ramp.ink
+	if after := canvas.rows(pal, st, pv, box); &after[0] == &held[0] {
+		t.Error("a re-inked palette kept yesterday's paint")
+	}
+	canvas.drop()
+	if canvas.kept != nil {
+		t.Error("drop kept the rows")
+	}
+}
