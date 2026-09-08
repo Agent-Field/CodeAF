@@ -3453,17 +3453,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	entries := make([]DisplayEntry, 0, countEntries(messages))
 	var replyTags []TaskReplyTag
 	for _, msg := range messages {
-		if msg.Role == "system" {
-			continue
-		}
-		// AND THE SESSION'S OWN VOLATILE NOTE IS DRAWN NOWHERE, which is stricter
-		// than the aside below and is the promise the manual already makes about
-		// the block inside it: it goes into the chat's context, never on your
-		// screen. It was assembled for one request out of the state card and the
-		// project index, nobody saw it happen, and a replay that drew it would put
-		// a paragraph of machinery in the conversation on the strength of the role
-		// it had to travel in.
-		if msg.Role == "user" && isVolatileNote(messageContentText(msg)) {
+		// THE MODEL'S PRIVATE CONTEXT IS NOT CONVERSATION. Use the same rule
+		// as compaction's count so hidden guidance cannot move the history seam.
+		if entryRows(msg) == 0 {
 			continue
 		}
 		role := msg.Role
@@ -3516,8 +3508,8 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 }
 
 // entryRows is how many rows the shaping above makes of ONE message: none at
-// all for the system message it drops, and otherwise the message's own row plus
-// one for every tool call riding it. It is the rule the loop appends by, written
+// all for system messages and private continuation context, and otherwise the
+// message's own row plus one for every tool call riding it. It is the rule the loop appends by, written
 // down so it can be read without being run.
 //
 // IT MUST MOVE WHENEVER THAT LOOP DOES. A second rule for how many rows a
@@ -3529,6 +3521,15 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 func entryRows(msg ai.Message) int {
 	if msg.Role == "system" {
 		return 0
+	}
+	if msg.Role == "user" {
+		text := messageContentText(msg)
+		// The continuation's full reserved lead identifies older journals too:
+		// they wrote it as an unmarked user message even though nobody typed it.
+		// Keep the model's record intact; only its display projection omits it.
+		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) {
+			return 0
+		}
 	}
 	return 1 + len(msg.ToolCalls)
 }
