@@ -880,6 +880,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// provider's own sentence.
 		{"it failed but the tests were green", "adaptive-runs"},
 		{"the model dropped out after finishing", "adaptive-runs"},
+		{"the retry died instantly but my fix is already on disk", "adaptive-runs"},
 		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
 		{"why did it run the tests nine times", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
