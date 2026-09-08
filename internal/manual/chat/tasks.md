@@ -669,7 +669,8 @@ saved cut from `edit_video`, and a shell command that names what it would change
 just looking. A `cd` inside the command is followed, so a write into somewhere else is
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
-outside this folder — a scratch file in `/tmp` is not your work.
+outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
+count; see *Do hands get around the file limit* below.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -2284,7 +2285,9 @@ which the outcome above is the first sentence.
 
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
-  has no clock. Nothing here appears as a zero.
+  has no clock. That includes a run that plans itself: while it is running its card carries
+  its state word and no `landed` clause at all; the clock appears when the run ends. Nothing
+  here appears as a zero.
 - **The first address is labelled with what that directory was**, in plain words and never
   in git's: `a branch of your repository`, `its own copy of the folder`, `your own folder`,
   or `where` when aforge's record does not say. *Does a task touch my working copy?* in
@@ -3196,6 +3199,22 @@ your answer being worked on, not work that left.
 Do not confuse it with `this one wants more hands · handing it over with everything found so
 far`, which is the opposite move — that one is your answer **leaving** to become a task.
 
+## Do hands get around the file limit — my reply changed six files through hands and never became a task, does forking count against the allowance
+
+**No. What a hand changes counts against the same allowance as an edit the reply makes
+itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
+under this folder, and a shell command that names what it changes. Reads do not count. A
+refused write changed nothing and counts nothing, and neither does anything outside the
+folder this conversation is open on.
+
+A hand is a stream, so this count can arrive after the reply that called `fork` has already
+ended. It arrives when the hand reports back. The reply at the next step boundary reads it:
+that may be the reply already running when the report lands, or the reply the report wakes.
+If the allowance has been spent, that reply says
+`this is changing more than a quick edit · moving it to a task that is watched and can split`
+and moves what remains onto the same one-task road as an inline edit. Each hand's landed call
+is counted once.
+
 ## A hand is a stream, not a wait — the answer keeps working while its hands are out
 
 `fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
@@ -3270,7 +3289,8 @@ hand as each report lands.
 
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
-repository in a state two of them fought over.
+repository in a state two of them fought over. They also cannot get around the reply's write
+allowance: what they change spends the same allowance when their reports come home.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.

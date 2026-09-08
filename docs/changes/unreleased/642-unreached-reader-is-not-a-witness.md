@@ -22,3 +22,6 @@ So the failed call is told apart from the absence, and where it is the only thin
 missing the question goes to the one party that IS there: the checks the work
 itself named, run over the tree, with the answer said out loud. A lane that is
 slow once is slow twice, which is why this is not a retry.
+
+Review refresh: integrated current dev while preserving the non-empty created-file
+rule, the headless checkpoint behavior and all manual retrieval vocabulary.

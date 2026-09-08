@@ -333,6 +333,8 @@ the rule `bash call with no readable command`. A deny or a prompt stands.
 `aforge chat --yolo` and `aforge resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
 default becomes allow".
+A session launched with the flag draws the `YOLO` badge on the status line for
+as long as it runs, so that posture is never invisible.
 
 It replaces **the default and nothing else**. If you wrote `bash:prompt`, you
 are still asked about bash, and your ordered shell command rules are untouched.

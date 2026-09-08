@@ -86,7 +86,7 @@ there.
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
 
-## Leaving it running on its own · unattended · overnight · nobody watching
+## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
 `--yolo` on its own only changes what it asks you about. It still stops when the
 model stops talking — which is right when you are sitting there, because you are
@@ -97,6 +97,13 @@ Give it a budget as well and it carries its own work on:
     aforge chat --yolo --max-hours 6
     aforge chat --yolo --max-cost 20
     aforge chat --yolo --max-hours 6 --max-cost 20
+    aforge chat --once "fix the failing test" --yolo --max-hours 6
+
+That posture is the same without a screen. The `--once` form above carries its
+own work on exactly as the conversation does, moves a long reply's work onto a
+task at the same points, and has every ending read the same way. The only
+difference is how the decision is shown: there is no screen to draw its line on,
+so the line is kept in the transcript instead.
 
 Either number alone is enough; both together means whichever runs out first. You
 can set them once for a whole run of launches with `AFORGE_MAX_HOURS` and
@@ -205,7 +212,7 @@ task exactly as it always has, nothing is decided for you, and the two readers a
 still leaves your answer where it is. There is no wall on your session, so there is no share
 of one either, however long your reply runs.
 
-## What counts as still left · a task that died on the wire
+## What counts as still left · a task that died on the wire · it kept working after everything was finished
 
 **What is left is read from the tree, not from a task's death.** A run with a budget looks
 at every piece of work at the end of each reply and asks what stands between it and
@@ -226,7 +233,7 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
-## Inline work is finished with a witness · the reader timed out · it did the work twice · it kept working after everything was finished · it says nothing has been finished yet when it did the work itself
+## Inline work is finished with a witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
 
 **Work aforge did itself counts as finished work with a second opinion.** A session that
 made the change and wrote the tests **inline**, with no task at all, has finished something
@@ -252,6 +259,14 @@ finished work. A stash the run took itself and never popped is said out loud as 
 `1 stash entry holds work that is not in the tree` — and the run carries on rather than
 finishing over it; a stash you already had before the run started is yours and is never
 counted, and neither is the one a landing takes to set your uncommitted work aside.
+
+## An emptied, blank or zero-byte created file does not count as finished work
+
+**A file the run created counts as its work only while there is something in it.** A
+rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell
+step can leave it emptied, blank, or at zero bytes; none of those empty files counts as
+finished work. It is still your file: nothing inside the folder aforge is working in is
+ever deleted, whatever is in it.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
@@ -341,13 +356,13 @@ carrying on for the rest of its hours over work nothing was ever going to start.
 
 ## It keeps saying a file does not pass · a check nobody asked for
 
-**A check is a command, never a file.** When the session's `done when` sentence
-names something in backticks, or a piece of work names it in its own account,
-aforge runs it in a fresh shell to see whether the work stands up. A file is
-opened the way the file itself says it opens: if it is executable, or its first
-line names the program that runs it, that is what gets run. **A file that says
-neither is not a check at all** and is left out — a source file quoted in a
-sentence is something to look at, not something to run.
+**A check is a command, never a file.** When somebody writes the session's
+`done when` sentence and names something in backticks, or a piece of work names
+it in its own account, aforge runs it in a fresh shell to see whether the work
+stands up. A file is opened the way the file itself says it opens: if it is
+executable, or its first line names the program that runs it, that is what gets
+run. **A file that says neither is not a check at all** and is left out — a
+source file quoted in a sentence is something to look at, not something to run.
 
 Before this, a bare path was handed to a shell, which refused to start it, and the
 run recorded "does not pass" about it for the rest of the evening — a wall no work

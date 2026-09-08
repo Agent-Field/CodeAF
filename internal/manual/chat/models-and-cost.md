@@ -564,13 +564,15 @@ A class value may carry a thinking level as well as a model:
 moonshotai/kimi-k3:high
 ```
 
-`:low`, `:medium` and `:high` are the three, and the shipped **mastermind** carries `:low`.
-The level is not part of the model id — it travels as its own request option, exactly as
-the picker's **ctrl+t** effort does — so the id sent to the provider is
-`moonshotai/kimi-k3` and the thinking is asked for separately.
+`:low`, `:medium` and `:high` are the three, and the shipped **mastermind** carries `:high`.
+The level is not part of the model id. It travels as its own request option, exactly as
+the picker's **ctrl+t** effort does, so the example sends model `moonshotai/kimi-k3` and
+asks for high thinking separately.
 
 - **Any of the five class rows takes one**, though the mastermind is the one it is for. On
-  the worker row it reaches the one-shot role calls only, never the work inside a task.
+  the worker row in a conversation it reaches the one-shot role calls only, never the work
+  inside a task. At a headless door — `aforge do`, `exec`, `plan` or `run` — that row fills
+  a seat instead, and every request the seat sends carries its level.
 - **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
   `high` to a model id, or leave the level off*. It is a different request shape — it asks the
   provider to suppress thinking outright — and some endpoints refuse it. `:max`, `:none`,
@@ -581,10 +583,35 @@ the picker's **ctrl+t** effort does — so the id sent to the provider is
 - Where a level is set, the role rows print it after the id, `kimi-k3:low`, which is the
   same notation the model picker and `/status` use.
 
-The **mastermind** row is a text box rather than a picker for exactly this reason: a picker
-hands back a bare id, and this row's value may be an id with an instruction on it.
+The **mastermind** row is a text box because a picker hands back a bare id, while this row may
+hold an id with a thinking instruction on it.
 
-One thing about `reflex`: it is the only role called **twice on every message** — once
+## Why is my crew thinking at low — the pin is being ignored, effort=low in the log
+
+A level written onto a class value is a pin, and it reaches the wire on **every** request the
+seat that holds it sends — the conversation's one-shot role calls, and every call of an
+`aforge do`, `exec`, `plan` or `run`. It is not a preference something further in gets to
+reconsider.
+
+So a row in the model-call log that reads a level you did not ask for has one of two
+explanations, and the row says which. `aforge logs` prints the word that **actually
+travelled**, and where something overrode the pin it prints `pinned <word>` beside it — the
+level that did not go out. A row with no `pinned` word is a row where the pin travelled, and
+that is almost all of them.
+
+Two things can displace a pin, and both name themselves that way. A **reflex** call disables
+thinking because its answer cap is tiny and a thinking pass would leave no room for the
+answer. And a model whose published row says it takes no reasoning knob at all is sent none,
+pin or no pin — a knob that breaks the call is worse than a knob that did not travel.
+
+One reading that is *not* an override: a model that cannot have its thinking switched off is
+sent the lowest level it offers instead of a switch-off it would refuse, so `off` becomes
+`low` on the wire and the row says `low` with no pin word beside it. That is the section
+*A model that cannot stop thinking*.
+
+## Why reflex has its own model class
+
+`reflex` is the only role called **twice on every message** — once
 before, to pick which remembered lines belong in this one, and once after, to decide
 whether the exchange held anything worth keeping (what-i-remember). That is why it has a
 class of its own rather than sharing "small work", and why it is the one row where a large
@@ -592,7 +619,9 @@ model is an expensive mistake rather than a preference. Both calls are folded in
 session's total, not into the message that triggered them, so `/cost` includes them
 without any one message reading as three times the price of its neighbours.
 
-One caveat on `vision`: the **looking** row further down the Providers tab is the front door
+## Which model the vision role uses
+
+For `vision`, the **looking** row further down the Providers tab is the front door
 for which model sees, and it wins over this role's class. The `vision` pin is the second rung
 of that ladder — set the looking row for the ordinary case, and pin the role only when
 you want a pin that also binds the older surfaces.
@@ -2040,7 +2069,7 @@ Where a model publishes no price, no cap is sent at all rather than one guessed 
 
 Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
 
-**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider your conversation actually goes to — see "choose a provider" above.
+**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider requests from your home actually go to — see "choose a provider" above.
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
@@ -2059,7 +2088,8 @@ for the rest of this session, including the next rescue.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
-conversation; it does not change your OpenRouter privacy setting.
+home — including terminal runs and background work; it does not change your OpenRouter
+privacy setting.
 
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
@@ -2107,9 +2137,10 @@ window gives them up in — the sparkline goes first, and the note about capabil
 the uptime because `no tools` changes the answer you get. `←` or `tab` closes the lanes
 again.
 
-`enter` on a lane **pins** it: every request for this conversation goes to that lane
-and nowhere else — unless the router says that lane cannot serve that model at all, which
-is the one thing that ends a pin without you. It says so once, in the conversation
+`enter` on a lane **pins** it in your home: chat, `aforge do`, `aforge exec`, `aforge
+plan`, `aforge run` and background work all ask for that lane and nowhere else — unless
+the router says that lane cannot serve that model at all, which is the one thing that ends
+a pin without you. It says so once, in the conversation
 (`coreweave cannot serve this model; routing on auto for this model until you pin again`),
 routes that one model on auto for the rest of the run, and leaves your row and every other
 model alone. *Lanes → Pinning one lane yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
@@ -2304,8 +2335,8 @@ lane to name yet, so the walk is `auto` ↔ `openrouter`.
 The **your model** row says which lane is answering it beside the model id — `auto
 (cloudflare now)` while the choice is aforge's, `pinned: cloudflare` once it is yours.
 `lane` and `routing` are different questions: routing is what every request **prefers**
-(fastest, cheapest, or nothing at all), and lane is which endpoint your conversation
-actually lands on.
+(fastest, cheapest, or nothing at all), and lane is which endpoint requests from your home
+actually land on.
 
 ## Why does the same conversation suddenly cost more? Keeping the prompt cache warm
 
@@ -2379,6 +2410,12 @@ call to something that is not a router shows none. **`acted hedge · 2 arms · h
 waste $0.0012`** is a call that went quiet, had a second request fired at another endpoint
 to rescue it, and what the arm that lost cost. Almost every line has none of that, because
 almost nothing has to be done.
+
+**`pinned high` after the thinking level is a level that did not travel** — the seat's class
+value asked for it and something else decided this one call. The word on the left is what the
+request really carried; the pinned word is what was overridden. A line with no pinned word is
+a line where the level asked for is the level sent, which is almost all of them. See *Why is
+my crew thinking at low*.
 
 ## How many tokens did one call use — the N in and N out figures on a log line
 

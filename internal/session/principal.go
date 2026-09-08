@@ -281,8 +281,9 @@ type Remains struct {
 	Landed bool
 
 	// Made says this session put work on the deliverable WITH ITS OWN HANDS —
-	// files it created, or files under the tree WHOSE CONTENT STILL DIFFERS from
-	// what it was before the session wrote them, no task involved.
+	// non-empty regular files it created, or files under the tree WHOSE CONTENT
+	// STILL DIFFERS from what it was before the session wrote them, no task
+	// involved.
 	//
 	// MADE IS ABOUT CONTENT AND NOT ABOUT PATHS. A path the session wrote is not
 	// a change the session made: a `git stash`, a revert, an edit that puts a
