@@ -739,3 +739,11 @@ machine answered. The session is closed when the turn ends.
 ```
 aforge resume opens the session picker; for one headless message use: aforge chat --host <dest> --once "text"
 ```
+
+## Reopening another tab through the local engine
+
+A new local-engine tab carries the window's launch settings, including that it
+is an interactive chat. Reopening that conversation by its session path uses
+those same settings and rejoins the engine's live work. It does not submit the
+message again or wait for its own pending question to finish in another window.
+Explicitly different launch flags still use the existing compatibility check.

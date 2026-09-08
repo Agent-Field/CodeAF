@@ -58,3 +58,8 @@ cancelling the reply, queued/running tasks, adaptive runs and jobs. Cancellation
 news stays available without waking another reply. Reopening preserves the stopped
 conversation; only a fresh user submission resumes admission after cancellation
 settles. Older engines that cannot perform this operation return an explicit error.
+
+Sibling local-engine tabs retain the originating launch settings. Previously,
+reopening a tab created by Ctrl+T could fail the interactive-launch compatibility
+check and fall back onto the journal held by its own engine, leaving pending
+input unreachable behind a takeover wait. The ordinary reconnect rejoins it now.

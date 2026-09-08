@@ -149,6 +149,7 @@ func (f *farMachine) boot(hello remote.Hello) (*remote.Engine, error) {
 	agent := f.agentFor(file)
 	return &remote.Engine{
 		Agent:       agent,
+		Launch:      hello.Launch,
 		Workspace:   f.workspace,
 		SessionFile: file,
 		Fresh: func() (remote.WrappedAgent, string, error) {
@@ -362,4 +363,32 @@ func TestTheOrdinaryEngineDoorHoldsThreeConversationsWhoseTurnsOverlap(t *testin
 		t.Fatal("the door lost its list of the machine's conversations")
 	}
 	options.RecentSessions()
+}
+
+// A chat minted by Ctrl+T must remain compatible with the ordinary launch on
+// reconnect. Otherwise the surface falls back and waits for its own held lock.
+func TestSiblingChatReconnectKeepsTheOrdinaryLaunchSettings(t *testing.T) {
+	far := &farMachine{workspace: "/tmp/af-launch-reconnect"}
+	farHost(t, far)
+	shape := v3LaunchShape(false, false, false, 0, 0, true)
+	launch := localLaunch{workspace: far.workspace, shape: shape}
+	link := &localLink{workspace: far.workspace}
+	client, err := remote.Roam("", localBesideHello(engineAsk{workspace: far.workspace, mint: true}, launch), remote.Roaming{Dial: link.dial})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := client.Welcome().SessionFile
+	if !client.Welcome().Launch.Same(shape) {
+		client.Close()
+		t.Fatal("new tab lost the launch settings needed to reopen it")
+	}
+	client.Close()
+	reopened, err := remote.Roam("", remote.Hello{Workspace: far.workspace, Session: file, Launch: shape}, remote.Roaming{Dial: link.dial})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if !reopened.Welcome().Launch.Same(shape) || reopened.Welcome().SessionFile != file {
+		t.Fatal("reconnect requires a fallback or duplicates the conversation")
+	}
 }

@@ -157,20 +157,12 @@ func openChatV3Local(launch localLaunch) error {
 	// hello ([remote.Hello.New]); one that names a transcript the host is already
 	// running is attached to rather than reopened.
 	//
-	// THE LAUNCH SHAPE IS NOT REPEATED. --yolo and its neighbours are the posture
-	// this terminal asked for when it opened its FIRST conversation; a second one
-	// joins whatever the host is running under, exactly as a second terminal
-	// would, and [hostShapeTaken] is the refusal that already covers the
-	// disagreement.
+	// New tabs carry the same launch settings, including the interactive door.
+	// Omitting them makes a later ordinary launch reject its own conversation
+	// as incompatible and fall back onto the journal the engine still holds.
 	fleet := newEngineFleet("", client, nil, func(ask engineAsk) (*engineConn, error) {
 		beside := &localLink{workspace: ask.workspace}
-		next, err := remote.Roam("", remote.Hello{
-			Workspace: ask.workspace,
-			Session:   ask.session,
-			New:       ask.mint,
-			Model:     launch.model,
-			Level:     launch.level,
-		}, remote.Roaming{Dial: beside.dial})
+		next, err := remote.Roam("", localBesideHello(ask, launch), remote.Roaming{Dial: beside.dial})
 		if err != nil {
 			return nil, err
 		}
@@ -349,4 +341,9 @@ func v3HostAnswers(workspace string) bool {
 func v3MachineIsSetUp() bool {
 	_, err := config.Load()
 	return err == nil
+}
+
+// localBesideHello carries the ordinary terminal's settings to a sibling chat.
+func localBesideHello(ask engineAsk, launch localLaunch) remote.Hello {
+	return remote.Hello{Workspace: ask.workspace, Session: ask.session, New: ask.mint, Model: launch.model, Level: launch.level, Launch: launch.shape}
 }

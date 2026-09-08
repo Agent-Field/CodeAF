@@ -597,3 +597,9 @@ contains a path. `esc cancel` closes the browser; `alt+o preview` opens the full
 preview at narrow widths. `alt+m choose` marks an item. Wider frames also name
 walking, hiding the preview, scrolling it and showing hidden files. A terminal
 with too few rows gives the legend's row back to the file list.
+
+## Browse while keeping an unsent chat draft
+
+Go Home and run `/folder` or bare `/attach` in Home's box. The browser opens over
+the conversation you were in; its unsent draft stays underneath. Escape closes
+the browser and returns that draft unchanged.

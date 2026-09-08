@@ -42,3 +42,6 @@ rather than aborted; and no Mac-specific rendering claim is made from a Linux bo
 The control legend remains visible when the filter holds a path, including the
 full preview door on narrow terminals. Account key-entry questions allow safe
 chat navigation and explicit conversation stopping, alongside permission cards.
+
+Opening the browser from Home reveals the sheet over the current conversation
+and keeps its unsent draft. Previously Home could remain in front of the sheet.

@@ -230,6 +230,9 @@ func (a *app) openContextPick(query string, folders bool) tea.Cmd {
 		a.note(folderNoDoorWord)
 		return nil
 	}
+	// Home has its own composer. Reveal the conversation's browser without
+	// changing the unsent draft suspended underneath that page.
+	a.closeHome()
 	candidates := a.folderCandidates()
 	if len(candidates) == 0 && strings.TrimSpace(query) == "" {
 		// A BARE /attach STILL HAS SOMEWHERE TO START. Its business is the files
