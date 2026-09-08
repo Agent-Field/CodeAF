@@ -214,6 +214,7 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 		return nil
 	}
 	a.folder.start(candidates, a.tilde)
+	a.markFolderHeld()
 	if query = strings.TrimSpace(query); query != "" {
 		a.folder.filter.setText(query)
 		a.folder.rank()
@@ -240,8 +241,7 @@ func (a *app) folderKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "enter":
-		a.addFolderUnderCursor()
-		return nil
+		return a.folderActUnderCursor()
 
 	default:
 		browsed := a.folder.navigate(msg)
@@ -253,15 +253,29 @@ func (a *app) folderKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 }
 
-// addFolderUnderCursor is THE ADD ACTION — `enter`, and the click on the row
-// that says so. It is one function because the key and the row must not be able
-// to drift into meaning two different things.
-func (a *app) addFolderUnderCursor() {
+// folderActUnderCursor is THE ACTION ROW — `enter`, and the click on the row
+// that says what it would do. It is one function because the key and the row
+// must not be able to drift into meaning two different things.
+//
+// WHAT IT DOES IS WHAT THE ROW SAYS. On a folder this conversation already holds
+// the row reads `remove this folder ·` and this takes it off, leaving the sheet
+// open so somebody clearing several does not have to reopen it between them;
+// anywhere else it adds and closes. Adding is a decision and the sheet has
+// served its purpose; removing is a tidy-up, and the list you are tidying is the
+// one in front of you.
+func (a *app) folderActUnderCursor() tea.Cmd {
+	if path, held := a.folder.holds(); held {
+		cmd, ok := a.dropPlace(path)
+		if ok {
+			a.touch()
+			return cmd
+		}
+	}
 	path, ok := a.folder.here()
 	if !ok {
 		a.folder.close()
 		a.touch()
-		return
+		return nil
 	}
 	// THE ONE STAT ON THIS SURFACE, AND IT IS ON A KEYSTROKE. The candidate
 	// layers are built from what was said and remembered rather than from a
@@ -272,10 +286,26 @@ func (a *app) addFolderUnderCursor() {
 	if info, err := os.Stat(path); err != nil || !info.IsDir() {
 		a.note(folderGoneWord + tildePath(path, a.tilde))
 		a.touch()
-		return
+		return nil
 	}
 	a.folder.close()
 	a.referPlace(chosenPlace{Path: path, Door: placeFromPicker})
+	return nil
+}
+
+// markFolderHeld tells the open sheet which of its rows the conversation is
+// already about, so the action row says the truth about the one under the
+// cursor. It is called where the answer can have changed — the open, and a
+// folder coming off — and nowhere in a paint.
+func (a *app) markFolderHeld() {
+	if !a.folder.open {
+		return
+	}
+	held := map[string]bool{}
+	for _, ref := range a.attachedPlaces() {
+		held[ref.Path] = true
+	}
+	a.folder.held = held
 }
 
 // folderWork is everything the browser wants read after a gesture: the facts
@@ -312,8 +342,7 @@ func (a *app) folderPress(x, y int) (tea.Cmd, bool) {
 	}
 	row, geom := mark.index, a.folder.geom
 	if row == geom.action {
-		a.addFolderUnderCursor()
-		return nil, true
+		return a.folderActUnderCursor(), true
 	}
 	if !a.folder.browsing {
 		// A LIST ROW OPENS FOR BROWSING, which is the whole answer to "the path
@@ -866,6 +895,7 @@ func (a *app) tookFolderStore(msg folderStoreMsg) {
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
+	a.markFolderHeld()
 	// The COLUMNS are kept whole and not re-seated: which level they are on and
 	// which row of it the cursor is on are facts about where a person has walked
 	// to, and a store arriving is not news about either.

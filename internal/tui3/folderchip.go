@@ -191,15 +191,23 @@ func placeTrayWidth(cells []string) int { return harnessTrayWidth(cells) }
 // (askFolderKids states the same law about a readdir). The cell comes off when
 // the answer arrives, because until then it has not.
 func (a *app) dropPlaceChip(at int) (tea.Cmd, bool) {
-	door, ok := a.agent.(placeRemover)
-	if !ok {
-		return nil, false
-	}
 	refs := a.attachedPlaces()
 	if at < 0 || at >= len(refs) || at >= placeTrayCap {
 		return nil, false
 	}
-	path := refs[at].Path
+	return a.dropPlace(refs[at].Path)
+}
+
+// dropPlace is the removal itself, and it is ONE function because there are TWO
+// doors onto it that must not drift: the tray's `✕`, and the picker's own action
+// row — which is what keeps taking a folder off from being a gesture you need a
+// mouse for (folderpick.go's [folderPick.actionWord], and
+// docs/DESIGN-LANGUAGE.md's rule that the keyboard stays first-class).
+func (a *app) dropPlace(path string) (tea.Cmd, bool) {
+	door, ok := a.agent.(placeRemover)
+	if !ok || strings.TrimSpace(path) == "" {
+		return nil, false
+	}
 	return func() tea.Msg { return placeDroppedMsg{path: path, err: door.RemovePlace(path)} }, true
 }
 
@@ -223,6 +231,11 @@ func (a *app) tookPlaceDropped(msg placeDroppedMsg) {
 	if a.placeChosen == msg.path {
 		a.placeChosen = ""
 	}
+	// AND THE SHEET, IF IT IS STILL UP, LEARNS THAT THIS ROW IS FREE AGAIN. Its
+	// action row reads what the conversation holds, and a row that went on saying
+	// `remove this folder` about a folder already gone would offer to do
+	// something twice.
+	a.markFolderHeld()
 	a.noteFacts(placeDroppedWord+shown, shown)
 	a.touch()
 }

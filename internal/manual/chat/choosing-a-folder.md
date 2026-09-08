@@ -74,7 +74,7 @@ the breadcrumb drops levels from the left — `… › tui3` — rather than shr
 | `←` | walk out to the folder above, cursor left on the one you came from |
 | `tab` | complete the highlighted folder's name into the box, whole — the columns follow, so it lands where `→` does |
 | `alt+h` | show the hidden folders, and hide them again |
-| `enter` | add the folder under the cursor to this conversation |
+| `enter` | add the folder under the cursor — or take it off, when it is already attached |
 | `esc` | leave, having changed nothing |
 
 **The mouse does all of it too.** A click in the middle column moves the cursor. A click in
@@ -107,6 +107,12 @@ add this folder · ~/code/agentfield          repository · main · clean
 It names the folder the cursor is on, so what `enter` would do is written down rather than
 remembered — and clicking that row does exactly what `enter` does. Everything else on the
 sheet moves you around; this row is the only thing that commits.
+
+**On a folder this conversation is already about, the same row says
+`remove this folder · <path>` and that is what `enter` does** — so taking one off never
+needs a mouse. Removing leaves the sheet open, because clearing two is a tidy-up and the
+list you are tidying is the one in front of you; adding closes it, because the sheet has
+then done its job.
 
 The dim tail at the right end is what the machine already knows about that folder:
 
@@ -320,7 +326,9 @@ model looking at the disk, which it could always do.
   takes that folder off the conversation**, which says `folder removed · ~/code/agentfield`.
   Three are named and the rest are counted (`+2 more folders`); the counting cell is a
   sentence and does nothing when pressed. Where a build has no way to take a folder off, the
-  cells are still drawn and simply carry no `✕`.
+  cells are still drawn and simply carry no `✕`. **The keyboard's way to the same thing is
+  `/folder` and `enter` on that folder's row**, where the action row reads
+  `remove this folder · <path>`.
 - **`/folder`** — the first rows are this conversation's own folders, most recently used
   first. That is the whole set, on demand, in one keystroke.
 - **Home** — the row for a conversation that is about somewhere beyond the project it is

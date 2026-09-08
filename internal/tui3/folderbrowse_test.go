@@ -319,6 +319,43 @@ func TestTheActionRowAddsTheFolderTheCursorIsOn(t *testing.T) {
 	}
 }
 
+// TAKING A FOLDER OFF IS NOT A MOUSE-ONLY GESTURE. On a folder the conversation
+// already holds the action row says so and `enter` removes it — the keyboard
+// stays first-class, and the row is the visible door beside the key.
+func TestTheActionRowTakesOffAFolderTheConversationAlreadyHolds(t *testing.T) {
+	a, agent, root := browseLab(t)
+	here := filepath.Join(root, "here")
+	agent.places = []session.PlaceRef{{Path: here, Arrival: session.PlaceSaid}}
+	a.entries = nil
+
+	settleFolder(t, a, a.openFolderPick(""))
+	// The referred layer leads, so the folder the conversation holds is row one.
+	if got, _ := a.folder.here(); got != here {
+		t.Fatalf("the first row is %q, want the folder this conversation is about", got)
+	}
+	rows := a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, "")
+	if got := plain(rows[a.folder.geom.action]); !strings.Contains(got, folderDropWord) {
+		t.Fatalf("the action row says %q, want it to offer the removal", got)
+	}
+
+	drive(t, a, key("enter"))
+	if len(agent.places) != 0 {
+		t.Fatalf("enter did not take the folder off: %+v", agent.places)
+	}
+	if got := plain(lastNote(t, a)); !strings.HasPrefix(got, placeDroppedWord) {
+		t.Fatalf("the line said %q", got)
+	}
+	// THE SHEET STAYS OPEN and now offers to add it back, because the row says
+	// what is true rather than what it said a moment ago.
+	if !a.folder.open {
+		t.Fatal("removing a folder closed the sheet")
+	}
+	rows = a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, "")
+	if got := plain(rows[a.folder.geom.action]); !strings.Contains(got, folderAddWord) {
+		t.Fatalf("after the removal the action row still says %q", got)
+	}
+}
+
 // ── what a column with no rows is actually saying ───────────────────────────
 
 // A FOLDER NOBODY MAY READ IS NOT A FOLDER WITH NOTHING IN IT, and the browser

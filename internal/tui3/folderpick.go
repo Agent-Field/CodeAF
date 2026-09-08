@@ -172,6 +172,15 @@ type folderPick struct {
 	// directory (folderplace.go's [folderKidsMsg]).
 	gen int
 
+	// held is which of these directories THE CONVERSATION IS ALREADY ABOUT, so
+	// the action row can say the truth about the row under the cursor: a folder
+	// already attached is one to take off, not one to add again.
+	//
+	// It is a snapshot filled by [app.markFolderHeld] on the open and refreshed
+	// when one comes off, rather than a call through the door on every paint —
+	// the row is rebuilt on every keystroke that moves the cursor.
+	held map[string]bool
+
 	// hidden reveals the dot-directories and the names the `@` walk prunes.
 	// It is off by default and it is a person's own act — alt+h, or a name
 	// beginning with a dot typed into the box, which is what somebody reaching
@@ -1099,10 +1108,11 @@ func (f *folderPick) actionRow(width int, pal palette, hover int) string {
 		return pal.dim(folderPad + fit(f.hint(), room))
 	}
 	shown := tildePath(path, f.tilde)
+	lead := f.actionWord(path)
 	// The facts ride the right end of the same row, and are dropped WHOLE rather
 	// than cut: half a branch name is a branch nobody has.
 	facts := strings.Join(f.factsFor(path), " · ")
-	keep := room - ansi.StringWidth(folderAddWord)
+	keep := room - ansi.StringWidth(lead)
 	if facts != "" {
 		if room := keep - ansi.StringWidth(facts) - folderFactsGap; room >= folderNameFloor {
 			keep = room
@@ -1111,11 +1121,11 @@ func (f *folderPick) actionRow(width int, pal palette, hover int) string {
 		}
 	}
 	shown = fit(shown, max(keep, 1))
-	painted := pal.dim(folderAddWord) + pal.ink(shown)
+	painted := pal.dim(lead) + pal.ink(shown)
 	if hover >= 0 && hover == f.geom.actionAt() {
 		painted = pal.cursor(painted, 0)
 	}
-	cells := ansi.StringWidth(folderAddWord) + ansi.StringWidth(shown)
+	cells := ansi.StringWidth(lead) + ansi.StringWidth(shown)
 	line := folderPad + painted
 	if facts != "" {
 		line += strings.Repeat(" ", max(room-cells-ansi.StringWidth(facts), folderFactsGap)) + pal.dim(facts)
@@ -1127,9 +1137,40 @@ func (f *folderPick) actionRow(width int, pal palette, hover int) string {
 // hover index is compared against while the current one is still being built.
 func (g folderGeom) actionAt() int { return g.action }
 
-// folderAddWord leads the action row. It is the verb the owner asked for and it
-// is spelled the same way in the manual.
-const folderAddWord = "add this folder · "
+// actionWord is the verb the action row is offering, and it is the whole of how
+// this sheet stays honest about a folder that is already attached.
+//
+// ONE ROW, ONE ACTION, WHATEVER STATE THE FOLDER IS IN. A row that always said
+// `add` on a folder the conversation already holds would be offering something
+// that is already true — and it would leave TAKING ONE OFF as a gesture you can
+// only make with a mouse, on a tray cell above the box, which is the one thing
+// docs/DESIGN-LANGUAGE.md refuses: the keyboard stays first-class and every
+// chord keeps a visible, clickable, self-teaching door beside it. Here the door
+// and the key are the same row.
+func (f *folderPick) actionWord(path string) string {
+	if f.held[path] {
+		return folderDropWord
+	}
+	return folderAddWord
+}
+
+// holds reports whether the folder under the cursor is one the conversation is
+// already about — which is what decides both what the row says and what pressing
+// it does ([app.folderActUnderCursor]).
+func (f *folderPick) holds() (string, bool) {
+	path, ok := f.here()
+	if !ok {
+		return "", false
+	}
+	return path, f.held[path]
+}
+
+// The two verbs the action row offers. They are constants because the manual
+// quotes both of them exactly as they are spelled here.
+const (
+	folderAddWord  = "add this folder · "
+	folderDropWord = "remove this folder · "
+)
 
 // folderFactsGap is the least clear space between the action and the facts
 // beside it.
