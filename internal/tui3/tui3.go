@@ -481,11 +481,12 @@ type Options struct {
 	// accounts panel. See host.go.
 	Host string
 
-	// ApprovalMode is the AGENT's own tool-approval posture — "allow" or
-	// empty — asked once at boot rather than a live read, because on a remote
-	// session there is nothing to re-read: it travelled once on the welcome
-	// (internal/remote's wire.go). Empty on a local session; app.approvalPosture
-	// reads the profile directly there instead, live, the way it always has.
+	// ApprovalMode is the tool-approval posture the LAUNCH hands down when it
+	// knows one this surface's own profile cannot answer. Over --host that is
+	// the engine's row, carried once on the welcome (internal/remote's wire.go);
+	// on a local session it is --yolo's forced "allow", which opens the gate for
+	// the whole session without writing the row. Empty means nothing was handed
+	// down and app.approvalPosture reads the profile directly, live.
 	ApprovalMode string
 
 	// BashBackgroundAfterSeconds is the foreground-command clock the AGENT

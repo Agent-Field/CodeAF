@@ -13,6 +13,27 @@ import (
 // internal/tui3; this is the other end of the same wire — what the door
 // assembles at launch out of the rows the card wrote.
 
+// The launch hands the surface an answer only when its flag opened a gate the
+// profile cannot describe. An ordinary launch leaves no frozen answer behind,
+// so the surface keeps reading that profile live.
+func TestTheSurfaceIsHandedThePostureOnlyWhenTheFlagForcedIt(t *testing.T) {
+	dir := t.TempDir()
+	policy, err := v3Policy(dir, dir, true)
+	if err != nil {
+		t.Fatalf("the policy did not assemble: %v", err)
+	}
+	handed := v3SurfacePosture(true)
+	if handed != string(approval.ActionAllow) {
+		t.Fatalf("--yolo handed the surface %q, want %q", handed, approval.ActionAllow)
+	}
+	if handed != string(policy.Default) {
+		t.Fatalf("the surface posture %q differs from the gate's default %q", handed, policy.Default)
+	}
+	if got := v3SurfacePosture(false); got != "" {
+		t.Fatalf("an ordinary launch froze the surface posture at %q instead of leaving the profile live", got)
+	}
+}
+
 // An always on a plain tool, written and then read back as a policy that does
 // not ask.
 func TestARememberedToolIsAllowedAtTheNextLaunch(t *testing.T) {

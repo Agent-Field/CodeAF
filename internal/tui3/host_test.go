@@ -294,7 +294,7 @@ func TestTheYoloBadgeNamesTheEnginesPostureNotThisMachines(t *testing.T) {
 
 	// The engine's own posture, carried once on the welcome, is what a remote
 	// badge draws instead.
-	a.hostApproval = "allow"
+	a.handedApproval = "allow"
 	if got := a.approvalPosture(); got != "allow" {
 		t.Fatalf("approvalPosture = %q, want the engine's carried posture %q", got, "allow")
 	}

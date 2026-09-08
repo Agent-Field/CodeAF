@@ -250,6 +250,32 @@ func TestTheYoloSegmentMatchesThePostureInForce(t *testing.T) {
 		}
 	})
 
+	// A person whose launch forced the gate open sees that posture in the
+	// segment and in the frame, even though the launch wrote nothing down.
+	t.Run("a launch the flag opened says so", func(t *testing.T) {
+		a := ordinaryLaunch(t, Options{ApprovalMode: "allow"}, nil)
+		if got := a.yoloSegment(); got != "YOLO" {
+			t.Fatalf("the status line drew %q while the launch's flag held the gate open", got)
+		}
+		if screen := ordinaryScreen(a); !strings.Contains(screen, "YOLO") {
+			t.Fatalf("the segment never reached the frame:\n%s", screen)
+		}
+		if force := config.ToolApprovalModeAt(""); force != config.DefaultToolApprovalMode {
+			t.Fatalf("the launch wrote %q into a profile whose strict default should stand", force)
+		}
+	})
+
+	// A person whose launch forced the gate open still sees YOLO when the row
+	// underneath says prompt, because the flag outranks that row for this run.
+	t.Run("the row cannot close a gate the flag opened", func(t *testing.T) {
+		a := ordinaryLaunch(t, Options{ApprovalMode: "allow"}, func() {
+			writeOrdinaryRow(t, config.KeyToolApprovalMode, "prompt")
+		})
+		if got := a.yoloSegment(); got != "YOLO" {
+			t.Fatalf("the profile row hid the launch's open gate behind %q", got)
+		}
+	})
+
 	// THIS LAPTOP SAYS ALLOW AND THE ENGINE SAYS ASK, in both hosted cases: a
 	// badge drawn from this side would be a safety claim about a machine nobody
 	// consulted, and the engine's own answer travelled once on the welcome.
