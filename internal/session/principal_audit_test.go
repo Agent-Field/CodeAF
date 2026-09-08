@@ -95,6 +95,131 @@ func TestAnEditToAFileTheProjectAlreadyHadIsWorkTheSessionMade(t *testing.T) {
 	}
 }
 
+// A FILE THE RUN CREATED AND THEN EMPTIED IS NOT WORK THE SESSION MADE (C1-C4).
+//
+// The created ledger records that a file was made, not what remains in it. A
+// later step could blank that file and leave the path behind, and the door
+// would still say the work was made over a tree holding an empty file. Content
+// makes it work; emptiness does not. The file remains somebody's deliverable
+// either way.
+func TestAFileTheRunCreatedAndThenEmptiedIsNotWorkTheSessionMade(t *testing.T) {
+	tree := t.TempDir()
+	path := filepath.Join(tree, "fix.py")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberChange(fileChange{path: path, shown: "fix.py", created: true})
+
+	if err := os.WriteFile(path, []byte("def fix(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("writing the created file: %v", err)
+	}
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file with content was not counted as work the session made")
+	}
+
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatalf("emptying the created file: %v", err)
+	}
+	remains := agent.remainsFor("fixed", readerLine{})
+	if remains.Made {
+		t.Fatal("an empty file counted as work the session made")
+	}
+	if remains.finishedSomething() {
+		t.Fatal("a session with only an empty created file was said to have finished something")
+	}
+	if unmet := strings.Join(remains.unmet(), "\n"); !strings.Contains(unmet, "nothing has been finished yet") {
+		t.Fatalf("the run was not told to carry on after its created file was emptied: %q", unmet)
+	}
+
+	// SCRATCH IS WHAT [sweepScratch] REMOVES. Made may answer false without
+	// moving an in-tree file into that set: emptiness never gives the harness
+	// leave to delete somebody's deliverable.
+	found := reconcile(agent.createdList(), tree)
+	if len(found.kept) != 1 || found.kept[0] != "fix.py" {
+		t.Fatalf("the empty deliverable was not kept: %+v", found.kept)
+	}
+	if len(found.scratch) != 0 {
+		t.Fatalf("the empty deliverable was offered to the sweep: %+v", found.scratch)
+	}
+
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("writing the created file again: %v", err)
+	}
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file edited to hold content was not counted as work the session made")
+	}
+}
+
+// A CREATED FILE OUTSIDE THE DELIVERABLE IS STILL NOT THE WORK (C5-C6).
+//
+// Content does not widen the deliverable tree, and with no tree there is no
+// created half of Made to answer at all. Reconciliation keeps its older job:
+// scratch made outside a real tree is still scratch.
+func TestACreatedFileOutsideTheDeliverableIsStillNotTheWork(t *testing.T) {
+	tree := t.TempDir()
+	path := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(path, []byte("notes\n"), 0o644); err != nil {
+		t.Fatalf("writing the outside file: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberChange(fileChange{path: path, shown: path, created: true})
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file outside the deliverable counted as work on it")
+	}
+	found := reconcile(agent.createdList(), tree)
+	if len(found.scratch) != 1 || found.scratch[0] != path {
+		t.Fatalf("the created file outside the deliverable was not scratch: %+v", found.scratch)
+	}
+
+	withoutTree, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	withoutTree.config.Workspace = ""
+	withoutTree.rememberChange(fileChange{path: path, shown: path, created: true})
+	if withoutTree.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file counted as work when there was no deliverable tree")
+	}
+}
+
+// A CREATED PATH THAT BECAME A DIRECTORY IS NOT WORK THE SESSION MADE (C7).
+//
+// The directory is neither the regular file the run wrote nor scratch the
+// sweep may remove, so both readings leave it alone.
+func TestACreatedPathThatBecameADirectoryIsNotWorkTheSessionMade(t *testing.T) {
+	tree := t.TempDir()
+	path := filepath.Join(tree, "fix.py")
+	if err := os.WriteFile(path, []byte("def fix(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("writing the created file: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberChange(fileChange{path: path, shown: "fix.py", created: true})
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("removing the created file: %v", err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("making a directory at the created path: %v", err)
+	}
+
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created path that became a directory counted as work the session made")
+	}
+	found := reconcile(agent.createdList(), tree)
+	if len(found.kept) != 0 || len(found.scratch) != 0 {
+		t.Fatalf("a directory at a created path reached the keep or sweep set: %+v", found)
+	}
+}
+
 // NOTHING HARVESTED FROM THE ASK IS EXECUTED AGAINST THE TREE. A pasted
 // reproduction says how the person saw the bug, while the acceptance is the
 // work's own promise about what proves it.

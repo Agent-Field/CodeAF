@@ -368,6 +368,45 @@ func (a *Agent) rememberChanged(change fileChange) {
 	a.changedFiles = append(a.changedFiles, change)
 }
 
+// createdInDeliverable says whether a file this session created is under the
+// deliverable tree, is still a regular file there, AND HAS CONTENT IN IT. A
+// path outside the tree is scratch, not the work; a path that has since gone or
+// become a directory is not the file the session made; and an empty file holds
+// none of the work the run meant to put there.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// A run wrote `fix.py`, and a later one of its own steps blanked it. The
+// created ledger still held the path, so Made was true and the door said the
+// work was made over a tree holding an empty file.
+//
+// A CREATED FILE IS MEASURED BY SIZE, NOT BY ITS BEFORE-DIGEST. Its before is
+// "" because it was absent, while the digest of an empty regular file is the
+// sha256 of zero bytes rather than "" ([fileDigest]); comparing those values
+// would call the empty file changed and silently restore this failure.
+func (a *Agent) createdInDeliverable() bool {
+	tree := a.deliverableTree()
+	if tree == "" {
+		return false
+	}
+	for _, change := range a.createdList() {
+		if !change.created || !underTree(tree, change.path) {
+			continue
+		}
+		// THE PATH IS RESOLVED BEFORE IT IS READ for the same reason as in
+		// [Agent.changedInDeliverable]: a link under the workspace to an in-tree
+		// regular file is the file it points at, while [underTree] has already
+		// excluded a link that points out of the workspace.
+		resolved := canonicalPath(change.path)
+		info, err := os.Stat(resolved)
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // changedInDeliverable says whether a file this session modified is under the
 // deliverable tree, still a file there, AND STILL HOLDING DIFFERENT CONTENT
 // FROM WHAT IT HELD BEFORE THE WRITE. A path outside the tree is a note or a

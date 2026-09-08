@@ -205,7 +205,7 @@ task exactly as it always has, nothing is decided for you, and the two readers a
 still leaves your answer where it is. There is no wall on your session, so there is no share
 of one either, however long your reply runs.
 
-## What counts as still left · a task that died on the wire · it kept working after everything was finished · it says nothing has been finished yet when it did the work itself
+## What counts as still left · a task that died on the wire · it kept working after everything was finished
 
 **What is left is read from the tree, not from a task's death.** A run with a budget looks
 at every piece of work at the end of each reply and asks what stands between it and
@@ -226,6 +226,8 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
+## It says nothing has been finished yet after editing or creating a file · inline work · emptied file · blank file · zero bytes
+
 **And work aforge did itself counts as finished work.** The question is not only "did a
 task come home": a session that made the change and wrote the tests **inline**, with no
 task at all, has finished something — as long as the second reader agrees nothing is left.
@@ -245,6 +247,12 @@ finished work. A stash the run took itself and never popped is said out loud as 
 `1 stash entry holds work that is not in the tree` — and the run carries on rather than
 finishing over it; a stash you already had before the run started is yours and is never
 counted, and neither is the one a landing takes to set your uncommitted work aside.
+
+**A file the run created counts as its work only while there is something in it.** A
+rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell
+step can leave it emptied, blank, or at zero bytes; none of those empty files counts as
+finished work. It is still your file: nothing inside the folder aforge is working in is
+ever deleted, whatever is in it.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
