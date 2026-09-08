@@ -53,7 +53,7 @@ const (
 	ActionRead ActionCategory = "read"
 	// ActionEdit is changing something that already exists.
 	ActionEdit ActionCategory = "edit"
-	// ActionCreate is making something that did not exist.
+	// ActionCreate is writing content or generating a new artifact.
 	ActionCreate ActionCategory = "create"
 	// ActionRun is executing a command and waiting for what it prints.
 	ActionRun ActionCategory = "run"
@@ -228,7 +228,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		"revise_design", "forget", "workspace":
 		return ActionEdit
 
-	// Making something that did not exist.
+	// Writing content or generating an artifact.
 	case "write", "generate_image", "generate_music", "generate_video",
 		"remember", "propose_subharness", "build_harness", "calendar_create":
 		return ActionCreate

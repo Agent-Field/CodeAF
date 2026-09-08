@@ -21,11 +21,10 @@ caption and the tool-derived mark, with no retry and no second call. Repainting
 cannot change a mark, and reopening cannot either — the narration is on the
 record, and where there is none the tool-derived floor answers as it always did.
 
-The caption is journaled where the event is sent, against the same anchor, so
-the record and the stream name the step the same way. It is written even when
-the batch has already ended: a cancelled context means the work finished, not
-that the sentence was wrong about it, and what the cancellation governs is the
-live frame, where a late title would move under somebody's eye.
+The caption is accepted once for both the journal and live event, against the
+same batch anchor. An answer already cancelled when it returns reaches neither.
+Once accepted, both paths carry the same words and category even if the batch
+ends immediately afterward. Detached transcript readers retain those fields too.
 
 The normal presentation uses proper Font Awesome icons from the Nerd Font
 repertoire. Detection falls back on known unsupported terminals; Display's
