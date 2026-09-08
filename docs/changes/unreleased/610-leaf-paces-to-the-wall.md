@@ -20,3 +20,8 @@ repeated calls and already-seen results own the no-progress stop.
 Review correction: the brief and halfway reminder use the effective deadline inherited
 from the caller. A ten-second remaining wall no longer appears as a fresh one-hour
 lease with fifty-nine minutes already elapsed.
+
+The stalled-check regression now leaves ten seconds for its real repository and
+second-check setup. Its earlier 200-millisecond fixture window could expire before
+the immediate second answer under concurrent package tests; production limits and
+the assertions that the first call times out and the second succeeds are unchanged.
