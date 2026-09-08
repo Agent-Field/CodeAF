@@ -96,6 +96,17 @@ type PlaceRef struct {
 	// mode falls out of the deliverable, exactly as [groundMode] decides it for
 	// every other ground.
 	Mode string `json:"mode,omitempty"`
+	// Chose is the directory THE PERSON ACTUALLY POINTED AT, and it is set only
+	// when the snap above moved it — so it is empty for every place chosen at its
+	// own root, which is most of them.
+	//
+	// THE SNAP IS REAL AND MUST NOT BE SILENT. A branch is cut from a repository
+	// and not from a directory inside it, so a person who picks
+	// `…/internal/session` gains the project; but a record that kept only the
+	// project would have quietly widened what they said, and neither the surface
+	// nor the model could tell them what actually happened. This is the one field
+	// that keeps the two honest with each other.
+	Chose string `json:"chose,omitempty"`
 	// Repository records whether git knew this directory when it was referred.
 	// It is the cheap fact a picker draws and a caller reads without paying for
 	// a `rev-parse` per row; the ladder asks git itself where it must be right.
@@ -139,12 +150,74 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 		return PlaceRef{}, fmt.Errorf("a place arrives said or kept, not %q", arrival)
 	}
 	root, repository := repositoryRoot(dir)
-	if repository {
-		dir = root
+	chose := ""
+	if repository && root != dir {
+		// WHAT THEY POINTED AT IS KEPT BESIDE WHAT THEY GAINED, for
+		// [PlaceRef.Chose]'s stated reason.
+		chose, dir = dir, root
 	}
-	ref := PlaceRef{Path: dir, Arrival: arrival, Referred: time.Now(), Repository: repository}
+	ref := PlaceRef{Path: dir, Chose: chose, Arrival: arrival, Referred: time.Now(), Repository: repository}
 	a.refer(ref)
 	return ref, nil
+}
+
+// RemovePlace takes one folder back off the conversation: off the set, off
+// meta.json, and out of what the next request tells the model
+// (placescontext.go).
+//
+// IT IS THE OTHER HALF OF [Agent.ReferPlace] AND THE SURFACE'S ONE DOOR OUT.
+// A folder indicator a person can see and cannot dismiss is a mistake they have
+// to open a new conversation to correct, and a conversation still carrying a
+// folder somebody removed from their screen would be the surface and the model
+// disagreeing about what this is about.
+//
+// IT WORKS ON A FOLDER THAT IS NO LONGER THERE. The set is a history and keeps a
+// record whose directory has been deleted (see [loadPlaces]), so a remove that
+// insisted on stat'ing first would leave exactly those records unremovable — the
+// path is read the ordinary way when the disk can answer, and taken as written
+// when it cannot.
+//
+// A FOLDER THIS CONVERSATION IS NOT ABOUT IS REFUSED RATHER THAN IGNORED, which
+// is [Agent.SetPlaceMode]'s reading: a caller told "done" about a path that was
+// never on the set has been told something false about which folders are
+// attached.
+func (a *Agent) RemovePlace(path string) error {
+	want := strings.TrimSpace(path)
+	if want == "" {
+		return fmt.Errorf("a place is a folder · this one has no path")
+	}
+	if dir, err := a.placePath(want); err == nil {
+		if root, ok := repositoryRoot(dir); ok {
+			dir = root
+		}
+		want = dir
+	} else if filepath.IsAbs(want) {
+		want = canonicalPath(filepath.Clean(want))
+	} else {
+		// A relative path this process cannot resolve names nothing at all, and
+		// the refusal [Agent.placePath] already wrote is the true one.
+		return err
+	}
+	// THE SET IS REPLACED AND NEVER EDITED IN PLACE, for [Agent.SetPlaceMode]'s
+	// stated reason: a stamp hands the live slice to the marshaller.
+	a.mu.Lock()
+	kept := make([]PlaceRef, 0, len(a.places))
+	for _, place := range a.places {
+		if place.Path != want {
+			kept = append(kept, place)
+		}
+	}
+	found := len(kept) != len(a.places)
+	if found {
+		a.places = kept
+	}
+	a.mu.Unlock()
+	if !found {
+		return fmt.Errorf("this conversation is not about %s", want)
+	}
+	a.stampPlaces()
+	a.keepAttached()
+	return nil
 }
 
 // SetPlaceMode records the person's own word about how work happens in one
@@ -286,10 +359,21 @@ func (a *Agent) refer(ref PlaceRef) {
 		ref.Referred = time.Now()
 	}
 	known, settled := a.knownPlace(ref.Path)
+	// AND WHAT THE PERSON POINTED AT SURVIVES A GROUND LANDING ON THE SAME PLACE,
+	// but is never carried over a person's own act. A resolved ground makes no
+	// claim about what anybody pointed at, so it inherits the record's; somebody
+	// choosing the project itself is SAYING they pointed at the root, and
+	// resurrecting last week's subdirectory under them would be this file
+	// remembering an intention they have just replaced. IT IS SETTLED BEFORE THE
+	// EARLY RETURN BELOW, because a person re-picking the same project at a
+	// different depth has something new to say about a place already at the head.
+	if ref.Arrival == PlaceKept && ref.Chose == "" {
+		ref.Chose = known.Chose
+	}
 	// The head, with nothing new to say about it. An arrival only ever goes up,
 	// so a ground resolved onto a place the person already named is a place the
 	// set already reads correctly.
-	if settled && (known.Arrival == ref.Arrival || ref.Arrival == PlaceKept) {
+	if settled && (known.Arrival == ref.Arrival || ref.Arrival == PlaceKept) && known.Chose == ref.Chose {
 		return
 	}
 	if ref.Mode == "" {
@@ -320,6 +404,12 @@ func (a *Agent) refer(ref PlaceRef) {
 	a.places = trimPlaces(append([]PlaceRef{ref}, kept...))
 	a.mu.Unlock()
 	a.stampPlaces()
+	// AND THE MODEL IS TOLD, which is the whole difference between a folder this
+	// process remembers and a folder this conversation is about. The block is
+	// composed from the SAID rows alone and compares itself before it writes, so
+	// a ground the ladder resolved reaches this line and changes nothing
+	// (placescontext.go).
+	a.keepAttached()
 }
 
 // knownPlace is what the set already holds about one path, and whether it is

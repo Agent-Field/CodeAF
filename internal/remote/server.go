@@ -962,6 +962,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
+		// Whether this engine can hold a folder at all, asked of the agent it has
+		// open — for [Welcome.Folders]'s stated reason: the surface's own type
+		// assertion cannot see across the wire.
+		Folders: keepsFolders(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
