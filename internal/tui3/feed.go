@@ -285,28 +285,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
 
 	case session.EventCaption:
-		// The narrator speaks about the open step rather than minting a transcript
-		// block. Keeping the override on that step's newest call lets both pages
-		// derive the same caption from the same entry list.
-		for i := len(f.entries) - 1; i >= 0; i-- {
-			e := &f.entries[i]
-			if e.turn != f.turn {
-				break
-			}
-			if e.kind == entryTool {
-				// BOTH HALVES OR NEITHER. The sentence and the family arrive in
-				// one event and are written in one assignment, so no frame can
-				// draw the new words beside the old mark. An event with no
-				// family clears the field rather than leaving a previous one
-				// standing: the mark then comes off the tools, which is right
-				// about this batch, where a stale family would be right about
-				// the last one.
-				e.caption = strings.TrimSpace(ev.Text)
-				e.captionCat = ev.Category
-				f.touch()
-				break
-			}
-		}
+		f.nameStep(ev)
 
 	case session.EventCompacting:
 		f.openCompaction(firstNonEmpty(ev.Hint, "compacting"))
@@ -318,6 +297,62 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// close.
 		f.closeLive()
 		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+	}
+}
+
+// nameStep is the narrator speaking about ONE step (session's caption.go). It
+// mints no transcript block: the sentence and the family it named are written
+// onto the call the batch opened with, and both pages derive the same caption
+// from the same entry list.
+//
+// IT KEYS ON THE ANCHOR AND NEVER ON "THE NEWEST ROW". The engine sends the
+// batch's first call id with the event, and this walks for THAT row. The reason
+// is a race the old keying could not survive: the narrator's goroutine checks
+// that its batch is still open and can then be descheduled, so its answer can
+// arrive after that batch ended, after the next one began, and after the next
+// one's rows are on screen. Keyed by recency, a sentence about the finished step
+// retitled the running one — silently, on the row a person is watching. Keyed by
+// the anchor, an event that names a step this feed is not holding is simply
+// dropped, which is the correct thing to do with news about work that is over.
+//
+// THE ANCHORLESS EVENT IS AN OLDER ENGINE and is served exactly as it always
+// was: a host built before the anchor existed sends captions with no id, and
+// dropping them would silently take the narration away from every mixed-version
+// link. That path keeps the recency rule and therefore keeps the old race; every
+// build that ships the anchor is free of it.
+//
+// BOTH HALVES OR NEITHER. The sentence and the family arrive in one event and
+// are written in one assignment, so no frame can draw the new words beside the
+// old mark. An event with no family CLEARS the field rather than leaving a
+// previous one standing: the mark then comes off the tools, which is right about
+// this batch, where a stale family would be right about the last one.
+func (f *feed) nameStep(ev session.Event) {
+	text := strings.TrimSpace(ev.Text)
+	if text == "" {
+		return
+	}
+	if anchor := strings.TrimSpace(ev.CallID); anchor != "" {
+		for i := len(f.entries) - 1; i >= 0; i-- {
+			e := &f.entries[i]
+			if e.kind != entryTool || e.callID != anchor {
+				continue
+			}
+			e.caption, e.captionCat = text, ev.Category
+			f.touch()
+			return
+		}
+		return
+	}
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn {
+			return
+		}
+		if e.kind == entryTool {
+			e.caption, e.captionCat = text, ev.Category
+			f.touch()
+			return
+		}
 	}
 }
 
@@ -585,6 +620,15 @@ func (f *feed) beginTool(ev session.Event) {
 	f.entries = append(f.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
+		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
+		// row records it and this one did not, which left the rows drawn for a
+		// provider that does not stream its calls — and for a surface that
+		// attached mid-batch — as the only rows in the conversation with no
+		// identity. Anything that pairs by id then cannot find them: the end and
+		// the figure fall back to matching by tool name, and a caption, which has
+		// only the id to go on, is dropped outright ([feed.nameStep]). It is the
+		// same string the branch above adopts, from the same field.
+		callID: ev.CallID,
 	})
 	f.follow()
 	f.touch()

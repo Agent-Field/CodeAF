@@ -8,6 +8,22 @@ package session
 // the step. This file owns the last rung: a cheap narrator that names the
 // discrete step while the batch runs, cancelled when the batch ends so a late
 // answer cannot rewrite a settled title.
+//
+// TWO THINGS TRAVEL WITH THE SENTENCE, and both are here because they are
+// decided here. The FAMILY of work is a one-word prefix on the same answer
+// (actioncategory.go), so the surface's one still mark costs no second call. The
+// ANCHOR is the batch's first call id, and it is what makes the cancellation
+// above a fence rather than a hope: the check is a race — this goroutine can
+// pass it and then be descheduled past the end of its own batch — so the event
+// names the step it is about and a surface holding a different step drops it.
+//
+// AND THE LINE IS JOURNALED. A caption is not a message; nothing was said to the
+// model, so there is nothing in the transcript to recover it from, and a
+// conversation reopened without a `caption` line falls back to recomposing a
+// title out of tool names — which turns "starting the local server" into
+// "running 1 command" and a step the narrator called a `test` into a `run`.
+// [sessionFile.appendCaption] writes it against the same anchor the event
+// carries, so the record and the stream name the step the same way.
 
 import (
 	"context"
@@ -133,11 +149,39 @@ func (a *Agent) maybeCaption(ctx context.Context, hub *eventHub, calls []ai.Tool
 	if _, echo := ParseActionCategory(line); echo {
 		return
 	}
-	// THE STALENESS RULE IS THE ONE THIS FILE ALREADY HAD, unchanged: the dwell
-	// goroutine's context is cancelled when the batch ends, so a late answer —
-	// with or without a family on it — never rewrites a settled title.
-	if line != "" && ctx.Err() == nil {
-		hub.send(Event{Kind: EventCaption, Text: line, Category: category})
+	if line == "" {
+		return
+	}
+	// THE ANCHOR IS THE BATCH'S FIRST CALL, and it is what makes this event
+	// unambiguous rather than merely timely.
+	//
+	// The cancellation above is a RACE and not a fence: this goroutine can pass
+	// `ctx.Err() == nil`, be descheduled, and reach [eventHub.send] after the
+	// batch ended, another began, and its rows are already on screen. A surface
+	// keying the event onto "the newest tool row of this turn" would then retitle
+	// a step this sentence was never about — the defect existed for the text
+	// alone and would have been inherited whole by the mark beside it. The id
+	// travels so the surface can key on the step ITSELF; an event whose anchor
+	// names no row it is holding is one the surface drops.
+	anchor := ""
+	if len(calls) > 0 {
+		anchor = calls[0].ID
+	}
+	// AND THE RECORD IS WRITTEN WHERE THE EVENT IS SENT, with the same anchor and
+	// the same words. A caption is not a message — nothing was said to the model
+	// here — so it is journaled as a line of its own or it is lost the moment the
+	// window closes, and a reopened conversation falls back to recomposing a
+	// title out of tool names.
+	//
+	// It is written EVEN WHEN THE CONTEXT HAS BEEN CANCELLED, because a cancelled
+	// context means the batch finished, not that the sentence was wrong about it:
+	// the anchor still names that batch, and a reader coming back tomorrow is
+	// better served by the narration than by "running 1 command". What the
+	// cancellation governs is the LIVE frame, where a late title would move under
+	// somebody's eye, and that is the check below.
+	a.file.appendCaption(anchor, line, category)
+	if ctx.Err() == nil {
+		hub.send(Event{Kind: EventCaption, Text: line, Category: category, CallID: anchor})
 	}
 }
 

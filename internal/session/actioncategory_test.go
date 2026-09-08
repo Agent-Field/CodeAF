@@ -70,10 +70,26 @@ func TestTheActionParserKeepsTheSentenceWhateverTheModelDid(t *testing.T) {
 			sentence: "reticulatingthesplines | doing something",
 		},
 		{
+			// THE FORMAT WITH NO WORK NAMED BY IT. Both halves come back empty:
+			// handing the raw line back would draw `run |` on the frame as though
+			// the bar were the work, which is the prefix leaking into the one
+			// line that may not carry machinery.
 			name:     "a family and nothing after it",
 			raw:      "run |",
 			category: "",
-			sentence: "run |",
+			sentence: "",
+		},
+		{
+			name:     "a label attempt that is not a family, and nothing after it",
+			raw:      "investigating |",
+			category: "",
+			sentence: "",
+		},
+		{
+			name:     "a bar that opens the line is not a label",
+			raw:      "| reading the caption renderer",
+			category: "",
+			sentence: "| reading the caption renderer",
 		},
 		{
 			name:     "empty",
@@ -210,5 +226,33 @@ func TestThePromptAndTheParserShareOneVocabulary(t *testing.T) {
 	}
 	if !strings.Contains(captionPrompt, "run | starting the local server") {
 		t.Error("the caption prompt no longer shows the format it asks for")
+	}
+}
+
+// THE VOCABULARY A CALLER SEES IS A COPY OF THE ONE THE PROMPT WAS BUILT FROM.
+//
+// The prompt is composed once, at package initialization. A caller handed the
+// backing array could write into it and from that moment the parser would accept
+// words the model was never shown and refuse the ones it was — a divergence with
+// no symptom until a caption came back with a family that no longer parsed.
+func TestTheFamilyListCannotBeWrittenThrough(t *testing.T) {
+	handed := ActionCategories()
+	if len(handed) == 0 {
+		t.Fatal("the vocabulary is empty")
+	}
+	first := handed[0]
+	handed[0] = ActionCategory("clobbered")
+
+	if again := ActionCategories(); again[0] != first {
+		t.Fatalf("writing to a handed-out slice changed the vocabulary: %q", again[0])
+	}
+	if got, ok := ParseActionCategory(string(first)); !ok || got != first {
+		t.Fatalf("the parser lost the %q family after a caller wrote to its slice", first)
+	}
+	if _, ok := ParseActionCategory("clobbered"); ok {
+		t.Fatal("the parser accepted a family a caller invented")
+	}
+	if !strings.Contains(captionPrompt, string(first)) {
+		t.Fatalf("the prompt no longer names %q", first)
 	}
 }

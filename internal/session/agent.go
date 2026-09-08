@@ -3593,6 +3593,26 @@ type DisplayEntry struct {
 	Args   string
 	Output string
 
+	// Caption and CaptionCategory are WHAT THE NARRATOR SAID ABOUT THE BATCH
+	// THIS CALL OPENED, and the family of work it named (caption.go,
+	// actioncategory.go). They are set on the batch's FIRST call and on nothing
+	// else, which is the same anchor the live [Event] carries, so a page built
+	// out of the record keys the step exactly where a page built out of the
+	// stream does.
+	//
+	// THEY ARE THE REASON A REOPENED CONVERSATION READS AS ITSELF. Without them
+	// a surface recomposes a title from the tool names — "running 1 command"
+	// where the person had been reading "starting the local server" — and draws
+	// the family those names imply, so a step the narrator called a `test`
+	// becomes a `run` the moment the file is read back.
+	//
+	// Both are empty for every entry that is not a batch anchor, for every batch
+	// the narrator never spoke about, and for every file written before the
+	// `caption` line existed. A surface reads that emptiness as "recompose", not
+	// as "draw nothing".
+	Caption         string
+	CaptionCategory ActionCategory
+
 	// ImageRefs are the paths of the pictures a person's message carried, in the
 	// order they sit in it — what the journal wrote where the bytes would have
 	// been (see [journalPart]). It is what lets a replayed message mark its
@@ -3765,11 +3785,18 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 		})
 		for _, call := range msg.ToolCalls {
 			result, answered := results[call.ID]
+			// The step's own title, off the journal's `caption` line, keyed by
+			// the anchor the narration was recorded against. Every call that is
+			// not a batch anchor answers empty and carries nothing.
+			told, family := journal.caption(call.ID)
 			entries = append(entries, DisplayEntry{
 				Role:   "tool",
 				Tool:   call.Function.Name,
 				CallID: call.ID,
 				Hint:   gloss(call),
+
+				Caption:         told,
+				CaptionCategory: family,
 				// The same two renderings a live row is drawn from (loop.go),
 				// applied to the same fields the journal kept: a replayed row and
 				// the row it replaces are the same row, or replay is a second

@@ -639,10 +639,21 @@ type Event struct {
 	ID uint64
 
 	// CallID is the PROVIDER's id for the tool call an EventToolForming, an
-	// EventToolAnnounced or an EventConsentRequest is about — the same string
-	// the tool result carries — and is empty on every other kind. It is empty on
-	// a forming event too until the wire has sent one, which is the first
-	// fragment in practice and nothing the consumer may assume.
+	// EventToolAnnounced, an EventConsentRequest or an EventCaption is about —
+	// the same string the tool result carries — and is empty on every other
+	// kind. It is empty on a forming event too until the wire has sent one,
+	// which is the first fragment in practice and nothing the consumer may
+	// assume.
+	//
+	// ON A CAPTION IT IS THE BATCH'S ANCHOR: the id of the call the batch opened
+	// with, which is how a surface knows WHICH STEP the sentence is about. The
+	// narrator answers on a goroutine that can be descheduled between checking
+	// that its batch is still open and reaching the hub, so a caption can arrive
+	// after its batch ended and the next one began. A surface keying on "the
+	// newest tool row" then retitles the running step with a sentence about the
+	// finished one; keyed by this id it drops news about work it is no longer
+	// holding. An event with no anchor is an engine built before this, and a
+	// surface may serve it by recency exactly as it always did.
 	//
 	// ON A CONSENT REQUEST IT IS WHICH CALL IS BEING ASKED ABOUT. A surface pairs
 	// the question to the row it draws the question under, and the card reads the

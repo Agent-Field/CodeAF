@@ -93,10 +93,19 @@ var actionCategories = []ActionCategory{
 	ActionCoordinate, ActionPlan, ActionWait, ActionWork,
 }
 
-// ActionCategories returns every family in prompt order. The slice shares the
-// package's table and is not to be written to.
+// ActionCategories returns every family in prompt order.
+//
+// IT IS A COPY, and the copy is load-bearing rather than tidy. The prompt is
+// built ONCE, at package initialization, out of this same table; a caller
+// handed the backing array could write into it — a test tightening the list, a
+// surface sorting it for a menu — and from then on the parser would accept a
+// vocabulary the model was never shown, and refuse the one it was. A capped
+// slice prevents an append from reaching the array and does not prevent that,
+// so this allocates. It is called at construction time and never on a frame.
 func ActionCategories() []ActionCategory {
-	return actionCategories[:len(actionCategories):len(actionCategories)]
+	out := make([]ActionCategory, len(actionCategories))
+	copy(out, actionCategories)
+	return out
 }
 
 // ActionCategoryWords is the list as the prompt spells it: `search, read, edit,
@@ -137,19 +146,29 @@ const actionWordMax = 16
 // SplitActionLine takes the narrator's raw answer apart into the family it named
 // and the sentence it wrote.
 //
-// THE SENTENCE SURVIVES EVERY FAILURE. A line with no bar, a bar with a phrase
-// in front of it, or a bar behind a word that is not a family all return an
-// empty category and the line unchanged — so the caption a person reads is
-// exactly what it would have been before this field existed, and the icon comes
-// from the tools. Nothing is retried and nothing is dropped.
+// THE PROSE SURVIVES EVERY FAILURE AND THE LABEL NEVER DOES. A line with no bar,
+// or a bar with a PHRASE in front of it, is prose that happens to contain the
+// character and comes back whole — so a caption reads exactly as it would have
+// before this format existed, and the mark comes from the tools.
 //
-// A LABEL THAT DID NOT PARSE IS STILL REMOVED. `investigate | reading the
-// renderer` gives back "reading the renderer": one bare word before a bar is a
-// model reaching for this format and missing, and leaving the word in would put
-// machinery into the one line on the frame that may not carry any. The rule is
-// narrow — ONE word, no spaces, at most [actionWordMax] characters — because a
-// real five-to-ten-word caption never opens that way, and a sentence that
-// genuinely contains a bar keeps all of it.
+// A LABEL ATTEMPT, THOUGH, IS CONSUMED WHATEVER BECOMES OF IT. One bare word
+// before a bar is a model reaching for this format: `investigate | reading the
+// renderer` gives back "reading the renderer" with no family, because leaving
+// the word in would put machinery into the one line on the frame that may not
+// carry any. The rule is narrow — ONE word, no spaces, at most [actionWordMax]
+// characters — because a real five-to-ten-word caption never opens that way.
+//
+// AND AN ATTEMPT WITH NOTHING AFTER THE BAR IS REFUSED OUTRIGHT: both halves come
+// back empty. `run |` is a model that produced the format and no sentence, and
+// the two alternatives are both worse than nothing — handing back the raw line
+// draws the label and the bar as though they were the work ("run |" on the
+// frame), and handing back the family alone would put a mark beside a caption
+// the narrator never actually replaced. Empty is the caller's signal to keep the
+// deterministic composite already standing in the slot, which is a better line
+// than either.
+//
+// NOTHING HERE RETRIES. Every outcome is one pass over one answer; the caller
+// has already spent its call and does not ask again.
 func SplitActionLine(raw string) (ActionCategory, string) {
 	line := stripMarkup(strings.TrimSpace(firstLine(raw)))
 	bar := strings.IndexByte(line, '|')
@@ -158,8 +177,14 @@ func SplitActionLine(raw string) (ActionCategory, string) {
 	}
 	label := strings.TrimSpace(line[:bar])
 	rest := strings.TrimSpace(line[bar+1:])
-	if rest == "" || strings.ContainsAny(label, " \t") || len(label) > actionWordMax {
+	if label == "" || strings.ContainsAny(label, " \t") || len(label) > actionWordMax {
+		// Not a label attempt at all: prose with a bar in it, or a bar that
+		// opens the line. Either way the sentence is the whole line.
 		return "", raw
+	}
+	if rest == "" {
+		// The format, and no work named by it.
+		return "", ""
 	}
 	category, ok := ParseActionCategory(label)
 	if !ok {
