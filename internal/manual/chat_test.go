@@ -1420,6 +1420,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the model picker keep jumping", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
+		{"was I charged for a reply that got cut off", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one
 		// turn hopping across six endpoints, each hop paying full price for a
 		// context the last endpoint already had. Both halves of that are things
@@ -2079,6 +2080,18 @@ func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
 		}
 	}
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
+}
+
+// #161: a person asking about the bill for a cut reply must reach the receipt
+// rule itself, not merely a neighbouring section about retries or stream walls.
+func TestTheCutReplyCostQuestionReachesTheReceiptAnswer(t *testing.T) {
+	const said = "calls the provider charged for and could not be priced"
+	for _, section := range Chat().Search("was I charged for a reply that got cut off", DefaultResults) {
+		if section.Page == "models-and-cost" && strings.Contains(section.Body, said) {
+			return
+		}
+	}
+	t.Fatalf("the cut-reply cost question does not reach the section that says %q", said)
 }
 
 // #578: a ground never climbs out of the machine's scratch, so a workspace under

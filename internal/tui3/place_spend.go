@@ -563,7 +563,7 @@ func (placeSpend) remote(a *app) string {
 }
 
 func (placeSpend) body(a *app, width, room int) []placeRow {
-	if a.spend.reading.totals.USD <= 0 {
+	if a.spend.reading.empty() {
 		if !a.spend.held {
 			return placeTeachRows(placeTeachProse(spendTeach, width, a.pal), room)
 		}

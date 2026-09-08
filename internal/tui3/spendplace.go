@@ -70,6 +70,9 @@ type spendReading struct {
 	// that DRAWING stays arithmetic over what was already gathered. Zero is the
 	// ordinary case and the line says nothing about it.
 	unwritten int64
+	// unbilled is how many charged calls ended without either a wire price or a
+	// provider receipt ([session.UnbilledCalls]). Zero is absent from the line.
+	unbilled int64
 }
 
 // lost hands the reading the count of rows that never reached the file. It
@@ -77,6 +80,13 @@ type spendReading struct {
 // answer.
 func (r spendReading) lost(dropped int64) spendReading {
 	r.unwritten = dropped
+	return r
+}
+
+// unpriced hands the reading the count of charged calls no receipt could put a
+// figure on. It answers a copy for the same immutable-reading reason as [lost].
+func (r spendReading) unpriced(calls int64) spendReading {
+	r.unbilled = calls
 	return r
 }
 
@@ -223,21 +233,26 @@ func spendSubjectKey(subject session.SubjectSpend) string {
 // unknown price become a measured free call on screen.
 func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time) spendReading {
 	win = win.Normalized()
+	var unbilled int64
 	priced := make([]session.UsageLine, 0, len(lines))
 	for _, line := range lines {
+		if line.Unbilled && win.Holds(session.UsageLineDay(line)) {
+			unbilled++
+		}
 		if line.USD > 0 && win.Holds(session.UsageLineDay(line)) {
 			priced = append(priced, line)
 		}
 	}
 	if len(priced) == 0 {
-		return spendReading{window: win, now: now}
+		return spendReading{window: win, now: now, unbilled: unbilled}
 	}
 	r := spendReading{
-		window: win,
-		now:    now,
-		totals: session.UsageTotals(priced),
-		days:   session.UsageByDay(priced, win),
-		models: session.UsageByModel(priced),
+		unbilled: unbilled,
+		window:   win,
+		now:      now,
+		totals:   session.UsageTotals(priced),
+		days:     session.UsageByDay(priced, win),
+		models:   session.UsageByModel(priced),
 	}
 	// A subject exists only when the ledger names one of its addresses. The
 	// grouping reader's default conversation bucket is useful arithmetic, but
@@ -295,8 +310,14 @@ func (r spendReading) rows(width int, pal palette) []string {
 // map written by anything other than the draw is a hit map that resolves a
 // keypress against a row the draw did not put there — the law every hit map on
 // this surface is held to (home's own says it first).
+// empty distinguishes an untouched ledger from calls whose price is missing.
+// Both page selection and row rendering must preserve a shortfall-only reading.
+func (r spendReading) empty() bool {
+	return r.totals.USD <= 0 && r.unbilled <= 0 && r.unwritten <= 0
+}
+
 func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
-	if width < 1 || r.totals.USD <= 0 {
+	if width < 1 || r.empty() {
 		return nil, nil
 	}
 	var out []string
@@ -410,6 +431,10 @@ func (r spendReading) railsRow(width int, pal palette) string {
 	if r.unwritten > 0 {
 		figure := strconv.FormatInt(r.unwritten, 10)
 		fields = append(fields, rowSay(figure+" "+spendUnwrittenSaid, figure+" unwritten", figure))
+	}
+	if r.unbilled > 0 {
+		figure := strconv.FormatInt(r.unbilled, 10)
+		fields = append(fields, rowSay(figure+" "+spendUnbilledSaid, figure+" unbilled", figure))
 	}
 	fields = append(fields, rowSay(spendRailsWord, "/budget"))
 	return pal.dim(fit(rowTail(fields, width), width))

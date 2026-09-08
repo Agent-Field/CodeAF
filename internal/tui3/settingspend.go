@@ -28,8 +28,8 @@ import (
 //	 per standing run  $5 a firing                       each order may name its own
 //	 practice          $50 of the day
 //
-// Three of those seven rows are READINGS and not settings, and the difference
-// is the whole of what keeps this tab honest:
+// Three of those seven base rows are READINGS and not settings, and the
+// difference is the whole of what keeps this tab honest:
 //
 //   - `today` is where the eye lands, and it answers "what is it costing" before
 //     anybody edits anything. It is a receipt: the cursor steps over it, and
@@ -42,6 +42,11 @@ import (
 //     rows and the honest way to have seven is to SAY what those two rails are,
 //     not to grow two knobs that write nowhere. A row that pretended to edit a
 //     rail nothing reads would be worse than the absence it was covering.
+//
+// Two more readings exist only when a figure is short: `unwritten` for a row
+// the disk could not take, and `unbilled` for a charged call no provider receipt
+// could price. Their zero state is absence, so the ordinary seven-row tab stays
+// exactly seven rows wide.
 //
 // EVERY VALUE ON THIS TAB IS A SENTENCE FRAGMENT COMPLETING "it may spend…",
 // and every one of them degrades through rowfit rather than being cut: the
@@ -83,7 +88,7 @@ func (s *sheet) spendingItems() []sheetItem {
 			order = append(order, row.Key)
 		}
 	}
-	items := make([]sheetItem, 0, len(order)+3)
+	items := make([]sheetItem, 0, len(order)+4)
 	add := func(key string) {
 		row, ok := mine[key]
 		if !ok {
@@ -100,6 +105,11 @@ func (s *sheet) spendingItems() []sheetItem {
 	// short. Absent whenever nothing was lost, which is nearly always.
 	if unwritten := unwrittenReading(); unwritten != nil {
 		items = append(items, sheetItem{read: unwritten})
+	}
+	// AND WHAT THE PROVIDER CHARGED WITHOUT PUTTING A FIGURE ON, beside the
+	// missing writes because both facts make every total below them short.
+	if unbilled := unbilledReading(); unbilled != nil {
+		items = append(items, sheetItem{read: unbilled})
 	}
 	add(config.KeyDailyBudget)
 	add(config.KeySpendRail)
@@ -440,10 +450,31 @@ func unwrittenReading() *railReading {
 		receipt: rowSay("every figure here is short by that much", "the figures are short")}
 }
 
-// spendUnwrittenWord names that row, and spendUnwrittenSaid is what it says.
-// They are constants because the /spend place says the same thing in its own
-// pointer line (spendplace.go) and two spellings of one fact are two facts.
+// unbilledReading is the row that appears only when a charged call ended
+// without a usage block and no provider receipt could put a figure on it. It
+// says nothing at zero by the same emptiness law [unwrittenReading] keeps.
+func unbilledReading() *railReading {
+	return unbilledReadingFor(session.UnbilledCalls())
+}
+
+// unbilledReadingFor is the pure spelling half, separated so the two surfaces
+// can be tested against the same count without changing a process-wide fact.
+func unbilledReadingFor(count int64) *railReading {
+	if count <= 0 {
+		return nil
+	}
+	figure := strconv.FormatInt(count, 10)
+	return &railReading{name: spendUnbilledWord,
+		value:   rowSay(figure+" "+spendUnbilledSaid, figure+" unbilled", figure),
+		receipt: rowSay("no figure was invented", "nothing was invented")}
+}
+
+// These pairs name each shortfall row and what it says. They are constants
+// because the /spend place says the same facts in its own pointer line
+// (spendplace.go), and two spellings of one fact are two facts.
 const (
 	spendUnwrittenWord = "unwritten"
 	spendUnwrittenSaid = "spending records could not be written"
+	spendUnbilledWord  = "unbilled"
+	spendUnbilledSaid  = "calls the provider charged for and could not be priced"
 )

@@ -19,12 +19,17 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -64,6 +69,176 @@ func ledgerUSD(t *testing.T, path string) (float64, int) {
 		total += line.USD
 	}
 	return total, len(lines)
+}
+
+// TestAReconciledCallWritesTheReceiptsFigureToTheLedger is the session half of
+// C1: exact receipt figures enter through the ordinary bank after the spending
+// turn has ended, mark their row, and do not move the turn now running.
+func TestAReconciledCallWritesTheReceiptsFigureToTheLedger(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+	agent.mu.Lock()
+	agent.turnSpend = Usage{Input: 5, Output: 2, Calls: 1, CostUSD: 0.11}
+	agent.mu.Unlock()
+
+	agent.reconciled(provider.Reconciled{
+		Billed: provider.Billed{Model: "receipt/model", PromptTokens: 91, CompletionTokens: 17, Cost: 0.37},
+		Ref:    "generation-c1", Reason: "stalled", Found: true,
+	})
+	FlushUsage()
+	lines, err := ReadUsage(ledger, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("the receipt wrote %d ledger rows, want one", len(lines))
+	}
+	line := lines[0]
+	if !line.Reconciled || line.USD != 0.37 || line.Input != 91 || line.Output != 17 || line.Calls != 1 {
+		t.Fatalf("reconciled ledger row = %+v", line)
+	}
+	usage := agent.Usage()
+	if usage.CostUSD != 0.37 || usage.Input != 91 || usage.Output != 17 || usage.Calls != 1 || usage.Turns != 0 {
+		t.Fatalf("session meter = %+v, want only the late call and no turn", usage)
+	}
+	agent.mu.Lock()
+	running := agent.turnSpend
+	agent.mu.Unlock()
+	if running.Input != 5 || running.Output != 2 || running.Calls != 1 || running.CostUSD != 0.11 {
+		t.Fatalf("the old receipt moved the running turn's share: %+v", running)
+	}
+}
+
+// A missing receipt persists as an explicit marker and changes the gap count,
+// never the measured meter or a made-up zero price.
+func TestAReceiptThatCannotBeHadWritesAnUnbilledMarkerAndIsCounted(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+	})
+	before := UnbilledCalls()
+	agent.reconciled(provider.Reconciled{Ref: "missing-c2", Reason: "torn"})
+	FlushUsage()
+	lines, err := ReadUsage(ledger, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || !lines[0].Unbilled || lines[0].USD != 0 || lines[0].Calls != 0 {
+		t.Fatalf("a missing receipt must write one unpriced marker: %+v", lines)
+	}
+	if got := UnbilledCalls() - before; got != 1 {
+		t.Fatalf("the unbilled count moved by %d, want one", got)
+	}
+	if usage := agent.Usage(); usage.Calls != 0 || usage.CostUSD != 0 {
+		t.Fatalf("a missing receipt moved the meter: %+v", usage)
+	}
+}
+
+// TestAHedgeLoserWritesItsReceiptAsWaste is the session half of C6. The waste
+// field repeats the receipt's USD for classification and is not a second total.
+func TestAHedgeLoserWritesItsReceiptAsWaste(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+	})
+	agent.reconciled(provider.Reconciled{
+		Billed: provider.Billed{Model: "receipt/model", PromptTokens: 43, CompletionTokens: 9, Cost: 0.19},
+		Ref:    "hedge-c6", Reason: "torn", Hedged: true, Found: true,
+	})
+	FlushUsage()
+	lines, err := ReadUsage(ledger, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || !lines[0].Reconciled || !lines[0].Hedged || lines[0].HedgeWasteUSD != 0.19 || lines[0].USD != 0.19 {
+		t.Fatalf("hedge receipt row = %+v", lines)
+	}
+	if got := agent.Usage().CostUSD; got != 0.19 {
+		t.Fatalf("the hedge receipt moved the money total to %v, want 0.19 once", got)
+	}
+}
+
+// TestATurnArmsCutCallReconciliation pins the session wiring rather than a
+// hand-built context: the provider call a real turn makes can read its sink.
+func TestATurnArmsCutCallReconciliation(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			if provider.ReconcileSinkFrom(ctx) == nil {
+				t.Fatal("the turn's provider call carried no reconciliation sink")
+			}
+			return textResponse("done"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	collect(t, mustSubmit(t, agent, "hello"))
+}
+
+// TestAnErrandArmsCutCallReconciliation pins the other session door. Errands
+// can end on their own per-rung deadlines rather than a turn's context, so the
+// shared callRole seam must carry the sink for every auxiliary caller.
+func TestAnErrandArmsCutCallReconciliation(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			if provider.ReconcileSinkFrom(ctx) == nil {
+				t.Fatal("the errand's provider call carried no reconciliation sink")
+			}
+			return textResponse("named"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	if _, _, err := agent.callRole(t.Context(), roles.RoleTaskName, "test/model",
+		[]ai.Message{textMessage("user", "name this")}); err != nil {
+		t.Fatalf("call the errand: %v", err)
+	}
+}
+
+// TestARefusalThatProducedNothingIsNotCountedAsUnbilledMoney names the
+// measured defect. A first-frame in-band 502 has neither a generation id nor
+// text, so it never reaches the session sink and cannot make the spending
+// surface claim that the provider charged for an unpriced call.
+func TestARefusalThatProducedNothingIsNotCountedAsUnbilledMoney(t *testing.T) {
+	var receiptRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/generation" {
+			receiptRequests.Add(1)
+			http.Error(w, "unexpected receipt request", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`data: {"error":{"message":"upstream broke","code":502}}` + "\n\n"))
+	}))
+	t.Cleanup(server.Close)
+	client, err := provider.NewClient(provider.Config{
+		APIKey: "test-key", BaseURL: server.URL, Model: "test/model", HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, client, func(config *Config) { config.usageLedger = ledger })
+	before := UnbilledCalls()
+	var sinkCalls atomic.Int64
+	ctx := provider.WithStreamObserver(t.Context(), func(provider.StreamEvent) {})
+	ctx = provider.WithReconcile(ctx, func(result provider.Reconciled) {
+		sinkCalls.Add(1)
+		agent.reconciled(result)
+	})
+	if _, err := client.CompleteWithMessages(ctx, []ai.Message{textMessage("user", "hello")}); err == nil {
+		t.Fatal("the in-band refusal answered successfully")
+	}
+	if got := sinkCalls.Load(); got != 0 {
+		t.Fatalf("the empty refusal reached the reconciliation sink %d times, want none", got)
+	}
+	if got := UnbilledCalls() - before; got != 0 {
+		t.Fatalf("the empty refusal moved UnbilledCalls by %d, want none", got)
+	}
+	if got := receiptRequests.Load(); got != 0 {
+		t.Fatalf("the empty refusal made %d receipt requests, want none", got)
+	}
 }
 
 // ── 1 ───────────────────────────────────────────────────────────────────────

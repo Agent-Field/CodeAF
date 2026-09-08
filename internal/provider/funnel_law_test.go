@@ -32,7 +32,7 @@ import (
 // So the four laws are:
 //
 //	(a) nothing outside this package talks to a completions or media endpoint
-//	(b) exactly four functions in this package put a request on the wire, and
+//	(b) exactly five functions in this package put a request on the wire, and
 //	    exactly four read an event stream
 //	(c) every role in the table has a call site that names it
 //	(d) only the ladder's last rung changes the model a person asked for
@@ -336,7 +336,7 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 // ── (b) ONE FUNCTION PUTS A COMPLETION ON THE WIRE ──────────────────────────
 
 // funnelWireSenders is every function in this package that hands a request to
-// an http.Client, and there are four because there are four kinds of thing this
+// an http.Client, and there are five because there are five kinds of thing this
 // adapter fetches.
 //
 //	send         every chat completion, and the only one with the retry loop,
@@ -347,7 +347,9 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 //	             which are request/response and carry no stream at all
 //	Fetch        sheetFetcher's GET of the lane sheet, which is not a model call
 //	             — it is the belief the choice is made from (lanes.go)
-var funnelWireSenders = []string{"Fetch", "doEndpoint", "probeLane", "send"}
+//	fetchReceipt the bounded background GET for a cut stream's exact generation
+//	             receipt; it creates no model work and never runs on the turn
+var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceipt", "probeLane", "send"}
 
 // funnelSendCallers is every function that reaches [Client.send].
 //
@@ -439,7 +441,7 @@ func TestOneFunctionSendsACompletionOnTheWire(t *testing.T) {
 	}
 
 	if funnelDiffer(senders, funnelWireSenders) {
-		t.Errorf("the functions that put a request on the wire are %v; the law names %v — a fifth is a request with no retry loop, no limiter and no row in the call log",
+		t.Errorf("the functions that put a request on the wire are %v; the law names %v — an unnamed sender is a request whose bounds and record are unknown",
 			funnelNames(senders), funnelWireSenders)
 	}
 	if funnelDiffer(callers, funnelSendCallers) {

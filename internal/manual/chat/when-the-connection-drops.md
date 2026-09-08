@@ -229,7 +229,8 @@ items — and it means exactly what it says: the reading broke once, inside afor
 will be asked for again on the next beat as if the far machine had simply not answered.
 It is shown once, on the line where the connection's own one-off news appears, and never
 repeated, even if the same reading keeps breaking. The full record of what broke goes to
-the log file the surface writes beside the profile, `chat.log`.
+the log file the surface writes beside the profile, `chat.log`. The fault is recorded and
+the notice is queued before that background reading can start again.
 
 ```
 reading what has been spent over this connection fell over once and will be tried again

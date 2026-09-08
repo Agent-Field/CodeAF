@@ -111,6 +111,11 @@ func (a *Agent) callRole(
 	if client == nil {
 		return nil, "", errNoCompleter
 	}
+	// EVERY ERRAND ARMS ITS CUT MONEY HERE. [Agent.callRole] is the one door all
+	// auxiliary provider calls pass through, including calls whose own deadline
+	// is not derived from a turn; arming ten callers separately would leave the
+	// next errand able to lose the receipt this shared seam exists to keep.
+	ctx = provider.WithReconcile(ctx, a.reconciled)
 	if len(rungs) > roleFallThroughs+1 {
 		rungs = rungs[:roleFallThroughs+1]
 	}
