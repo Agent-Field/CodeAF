@@ -16,3 +16,7 @@ its prompt and an explicit instruction to start writing. A reminder alone may
 not move that worker, but the absence of a write cannot distinguish it from a
 researcher whose work belongs in the reply. The wall owns the first run's end;
 repeated calls and already-seen results own the no-progress stop.
+
+Review correction: the brief and halfway reminder use the effective deadline inherited
+from the caller. A ten-second remaining wall no longer appears as a fresh one-hour
+lease with fifty-nine minutes already elapsed.

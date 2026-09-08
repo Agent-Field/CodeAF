@@ -620,8 +620,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
-	landingReserve := deadlineLandingReserve(time.Until(deadline))
-	wallPaceAfter := time.Duration(float64(l.deadline) * wallPaceAt)
+	wallStarted := time.Now()
+	wall := deadline.Sub(wallStarted)
+	landingReserve := deadlineLandingReserve(wall)
+	wallPaceAfter := time.Duration(float64(wall) * wallPaceAt)
 
 	tools := newToolbox(l.workspace, task.leafKey(), l.web, l.history, l.media, l.contextTokens)
 	tools.share = task.Share
@@ -697,7 +699,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
 		trace.note("contract:\n" + contract)
 	}
-	userContent := text(l.brief(task))
+	brief := l.brief(task)
+	if duration := wallDurationText(wall); duration != "" {
+		brief += "\n\nYou have " + duration + " of wall-clock time for this task."
+	}
+	userContent := text(brief)
 	workingModel := ""
 	if l.media != nil {
 		workingModel = l.media.WorkingModel
@@ -821,7 +827,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// flag keeps later turns from paying for the same reading again.
 		if !wallPaced && landing == 0 {
 			left := time.Until(deadline)
-			gone := l.deadline - left
+			gone := time.Since(wallStarted)
 			if gone > wallPaceAfter {
 				wallPaced = true
 				goneText := wallDurationText(gone)
@@ -1590,9 +1596,6 @@ func (l *Linear) brief(task Task) string {
 			"something about the shared material — a unit, a quirk, a duplicate, a broken assumption, a dead end — " +
 			"share it (the share tool) before you continue. They are acting on that material as you read this, " +
 			"and what you just learned may be the difference between their answer being right or wrong.")
-	}
-	if wall := wallDurationText(l.deadline); wall != "" {
-		block.WriteString("\n\nYou have " + wall + " of wall-clock time for this task.")
 	}
 	block.WriteString(outputClause(task))
 	return block.String()

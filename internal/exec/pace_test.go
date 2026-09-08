@@ -426,3 +426,22 @@ func transcriptContains(client *scriptedCompleter, fragment string) bool {
 	}
 	return false
 }
+
+// The caller can leave less time than the leaf's nominal lease. The brief and
+// pacing must describe that actual clock rather than invent elapsed time.
+func TestTheLeafPacesAgainstAnEarlierCallerDeadline(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Hour)
+	if _, err := linear.Run(parent, Task{NodeID: 1, Brief: "work"}); err != nil {
+		t.Fatal(err)
+	}
+	brief := client.seen[0][1].Content[0].Text
+	if !strings.Contains(brief, "10s of wall-clock time") || strings.Contains(brief, "1h of wall-clock time") {
+		t.Fatalf("the brief ignored its caller's shorter wall: %q", brief)
+	}
+	if transcriptContains(client, "clock for this task now reads") {
+		t.Fatal("the new leaf claimed time had already elapsed before its first turn")
+	}
+}

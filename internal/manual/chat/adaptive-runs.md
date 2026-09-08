@@ -930,7 +930,8 @@ this page says what that looks like.
 ## It spent the whole time reading and produced nothing — does the worker know how long it has
 
 Yes. Before its first turn, every worker's brief says how much wall-clock time that task
-has, in the same spelling as `--timeout`, such as `15m`, `2h` or `90s`. Partway through its
+has, capped by any earlier deadline from its caller, in the same spelling as `--timeout`,
+such as `15m`, `2h` or `90s`. Partway through its
 own wall, well before it has to finish, it gets one live reading saying how much time has
 gone and how much is left. That reading appears once; after the worker has been asked to
 finish, it is never added and never competes with the reason the worker is finishing.
