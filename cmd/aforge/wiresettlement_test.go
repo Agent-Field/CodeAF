@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -9,9 +10,174 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// wireSettlementClient gives the settlement's two questions their own answers.
+// A single fixed reply would let one structured contract stand in for another,
+// which would leave the test proving only that some model call was made rather
+// than that the delivery gate and the request question were both reached.
+type wireSettlementClient struct {
+	model string
+	calls int
+}
+
+func (c *wireSettlementClient) CompleteWithMessages(_ context.Context, messages []ai.Message,
+	_ ...ai.Option,
+) (*ai.Response, error) {
+	c.calls++
+	var prompt strings.Builder
+	for _, message := range messages {
+		for _, part := range message.Content {
+			prompt.WriteString(part.Text)
+		}
+	}
+	var answer string
+	switch body := prompt.String(); {
+	case strings.Contains(body, "You are the final gate"):
+		answer = `{"pass":true,"exercised":true}`
+	case strings.Contains(body, "You decide whether a request, exactly as the person wrote it"):
+		answer = `{"met":true,"missing":""}`
+	default:
+		return nil, errors.New("the settlement asked an unexpected model question")
+	}
+	return &ai.Response{Choices: []ai.Choice{{
+		Message: ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: answer}}},
+	}}}, nil
+}
+
+func (c *wireSettlementClient) Model() string { return c.model }
+
+// openWireSettlementGraph gives the direct settlement tests the durable node
+// their gate and plain-language message must be journaled against. The store is
+// real because the observable contract is the record left behind, not merely
+// the helper's return values.
+func openWireSettlementGraph(t *testing.T) (*store.Store, store.Node) {
+	t.Helper()
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = graph.Close() })
+	provenance := store.Provenance{
+		Origin: store.OriginUser, SessionID: "s1",
+		Intent: "write the repair note already present on disk",
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "job", Brief: "write the repair note", Stage: 1,
+	}}}, provenance); err != nil {
+		t.Fatal(err)
+	}
+	node, ok, err := graph.Node("job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("the settlement node was not written")
+	}
+	return graph, node
+}
+
+// C1, C2 AND C3: A LEAF REFUSED BEFORE ITS FIRST MOVE IS JUDGED ON WHAT THE
+// JOB LEFT ON THE TREE, AND A YES CARRIES THAT DELIVERY AND ITS TWO RECORDS.
+//
+// C4 is the negative arm: an empty job buys no question at all. C8 is the
+// compatibility arm: without a job record, the leaf's own file remains the
+// whole delivery exactly as it was before the errand gained that record.
+func TestALeafRefusedBeforeItsFirstMoveIsJudgedOnTheJobsTree(t *testing.T) {
+	const model = "worker/model"
+	t.Run("the job record holds work the refused leaf did not write", func(t *testing.T) {
+		workspace := t.TempDir()
+		landed := filepath.Join(workspace, "repair-note.md")
+		if err := os.WriteFile(landed, []byte("the repaired result\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		record := &errandRegistry{}
+		record.add(landed)
+		graph, node := openWireSettlementGraph(t)
+		script := &wireSettlementClient{model: model}
+		settings := config.Config{Model: model}
+
+		delivery, settled := settledOnTheTree(context.Background(), settings,
+			adoptLiveClient(settings, model, script), graph, node, exec.Task{},
+			&exec.Outcome{Stop: exec.StopError}, record, nil, workspace, model)
+		if !settled {
+			t.Fatal("the wire failure was not put to the gate over the job's file")
+		}
+		if !strings.Contains(delivery, summaryFileList+landed) {
+			t.Fatalf("the delivery did not name the job's file under Files:\n%s", delivery)
+		}
+		if script.calls != 2 {
+			t.Fatalf("the settlement bought %d model calls, want the gate and request question", script.calls)
+		}
+
+		events, err := graph.Events(0, 5000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipted, said := false, false
+		for _, event := range events {
+			switch event.Kind {
+			case store.EventDeliveryGate:
+				var gate store.DeliveryGate
+				if json.Unmarshal(event.Payload, &gate) == nil &&
+					strings.Contains(gate.Receipt, revision.RequestMetWords) {
+					receipted = true
+				}
+			case store.EventMessagePosted:
+				var message struct {
+					Body string `json:"body"`
+				}
+				if json.Unmarshal(event.Payload, &message) == nil &&
+					strings.Contains(message.Body, treeStandsWords) {
+					said = true
+				}
+			}
+		}
+		if !receipted {
+			t.Fatal("the settlement left no delivery-gate receipt saying the request was met")
+		}
+		if !said {
+			t.Fatal("the node's record did not say why the wire failure became a delivery")
+		}
+	})
+
+	t.Run("a wire failure over a job that left nothing buys nothing", func(t *testing.T) {
+		graph, node := openWireSettlementGraph(t)
+		script := &wireSettlementClient{model: model}
+		settings := config.Config{Model: model}
+		if delivery, settled := settledOnTheTree(context.Background(), settings,
+			adoptLiveClient(settings, model, script), graph, node, exec.Task{},
+			&exec.Outcome{Stop: exec.StopError}, &errandRegistry{}, nil, "", model,
+		); settled || delivery != "" {
+			t.Fatalf("an empty job settled with delivery %q", delivery)
+		}
+		if script.calls != 0 {
+			t.Fatalf("an empty job bought %d model calls, want none", script.calls)
+		}
+	})
+
+	t.Run("a driver without a job record still reads the leaf file", func(t *testing.T) {
+		workspace := t.TempDir()
+		landed := filepath.Join(workspace, "leaf-note.md")
+		if err := os.WriteFile(landed, []byte("the leaf result\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		graph, node := openWireSettlementGraph(t)
+		script := &wireSettlementClient{model: model}
+		settings := config.Config{Model: model}
+		delivery, settled := settledOnTheTree(context.Background(), settings,
+			adoptLiveClient(settings, model, script), graph, node, exec.Task{},
+			&exec.Outcome{Stop: exec.StopError}, nil, []string{landed}, workspace, model)
+		if !settled || !strings.Contains(delivery, summaryFileList+landed) {
+			t.Fatalf("the nil-record driver changed: settled=%t delivery=%q", settled, delivery)
+		}
+	})
+}
 
 // A LEAF MARKED FAILED BY THE WIRE AFTER ITS WORK LANDED IS JUDGED ON THE TREE.
 //

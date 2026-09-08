@@ -3003,28 +3003,29 @@ func settlementShortWords(evidence store.DeliveryGate) string {
 // rule the person set and the work broke, each of them settles the answer to no
 // without a model being asked anything.
 //
-// IT WIDENS NOTHING. A leaf that failed on the wire having written nothing has
-// no delivery to judge and fails exactly as it did. A leaf whose own work
-// errored was judged by the work and fails exactly as it did. And a gate that
-// could not be reached leaves the failure standing, because the failure is
-// already there and only a positive answer may overturn it — which is the
-// opposite of the gate's own fail-open direction, and deliberately so. So does a
-// settlement whose journal row could not be written: see settlementStands.
+// IT WIDENS NOTHING ELSE. A job that failed on the wire having left nothing on
+// its record has no delivery to judge and fails exactly as it did. A leaf whose
+// own work errored was judged by the work and fails exactly as it did. And a
+// gate that could not be reached leaves the failure standing, because the
+// failure is already there and only a positive answer may overturn it — which
+// is the opposite of the gate's own fail-open direction, and deliberately so.
+// So does a settlement whose journal row could not be written: see
+// settlementStands.
 func settledOnTheTree(ctx context.Context, settings config.Config, client *pool.Client,
 	graph *store.Store, node store.Node, task exec.Task, outcome *exec.Outcome,
 	record artifactRecord, artifacts []string, jobDir, workerModel string,
 ) (string, bool) {
-	if !failedOnTheWire(outcome) || len(artifacts) == 0 {
+	landed := jobArtifacts(record, artifacts)
+	if !failedOnTheWire(outcome) || len(landed) == 0 {
 		return "", false
 	}
 	// The delivery is what the person would have been handed, built exactly as
 	// the delivered path builds it: whatever the worker had said by the time it
-	// was cut off, and the files it left. A worker cut off mid-turn has often
+	// was cut off, and the files the run left. A worker cut off mid-turn has often
 	// said nothing at all, and then the files ARE the delivery — the same shape
 	// a leaf that answers with a file and no prose already produces.
-	delivery := outcome.Text + summaryFileList + strings.Join(artifacts, "\n")
-	records := gateEvidence(node, task.Spec, outcome, jobArtifacts(record, artifacts),
-		true, jobDir)
+	delivery := outcome.Text + summaryFileList + strings.Join(landed, "\n")
+	records := gateEvidence(node, task.Spec, outcome, landed, true, jobDir)
 	gateCtx := withRepairJournal(ctx, graph, node.ID)
 	gate := revision.JudgeDeliverable(gateCtx, settings, client, graph, node, delivery,
 		task.Contract, records, workerModel)

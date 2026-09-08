@@ -2042,10 +2042,11 @@ type app struct {
 	// than a project somebody opened aforge inside of (Options.Owned). It is
 	// read by [app.placeWord] and by nothing else.
 	owned bool
-	// hostApproval is the engine's own tool-approval posture, carried on the
-	// welcome (Options.ApprovalMode) and read only over --host — see
-	// [app.approvalPosture].
-	hostApproval string
+	// handedApproval is the tool-approval posture this launch knows the
+	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
+	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
+	// leaves the profile live — see [app.approvalPosture].
+	handedApproval string
 
 	// focused is whether the terminal window has the keyboard, and seenFocus
 	// whether it has ever told us (notify.go). The pair is what decides whether
@@ -2171,7 +2172,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		standingRoot:        opts.StandingRoot,
 		leaveAnswer:         opts.Answer,
 		host:                host,
-		hostApproval:        strings.TrimSpace(opts.ApprovalMode),
+		handedApproval:      strings.TrimSpace(opts.ApprovalMode),
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               opts.Owned,
 		landing:             opts.Landing,
@@ -7772,9 +7773,8 @@ func gitHead(dir string) (string, bool, bool) {
 	return branch, status != "", true
 }
 
-// approvalPosture is the gate's posture as the YOLO segment may state it: the
-// profile's own answer, read live, for a local session — and the engine's,
-// carried once on the welcome, for a remote one.
+// approvalPosture is the gate's posture as the YOLO segment may state it: an
+// answer the launch had to hand down, or the profile's own answer read live.
 //
 // THIS IS A SAFETY CLAIM AND IT MUST MATCH THE POSTURE IN FORCE. The segment is
 // drawn only when the gate is open (render.go's NEGATIVE-SPACE SAFETY), so its
@@ -7796,18 +7796,30 @@ func gitHead(dir string) (string, bool, bool) {
 // launch while their gate stood open (#322). The profile is read here the way
 // every other persisted row on this surface is read.
 //
+// THE PROFILE ROW IS NOT THE ONLY THING THAT OPENS THIS GATE. `aforge chat
+// --yolo` replaces the gate's default for the session and writes nothing down
+// (cmd/aforge's v3Policy), so a surface that read only the profile drew nothing
+// over a gate that was open for the whole run (#325). The launch hands that
+// posture down instead, and a launch that hands nothing down is read from the
+// profile, live, as before. Locally the handed-down answer can ONLY ever be
+// `allow`: a posture handed down that silenced the segment would make the same
+// false claim by the other route.
+//
 // THE HOSTED WINDOW IS STILL THE ONE ABSENCE. This machine's profile is not the
 // session's posture over --host: the gate that decides whether a tool runs
 // without asking is the ENGINE's, read from the profile on the engine's
 // machine. A YOLO badge drawn from this laptop's settings would be a safety
 // claim about a machine nobody consulted, so a remote session reads
-// [app.hostApproval] — the same answer, asked of the right machine
+// [app.handedApproval] — the same answer, asked of the right machine
 // (internal/remote's wire.go Welcome.ApprovalMode, set once at boot rather than
 // re-read live, because there is nothing on this side left to re-read), and an
 // engine that carried none leaves the segment absent.
 func (a *app) approvalPosture() string {
 	if a.hosted() {
-		return a.hostApproval
+		return a.handedApproval
+	}
+	if a.handedApproval != "" {
+		return a.handedApproval
 	}
 	return config.ToolApprovalModeAt(a.profileDir)
 }
