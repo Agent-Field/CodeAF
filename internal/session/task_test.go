@@ -2340,7 +2340,7 @@ func TestGoalContractFreezesAtAdmission(t *testing.T) {
 	// And the auditor reads that same frozen text — one acceptance, two
 	// readers, so the work cannot be finished against one and judged against
 	// another.
-	question := auditQuestion(node, taskTree{root: "/repo"}, auditGround{}, auditDoor{}, landingFiles{}, "it claims it is done", nil)
+	question := auditQuestion(node, taskTree{root: "/repo"}, auditGround{}, auditDoor{}, checkGround{}, landingFiles{}, "it claims it is done", nil)
 	if !strings.Contains(question, admittedAcceptance) {
 		t.Fatalf("the auditor was given a different acceptance:\n%s", question)
 	}

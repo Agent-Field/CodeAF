@@ -1176,6 +1176,9 @@ const baselineStillReading = "what the checks said before this work is still bei
 // alreadyRedSentence says what the tree was already failing before this work, in
 // a person's words and with the commands named so nobody has to guess which.
 func alreadyRedSentence(already []string) string {
+	if len(already) == 0 {
+		return ""
+	}
 	was := "1 check was"
 	if len(already) > 1 {
 		was = fmt.Sprintf("%d checks were", len(already))
