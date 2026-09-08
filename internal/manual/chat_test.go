@@ -483,6 +483,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		{"why did it refuse to run git stash", "starting-aforge"},
+		{"it would not stash my changes on an unattended run", "starting-aforge"},
+		{"what git will it not run when left on its own", "starting-aforge"},
 		// The unattended run that would not finish, asked the four ways somebody
 		// meets it: the line it stopped on, the loop they watched, the note at
 		// the cap, and the check it kept failing over a file they never wrote a
