@@ -323,8 +323,8 @@ func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
 			entry: -1, hit: hitWorkFold, turn: w.turn, activity: w.pending}}
 	}
 	room := width - workIndentCols(width) - actionGutter
-	if room < 8 {
-		room = 8
+	if room < 1 {
+		room = 1
 	}
 	// Newest first, one whole step at a time, until the budget is spent.
 	type step struct {

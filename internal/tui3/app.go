@@ -996,6 +996,10 @@ type app struct {
 	stamps     map[int]turnStamp
 	timestamps string
 	workMode   string
+	// Icon repertoire is independent of colour; detection is a boot fact and
+	// the person can override it through the live Display setting.
+	actionAuto tokens.GlyphSet
+	iconMode   string
 	// bashBackgroundAfter is the foreground command's ARMED session clock in
 	// seconds, handed over with the agent at boot. It is never re-read from this
 	// surface's profile: a settings change belongs to the next session, and over
@@ -2422,6 +2426,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
+	a.actionAuto, _ = tokens.DetectGlyphSet(env)
+	a.iconMode = config.IconsAt(a.profileDir)
 	// AND THE COLUMN'S POSTURE IS READ HERE AND NOWHERE ELSE — at boot, never at
 	// a turn end. The rows above are settings a person changes in the panel, so
 	// re-reading them is how the change arrives; this one is normally changed with
@@ -4923,6 +4929,7 @@ func (a *app) settle() tea.Cmd {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
+	a.iconMode = config.IconsAt(a.profileDir)
 	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	a.askWait = a.consentWait()
 	a.notices.enabled = config.HintsAt(a.profileDir)

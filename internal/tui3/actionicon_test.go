@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -39,7 +40,7 @@ func TestEveryActionMarkIsOneCellInBothTiers(t *testing.T) {
 		for _, side := range []struct {
 			tier  string
 			glyph string
-		}{{"unicode", mark.glyph}, {"ascii", mark.ascii}} {
+		}{{"rich", mark.rich}, {"unicode", mark.glyph}, {"ascii", mark.ascii}} {
 			if side.glyph == "" {
 				t.Errorf("%s draws nothing in the %s tier", category, side.tier)
 				continue
@@ -74,7 +75,7 @@ func TestActionMarksRefuseTheBannedGlyphs(t *testing.T) {
 		banned[b.Rune] = b.Reason
 	}
 	for category, mark := range actionMarks {
-		for _, spelling := range []string{mark.glyph, mark.ascii} {
+		for _, spelling := range []string{mark.rich, mark.glyph, mark.ascii} {
 			for _, r := range spelling {
 				if why, out := banned[r]; out {
 					t.Errorf("%s draws %U, which the vocabulary bans: %s", category, r, why)
@@ -97,6 +98,7 @@ func TestEveryActionMarkIsDistinct(t *testing.T) {
 		name string
 		of   func(actionMark) string
 	}{
+		{"rich", func(m actionMark) string { return m.rich }},
 		{"unicode", func(m actionMark) string { return m.glyph }},
 		{"ascii", func(m actionMark) string { return m.ascii }},
 	} {
@@ -243,6 +245,7 @@ func TestTheCompactBlockDrawsOneMarkPerStepInAFixedGutter(t *testing.T) {
 
 	marks := map[string]bool{}
 	for _, mark := range actionMarks {
+		marks[mark.rich] = true
 		marks[mark.glyph] = true
 	}
 	body := a.width - workIndentCols(a.width)
@@ -291,9 +294,9 @@ func TestTheCompactBlockDrawsTheFamilyEachStepActuallyIs(t *testing.T) {
 		}
 	}
 	want := []string{
-		actionMarks[session.ActionSearch].glyph, // grep
-		actionMarks[session.ActionRun].glyph,    // bash: the suite
-		actionMarks[session.ActionRun].glyph,    // bash: git status, still running
+		a.actionMarkFor(session.ActionSearch), // grep
+		a.actionMarkFor(session.ActionRun),    // bash: the suite
+		a.actionMarkFor(session.ActionRun),    // bash: git status, still running
 	}
 	if strings.Join(got, "") != strings.Join(want, "") {
 		t.Fatalf("marks %q, want %q\n%s", got, want, strings.Join(plainRows(a), "\n"))
@@ -331,7 +334,7 @@ func TestAWrappedStepKeepsItsSentenceInOneColumn(t *testing.T) {
 // THE NARROWEST FRAME STILL DRAWS A MARK AND STILL FITS. The block's floor is a
 // body of 8 columns; the gutter comes off before the wrap, never after it.
 func TestTheGutterSurvivesTheNarrowestFrame(t *testing.T) {
-	for _, width := range []int{24, 20, 16, 12} {
+	for _, width := range []int{24, 20, 16, 12, 9, 8} {
 		a := liveStepsApp(t)
 		a.width = width
 		rows := liveStepRowsOf(t, a, width)
@@ -340,6 +343,9 @@ func TestTheGutterSurvivesTheNarrowestFrame(t *testing.T) {
 		}
 		marked := false
 		for _, r := range rows {
+			if ansi.StringWidth(r.text) > width-workIndentCols(width) {
+				t.Fatalf("width %d overflows: %q", width, plain(r.text))
+			}
 			line := []rune(plain(r.text))
 			if len(line) < actionGutter {
 				t.Fatalf("width %d: row shorter than the gutter: %q", width, string(line))
@@ -369,8 +375,8 @@ func TestTheMarksDoNotAnimate(t *testing.T) {
 		gutters[i] = string([]rune(plain(r.text))[:actionGutter])
 	}
 	moved := false
-	for paint := 0; paint < shimmerPeriod; paint++ {
-		a.paints++
+	for paint := 0; paint < 60; paint++ {
+		captionTimeAt(a, time.Duration(paint)*shimmerPeriod/60)
 		again := liveStepRowsOf(t, a, a.width)
 		if len(again) != len(first) {
 			t.Fatalf("the block changed height on paint %d", paint)
@@ -429,7 +435,7 @@ func TestTheScreenReaderTierKeepsTheGutter(t *testing.T) {
 func TestOpeningTheWorkStillReplacesTheCompactBlock(t *testing.T) {
 	a := liveStepsApp(t)
 	before := livePage(a)
-	if !strings.Contains(before, actionMarks[session.ActionRun].glyph) {
+	if !strings.Contains(before, a.actionMarkFor(session.ActionRun)) {
 		t.Fatalf("the shut block drew no mark:\n%s", before)
 	}
 	showLiveWork(t, a)
@@ -474,6 +480,74 @@ func TestAFinishedTurnKeepsNoMarks(t *testing.T) {
 		}
 		if strings.Contains(page, mark.glyph) {
 			t.Fatalf("a settled turn still draws the %q mark:\n%s", category, page)
+		}
+	}
+}
+
+// Normal terminals get the real icon set; fallback must not silently become
+// the primary design. Colour depth is deliberately absent from this table.
+func TestRichActionIconsAreNormalAndFallbackIsExplicit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		rich bool
+	}{
+		{"modern", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app", "LANG": "en_US.UTF-8"}, true},
+		{"no-colour", map[string]string{"TERM": "xterm-256color", "NO_COLOR": "1"}, true},
+		{"linux-console", map[string]string{"TERM": "linux"}, false},
+		{"stock-terminal", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "Apple_Terminal"}, false},
+		{"wide-locale", map[string]string{"TERM": "xterm-256color", "LANG": "ja_JP.UTF-8"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(&fakeAgent{model: "m"})
+			a.actionAuto, _ = tokens.DetectGlyphSet(envOf(tc.env))
+			a.iconMode = config.IconsAuto
+			want := actionMarks[session.ActionRun].glyph
+			if tc.rich {
+				want = actionMarks[session.ActionRun].rich
+			}
+			if got := a.actionMarkFor(session.ActionRun); got != want {
+				t.Fatalf("auto=%q want %q", got, want)
+			}
+			a.iconMode = config.IconsPlain
+			if got := a.actionMarkFor(session.ActionRun); got != actionMarks[session.ActionRun].glyph {
+				t.Fatal("plain override ignored")
+			}
+			a.iconMode = config.IconsRich
+			if got := a.actionMarkFor(session.ActionRun); got != actionMarks[session.ActionRun].rich {
+				t.Fatal("rich override ignored")
+			}
+			a.linear = true
+			if got := a.actionMarkFor(session.ActionRun); got != actionMarks[session.ActionRun].ascii {
+				t.Fatal("rich override displaced accessible spelling")
+			}
+		})
+	}
+}
+
+func TestTheStepIconSettingChangesTheLiveGutterAndPersists(t *testing.T) {
+	a := liveStepsApp(t)
+	a.profileDir = t.TempDir()
+	a.actionAuto = tokens.NerdFont
+	a.iconMode = config.IconsAuto
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir})
+	a.sheet.registry = registry
+	setting, ok := registry.Row(config.KeyIcons)
+	if !ok {
+		t.Fatal("no step icons row")
+	}
+	for _, mode := range []string{config.IconsPlain, config.IconsRich, config.IconsAuto} {
+		a.dirty = false
+		a.applySetting(sheetItem{row: setting}, mode)
+		if !a.dirty || a.iconMode != mode || config.IconsAt(a.profileDir) != mode {
+			t.Fatalf("mode %q did not update live and saved state", mode)
+		}
+		want := actionMarks[session.ActionRun].rich
+		if mode == config.IconsPlain {
+			want = actionMarks[session.ActionRun].glyph
+		}
+		if got := a.actionMarkFor(session.ActionRun); got != want {
+			t.Fatalf("mode %q paints %q want %q", mode, got, want)
 		}
 	}
 }

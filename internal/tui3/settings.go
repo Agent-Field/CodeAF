@@ -633,6 +633,11 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "turn work", widget: widgetCycle,
 		about: "fold completed turn machinery into one worked chip, or keep it open.",
 	},
+	config.KeyIcons: {
+		tab: tabDisplay, label: "step icons",
+		about:  "Rich icons normally; plain symbols when your terminal needs them.",
+		widget: widgetCycle,
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
@@ -2019,6 +2024,10 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	}
 	if item.row.Key == config.KeyWork {
 		a.workMode = config.WorkAt(a.profileDir)
+		a.touch()
+	}
+	if item.row.Key == config.KeyIcons {
+		a.iconMode = config.IconsAt(a.profileDir)
 		a.touch()
 	}
 	// THE TWO LANE ROWS LAND ON THE LIVE TRANSPORT, not at the next launch.

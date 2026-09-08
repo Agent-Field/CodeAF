@@ -1732,21 +1732,21 @@ in a gutter two columns wide. The mark says what **kind** of work that step is �
 searching, editing, running a command — so you can tell at a glance what is
 happening before you have read which file it is happening to.
 
-| mark | plain terminal | what the step is |
-| --- | --- | --- |
-| `⌕` | `?` | **search** — looking for something whose location is not known yet |
-| `▤` | `<` | **read** — opening or listing something already located |
-| `✎` | `*` | **edit** — changing something that exists |
-| `+` | `+` | **create** — writing something new, or generating a picture, sound or video |
-| `$` | `$` | **run** — running a command and waiting for what it prints |
-| `◎` | `!` | **test** — checking work that has been done |
-| `↗` | `^` | **browse** — going out to a page or a connected service |
-| `⇄` | `&` | **transfer** — moving files or state from one place to another |
-| `»` | `@` | **communicate** — sending a message, a mail, or speaking |
-| `⇉` | `\|` | **coordinate** — work handed out to tasks, or forked to run beside this one |
-| `≡` | `#` | **plan** — keeping the record of the work rather than doing it |
-| `◷` | `,` | **wait** — standing by for something outside this turn |
-| `▪` | `.` | **work** — anything else, including a tool a connected account brought |
+| kind | normal icon | plain fallback | what it conveys |
+| --- | --- | --- | --- |
+| **search** | magnifying glass | `⌕` | looking for something |
+| **read** | text document | `▤` | opening or listing information |
+| **edit** | pencil | `✎` | changing content |
+| **create** | plus | `+` | writing content or generating media |
+| **run** | terminal | `$` | running a command |
+| **test** | flask | `◎` | checking work |
+| **browse** | globe | `↗` | visiting a page or service |
+| **transfer** | exchange arrows | `⇄` | moving files or state |
+| **communicate** | speech bubble | `»` | sending a message or speaking |
+| **coordinate** | branching paths | `⇉` | handing work to tasks or forks |
+| **plan** | list | `≡` | keeping track of the work |
+| **wait** | clock | `◷` | waiting for something outside the turn |
+| **work** | gear | `▪` | other work, including unfamiliar connected tools |
 
 ## The step marks never move and never say whether a step passed — no tick, no cross, still icons
 
@@ -1758,7 +1758,7 @@ would be two answers to the same question.
 **They never say how a step went.** There is no tick, no cross and no warning
 mark here. A step that failed is not folded into this block at all — it keeps its
 ordinary rows — so a mark here could only ever mean "nothing has gone wrong yet",
-which is not worth a column. `test` draws a target, not a checkmark, because the
+which is not worth a column. `test` draws a flask (a target in plain mode), not a checkmark, because the
 mark names the *act* of checking and not its result.
 
 **The gutter is a fixed two columns.** Every step spends the same width whatever
@@ -1770,10 +1770,18 @@ shift as steps arrive.
 words; the newest is at ordinary reading strength. The gutter is never brighter
 than the sentence it belongs to.
 
-**Every mark draws in an ordinary monospace font.** Nothing is installed and no
-patched or "Nerd Font" is needed. On a screen-reader terminal, and anywhere the
-plain tier is in force, the ASCII column above is drawn instead — the same one
-column, so nothing shifts.
+## Proper icons, missing icons, empty boxes, Nerd Font and the step icons setting
+
+The normal view uses the Font Awesome icons included in Nerd Fonts. Under
+`/settings` → Display → **step icons** (`ui.icons`), `auto` chooses those icons
+unless terminal detection calls for plain symbols. Known console and locale
+limitations fall back; colour depth alone does not remove icons.
+
+A terminal cannot report which font it uses. If you see empty boxes, select
+`plain`, or select a Nerd Font in your terminal. Choose `rich` to use a patched
+font on a conservatively detected terminal. The setting takes effect immediately.
+No font is installed or changed automatically. Screen-reader and ASCII modes
+keep simple one-character marks with the same fixed gutter.
 
 ## Where the marks come from — can the model choose the wrong icon
 
@@ -1791,11 +1799,10 @@ says nothing, says a word that is not on the list, or the answer arrives after
 the step has finished, the tool-derived mark stands and nothing is retried.
 
 A tool that came from a **connected account** has a name aforge has never seen,
-so its steps draw the generic `▪` work mark rather than a guess.
+so its steps draw the generic gear (`▪` in plain mode) rather than a guess.
 
-Because the fallback is the tools, **a reopened conversation draws the same marks
-it drew live**, and a conversation saved before this existed draws the marks its
-calls always implied. Scrolling a finished turn back into view never changes a
+**A reopened conversation retains saved descriptions and categories.** Older
+conversations without that information derive their icons from the saved tool names. Scrolling a finished turn back into view never changes a
 mark.
 
 ## The live work collapses when the answer finishes

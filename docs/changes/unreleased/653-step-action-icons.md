@@ -17,15 +17,13 @@ caption and the tool-derived mark, with no retry, and the existing cancellation
 rule still refuses an answer that arrives after its batch ended. Repainting,
 reopening and replaying a conversation cannot change a mark.
 
-Every glyph draws in an ordinary monospace font — four are slots the shared
-`internal/tui2/tokens` vocabulary already ships and measures — and each has a
-one-cell ASCII twin for the screen-reader tier. **The patched-font tier is
-deliberately not wired here:** `tokens.DetectGlyphSet` defaults to NerdFont and
-can only veto, so wiring it would draw tofu in this gutter on every unpatched
-terminal. Rich icons remain available to a later wave behind an explicit opt-out
-door this surface does not yet have.
+The normal presentation uses proper Font Awesome icons from the Nerd Font
+repertoire. Detection falls back on known unsupported terminals; Display's
+`step icons` setting (`ui.icons`) offers `auto`, `rich`, and `plain` and applies
+immediately. Plain Unicode and ASCII retain the same gutter. Colour depth alone
+does not remove icons, and no font is installed or changed automatically.
 
-No tool count, timer, badge or verdict mark is added. `test` draws a target and
+No tool count, timer, badge or verdict mark is added. `test` draws a flask (a target in plain mode) and
 never a checkmark, because the family names the act of checking rather than its
 result. Completion still collapses the block, and the opened outline keeps its
 disclosure triangles unchanged.

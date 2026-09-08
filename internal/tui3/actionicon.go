@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -22,14 +23,14 @@ import (
 //
 //  1. THE MARK NEVER MOVES. The newest step's TEXT shimmers (captionmotion.go);
 //     its icon does not. Liveness is already said by the shimmer under it and by
-//     the pulse at the transcript's foot, and a second moving thing in the same
+//     the existing activity state, and a second moving thing in the same
 //     three rows is two answers to "what is happening now". The gutter is a
 //     label, and a label that animates is a label nobody can stop looking at.
 //  2. IT NEVER SAYS HOW IT WENT. There is no tick, no cross, no warning mark and
 //     no colour of its own in this table — a step that failed is not covered by
 //     this block at all ([liveWorkKeepsRow]), so a success mark here could only
 //     ever mean "still true so far", which is a mark that says nothing. `test`
-//     draws a TARGET and never a checkmark for exactly this reason: the family
+//     draws a flask (a target in plain mode) and never a checkmark for exactly this reason: the family
 //     is the ACTION of checking, not its verdict.
 //  3. IT COSTS A FIXED GUTTER. Every step spends [actionGutter] cells whatever
 //     its family, and a caption that wraps spends the same cells as blanks on
@@ -42,26 +43,18 @@ import (
 //
 // ── WHY THESE CHARACTERS ──
 //
-// EVERY MARK HERE DRAWS IN AN ORDINARY MONOSPACE FONT. No patched font is
-// required, nothing is installed, and there is no emoji: four of the thirteen are
-// slots the shared vocabulary already ships and has measured
-// (internal/tui2/tokens' [tokens.GlyphSearch], [tokens.GlyphWrite],
-// [tokens.GlyphShell], [tokens.GlyphDiffAdd]), and the rest come from Geometric
-// Shapes, Arrows and Mathematical Operators — the blocks every terminal font in
-// use covers. actionicon_test.go measures all thirteen at one cell under BOTH
-// rulers this tree ships against, so a tempting replacement cannot enter without
-// passing the same gate the shared table uses.
+// THE NORMAL PRESENTATION USES PROPER ICONS. The rich repertoire uses the
+// stable Font Awesome 4 BMP addresses shipped in Nerd Fonts, the same family
+// included by icons-in-terminal. Search, pencil and terminal reuse the shared
+// token vocabulary. No font is installed or changed by this surface.
+// https://github.com/FortAwesome/Font-Awesome/blob/v4.7.0/css/font-awesome.css
 //
-// THE PATCHED-FONT TIER IS DELIBERATELY NOT WIRED HERE, and that is a finding
-// rather than an omission. [tokens.DetectGlyphSet] defaults its answer to
-// NerdFont and can only ever VETO — no terminal reports its font — so wiring it
-// would draw tofu boxes in this gutter on every unpatched terminal, which is the
-// commonest terminal there is. A gutter of empty rectangles is strictly worse
-// than the shape it replaced. The rich icons the shared table already binds
-// (nf-fa-search, nf-fa-pencil, nf-fa-terminal, nf-pl-branch) are one explicit
-// opt-out door away from being usable here; until this surface HAS that door,
-// the plain floor is what ships, and it is a designed floor rather than a
-// degradation.
+// FALLBACK IS A CAPABILITY DECISION, NOT THE DESIGN BASELINE. The existing
+// tokens.DetectGlyphSet vetoes terminals and locales that need plain symbols;
+// colour remains independent. A terminal cannot report its configured font,
+// so Display's step icons row offers plain for missing glyphs and rich for a
+// patched font on a conservatively detected terminal. Linear and ASCII modes
+// keep their accessible spelling even when rich is selected.
 
 // actionGutter is the fixed cost of the mark: the cell it stands in, and the
 // space after it. It is a constant rather than a measurement because the whole
@@ -70,6 +63,8 @@ const actionGutter = 2
 
 // actionMark is one family's two spellings.
 type actionMark struct {
+	// rich is the normal icon, one stable BMP private-use cell.
+	rich string
 	// glyph is the ordinary-terminal mark, one cell.
 	glyph string
 	// ascii is the screen-reader and no-Unicode tier's mark, also one cell, so
@@ -86,40 +81,40 @@ type actionMark struct {
 // vocabulary and the gutter cannot drift apart.
 var actionMarks = map[session.ActionCategory]actionMark{
 	// ⌕ U+2315: the vocabulary's own search slot.
-	session.ActionSearch: {tokens.GlyphSearch, "?"},
+	session.ActionSearch: {tokens.NerdFont.Glyph(tokens.GSearch), tokens.GlyphSearch, "?"},
 	// ▤ U+25A4: a box with lines in it — a page of text, opened.
-	session.ActionRead: {"▤", "<"},
+	session.ActionRead: {"\uf15c", "▤", "<"},
 	// ✎ U+270E: the vocabulary's own write slot, and the pencil the owner
 	// picked out of Octicons.
-	session.ActionEdit: {tokens.GlyphWrite, "*"},
+	session.ActionEdit: {tokens.NerdFont.Glyph(tokens.GWrite), tokens.GlyphWrite, "*"},
 	// + : something that was not there is. It is the vocabulary's diff-add byte
 	// and it is ASCII, which the table has never claimed exclusively.
-	session.ActionCreate: {tokens.GlyphDiffAdd, "+"},
+	session.ActionCreate: {"\uf067", tokens.GlyphDiffAdd, "+"},
 	// $ : the vocabulary's shell slot — the prompt a person types a command at.
-	session.ActionRun: {tokens.GlyphShell, "$"},
+	session.ActionRun: {tokens.NerdFont.Glyph(tokens.GShell), tokens.GlyphShell, "$"},
 	// ◎ U+25CE: a target being aimed at. NEVER a checkmark: this is the act of
 	// checking, and the block draws no verdicts.
-	session.ActionTest: {"◎", "!"},
+	session.ActionTest: {"\uf0c3", "◎", "!"},
 	// ↗ U+2197: out of here and onto a page somewhere else — the link, drawn as
 	// the thing a link does.
-	session.ActionBrowse: {"↗", "^"},
+	session.ActionBrowse: {"\uf0ac", "↗", "^"},
 	// ⇄ U+21C4: bytes going the other way as well.
-	session.ActionTransfer: {"⇄", "&"},
+	session.ActionTransfer: {"\uf0ec", "⇄", "&"},
 	// » U+00BB: the guillemet, which is a quotation mark in half of Europe —
 	// something being SAID, to a person, and one cell in every font ever made.
-	session.ActionCommunicate: {"»", "@"},
+	session.ActionCommunicate: {"\uf075", "»", "@"},
 	// ⇉ U+21C9: two arrows travelling side by side — work handed out, or this
 	// mind copied to run beside itself.
-	session.ActionCoordinate: {"⇉", "|"},
+	session.ActionCoordinate: {"\uf126", "⇉", "|"},
 	// ≡ U+2261: three level lines, an outline. It is the safe cousin of ☰,
 	// which the shared table BANS for measuring two cells.
-	session.ActionPlan: {"≡", "#"},
+	session.ActionPlan: {"\uf0ae", "≡", "#"},
 	// ◷ U+25F7: a quarter of a clock face, still. The hourglasses are banned —
 	// two cells, and they lie about liveness on a row that is not moving.
-	session.ActionWait: {"◷", ","},
+	session.ActionWait: {"\uf017", "◷", ","},
 	// ▪ U+25AA: a small square. The bucket's mark is the quietest one in the
 	// table on purpose — it says "a step", which is all it knows.
-	session.ActionWork: {"▪", "."},
+	session.ActionWork: {"\uf013", "▪", "."},
 }
 
 // actionMarkFor is the mark for one family, in this terminal's tier.
@@ -133,7 +128,13 @@ func (a *app) actionMarkFor(category session.ActionCategory) string {
 	if !known {
 		mark = actionMarks[session.ActionWork]
 	}
-	return a.linearMark(mark.glyph, mark.ascii)
+	if a.linear || a.pal.linear || a.pal.ascii {
+		return mark.ascii
+	}
+	if a.iconMode == config.IconsRich || (a.iconMode != config.IconsPlain && a.actionAuto == tokens.NerdFont) {
+		return mark.rich
+	}
+	return mark.glyph
 }
 
 // actionLead is the whole gutter for one line of a step: the mark and its space
