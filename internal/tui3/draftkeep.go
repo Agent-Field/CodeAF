@@ -633,8 +633,8 @@ func commitKeep(path string, keep draftKeep) error {
 }
 
 // commitDropped is a conversation being closed for real (draft.go's
-// [dropDraftFile]): its own composers go, and everything the record was carrying
-// for another conversation stays exactly as it was.
+// [dropDraftFile]): its drafts go, its uncertain crossings keep their names,
+// and everything carried for another conversation stays exactly as it was.
 func commitDropped(path string) error {
 	keepPath := draftKeepPath(path)
 	left := draftKeep{}
@@ -642,11 +642,26 @@ func commitDropped(path string) error {
 		for _, slot := range keep.Slots {
 			if keep.Owner == "" || slot.Owner != keep.Owner {
 				left.Slots = append(left.Slots, slot)
+				continue
+			}
+			// A close discards drafts, never proof of an unanswered crossing.
+			// Retain only those sends, under their original recipient and name.
+			var uncertain []draftKeepSend
+			for _, send := range slot.Sends {
+				if send.State == draftSendCrossing || send.State == draftSendUnanswered {
+					send.State = draftSendUnanswered
+					uncertain = append(uncertain, send)
+				}
+			}
+			if len(uncertain) > 0 {
+				left.Slots = append(left.Slots, draftKeepSlot{
+					Owner: slot.Owner, Task: slot.Task, Run: slot.Run, Guest: slot.Guest, Sends: uncertain,
+				})
 			}
 		}
-		// AND THE CLOSED CONVERSATION'S NAME GOES WITH ITS WORDS, so what is left is
-		// a record about somebody else — or, with nothing left, a file about nothing
-		// and the one record this build deletes ([draftKeep.forgettable]).
+		// The record no longer owns a live composer. Each retained slot still
+		// names its conversation, including unanswered sends from this close.
+		// With no such slots, there is nothing left to keep.
 		if len(left.Slots) > 0 {
 			left.At = keep.At
 		}

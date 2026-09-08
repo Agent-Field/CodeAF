@@ -3209,8 +3209,11 @@ func (a *app) roomRows(width int) []row {
 			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
 			// return` was the whole of what this row said for a year, and esc is
 			// already on the legend and on the focus header above it; where the
-			// words in the box can go was on neither.
-			out = append(out, row{text: a.pal.dim(a.roomFinishedRefusal().fit(inner)), entry: -1})
+			// words in the box can go was on neither. On a page read through
+			// somebody else's conversation the door is the OWNER'S
+			// ([app.roomDoneRefusal]): `say it to main` there would aim the words
+			// at this window's conversation, which is the wrong one.
+			out = append(out, row{text: a.pal.dim(a.roomDoneRefusal().fit(inner)), entry: -1})
 		}
 	}
 	// THE GUTTER, BEFORE THE PASS THAT PAINTS THE WHOLE ROW (gutter.go). The
@@ -3596,7 +3599,12 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// never do. It says what the page IS instead, and keeps the way out.
 		lane = roomGuestLane + roomSteerBack
 	}
-	if a.room.done {
+	// A GUEST PAGE KEEPS THE READING WORD WHEN THE WORK LANDS. The finished
+	// refusal below is about a box that could once steer and now cannot; this
+	// one never could, and the reading word is exactly as true of a landed task
+	// as of a running one. The foot beside it carries the owner-aware finished
+	// sentence ([app.roomDoneRefusal]), so nothing here has to.
+	if a.room.done && !a.roomIsGuest() {
 		lane = a.roomFinishedRefusal().fit(room)
 	}
 	// The attachment/effort tray can precede the draft. Put the placeholder

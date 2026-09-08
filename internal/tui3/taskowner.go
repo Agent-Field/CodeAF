@@ -342,8 +342,13 @@ func (a *app) tookGuestRecord(msg roomRecordMsg) {
 	// The engine refusing on identity is not a failure to READ. Another window
 	// opened something else in that session; there is nothing more to have, so
 	// the page keeps what it has and says the final thing rather than retrying.
+	// AND THE OWNER'S LANE IS GIVEN BACK IN THE SAME BREATH ([taskGuest.dropWatch]):
+	// a final answer is final about the subscription too, and a lane held until
+	// the page closes is a reader parked on a conversation that has already said
+	// its last word to this window.
 	if strings.Contains(msg.err.Error(), taskGuestGoneMark) {
 		guest.lost, room.readFailed = true, false
+		guest.dropWatch()
 	}
 }
 
@@ -385,6 +390,13 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 	}
 	guest := room.guest
 	if guest.lost {
+		// A LOST PAGE STOPS LISTENING AS WELL AS ASKING. The subscription is
+		// released here rather than left for the page's close ([taskGuest.dropWatch]
+		// is idempotent, so the close releasing it again is a no-op): a lane
+		// nobody re-arms is not a lane that was given back, and holding it keeps
+		// this window a reader on a conversation that has already given its
+		// final answer.
+		guest.dropWatch()
 		return nil
 	}
 	if msg.closed || guest.notices == nil {
@@ -457,6 +469,21 @@ func (a *app) roomGuestStale() bool {
 // than casting doubt on the page, because the page is not in doubt — the rows on
 // it were read from the owner's own journal.
 const roomGuestStaleWord = "current status unavailable — showing the last known state"
+
+// dropWatch gives the owner's notice lane back, once, ahead of the page itself:
+// a page that has its final answer ([taskGuest.lost]) has nothing left to hear.
+// The stop is nilled in the same motion, so the ordinary release on the way out
+// of the room cannot close the subscription a second time.
+func (g *taskGuest) dropWatch() {
+	if g == nil {
+		return
+	}
+	if g.stopWatch != nil {
+		g.stopWatch()
+		g.stopWatch = nil
+	}
+	g.notices = nil
+}
 
 // release gives the view's connection back, once. It is idempotent because the
 // page can be replaced and closed on one keystroke ([app.newRoom] closes the old

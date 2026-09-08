@@ -2223,6 +2223,14 @@ change on it either: those act on work, and this window is looking at somebody e
 Nothing about opening it takes control away from the window that owns the work, and closing
 the page gives the connection back.
 
+**When the work on a reading page lands, the foot names the owner and never main.** It
+says `this task has finished — say it in docs pass` — the owner's own name, the same one
+the trail carries — and `this task has finished — say it in the conversation that owns it`
+where nothing has named that conversation. `say it to main` is what an ordinary finished
+task's page says, and it would be the wrong sentence here: main is this window's own
+conversation, whose task of the same number is different work. The box goes on saying
+`Reading this task… (esc: main)`, because reading is what the page still is.
+
 **What the page says about the work is what that conversation says about it.** The reading
 opens a standing subscription to the owner's own task list — the same one every window
 attached to a conversation gets — so the state on the page is the owner's, live: work that
@@ -2928,6 +2936,14 @@ corrected.
   `no answer — it is not known whether this arrived` and offers to ask again. It is never
   quietly handed back to the box, because the next `enter` would give it a new name and
   the task could then read it twice.
+- **Closing a conversation does not settle a correction still crossing or unanswered.**
+  Its words, compact paste blocks and original message name remain on disk. If the
+  answer is lost after the close, the notice says `task 7 gave no answer — delivery is
+  unknown; reopen its conversation to ask again`. Reopening that conversation and its
+  task page restores the unresolved row, even after restarting the window. Nothing is
+  retried automatically or placed in another conversation's composer. An explicit retry
+  uses the original name; an engine that keeps names answers an already accepted
+  correction without delivering it twice. Ordinary unsent drafts are discarded on close.
 - **Words the task definitely refused are yours again**, back in that room's box with the
   caret where you left it and the pasted blocks behind them. If you have started a new
   sentence there since, that one is kept and the refused one waits beside it until the
