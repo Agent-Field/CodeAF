@@ -840,7 +840,7 @@ refused before they run, and the task reads the refusal and keeps working:
 
 | Refused | Because |
 | --- | --- |
-| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
+| `merge`, `rebase`, `cherry-pick`, `revert`, `checkout`, `switch`, `am`, `apply`, `worktree`, `update-ref`, `symbolic-ref` | they put somebody else's commits into the task's copy, and only what the task writes there comes home |
 | `pull`, `fetch`, `clone`, `remote`, `submodule` | they bring in work the task did not do, and a task reports what it writes as its own |
 | `push` | a task's work comes home through its landing, not over a remote (the section above) |
 | `stash`, `stash pop`, `stash apply` | a stash that will not go back cleanly leaves raw conflict markers in files nobody looks at again (`git stash list` and `git stash show` are fine) |
@@ -858,10 +858,13 @@ command aimed at another directory is answered by the path law above instead —
 copy" — because "this is your own copy" is false about a repository the task is not standing
 in, and a refusal a model can see through is a refusal it goes around.
 
-**None of this applies to you.** In your own conversation, in your own checkout, aforge
-runs whatever git you ask for. The rule exists because a task reports work as *its own*,
-and one that fast-forwarded onto `main` really did report somebody else's fixes as the
-thing it had just built.
+**In a session you are sitting in front of, none of this applies to you.** In your own
+conversation, in your own checkout, aforge runs whatever git you ask for. A session you
+left running on its own with a budget answers to this same list, because it decides on its
+own word that the work is done; *The git an unattended run left on its own will not run*
+in *What aforge is, and how you start it* says exactly what that session reads. The rule
+exists because a task reports work as *its own*, and one that fast-forwarded onto `main`
+really did report somebody else's fixes as the thing it had just built.
 
 ## How a task reports back to you
 
