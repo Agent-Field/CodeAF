@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2551,8 +2552,16 @@ const keptNothing = "No created or changed files were recorded: this run worked 
 // is reported as an empty record rather than proof the tree never changed.
 func groundedAfterShutdown(outcome headlessOutcome, produced *errandRegistry) headlessOutcome {
 	if paths := produced.list(); len(paths) > 0 {
+		// The watcher already grounded and removed its duplicate file list.
+		// Only newly registered files need another account after shutdown.
+		var late []string
+		for _, path := range paths {
+			if !slices.Contains(outcome.Artifacts, path) {
+				late = append(late, path)
+			}
+		}
 		outcome.Artifacts = paths
-		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, paths)
+		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, late)
 	}
 	outcome.Deliverable = groundedInTheTree(outcome)
 	return outcome

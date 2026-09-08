@@ -27,3 +27,7 @@ two adjacent cases. Cancelled and paused leaves now register their files before
 returning; a price refusal makes no workspace-work claim; a deferred resident run
 leaves `workspace` empty rather than publishing this invocation's unproven directory.
 The real write-then-stall timeout path is covered with a scripted provider.
+
+The shutdown refresh grounds only files newly registered after the watcher
+returned. Files already accounted for keep the existing single stdout footer,
+instead of having their paths reintroduced into the closing prose.
