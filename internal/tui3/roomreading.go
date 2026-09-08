@@ -70,6 +70,30 @@ func readingEntries(entries []entry) []roomReadingEntry {
 	return keys
 }
 
+// Live prose can be coalesced when the journal replays, so its text is not a
+// stable identity for the work it introduces. Prefer the first tool id in the
+// range; before any call exists, keep the conservative source fingerprint.
+func readingWorkAnchor(es []entry, start, end int) int {
+	for i := start; i < end && i < len(es); i++ {
+		if es[i].kind == entryTool && es[i].callID != "" {
+			return i
+		}
+	}
+	return start
+}
+
+func readingWorkAnchors(d deck) (map[int]liveWork, map[int]caption) {
+	lives := make(map[int]liveWork)
+	for _, live := range liveWorkRuns(d) {
+		lives[readingWorkAnchor(d.entries, live.start, live.end)] = live
+	}
+	caps := make(map[int]caption, len(d.captions))
+	for _, c := range d.captions {
+		caps[readingWorkAnchor(d.entries, c.start, c.end)] = c
+	}
+	return lives, caps
+}
+
 func (a *app) rememberRoomReading() {
 	key, ok := a.roomReadingKey()
 	r := a.room
@@ -84,11 +108,14 @@ func (a *app) rememberRoomReading() {
 	folds := a.deckFolds(d)
 	stampHierarchy(d.entries, folds)
 	d.captions = deriveCaptions(d.entries, d.runningTurn)
-	lives := liveWorkRuns(d)
+	lives, caps := readingWorkAnchors(d)
 	saved := roomReading{workStyle: d.lens.foldPast, follow: r.stick, flags: map[roomReadingEntry]roomReadingFlags{}}
 	for i := len(r.entries) - 1; i >= 0; i-- {
 		e := r.entries[i]
-		caption, hasCaption := r.capOpen[i]
+		caption, hasCaption := false, false
+		if c, ok := caps[i]; ok {
+			caption, hasCaption = r.capOpen[c.start]
+		}
 		// Fold keys are phase ordinals or turn numbers, never entry indexes.
 		// Persist the start block so a shifted journal can derive its new key.
 		fold, startsFold := folds[i]
@@ -164,7 +191,7 @@ func (a *app) restoreRoomReading() *roomReading {
 	folds := a.deckFolds(d)
 	stampHierarchy(d.entries, folds)
 	d.captions = deriveCaptions(d.entries, d.runningTurn)
-	lives := liveWorkRuns(d)
+	lives, caps := readingWorkAnchors(d)
 	for i, k := range readingEntries(r.entries) {
 		flags, found := saved.flags[k]
 		if !found {
@@ -182,7 +209,7 @@ func (a *app) restoreRoomReading() *roomReading {
 			}
 		}
 		// The live door shares no phase key. Restore it only while the same
-		// source block still starts live work; settled history must not open
+		// call still belongs to live work; settled history must not open
 		// whatever new step now happens to use the reserved live key.
 		if flags.live && saved.workStyle == d.lens.foldPast {
 			if live, startsLive := lives[i]; startsLive {
@@ -190,7 +217,9 @@ func (a *app) restoreRoomReading() *roomReading {
 			}
 		}
 		if flags.hasCaption {
-			r.capOpen[i] = flags.caption
+			if c, found := caps[i]; found {
+				r.capOpen[c.start] = flags.caption
+			}
 		}
 	}
 	r.stick, r.dirty = saved.follow, true

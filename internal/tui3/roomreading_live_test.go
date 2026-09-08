@@ -93,3 +93,43 @@ func TestHostedTaskReadingUsesReportedActivityWithoutLocalLane(t *testing.T) {
 		})
 	}
 }
+
+// The wire can split narration around reasoning while the journal stores one
+// assistant message. Reopening must follow the stable call, not its prose head.
+func TestTaskReadingKeepsLiveAndCaptionChoicesWhenReplayJoinsNarration(t *testing.T) {
+	for _, captionOpen := range []bool{false, true} {
+		t.Run(map[bool]string{false: "caption closed", true: "caption open"}[captionOpen], func(t *testing.T) {
+			a, fake, _ := roomApp(t)
+			fake.journal = roomJournal(t,
+				`{"type":"message","role":"user","content":"Compare the parser contracts."}`,
+				`{"type":"message","role":"assistant","content":"Comparing parser contracts.The contracts agree. Reading compatibility notes.","toolCalls":[{"id":"compatibility-read","function":{"name":"read","arguments":"{\"path\":\"compatibility-notes.md\"}"}}]}`,
+				`{"type":"message","role":"tool","toolCallId":"compatibility-read","content":"the public contracts match"}`)
+			a.openRoom(7, "Compare parser contracts")
+			a.room.entries = []entry{
+				{kind: entryUser, text: "Compare the parser contracts.", turn: 1},
+				{kind: entryAssistant, text: "Comparing parser contracts.", settled: true, turn: 1},
+				{kind: entryThinking, text: "Check ownership transfer before compatibility.", settled: true, turn: 1},
+				{kind: entryAssistant, text: "The contracts agree. Reading compatibility notes.", settled: true, turn: 1},
+				{kind: entryTool, tool: "read", callID: "compatibility-read", text: "read compatibility-notes.md", status: toolRunning, turn: 1},
+			}
+			a.room.turn, a.room.dirty = 1, true
+			if !a.toggleLatestWorkfold() || !a.room.workOpen[0] {
+				t.Fatal("no live work to expand before leaving")
+			}
+			a.setCapOpen(a.room.deck(), 3, captionOpen)
+			a.closeRoom()
+			a.openRoom(7, "Compare parser contracts")
+			_ = roomText(a)
+			if !a.room.workOpen[0] {
+				t.Fatal("coalesced narration lost expansion of the same live call")
+			}
+			captions := deriveCaptions(a.room.entries, a.room.turn)
+			if len(captions) != 1 || captions[0].start == 3 {
+				t.Fatalf("fixture did not coalesce the caption head: %#v", captions)
+			}
+			if got, set := a.room.capOpen[captions[0].start]; !set || got != captionOpen {
+				t.Fatalf("caption choice after coalescence = %v (set %v), want %v", got, set, captionOpen)
+			}
+		})
+	}
+}
