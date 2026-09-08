@@ -79,14 +79,12 @@ const (
 // and it is turned into the one machine contract every headless verb returns by
 // [errandEnvelope] on the way out (envelope.go) — nothing marshals this struct.
 //
-// Settled means the errand is over — nothing this process is waiting for can
-// still move — and it is deliberately not a verdict on the work. The verdict is
-// the exit code, and the two disagree in exactly one honest way: an errand
-// stopped by a question is over (settled) and did nothing (exit 4). BlockedOn
-// is what tells a machine caller which of those it is holding, and it is why
-// the question never goes in Deliverable: a caller that read the deliverable
-// field recorded an interactive charter card as the answer to a bank
-// reconciliation and never learned the task was not attempted.
+// Settled means the errand is over — nothing this run is waiting for can still
+// move — and it is deliberately not a verdict on the work. A run stopped by a
+// question is settled and did nothing (exit 4); a run holding a tree its own
+// checks could not collect is not settled, because making that tree build is
+// still work waiting to move. BlockedOn tells a machine caller when the first
+// happened, and unfinishedTree tells this function when the second did.
 type headlessOutcome struct {
 	Deliverable string   `json:"deliverable"`
 	Artifacts   []string `json:"artifacts"`
@@ -111,6 +109,11 @@ type headlessOutcome struct {
 	Nodes   int     `json:"nodes"`
 	Seconds float64 `json:"seconds"`
 	Settled bool    `json:"settled"`
+	// unfinishedTree is the finished-tree reading's own sentence on the one run
+	// that cannot be called settled: its checks failed to collect. It stays
+	// unexported because the sentence leaves through Deliverable, while Settled
+	// is already the machine signal and the JSON contract needs no second key.
+	unfinishedTree string
 	// Run, Calls and Rounds are what a person went to `calls.jsonl` to
 	// reconstruct: which run this was, how many model calls it made, and how
 	// many times it bought more work after looking at what it had. They are
@@ -1185,7 +1188,11 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 		}
 	}
 	outcome := w.compose(nodes)
-	outcome.Settled = true
+	// A TREE THAT DOES NOT BUILD IS NEVER REPORTED SETTLED. Settled has always
+	// meant that nothing this run is waiting for can still move, and repairing a
+	// tree whose own checks could not collect is work still waiting to move even
+	// after every node has stopped.
+	outcome.Settled = outcome.unfinishedTree == ""
 	return outcome, true, nil
 }
 
@@ -2181,8 +2188,10 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		switch {
 		case final.Status == store.Failed || final.Status == store.Cancelled:
 			outcome.stop = stopIncomplete
-			outcome.Deliverable = strings.TrimSpace(final.Error)
-			if outcome.Deliverable == "" {
+			outcome.Deliverable = "It did not finish."
+			if reason := plainWords(strings.TrimSpace(final.Error)); reason != "" {
+				outcome.Deliverable += "\n\n" + reason
+			} else {
 				outcome.Deliverable = "It did not finish, and no reason was recorded."
 			}
 		case resident.SplitContinued(final.Summary):
@@ -2213,6 +2222,20 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 					outcome.stop, outcome.Unjudged = stopUnchecked, reason
 				}
 				w.sayStanding(*final)
+			}
+		}
+		// A FAILED COLLECTION IS A FINDING ABOUT THE TREE, WHATEVER THE NODE'S
+		// OWN ENDING SAID. It belongs after the switch so both a failed leaf and a
+		// leaf that said Done carry it out. If the gate was also unreachable, the
+		// tree wins the stop word: `incomplete` says a check ran and found a tree
+		// it could not collect, while `unchecked` says no finding arrived at all.
+		if reason := w.uncollectedReason(nodes); reason != "" {
+			outcome.unfinishedTree = reason
+			outcome.stop = stopIncomplete
+			if strings.TrimSpace(outcome.Deliverable) == "" {
+				outcome.Deliverable = reason
+			} else {
+				outcome.Deliverable = strings.TrimSpace(outcome.Deliverable) + "\n\n" + reason
 			}
 		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
@@ -2324,6 +2347,32 @@ func (w *settlementWatch) unjudgedReason(node store.Node) string {
 		return ""
 	}
 	return firstLine(strings.TrimSpace(gate.Refused))
+}
+
+// uncollectedReason is why this run's last finished-tree reading could not
+// collect, and empty where its last word made no such finding.
+//
+// A SECOND READING REPLACES THE FIRST; IT DOES NOT ADD TO IT. A finding the
+// first reading raised and the second does not must stop being a finding, and
+// across a run the reading with the latest journal sequence has the last word.
+// A node's later status update cannot reorder observations of the tree. It asks the rows
+// because the readings were taken in another process's turn loop, and the
+// journal is the only thing that crosses that seam. An unreadable store answers
+// empty, on the same terms unjudgedReason does: this decides how a run is
+// described, and a failed read is not evidence about the run.
+func (w *settlementWatch) uncollectedReason(nodes []store.Node) string {
+	var last store.VerificationReading
+	var lastSeq int64
+	for _, node := range nodes {
+		reading, seq, err := w.graph.LatestFinishedVerification(node.ID)
+		if err == nil && seq > lastSeq {
+			last, lastSeq = reading, seq
+		}
+	}
+	if lastSeq > 0 && last.Uncollected {
+		return strings.TrimSpace(last.Why)
+	}
+	return ""
 }
 
 // unjudgedWords is the last line a person reads when the delivery went out and

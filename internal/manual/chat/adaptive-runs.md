@@ -923,9 +923,22 @@ as 15m or 2h, or a number of seconds`. Zero or less — `-timeout 0`, `-timeout 
 is nothing to hunt for.
 
 It is a wall and not a schedule: the length of rope at which a wedged run is more useful
-dead. Work is not simply cut off when it arrives, either — aforge stops buying new work
-while there is still room to check what has been done, and *When the wall gets close* on
-this page says what that looks like.
+dead. The wall also reaches the work itself instead of leaving every worker at fifteen
+minutes; *Why a two-hour run no longer gives a leaf only fifteen minutes* is the exact rule.
+
+## Why a two-hour run no longer gives a leaf only fifteen minutes — worker room and landing reserve
+
+Under a long `-timeout` wall, one worker's room grows to what the wall leaves after the
+two-minute watchdog pad, so a leaf inside a two-hour run is no longer capped at the
+ordinary fifteen-minute floor. The rule only widens — a short wall does not take away room
+the token grant bought — and the watchdog still sits above the room the worker was given.
+
+Work is not simply cut off when the wall arrives, either. A deadline landing gets its own
+short clock, measured when the landing is ordered and capped by that same two-minute pad,
+so a turn already in flight cannot spend the time needed to make the tree consistent and
+run one quick check. The errand's wall still wins: a landing never runs past the duration
+you set. *When the wall gets close* on this page says what the whole run does with the room
+that remains.
 
 ## When the wall gets close — the work is checked before the clock stops
 
@@ -945,6 +958,12 @@ answer the same question from opposite ends:
 How close is "close" is measured on the errand itself — the pace this job's own rounds have
 kept, plus what this project's own checks cost to read on this machine. It is not a fixed
 number of seconds, and a job that has not yet shown a pace is never wound up early.
+
+Inside a worker, the same promise has a fixed upper bound: its deadline reserves at most
+two minutes for landing. If the ordinary turn reaches the deadline first, that cut turn is
+discarded and the reserve starts then on a clock of its own. The worker may use it only to
+restore consistency, run the quickest useful check and report what remains; the reserve
+still ends at the errand's wall when that arrives first.
 
 ## When the repair only rewrote the summary — a round that changed nothing on disk
 

@@ -128,6 +128,19 @@ type brainOptions struct {
 	newClient func(config.Config, string) (*liveClient, error)
 }
 
+// remainingWall reads what the errand's own context still leaves.
+//
+// WHAT THE ERRAND'S WALL LEAVES IS THE ONLY FIGURE THAT CARRIES THE PERSON'S
+// OWN NUMBER. The runner passes the same context settings.ExecContext preserves
+// and the leaf actually runs under; a surface with no wall has no deadline here
+// and keeps the token-sized room it has always granted.
+func remainingWall(ctx context.Context) time.Duration {
+	if at, ok := ctx.Deadline(); ok {
+		return time.Until(at)
+	}
+	return 0
+}
+
 // buildBrain assembles the brain: every provider client, the reconciler, the
 // runner and the consent desk. It is a function rather than the body of the
 // errand because a test scripts a provider through brainOptions.newClient and
@@ -527,8 +540,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
 		leafRoom := exec.SubharnessFor(subharness)
-		deadline := leafRoom.Deadline(tokens)
-		watchdog := leafRoom.Watchdog(tokens)
+		wallLeft := remainingWall(ctx)
+		deadline := leafRoom.DeadlineWithin(tokens, wallLeft)
+		watchdog := exec.WatchdogAbove(deadline)
 		if isReflex {
 			turns, tokens = reflexTurns, reflexTokens
 			deadline = reflexDeadline
@@ -667,8 +681,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if fold {
 			turns, tokens = foldGrant(modelCatalog.ContextLength(workingModel),
 				exec.FoldTurns, pushed, tokens)
-			deadline = leafRoom.Deadline(tokens)
-			watchdog = leafRoom.Watchdog(tokens)
+			wallLeft = remainingWall(ctx)
+			deadline = leafRoom.DeadlineWithin(tokens, wallLeft)
+			watchdog = exec.WatchdogAbove(deadline)
 			build.maxTurns, build.maxTokens, build.deadline = turns, tokens, deadline
 		}
 		// Journaled either way, so a benchmark can tell a fold that fired from a
@@ -970,7 +985,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					attempted.Fold = false
 					build.maxTurns, build.maxTokens = openTurns, openTokens
 					build.deadline = openDeadline
-					watchdog = leafRoom.Watchdog(openTokens)
+					watchdog = exec.WatchdogAbove(build.deadline)
 					worker = runningWorker(node.ID, subharness, build, "")
 					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
 						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
