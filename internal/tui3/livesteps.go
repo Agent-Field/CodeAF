@@ -309,22 +309,35 @@ func (a *app) collapseLiveWork(turn int) {
 // somebody has to be able to read; an ellipsis in the middle of one would be the
 // surface saving a row at the cost of the only thing the row was for.
 func (a *app) liveStepBlock(w liveWork, width int, es []entry) []row {
-	// Hidden reasoning needs a visible door even before a call has supplied a
-	// caption. The label claims only that the turn is working; no step is invented.
-	if len(w.steps) == 0 {
-		word := a.pal.dim("Work")
-		if w.pending {
-			word = a.shimmer("Working")
-			if a.ellipsisShowing() {
-				word = a.activityLine(word)
-			}
-		}
-		return []row{{text: a.pal.dim(a.linearMark("▸ ", "> ")) + word + a.pal.dim(" · ctrl+e"),
-			entry: -1, hit: hitWorkFold, turn: w.turn, activity: w.pending}}
-	}
 	room := width - workIndentCols(width) - actionGutter
 	if room < 1 {
 		room = 1
+	}
+	// Hidden reasoning needs a visible door even before the first caption.
+	// It uses the same width budget, including on the smallest terminal.
+	if len(w.steps) == 0 {
+		text := "Work"
+		if w.pending {
+			text = "Working"
+			if a.ellipsisShowing() {
+				text = ansi.Strip(a.activityLine(text))
+			}
+		}
+		lines := wrap(text+" · ctrl+e", room)
+		out := make([]row, 0, len(lines))
+		for i, line := range lines {
+			lead := "  "
+			painted := a.pal.dim(line)
+			if i == 0 {
+				lead = a.linearMark("▸ ", "> ")
+				if w.pending {
+					n := min(len("Working"), len(line))
+					painted = a.shimmer(line[:n]) + a.pal.dim(line[n:])
+				}
+			}
+			out = append(out, row{text: a.pal.dim(lead) + painted, entry: -1, hit: hitWorkFold, turn: w.turn, activity: w.pending})
+		}
+		return out
 	}
 	// Newest first, one whole step at a time, until the budget is spent.
 	type step struct {

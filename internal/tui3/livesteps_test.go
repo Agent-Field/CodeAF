@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -661,6 +662,21 @@ func TestPendingActivityTakesPriorityOverAnOversizedFinishedCaption(t *testing.T
 	for _, r := range out {
 		if strings.Contains(plain(r.text), "reading") {
 			t.Fatal("an oversized completed caption was partially drawn")
+		}
+	}
+}
+
+func TestThePreCaptionDoorWrapsWithinTheMinimumWidth(t *testing.T) {
+	a := liveStepsApp(t)
+	for _, width := range []int{8, 9, 20} {
+		out := a.liveStepBlock(liveWork{turn: 1, pending: true}, width, nil)
+		for _, r := range out {
+			if ansi.StringWidth(r.text) > width-workIndentCols(width) {
+				t.Fatalf("width %d overflowed: %q", width, plain(r.text))
+			}
+			if r.hit != hitWorkFold {
+				t.Fatal("wrapped activity lost its disclosure")
+			}
 		}
 	}
 }
