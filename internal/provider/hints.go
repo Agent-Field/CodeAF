@@ -100,6 +100,12 @@ type effortRequest struct {
 	budget int
 
 	explicit bool
+
+	// required marks an effort that this call cannot work without. It is the
+	// ONE thing a client's own pinned effort yields to: a caller's ordinary
+	// economy is less specific than the seat's pin, while a correctness bound
+	// on this answer is more specific than both.
+	required bool
 }
 
 // WithReasoningEffort scopes a harness phase default to one call. The harness
@@ -122,7 +128,7 @@ func WithConfiguredReasoningEffort(ctx context.Context, effort Effort) context.C
 // is the measured case: silently dropping its disable leaves a reasoning model
 // no tokens in which to answer, so an unknown catalog row must not erase it.
 func WithRequiredReasoningEffort(ctx context.Context, effort Effort) context.Context {
-	return withEffort(ctx, effortRequest{effort: effort, explicit: true})
+	return withEffort(ctx, effortRequest{effort: effort, explicit: true, required: true})
 }
 
 func withEffort(ctx context.Context, request effortRequest) context.Context {

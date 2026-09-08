@@ -89,9 +89,11 @@ const SubjectFallbackWords = "fallback"
 // Subject answers which of the two this delivery is, from the artifact record
 // settled against the world.
 //
-// It is asked AFTER completeAgainstTheWorld, so the record it reads is an
-// observation of the tree rather than an account of what leaves reported. A
-// record naming files none of which are on disk is a record of nothing, and it
+// The stat in recordFiles makes the run's record an observation of the tree
+// rather than only an account of what leaves reported. The named-file sweep
+// would make that observation a lie if it joined the record: a file the request
+// named is not a file the run changed, so that answer is kept in Swept instead.
+// A record naming files none of which are on disk is a record of nothing, and it
 // answers claim: the fail-safe direction here is the one that keeps the worker's
 // own words in front of the judge when there is nothing else to show it.
 func (e Evidence) Subject() Subject {
@@ -127,9 +129,10 @@ func plural(count int, noun string) string {
 // path that is a file, now, at judging time.
 //
 // The stat is the whole of it. A path a leaf reported and the filesystem does
-// not have, and a directory wearing a file's name, are both things the record
-// SAYS and the world does not — and a subject decided from what the record says
-// would be the same defect one seam along from the one this file closes.
+// not have, a directory wearing a file's name, and a file the request named but
+// the run never wrote are all things a record can SAY that the world does not
+// bear out — and a subject decided from what the record says would be the same
+// defect one seam along from the one this file closes.
 func (e Evidence) recordFiles() []string {
 	held := make([]string, 0, len(e.Artifacts))
 	for _, artifact := range e.Artifacts {

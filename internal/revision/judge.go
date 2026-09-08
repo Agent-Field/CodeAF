@@ -621,7 +621,17 @@ func GateVerdict(judgment Judgment) provider.Verdict {
 // gate stops being a judge of prose for the price of passing two slices.
 type Evidence struct {
 	Artifacts []string
-	Ran       []string
+	// Swept is what the workspace walk answered a NAME with: a file carrying a
+	// name the request or plan spelled that the run's own record of what it left
+	// behind does not hold. It is kept apart because one list was answering two
+	// questions, and answered "what did this run change" wrongly for the run of
+	// 2026-09-03 that made 156 shell calls, wrote nothing, and was refused over
+	// `CLAUDE.md` — a file its contract had told it to READ.
+	//
+	// Nil on every delivery whose sweep found nothing, which is nearly all of
+	// them.
+	Swept []string
+	Ran   []string
 	// Named is what the request itself named as a file, in the person's own
 	// spelling. It is the half of the record the gate could never check: a
 	// judge holding only prose was asked whether the finished thing exists,
@@ -629,7 +639,8 @@ type Evidence struct {
 	// from the sentence — in both directions. It failed a delivery for not
 	// retyping a file that was on disk, and it passed one that claimed a file
 	// was "written and verified" when nothing of that name had been written at
-	// all. Rendered against Artifacts, each name settles itself.
+	// all. Rendered against Artifacts and Swept, each name settles itself without
+	// turning the workspace's answer into a change the run made.
 	Named []string
 	// Done is the criterion the plan stated before the work started: what this
 	// leaf was to produce and the checks that settle it. It travels verbatim
@@ -826,6 +837,8 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 	// different things — and the second heading, "what the work left behind",
 	// is the one that invites a judge to weigh the tree as supporting evidence
 	// for a message it is no longer being shown as the deliverable.
+	// A swept file was not left behind by this run, so it does not belong in
+	// this list; namedBlock accounts for it against the name the request used.
 	//
 	// WHAT THE RECORD CLAIMS AND THE WORLD DOES NOT HOLD SURVIVES EITHER WAY,
 	// because the fence can only carry files that exist and those two lines are
@@ -1013,9 +1026,10 @@ func (e Evidence) patchSource() string {
 }
 
 // namedBlock settles every file the request named against the files the run
-// actually left behind. Each line is a fact rather than a judgement — the gate
-// still decides what a missing file means for this ask — and the two directions
-// are stated in the same words so neither can be read as the louder one.
+// actually left behind and the names the workspace answered. Each line is a
+// fact rather than a judgement — the gate still decides what a missing file
+// means for this ask — and the three directions are stated in the same words so
+// none can be read as the louder one.
 func (e Evidence) namedBlock() string {
 	if len(e.Named) == 0 {
 		return ""
@@ -1025,6 +1039,11 @@ func (e Evidence) namedBlock() string {
 	for _, name := range e.Named {
 		if produced, ok := ProducedFile(name, e.Artifacts); ok {
 			fmt.Fprintf(&body, "%s — produced, at %s\n", name, produced)
+			continue
+		}
+		if found, ok := ProducedFile(name, e.Swept); ok {
+			fmt.Fprintf(&body, "%s — a file of that name is there, at %s; this run did not write it\n",
+				name, found)
 			continue
 		}
 		fmt.Fprintf(&body, "%s — nothing of that name is among what was left behind\n", name)
@@ -1100,8 +1119,8 @@ func ProducedFile(named string, artifacts []string) (string, bool) {
 	return "", false
 }
 
-// AdmitGapArtifact refuses the one gap the record has already closed: the review
-// quoted a span of the request that names a file, and the run produced every
+// AdmitGapArtifact refuses the one gap the world has already closed: the review
+// quoted a span of the request that names a file, and the workspace holds every
 // file that span names.
 //
 // It is the artifact half of the same invariant AdmitGapRevision applies to
@@ -1125,7 +1144,7 @@ func AdmitGapArtifact(citations []string, evidence Evidence) string {
 		return ""
 	}
 	for _, name := range names {
-		if _, ok := ProducedFile(name, evidence.Artifacts); !ok {
+		if _, ok := ProducedFile(name, evidence.producedArtifacts()); !ok {
 			return ""
 		}
 	}
@@ -1275,11 +1294,10 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// answer exists wherever a verdict is being reached rather than only where a
 	// worker happened to be able to take one.
 	evidence.measureFinalTree(ctx, verify.JobKey(node.Provenance.Intent))
-	// AND THE RECORD OF WHAT WAS LEFT BEHIND IS SETTLED AGAINST THE WORLD BEFORE
-	// ANYTHING IS ASKED OF IT. Every reader below — the mechanical gate, the
-	// block the judge is shown, the door that refuses a gap the disk has already
-	// closed — reads one list, and until this call that list was an ACCOUNT of
-	// what leaves reported rather than an observation of the tree.
+	// AND EVERY NAME THIS DELIVERY IS ABOUT IS SETTLED AGAINST THE WORLD BEFORE
+	// ANYTHING IS ASKED OF IT. The mechanical gate and the door that refuses a
+	// gap the disk has already closed read the union; every question about what
+	// changed keeps reading the run's own record alone.
 	evidence.completeAgainstTheWorld()
 	// AND WHAT THE JOB HAS DELETED FROM ITS OWN PUBLIC SURFACE IS RE-SETTLED
 	// HERE, AGAINST THE TREE AS IT NOW STANDS. Until this, the finding was the
@@ -1464,7 +1482,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 		weakened.Grounds = grounds
 		return weakened
 	}
-	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
+	if mechanical, missing := MissingProduces(evidence.Done, evidence.producedArtifacts()); missing {
 		mechanical.Grounds = grounds
 		return mechanical
 	}
@@ -1718,7 +1736,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// itself when the plan states a produces list, so it is marked the same way
 	// and buys the same round — a refusal of its citation says only that no round
 	// will be bought, never that the absence is not real.
-	if verdict.Promised && !producedNonEmpty(verdict.File, evidence.Artifacts) {
+	if verdict.Promised && !producedNonEmpty(verdict.File, evidence.producedArtifacts()) {
 		failed.Mechanical = true
 		failed.Finding = FindingMissingProduces
 	}

@@ -861,3 +861,20 @@ run whose own checks ran and settled is not a run nothing checked — a person i
 never shown `partial` over green work, and never a silent pass either: the
 receipt says which of the two happened. The fallback reads the worker's
 STRUCTURED account and never the deliverable's prose about its own tests.
+
+---
+
+## Addendum, 2026-09-04: a leaf is judged on the job's tree, not on its own hands
+
+The wire settlement's guard read the failed leaf's own artifact list, while the
+gate beneath it read the job's merged artifact record. A repair or resumed leaf
+can write nothing itself over a file an earlier attempt already landed, so the
+guard could decline the settlement before the gate saw the work it was meant to
+judge.
+
+`settledOnTheTree` now assembles `jobArtifacts(record, artifacts)` once. That one
+list decides whether anything landed, forms the `Files:` block in the delivery,
+and becomes the evidence held by the gate. This deliberately widens settlement
+to every wire-failed leaf whose job record still names a file on disk, whether or
+not that leaf wrote one itself; a job that left nothing anywhere still buys no
+gate call.
