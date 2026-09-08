@@ -61,7 +61,7 @@ import (
 // point is that it does not depend on which family a step turned out to be.
 const actionGutter = 2
 
-// actionMark is one family's two spellings.
+// actionMark holds the rich icon and both fallback spellings for one family.
 type actionMark struct {
 	// rich is the normal icon, one stable BMP private-use cell.
 	rich string
