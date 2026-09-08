@@ -307,7 +307,7 @@ func TestAPartThatNeverLandedIsNotCountedInTheDividersCheck(t *testing.T) {
 // one worker for five workers' output.
 func TestThePacketSaysWhichFilesThePartsWrote(t *testing.T) {
 	node := loneTestNode(t, "rework the chrome")
-	question := auditQuestion(node, taskTree{}, auditGround{dir: "/restore", restored: true}, auditDoor{},
+	question := auditQuestion(node, taskTree{}, auditGround{dir: "/restore", restored: true}, auditDoor{}, checkGround{},
 		landingFiles{own: []string{"assembly.go"}, parts: []string{"header.go", "rail.go"}}, "it is assembled", nil)
 	if !strings.Contains(question, "Files it wrote: assembly.go") {
 		t.Fatalf("the node's own files are not named:\n%s", question)

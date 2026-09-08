@@ -16,3 +16,7 @@ said the honest number — which is how the overrun was found at all. What was
 missing is that the reserve granted after the stop was a count of iterations, and
 a count of iterations is not a bound on spend when one iteration can cost a
 quarter of the grant.
+
+The merge with current dev preserves the independent bounded landing clock and
+repeated-timeout guard alongside the token allowance; each retains its own
+existing threshold and ending ownership.

@@ -291,6 +291,13 @@ func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
 			continue
 		}
 		tree.rung = rung.rung()
+		// The filesystem seal and the Git baseline answer different questions.
+		// Capture the latter before any worker can commit in this new copy.
+		if tree.branch != "" && tree.checkBase == "" {
+			if sha, err := git(tree.dir, "rev-parse", "HEAD"); err == nil {
+				tree.checkBase = strings.TrimSpace(sha)
+			}
+		}
 		return tree, nil
 	}
 	return taskTree{}, errors.New("no copy of " + order.ground + " could be made for this task")
@@ -423,6 +430,8 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 		drop()
 		return taskTree{}, false
 	}
+	home := currentBranch(order.root)
+	homeSha := branchCommit(order.root, home)
 	// A FAMILY THAT FROZE ITS WORLD OPENS THE FORK AT THAT COMMIT INSTEAD OF
 	// SEALING IT (task_divide_wip.go). The fork is a byte-exact copy of the
 	// family tree, `.git` included, so the freeze is an object this repository
@@ -442,7 +451,8 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 			dir:      fork.Path,
 			root:     order.root,
 			branch:   order.branch,
-			home:     currentBranch(order.root),
+			home:     home,
+			homeSha:  homeSha,
 			place:    order.place,
 			ground:   order.ground,
 			mode:     TaskModeWorktree,
@@ -459,7 +469,8 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 		dir:      fork.Path,
 		root:     order.root,
 		branch:   order.branch,
-		home:     currentBranch(order.root),
+		home:     home,
+		homeSha:  homeSha,
 		place:    order.place,
 		ground:   order.ground,
 		mode:     TaskModeWorktree,
@@ -538,9 +549,8 @@ func sealForkWorld(dir, branch, title string) (string, bool) {
 		// the files git never sees, and they came across regardless.
 		return "", true
 	}
-	if _, err := git(dir,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"commit", "-m", groundCommitMessage(title)); err != nil {
+	if _, err := git(dir, append(aforgeGitIdentity(),
+		"commit", "-m", groundCommitMessage(title))...); err != nil {
 		return "", false
 	}
 	head, err := git(dir, "rev-parse", "HEAD")
@@ -800,9 +810,8 @@ func sealGroundWork(dir, title string) (string, error) {
 		// nothing. It is the one road out of here that answers nothing twice.
 		return "", nil
 	}
-	commit, err := git(dir,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"commit-tree", tree, "-p", "HEAD", "-m", groundCommitMessage(title))
+	commit, err := git(dir, append(aforgeGitIdentity(),
+		"commit-tree", tree, "-p", "HEAD", "-m", groundCommitMessage(title))...)
 	if err != nil {
 		return "", sealProblem(commit, err)
 	}
@@ -893,9 +902,8 @@ func (t taskTree) replayOwnWork() bool {
 	if strings.TrimSpace(t.base) == "" || strings.TrimSpace(t.dir) == "" {
 		return false
 	}
-	if _, err := git(t.dir,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"rebase", "--onto", t.base+"^", t.base); err == nil {
+	if _, err := git(t.dir, append(aforgeGitIdentity(),
+		"rebase", "--onto", t.base+"^", t.base)...); err == nil {
 		return false
 	}
 	_, _ = git(t.dir, "rebase", "--abort")

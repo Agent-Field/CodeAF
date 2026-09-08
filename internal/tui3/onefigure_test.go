@@ -139,3 +139,33 @@ func TestALostSpendingRecordIsSaidOnBothSpendSurfaces(t *testing.T) {
 		t.Fatalf("the /spend pointer line says nothing about three lost records: %q", row)
 	}
 }
+
+// TestNothingIsSaidAboutUnbilledCallsWhenThereAreNone is C7's empty half. A
+// zero is absence on both the Spending tab and the /cost spend place, never a
+// reassuring figure the machine did not measure.
+func TestNothingIsSaidAboutUnbilledCallsWhenThereAreNone(t *testing.T) {
+	if unbilled := unbilledReadingFor(0); unbilled != nil {
+		t.Fatalf("Spending draws an %q row with no missing prices: %+v", spendUnbilledWord, unbilled)
+	}
+	now := time.Now()
+	reading := readSpend(nil, session.LastDays(now, spendWindowDays), now).unpriced(0)
+	if row := plain(reading.railsRow(200, newPalette(tokens.NoColor, false))); strings.Contains(row, spendUnbilledSaid) {
+		t.Fatalf("the /cost spend place claims calls were unpriced: %q", row)
+	}
+}
+
+// TestTheSpendSurfacesSayHowManyCallsCouldNotBePriced is C7's visible half:
+// both surfaces compose the count from the same person-facing constant.
+func TestTheSpendSurfacesSayHowManyCallsCouldNotBePriced(t *testing.T) {
+	const missing = int64(2)
+	setting := unbilledReadingFor(missing)
+	if setting == nil || !strings.Contains(setting.value.full, "2 "+spendUnbilledSaid) {
+		t.Fatalf("Spending's unbilled row = %+v", setting)
+	}
+	now := time.Now()
+	reading := readSpend(nil, session.LastDays(now, spendWindowDays), now).unpriced(missing)
+	row := plain(reading.railsRow(200, newPalette(tokens.NoColor, false)))
+	if !strings.Contains(row, "2 "+spendUnbilledSaid) {
+		t.Fatalf("the /cost spend place says nothing about two unpriced calls: %q", row)
+	}
+}

@@ -51,6 +51,27 @@ Every one of the five scores reward 1 on its own reference solution through this
 rig (`gold.sh`), which is the only evidence that a zero from a model run means
 what it says.
 
+## Three more, for the 2026-09-04 chat-versus-do campaign
+
+Eight tasks were wanted rather than five. The same five signals, scored over the
+v1.1 corpus restricted to Python, TypeScript and JavaScript, and a preference for
+a task whose verifier image was already on the host, picked these three:
+
+| task | language | repo | ref patch | f2p / p2p | why it is in the set |
+| --- | --- | --- | --- | --- | --- |
+| `cattrs-partial-structuring-recovery` | python | python-attrs/cattrs | 632 lines, 3 files | 69 / 7 | seven pass-to-pass tests: the smallest regression surface left in the corpus |
+| `aiomonitor-task-snapshots-diff` | python | aio-libs/aiomonitor | 612 lines, 5 files | 53 / 8 | eight pass-to-pass tests, a short brief |
+| `ts-pattern-match-each` | typescript | gvergnaud/ts-pattern | 625 lines, 5 files | 85 / 6 | a second control beside ofetch: `deepseek-v4-flash` solved it outright on the codeaf harness |
+
+All eight score reward 1 on their own reference solution through `gold.sh`.
+
+Two things moved under the rig between s14 and this campaign, both recorded in
+every result's meta.json. The corpus is `github.com/datacurve-ai/deep-swe` now
+(117 tasks at v1.1; the old `~/src/swe-pro/...` path is gone) and `CORPUS`
+names the clone. And `task.toml` says `agent.timeout_sec = 10800` where the
+sweeps ran under 5400; the campaign pins `AGENT_SECONDS=5400` so its walls read
+against s1–s14, and `agent_seconds_budget` says which wall a row ran under.
+
 ## The host deviation that has to be published with any number
 
 The task images are `linux/amd64`; this host is arm64. Both the agent container

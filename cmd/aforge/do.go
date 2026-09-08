@@ -79,14 +79,12 @@ const (
 // and it is turned into the one machine contract every headless verb returns by
 // [errandEnvelope] on the way out (envelope.go) — nothing marshals this struct.
 //
-// Settled means the errand is over — nothing this process is waiting for can
-// still move — and it is deliberately not a verdict on the work. The verdict is
-// the exit code, and the two disagree in exactly one honest way: an errand
-// stopped by a question is over (settled) and did nothing (exit 4). BlockedOn
-// is what tells a machine caller which of those it is holding, and it is why
-// the question never goes in Deliverable: a caller that read the deliverable
-// field recorded an interactive charter card as the answer to a bank
-// reconciliation and never learned the task was not attempted.
+// Settled means the errand is over — nothing this run is waiting for can still
+// move — and it is deliberately not a verdict on the work. A run stopped by a
+// question is settled and did nothing (exit 4); a run holding a tree its own
+// checks could not collect is not settled, because making that tree build is
+// still work waiting to move. BlockedOn tells a machine caller when the first
+// happened, and unfinishedTree tells this function when the second did.
 type headlessOutcome struct {
 	Deliverable string   `json:"deliverable"`
 	Artifacts   []string `json:"artifacts"`
@@ -111,6 +109,11 @@ type headlessOutcome struct {
 	Nodes   int     `json:"nodes"`
 	Seconds float64 `json:"seconds"`
 	Settled bool    `json:"settled"`
+	// unfinishedTree is the finished-tree reading's own sentence on the one run
+	// that cannot be called settled: its checks failed to collect. It stays
+	// unexported because the sentence leaves through Deliverable, while Settled
+	// is already the machine signal and the JSON contract needs no second key.
+	unfinishedTree string
 	// Run, Calls and Rounds are what a person went to `calls.jsonl` to
 	// reconstruct: which run this was, how many model calls it made, and how
 	// many times it bought more work after looking at what it had. They are
@@ -167,6 +170,11 @@ type headlessOutcome struct {
 	// log (#514). `stop` says "unchecked"; this says why, and the two travel
 	// together.
 	Unjudged string `json:"unjudged,omitempty"`
+	// Checklist is what became of each thing the request asked for, on exactly
+	// the runs whose journal carried a checklist. It is a field because machine
+	// callers must never parse the bounded person's account, and it is never
+	// clipped.
+	Checklist []revision.PointOutcome `json:"checklist,omitempty"`
 	// Error is the sentence a run that never reached an outcome left behind:
 	// the store that would not open, the working directory that could not be
 	// made, the resident that never picked the command up, a journal read that
@@ -1185,7 +1193,11 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 		}
 	}
 	outcome := w.compose(nodes)
-	outcome.Settled = true
+	// A TREE THAT DOES NOT BUILD IS NEVER REPORTED SETTLED. Settled has always
+	// meant that nothing this run is waiting for can still move, and repairing a
+	// tree whose own checks could not collect is work still waiting to move even
+	// after every node has stopped.
+	outcome.Settled = outcome.unfinishedTree == ""
 	return outcome, true, nil
 }
 
@@ -2181,8 +2193,10 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		switch {
 		case final.Status == store.Failed || final.Status == store.Cancelled:
 			outcome.stop = stopIncomplete
-			outcome.Deliverable = strings.TrimSpace(final.Error)
-			if outcome.Deliverable == "" {
+			outcome.Deliverable = "It did not finish."
+			if reason := plainWords(strings.TrimSpace(final.Error)); reason != "" {
+				outcome.Deliverable += "\n\n" + reason
+			} else {
 				outcome.Deliverable = "It did not finish, and no reason was recorded."
 			}
 		case resident.SplitContinued(final.Summary):
@@ -2215,11 +2229,40 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 				w.sayStanding(*final)
 			}
 		}
+		// A FAILED COLLECTION IS A FINDING ABOUT THE TREE, WHATEVER THE NODE'S
+		// OWN ENDING SAID. It belongs after the switch so both a failed leaf and a
+		// leaf that said Done carry it out. If the gate was also unreachable, the
+		// tree wins the stop word: `incomplete` says a check ran and found a tree
+		// it could not collect, while `unchecked` says no finding arrived at all.
+		if reason := w.uncollectedReason(nodes); reason != "" {
+			outcome.unfinishedTree = reason
+			outcome.stop = stopIncomplete
+			if strings.TrimSpace(outcome.Deliverable) == "" {
+				outcome.Deliverable = reason
+			} else {
+				outcome.Deliverable = strings.TrimSpace(outcome.Deliverable) + "\n\n" + reason
+			}
+		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
 		// One list, once. Grounding has had its look at the narration as the
 		// worker wrote it, so the worker's own file list has done its job and
 		// comes back off before anything is printed.
 		outcome.Deliverable = withoutSummaryFileList(outcome.Deliverable, outcome.Artifacts)
+		// AND WHAT BECAME OF EACH THING THIS RUN WAS ASKED FOR. The rows go out
+		// whole for the machine; the person gets the bounded account only where
+		// the gate's own mapping did not already answer the list, and never a
+		// second time — a failed node's error carries it here already, and one
+		// list said twice reads as two findings.
+		var gateAnswered bool
+		outcome.Checklist, gateAnswered = w.checklistFor(final.ID, outcome.Artifacts)
+		if !gateAnswered && !strings.Contains(outcome.Deliverable, revision.ChecklistHeading) {
+			if account := revision.ChecklistAccount(outcome.Checklist); account != "" {
+				if strings.TrimSpace(outcome.Deliverable) != "" {
+					outcome.Deliverable += "\n\n"
+				}
+				outcome.Deliverable += account
+			}
+		}
 	}
 	// The board survives as the outcome's learned lines: what one worker told
 	// the others is exactly what the caller would want to know about the
@@ -2236,6 +2279,46 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 	}
 	return outcome
+}
+
+// checklistFor reads what became of each thing this run was asked for, off rows
+// the run had already written down: the acceptance checklist journaled before
+// any work began, and the delivery gate's own mapping of points onto checks
+// where a gate ran. Nothing here spends anything — no model call, no second
+// reading of the tree — which is what makes it affordable on EVERY ending,
+// including the early ones that never reached a gate and used to hand back a
+// stop reason and a file list with no account of the list at all (#551).
+//
+// gateAnswered says whether the gate settled these points itself. It is the
+// question the caller has, and it is returned rather than re-derived from the
+// rows, because a reading of a reading drifts from the fact it is about.
+//
+// The rows come off THE NODE THE CHECKLIST GOVERNS, which is the node that was
+// handed the request — the ordinary errand's one settled root. A job the planner
+// broke into several leaves journals a checklist against each leaf that carries
+// one and none against the root that settles them, so this reports nothing there
+// and the account still reaches the person the other way: it rides the failing
+// leaf's own recorded error (humanFailure in chat.go), which is what every
+// reader downstream of a stopped part opens.
+//
+// Every read is best-effort in the sense every other journal read on this path
+// is: a store that will not answer costs the account, never the ending. AND AN
+// UNREADABLE GATE IS NOT A GATE THAT ANSWERED — the list is still the person's
+// and is still accounted for, with nothing claimed answered.
+func (w *settlementWatch) checklistFor(nodeID string, wrote []string) (rows []revision.PointOutcome, gateAnswered bool) {
+	if w.graph == nil {
+		return nil, false
+	}
+	acceptance, found, err := w.graph.AcceptanceFor(nodeID)
+	if err != nil || !found {
+		return nil, false
+	}
+	gate, gateRead, err := w.graph.DeliveryGateFor(nodeID)
+	if err != nil {
+		gate, gateRead = store.DeliveryGate{}, false
+	}
+	gateAnswered = gateRead && len(gate.Exercises) > 0
+	return revision.AnswerChecklist(acceptance.Points, gate, gateRead, wrote), gateAnswered
 }
 
 // deliveredWhole answers the exit code's own question of a settled job: is what
@@ -2324,6 +2407,32 @@ func (w *settlementWatch) unjudgedReason(node store.Node) string {
 		return ""
 	}
 	return firstLine(strings.TrimSpace(gate.Refused))
+}
+
+// uncollectedReason is why this run's last finished-tree reading could not
+// collect, and empty where its last word made no such finding.
+//
+// A SECOND READING REPLACES THE FIRST; IT DOES NOT ADD TO IT. A finding the
+// first reading raised and the second does not must stop being a finding, and
+// across a run the reading with the latest journal sequence has the last word.
+// A node's later status update cannot reorder observations of the tree. It asks the rows
+// because the readings were taken in another process's turn loop, and the
+// journal is the only thing that crosses that seam. An unreadable store answers
+// empty, on the same terms unjudgedReason does: this decides how a run is
+// described, and a failed read is not evidence about the run.
+func (w *settlementWatch) uncollectedReason(nodes []store.Node) string {
+	var last store.VerificationReading
+	var lastSeq int64
+	for _, node := range nodes {
+		reading, seq, err := w.graph.LatestFinishedVerification(node.ID)
+		if err == nil && seq > lastSeq {
+			last, lastSeq = reading, seq
+		}
+	}
+	if lastSeq > 0 && last.Uncollected {
+		return strings.TrimSpace(last.Why)
+	}
+	return ""
 }
 
 // unjudgedWords is the last line a person reads when the delivery went out and

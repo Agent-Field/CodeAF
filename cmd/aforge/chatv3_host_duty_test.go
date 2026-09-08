@@ -143,6 +143,48 @@ func TestADutyThatFallsOverLetsGoOfItsLatchAndIsMentionedOnce(t *testing.T) {
 	}
 }
 
+// A replacement must not race ahead of the notice belonging to the trip it
+// replaces. The blocked notice makes the publication boundary observable without
+// depending on how quickly the logger or either goroutine happens to run.
+func TestADutyPublishesItsFaultBeforeReleasingItsLatch(t *testing.T) {
+	faultLog(t)
+	publishing := make(chan struct{})
+	allowPublication := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(allowPublication) }) }
+	defer unblock()
+	var duty hostDuty
+	hostFar{client: &remote.Client{}, tell: func(string) {
+		close(publishing)
+		<-allowPublication
+	}}.arm(&duty, "reading what has been spent")
+	if !duty.run("chatv3/host-ledger", "", func() { panic("the wire door fell over") }) {
+		t.Fatal("a live duty refused to start")
+	}
+	select {
+	case <-publishing:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the duty never reached its fault publication")
+	}
+	duty.mu.Lock()
+	out, ended := duty.out[""], duty.ended[""]
+	duty.mu.Unlock()
+	if !out || !ended.IsZero() {
+		t.Fatal("the trip read as landed before its fault was published")
+	}
+	if duty.run("chatv3/host-ledger", "", func() {}) {
+		t.Fatal("a replacement started before the prior fault was published")
+	}
+	unblock()
+	if !waitFor(func() bool {
+		duty.mu.Lock()
+		defer duty.mu.Unlock()
+		return !duty.out[""] && !duty.ended[""].IsZero()
+	}) {
+		t.Fatal("the latch was not released after the fault was published")
+	}
+}
+
 // ONE TRIP AT A TIME, whatever the caller does: the surface asks on every frame,
 // and the latch is what keeps that from being a goroutine and a wire frame per
 // frame. A second run while the first is out is refused and the first's answer

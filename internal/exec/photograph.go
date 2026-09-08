@@ -337,7 +337,7 @@ func PhotographAfter(
 		if settled, ok := reading.OnAnUnchangedTree(); ok {
 			reading = settled
 			outcome.Verification = reading
-			journalReading(history, task, reading, reading.Before, "on the finished tree", true)
+			journalReading(history, task, reading, reading.Before, store.VerificationWhenFinished, true)
 		}
 		return
 	}
@@ -416,7 +416,7 @@ func PhotographAfter(
 		outcome.Verification = reading
 		outcome.Regressed = reading.Regressed()
 		outcome.OwnFailing = reading.OwnFailing()
-		journalReading(history, task, reading, after, "on the finished tree", false)
+		journalReading(history, task, reading, after, store.VerificationWhenFinished, false)
 		return
 	}
 	// Not taken, and said so. The before half stands and the outcome keeps it;
@@ -429,7 +429,7 @@ func PhotographAfter(
 	if after.Strategy.Empty() {
 		after.Strategy = strategy
 	}
-	journalReading(history, task, reading, after, "on the finished tree", false)
+	journalReading(history, task, reading, after, store.VerificationWhenFinished, false)
 }
 
 // readFinishedTree runs the second reading, and RETAKES IT ON THE BASELINE'S OWN
@@ -490,7 +490,7 @@ func journalReading(
 		strategy = reading.Strategy
 	}
 	taken := reading.Taken
-	if when == "on the finished tree" {
+	if when == store.VerificationWhenFinished {
 		taken = reading.AfterTaken
 	}
 	sample := result.Reported

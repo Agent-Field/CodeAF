@@ -929,9 +929,22 @@ as 15m or 2h, or a number of seconds`. Zero or less — `-timeout 0`, `-timeout 
 is nothing to hunt for.
 
 It is a wall and not a schedule: the length of rope at which a wedged run is more useful
-dead. Work is not simply cut off when it arrives, either — aforge stops buying new work
-while there is still room to check what has been done, and *When the wall gets close* on
-this page says what that looks like.
+dead. The wall also reaches the work itself instead of leaving every worker at fifteen
+minutes; *Why a two-hour run no longer gives a leaf only fifteen minutes* is the exact rule.
+
+## Why a two-hour run no longer gives a leaf only fifteen minutes — worker room and landing reserve
+
+Under a long `-timeout` wall, one worker's room grows to what the wall leaves after the
+two-minute watchdog pad, so a leaf inside a two-hour run is no longer capped at the
+ordinary fifteen-minute floor. The rule only widens — a short wall does not take away room
+the token grant bought — and the watchdog still sits above the room the worker was given.
+
+Work is not simply cut off when the wall arrives, either. A deadline landing gets its own
+short clock, measured when the landing is ordered and capped by that same two-minute pad,
+so a turn already in flight cannot spend the time needed to make the tree consistent and
+run one quick check. The errand's wall still wins: a landing never runs past the duration
+you set. *When the wall gets close* on this page says what the whole run does with the room
+that remains.
 
 ## When the wall gets close — the work is checked before the clock stops
 
@@ -951,6 +964,12 @@ answer the same question from opposite ends:
 How close is "close" is measured on the errand itself — the pace this job's own rounds have
 kept, plus what this project's own checks cost to read on this machine. It is not a fixed
 number of seconds, and a job that has not yet shown a pace is never wound up early.
+
+Inside a worker, the same promise has a fixed upper bound: its deadline reserves at most
+two minutes for landing. If the ordinary turn reaches the deadline first, that cut turn is
+discarded and the reserve starts then on a clock of its own. The worker may use it only to
+restore consistency, run the quickest useful check and report what remains; the reserve
+still ends at the errand's wall when that arrives first.
 
 ## When the repair only rewrote the summary — a round that changed nothing on disk
 
@@ -983,14 +1002,18 @@ The work is still handed over: it was done, and it is yours. What it carries is 
 reservation naming what is missing, which is the check and not the work:
 
 ```
-I'm handing this over unchecked: the review of it could not be read, so nothing has confirmed this is what you asked for.
+I'm handing this over unchecked: the review of it could not be read (gate request: the model did not answer in the shape this asked for (finish_reason=stop completion_tokens=40 reply="I could not evaluate this delivery.")), so nothing has confirmed this is what you asked for.
 ```
 
 Watching a headless run you see it as the review's own line:
 
 ```
-gate: fail — the review could not be read, so this delivery was never checked
+gate: fail — the review could not be read, so this delivery was never checked — gate request: the model did not answer in the shape this asked for (finish_reason=length completion_tokens=8192)
 ```
+
+The reason at the tail names why the review could not be read. It keeps the model's own
+reply when the answer was prose, or says it was cut off when that is what happened. Two
+unchecked runs that failed for different reasons therefore end with different lines.
 
 **The run lands partial.** `aforge do` leaves with exit **2**, not 0. This used to be exit
 0 with the work reported as done — the review was treated as having no opinion rather than
@@ -1399,6 +1422,26 @@ ever matched to a check.
 lookup, a piece of writing — has no checklist, no line is printed, and the run behaves
 exactly as it would have without any of this.
 
+## The run stopped early — which things I asked for did it actually do, which one it missed after fixing three of my four, and why one was never touched
+
+The ending reads back the acceptance checklist taken from your request before the work
+starts. Under the heading `What was asked for, and what happened to each:`, every point is
+accounted for as `answered`, `not answered` or `not reached`.
+
+`answered` comes only from a check the delivery gate matched to that point. When a point
+names a file, `not answered` with `nothing this run wrote is prose.go` means exactly that:
+the run's file record names no `prose.go`. `not reached` means nothing in the run's record
+settles the point. It is not a claim that the work was skipped; when the run did change a
+file the point names, the line says so without claiming that the behaviour holds.
+
+The block a person reads is bounded so a long checklist cannot crowd the failure itself
+off the ending. If every line does not fit, its last line counts how many remain on the
+run's own record. `aforge do --json` carries the whole, unclipped list in `checklist`, with
+one `{behaviour, state, why}` row per point. A run whose request produced no acceptance
+checklist has neither the block nor that key. When a split job stores checklists only on
+its children, the root JSON can omit `checklist`; a failing child keeps its own account
+in its recorded error.
+
 ## When nothing checks what you asked for — "no check exercises …"
 
 At the end, the review asks one more question of every answer it reaches — whether it was
@@ -1670,6 +1713,23 @@ entirely. The run ends **done**, with an answer that admits what is missing.
 A file two nodes wrote *successfully* is not this case: the guard counts nodes that failed
 at a path, never nodes that touched it, so ordinary multi-step work on one file is
 unaffected.
+
+## When the same command times out over and over — a command that never returns, and the worker keeps running it
+
+After the same command times out **three** times in one worker's round, the worker stops
+rather than run it again. What it has already done to the files is judged as it stands;
+the timeout does not throw that work away. The headless run names the ending and the
+command on its `⏳` line:
+
+```
+the same command timed out 3 times, so it was stopped rather than run again: go test ./internal/exec/
+```
+
+Three timeouts from *different* commands do not end anything, and a command that fails
+quickly with a non-zero exit does not count, however often it fails. The command's own
+timeout is unchanged: `t` still defaults to 60 seconds. This rule does not make any
+individual command give up sooner; it stops one command from being started again after
+that command has already reached its timeout three times in the round.
 
 ## What happens to a run when aforge closes or restarts
 
