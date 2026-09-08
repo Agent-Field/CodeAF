@@ -1800,7 +1800,20 @@ descriptions without motion. Expanding or collapsing the work is immediate.
 Your messages, corrections, answers, approval questions and notices remain
 outside the compact work. A failed step keeps its ordinary outline and controls.
 A correction can separate two compact blocks, preserving where you said it.
-Task pages and individual node transcripts retain their existing detailed view.
+Running task pages use the compact treatment too; expanding it restores their
+phase outline and individual tool details.
+
+## A step is taking a while — elapsed time beside a running step
+
+After a tool step has run for 10 seconds, its compact caption shows a dim elapsed
+count such as `12s` or `1m 3s`. It measures time since that batch began, including
+when its caption is renamed. A new step starts its own clock. Completion removes
+the live timer. This counts up; the finish time is unknown.
+
+The time uses spare space after the caption's last line. It never moves the
+words or adds a row; on a narrow terminal with no spare room, it stays hidden.
+The icon stays still and only the step's words shimmer. Waiting/retry states
+keep their existing timing information rather than adding a second clock.
 
 ## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
 

@@ -356,6 +356,7 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 		lines    []string
 		live     bool
 		pending  bool
+		age      string
 		category session.ActionCategory
 	}
 	picked := make([]step, 0, liveStepRows)
@@ -380,7 +381,8 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 		if len(picked) > 0 && used+len(lines) > liveStepRows {
 			break
 		}
-		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero(), category: stepCategory(w.steps[at], d.entries)})
+		picked = append(picked, step{lines: lines, live: w.steps[at].ended.IsZero(),
+			age: compactStepAge(w.steps[at].began, a.now()), category: stepCategory(w.steps[at], d.entries)})
 		used += len(lines)
 		if used >= liveStepRows {
 			break
@@ -410,6 +412,9 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 					if s.pending && len(line) >= len("Working") {
 						painted = a.shimmer("Working") + a.pal.dim(line[len("Working"):])
 					}
+				}
+				if i == len(s.lines)-1 {
+					painted = a.stepTimeSuffix(line, painted, s.age, room)
 				}
 			}
 			// The action icon remains still while its caption carries the sweep.

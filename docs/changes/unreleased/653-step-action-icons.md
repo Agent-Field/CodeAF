@@ -32,7 +32,7 @@ repertoire. Detection falls back on known unsupported terminals; Display's
 immediately. Plain Unicode and ASCII retain the same gutter. Colour depth alone
 does not remove icons, and no font is installed or changed automatically.
 
-No tool count, timer, badge or verdict mark is added. `test` draws a flask (a target in plain mode) and
+No tool count, badge or verdict mark is added. The later step-time change adds elapsed time after 10 seconds. `test` draws a flask (a target in plain mode) and
 never a checkmark, because the family names the act of checking rather than its
 result. Completion still collapses the block, and the opened outline keeps its
 disclosure triangles unchanged.
