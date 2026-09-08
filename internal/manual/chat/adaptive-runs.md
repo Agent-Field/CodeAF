@@ -1118,6 +1118,17 @@ something you never asked for — "March refers to any calendar year present in 
 names nothing distinctive, so it is refused, and the run tells you so rather than quietly
 redoing work against it.
 
+## It said I only changed one file and I changed none — why did it name a file I only told it to read or never wrote
+
+When a run changed files, the review is shown those files and any finding about the change
+must name one of them. When the run changed nothing, the review is shown the worker's own
+answer instead, and any finding is about that answer.
+
+A file you only told the run to read is never counted as a change. The review can therefore
+never say that a file you asked it to read is the only file the run changed. If you asked
+for a file that was already there, it still answers the ask: the review is told that the
+file is there and that this run did not write it.
+
 ## When the work broke something that was working — checks that passed before and fail after
 
 A run working in a repository reads that repository's **own** way of checking itself — the
@@ -1509,10 +1520,12 @@ dies. That used to end the run: exit 1, the provider's own sentence printed as t
 deliverable, and nothing anywhere had looked at the work sitting on disk.
 
 **A worker cut off on the wire is judged on the tree.** Where the last attempt ended because
-a CALL failed rather than because the WORK failed, and the worker left files behind, what is
-on disk is put to the same review a delivered worker faces: the reading of your project's own
-checks first, then the one question — *is this request, as stated, satisfied by what is in
-hand?* A yes ends the run finished, under the same ✓ every satisfied run gets:
+a CALL failed rather than because the WORK failed, whatever the RUN left on the tree — this
+worker's files or an earlier attempt's — is put to the same review a delivered worker faces:
+the reading of your project's own checks first, then the one question — *is this request, as
+stated, satisfied by what is in hand?* A repair round whose first call was refused can die
+instantly, before it reaches a tool; that retry is judged on the fix already on disk. A yes
+ends the run finished, under the same ✓ every satisfied run gets:
 
 ```
   ✓ fix the pager tempfile mode — the request was met as stated
@@ -1529,9 +1542,9 @@ message from the model never arrived, and what is on the tree does not do what w
 — …`. Anything measured decides it before the question is even asked — a check this work
 turned red, a name nothing in the tree binds, a rule you stated and the work broke.
 
-**It widens nothing else.** A worker cut off having written no file still fails as it did;
-so does one whose own work errored, and one whose clock ran out; and where the review itself
-could not be reached, the failure stands rather than being passed.
+**It widens nothing else.** A worker whose own work errored still fails, as does one whose
+clock ran out; where the review itself could not be reached, the failure stands rather than
+being passed; and a run that left nothing anywhere still fails without a review.
 
 ## When a check names what you asked for and asserts nothing about it
 

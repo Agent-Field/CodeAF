@@ -463,6 +463,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// The profile answers this question live on every ordinary launch, but
+		// --yolo is the one launch that opens the gate without writing that row,
+		// so its forced posture has to reach the surface by hand instead.
+		ApprovalMode: v3SurfacePosture(*yolo),
 		// AND WHETHER THOSE ROWS SEAT ANYTHING THIS RUN. `--one-model` empties the
 		// roles source and the task model above, so the crew in the profile is
 		// still on disk and still seats nothing — and a surface that did not know
@@ -1320,10 +1324,9 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	}
 	// AND WHICH MACHINE BEHIND THAT MODEL, which is the row beside routing and a
 	// different question: routing says what a request PREFERS, and this says
-	// which endpoint it actually goes to (internal/config's lane keys). It is
-	// resolved here, with routing, because it is resolved the same way — a
-	// settings read on this side of the door, an already-decided answer handed
-	// down — and it is handed to a process-wide knob rather than onto the config
+	// which endpoint it actually goes to (internal/config's lane keys). The
+	// shared resolution lives in internal/config so every door gets the same
+	// answer, and it is handed to a process-wide knob rather than onto the config
 	// because the picker rewrites it while the program is running
 	// (internal/provider's lanepin.go says why that is not a Config field).
 	//
@@ -1333,25 +1336,10 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// so it must not be able to forget what the wire said about the row while
 	// nobody has touched it. A person's own act goes to [provider.RepinLane]
 	// (internal/tui3's laneRowChanged), which forgets unconditionally.
-	provider.SetLanePin(v3LanePin(profileDir))
-	// And whether a slow answer is worth one extra call to rescue. It is one
-	// switch over the hedge and the probe together, for the reason it is one row.
-	provider.SetLaneGuard(config.LaneGuardAt(profileDir))
+	// The speed guard travels with the pin because the adjacent rows are one
+	// routing posture and two readers of that posture would drift.
+	config.InstallLaneRows(profileDir)
 	return cfg, nil
-}
-
-// v3LanePin reads the conversation's lane row into the answer the transport
-// takes. The three states of the row are the three states of the pin, and a row
-// nobody has written is `auto` — the belief chooses per answer.
-func v3LanePin(profileDir string) provider.LanePin {
-	slot := config.LaneSlotTalk
-	if name, pinned := config.LanePinned(profileDir, slot); pinned {
-		return provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(profileDir, slot)}
-	}
-	if strings.EqualFold(config.LaneAt(profileDir, slot), config.LaneOpenRouter) {
-		return provider.LanePin{OpenRouter: true}
-	}
-	return provider.LanePin{}
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the
@@ -1441,6 +1429,18 @@ func v3Connect(profileDir string) *connect.Manager {
 		return nil
 	}
 	return manager
+}
+
+// v3SurfacePosture is the tool-approval posture this LAUNCH hands the surface,
+// and it exists because the flag and the profile row open the same gate by two
+// different means. An empty answer is deliberate: on every ordinary launch it
+// leaves the surface reading the profile live, while --yolo's forced allow has
+// no row there to read.
+func v3SurfacePosture(yolo bool) string {
+	if yolo {
+		return string(approval.ActionAllow)
+	}
+	return ""
 }
 
 // v3Policy builds the tool gate from the two approval rows.

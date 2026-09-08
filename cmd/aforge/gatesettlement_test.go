@@ -260,6 +260,10 @@ func TestTheDeliverablesOwnProseCannotOverturnAFindingAboutFilesOnDisk(t *testin
 // unit test supplies whichever one it means. What is checkable is the seam: the
 // record a gate is held to is assembled by jobArtifacts and by nothing else, and
 // a third caller added later gets the same record without having to know why.
+// The settlement also uses that merged value before it reaches the gate, so its
+// call site may pass an identifier; this test accepts that only where exactly
+// one binding in this file gets the identifier from jobArtifacts. The law is
+// unchanged, and the binding is now part of what this test watches.
 func TestEveryDeliveryGateIsHeldToTheJobsRecord(t *testing.T) {
 	source, err := os.ReadFile("chat.go")
 	if err != nil {
@@ -275,8 +279,26 @@ func TestEveryDeliveryGateIsHeldToTheJobsRecord(t *testing.T) {
 		// reads the next non-empty token rather than a fixed offset.
 		rest := strings.TrimSpace(body[index+len(call):])
 		if !strings.HasPrefix(rest, "jobArtifacts(") {
-			t.Errorf("a delivery gate is held to a record that is not the job's:\n\t%s…",
-				strings.SplitN(rest, "\n", 2)[0])
+			end := 0
+			for end < len(rest) {
+				char := rest[end]
+				if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+					(char < '0' || char > '9') && char != '_' {
+					break
+				}
+				end++
+			}
+			if end == 0 || (rest[0] >= '0' && rest[0] <= '9') {
+				t.Errorf("a delivery gate is held to a record that is not the job's:\n\t%s…",
+					strings.SplitN(rest, "\n", 2)[0])
+			} else {
+				name := rest[:end]
+				binding := name + " := jobArtifacts("
+				if bindings := strings.Count(body, binding); bindings != 1 {
+					t.Errorf("delivery gate record %q has %d bindings from jobArtifacts, want one",
+						name, bindings)
+				}
+			}
 		}
 		next := strings.Index(body[index+len(call):], call)
 		if next < 0 {
