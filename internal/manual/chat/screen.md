@@ -402,6 +402,20 @@ Three ways up, and all three go through the same machinery:
   off, the wheel does nothing here — aforge runs on the alternate screen, so your
   terminal's own scrollback holds nothing to scroll.
 
+## Reopening a conversation — only my question and the final answer
+
+Completed work starts folded under one `▸ worked` chip, leaving your question and
+the final answer standing. This also applies to long turns whose earlier steps
+load as you scroll up. Open the chip with `ctrl+e` or a click to see its outline,
+then open a caption to read its calls. Set `ui.work` to `open` to start with the
+work expanded instead.
+
+The internal `[carry on]` continuation is guidance to the model, not a message
+you sent. It is omitted when reopening saved conversations, including older
+records that stored it as a user message.
+
+## Scrolling a reopened conversation back to its first message
+
 **A conversation you came back to can be scrolled all the way to its first message.**
 Reopening one draws its last **40** blocks so the first frame is fast rather than
 re-rendering an hour of work you may not want. That is a starting position, not a

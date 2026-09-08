@@ -260,7 +260,10 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				end--
 			}
 		}
-		if eligible && !blocked && es[lo].turn != runningTurn {
+		// ZERO MEANS NO RUNNING TURN. Replay numbers a window's leading tail
+		// zero and backfills into negative turns, so zero is also real history.
+		// Only a nonzero live turn can hold its work open.
+		if eligible && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
 			// THE CONVERSATION KEYS ITS CHIPS BY THE TURN, which is what
 			// [deck.workOpen], [app.stamps] and every gesture out here already
 			// name (see [workfold.key]). One turn, one chip: nothing to separate.
