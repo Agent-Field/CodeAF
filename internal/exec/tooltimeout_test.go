@@ -184,13 +184,20 @@ func TestATimedOutLeafIsStillJudgedOnItsWork(t *testing.T) {
 // TestALandingLeafIsNotReEndedForTimeouts proves C9: a budget landing keeps
 // its original ending even when the same command times out throughout it.
 func TestALandingLeafIsNotReEndedForTimeouts(t *testing.T) {
-	turns := timeoutCalls(toolTimeoutRepeatCap+landingTurns, `{"cmd":"sleep 5","t":1}`)
+	// The first reply spends the tiny grant. All repeated timeouts then fit
+	// inside one landing reply, which even a token-bounded reserve must finish.
+	landing := make([]ai.ToolCall, toolTimeoutRepeatCap+1)
+	for index := range landing {
+		landing[index] = call(fmt.Sprintf("landing-timeout-%d", index), "sh", `{"cmd":"sleep 5","t":1}`)
+	}
+	turns := [][]ai.ToolCall{{call("spend-grant", "sh", `{"cmd":"true"}`)}, landing}
+	turns = append(turns, timeoutCalls(landingTurns, `{"cmd":"sleep 5","t":1}`)...)
 	outcome, _ := runTimeoutRound(t, workspace(t), nil, turns, 1)
 	if outcome.Stop != StopBudget || outcome.Exhausted != StopBudget {
 		t.Fatalf("stop = %q, exhausted = %q, want the budget ending", outcome.Stop, outcome.Exhausted)
 	}
-	if outcome.ToolCalls <= toolTimeoutRepeatCap {
-		t.Fatalf("tool calls = %d; the landing was re-ended at the timeout limit", outcome.ToolCalls)
+	if outcome.ToolCalls < 1+len(landing) {
+		t.Fatalf("tool calls = %d; want at least the initial call and all %d landing calls", outcome.ToolCalls, len(landing))
 	}
 }
 

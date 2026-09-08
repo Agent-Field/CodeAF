@@ -18,3 +18,7 @@ rather than run again: <command>` — and quoted in `internal/manual/chat/adapti
 beside the repeat guard, the other rule that ends repetition.
 
 `PERF.md` records the three-timeout cap beside the other leaf bounds.
+
+Integration review makes the landing-timeout regression exercise all repeated
+timeouts inside one landing reply, preserving the token-bound reserve introduced
+in #624 while proving the timeout guard cannot replace an existing ending.
