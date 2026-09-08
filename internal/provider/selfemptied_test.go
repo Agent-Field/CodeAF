@@ -493,3 +493,34 @@ func TestAnExpiredInFlightVetoDoesNotTeachAnAccountExclusion(t *testing.T) {
 		t.Fatal("our transmitted Bravo veto was mistaken for an account exclusion after its cooldown expired")
 	}
 }
+
+// The gate must use the transmitted veto too: every cooldown can expire while
+// the router's refusal is in flight, without erasing what the request asked.
+func TestACoveringRefusalIsRememberedAfterEverySentVetoExpires(t *testing.T) {
+	now := time.Now()
+	router := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if contains(ignoredEndpoints(decodedBody(t, request)), "Bravo") {
+			now = now.Add(2 * time.Second)
+			writer.WriteHeader(http.StatusNotFound)
+			_, _ = writer.Write([]byte(`{"error":{"code":404,"message":"All providers have been ignored"}}`))
+			return
+		}
+		_, _ = writer.Write([]byte(answerFrom("Bravo", 10, 0, 0)))
+	})
+	client := ledgerClient(t, router)
+	const model = "vendor/fast-model"
+	client.velocity.now = func() time.Time { return now }
+	client.velocity.brisk(model, "Alpha")
+	client.velocity.brisk(model, "Bravo")
+	client.velocity.pace(model, "Bravo", time.Second)
+	if _, err := client.CompleteWithMessages(lineage("expired-covering-gate"), userMessages("carry on")); err != nil {
+		t.Fatal(err)
+	}
+	if !client.velocity.coveringIgnoreRefused(model) {
+		t.Fatal("expiry erased the refused request's transmitted veto")
+	}
+	if !client.velocity.unreachable[normalizeModel(model)]["Alpha"] {
+		t.Fatal("expiry erased the account exclusion learned from the refusal")
+	}
+}
