@@ -462,31 +462,39 @@ func ReadTaskIndex(path string) []TaskIndexEntry {
 	}
 	// scanner.Err() is deliberately unread: a truncated tail is the same
 	// tolerated case as an unparseable line, and the rows before it are good.
+	rows = lastPerNode(rows)
 	sortTaskIndex(rows)
-	rows = newestPerNode(rows)
 	if len(rows) > taskIndexRows {
 		rows = rows[:taskIndexRows]
 	}
 	return rows
 }
 
-// newestPerNode keeps ONE row per node: the last thing the file says about it.
+// lastPerNode keeps ONE row per node: the last thing the file says about it.
 //
 // The file is append-only and a node can be written more than once — a run's
 // root takes a row when it starts and another when it settles, a node that
 // needed somebody's look takes a second row when they give it — and this is the
 // half of that arrangement that makes the later row MEAN anything. Without it
-// both rows are in every answer, and a reader that takes the first one it sees
-// gets whichever the sort happened to put there: the drop-up drew "running"
-// beside a run that had ended, because the row saying so was still in the list.
+// both rows are in every answer. The collapse happens while the rows are still
+// in FILE ORDER, before the display sort: a running row has no landing clock,
+// and borrowing the display order would put that undated opening ahead of the
+// later line that says the run ended.
 //
 // IT IS AN INDEX, NOT AN ARCHIVE (see this file's header). The transitions a
 // node went through are in its transcript; what the index is asked is what the
 // work CAME TO, and that is one answer per node.
-func newestPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
-	seen := make(map[string]bool, len(rows))
+func lastPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
+	last := make(map[string]int, len(rows))
+	for index, row := range rows {
+		id := strings.TrimSpace(row.ID)
+		if id == "" {
+			continue
+		}
+		last[row.SessionID+"\x00"+id] = index
+	}
 	kept := rows[:0]
-	for _, row := range rows {
+	for index, row := range rows {
 		id := strings.TrimSpace(row.ID)
 		if id == "" {
 			// A row with no id names no node, so nothing can replace it and it can
@@ -496,10 +504,9 @@ func newestPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
 			continue
 		}
 		key := row.SessionID + "\x00" + id
-		if seen[key] {
+		if last[key] != index {
 			continue
 		}
-		seen[key] = true
 		kept = append(kept, row)
 	}
 	return kept

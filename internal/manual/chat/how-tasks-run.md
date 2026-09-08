@@ -78,8 +78,10 @@ here" is you saying so: the task works in that folder itself, with nothing isola
 
 **Two refusals and one correction.** A task whose contract names an absolute path outside
 its ground, in no repository, is turned back before anything is spent: `this task names a
-folder it does not stand in: <path>`. A `ground` naming something that is not on this
-machine is `this task names a folder that is not there: <path>`. And a brief that names a
+folder it does not stand in: <path>`. **A path is a written name**, so a bare separator in
+a sentence — "renders / no regression", "and / or", a lone `~/` — is prose and is refused
+over nothing. A `ground` naming something that is not on this machine is `this task names
+a folder that is not there: <path>`. And a brief that names a
 path inside a *different* repository **re-grounds** the task onto that one — the brief knew
 something the evidence did not — though nothing ever overrides a path you named yourself.
 
@@ -1287,13 +1289,13 @@ merges upward until that check answers.
 in aforge, and no setting that holds one. The commands its `bash` will accept come from three
 places, and nothing else gets through:
 
-- **the check your task declares** — every command named in the brief or the acceptance,
-  read out of the text. A span in backticks (`` `bash verify.sh` ``, `` `make check` ``)
-  names a check in either half of the brief. A line that opens with a shell prompt
-  (`$ ./verify --quiet`) names one only in the work's own half or in a `done when` sentence
-  somebody actually wrote, never in your words quoted above it: a pasted terminal session
-  shows how you saw a bug; it is not a list of commands to run against your tree. A wildcard
-  you wrote is honoured, so a brief naming `` `verify.*` `` admits `verify.sh`;
+- **the check your task declares** — a command the work names in its own half of the brief or
+  in a `done when` sentence somebody actually wrote. A span in backticks
+  (`` `bash verify.sh` ``, `` `make check` ``) and a shell-prompt line
+  (`$ ./verify --quiet`) both count there and never in your words quoted above it. A pasted
+  terminal session shows how you saw a bug; neither spelling turns it into commands to run
+  against your tree. A wildcard the work names is honoured, so `` `verify.*` `` admits
+  `verify.sh`;
 - **the check the task itself used** — any command its worker issued, taken from the same
   tool results the checker is shown, read for **the one command that line runs**. A leading
   `cd <a directory in your tree> &&` is dropped — that only states the directory the task was
@@ -1309,6 +1311,8 @@ places, and nothing else gets through:
   `pwd`, `wc`, `head`, `cat`. These print and cannot change what is being judged. They are
   not verification, so a checker holding only these can read your work but cannot exercise
   it.
+
+## How a named check matches what the checker runs
 
 A check that names no file is matched as a prefix, field by field, so `make check` admits
 `make check ./...` and does not admit `make checkout`. A check that **names a file in your
@@ -1327,11 +1331,12 @@ needing your look.
 
 ## Why did it run chmod or reproduction steps from the issue I pasted
 
-It does not harvest a `$ ` prompt line from your pasted request, including when nobody could
-write a separate `done when` sentence and your words have to stand as that sentence: a
-terminal transcript is evidence of how you saw the bug, not a check to run against the
-finished tree. A command you name in backticks still counts, and so does a `$ ` line in a
-`done when` sentence somebody actually wrote or in a piece of work's own half of its brief.
+It harvests nothing from your pasted request as a check, whether the command is in backticks
+or on a `$ ` prompt line. That remains true when nobody could write a separate `done when`
+sentence and your words have to stand as that sentence: a terminal transcript is evidence
+of how you saw the bug, not a check to run against the finished tree. A check in either
+spelling still counts when a piece of work names it in its own half of the brief or somebody
+actually writes it into a `done when` sentence.
 
 ## How the check is spelled — one file, and the ways that really start it
 
@@ -1681,9 +1686,9 @@ a call that hung and was cut, a checker that would not start, a reply that said 
 work.
 
 The task then reads `finished` and its branch merges like any other. This happens only on a
-run with a budget — a `--yolo` run without one, a headless `--once`, and a task inside
-another task in a session you are watching all keep the old road, where the landing goes to
-whoever holds the decision and they settle it.
+run with a budget — a `--yolo` run without one, a headless `--once` with no ceiling, and a
+task inside another task in a session you are watching all keep the old road, where the
+landing goes to whoever holds the decision and they settle it.
 
 ## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
 

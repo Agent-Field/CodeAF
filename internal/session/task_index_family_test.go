@@ -59,6 +59,74 @@ func TestTaskIndexRowsBeforeParentStillDecodeAsRoots(t *testing.T) {
 	}
 }
 
+// THE FILE'S LAST LINE IS THE NODE'S PRESENT STATE, even when an earlier row
+// has the clock a display sorter would otherwise trust. A live opening has no
+// ending instant, so sorting before this choice would reopen work that the next
+// line says is done; the converse pins the same rule for work still going.
+func TestTheTaskIndexAnswersWithTheLastLineAboutANode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.jsonl")
+	rows := strings.Join([]string{
+		`{"id":"1","title":"settled run","status":"running","sessionId":"room-a","endedAt":"0001-01-01T00:00:00Z"}`,
+		`{"id":"1","title":"settled run","status":"done","sessionId":"room-a","endedAt":"2026-08-25T12:00:00Z"}`,
+		`{"id":"2","title":"live run","status":"done","sessionId":"room-a","endedAt":"2026-08-25T11:00:00Z"}`,
+		`{"id":"2","title":"live run","status":"running","sessionId":"room-a","endedAt":"0001-01-01T00:00:00Z"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(rows), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := ReadTaskIndex(path)
+	if len(got) != 2 {
+		t.Fatalf("the index answered with %d rows, want one per node: %+v", len(got), got)
+	}
+	byID := map[string]TaskIndexEntry{}
+	for _, row := range got {
+		byID[row.ID] = row
+	}
+	if row := byID["1"]; row.Status != string(TaskDone) || row.EndedAt.IsZero() {
+		t.Fatalf("the node whose last line landed answered as %+v", row)
+	}
+	if row := byID["2"]; row.Status != string(TaskRunning) || !row.EndedAt.IsZero() {
+		t.Fatalf("the node whose last line is live answered as %+v", row)
+	}
+}
+
+// A CLEANLY SETTLED RUN STAYS SETTLED WHEN ITS CONVERSATION REOPENS. The
+// second agent runs the real reconciliation over the same journal and project
+// index; if the undated opening wins the collapse, it appends an interrupted
+// ending for work whose closing row already says done.
+func TestASettledRunIsNotInterruptedWhenItsConversationReopens(t *testing.T) {
+	dir := t.TempDir()
+	journal := filepath.Join(dir, "session.jsonl")
+	first, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	family := first.newOrchestrateFamily("audit the pricing code", "", "run-7")
+	family.settle(orchestrate.Snapshot{Done: true, Answer: "the prices are current"}, nil)
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first agent: %v", err)
+	}
+
+	index := TaskIndexPath(journal)
+	before := readTaskIndexFile(t, index)
+	second, err := newAgent(Config{
+		Workspace: workspace, Model: "test/model", System: "SYSTEM", SessionFile: journal,
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	after := readTaskIndexFile(t, index)
+	if len(after) != len(before) {
+		t.Fatalf("reopening appended %d rows to settled work: before %+v, after %+v", len(after)-len(before), before, after)
+	}
+
+	rows := ReadTaskIndex(index)
+	if len(rows) != 1 || rows[0].Status != string(TaskDone) || rows[0].Outcome != "the prices are current" {
+		t.Fatalf("the reopened index answers with %+v, want the clean closing row", rows)
+	}
+}
+
 func TestTasksDrawsEveryFamilyCollapsedTheSameWay(t *testing.T) {
 	now := time.Now().Add(-time.Minute)
 	rows := []TaskIndexEntry{

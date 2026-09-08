@@ -16,3 +16,6 @@ never popped it, and four seconds after the terminal reading the door said
 `finishing here · what was asked is done` over a clean tree. Nothing it did was
 against a rule — the rule was written for a task, and this was a session doing a
 worker's job on its own word.
+
+Review refresh: integrated current dev while preserving the non-empty created-file
+rule, the headless checkpoint behavior and all manual retrieval vocabulary.
