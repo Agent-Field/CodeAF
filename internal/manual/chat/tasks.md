@@ -669,7 +669,8 @@ saved cut from `edit_video`, and a shell command that names what it would change
 just looking. A `cd` inside the command is followed, so a write into somewhere else is
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
-outside this folder — a scratch file in `/tmp` is not your work.
+outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
+count; see *Do hands get around the file limit* below.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -780,10 +781,12 @@ crews and what things cost* for what the error line says now.
 with no thinking-tier model configured has none — and rather than call, fail in two
 milliseconds and write a failed reading into the session file on every round, aforge does not
 ask, and notes the absence once. A reader that faults or takes too long is different: the call
-was made and it came back with nothing, and the reply then ends as it would have ended before
-any of this existed. In an unattended run with a budget the decision carries on without a
-reader either way, on what came home and what the checks said — see *Leaving it running on its
-own* in *starting aforge*.
+was made and it came back with nothing. In a session you are watching, the reply still ends as
+it would have ended before any of this existed. On an unattended run, if the session made work
+inline and that missing answer is the only gap, aforge actually runs the declared checks over
+the tree; a green check can stand in for the reader, while a red one is carried on by command.
+Having no configured reader is an absence, not a failed call, and never runs checks on its
+own — see *Leaving it running on its own* in *starting aforge*.
 
 ## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
 
@@ -1160,8 +1163,8 @@ After the name the card carries the span, the file count, and how the branch cam
 or `branch kept · <branch>`.
 
 `branch kept · <branch>` on a **done** task means the work finished but your checkout was
-on a protected branch, was on a different branch than when the work was cut, or was
-detached. The branch named
+on a protected branch, was on a different branch than when the work was cut, moved to a
+different commit by your own work after the cut, or was detached. The branch named
 there holds the finished work; the how-tasks-run page explains the exact reason and how to
 merge it where you want it.
 
@@ -3196,6 +3199,22 @@ your answer being worked on, not work that left.
 Do not confuse it with `this one wants more hands · handing it over with everything found so
 far`, which is the opposite move — that one is your answer **leaving** to become a task.
 
+## Do hands get around the file limit — my reply changed six files through hands and never became a task, does forking count against the allowance
+
+**No. What a hand changes counts against the same allowance as an edit the reply makes
+itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
+under this folder, and a shell command that names what it changes. Reads do not count. A
+refused write changed nothing and counts nothing, and neither does anything outside the
+folder this conversation is open on.
+
+A hand is a stream, so this count can arrive after the reply that called `fork` has already
+ended. It arrives when the hand reports back. The reply at the next step boundary reads it:
+that may be the reply already running when the report lands, or the reply the report wakes.
+If the allowance has been spent, that reply says
+`this is changing more than a quick edit · moving it to a task that is watched and can split`
+and moves what remains onto the same one-task road as an inline edit. Each hand's landed call
+is counted once.
+
 ## A hand is a stream, not a wait — the answer keeps working while its hands are out
 
 `fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
@@ -3270,7 +3289,8 @@ hand as each report lands.
 
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
-repository in a state two of them fought over.
+repository in a state two of them fought over. They also cannot get around the reply's write
+allowance: what they change spends the same allowance when their reports come home.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.

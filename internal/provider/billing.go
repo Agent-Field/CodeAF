@@ -33,6 +33,12 @@ import (
 // is the only thing that knows whose call it is. Nobody listening is the
 // ordinary case — a unit test, a bench harness, a client built for one probe —
 // and costs one type assertion.
+//
+// A SECOND DOOR reports calls the wire never priced. [WithReconcile] is kept
+// apart from [WithBilling] because the ordinary response and the provider's
+// later receipt are mutually exclusive facts: one sink fires for a usage block
+// and the other fires only when that block never arrived. Keeping those doors
+// separate is what makes it impossible for one call to be banked through both.
 
 // Billed is one model response the provider charged for, as the adapter read it
 // off the wire. It carries the node the call belongs to so a listener does not
@@ -65,7 +71,31 @@ func (b Billed) Empty() bool {
 // tools can each be waiting on a call of their own.
 type BillingSink func(Billed)
 
+// Reconciled is what became of one call the wire never priced. Found says the
+// provider's own receipt supplied the embedded figures; when it is false every
+// figure is zero and nothing may be banked.
+type Reconciled struct {
+	Billed
+	// Ref is the provider's generation id, and is empty when the stream never
+	// named the call well enough for a receipt to be requested.
+	Ref string
+	// Reason is the cut's own word, or the ending that left the stream without
+	// a usage block.
+	Reason string
+	// Hedged says this was a rescue arm, so any money on its receipt is waste.
+	Hedged bool
+	// Found says the provider supplied a receipt. False means the figures above
+	// stay empty and the missing price is counted instead.
+	Found bool
+}
+
+// ReconcileSink is told exactly once what became of an unpriced call. Like a
+// billing sink it must be safe for concurrent use, because separate calls can
+// finish without their usage blocks at the same instant.
+type ReconcileSink func(Reconciled)
+
 type billingContextKey struct{}
+type reconcileContextKey struct{}
 
 // WithBilling arms one piece of work's banking. Like the transcript sink it
 // belongs to the work rather than to the client, because one client serves
@@ -77,12 +107,31 @@ func WithBilling(ctx context.Context, sink BillingSink) context.Context {
 	return context.WithValue(ctx, billingContextKey{}, sink)
 }
 
+// WithReconcile arms one piece of work for a receipt that arrives after its
+// call has already ended. It is separate from [WithBilling] so an ordinary
+// usage block and a late receipt can never both bank the same call.
+func WithReconcile(ctx context.Context, sink ReconcileSink) context.Context {
+	if sink == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, reconcileContextKey{}, sink)
+}
+
 // billingFrom reads back the sink WithBilling armed, or nil.
 func billingFrom(ctx context.Context) BillingSink {
 	if ctx == nil {
 		return nil
 	}
 	sink, _ := ctx.Value(billingContextKey{}).(BillingSink)
+	return sink
+}
+
+// reconcileFrom reads back the sink [WithReconcile] armed, or nil.
+func reconcileFrom(ctx context.Context) ReconcileSink {
+	if ctx == nil {
+		return nil
+	}
+	sink, _ := ctx.Value(reconcileContextKey{}).(ReconcileSink)
 	return sink
 }
 
@@ -126,6 +175,9 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 // did: arming billing is one line at three call sites, and a call site that
 // silently armed nothing is exactly the shape of the defect this file answers.
 func BillingSinkFrom(ctx context.Context) BillingSink { return billingFrom(ctx) }
+
+// ReconcileSinkFrom reads back the receipt sink [WithReconcile] armed, or nil.
+func ReconcileSinkFrom(ctx context.Context) ReconcileSink { return reconcileFrom(ctx) }
 
 // CallNodeFrom is the node WithCallNode named, empty when nothing did.
 func CallNodeFrom(ctx context.Context) string { return callNode(ctx) }

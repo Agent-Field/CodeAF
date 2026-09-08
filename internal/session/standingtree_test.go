@@ -253,6 +253,54 @@ func TestC10LandingAReferredRepositoryProtectsMainAndMergesWork(t *testing.T) {
 	})
 }
 
+// C5-C6: /land reads the commit carried by the standing-tree record after the
+// conversation that cut it has closed, and keeps the chat branch when the
+// person moved that same branch in the meantime.
+func TestAStandingTreeLandingKeepsItsBranchWhenTheRecordedTipMoved(t *testing.T) {
+	repo := newTestRepo(t)
+	cutTip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
+	agent, _, place := standingLab(t, repo)
+	writeThrough(t, agent, filepath.Join(repo, "shared.txt"), "the conversation's change\n")
+	trees := agent.StandingTrees()
+	if len(trees) != 1 || trees[0].Home != "work" || trees[0].HomeSha != cutTip {
+		t.Fatalf("standing tree recorded %+v, want work at %s", trees, cutTip)
+	}
+	branch := trees[0].Branch
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	writeFile(t, filepath.Join(repo, "person.txt"), "the person's later work\n")
+	mustGit(t, repo, "add", "person.txt")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "move work after the cut")
+	personTip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work"))
+
+	second, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(place, "session.jsonl")
+		config.Place = Place{Dir: place}
+	})
+	if trees := second.StandingTrees(); len(trees) != 1 || trees[0].HomeSha != cutTip {
+		t.Fatalf("reopened standing tree forgot the cut commit: %+v", trees)
+	}
+	landing, err := second.Land(repo)
+	if err != nil {
+		t.Fatalf("Land: %v", err)
+	}
+	want := "its branch " + branch + " was kept: work has moved on since the work was cut — merge it where you want it"
+	if landing.Merged != mergeKept || !landing.Kept() || landing.Note != want {
+		t.Fatalf("landing = %+v, want the moved-tip chat branch kept with %q", landing, want)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")); got != personTip {
+		t.Fatalf("work moved from %s to %s", personTip, got)
+	}
+	if got := readFile(t, filepath.Join(repo, "shared.txt")); got != "the original line\n" {
+		t.Fatalf("the kept standing work reached the checkout as %q", got)
+	}
+	if got := gitOut(t, repo, "show", branch+":shared.txt"); got != "the conversation's change\n" {
+		t.Fatalf("kept chat branch holds %q", got)
+	}
+}
+
 // AND A PLAIN FOLDER IS LAID BACK BY NAME. No history to branch from is not a
 // reason to leave somebody without the isolation a repository gets for free.
 func TestLandingAPlainFolderLaysTheWorkBackByName(t *testing.T) {

@@ -776,6 +776,9 @@ run to the common path and one bounded model call to two seams.
 | one check's captured assertion text | **16KB** | `verify.assertionTextBytes` |
 | words of a sentence read as one name | **4** | `verify.spokenWindow` |
 | behaviours a finding names | **8, then a count** | `revision.regressionsNamed` |
+| one behaviour in the closing account | **140 bytes** | `revision.behaviourWords` |
+| one explanation in the closing account | **80 bytes** | `revision.checkWords` |
+| the complete closing account | **half of `store.MaxDigestBytes`** | `revision.checklistBlockBytes`; machine rows remain whole |
 | the gate's own reading | **`verify.ReadingBudget`, above** | `revision.Evidence.measureFinalTree` |
 
 **The checklist's length is derived from the request and not typed.** A request
@@ -1703,6 +1706,7 @@ could be checked.
 | the no-progress guard | `noProgressRepeatCap` (4) repeated calls, a `noProgressStagnantCap` (6) stagnant window, or `noProgressTurnFloor` (60) | **yes** |
 | mutation-free recon notice | `noProgressReconTurns` (10) consecutive tool-calling turns that changed nothing in the workspace | no — asks for the result, and asks again at each further span |
 | `wallPaceAt` (0.5) | the elapsed share of this leaf's own wall, read to the second | no — one live clock reading, once, before the landing reserve |
+| `toolTimeoutRepeatCap` (3) | timeouts of one exact tool call (tool name and argument text), counted across a leaf round | **yes**, unless a budget or deadline landing already owns the ending |
 | `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
 
@@ -1795,3 +1799,17 @@ Measured, textual s9: three gap rounds, fourteen briefed nodes, the same two
 unexercised behaviours reported on every gate, and thirteen of the fourteen
 briefs naming neither. Pinned by `internal/resident/lineage_test.go` and
 `cmd/aforge/openfindings_test.go`.
+
+## The task report's bounded fenced tail
+
+A task report keeps `taskReportLines` (3) non-empty lines, each bounded by
+`taskReportLineLimit` (300 bytes). A fence opened inside that room may carry
+`taskReportFenceLines` (8) additional source lines so the quoted result can
+reach its closing fence. If the block still does not close, the report adds its
+closing delimiter and a separate cut mark; ordinary prose gains no extra room.
+The full answer stays in the task journal.
+
+`TestAReportStillCutsOrdinaryProseToThreeLines`,
+`TestAReportWillNotHangAnOpeningFence` and
+`TestACheckpointRowKeepsTheReportsFencedTail` pin the ordinary bound, the fenced
+exception and the durable report the task surface reads.

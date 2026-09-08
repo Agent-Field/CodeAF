@@ -2155,6 +2155,13 @@ type Agent struct {
 	// is days old on a resumed conversation, and a budget measured from it would
 	// stop a resumed session before its first turn.
 	startedAt time.Time
+	// wallStop ends the one reader that waits independently for this session's
+	// wall, and is nil when the session has no unattended wall (wallclock.go).
+	// wallEndingTaken is the once-only mark on the ending that reader writes.
+	// Both are guarded by mu because Close and the reader meet on them from
+	// different goroutines.
+	wallStop        chan struct{}
+	wallEndingTaken bool
 	// readerAbsentNoted says the journal already carries this session's one line
 	// about having no second model to read a mark with (checkpoint.go's
 	// [Agent.noteReaderAbsent]). It is a bit rather than a count because the fact
@@ -2177,8 +2184,14 @@ type Agent struct {
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a
 	// session that has never opened an episode.
-	writes  *writeMeter
-	running bool
+	writes *writeMeter
+	// handWrites is every landed write call a hand has brought home since the
+	// write seam last took them. Hands can outlive the turn that forked them, so
+	// these groups belong to the session until whichever turn next reaches the
+	// seam drains them into its own meter. Each group is one call, because calls
+	// as well as distinct paths spend the allowance (writeseam.go).
+	handWrites [][]string
+	running    bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is

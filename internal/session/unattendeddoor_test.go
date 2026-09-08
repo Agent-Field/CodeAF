@@ -125,6 +125,95 @@ func TestAHandoverAtWhichTheGoalOwnerSaysDoneEndsTheRun(t *testing.T) {
 	}
 }
 
+// TestNoTaskStartsOverAReaderThatCouldNotBeReached proves C9 and C10, with C7
+// as its red control: the real write seam seals green checked inline work
+// instead of admitting a task, journals the done and its reason, and still
+// carries on with a red command named when the stand-in check fails.
+func TestNoTaskStartsOverAReaderThatCouldNotBeReached(t *testing.T) {
+	for _, red := range []bool{false, true} {
+		name := "green check"
+		if red {
+			name = "red check"
+		}
+		t.Run(name, func(t *testing.T) {
+			writing := writingSteps(12, checkpointDoneSketch, checkpointNothingLeft)
+			steps := make([]step, len(writing))
+			for index := range writing {
+				inner := writing[index]
+				steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+					if askedForRemains(messages) {
+						return nil, errors.New("context deadline exceeded")
+					}
+					return inner(ctx, messages)
+				}
+			}
+
+			completer := &scriptedCompleter{steps: steps}
+			agent, transcript := seamAgent(t, completer, true)
+			steward := agent.steward()
+			const asked = "rename the parser and fix everything that calls it"
+			steward.hear(asked)
+			marker := filepath.Join(agent.deliverableTree(), "the-check-ran")
+			acceptance := "the parser is renamed and `touch " + marker + "` passes"
+			redCommand := ""
+			if red {
+				// The before-reading is green over the empty tree and the same
+				// command is red after the first inline write. A permanently red
+				// `false` would correctly be subtracted as a pre-existing failure
+				// and would not exercise this control.
+				redCommand = "test ! -f file0.txt"
+				acceptance = "the parser is renamed and `" + redCommand + "` passes"
+			}
+			if !steward.setAcceptance(acceptance) {
+				t.Fatal("the fixture could not set the goal owner's acceptance")
+			}
+			if red {
+				// Settle the before-reading while the tree is certainly empty. The
+				// submit road calls this door too, where it is deliberately
+				// asynchronous; taking it here removes scheduler order from a test
+				// whose subject is the write seam after that reading.
+				agent.openBaseline(context.Background())
+				agent.awaitBaseline(context.Background())
+			}
+			graph := stubbedGraph(agent, func(*TaskNode) {})
+
+			collected := collect(t, mustSubmit(t, agent, asked))
+			lines := closedJournal(t, agent, transcript)
+			if red {
+				if !strings.Contains(lines, `"who":"steward","event":"decided","decision":"carry on"`) {
+					t.Fatalf("the red stand-in reading was not journaled as carry on:\n%s", lines)
+				}
+				if !strings.Contains(lines, redCommand+" does not pass") {
+					t.Fatalf("the journal does not name the red command:\n%s", lines)
+				}
+				if strings.Contains(lines, nothingFinishedYet) {
+					t.Fatalf("the red ending claims the inline work finished nothing:\n%s", lines)
+				}
+				if !strings.Contains(lines, checksStoodInForTheReader) {
+					t.Fatalf("the red journal row does not carry the stand-in reason:\n%s", lines)
+				}
+				return
+			}
+
+			if count := admitted(graph); count != 0 {
+				t.Fatalf("%d tasks were admitted over finished green inline work", count)
+			}
+			if !saidSomething(noticeTexts(collected), checkpointDoneNote) {
+				t.Fatalf("the write seam did not end on its done notice: %q", noticeTexts(collected))
+			}
+			if _, err := os.Stat(marker); err != nil {
+				t.Fatalf("the declared check did not run over the tree: %v", err)
+			}
+			if !strings.Contains(lines, `"who":"steward","event":"decided","decision":"done"`) {
+				t.Fatalf("the green stand-in reading was not journaled as done:\n%s", lines)
+			}
+			if !strings.Contains(lines, checksStoodInForTheReader) {
+				t.Fatalf("the journaled done does not carry the stand-in reason:\n%s", lines)
+			}
+		})
+	}
+}
+
 // AND WITH THE MODEL'S OWN SENTENCE LAST, THE SAME READING DOES END THE TURN.
 //
 // This is the other half of the law and it is the road that was already there
@@ -545,12 +634,11 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
-	// The same file changed on both sides, which is the one thing a merge cannot
-	// decide for anybody.
+	// The person's uncommitted work and the node's copy changed the same file,
+	// which leaves the branch at the cut while still giving the merge two
+	// versions it cannot decide between for anybody.
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's line\n")
-	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 	node.setTree(tree)
 	node.finish("edited the shared file", []string{"shared.txt"}, tree.branch, tree.merge)
 

@@ -234,6 +234,7 @@ task — this happened, and `blocked_on` exists so it cannot happen again.
 | `files` | Absolute paths to files the run produced. Always a list, never `null`. |
 | `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started — including a run a limit cut short, whose partial answer is in `answer` and whose reason is in `stop` and `incomplete`. |
 | `unjudged` | On `aforge do`, why nothing checked the delivery — how the gate was asked and the provider's own sentence. It appears on exactly the runs nothing checked, so its presence is itself the answer to "was this checked?" and a caller never has to read the sentence. |
+| `checklist` | On `aforge do`, one whole, unclipped `{behaviour, state, why}` row for every acceptance point. `state` is exactly `answered`, `not answered` or `not reached`; the key is present when the settled root has a checklist. Split jobs can keep their checklists on child rows and omit this key. |
 | `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
 | `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
@@ -579,7 +580,7 @@ esac
 
 | Command | What it is for |
 | --- | --- |
-| `aforge chat --once "<text>" [--model slug] [--yolo] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. See below — it is a different shape from `do`. |
+| `aforge chat --once "<text>" [--model slug] [--yolo] [--max-hours n] [--max-cost n] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. With `--yolo` and a ceiling it carries the ask on beyond that first turn. See below — it is a different shape from `do`. |
 | `aforge plan new "<goal>" [--out plan.json] [--json] [--instructions] [--passes auto\|off\|N]` | Compile a goal to a plan file. For reading and editing a plan by hand. Exits `2` when the plan it wrote still carries a node the ruler measured past one worker and the passes then left whole — see below. |
 | `aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]` | Re-plan from what actually happened. |
@@ -649,6 +650,13 @@ Nobody is watching a `--once` run, so it takes an explicit posture rather than
 a default: consent is refused rather than assumed (`--yolo` is how you say in
 advance that tool calls may run), and standing items are absent — a clock armed
 by an unwatched run would be the harness agreeing on somebody's behalf.
+
+With `--yolo` and either `--max-hours` or `--max-cost`, this door stops being one
+turn that ends with the reply. It carries its own work on until the ask is met or
+the ceiling is spent, moves a long reply's work onto a task at the same points as
+the conversation door, and has each ending read by the same goal owner. Those
+endings are the ones described in the chat manual's *What changes when you give
+it a budget* section; without a screen their lines are kept in the transcript.
 
 ### `--one-model` — the measurement posture
 
