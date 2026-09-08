@@ -787,6 +787,57 @@ func TestTheListAndThePageSayOneWordAboutWorkThatFailed(t *testing.T) {
 	}
 }
 
+// WORK THAT HAS NOT LANDED HAS NO ENDING CLAUSE ON ITS RECORD. The live state
+// stands alone until the closing row supplies a real landing instant; the
+// settled control proves the clock still appears once there is one.
+func TestARunningRunHasNoEndingOnItsRecordCard(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	a := newTestApp(nil)
+	a.clock = func() time.Time { return now }
+	entry := session.TaskIndexEntry{
+		ID: "7", Title: "Audit the pricing code", Label: "Audit the pricing code",
+		Kind: session.TaskKindAdaptive, Status: string(session.TaskRunning),
+	}
+	a.tasks = map[uint64]*taskNode{7: {id: 7, title: entry.Title, state: session.TaskRunning}}
+	if line := plain(a.taskCardWhenLine(entry)); line != "running" || strings.Contains(line, "landed") || strings.Contains(line, "stopped") {
+		t.Fatalf("the running run's record reads %q, want its state and no ending", line)
+	}
+
+	entry.Status = string(session.TaskDone)
+	entry.EndedAt = now.Add(-2 * time.Hour)
+	if line := plain(a.taskCardWhenLine(entry)); !strings.Contains(line, "landed 2h ago") {
+		t.Fatalf("the landed run's record reads %q, want its landing age", line)
+	}
+}
+
+// AN UNDATED LIVE ROW IS FILED AT THE READING, not at the zero time. It stays
+// inside today's window and ahead of work that landed earlier, while the
+// landing clock remains absent everywhere that reads it as an ending.
+func TestARunningUndatedRunStaysAtTheTopOfTodaysTasks(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	running := session.TaskIndexEntry{
+		ID: "2", Title: "Run the pricing audit", Label: "Run the pricing audit",
+		Kind: session.TaskKindAdaptive, Status: string(session.TaskRunning), SessionID: "room-a",
+	}
+	landed := session.TaskIndexEntry{
+		ID: "1", Title: "Read the tariff table", Label: "Read the tariff table",
+		Status: string(session.TaskDone), SessionID: "room-a", EndedAt: now.Add(-2 * time.Hour),
+	}
+	if at := tasksEntryAt(running, now); !at.Equal(now) {
+		t.Fatalf("the live undated run is filed at %s, want the reading %s", at, now)
+	}
+	window := session.LastDays(now, 1)
+	if !window.Holds(tasksEntryAt(running, now)) {
+		t.Fatal("today's window dropped the live undated run")
+	}
+	reading := readTasks(session.World{}, tasksMine{rows: []tasksMineRow{
+		{entry: landed}, {entry: running, runs: true},
+	}}, window, time.Time{}, now)
+	if len(reading.items) != 2 || reading.items[0].entry.ID != running.ID {
+		t.Fatalf("today's tasks are ordered %+v, want the live run before the older landing", reading.items)
+	}
+}
+
 // THE PAGE IS A SUPERSET OF THE ROW IT OPENED FROM. The row carries the
 // conversation the work came out of; the card — the surface a person opens
 // precisely to learn more — used to drop it, so the one fact tying the record to

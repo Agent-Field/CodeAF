@@ -55,7 +55,7 @@ func TestConfirmSurgeryGatesTheKeyPathExactlyAsASentenceIsGated(t *testing.T) {
 			t.Fatalf("confirm question = %+v", question)
 		}
 		if !strings.Contains(question.Text, "Cancel Expensive job") ||
-			!strings.Contains(question.Text, fmt.Sprintf("$%.2f spent", loss)) {
+			!strings.Contains(question.Text, fmt.Sprintf("%s spent", moneyUSD(loss))) {
 			t.Fatalf("the question does not name the loss: %q", question.Text)
 		}
 		// The answer is what journals the command, through the same encoded

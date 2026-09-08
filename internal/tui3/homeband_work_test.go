@@ -182,6 +182,27 @@ func TestTheNarrowWorkBandKeepsFilesAndCost(t *testing.T) {
 	assertNarrowRows(t, "work", rows, 30, "14 files")
 }
 
+// THE RIGHT EDGE IS A LANDING AGE AND NOTHING ELSE. A run still going has no
+// ending to measure from, while the same run draws the age once its closing row
+// supplies one.
+func TestARunningRunLeavesTheWorkBandsRightEdgeEmpty(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	a := newTestApp(nil)
+	entry := session.TaskIndexEntry{
+		Label: "Audit the pricing code", Kind: session.TaskKindAdaptive,
+		Status: string(session.TaskRunning),
+	}
+	if line := plain(strings.Join(homeWorkName(entry, 40, now, a.pal), "\n")); line != entry.Label {
+		t.Fatalf("the running run's name row is %q, want no right-edge ending", line)
+	}
+
+	entry.Status = string(session.TaskDone)
+	entry.EndedAt = now.Add(-2 * time.Hour)
+	if line := plain(strings.Join(homeWorkName(entry, 40, now, a.pal), "\n")); !strings.HasSuffix(line, "2h") {
+		t.Fatalf("the landed run's name row is %q, want its age at the right edge", line)
+	}
+}
+
 // DONE IS THE ABSENCE OF A MARK (D11), ON THE BAND. No tick, and no `done`
 // either — the word was the loudest thing on every row and it never said
 // anything.

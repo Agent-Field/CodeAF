@@ -345,9 +345,9 @@ func (h *Head) turnPrompt(user store.Message) (string, error) {
 	// person's "yes" against it.
 	if h.dailyRailSet {
 		if rail, railErr := h.store.DailyRailToday(h.dailyBudgetUSD); railErr == nil {
-			line := fmt.Sprintf("today's spend: $%.2f of $%.2f daily rail", rail.Spend, rail.Ceiling)
+			line := fmt.Sprintf("today's spend: %s of %s daily rail", moneyUSD(rail.Spend), moneyUSD(rail.Ceiling))
 			if rail.Unlimited {
-				line = fmt.Sprintf("today's spend: $%.2f; daily rail unlimited", rail.Spend)
+				line = fmt.Sprintf("today's spend: %s; daily rail unlimited", moneyUSD(rail.Spend))
 			}
 			body.WriteString("\n\n" + line)
 		}
