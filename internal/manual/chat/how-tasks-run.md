@@ -425,6 +425,10 @@ behind, and that is the difference between a deliverable and a dropping.
 
 ## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, aforge never writes to a protected branch, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
 
+A tag with the same name as a branch does not change which branch is protected
+or which commit the landing compares. Git signature-display settings also do
+not change whether a forward commit belongs to aforge.
+
 A finished task never writes a protected branch. The protected names are `main`, `master`,
 `dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
 `release`; any branch a remote names as its default counts too. The task is still **done**.
