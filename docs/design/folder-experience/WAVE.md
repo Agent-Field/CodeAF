@@ -81,3 +81,25 @@ combined real local-engine acceptance to pass, including simultaneous work,
 isolated events/context/cancellation and tab switching without closing earlier
 work. Keep the target codex/conversation-execution and leave the final merge to
 the owner. Preserve all active worker worktrees.
+
+## Owner steering 05 — closing a tab preserves work
+
+Switching tabs and going Home preserve active work. Closing an active chat offers
+"Keep running", "Stop work" and "Cancel" using existing dialog conventions.
+Keep running hides the tab and keeps the conversation discoverable in Chats with
+understandable running, completed or needs-attention state. Reopening recovers
+live progress and output without duplicate execution. Cancel and Escape leave the
+tab and work untouched; Stop work explicitly stops only that conversation. Idle
+and completed tabs close without unnecessary friction. Closing never means deleting
+history, and this change must not silently alter whole-app shutdown semantics or
+promise work survives quitting without evidence.
+
+Async owns the minimal dialog, lifecycle, status and discovery UI for this contract.
+Before implementing, publish the Opus UX decision in reports/async.md: wording,
+focus/default, keyboard navigation, hidden-chat discovery and safe transitions.
+Coordinate overlapping UI files with the coordinator's context browser work.
+Acceptance must cover real engine/TUI Keep running and Stop work paths while a
+second chat runs, Home and tab switching, reopening without duplicate execution,
+completion racing with the dialog, pending permission/input, mouse and keyboard,
+narrow terminals and accessibility tiers. Neither readiness marker nor PR readiness
+is allowed until this behavior is integrated and evidenced.

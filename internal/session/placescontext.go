@@ -163,6 +163,28 @@ func attachedFacts(place PlaceRef) string {
 	return strings.Join(facts, ", ")
 }
 
+// attachedInstructionDirs follows only the ancestry of the selected scope. It
+// does not walk sibling trees, and a malformed saved selection cannot escape
+// the recorded repository root to import unrelated instructions.
+func attachedInstructionDirs(place PlaceRef) []string {
+	root := filepath.Clean(place.Path)
+	dirs := []string{root}
+	if place.Chose == "" {
+		return dirs
+	}
+	chosen := filepath.Clean(place.Chose)
+	relative, err := filepath.Rel(root, chosen)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return dirs
+	}
+	current := root
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		dirs = append(dirs, current)
+	}
+	return dirs
+}
+
 // attachedInstructions quotes each attached folder's own house rules under a
 // heading that names the folder they hold for.
 //
@@ -174,37 +196,46 @@ func attachedFacts(place PlaceRef) string {
 func attachedInstructions(attached []PlaceRef) string {
 	var out strings.Builder
 	spent := 0
+	seen := make(map[string]bool)
 	for _, place := range attached {
-		for _, name := range []string{agentsFileName, claudeFileName} {
-			file := filepath.Join(place.Path, name)
-			if _, err := os.Stat(file); err != nil {
+		for _, dir := range attachedInstructionDirs(place) {
+			// Shared ancestors are quoted once so repeated scopes cannot consume
+			// the budget before a selected folder's more specific rules arrive.
+			if seen[dir] {
 				continue
 			}
-			if spent >= attachedFilesBudget {
-				fmt.Fprintf(&out, "\n%s%s\n\nThat folder has its own %s and it is NOT quoted here — the instructions of the folders above it filled the room this prompt gives them. Read %s if the work goes into that folder.\n",
-					attachedRules, place.Path, name, file)
-				continue
-			}
-			// A partially spent budget cannot admit another whole file. The
-			// reader also preserves rune boundaries under this smaller limit.
-			limit := min(attachedFileLimit, attachedFilesBudget-spent)
-			rules, truncated := readInstructionFileWithin(place.Path, name, limit)
-			if rules == "" && !truncated {
-				continue
-			}
-			spent += len(rules)
-			fmt.Fprintf(&out, "\n%s%s\n\nFrom %s at the root of that attached folder. THEY HOLD FOR WORK UNDER %s AND NOWHERE ELSE — not for the working directory, and not for another attached folder, whose own rules may say the opposite. They rank below the project's own instructions above and below what the person says now.\n\n",
-				attachedRules, place.Path, name, place.Path)
-			fence := fenceFor(rules)
-			out.WriteString(fence + "markdown\n")
-			out.WriteString(rules)
-			if !strings.HasSuffix(rules, "\n") {
-				out.WriteString("\n")
-			}
-			out.WriteString(fence + "\n")
-			if truncated {
-				fmt.Fprintf(&out, "\n(%s exceeds the %d-byte allowance remaining for this file; the rest is on disk — read %s if you need it.)\n",
-					name, limit, file)
+			seen[dir] = true
+			for _, name := range []string{agentsFileName, claudeFileName} {
+				file := filepath.Join(dir, name)
+				if _, err := os.Stat(file); err != nil {
+					continue
+				}
+				if spent >= attachedFilesBudget {
+					fmt.Fprintf(&out, "\n%s%s\n\nThat folder has its own %s and it is NOT quoted here — the instructions of the folders above it filled the room this prompt gives them. Read %s if the work goes into that folder.\n",
+						attachedRules, dir, name, file)
+					continue
+				}
+				// A partially spent budget cannot admit another whole file. The
+				// reader also preserves rune boundaries under this smaller limit.
+				limit := min(attachedFileLimit, attachedFilesBudget-spent)
+				rules, truncated := readInstructionFileWithin(dir, name, limit)
+				if rules == "" && !truncated {
+					continue
+				}
+				spent += len(rules)
+				fmt.Fprintf(&out, "\n%s%s\n\nFrom %s on the path to the selected folder. More specific nested rules take precedence within their own scope. THEY HOLD FOR WORK UNDER %s AND NOWHERE ELSE — these are directory-scoped rules, not conversation-wide instructions. They rank below the project's own instructions above and below what the person says now.\n\n",
+					attachedRules, dir, file, dir)
+				fence := fenceFor(rules)
+				out.WriteString(fence + "markdown\n")
+				out.WriteString(rules)
+				if !strings.HasSuffix(rules, "\n") {
+					out.WriteString("\n")
+				}
+				out.WriteString(fence + "\n")
+				if truncated {
+					fmt.Fprintf(&out, "\n(%s exceeds the %d-byte allowance remaining for this file; the rest is on disk — read %s if you need it.)\n",
+						name, limit, file)
+				}
 			}
 		}
 	}

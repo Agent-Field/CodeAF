@@ -475,3 +475,38 @@ func TestAStaleAttachedReadingCannotResurrectARemovedFolder(t *testing.T) {
 		t.Fatalf("a completed removal was overwritten by an older disk reading: %s", seen)
 	}
 }
+
+// A selected subfolder inherits its ancestors' rules, but not its siblings'.
+func TestAttachedSubfolderLoadsOnlyApplicableNestedInstructions(t *testing.T) {
+	repo := newTestRepo(t)
+	chosen := filepath.Join(repo, "packages", "café client")
+	files := map[string]string{
+		filepath.Join(repo, agentsFileName):             "Root house rules.",
+		filepath.Join(repo, "packages", claudeFileName): "Package house rules.",
+		filepath.Join(chosen, agentsFileName):           "Selected house rules.",
+		filepath.Join(repo, "sibling", agentsFileName):  "Unrelated sibling rules.",
+	}
+	for file, content := range files {
+		writeFile(t, file, content)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if _, err := agent.ReferPlace(chosen, PlaceSaid); err != nil {
+		t.Fatal(err)
+	}
+	seen := modelSees(t, agent)
+	previous := -1
+	for _, dir := range []string{repo, filepath.Join(repo, "packages"), chosen} {
+		scope := "THEY HOLD FOR WORK UNDER " + canonicalPath(dir) + " AND NOWHERE ELSE"
+		at := strings.Index(seen, scope)
+		if at <= previous {
+			t.Fatalf("missing or out-of-order scoped rules %q in next-request instructions", scope)
+		}
+		previous = at
+	}
+	for file, content := range files {
+		want := !strings.Contains(file, "sibling")
+		if strings.Contains(seen, content) != want {
+			t.Fatalf("instruction inclusion for %s: want %v", file, want)
+		}
+	}
+}

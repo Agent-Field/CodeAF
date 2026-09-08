@@ -166,6 +166,10 @@ never go hunting for a folder you chose, never ask you which one you meant, and 
 two attached projects' house rules together. Instruction excerpts are limited to 4 KiB per
 file and 12 KiB across attached folders; a partly used total leaves only its remaining
 bytes for the next file. A cut excerpt names the file to read for the rest.
+When you select a subfolder in a repository, applicable `AGENTS.md` and `CLAUDE.md`
+files are read from the repository root down to that selected folder. Each excerpt
+names its own directory scope; more specific nested rules take precedence there.
+Sibling folders are not searched for rules, and shared ancestors are quoted once.
 
 Choosing a directory **inside a repository** attaches the repository, because a branch is
 cut from a repository and not from a directory in it — and the line you get back says so by
