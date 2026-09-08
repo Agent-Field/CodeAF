@@ -22,3 +22,10 @@ and one detached checkout answers the question for every part cut from it.
 The second reading, of what would ship, is taken only when the first found red
 to subtract — a clean base has nothing to take away, and a needless second pass
 over somebody's suite is the cost this whole shape was drawn around.
+
+Review follow-up: the before-reading uses the immutable commit captured at the
+worktree cut, persisted as the Git check base alongside the ground seal and machine base, instead of
+resolving the worker's current branch tip. A worker may commit its edits, and a
+new failure in that commit must never be called pre-existing. Older records
+without a captured commit provide no baseline. The committed-failure regression
+fails against the original PR and passes with this correction.

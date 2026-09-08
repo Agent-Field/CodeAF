@@ -32,7 +32,7 @@ func TestAReadingOfTheBaseSaysWhichChecksWereAlreadyFailing(t *testing.T) {
 
 	command := "go test ./..."
 	photograph := (&Agent{}).baseChecksFor(context.Background(), taskTree{
-		dir: repo, root: repo, branch: "work", ground: repo,
+		dir: repo, root: repo, branch: "work", ground: repo, seal: baselineCommitForTest(t, repo),
 	}, []string{command})
 	if !photograph.read {
 		t.Fatal("the base was not read")
@@ -213,7 +213,7 @@ func TestNothingIsSaidAboutRedNobodyRead(t *testing.T) {
 // a run cannot make its own tree reading unread.
 func TestCheckGroundForRunsOnlyTheReadingsTheContractNeeds(t *testing.T) {
 	repo := newGoModuleRepo(t)
-	tree := taskTree{dir: repo, root: repo, branch: "work", ground: repo}
+	tree := taskTree{dir: repo, root: repo, branch: "work", ground: repo, seal: baselineCommitForTest(t, repo)}
 	agent := &Agent{}
 	runs := func(path string) int {
 		data, err := os.ReadFile(path)
@@ -386,8 +386,8 @@ func TestOneBaseIsReadOnceForEveryNodeCutFromIt(t *testing.T) {
 	repo := newGoModuleRepo(t)
 	counter := filepath.Join(t.TempDir(), "runs")
 	command := fmt.Sprintf("printf 'read\\n' >> %q", counter)
-	first := taskTree{dir: filepath.Join(t.TempDir(), "first"), root: repo, branch: "work", ground: repo}
-	second := taskTree{dir: filepath.Join(t.TempDir(), "second"), root: repo, branch: "work", ground: repo}
+	first := taskTree{dir: filepath.Join(t.TempDir(), "first"), root: repo, branch: "work", ground: repo, seal: baselineCommitForTest(t, repo)}
+	second := taskTree{dir: filepath.Join(t.TempDir(), "second"), root: repo, branch: "work", ground: repo, seal: baselineCommitForTest(t, repo)}
 	agent := &Agent{}
 
 	for _, tree := range []taskTree{first, second} {
@@ -403,4 +403,14 @@ func TestOneBaseIsReadOnceForEveryNodeCutFromIt(t *testing.T) {
 	if runs := strings.Count(string(data), "read\n"); runs != 1 {
 		t.Fatalf("the shared base check ran %d times, want 1", runs)
 	}
+}
+
+// baselineCommitForTest records the same immutable cut that real task trees carry.
+func baselineCommitForTest(t *testing.T, repo string) string {
+	t.Helper()
+	sha, err := git(repo, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(sha)
 }

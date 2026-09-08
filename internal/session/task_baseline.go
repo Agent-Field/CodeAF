@@ -139,24 +139,23 @@ type checkBase struct {
 	sha        string
 }
 
-// checkBaseFor resolves the commit a task was cut from. A branch is that base
-// because the node's work is staged rather than committed; without a branch,
-// only a repository behind the task's named ground has a cheap base to read.
+// checkBaseFor resolves the immutable world captured when the task was cut.
+// A WORKER MAY COMMIT, so neither its branch tip nor the current ground HEAD
+// is a before-reading. Older records without a captured commit supply no
+// baseline instead of attributing the worker's own failures to earlier work.
 func checkBaseFor(tree taskTree) (checkBase, bool) {
-	base := checkBase{}
-	if strings.TrimSpace(tree.branch) != "" {
-		base.repository = tree.branchHolder()
-		base.lockRoot = tree.root
-		base.ref = tree.branch
-	} else if root, ok := repositoryRoot(strings.TrimSpace(tree.ground)); ok {
-		base.repository = root
-		base.lockRoot = root
-		base.ref = "HEAD"
+	base := checkBase{repository: tree.branchHolder(), lockRoot: tree.root}
+	base.ref = strings.TrimSpace(tree.checkBase)
+	if base.ref == "" {
+		base.ref = strings.TrimSpace(tree.base)
 	}
-	if strings.TrimSpace(base.repository) == "" {
+	if base.ref == "" {
+		base.ref = strings.TrimSpace(tree.seal)
+	}
+	if base.ref == "" || base.repository == "" {
 		return checkBase{}, false
 	}
-	if strings.TrimSpace(base.lockRoot) == "" {
+	if base.lockRoot == "" {
 		base.lockRoot = base.repository
 	}
 	out, err := git(base.repository, "rev-parse", "--verify", base.ref+"^{commit}")

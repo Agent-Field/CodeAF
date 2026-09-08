@@ -1336,6 +1336,10 @@ the answer is in.
 
 ## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
 
+A worker committing its own edits does not move this baseline. A restored task
+whose older record has no captured base supplies no before-reading; the current
+branch tip is never substituted for the missing history.
+
 Before a task's work is checked, aforge runs the task's named checks on the **base commit
 its copy was cut from**. That is the before-reading: it says which checks were already red
 before the task began. The check of what would ship is then compared with it. A check that
