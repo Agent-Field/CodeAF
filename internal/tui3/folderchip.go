@@ -79,20 +79,9 @@ func (a *app) attachedPlaces() []session.PlaceRef {
 	return out
 }
 
-// placeScope is THE DIRECTORY A PERSON ACTUALLY POINTED AT, where the engine's
-// repository-root snap moved it — `PlaceRef.Chose` on the integrated tree — and
-// "" for a folder chosen at its own root.
-//
-// IT IS A SEAM AND IT IS ONE LINE. The field arrives with the context lane's
-// work and this lane's base does not carry it, so the whole of what the browser
-// needs to change to draw it is the body of this function: `return ref.Chose`.
-// It is a var for [servedSighting]'s reason — a test states a scope without the
-// field existing, so what this surface DOES with one is pinned today and only
-// the reading of it is outstanding.
-//
-// `Path` stays the key for everything else: it is what the conversation holds,
-// what [app.dropPlaceChip] removes, and what work is cut from.
-var placeScope = func(ref session.PlaceRef) string { return "" }
+// placeScope is the directory the person selected. The engine separately keeps
+// the repository root used for task isolation; the tray must name the selection.
+var placeScope = func(ref session.PlaceRef) string { return ref.Chose }
 
 // canRemovePlace reports whether taking a folder back off can actually reach the
 // conversation. See this file's header.

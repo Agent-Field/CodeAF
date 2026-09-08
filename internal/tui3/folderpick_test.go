@@ -405,3 +405,18 @@ func typeFolder(t *testing.T, a *app, text string) {
 		drive(t, a, key(string(r)))
 	}
 }
+
+// The actual chooser must use the typo-aware ranker, not just carry its helpers.
+func TestTheFolderBrowserFindsATransposedProjectName(t *testing.T) {
+	var picker folderPick
+	picker.start([]folderCand{
+		{path: "/code/aforge", show: "~/code/aforge", layer: folderProject},
+		{path: "/notes", show: "~/notes", layer: folderProject},
+	}, "/home/person")
+	picker.filter.setText("afroge")
+	picker.rank()
+	path, ok := picker.here()
+	if !ok || path != "/code/aforge" {
+		t.Fatalf("transposed query selected %q, %v; want /code/aforge", path, ok)
+	}
+}

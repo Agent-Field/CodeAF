@@ -19,7 +19,7 @@ come from what aforge has already seen, in layers, best first.
    a task's ground resolved to and the conversation wrote down
 2. the directories **this conversation has been reading and writing in**, most recent first
 3. every **project on this machine** — the same list `alt+w` cycles on the task composer
-4. every **repository under your home directory**, from an index built quietly in the
+4. **repositories and ordinary folders under your home directory**, from an index built quietly in the
    background and refreshed about once a day
 
 Inside a layer the order is how often you have picked that folder here, weighted by how
@@ -34,8 +34,9 @@ and nothing has been chosen.
 The box under the list is one box doing two jobs, and which job it is doing depends only on
 the shape of what is in it.
 
-- **A word filters.** `agent`, `tui3`, `notes` — the list narrows with the same fuzzy
-  matching the `@` file list uses.
+- **A word filters.** `agent`, `tui3`, `notes` — the list narrows with fuzzy
+  matching of names and path segments, initials and small spelling slips. For example,
+  `afroge` can find `aforge`; stronger literal matches lead typo matches.
 - **A path browses.** Anything starting with `/`, `~/`, `./` or `../` — and a bare `~`,
   `.` or `..` — turns the list into **columns**.
 

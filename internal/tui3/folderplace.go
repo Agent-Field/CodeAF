@@ -21,10 +21,8 @@ package tui3
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -657,7 +655,7 @@ func (a *app) askFolderFacts() tea.Cmd {
 // one directory's names in another directory's column.
 type folderKidsMsg struct {
 	path string
-	read folderRead
+	read folderListing
 	gen  int
 }
 
@@ -941,68 +939,14 @@ func (a *app) askFolderStore() tea.Cmd {
 // directory aforge has actually been opened in the moment it is opened there.
 const folderScanTTL = 24 * time.Hour
 
-// The two bounds on the walk. It runs in the background and it still may not be
-// a crawl of somebody's whole disk: six levels reaches ~/code/work/client/repo
-// without reaching a node_modules nobody asked about, and two thousand roots is
-// more repositories than any list can rank usefully.
-const (
-	folderScanDepth = 6
-	folderScanCap   = 2000
-)
-
-// scanFolderRoots walks `~` for repositories, newest-modified first.
-//
-// A DIRECTORY WITH A `.git` IN IT IS A ROOT AND IS NOT DESCENDED INTO. That is
-// what keeps the walk small — a repository's own subdirectories are not other
-// repositories, and the ones that are (a submodule, a vendored checkout) are
-// reached by typing a path, which is what typing a path is for.
+// scanFolderRoots discovers both projects and ordinary folders within the
+// shared index bounds. All of this work runs in the background command.
 func scanFolderRoots() []string {
 	base, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	type found struct {
-		path string
-		at   time.Time
-	}
-	var roots []found
-	_ = filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || !entry.IsDir() {
-			// An unreadable directory is skipped, not fatal: an index that
-			// refused to exist because of one permission is worth less than an
-			// index with one directory missing from it (walkFiles' own law).
-			return nil
-		}
-		name := entry.Name()
-		if path != base && (skipDirs[name] || strings.HasPrefix(name, ".")) {
-			return fs.SkipDir
-		}
-		if len(roots) >= folderScanCap {
-			return fs.SkipAll
-		}
-		if depth(base, path) > folderScanDepth {
-			return fs.SkipDir
-		}
-		if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-			return nil
-		}
-		at := time.Time{}
-		if info, err := entry.Info(); err == nil {
-			at = info.ModTime()
-		}
-		roots = append(roots, found{path: path, at: at})
-		return fs.SkipDir
-	})
-	// NEWEST FIRST, because the order a source hands its candidates over in is
-	// what decides ties inside a layer, and "the repository I touched most
-	// recently" is a better guess than "the one alphabetically first" every
-	// single time.
-	sort.SliceStable(roots, func(i, j int) bool { return roots[i].at.After(roots[j].at) })
-	out := make([]string, 0, len(roots))
-	for _, root := range roots {
-		out = append(out, root.path)
-	}
-	return out
+	return folderIndexPaths(folderIndexWalk(context.Background(), folderIndexDefaults(base)))
 }
 
 // depth is how many levels below base a path sits.

@@ -206,9 +206,8 @@ func TestAPlainFolderIsOfferedOnlyNearTheTop(t *testing.T) {
 	}
 }
 
-// folderWide makes a base with n subdirectories, which is what the two bounds
-// below need in order to be reached at all — the walk looks at its clock every
-// [folderIndexTick] directories rather than on each one.
+// folderWide makes enough directories to exercise discovery limits without
+// relying on any folders outside this test.
 func folderWide(t *testing.T, n int) string {
 	t.Helper()
 	paths := make([]string, 0, n)
@@ -237,7 +236,7 @@ func TestTheWalkStopsOnItsCapAndSaysThatItDid(t *testing.T) {
 }
 
 func TestTheWalkStopsOnItsClockAndOnACancel(t *testing.T) {
-	base := folderWide(t, 3*folderIndexTick)
+	base := folderWide(t, 192)
 
 	opts := folderIndexDefaults(base)
 	opts.Budget = time.Nanosecond

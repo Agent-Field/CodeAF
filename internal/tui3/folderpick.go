@@ -16,7 +16,7 @@ package tui3
 //     beats it on the axis that matters — the first frame after `/folder` is a
 //     list and never a spinner.
 //   - TYPING FILTERS; ANYTHING ELSE BROWSES. Free words narrow the candidates
-//     with the same scorer the `@` completion uses ([pathScore]). Input that
+//     with path-segment, abbreviation and typo-aware folder ranking. Input that
 //     LOOKS like a path — `/`, `~/`, `./`, `../` — morphs this same surface
 //     into COLUMNS, and so does opening a row of the list: `→`, or a click.
 //     THAT IS WHY A SEARCH NEVER HAS TO BE RETYPED — the row a filter found is
@@ -45,7 +45,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 
@@ -115,14 +114,14 @@ type folderCand struct {
 	freq float64
 }
 
-// folderRead is ONE readdir's answer: the subdirectory names, or the reason
+// folderListing is ONE readdir's answer: the subdirectory names, or the reason
 // there are none.
 //
 // THE ERROR IS CARRIED AND NEVER FLATTENED TO AN EMPTY LIST. A directory nobody
 // may read and a directory with nothing in it are two different facts about a
 // person's disk, and a browser that drew them the same way would answer "is
 // anything in there?" with a confident lie. [folderCols] draws them apart.
-type folderRead struct {
+type folderListing struct {
 	names []string
 	err   error
 	// done marks an answer that has arrived, so an empty list that IS the answer
@@ -134,15 +133,9 @@ type folderRead struct {
 type folderPick struct {
 	open bool
 
-	// all is the layered candidate set as it stood when the list opened, and
-	// lower the same `show` strings folded once: filtering is per keystroke over
-	// every row, and folding a few hundred paths on each of them is the one
-	// allocation this path cannot afford to repeat.
-	all   []folderCand
-	lower []string
-	// score is per-candidate scratch, indexed as all is, reused across
-	// keystrokes.
-	score []int
+	// The ranker folds candidates once and reuses its scratch on each query.
+	all    []folderCand
+	ranker folderRanker
 	// hits are indexes into all, in rank order — the rows actually on offer.
 	hits   []int
 	cursor int
@@ -162,7 +155,7 @@ type folderPick struct {
 	// same bargain the facts make: the keystroke asks, the paint draws whatever
 	// has come back, and a level still in flight draws nothing rather than
 	// stalling the frame.
-	kids map[string]folderRead
+	kids map[string]folderListing
 	// asking is which directories are being read right now, so a cursor held
 	// down a column forks one readdir per level and not one per keypress.
 	asking map[string]bool
@@ -212,10 +205,10 @@ type folderCols struct {
 	dir string
 	// here are dir's own subdirectories, by name, in readdir order with the dot
 	// directories and [skipDirs] pruned unless [folderPick.hidden] is on.
-	here folderRead
+	here folderListing
 	// up are the PARENT's subdirectories, drawn dim beside them so a person can
 	// see where they are standing.
-	up folderRead
+	up folderListing
 	// cursor indexes here.names, and top is the first row drawn.
 	cursor int
 	top    int
@@ -295,16 +288,16 @@ func (f *folderPick) start(candidates []folderCand, tilde string) {
 		all:    candidates,
 		tilde:  tilde,
 		facts:  map[string][]string{},
-		kids:   map[string]folderRead{},
+		kids:   map[string]folderListing{},
 		asking: map[string]bool{},
 		gen:    gen,
 	}
 	f.geom.action = -1
-	f.lower = make([]string, len(candidates))
+	rankees := make([]folderRankee, len(candidates))
 	for i, cand := range candidates {
-		f.lower[i] = strings.ToLower(cand.show)
+		rankees[i] = folderRankee{Show: cand.show, Layer: int(cand.layer), Rank: cand.rank, Freq: cand.freq}
 	}
-	f.score = make([]int, len(candidates))
+	f.ranker.load(rankees)
 	f.rank()
 }
 
@@ -333,16 +326,8 @@ func (f *folderPick) page() int {
 // typed is a path — leaves the list alone, because the columns are what is
 // being drawn and the list is not.
 //
-// The scorer is [pathScore], the `@` completion's own, so a person who has
-// learned that "tui3" finds internal/tui3 in one list finds ~/code/aforge-v2 in
-// this one by the same rule. Within a score the LAYER decides, then the layer's
-// own order — which is what keeps a directory this conversation touched above a
-// project three levels away that happens to score the same.
-//
-// THE SCORING IS DELIBERATELY LEFT WHERE IT IS. The search lane is building the
-// ranking this list will end up using in its own files; this function is the
-// ONE place a call to it replaces, and nothing else in this file reads a score
-// (folderplace.go's report names the seam).
+// Folder search ranks path segments, abbreviations and small spelling slips,
+// then preserves source priority and prior use within each match class.
 func (f *folderPick) rank() {
 	// WHICH SURFACE IS UP FOLLOWS THE BOX AND NOTHING ELSE, opening a row
 	// included: [folderPick.openAt] writes that row's path into the box, and an
@@ -352,35 +337,7 @@ func (f *folderPick) rank() {
 	if f.browsing {
 		return
 	}
-	needle := strings.ToLower(strings.TrimSpace(f.filter.String()))
-	f.hits = f.hits[:0]
-	for i := range f.all {
-		// AN EMPTY BOX SCORES NOTHING, AND THAT IS THE PRODUCT. [pathScore]
-		// answers a bare query with the path's own LENGTH — which is the right
-		// tiebreak for a completion list ranking files under one directory, and
-		// exactly wrong here: it would sort a person's projects by how deep in
-		// the disk they happen to sit, and bury the layers and the frecency
-		// under an accident of spelling. The empty-query view is the whole
-		// point of this list, so every row scores the same and [folderPick.less]
-		// alone decides it.
-		score := 0
-		if needle != "" {
-			hit, ok := pathScore(f.lower[i], needle)
-			if !ok {
-				continue
-			}
-			score = hit
-		}
-		f.score[i] = score
-		f.hits = append(f.hits, i)
-	}
-	sort.SliceStable(f.hits, func(a, b int) bool {
-		ai, bi := f.hits[a], f.hits[b]
-		if f.score[ai] != f.score[bi] {
-			return f.score[ai] < f.score[bi]
-		}
-		return f.less(ai, bi)
-	})
+	f.hits = f.ranker.rank(f.filter.String())
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	f.cursor, f.top = 0, 0
@@ -459,10 +416,10 @@ func (f *folderPick) here() (string, bool) {
 // A DIRECTORY THAT CANNOT BE READ ANSWERS WITH THE REASON, never with an empty
 // list. Permission denied is not "there is nothing in there", and a browser that
 // said it was would be lying about somebody's own disk.
-func folderKids(dir string, hidden bool) folderRead {
+func folderKids(dir string, hidden bool) folderListing {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return folderRead{err: err, done: true}
+		return folderListing{err: err, done: true}
 	}
 	out := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -475,7 +432,7 @@ func folderKids(dir string, hidden bool) folderRead {
 		}
 		out = append(out, name)
 	}
-	return folderRead{names: out, done: true}
+	return folderListing{names: out, done: true}
 }
 
 // browseAt points the columns at one directory. It reads NOTHING: the two
@@ -520,23 +477,23 @@ func (f *folderPick) seatCursor() {
 	f.cols.top = listTop(f.cols.cursor, f.cols.top, len(f.cols.here.names), f.page())
 }
 
-// read is one level out of the cache, and the zero [folderRead] — not done, no
+// read is one level out of the cache, and the zero [folderListing] — not done, no
 // error, no names — for a level nobody has read yet.
-func (f *folderPick) read(dir string) folderRead {
+func (f *folderPick) read(dir string) folderListing {
 	if f.kids == nil || dir == "" {
-		return folderRead{}
+		return folderListing{}
 	}
 	return f.kids[dir]
 }
 
 // took files one readdir's answer and re-seats the columns if the answer was
 // about a level they are drawing. It reports whether anything on screen changed.
-func (f *folderPick) took(dir string, read folderRead) bool {
+func (f *folderPick) took(dir string, read folderListing) bool {
 	if !f.open {
 		return false
 	}
 	if f.kids == nil {
-		f.kids = map[string]folderRead{}
+		f.kids = map[string]folderListing{}
 	}
 	f.kids[dir] = read
 	delete(f.asking, dir)
@@ -562,8 +519,8 @@ func (f *folderPick) took(dir string, read folderRead) bool {
 // about which names count has changed, and a column half-filled from before the
 // toggle would be a directory that gained three folders and kept none of them.
 func (f *folderPick) forget() {
-	f.kids, f.asking = map[string]folderRead{}, map[string]bool{}
-	f.cols.here, f.cols.up, f.cols.upAt = folderRead{}, folderRead{}, -1
+	f.kids, f.asking = map[string]folderListing{}, map[string]bool{}
+	f.cols.here, f.cols.up, f.cols.upAt = folderListing{}, folderListing{}, -1
 	f.cols.top = 0
 }
 
@@ -1032,7 +989,7 @@ func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
 // folderNameCell is one row of the THIRD column — the children of the row under
 // the cursor — dim throughout, because it is what is over there rather than what
 // is being chosen.
-func folderNameCell(read folderRead, row, room int, pal palette) string {
+func folderNameCell(read folderListing, row, room int, pal palette) string {
 	if row < len(read.names) {
 		return pal.dim(fit(read.names[row], room))
 	}
@@ -1050,7 +1007,7 @@ func folderNameCell(read folderRead, row, room int, pal palette) string {
 // ERROR AND NEVER BY THE COUNT. That is the defect this replaced: `folderKids`
 // dropped `os.ReadDir`'s error and answered nil, so a directory somebody may not
 // open drew `nothing below here` — a confident lie about their own disk.
-func folderStateWord(read folderRead) string {
+func folderStateWord(read folderListing) string {
 	switch {
 	case !read.done:
 		return ""
@@ -1081,12 +1038,6 @@ const (
 	// folderClosedWord is a directory this machine will not let this program
 	// read. It is NEVER the word above.
 	folderClosedWord = "this folder cannot be read · permission denied"
-	// folderMissingWord is a directory that has been moved or deleted since the
-	// row naming it was drawn.
-	folderMissingWord = "this folder is no longer here"
-	// folderNotDirWord is a path that names a file. It is reachable: a person
-	// may type one into the box.
-	folderNotDirWord = "this is a file, not a folder"
 	// folderUnreadableWord is every other way a readdir fails.
 	folderUnreadableWord = "this folder cannot be read"
 )

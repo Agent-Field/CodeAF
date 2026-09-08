@@ -266,9 +266,9 @@ type folderIndexOpts struct {
 // SIX LEVELS reaches `~/code/work/client/repo` without reaching a
 // `node_modules` nobody asked about. TWO THOUSAND roots is more directories
 // than any list can rank usefully. THREE SECONDS is longer than a background
-// walk of a normal home directory takes and short enough that a pathological
-// one — a network mount, a fuse filesystem — gives up while the answer could
-// still matter.
+// walk of a normal home directory takes. Cancellation and the clock are checked
+// before traversal and at each directory; an active filesystem call itself
+// cannot be interrupted, so a blocked mount can exceed this elapsed time.
 const (
 	folderIndexDepth      = 6
 	folderIndexPlainDepth = 3
@@ -310,11 +310,11 @@ func folderIndexWalk(ctx context.Context, opts folderIndexOpts) folderIndexAnswe
 	}
 	base := filepath.Clean(opts.Base)
 	deadline := started.Add(opts.Budget)
-	// The clock is read every so many entries rather than on each one: a
-	// `time.Now` per directory on a tree with fifty thousand of them is itself
-	// a cost worth avoiding, and a budget overshot by a few directories is a
-	// budget kept.
-	seen := 0
+	if ctx.Err() != nil {
+		answer.Bound = true
+		answer.Took = time.Since(started)
+		return answer
+	}
 	_ = filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			// AN UNREADABLE DIRECTORY IS COUNTED AND STEPPED OVER. An index
@@ -329,12 +329,9 @@ func folderIndexWalk(ctx context.Context, opts folderIndexOpts) folderIndexAnswe
 		if !entry.IsDir() {
 			return nil
 		}
-		seen++
-		if seen%folderIndexTick == 0 {
-			if ctx.Err() != nil || (opts.Budget > 0 && time.Now().After(deadline)) {
-				answer.Bound = true
-				return fs.SkipAll
-			}
+		if ctx.Err() != nil || (opts.Budget > 0 && time.Now().After(deadline)) {
+			answer.Bound = true
+			return fs.SkipAll
 		}
 		name := entry.Name()
 		if path != base && (opts.Skip[name] || strings.HasPrefix(name, ".")) {
@@ -374,9 +371,6 @@ func folderIndexWalk(ctx context.Context, opts folderIndexOpts) folderIndexAnswe
 	answer.Took = time.Since(started)
 	return answer
 }
-
-// folderIndexTick is how many directories go by between two looks at the clock.
-const folderIndexTick = 64
 
 // folderDepth is how many levels below base a path sits.
 func folderDepth(base, path string) int {

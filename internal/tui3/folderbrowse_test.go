@@ -397,15 +397,15 @@ func TestAnUnreadableFolderSaysSoRatherThanLookingEmpty(t *testing.T) {
 func TestEachWayAReadFailsHasItsOwnWord(t *testing.T) {
 	for _, row := range []struct {
 		name string
-		read folderRead
+		read folderListing
 		want string
 	}{
-		{"not asked yet", folderRead{}, ""},
-		{"read and empty", folderRead{done: true}, folderLeafWord},
-		{"refused", folderRead{err: os.ErrPermission, done: true}, folderClosedWord},
-		{"gone", folderRead{err: os.ErrNotExist, done: true}, folderMissingWord},
-		{"a file", folderRead{err: syscall.ENOTDIR, done: true}, folderNotDirWord},
-		{"anything else", folderRead{err: errors.New("io"), done: true}, folderUnreadableWord},
+		{"not asked yet", folderListing{}, ""},
+		{"read and empty", folderListing{done: true}, folderLeafWord},
+		{"refused", folderListing{err: os.ErrPermission, done: true}, folderClosedWord},
+		{"gone", folderListing{err: os.ErrNotExist, done: true}, folderMissingWord},
+		{"a file", folderListing{err: syscall.ENOTDIR, done: true}, folderNotDirWord},
+		{"anything else", folderListing{err: errors.New("io"), done: true}, folderUnreadableWord},
 	} {
 		if got := folderStateWord(row.read); got != row.want {
 			t.Errorf("%s says %q, want %q", row.name, got, row.want)
@@ -414,7 +414,7 @@ func TestEachWayAReadFailsHasItsOwnWord(t *testing.T) {
 	// A read that names a real error is never the empty-folder word, whatever
 	// else it is.
 	for _, err := range []error{os.ErrPermission, os.ErrNotExist, syscall.ENOTDIR, errors.New("io")} {
-		if folderStateWord(folderRead{err: err, done: true}) == folderLeafWord {
+		if folderStateWord(folderListing{err: err, done: true}) == folderLeafWord {
 			t.Fatalf("%v was reported as an empty folder", err)
 		}
 	}
@@ -466,7 +466,7 @@ func TestAStaleDirectoryAnswerIsDropped(t *testing.T) {
 
 	a.folder.close()
 	settleFolder(t, a, a.openFolderPick(filepath.Join(root, "sibling")+"/"))
-	fake := folderRead{names: []string{"not-really-here"}, done: true}
+	fake := folderListing{names: []string{"not-really-here"}, done: true}
 	a.tookFolderKids(folderKidsMsg{path: filepath.Join(root, "sibling"), read: fake, gen: was})
 	if strings.Contains(strings.Join(a.folder.cols.here.names, ","), "not-really-here") {
 		t.Fatalf("a stale answer landed in the columns: %v", a.folder.cols.here.names)
