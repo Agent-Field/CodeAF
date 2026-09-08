@@ -205,7 +205,7 @@ func surgeryLoss(kind store.CommandKind, impact store.SurgeryImpact) string {
 		parts = append(parts, fmt.Sprintf("%d %s in", minutes, pluralWord(minutes, "minute", "minutes")))
 	}
 	if impact.Cost > 0 {
-		parts = append(parts, fmt.Sprintf("~$%.2f spent", impact.Cost))
+		parts = append(parts, fmt.Sprintf("~%s spent", moneyUSD(impact.Cost)))
 	}
 	if len(parts) == 0 {
 		parts = append(parts, "the current partial will be discarded")

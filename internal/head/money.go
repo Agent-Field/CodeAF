@@ -34,6 +34,20 @@ import (
 // COMPUTED here from journaled rows and rendered here into words, and the model
 // is handed the finished figure to write a sentence around. Where a model's own
 // number could previously survive into a rail or a receipt, it no longer can.
+//
+// This file is the ONLY place in internal/head that spells a dollar figure, and
+// TestOnlyMoneyGoSpellsADollarFigureInTheHead holds that boundary. moneyUSD is
+// the exact figure for anything a person reads as a measurement: a plan step, a
+// result, a finished window, a receipt or a rail. dimeUSD belongs to the live
+// board and the depth block alone, where precision is allowed only when it is as
+// stable as the figure; its own comment carries the reason for that narrower
+// spelling.
+//
+// A dime-rounded figure of a few cents therefore still reads "$0.00". That is
+// the live board buying stability at a known price, not an overlooked measured
+// cost: internal/tui2/tokens/format_test.go's TestMoneyForms pins
+// MoneyDime(0.004) as "$0.00" while its sub-cent law covers Money alone, and
+// #616 did not reopen that decision.
 
 // moneyUSD renders one amount at the precision it actually has.
 //
@@ -59,6 +73,17 @@ func moneyUSD(amount float64) string {
 	default:
 		return "under $0.0001"
 	}
+}
+
+// dimeUSD spells money for a prompt at the resolution a person actually decides
+// on. Position by volatility applies to precision as well as to order: a figure
+// is only allowed to be as precise as it is stable, and a cent on a live job
+// ticks constantly while nobody cancels a job over three cents. Rounded to a
+// dime the line holds still for as long as the decision it informs. The exact
+// figure stays exact everywhere it is read as a number rather than said to a
+// model: the TUI, the receipts, the store.
+func dimeUSD(cost float64) string {
+	return fmt.Sprintf("$%.2f", math.Round(cost*10)/10)
 }
 
 // measuredCostPattern reads a per-run cost out of the measured self-knowledge

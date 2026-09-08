@@ -1501,9 +1501,9 @@ func (h *Head) lensMoney() string {
 	if h.dailyRailSet {
 		if rail, err := h.store.DailyRailToday(h.dailyBudgetUSD); err == nil {
 			if rail.Unlimited {
-				fmt.Fprintf(&rendered, "today: $%.2f spent; daily rail unlimited\n", rail.Spend)
+				fmt.Fprintf(&rendered, "today: %s spent; daily rail unlimited\n", moneyUSD(rail.Spend))
 			} else {
-				fmt.Fprintf(&rendered, "today: $%.2f spent of a $%.2f daily rail", rail.Spend, rail.Ceiling)
+				fmt.Fprintf(&rendered, "today: %s spent of a %s daily rail", moneyUSD(rail.Spend), moneyUSD(rail.Ceiling))
 				if rail.Reached {
 					rendered.WriteString(" — the rail is reached")
 				}
@@ -1514,11 +1514,11 @@ func (h *Head) lensMoney() string {
 		// No rail was configured on this surface, so today's total is still true
 		// and the ceiling is simply not a fact here.
 		if spend, err := h.store.SpendToday(); err == nil {
-			fmt.Fprintf(&rendered, "today: $%.2f spent; no daily rail is configured on this surface\n", spend)
+			fmt.Fprintf(&rendered, "today: %s spent; no daily rail is configured on this surface\n", moneyUSD(spend))
 		}
 	}
 	if self, err := h.store.SelfSpendToday(); err == nil {
-		fmt.Fprintf(&rendered, "your own upkeep today: $%.2f\n", self)
+		fmt.Fprintf(&rendered, "your own upkeep today: %s\n", moneyUSD(self))
 	}
 	// What each piece of work cost, because "what did that one cost?" is asked
 	// about a job and answered nowhere else on this page. A total with no

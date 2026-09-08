@@ -112,8 +112,10 @@ func TestMoneyRendersAtThePrecisionItActuallyHas(t *testing.T) {
 	for amount, want := range map[float64]string{
 		0:        "$0.00",
 		0.000004: "under $0.0001",
+		0.00048:  "$0.0005",
 		0.0017:   "$0.0017",
 		0.37:     "$0.37",
+		1.24:     "$1.24",
 		18.4:     "$18.40",
 	} {
 		if got := moneyUSD(amount); got != want {

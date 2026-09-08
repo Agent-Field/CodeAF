@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -722,9 +721,9 @@ func (run *beltRun) spending(args map[string]any) (string, bool) {
 	if run.head.dailyRailSet {
 		if rail, err := run.head.store.DailyRailToday(run.head.dailyBudgetUSD); err == nil {
 			if rail.Unlimited {
-				fmt.Fprintf(&rendered, "today: $%.2f spent; daily rail unlimited\n", rail.Spend)
+				fmt.Fprintf(&rendered, "today: %s spent; daily rail unlimited\n", moneyUSD(rail.Spend))
 			} else {
-				fmt.Fprintf(&rendered, "today: $%.2f spent of a $%.2f daily rail\n", rail.Spend, rail.Ceiling)
+				fmt.Fprintf(&rendered, "today: %s spent of a %s daily rail\n", moneyUSD(rail.Spend), moneyUSD(rail.Ceiling))
 			}
 		}
 	}
@@ -732,7 +731,7 @@ func (run *beltRun) spending(args map[string]any) (string, bool) {
 	if err != nil {
 		return "that could not be read: " + err.Error(), true
 	}
-	fmt.Fprintf(&rendered, "your own upkeep today: $%.2f\n", self)
+	fmt.Fprintf(&rendered, "your own upkeep today: %s\n", moneyUSD(self))
 	if lines := run.head.selfWorkLines(); len(lines) > 0 {
 		rendered.WriteString("what that upkeep bought, most recent last:\n" +
 			strings.Join(lines, "\n") + "\n")
@@ -755,8 +754,8 @@ func (h *Head) spendWindowLines(since, until time.Time) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := []string{fmt.Sprintf("%s: $%.2f over %d %s",
-		spendWindowPhrase(window), window.Cost, window.Runs, pluralWord(window.Runs, "run", "runs"))}
+	lines := []string{fmt.Sprintf("%s: %s over %d %s",
+		spendWindowPhrase(window), moneyUSD(window.Cost), window.Runs, pluralWord(window.Runs, "run", "runs"))}
 	if window.Cost <= 0 {
 		return lines, nil
 	}
@@ -776,15 +775,15 @@ func (h *Head) spendWindowLines(since, until time.Time) ([]string, error) {
 		if title == "" {
 			title = job.JobID
 		}
-		line := fmt.Sprintf("- $%.2f | %s | %s | %d %s",
-			job.Cost, title, job.JobID, job.Runs, pluralWord(job.Runs, "run", "runs"))
+		line := fmt.Sprintf("- %s | %s | %s | %d %s",
+			moneyUSD(job.Cost), title, job.JobID, job.Runs, pluralWord(job.Runs, "run", "runs"))
 		if age := store.AgeLabel(job.Last, now); age != "" {
 			line += " | last spent " + age
 		}
 		lines = append(lines, line)
 	}
 	if rest := window.Cost - named; rest >= 0.01 {
-		lines = append(lines, fmt.Sprintf("- $%.2f | everything else in the window — smaller jobs, planning, answering, upkeep", rest))
+		lines = append(lines, fmt.Sprintf("- %s | everything else in the window — smaller jobs, planning, answering, upkeep", moneyUSD(rest)))
 	}
 	return lines, nil
 }
@@ -878,7 +877,7 @@ func (h *Head) historyLines(since, until time.Time) ([]string, error) {
 			line += " | " + age
 		}
 		if impact, err := h.store.Impact(node.ID, now); err == nil && impact.Cost > 0 {
-			line += fmt.Sprintf(" | $%.2f", impact.Cost)
+			line += fmt.Sprintf(" | %s", moneyUSD(impact.Cost))
 		}
 		if summary := firstLine(h.jobResult(node)); summary != "" {
 			line += " | " + truncateBytes(summary, historyResultBytes)
@@ -910,8 +909,8 @@ func (h *Head) selfWorkLines() []string {
 		if receipt.Nothing {
 			learned = "learned nothing"
 		}
-		lines = append(lines, fmt.Sprintf("- %s | $%.2f | %s",
-			firstLine(receipt.Origin), receipt.Cost, learned))
+		lines = append(lines, fmt.Sprintf("- %s | %s | %s",
+			firstLine(receipt.Origin), moneyUSD(receipt.Cost), learned))
 	}
 	return lines
 }
@@ -1059,7 +1058,7 @@ func (h *Head) renderResult(node store.Node) string {
 	var rendered strings.Builder
 	fmt.Fprintf(&rendered, "%s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
 	if impact, err := h.store.Impact(node.ID, now); err == nil && impact.Cost > 0 {
-		fmt.Fprintf(&rendered, " | $%.2f", impact.Cost)
+		fmt.Fprintf(&rendered, " | %s", moneyUSD(impact.Cost))
 	}
 	if age := store.AgeLabel(node.FinishedAt, now); age != "" {
 		rendered.WriteString(" | finished " + age)
@@ -1199,7 +1198,7 @@ func (h *Head) renderPlanWithin(node store.Node, stepCap, byteCap int) (string, 
 			}
 			if stored {
 				if impact, err := h.store.Impact(row.ID, now); err == nil && impact.Cost > 0 {
-					line += fmt.Sprintf(" | $%.2f", impact.Cost)
+					line += fmt.Sprintf(" | %s", moneyUSD(impact.Cost))
 				}
 				line += " | id " + row.ID
 			}
@@ -1873,17 +1872,6 @@ func boardRowMatches(row boardRow, class string) bool {
 		return row.running > 0 || row.queued > 0 || row.failed > 0 ||
 			classOpen(row.node.Status) || row.node.Status == store.Failed
 	}
-}
-
-// dimeUSD spells money for a prompt at the resolution a person actually decides
-// on. Position by volatility applies to precision as well as to order: a figure
-// is only allowed to be as precise as it is stable, and a cent on a live job
-// ticks constantly while nobody cancels a job over three cents. Rounded to a
-// dime the line holds still for as long as the decision it informs. The exact
-// figure stays exact everywhere it is read as a number rather than said to a
-// model: the TUI, the receipts, the store.
-func dimeUSD(cost float64) string {
-	return fmt.Sprintf("$%.2f", math.Round(cost*10)/10)
 }
 
 // renderBoard is THE board renderer. There were two — the router's renderGraph
