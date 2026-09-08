@@ -595,6 +595,16 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverPaste, index: n}
 			}
 		case chromeOverlay:
+			// EVERY LIST DOWN HERE IS ROWS, AND THE FOLDER SHEET IS COLUMNS. Its
+			// three columns do three different things to a press — walk out, move
+			// the cursor, walk in — so a band across the row would offer to do one
+			// of them wherever the pointer happened to be, which is exactly the
+			// claim this file's law forbids. Which column is a question about x,
+			// and the answer rides the key field for the reason that field exists:
+			// a target named in its own alphabet (folderplace.go).
+			if key, ok := a.folderHoverColumn(x, mark.index); ok {
+				return hoverAt{kind: hoverOverlay, index: mark.index, key: key}
+			}
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:
 			if slot := a.welcomeSlotAt(mark.index); slot >= 0 {

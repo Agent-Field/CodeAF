@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -161,13 +163,13 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	if a.folder.cols.dir != filepath.Join(root, "here") {
 		t.Fatalf("the columns are on %s, want %s", a.folder.cols.dir, filepath.Join(root, "here"))
 	}
-	if want := []string{"deep", "other"}; strings.Join(a.folder.cols.here, ",") != strings.Join(want, ",") {
-		t.Fatalf("the middle column is %v, want %v — directories only, dot and skipped ones pruned", a.folder.cols.here, want)
+	if want := []string{"deep", "other"}; strings.Join(a.folder.cols.here.names, ",") != strings.Join(want, ",") {
+		t.Fatalf("the middle column is %v, want %v — directories only, dot and skipped ones pruned", a.folder.cols.here.names, want)
 	}
 	// The parent column is the level above, and it knows which of its rows we
 	// are standing in.
-	if a.folder.cols.upAt < 0 || a.folder.cols.up[a.folder.cols.upAt] != "here" {
-		t.Fatalf("the parent column does not mark `here`: %v at %d", a.folder.cols.up, a.folder.cols.upAt)
+	if a.folder.cols.upAt < 0 || a.folder.cols.up.names[a.folder.cols.upAt] != "here" {
+		t.Fatalf("the parent column does not mark `here`: %v at %d", a.folder.cols.up.names, a.folder.cols.upAt)
 	}
 
 	// → walks in, ← walks back out and leaves the cursor where it came from.
@@ -184,13 +186,14 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	}
 
 	// And the columns draw as columns: no borders, the names, and nothing wider
-	// than the frame.
-	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, -1) {
-		if len(plain(line)) > a.width {
+	// than the frame. The measure is CELLS and not bytes — the sheet's own
+	// punctuation is multibyte, so a byte count would fail a row that fits.
+	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, -1, "") {
+		if ansi.StringWidth(line) > a.width {
 			t.Fatalf("a column row runs past the frame: %q", plain(line))
 		}
 	}
-	if !strings.Contains(plain(strings.Join(a.folder.rows(a.width, 6, a.pal, -1), "\n")), "deep") {
+	if !strings.Contains(plain(strings.Join(a.folder.rows(a.width, 6, a.pal, -1, ""), "\n")), "deep") {
 		t.Fatal("the columns are not drawing the directories they read")
 	}
 }
