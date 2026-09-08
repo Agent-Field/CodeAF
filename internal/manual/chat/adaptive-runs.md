@@ -1398,7 +1398,9 @@ The block a person reads is bounded so a long checklist cannot crowd the failure
 off the ending. If every line does not fit, its last line counts how many remain on the
 run's own record. `aforge do --json` carries the whole, unclipped list in `checklist`, with
 one `{behaviour, state, why}` row per point. A run whose request produced no acceptance
-checklist has neither the block nor that key.
+checklist has neither the block nor that key. When a split job stores checklists only on
+its children, the root JSON can omit `checklist`; a failing child keeps its own account
+in its recorded error.
 
 ## When nothing checks what you asked for — "no check exercises …"
 

@@ -52,7 +52,7 @@ func AnswerChecklist(points []store.AcceptancePoint, gate store.DeliveryGate, ga
 			if exercised, found := exercisedPoint(point.Behaviour, gate.Exercises); found {
 				if check := strings.TrimSpace(exercised.Check); check != "" {
 					outcome.State = PointAnswered
-					outcome.Why = "a check covers it: " + clipUTF8Bytes(check, checkWords)
+					outcome.Why = "a check covers it: " + check
 				} else {
 					outcome.State = PointNotAnswered
 					outcome.Why = "no check exercises it"
@@ -71,9 +71,6 @@ func AnswerChecklist(points []store.AcceptancePoint, gate store.DeliveryGate, ga
 			outcome.Why = "the run changed " + matched
 		} else {
 			outcome.State = PointNotAnswered
-			if len(named) > 3 {
-				named = named[:3]
-			}
 			outcome.Why = "nothing this run wrote is " + strings.Join(named, ", ")
 		}
 		outcomes = append(outcomes, outcome)
@@ -191,7 +188,7 @@ func ChecklistAccount(outcomes []PointOutcome) string {
 		line := fmt.Sprintf("%d. %s — %s", index+1,
 			clipUTF8Bytes(strings.TrimSpace(outcome.Behaviour), behaviourWords), outcome.State)
 		if why := strings.TrimSpace(outcome.Why); why != "" {
-			line += ": " + why
+			line += ": " + clipUTF8Bytes(why, checkWords)
 		}
 		lines = append(lines, line)
 	}

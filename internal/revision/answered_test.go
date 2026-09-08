@@ -221,3 +221,18 @@ func TestTheAccountSaysNothingItDoesNotKnow(t *testing.T) {
 		}
 	}
 }
+
+// Machine callers need the complete check name even when the person-facing
+// account clips it to fit beside the other points.
+func TestTheMachineChecklistKeepsTheWholeCheckName(t *testing.T) {
+	check := "go test ./" + strings.Repeat("long-package/", 20)
+	points := []store.AcceptancePoint{{Behaviour: "the complete check is available"}}
+	gate := store.DeliveryGate{Exercises: []store.ExercisedPoint{{Point: points[0].Behaviour, Check: check}}}
+	outcomes := AnswerChecklist(points, gate, true, nil)
+	if outcomes[0].Why != "a check covers it: "+check {
+		t.Fatalf("the machine checklist clipped its evidence: %q", outcomes[0].Why)
+	}
+	if len(ChecklistAccount(outcomes)) > checklistBlockBytes {
+		t.Fatal("keeping the full machine evidence broke the person-facing bound")
+	}
+}

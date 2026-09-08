@@ -23,3 +23,7 @@ happens: a job the planner breaks into several leaves journals a checklist
 against each leaf and none against the root that settles them, so `--json`'s
 `checklist` is empty there. The account still reaches the person by the other
 road, on the failing leaf's own error.
+
+Review correction: machine rows retain complete check names and named-file evidence.
+Only the person-facing rendering clips that evidence; the JSON no longer silently
+shortens a check name at eighty bytes. The manual also states the split-root limitation.
